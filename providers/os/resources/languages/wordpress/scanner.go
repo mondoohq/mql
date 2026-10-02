@@ -49,6 +49,9 @@ const pluginHeaderBytes = 8 * 1024
 // "Plugin Name" header) or a readme.txt is treated as a plugin. A symlinked
 // plugin directory, which is how Debian's wordpress package links the bundled
 // plugins into /var/lib/wordpress/wp-content/plugins, counts as a directory.
+// A PHP file directly in the plugins directory that carries a "Plugin Name"
+// header is a single-file plugin, as Hello Dolly is in the Fedora and EPEL
+// wordpress package.
 func ScanPluginDir(afs *afero.Afero, dir string) ([]WordPressPlugin, error) {
 	entries, err := afs.ReadDir(dir)
 	if err != nil {
@@ -61,6 +64,11 @@ func ScanPluginDir(afs *afero.Afero, dir string) ([]WordPressPlugin, error) {
 		slug := entry.Name()
 		pluginDir := path.Join(dir, slug)
 		if !isDirOrLinkToDir(afs, entry, pluginDir) {
+			if strings.EqualFold(path.Ext(slug), ".php") {
+				if plugin := parseSingleFilePlugin(afs, pluginDir); plugin != nil {
+					plugins = append(plugins, *plugin)
+				}
+			}
 			continue
 		}
 
@@ -132,7 +140,35 @@ func parsePlugin(afs *afero.Afero, pluginDir, slug string) (*WordPressPlugin, er
 	return plugin, nil
 }
 
-var pluginHeaderNames = []string{"plugin name", "version", "license", "requires at least"}
+// parseSingleFilePlugin reads a PHP file that sits directly in the plugins
+// directory. It is a plugin when it carries a "Plugin Name" header. Its slug
+// is the "Text Domain" header, which wordpress.org requires to match the
+// plugin's slug (hello.php is "hello-dolly"), or else the file name.
+func parseSingleFilePlugin(afs *afero.Afero, p string) *WordPressPlugin {
+	head, err := readHead(afs, p, pluginHeaderBytes)
+	if err != nil {
+		log.Debug().Err(err).Str("path", p).Msg("mql[wordpress]> could not read plugin file")
+		return nil
+	}
+	headers := parsePluginHeaders(head)
+	if headers["plugin name"] == "" || headers["version"] == "" {
+		return nil
+	}
+	slug := headers["text domain"]
+	if slug == "" {
+		slug = strings.TrimSuffix(path.Base(p), path.Ext(p))
+	}
+	return &WordPressPlugin{
+		Slug:        slug,
+		Version:     headers["version"],
+		DisplayName: headers["plugin name"],
+		License:     headers["license"],
+		RequiresWp:  headers["requires at least"],
+		FilePath:    p,
+	}
+}
+
+var pluginHeaderNames = []string{"plugin name", "version", "license", "requires at least", "text domain"}
 
 // findMainPluginFile returns the top-level PHP file of pluginDir that carries
 // a "Plugin Name" header, and its headers. It prefers <slug>.php, then takes

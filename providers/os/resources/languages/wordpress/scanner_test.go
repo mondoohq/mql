@@ -170,3 +170,33 @@ func TestScanPluginDirFollowsSymlinkedPluginDirectories(t *testing.T) {
 	assert.Equal(t, "akismet", plugins[0].Slug)
 	assert.Equal(t, "5.3.3", plugins[0].Version)
 }
+
+// WordPress also loads a PHP file directly in the plugins directory as a
+// plugin when it carries a "Plugin Name" header. The wordpress rpm on Fedora
+// and EPEL ships Hello Dolly that way (hello.php, copied from the package),
+// next to an index.php with no header that is not a plugin.
+func TestScanPluginDirSingleFilePlugins(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewOsFs()}
+	plugins, err := ScanPluginDir(afs, "./testdata-single-file")
+	require.NoError(t, err)
+	bySlug := pluginsBySlug(t, plugins)
+	require.Len(t, bySlug, 3)
+
+	// the slug is the Text Domain, which wordpress.org requires to match the
+	// plugin's slug, not the file name
+	hello, ok := bySlug["hello-dolly"]
+	require.True(t, ok)
+	assert.Equal(t, "1.7.2", hello.Version)
+	assert.Equal(t, "Hello Dolly", hello.DisplayName)
+	assert.Equal(t, "testdata-single-file/hello.php", hello.FilePath)
+	assert.Equal(t, "", hello.ReadmePath)
+
+	// without a Text Domain the file name is the slug
+	tweaks, ok := bySlug["site-tweaks"]
+	require.True(t, ok)
+	assert.Equal(t, "0.2.0", tweaks.Version)
+
+	assert.Equal(t, "5.5", bySlug["akismet"].Version)
+	_, ok = bySlug["index"]
+	assert.False(t, ok, "index.php has no plugin header")
+}
