@@ -1,0 +1,20 @@
+Upgrades
+g03-a-very-long-package-name-that-exceeds-the-check-update-column-width.x86_64 2.0-1          g03repo
+g03-archchg.noarch                                                             2.0-1          g03repo
+g03-epoch.x86_64                                                               3:2.0-1        g03repo
+g03-multi.i686                                                                 2.0-1          g03repo
+g03-multi.x86_64                                                               2.0-1          g03repo
+g03-weird.x86_64                                                               2.0-1          g03repo
+grub2-common.noarch                                                            1:2.12-66.fc44 updates
+grub2-efi-ia32.x86_64                                                          1:2.12-66.fc44 updates
+grub2-efi-ia32-modules.noarch                                                  1:2.12-66.fc44 updates
+grub2-efi-x64.x86_64                                                           1:2.12-66.fc44 updates
+grub2-efi-x64-modules.noarch                                                   1:2.12-66.fc44 updates
+grub2-pc.x86_64                                                                1:2.12-66.fc44 updates
+grub2-pc-modules.noarch                                                        1:2.12-66.fc44 updates
+grub2-tools.x86_64                                                             1:2.12-66.fc44 updates
+grub2-tools-efi.x86_64                                                         1:2.12-66.fc44 updates
+grub2-tools-extra.x86_64                                                       1:2.12-66.fc44 updates
+grub2-tools-minimal.x86_64                                                     1:2.12-66.fc44 updates
+shim-ia32.x86_64                                                               16.1-7         updates
+shim-x64.x86_64                                                                16.1-7         updates

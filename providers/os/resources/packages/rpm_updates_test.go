@@ -79,20 +79,20 @@ func TestParseRpmCheckUpdate(t *testing.T) {
 		require.NotEmpty(t, m)
 
 		// epoch stays on the available version, as it is printed
-		nm, ok := m["NetworkManager"]
+		nm, ok := m["NetworkManager.x86_64"]
 		require.True(t, ok)
 		assert.Equal(t, "1:1.54.3-5.el9_8", nm.Available)
 		assert.Equal(t, "x86_64", nm.Arch)
 		assert.Equal(t, "rhel-9-baseos-rhui-rpms", nm.Repo)
 
-		acl, ok := m["acl"]
+		acl, ok := m["acl.x86_64"]
 		require.True(t, ok)
 		assert.Equal(t, "2.4.0-1.el9_8", acl.Available)
 
 		// grub2-tools appears ONLY as the indented @System side of an
 		// obsoletes pair, carrying the older installed version. Reading it
 		// would advertise a downgrade as an available update.
-		if g, ok := m["grub2-tools"]; ok {
+		if g, ok := m["grub2-tools.x86_64"]; ok {
 			assert.NotEqual(t, "1:2.06-105.el9_6.2", g.Available,
 				"picked up the obsoleted @System line")
 			assert.NotEqual(t, "@System", g.Repo)
@@ -110,7 +110,7 @@ func TestParseRpmCheckUpdate(t *testing.T) {
 		m, err := ParseRpmCheckUpdate(f)
 		require.NoError(t, err)
 
-		k, ok := m["kernel"]
+		k, ok := m["kernel.x86_64"]
 		require.True(t, ok)
 		assert.Equal(t, "5.14.0-687.48.1.el9_8", k.Available)
 		assert.Equal(t, "x86_64", k.Arch)
@@ -131,4 +131,69 @@ func TestParseRpmCheckUpdate(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, m)
 	})
+}
+
+func parseCheckUpdateFile(t *testing.T, path string) map[string]PackageUpdate {
+	t.Helper()
+	f, err := os.Open(path)
+	require.NoError(t, err)
+	defer f.Close()
+	m, err := ParseRpmCheckUpdate(f)
+	require.NoError(t, err)
+	return m
+}
+
+// The g03 captures come from hosts with test packages from a local repo:
+// g03-multi installed for i686 and x86_64, g03-archchg moving from x86_64 to
+// noarch, a name too long for yum 3's first column, and g03-new obsoleting
+// g03-old.
+func TestParseRpmCheckUpdateG03(t *testing.T) {
+	for _, tc := range []struct {
+		file  string
+		count int
+	}{
+		{"./testdata/yum-rhel7-g03.txt", 8},
+		{"./testdata/dnf-alma9-g03.txt", 43},
+		{"./testdata/dnf5-fedora44-g03.txt", 19},
+	} {
+		t.Run(tc.file, func(t *testing.T) {
+			m := parseCheckUpdateFile(t, tc.file)
+			assert.Len(t, m, tc.count)
+
+			// both architectures of a multilib package keep their update
+			assert.Equal(t, PackageUpdate{Name: "g03-multi", Arch: "i686", Available: "2.0-1", Repo: "g03repo"}, m["g03-multi.i686"])
+			assert.Equal(t, PackageUpdate{Name: "g03-multi", Arch: "x86_64", Available: "2.0-1", Repo: "g03repo"}, m["g03-multi.x86_64"])
+
+			// yum 3 printed this name on its own line, the version below it
+			long := "g03-a-very-long-package-name-that-exceeds-the-check-update-column-width"
+			assert.Equal(t, PackageUpdate{Name: long, Arch: "x86_64", Available: "2.0-1", Repo: "g03repo"}, m[long+".x86_64"])
+
+			assert.Equal(t, "noarch", m["g03-archchg.noarch"].Arch)
+			assert.Equal(t, "3:2.0-1", m["g03-epoch.x86_64"].Available)
+
+			// the obsoleted, installed side of an obsoletes pair is no update
+			assert.NotContains(t, m, "g03-old.x86_64")
+		})
+	}
+}
+
+func TestParseRpmCheckUpdateWrappedLines(t *testing.T) {
+	m, err := ParseRpmCheckUpdate(strings.NewReader(strings.Join([]string{
+		// a wrapped name whose continuation never comes is dropped, and the
+		// following package line is still read on its own
+		"first-long-name.x86_64",
+		"bash.x86_64                    5.2-1        base",
+		// an indented line that does not follow a wrapped name is no update
+		"                               9.9-1        base",
+		"Obsoleting Packages",
+		"g03-new.x86_64                 2.0-1        g03repo",
+		"    g03-old-with-a-long-name.x86_64",
+		"                               1.0-1        installed",
+		"",
+	}, "\n")))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]PackageUpdate{
+		"bash.x86_64":    {Name: "bash", Arch: "x86_64", Available: "5.2-1", Repo: "base"},
+		"g03-new.x86_64": {Name: "g03-new", Arch: "x86_64", Available: "2.0-1", Repo: "g03repo"},
+	}, m)
 }

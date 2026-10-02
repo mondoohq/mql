@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -193,4 +194,39 @@ func TestPkgUpdatesLookup(t *testing.T) {
 		u = &pkgUpdates{pm: &fakeUpdatesPkgManager{err: failed}}
 		assert.Equal(t, "", lookupOK(t, u, "bash", "x86_64"))
 	})
+
+	// From `dnf check-update` on RHEL 9 with the g03 test packages installed.
+	t.Run("multilib and arch-changing rpm updates", func(t *testing.T) {
+		f, err := os.Open("./packages/testdata/dnf-alma9-g03.txt")
+		require.NoError(t, err)
+		defer f.Close()
+		updates, err := packages.ParseRpmCheckUpdate(f)
+		require.NoError(t, err)
+		// a package going from noarch to x86_64
+		updates["g03-tonative.x86_64"] = packages.PackageUpdate{Name: "g03-tonative", Arch: "x86_64", Available: "2.0-1"}
+		// only one half of a multilib pair has an update
+		updates["g03-half.x86_64"] = packages.PackageUpdate{Name: "g03-half", Arch: "x86_64", Available: "2.0-1"}
+		u := &pkgUpdates{pm: &fakeUpdatesPkgManager{updates: updates}}
+
+		assert.Equal(t, "2.0-1", lookupOK(t, u, "g03-multi", "i686"))
+		assert.Equal(t, "2.0-1", lookupOK(t, u, "g03-multi", "x86_64"))
+		// installed as x86_64, updated by a noarch build
+		assert.Equal(t, "2.0-1", lookupOK(t, u, "g03-archchg", "x86_64"))
+		assert.Equal(t, "2.0-1", lookupOK(t, u, "g03-tonative", "noarch"))
+		assert.Equal(t, "", lookupOK(t, u, "g03-half", "i686"), "an x86_64 update does not update the i686 package")
+		assert.Equal(t, "", lookupOK(t, u, "g03-uptodate", "x86_64"))
+	})
+}
+
+// A failed `dnf check-update` (exit 1, nothing on stdout) reached
+// package.outdated as false for every package.
+func TestPackageOutdatedFailedRpmCheck(t *testing.T) {
+	withStructuredErrors(t, true)
+	runtime, _ := newRpmUpdateHost(t, "", 1)
+	pkgs := listPackagesByName(t, runtime)
+
+	outdated := pkgs["openssl"].GetOutdated()
+	require.ErrorIs(t, outdated.Error, packages.ErrUpdateCheckFailed)
+	available := pkgs["bash"].GetAvailable()
+	require.ErrorIs(t, available.Error, packages.ErrUpdateCheckFailed)
 }

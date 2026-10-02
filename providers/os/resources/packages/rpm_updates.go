@@ -110,28 +110,64 @@ func ParseZypper(input io.Reader) (*zypper, error) {
 // guard for the same thing.
 var rpmCheckUpdateLine = regexp.MustCompile(`^(\S+)\.(\S+)\s+(\S+)\s+(\S+)\s*$`)
 
+// rpmCheckUpdateWrappedName matches a "<name>.<arch>" line that yum 3 (RHEL 7)
+// printed on its own because it is wider than the first column. The version
+// and repository follow on the next, indented line:
+//
+//	g03-a-very-long-package-name-that-exceeds-the-check-update-column-width.x86_64
+//	                                        2.0-1        g03repo
+//
+// dnf 4 and dnf 5 widen the column instead and never wrap.
+var rpmCheckUpdateWrappedName = regexp.MustCompile(`^(\S+)\.(\S+)\s*$`)
+
+// rpmCheckUpdateContinuation matches the indented version and repository
+// that finish a wrapped "<name>.<arch>" line.
+var rpmCheckUpdateContinuation = regexp.MustCompile(`^\s+(\S+)\s+(\S+)\s*$`)
+
 // ParseRpmCheckUpdate parses the output of `dnf check-update` / `yum
-// check-update` into the available updates, keyed by package name.
+// check-update` into the available updates, keyed by "<name>.<arch>".
+//
+// The key carries the architecture because a multilib package is installed
+// once per architecture (g03-multi.i686 and g03-multi.x86_64) and check-update
+// lists an update for each. Keyed by name alone, the second line replaced the
+// first and one of the two packages reported no update.
 func ParseRpmCheckUpdate(input io.Reader) (map[string]PackageUpdate, error) {
 	pkgs := map[string]PackageUpdate{}
-	scanner := bufio.NewScanner(input)
-	scanner.Buffer(nil, rpmMaxLineSize)
-	for scanner.Scan() {
-		line := scanner.Text()
-		m := rpmCheckUpdateLine.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
+	add := func(name, arch, available, repo string) {
 		// the installed side of an obsoletes pair, not an update
-		if m[4] == "@System" {
-			continue
+		// (dnf prints @System, yum 3 prints installed; both are indented)
+		if repo == "@System" {
+			return
 		}
-		name, arch, available, repo := m[1], m[2], m[3], m[4]
-		pkgs[name] = PackageUpdate{
+		pkgs[name+"."+arch] = PackageUpdate{
 			Name:      name,
 			Arch:      arch,
 			Available: available,
 			Repo:      repo,
+		}
+	}
+
+	scanner := bufio.NewScanner(input)
+	scanner.Buffer(nil, rpmMaxLineSize)
+	// wrapped holds a "<name>.<arch>" line yum 3 printed alone, waiting for
+	// the indented line with its version and repository.
+	var wrapped []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if wrapped != nil {
+			if m := rpmCheckUpdateContinuation.FindStringSubmatch(line); m != nil {
+				add(wrapped[1], wrapped[2], m[1], m[2])
+				wrapped = nil
+				continue
+			}
+			wrapped = nil
+		}
+		if m := rpmCheckUpdateLine.FindStringSubmatch(line); m != nil {
+			add(m[1], m[2], m[3], m[4])
+			continue
+		}
+		if m := rpmCheckUpdateWrappedName.FindStringSubmatch(line); m != nil {
+			wrapped = m
 		}
 	}
 	if err := scanner.Err(); err != nil {

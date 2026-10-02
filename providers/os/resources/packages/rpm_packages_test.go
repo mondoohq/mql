@@ -137,18 +137,19 @@ func TestRedhat8Parser(t *testing.T) {
 	}
 	assert.Equal(t, p, findPkg(m, p.Name), p.Name)
 
-	// Package with (none) vendor and arch
+	// Package with (none) vendor and arch. rpm prints "(none)" for a missing
+	// Vendor tag; that is no vendor, as go-rpmdb reports it on the rpmdb path.
 	p = Package{
 		Name:           "gpg-pubkey",
 		Version:        "d4082792-5b32db75",
-		Vendor:         "(none)",
+		Vendor:         "",
 		Description:    "gpg(Red Hat, Inc. (auxiliary key) <security@redhat.com>)",
 		Format:         RpmPkgFormat,
 		FilesAvailable: PkgFilesAsync,
 		PUrl:           "pkg:rpm/redhat/gpg-pubkey@d4082792-5b32db75?distro=rhel-8.4",
 		CPEs: []string{
-			"cpe:2.3:a:\\(none\\):gpg-pubkey:d4082792-5b32db75:*:*:*:*:*:*:*",
-			"cpe:2.3:a:\\(none\\):gpg-pubkey:d4082792-5b32db75:*:*:*:*:*:*:*",
+			"cpe:2.3:a:*:gpg-pubkey:d4082792-5b32db75:*:*:*:*:*:*:*",
+			"cpe:2.3:a:*:gpg-pubkey:d4082792-5b32db75:*:*:*:*:*:*:*",
 		},
 	}
 	assert.Equal(t, p, findPkg(m, p.Name), p.Name)
@@ -666,7 +667,7 @@ func TestRpmQueryFormatRoundTrip(t *testing.T) {
 		"RELEASE":         "100.el8",
 		"ARCH":            "x86_64",
 		"VENDOR":          "Red Hat, Inc.",
-		"SUMMARY":         "The GNU libc libraries",
+		"SUMMARY":         "The GNU libc __ libraries", // "__" was the old field separator
 		"LICENSE":         "LGPLv2+",
 		"INSTALLTIME":     "1700000000",
 		"MODULARITYLABEL": "(none)", // rpm emits "(none)" for non-modular packages
@@ -699,7 +700,7 @@ func TestRpmQueryFormatRoundTrip(t *testing.T) {
 			assert.Equal(t, "2.34-100.el8", p.Version)
 			assert.Equal(t, "x86_64", p.Arch)
 			assert.Equal(t, "Red Hat, Inc.", p.Vendor)
-			assert.Equal(t, "The GNU libc libraries", p.Description)
+			assert.Equal(t, "The GNU libc __ libraries", p.Description)
 			assert.Equal(t, "LGPLv2+", p.License)
 		})
 	}

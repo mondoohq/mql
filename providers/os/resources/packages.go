@@ -342,6 +342,12 @@ type pkgUpdates struct {
 	once sync.Once
 	// byNameArch maps "<name>/<arch>" to the available version.
 	byNameArch map[string]string
+	// noarchByName maps a package name to the version of its noarch update,
+	// and byName to the version of its only update when every update of that
+	// name has one architecture. Both serve packages that move between an
+	// architecture and noarch, see lookup.
+	noarchByName map[string]string
+	byName       map[string]string
 	// err is why the manager could not report its updates.
 	err error
 }
@@ -366,19 +372,46 @@ func (u *pkgUpdates) load() {
 		return
 	}
 	u.byNameArch = make(map[string]string, len(available))
+	u.noarchByName = map[string]string{}
+	u.byName = map[string]string{}
+	ambiguous := map[string]bool{}
 	for _, a := range available {
 		u.byNameArch[a.Name+"/"+a.Arch] = a.Available
+		if a.Arch == "noarch" {
+			u.noarchByName[a.Name] = a.Available
+		}
+		if _, ok := u.byName[a.Name]; ok {
+			ambiguous[a.Name] = true
+		}
+		u.byName[a.Name] = a.Available
+	}
+	for name := range ambiguous {
+		delete(u.byName, name)
 	}
 }
 
 // lookup returns the newer version the package manager offers for a package,
 // "" when there is none.
+//
+// An update usually has the installed package's architecture. The exception
+// is a package that moves between an architecture and noarch: dnf offers
+// g03-archchg.noarch 2.0 as the update of g03-archchg.x86_64 1.0, and the
+// reverse move the same way. A multilib pair is not such a case, an i686
+// package is never updated by an x86_64 one, so for an arch-specific package
+// only a noarch update stands in for a missing same-arch one, and a noarch
+// package takes an arch-specific update only when it is the only one.
 func (u *pkgUpdates) lookup(name, arch string) (string, error) {
 	u.once.Do(u.load)
 	if u.err != nil {
 		return "", u.err
 	}
-	return u.byNameArch[name+"/"+arch], nil
+	if v, ok := u.byNameArch[name+"/"+arch]; ok {
+		return v, nil
+	}
+	if arch == "noarch" {
+		return u.byName[name], nil
+	}
+	return u.noarchByName[name], nil
 }
 
 // fillPackageArgs resets args and fills in the resource arguments for one

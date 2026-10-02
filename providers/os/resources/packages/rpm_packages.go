@@ -63,9 +63,24 @@ const (
 // separator, which is the only correct reading.
 var RPM_REGEX = regexp.MustCompile(`^(\S+)\s(\d*|\(none\)):(\S+)\s(\S*?)__(.*?)__(.*?)__(.*?)__(\d+|\(none\))(?:__(.*))?$`)
 
+// rpmFieldSep separates the free-text fields in queryFormat(): the ASCII unit
+// separator, which no vendor, summary or license contains. The "__" it
+// replaces does occur in summaries ("weird __ summary __ with separators"),
+// and every such package came back with part of its summary as the license.
+// rpm's queryformat has no escape for it, so the byte is in the format as is.
+const rpmFieldSep = "\x1f"
+
+// rpmUnitSepRegex splits one line of the queryFormat() output: the same
+// fields as RPM_REGEX, separated by rpmFieldSep. A field cannot contain the
+// separator, so there is no ambiguity left for a non-greedy match to resolve.
+var rpmUnitSepRegex = regexp.MustCompile(`^(\S+)\s(\d*|\(none\)):(\S+)\s([^\s\x1f]*)\x1f([^\x1f]*)\x1f([^\x1f]*)\x1f([^\x1f]*)\x1f(\d+|\(none\))(?:\x1f(.*))?$`)
+
 // ParseRpmPackages parses output from:
 // %{MODULARITYLABEL} is only added on supported systems
-// rpm -qa --queryformat '%{NAME} %{EPOCHNUM}:%{VERSION}-%{RELEASE} %{ARCH}__%{VENDOR}__%{SUMMARY}__%{LICENSE}__%{INSTALLTIME}__%{MODULARITYLABEL}\n'
+// rpm -qa --queryformat '%{NAME} %{EPOCHNUM}:%{VERSION}-%{RELEASE} %{ARCH}<US>%{VENDOR}<US>%{SUMMARY}<US>%{LICENSE}<US>%{INSTALLTIME}<US>%{MODULARITYLABEL}\n'
+//
+// where <US> is rpmFieldSep. Lines in the older "__"-separated format (still
+// used by other callers and by captured test data) are read with RPM_REGEX.
 func ParseRpmPackages(pf *inventory.Platform, input io.Reader) []Package {
 	pkgs := []Package{}
 	dropped := 0
@@ -77,7 +92,11 @@ func ParseRpmPackages(pf *inventory.Platform, input io.Reader) []Package {
 	scanner.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), rpmMaxLineSize)
 	for scanner.Scan() {
 		line := scanner.Text()
-		m := RPM_REGEX.FindStringSubmatch(line)
+		re := RPM_REGEX
+		if strings.Contains(line, rpmFieldSep) {
+			re = rpmUnitSepRegex
+		}
+		m := re.FindStringSubmatch(line)
 		if m != nil {
 			name := m[1]
 			epoch := normalizeRpmEpoch(m[2])
@@ -94,7 +113,13 @@ func ParseRpmPackages(pf *inventory.Platform, input io.Reader) []Package {
 				arch = ""
 			}
 
-			vendor := cleanupVendorName(m[5])
+			vendor := m[5]
+			// "(none)" is rpm's sentinel for a package built without a
+			// Vendor tag, not a vendor name
+			if vendor == "(none)" {
+				vendor = ""
+			}
+			vendor = cleanupVendorName(vendor)
 
 			license := m[7]
 			// "(none)" is the rpm-format sentinel for missing fields;
@@ -370,19 +395,19 @@ func (rpm *RpmPkgManager) queryFormat() string {
 	modularity := ""
 	// Not all rpm based distros support modules, only query when applicable, otherwise we get an error
 	if modularitySupportedByPlatform(rpm.platform) {
-		modularity = "__%{MODULARITYLABEL}"
+		modularity = rpmFieldSep + "%{MODULARITYLABEL}"
 	}
 	// this format should work everywhere
 	// fall-back to epoch instead of epochnum for 6 ish platforms, latest 6 platforms also support epochnum, but we
 	// save 1 call by not detecting the available keyword via rpm --querytags
-	format := "%{NAME} %{EPOCH}:%{VERSION}-%{RELEASE} %{ARCH}__%{VENDOR}__%{SUMMARY}__%{LICENSE}__%{INSTALLTIME}" + modularity + "\\n"
+	format := "%{NAME} %{EPOCH}:%{VERSION}-%{RELEASE} %{ARCH}" + rpmFieldSep + "%{VENDOR}" + rpmFieldSep + "%{SUMMARY}" + rpmFieldSep + "%{LICENSE}" + rpmFieldSep + "%{INSTALLTIME}" + modularity + "\\n"
 
 	// ATTENTION: EPOCHNUM is only available since later version of rpm in RedHat 6 and Suse 12
 	// we can only expect if for rhel 7+, therefore we need to run an extra test
 	// be aware that this method is also used for non-redhat systems like suse
 	i, err := strconv.ParseInt(rpm.platform.Version, 0, 32)
 	if err == nil && (rpm.platform.Name == "centos" || rpm.platform.Name == "centos-stream" || rpm.platform.Name == "redhat") && i >= 7 {
-		format = "%{NAME} %{EPOCHNUM}:%{VERSION}-%{RELEASE} %{ARCH}__%{VENDOR}__%{SUMMARY}__%{LICENSE}__%{INSTALLTIME}" + modularity + "\\n"
+		format = "%{NAME} %{EPOCHNUM}:%{VERSION}-%{RELEASE} %{ARCH}" + rpmFieldSep + "%{VENDOR}" + rpmFieldSep + "%{SUMMARY}" + rpmFieldSep + "%{LICENSE}" + rpmFieldSep + "%{INSTALLTIME}" + modularity + "\\n"
 	}
 
 	return format
@@ -411,17 +436,47 @@ func (rpm *RpmPkgManager) runtimeList() ([]Package, error) {
 // `check-update` is the supported interface on both, and yum keeps it as an
 // alias for compatibility, so one command covers dnf and yum hosts.
 //
-// Exit status 100 means "updates are available" and 0 means "none" -- neither
-// is a failure, which is why the status is not checked.
+// Exit status 100 means "updates are available" and 0 means "none"; any
+// other status is a failure, see parseRpmCheckUpdateResult.
 const rpmCheckUpdateCommand = "if command -v dnf >/dev/null 2>&1; then dnf -q check-update; else yum -q check-update; fi"
 
 func (rpm *RpmPkgManager) runtimeAvailable() (map[string]PackageUpdate, error) {
 	cmd, err := rpm.conn.RunCommand(rpmCheckUpdateCommand)
 	if err != nil {
 		log.Debug().Err(err).Msg("mql[packages]> could not read rpm package updates")
-		return nil, errors.Wrap(err, "could not read rpm package update list")
+		return nil, fmt.Errorf("%w: %w", ErrUpdateCheckFailed, err)
 	}
-	return ParseRpmCheckUpdate(cmd.Stdout)
+	return parseRpmCheckUpdateResult(cmd)
+}
+
+// rpmCheckUpdateMaxErr caps how much of dnf's stderr goes into the error.
+const rpmCheckUpdateMaxErr = 512
+
+// parseRpmCheckUpdateResult reads a finished check-update run. dnf and yum
+// exit 0 when nothing is pending and 100 when updates are; anything else
+// means the check failed. A repository whose metadata cannot be downloaded
+// fails the whole run (exit 1, and nothing on stdout): as non-root on RHEL 8
+// to 10 the RHUI client certificate is unreadable, and a repository that
+// requires a signature it does not carry fails as root too. Reading that empty
+// stdout as "no updates" reported every package as up to date.
+func parseRpmCheckUpdateResult(cmd *shared.Command) (map[string]PackageUpdate, error) {
+	switch cmd.ExitStatus {
+	case 0, 100:
+		return ParseRpmCheckUpdate(cmd.Stdout)
+	}
+	msg := ""
+	if cmd.Stderr != nil {
+		if b, err := io.ReadAll(io.LimitReader(cmd.Stderr, 64*1024)); err == nil {
+			msg = strings.TrimSpace(string(b))
+		}
+	}
+	if len(msg) > rpmCheckUpdateMaxErr {
+		msg = strings.ToValidUTF8(msg[:rpmCheckUpdateMaxErr], "") + "..."
+	}
+	if msg == "" {
+		return nil, fmt.Errorf("%w: check-update exited with status %d", ErrUpdateCheckFailed, cmd.ExitStatus)
+	}
+	return nil, fmt.Errorf("%w: check-update exited with status %d: %s", ErrUpdateCheckFailed, cmd.ExitStatus, msg)
 }
 
 func (rpm *RpmPkgManager) staticList() ([]Package, error) {
