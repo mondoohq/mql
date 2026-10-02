@@ -927,3 +927,98 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 		require.Equal(t, "", sub)
 	})
 }
+
+func parseTestDockerfile(t *testing.T, r *plugin.Runtime, path string, src string) *mqlDockerFile {
+	t.Helper()
+	file := &mqlFile{
+		Content:    plugin.TValue[string]{Data: src, State: plugin.StateIsSet},
+		Path:       plugin.TValue[string]{Data: path, State: plugin.StateIsSet},
+		MqlRuntime: r,
+	}
+	df := &mqlDockerFile{
+		File:       plugin.TValue[*mqlFile]{Data: file, State: plugin.StateIsSet},
+		MqlRuntime: r,
+	}
+	require.NoError(t, df.parse(file))
+	return df
+}
+
+// A registry port is not a tag: `FROM localhost:5000/base` has no tag at all.
+func TestParseDockerfile_FromRegistryPort(t *testing.T) {
+	cases := []struct {
+		baseName       string
+		expectedImage  string
+		expectedTag    string
+		expectedDigest string
+	}{
+		{"localhost:5000/base", "localhost:5000/base", "", ""},
+		{"localhost:5000/base:1.2", "localhost:5000/base", "1.2", ""},
+		{"registry.example.com:5000/team/app:2.0@sha256:0000000000000000000000000000000000000000000000000000000000000000", "registry.example.com:5000/team/app", "2.0", "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+		{"registry.example.com:5000/team/app@sha256:0000000000000000000000000000000000000000000000000000000000000000", "registry.example.com:5000/team/app", "", "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+		{"docker.io/library/alpine:3.19", "docker.io/library/alpine", "3.19", ""},
+	}
+	for _, kase := range cases {
+		t.Run(kase.baseName, func(t *testing.T) {
+			r := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+			df := parseTestDockerfile(t, r, "Dockerfile", "FROM "+kase.baseName+"\n")
+			from := df.Stages.Data[0].(*mqlDockerFileStage).From.Data
+			require.Equal(t, kase.expectedImage, from.Image.Data, "image")
+			require.Equal(t, kase.expectedTag, from.Tag.Data, "tag")
+			require.Equal(t, kase.expectedDigest, from.Digest.Data, "digest")
+		})
+	}
+}
+
+// Every pair of a multi-pair ENV or ARG line is its own entry, not the first
+// pair repeated.
+func TestParseDockerfile_MultiPairEnvArg(t *testing.T) {
+	r := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+	df := parseTestDockerfile(t, r, "/opt/df/Dockerfile.secret", `FROM alpine:3.19
+ENV APP_ENV=prod AWS_SECRET_ACCESS_KEY=abc123
+ARG HTTP_PROXY GITHUB_TOKEN
+`)
+	stage := df.Stages.Data[0].(*mqlDockerFileStage)
+
+	env := map[string]string{}
+	for _, e := range stage.Env.Data {
+		v := e.(*mqlDockerFileEnv)
+		env[v.Name.Data] = v.Value.Data
+	}
+	require.Equal(t, map[string]string{"APP_ENV": "prod", "AWS_SECRET_ACCESS_KEY": "abc123"}, env)
+
+	args := []string{}
+	for _, a := range stage.Arg.Data {
+		args = append(args, a.(*mqlDockerFileArg).Name.Data)
+	}
+	require.Equal(t, []string{"HTTP_PROXY", "GITHUB_TOKEN"}, args)
+}
+
+// The same port exposed in two stages, or in two Dockerfiles, is a separate
+// entry each time, pointing at its own file and line.
+func TestParseDockerfile_ExposeIsPerInstruction(t *testing.T) {
+	r := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+	multi := parseTestDockerfile(t, r, "/opt/df/Dockerfile.multi", `FROM alpine:3.19 AS builder
+EXPOSE 80 443/tcp 53/udp
+FROM alpine:3.19
+EXPOSE 80
+`)
+	hcnone := parseTestDockerfile(t, r, "/opt/df/Dockerfile.hcnone", `FROM nginx:1.27
+EXPOSE 80
+`)
+
+	stage1 := multi.Stages.Data[0].(*mqlDockerFileStage)
+	stage2 := multi.Stages.Data[1].(*mqlDockerFileStage)
+	require.Len(t, stage1.Expose.Data, 3)
+	require.Len(t, stage2.Expose.Data, 1)
+
+	e1 := stage1.Expose.Data[0].(*mqlDockerFileExpose)
+	e2 := stage2.Expose.Data[0].(*mqlDockerFileExpose)
+	e3 := hcnone.Stages.Data[0].(*mqlDockerFileStage).Expose.Data[0].(*mqlDockerFileExpose)
+	require.Equal(t, int64(80), e3.Port.Data)
+	require.NotEqual(t, e1.MqlID(), e2.MqlID(), "same port in two stages")
+	require.NotEqual(t, e1.MqlID(), e3.MqlID(), "same port in two files")
+
+	ctxPath := func(e *mqlDockerFileExpose) string { return e.Context.Data.File.Data.Path.Data }
+	require.Equal(t, "/opt/df/Dockerfile.multi", ctxPath(e2))
+	require.Equal(t, "/opt/df/Dockerfile.hcnone", ctxPath(e3))
+}

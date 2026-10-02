@@ -190,18 +190,7 @@ func (p *mqlDockerFile) parse(file *mqlFile) error {
 }
 
 func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (*mqlDockerFileStage, error) {
-	var image, tag, digest string
-	rest := stage.BaseName
-	if before, after, ok := strings.Cut(rest, "@"); ok {
-		rest = before
-		digest = after
-	}
-	if before, after, ok := strings.Cut(rest, ":"); ok {
-		image = before
-		tag = after
-	} else {
-		image = rest
-	}
+	image, tag, digest := splitDockerfileBaseName(stage.BaseName)
 
 	stageID := p.locationID(stage.Location)
 
@@ -246,9 +235,9 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 			if err != nil {
 				return nil, err
 			}
-			for _, kv := range v.Env {
+			for j, kv := range v.Env {
 				envResource, err := CreateResource(p.MqlRuntime, ResourceDockerFileEnv, map[string]*llx.RawData{
-					"__id":    llx.StringData(p.locationID(v.Location())),
+					"__id":    llx.StringData(p.locationID(v.Location()) + "/" + strconv.Itoa(j)),
 					"name":    llx.StringData(kv.Key),
 					"value":   llx.StringData(kv.Value),
 					"context": llx.ResourceData(ctx, "file.context"),
@@ -263,9 +252,9 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 			if err != nil {
 				return nil, err
 			}
-			for _, kv := range v.Args {
+			for j, kv := range v.Args {
 				argResource, err := CreateResource(p.MqlRuntime, ResourceDockerFileArg, map[string]*llx.RawData{
-					"__id":    llx.StringData(p.locationID(v.Location())),
+					"__id":    llx.StringData(p.locationID(v.Location()) + "/" + strconv.Itoa(j)),
 					"name":    llx.StringData(kv.Key),
 					"default": llx.StringDataPtr(kv.Value),
 					"context": llx.ResourceData(ctx, "file.context"),
@@ -388,7 +377,7 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 					protocol = arr[1]
 				}
 				portNum, _ := strconv.Atoi(arr[0])
-				id := arr[0] + "/" + protocol
+				id := p.locationID(v.Location()) + ":" + arr[0] + "/" + protocol
 
 				resource, err := CreateResource(p.MqlRuntime, ResourceDockerFileExpose, map[string]*llx.RawData{
 					"__id":     llx.StringData(id),
@@ -718,6 +707,22 @@ func trimMatchingQuotes(s string) string {
 		}
 	}
 	return s
+}
+
+// splitDockerfileBaseName splits a FROM reference into image, tag and digest.
+// The tag is what follows the last colon after the last slash: a colon before
+// that belongs to a registry port (`localhost:5000/base` has no tag).
+func splitDockerfileBaseName(baseName string) (image string, tag string, digest string) {
+	image = baseName
+	if before, after, ok := strings.Cut(image, "@"); ok {
+		image = before
+		digest = after
+	}
+	if idx := strings.LastIndex(image, ":"); idx > strings.LastIndex(image, "/") {
+		tag = image[idx+1:]
+		image = image[:idx]
+	}
+	return image, tag, digest
 }
 
 func (p *mqlDockerFile) locationID(location []parser.Range) string {
