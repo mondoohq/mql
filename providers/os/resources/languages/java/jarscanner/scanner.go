@@ -121,7 +121,7 @@ func extractPomProperties(file *zip.File, evidencePath string) (*languages.Packa
 	}
 	defer rc.Close()
 
-	extractor := &pomproperties.Extractor{}
+	extractor := &pomproperties.Extractor{EntryPath: file.Name}
 	bom, err := extractor.Parse(rc, evidencePath)
 	if err != nil {
 		return nil, err

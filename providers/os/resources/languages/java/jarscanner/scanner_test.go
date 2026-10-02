@@ -146,3 +146,17 @@ version=1.0.0
 func aferoFromDir(_ string) *afero.Afero {
 	return &afero.Afero{Fs: afero.NewOsFs()}
 }
+
+// Debian's liblightcouch-java 0.0.6 (Debian 11): pom.properties has no groupId,
+// the group is only in the entry path.
+func TestScanZipDataPomPropertiesWithoutGroupId(t *testing.T) {
+	jarData := createTestJar(t, map[string]string{
+		"META-INF/maven/org.lightcouch/lightcouch/pom.properties": "#Created by Apache Maven 3.6.3\nartifactId=lightcouch\nversion=0.0.6\n",
+	})
+
+	packages, err := scanZipData(jarData, "/usr/share/java/lightcouch.jar", 0)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(packages))
+	assert.Equal(t, "org.lightcouch:lightcouch", packages[0].Name)
+	assert.Equal(t, "pkg:maven/org.lightcouch/lightcouch@0.0.6", packages[0].Purl)
+}

@@ -18,7 +18,12 @@ var (
 )
 
 // Extractor parses Maven pom.properties files to extract package coordinates.
-type Extractor struct{}
+type Extractor struct {
+	// EntryPath is the path of the pom.properties inside its archive, for
+	// example META-INF/maven/org.lightcouch/lightcouch/pom.properties. When the
+	// file has no groupId, the group is taken from this path.
+	EntryPath string
+}
 
 func (e *Extractor) Name() string {
 	return "pomproperties"
@@ -30,11 +35,30 @@ func (e *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 		return nil, err
 	}
 
+	if props.GroupId == "" {
+		if groupId, artifactId, ok := coordinatesFromEntryPath(e.EntryPath); ok && artifactId == props.ArtifactId {
+			props.GroupId = groupId
+		}
+	}
+
 	if filename != "" {
 		props.evidence = append(props.evidence, filename)
 	}
 
 	return props, nil
+}
+
+// coordinatesFromEntryPath returns the groupId and artifactId of a
+// META-INF/maven/<groupId>/<artifactId>/pom.properties archive entry.
+func coordinatesFromEntryPath(entryPath string) (string, string, bool) {
+	parts := strings.Split(entryPath, "/")
+	if len(parts) != 5 || parts[0] != "META-INF" || parts[1] != "maven" || parts[4] != "pom.properties" {
+		return "", "", false
+	}
+	if parts[2] == "" || parts[3] == "" {
+		return "", "", false
+	}
+	return parts[2], parts[3], true
 }
 
 // parsePomProperties reads a Java properties-format file and extracts

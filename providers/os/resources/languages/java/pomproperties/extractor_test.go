@@ -5,6 +5,7 @@ package pomproperties
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,4 +50,65 @@ func TestPomPropertiesExtractorGuava(t *testing.T) {
 	assert.Equal(t, "com.google.guava:guava", root.Name)
 	assert.Equal(t, "31.1-jre", root.Version)
 	assert.Equal(t, "pkg:maven/com.google.guava/guava@31.1-jre", root.Purl)
+}
+
+// liblightcouch-java 0.0.6-1.1 on Debian 11 ships a pom.properties without
+// groupId at META-INF/maven/org.lightcouch/lightcouch/pom.properties.
+func TestPomPropertiesExtractorGroupIdFromEntryPath(t *testing.T) {
+	f, err := os.Open("./testdata/lightcouch-no-groupid.pom.properties")
+	require.NoError(t, err)
+	defer f.Close()
+
+	e := &Extractor{EntryPath: "META-INF/maven/org.lightcouch/lightcouch/pom.properties"}
+	info, err := e.Parse(f, "/usr/share/java/lightcouch.jar")
+	require.NoError(t, err)
+
+	root := info.Root()
+	require.NotNil(t, root)
+	assert.Equal(t, "org.lightcouch:lightcouch", root.Name)
+	assert.Equal(t, "0.0.6", root.Version)
+	assert.Equal(t, "pkg:maven/org.lightcouch/lightcouch@0.0.6", root.Purl)
+}
+
+func TestPomPropertiesExtractorGroupIdFromEntryPathGuards(t *testing.T) {
+	tests := []struct {
+		name      string
+		content   string
+		entryPath string
+		wantName  string
+	}{
+		{
+			name:      "explicit groupId wins over the path",
+			content:   "groupId=com.example\nartifactId=lightcouch\nversion=0.0.6\n",
+			entryPath: "META-INF/maven/org.lightcouch/lightcouch/pom.properties",
+			wantName:  "com.example:lightcouch",
+		},
+		{
+			name:      "artifactId does not match the path",
+			content:   "artifactId=other\nversion=1.0\n",
+			entryPath: "META-INF/maven/org.lightcouch/lightcouch/pom.properties",
+			wantName:  "other",
+		},
+		{
+			name:      "path is not META-INF/maven/<g>/<a>/pom.properties",
+			content:   "artifactId=lightcouch\nversion=0.0.6\n",
+			entryPath: "META-INF/maven/lightcouch/pom.properties",
+			wantName:  "lightcouch",
+		},
+		{
+			name:      "no entry path",
+			content:   "artifactId=lightcouch\nversion=0.0.6\n",
+			entryPath: "",
+			wantName:  "lightcouch",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info, err := (&Extractor{EntryPath: tt.entryPath}).Parse(strings.NewReader(tt.content), "x.jar")
+			require.NoError(t, err)
+			root := info.Root()
+			require.NotNil(t, root)
+			assert.Equal(t, tt.wantName, root.Name)
+		})
+	}
 }
