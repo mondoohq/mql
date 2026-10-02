@@ -237,3 +237,96 @@ func TestResolveElevation(t *testing.T) {
 		assert.Equal(t, 0, *calls)
 	})
 }
+
+func sudoOn() *inventory.Sudo {
+	return &inventory.Sudo{Active: true, Executable: "sudo"}
+}
+
+// sudo binds to the first word of what it is given, so prefixing a shell
+// command line elevates only its first command. Each of these lines has to go
+// through a shell that is itself under sudo.
+func TestBuildSudoCommand_ShellSyntaxIsWrapped(t *testing.T) {
+	for _, tc := range []struct{ name, cmd string }{
+		// the ovs topology dump: the second and third ovs-vsctl ran unelevated
+		// and failed with Permission denied on db.sock
+		{"and-list across lines", "ovs-vsctl --format=json list Bridge &&\necho '===OVSTABLE===' &&\novs-vsctl --format=json list Port"},
+		{"and-list", `test -d /x && echo yes`},
+		{"or-list", `cat /etc/shadow || echo missing`},
+		{"semicolon", `cd /tmp; ls`},
+		{"pipeline", `rpm -qa | wc -l`},
+		{"background", `sleep 1 & wait`},
+		{"redirect out", `apt-get update > /dev/null`},
+		{"redirect stderr", `ls /root 2>/dev/null`},
+		{"redirect in", `wc -l < /etc/shadow`},
+		{"subshell", `(cd /tmp && ls)`},
+		{"brace group", `{ ls /root; }`},
+		{"command substitution", "echo $(cat /etc/shadow)"},
+		{"backticks", "echo `cat /etc/shadow`"},
+		{"substitution inside double quotes", `echo "$(cat /etc/shadow)"`},
+		{"backticks inside double quotes", "echo \"`id -u`\""},
+		{"newline", "echo a\necho b"},
+		{"leading if", `if [ -r /sys/fs/cgroup/cgroup.controllers ]; then echo V2; else echo NONE; fi`},
+		{"leading for", `for f in a b; do echo $f; done`},
+		{"leading while", `while read l; do echo $l; done`},
+		{"leading negation", `! test -e /x`},
+		{"leading double bracket", `[[ -r /etc/shadow ]]`},
+		{"leading blanks before if", "  if [ -r /x ]; then echo y; fi"},
+		{"operator after quoted word", `grep 'a b' /etc/hosts | wc -l`},
+		{"unbalanced quote", `echo 'oops`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, "sudo sh -c "+ShellEscape(tc.cmd), BuildSudoCommand(sudoOn(), tc.cmd))
+		})
+	}
+}
+
+// The wrapped line has to reach the inner shell byte for byte, including the
+// single quotes it carries itself.
+func TestBuildSudoCommand_WrapQuotesSingleQuotes(t *testing.T) {
+	assert.Equal(t,
+		`sudo sh -c 'ovs-vsctl list Bridge && echo '"'"'===OVSTABLE==='"'"' && ovs-vsctl list Port'`,
+		BuildSudoCommand(sudoOn(), `ovs-vsctl list Bridge && echo '===OVSTABLE===' && ovs-vsctl list Port`))
+}
+
+// A plain argv keeps the bare form: the recording/replay system keys on the
+// exact command line, so these must stay byte-identical.
+func TestBuildSudoCommand_PlainArgvIsUnchanged(t *testing.T) {
+	for _, cmd := range []string{
+		"uname -s",
+		"ovs-vsctl --version",
+		"rpm -qa --queryformat '%{NAME}\n'",
+		"ls -1 '/etc/ssh'",
+		"systemctl show --property=Id -- sshd.service",
+		"find /proc/1/fd -maxdepth 1",
+		`echo "plain $HOME"`,
+		`echo a\;b`,
+		"DEBIAN_FRONTEND=noninteractive apt-get upgrade --dry-run",
+	} {
+		assert.Equal(t, "sudo "+cmd, BuildSudoCommand(sudoOn(), cmd), "cmd %q", cmd)
+	}
+}
+
+// Operators inside quotes belong to the command, not the shell. The file stat
+// helper hand-wraps its own sh -c line, and its recorded form must not change.
+func TestBuildSudoCommand_QuotedOperatorsDoNotWrap(t *testing.T) {
+	for _, cmd := range []string{
+		`sh -c 'SL=0; test -L "$1" && SL=1; r=$(stat -L "$1") && printf "%s\n" "$r"' -- /etc/hosts`,
+		`awk '{print $1 "|" $2}' /etc/passwd`,
+		`grep -E 'a|b' /etc/hosts`,
+		`echo "a && b; c | d > e"`,
+		`echo 'it''s'`,
+	} {
+		assert.Equal(t, "sudo "+cmd, BuildSudoCommand(sudoOn(), cmd), "cmd %q", cmd)
+	}
+}
+
+func TestBuildSudoCommand_WrapWithUserAndDoas(t *testing.T) {
+	s := sudoOn()
+	s.User = "postgres"
+	assert.Equal(t, `sudo -u postgres sh -c 'psql -V | head -1'`, BuildSudoCommand(s, "psql -V | head -1"))
+
+	// the inner shell applies a leading assignment itself, so doas needs no env
+	d := &inventory.Sudo{Active: true, Executable: "doas"}
+	assert.Equal(t, `doas sh -c 'a && b'`, BuildSudoCommand(d, "a && b"))
+	assert.Equal(t, `doas sh -c 'FOO=1 a | b'`, BuildSudoCommand(d, "FOO=1 a | b"))
+}

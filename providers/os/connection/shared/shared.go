@@ -350,6 +350,83 @@ func ShellEscape(s string) string {
 	return s
 }
 
+// shellReservedWords are the words a shell treats as syntax when they open a
+// command line. sudo would look for a program with that name.
+var shellReservedWords = map[string]bool{
+	"if": true, "then": true, "elif": true, "else": true, "fi": true,
+	"for": true, "while": true, "until": true, "do": true, "done": true,
+	"case": true, "esac": true, "function": true, "select": true,
+	"time": true, "{": true, "}": true, "!": true, "[[": true,
+}
+
+// needsShellForSudo reports whether cmd is a shell command line rather than a
+// plain argv. sudo takes a command and its arguments, not a command line: for
+// `a && b`, `a | b`, `a > f` or `if ...` the invoking shell acts on the
+// operators first and only `a` runs elevated. Plain argvs return false and keep
+// the bare `sudo <cmd>` form, so the command lines recordings are keyed on do
+// not change.
+func needsShellForSudo(cmd string) bool {
+	// Leading blanks are the shell's, not part of the first word. A leading
+	// newline is a command separator and must reach the scan below.
+	cmd = strings.TrimLeft(cmd, " \t")
+
+	var single, double bool
+	firstWordEnd := -1
+
+	for i := 0; i < len(cmd); i++ {
+		c := cmd[i]
+		if single {
+			if c == '\'' {
+				single = false
+			}
+			continue
+		}
+		if double {
+			switch c {
+			case '\\':
+				i++
+			case '"':
+				double = false
+			case '`':
+				// command substitution still runs inside double quotes
+				return true
+			case '$':
+				if i+1 < len(cmd) && cmd[i+1] == '(' {
+					return true
+				}
+			}
+			continue
+		}
+
+		switch c {
+		case '\'':
+			single = true
+		case '"':
+			double = true
+		case '\\':
+			i++
+		case ' ', '\t':
+			if firstWordEnd < 0 {
+				firstWordEnd = i
+			}
+		case '|', '&', ';', '<', '>', '(', ')', '\n', '`':
+			// a control operator, redirection, subshell or substitution
+			return true
+		}
+	}
+
+	if single || double {
+		// unbalanced quoting is not an argv; let the shell report it
+		return true
+	}
+
+	first := cmd
+	if firstWordEnd >= 0 {
+		first = cmd[:firstWordEnd]
+	}
+	return shellReservedWords[first]
+}
+
 func BuildSudoCommand(sudo *inventory.Sudo, cmd string) string {
 	var sb strings.Builder
 
@@ -370,6 +447,11 @@ func BuildSudoCommand(sudo *inventory.Sudo, cmd string) string {
 	if len(sudo.Shell) > 0 {
 		// The shell parses leading VAR=value words itself, so doas needs no env here.
 		sb.WriteString(" " + sudo.Shell + " -c " + cmd)
+	} else if needsShellForSudo(cmd) {
+		// sudo elevates only the first command of a shell command line, so
+		// hand the whole line to a shell that runs under sudo. The shell
+		// applies leading VAR=value words itself, so doas needs no env here.
+		sb.WriteString(" sh -c " + ShellEscape(cmd))
 	} else {
 		sb.WriteString(" ")
 		// sudo treats leading VAR=value words as environment assignments;
