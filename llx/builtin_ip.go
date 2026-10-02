@@ -282,6 +282,13 @@ func (i RawIP) inRange(other RawIP) bool {
 	return prefix.Equal(otherPrefix)
 }
 
+// equal reports whether two ip values are the same address with the same
+// prefix length, which is what `ip == ip` compares. RawIP embeds net.IP, a byte
+// slice, so it must never be compared with the == operator.
+func (i RawIP) equal(other RawIP) bool {
+	return i.Equal(other.IP) && i.PrefixLength == other.PrefixLength
+}
+
 func (i RawIP) Cmp(other RawIP) int {
 	for idx, b := range i.IP {
 		if len(other.IP) <= idx {
@@ -352,13 +359,13 @@ func UnmarshalIP(bytes []byte) (*RawIP, error) {
 
 func ipCmpIP(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	return nonNilDataOpT(e, bind, chunk, ref, types.Bool, func(left, right RawIP) *RawData {
-		return BoolData(left.Equal(right.IP) && left.PrefixLength == right.PrefixLength)
+		return BoolData(left.equal(right))
 	})
 }
 
 func ipNotIP(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	return nonNilDataOpT(e, bind, chunk, ref, types.Bool, func(left, right RawIP) *RawData {
-		return BoolData(!left.Equal(right.IP) || left.PrefixLength != right.PrefixLength)
+		return BoolData(!left.equal(right))
 	})
 }
 
