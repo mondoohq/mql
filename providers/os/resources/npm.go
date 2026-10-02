@@ -38,6 +38,10 @@ var defaultNpmPaths = []string{
 	"/usr/lib",
 	// Fedora and RHEL 10 nodejs streams, e.g. nodejs24-npm
 	"/usr/lib/node_modules_*",
+	// Debian and Ubuntu packaged modules (node-*, npm)
+	"/usr/share/nodejs",
+	"/usr/lib/nodejs",
+	"/usr/lib/*/nodejs",
 	"/home/*/.npm-global/lib",
 	// Windows
 	"C:\\Users\\*\\AppData\\Roaming\\npm",
@@ -133,14 +137,15 @@ func collectNpmPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []str
 		}
 	}
 
-	// a versioned node_modules directory holds the packages directly
+	// a module root, such as /usr/lib/node_modules_24 or /usr/share/nodejs,
+	// holds the packages directly
 	walkPaths := make([]string, 0, len(paths))
 	for _, p := range paths {
-		if !isVersionedNodeModulesPath(p) {
+		if !isNodeModuleRootPath(p) {
 			walkPaths = append(walkPaths, p)
 			continue
 		}
-		for _, dir := range versionedNodeModulesPackageDirs(fs, p) {
+		for _, dir := range nodeModuleRootPackageDirs(fs, p) {
 			handler(dir)
 		}
 	}
@@ -387,6 +392,15 @@ func (r *mqlNpmPackages) gatherData() error {
 		directDependencies, transitiveDependencies, filePaths, err = collectNpmPackagesInPaths(r.MqlRuntime, fs, paths)
 		if err != nil {
 			return err
+		}
+	} else if isNodeModuleRootPath(paths[0]) {
+		// a directory of packages, such as /usr/share/nodejs, has no root package
+		if _, err := fs.Stat(paths[0]); err == nil {
+			directDependencies, transitiveDependencies, _, err = collectNpmPackagesInPaths(r.MqlRuntime, fs, paths)
+			if err != nil {
+				return err
+			}
+			filePaths = append(filePaths, paths[0])
 		}
 	} else {
 		// do not load anything if the path does not exist
