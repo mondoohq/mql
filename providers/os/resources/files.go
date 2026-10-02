@@ -15,6 +15,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/filesfind"
+	"go.mondoo.com/mql/providers/os/resources/mount"
 )
 
 func initFilesFind(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -142,7 +143,7 @@ func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
 		depth = &l.Depth.Data
 	}
 
-	callCmd := filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, l.hasGNUFind())
+	callCmd := l.unixFindCommand(depth)
 	rawCmd, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(callCmd),
 	})
@@ -211,3 +212,50 @@ func (l *mqlFilesFind) windowsPowershellCmd() ([]string, error) {
 	}
 	return foundFiles, nil
 }
+
+// unixFindCommand builds the find command line for the search. Staying on the
+// filesystem that holds `from` is -xdev, except on a filesystem with
+// subvolumes, where -xdev would also skip every subvolume that is not mounted
+// and the mount points below `from` are pruned instead. That needs the mount
+// table, which is read on Linux only, and -path with -prune, which only GNU
+// find is relied on for; everywhere else the search keeps -xdev.
+//
+// A search for links keeps -xdev as well. It is the one search that follows
+// symlinked directories, and a mount reached through a link is not under a
+// pruned path, so only -xdev keeps that walk off other filesystems.
+func (l *mqlFilesFind) unixFindCommand(depth *int64) string {
+	gnu := l.hasGNUFind()
+	if !l.Xdev.Data && gnu && l.Type.Data != "link" {
+		if prunes, ok := filesfind.MountPrunes(l.From.Data, l.linuxMounts()); ok {
+			return filesfind.BuildFilesFindCmdPruningMounts(l.From.Data, prunes, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, gnu)
+		}
+	}
+	return filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, gnu)
+}
+
+// linuxMounts returns the mount table of a Linux target, or nothing when it
+// cannot be read, which leaves the search on -xdev. It is read with the same
+// command transport as the search itself, so it is the mount namespace find
+// runs in, and the result is cached per connection.
+func (l *mqlFilesFind) linuxMounts() []mount.MountPoint {
+	conn, ok := l.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return nil
+	}
+	if asset := conn.Asset(); asset == nil || !asset.Platform.IsFamily("linux") {
+		return nil
+	}
+	raw, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData(procMountsCmd),
+	})
+	if err != nil {
+		return nil
+	}
+	out := raw.(*mqlCommand).GetStdout()
+	if out.Error != nil {
+		return nil
+	}
+	return mount.ParseLinuxProcMount(strings.NewReader(out.Data))
+}
+
+const procMountsCmd = "cat /proc/self/mounts"
