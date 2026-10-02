@@ -117,7 +117,7 @@ func TestPrivatekeyEncryptedLegacyPEM(t *testing.T) {
 	require.NoError(t, err)
 	data := pem.EncodeToMemory(encBlock)
 
-	require.True(t, isPrivateKeyEncrypted(data))
+	require.True(t, keyEncrypted(data))
 
 	pk := newPrivatekey(string(data))
 	algo, err := pk.publicKeyAlgorithm()
@@ -157,7 +157,7 @@ func TestPrivatekeyEncryptedOpenSSH(t *testing.T) {
 			data := pem.EncodeToMemory(block)
 			require.NotContains(t, string(data), "ENCRYPTED")
 
-			require.True(t, isPrivateKeyEncrypted(data))
+			require.True(t, keyEncrypted(data))
 
 			pk := newPrivatekey(string(data))
 			algo, err := pk.publicKeyAlgorithm()
@@ -180,7 +180,7 @@ func TestPrivatekeyEncryptedPKCS8(t *testing.T) {
 	require.NoError(t, err)
 	data := pem.EncodeToMemory(&pem.Block{Type: "ENCRYPTED PRIVATE KEY", Bytes: body})
 
-	require.True(t, isPrivateKeyEncrypted(data))
+	require.True(t, keyEncrypted(data))
 
 	pk := newPrivatekey(string(data))
 	_, err = pk.publicKeyAlgorithm()
@@ -198,9 +198,31 @@ func TestPrivatekeyUnencryptedNotReportedEncrypted(t *testing.T) {
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	require.False(t, isPrivateKeyEncrypted([]byte(opensshPEM(t, edKey))))
-	require.False(t, isPrivateKeyEncrypted([]byte(pkcs8PEM(t, rsaKey))))
-	require.False(t, isPrivateKeyEncrypted([]byte("not a valid pem")))
+	require.False(t, keyEncrypted([]byte(opensshPEM(t, edKey))))
+	require.False(t, keyEncrypted([]byte(pkcs8PEM(t, rsaKey))))
+	require.False(t, keyEncrypted([]byte("not a valid pem")))
+}
+
+// keyEncrypted mirrors how user.sshkeys derives the encrypted field.
+func keyEncrypted(data []byte) bool {
+	info, err := inspectPrivateKey(data)
+	return err == nil && info.Encrypted
+}
+
+func TestPrivatekeySeededParseIsNotRepeated(t *testing.T) {
+	// user.sshkeys inspects each key once and seeds the result; the accessors
+	// must use it rather than parse the PEM again. The PEM here is garbage, so
+	// a second parse would return an error instead of the seeded values.
+	pk := newPrivatekey("not a valid pem")
+	pk.seedParsedKey(privateKeyInfo{Encrypted: true, Algorithm: "Ed25519", Bits: 256}, nil)
+
+	algo, err := pk.publicKeyAlgorithm()
+	require.NoError(t, err)
+	require.Equal(t, "Ed25519", algo)
+
+	bits, err := pk.publicKeyBits()
+	require.NoError(t, err)
+	require.Equal(t, int64(256), bits)
 }
 
 func TestPrivatekeyGarbagePEM(t *testing.T) {

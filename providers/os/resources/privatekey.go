@@ -69,18 +69,6 @@ func inspectPrivateKey(data []byte) (privateKeyInfo, error) {
 	return privateKeyInfo{}, err
 }
 
-// isPrivateKeyEncrypted reports whether a private key needs a passphrase.
-// The PEM text only says so for legacy PEM (`Proc-Type: 4,ENCRYPTED`) and
-// PKCS#8 (`ENCRYPTED PRIVATE KEY`); an OpenSSH-format key records its cipher
-// inside the base64 body.
-func isPrivateKeyEncrypted(data []byte) bool {
-	info, err := inspectPrivateKey(data)
-	if err != nil {
-		return false
-	}
-	return info.Encrypted
-}
-
 // pemBlockAlgorithm maps legacy PEM block types, which stay readable when the
 // body is encrypted, to the algorithm names publicKeyAlgorithm reports.
 var pemBlockAlgorithm = map[string]string{
@@ -167,6 +155,14 @@ func (r *mqlPrivatekey) parseKey() (privateKeyInfo, error) {
 		r.parsed, r.parseErr = inspectPrivateKey([]byte(pemData.Data))
 	})
 	return r.parsed, r.parseErr
+}
+
+// seedParsedKey stores the result of an inspectPrivateKey call the caller has
+// already made on this resource's PEM, so parseKey does not parse it again.
+func (r *mqlPrivatekey) seedParsedKey(info privateKeyInfo, err error) {
+	r.parseOnce.Do(func() {
+		r.parsed, r.parseErr = info, err
+	})
 }
 
 func (r *mqlPrivatekey) publicKeyAlgorithm() (string, error) {
