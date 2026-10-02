@@ -236,6 +236,9 @@ func (s *mqlInetdConfig) entries(files []any) ([]any, error) {
 		contents[i] = content
 	}
 
+	// The file the resource points at decides the syntax for the files it
+	// pulls in: xinetd's includes hold xinetd service blocks, and inetd's
+	// drop-in directory holds inetd.conf lines.
 	if len(contents) > 0 && inetd.IsXinetd(contents[0]) {
 		// xinetd: the defaults block can disable services of any file, so
 		// all files are read before deciding which services run
