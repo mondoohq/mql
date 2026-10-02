@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"strconv"
 	"strings"
 
 	"github.com/kballard/go-shellquote"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/types"
 )
 
@@ -86,12 +88,43 @@ func parseContainerInfo(jsonData []byte) (*containerInfo, error) {
 	return &info, nil
 }
 
-// ctrCLIs are the containerd command lines to try, in order. Docker 18.09 and
-// older bundle their own containerd under docker-prefixed names, serving its
-// socket from docker's run directory instead of the containerd default.
-var ctrCLIs = [][]string{
-	{"ctr"},
-	{"docker-containerd-ctr", "--address", "/run/docker/containerd/containerd.sock"},
+// ctrBinaries are the containerd CLIs to try, in order. SUSE packages ctr as
+// containerd-ctr in /usr/sbin, which is not on a non-root PATH. Docker 18.09
+// and older bundle their own CLI as docker-containerd-ctr.
+var ctrBinaries = []string{"ctr", "containerd-ctr", "/usr/sbin/containerd-ctr", "docker-containerd-ctr"}
+
+const (
+	// containerdSocket is where a standalone containerd listens by default.
+	containerdSocket = "/run/containerd/containerd.sock"
+	// dockerContainerdSocket is where dockerd's own containerd listens. dockerd
+	// starts one when no containerd serves containerdSocket (SUSE's
+	// containerd.service conflicts with docker.service, and Docker 18.09 and
+	// older always bundle one).
+	dockerContainerdSocket = "/run/docker/containerd/containerd.sock"
+)
+
+// containerdAddressArgs returns the ctr arguments that select the containerd
+// socket. The default socket wins whenever it may exist, since dockerd adopts
+// a running containerd's socket. Only when it is missing and dockerd's own
+// socket is there (or hidden from this user, whom ctr will then report as
+// refused) does ctr need --address.
+func containerdAddressArgs(stat func(path string) error) []string {
+	if err := stat(containerdSocket); !errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err := stat(dockerContainerdSocket); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	return []string{"--address", dockerContainerdSocket}
+}
+
+// ctrCLIs returns the containerd command lines to try, in order.
+func ctrCLIs(addressArgs []string) [][]string {
+	clis := make([][]string, 0, len(ctrBinaries))
+	for _, bin := range ctrBinaries {
+		clis = append(clis, append([]string{bin}, addressArgs...))
+	}
+	return clis
 }
 
 // ctrCommand builds the command line that runs ctr with the given arguments.
@@ -118,8 +151,13 @@ func containerdTaskState(task taskData, ok bool) (string, int64) {
 // listContainerdNamespaces lists the containerd namespaces with the first ctr
 // CLI that is installed, and returns that CLI for every later call.
 func (p *mqlContainerd) listContainerdNamespaces() ([]string, []string, error) {
+	conn := p.MqlRuntime.Connection.(shared.Connection)
+	addressArgs := containerdAddressArgs(func(path string) error {
+		_, err := conn.FileSystem().Stat(path)
+		return err
+	})
 	var firstErr error
-	for _, cli := range ctrCLIs {
+	for _, cli := range ctrCLIs(addressArgs) {
 		o, err := CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
 			"command": llx.StringData(ctrCommand(cli, "namespaces", "list", "-q")),
 		})

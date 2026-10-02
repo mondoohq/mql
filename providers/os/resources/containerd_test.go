@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"io/fs"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -193,14 +194,61 @@ func TestParseContainerIDListWithEmptyLines(t *testing.T) {
 }
 
 func TestCtrCommand(t *testing.T) {
-	assert.Equal(t, "ctr -n g08ns tasks list", ctrCommand(ctrCLIs[0], "-n", "g08ns", "tasks", "list"))
+	clis := ctrCLIs(nil)
+	assert.Equal(t, "ctr -n g08ns tasks list", ctrCommand(clis[0], "-n", "g08ns", "tasks", "list"))
+	// SUSE's containerd-ctr package, on root's PATH and off a non-root one
+	assert.Equal(t, []string{"containerd-ctr"}, clis[1])
+	assert.Equal(t, []string{"/usr/sbin/containerd-ctr"}, clis[2])
+
 	// Debian 10's docker.io 18.09 bundles containerd as docker-containerd, which
 	// does not listen on the containerd default socket
+	clis = ctrCLIs([]string{"--address", dockerContainerdSocket})
 	assert.Equal(t,
 		"docker-containerd-ctr --address /run/docker/containerd/containerd.sock -n g08ns containers info c-run",
-		ctrCommand(ctrCLIs[1], "-n", "g08ns", "containers", "info", "c-run"))
+		ctrCommand(clis[3], "-n", "g08ns", "containers", "info", "c-run"))
 	// building a command line leaves the CLI untouched for the next call
-	assert.Equal(t, []string{"docker-containerd-ctr", "--address", "/run/docker/containerd/containerd.sock"}, ctrCLIs[1])
+	assert.Equal(t, []string{"docker-containerd-ctr", "--address", "/run/docker/containerd/containerd.sock"}, clis[3])
+}
+
+func TestContainerdAddressArgs(t *testing.T) {
+	statFrom := func(results map[string]error) func(string) error {
+		return func(path string) error {
+			if err, ok := results[path]; ok {
+				return err
+			}
+			return fs.ErrNotExist
+		}
+	}
+	dockerAddress := []string{"--address", "/run/docker/containerd/containerd.sock"}
+
+	// Ubuntu/Debian/RHEL: a standalone containerd serves the default socket,
+	// whether or not dockerd also runs (it then uses that containerd)
+	assert.Nil(t, containerdAddressArgs(statFrom(map[string]error{
+		containerdSocket: nil,
+	})))
+	assert.Nil(t, containerdAddressArgs(statFrom(map[string]error{
+		containerdSocket:       nil,
+		dockerContainerdSocket: nil,
+	})))
+	// the default socket exists but its directory refuses this user: ctr
+	// reports that refusal
+	assert.Nil(t, containerdAddressArgs(statFrom(map[string]error{
+		containerdSocket: fs.ErrPermission,
+	})))
+
+	// SLES and Leap with docker: containerd.service conflicts with
+	// docker.service, so dockerd runs its own containerd
+	assert.Equal(t, dockerAddress, containerdAddressArgs(statFrom(map[string]error{
+		dockerContainerdSocket: nil,
+	})))
+	// the same host as ec2-user: /run/containerd is 0711 so the missing default
+	// socket shows, while /run/docker is 0700 and refuses the stat
+	assert.Equal(t, dockerAddress, containerdAddressArgs(statFrom(map[string]error{
+		dockerContainerdSocket: fs.ErrPermission,
+	})))
+
+	// no containerd runs at all: ctr reports the default socket
+	assert.Nil(t, containerdAddressArgs(statFrom(nil)))
 }
 
 func TestContainerdTaskState(t *testing.T) {
@@ -240,6 +288,11 @@ func TestIsCtrNotInstalled(t *testing.T) {
 	// over SSH with sudo
 	assert.True(t, isCtrNotInstalled("ctr", 127, "sh: 1: ctr: not found\n"))
 	assert.True(t, isCtrNotInstalled("ctr", 1, "sudo: ctr: command not found\n"))
+	// SLES 16 and Leap 16 without ctr, and the absolute containerd-ctr path on a
+	// SLES 15 host without the containerd-ctr package, locally and with sudo
+	assert.True(t, isCtrNotInstalled("ctr", 127, "sh: line 1: ctr: command not found\n"))
+	assert.True(t, isCtrNotInstalled("/usr/sbin/containerd-ctr", 127, "sh: /usr/sbin/containerd-ctr: No such file or directory\n"))
+	assert.True(t, isCtrNotInstalled("/usr/sbin/containerd-ctr", 1, "sudo: /usr/sbin/containerd-ctr: command not found\n"))
 
 	// containerd is installed but refuses a non-root user (Debian 12)
 	assert.False(t, isCtrNotInstalled("ctr", 1, `ctr: failed to dial "/run/containerd/containerd.sock": connection error: desc = "transport: error while dialing: dial unix /run/containerd/containerd.sock: connect: permission denied"`+"\n"))
