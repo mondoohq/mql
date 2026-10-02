@@ -36,7 +36,12 @@ func opensshDSAKey(t *testing.T, encrypted bool) []byte {
 		P, Q, G, Y, X  *big.Int
 		Comment        string
 	}{check, check, "ssh-dss", key.P, key.Q, key.G, key.Y, key.X, "mql-test-dsa"})
-	for i := byte(1); len(priv)%16 != 0; i++ {
+	// padded to the cipher block size, 8 without a cipher
+	blockSize := 8
+	if encrypted {
+		blockSize = 16
+	}
+	for i := byte(1); len(priv)%blockSize != 0; i++ {
 		priv = append(priv, i)
 	}
 
