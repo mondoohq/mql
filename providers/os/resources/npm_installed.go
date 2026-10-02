@@ -63,7 +63,10 @@ func collectInstalledNpmPackages(fs afero.Fs, manifestPath string, manifest []by
 }
 
 // npmManifestDependencyNames returns the names in a package.json's
-// `dependencies`, sorted.
+// `dependencies`, sorted. devDependencies are left out on purpose: direct
+// dependencies are the production ones, as for a lockfile, where they come
+// from the root entry's `dependencies`. Installed dev packages are still in
+// the full list.
 func npmManifestDependencyNames(manifest []byte) []string {
 	var m struct {
 		Dependencies map[string]string `json:"dependencies"`
