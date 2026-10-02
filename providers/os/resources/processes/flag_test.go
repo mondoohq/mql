@@ -207,3 +207,50 @@ func TestParseCommandPOSIX(t *testing.T) {
 		assert.Equal(t, test.flags, fs.Map(), test.cmd)
 	}
 }
+
+// A flag that carries its value after "=" takes no value from the next word,
+// so that word stays an operand. The command lines are systemd's PID 1 on
+// SLES 15 SP7 and openSUSE Leap 16.0, as /proc/1/cmdline reports them.
+func TestParseFlagsEqualsValueKeepsNextWord(t *testing.T) {
+	tests := []testSet{
+		{
+			cmd: "/usr/lib/systemd/systemd --switched-root --system --deserialize=35 dis_ucode_ldr",
+			flags: map[string]string{
+				"switched-root": "",
+				"system":        "",
+				"deserialize":   "35",
+				"dis_ucode_ldr": "",
+			},
+		},
+		{
+			cmd: "/usr/lib/systemd/systemd --system --deserialize=30 dis_ucode_ldr",
+			flags: map[string]string{
+				"system":        "",
+				"deserialize":   "30",
+				"dis_ucode_ldr": "",
+			},
+		},
+		{
+			cmd: "prog -o=1 operand",
+			flags: map[string]string{
+				"o":       "1",
+				"operand": "",
+			},
+		},
+		{
+			// without "=" the next word is still read as the value
+			cmd: "prog --config /etc/prog.conf -v 2",
+			flags: map[string]string{
+				"config": "/etc/prog.conf",
+				"v":      "2",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.cmd, func(t *testing.T) {
+			fs := FlagSet{}
+			require.NoError(t, fs.ParseCommand(tc.cmd))
+			assert.Equal(t, tc.flags, fs.Map())
+		})
+	}
+}

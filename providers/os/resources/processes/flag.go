@@ -55,7 +55,7 @@ func (f *FlagSet) parseArgs(args []string) error {
 	// - `--name=x` is pretty clear where name is the key and x is the value
 	//  `--name x` here name is the key, but x could be the value or an arg, if name is a boolean flag x will not be the value
 	//
-	// Therefore we work with the assumption that if `--arg` is followed by a flag without `-` prefix, we count this as a value
+	// Therefore we work with the assumption that if `--arg` (without `=`) is followed by a word without `-` prefix, we count this as a value
 	preparedArgs := []string{}
 	n := len(args)
 	for i := 0; i < n; i++ {
@@ -66,7 +66,9 @@ func (f *FlagSet) parseArgs(args []string) error {
 		// A lone "-" is an operand (stdin, or the end of options for
 		// `#!/bin/sh -` scripts such as FreeBSD's periodic), never a flag
 		// that takes the next word as its value.
-		if key != "-" && strings.HasPrefix(key, "-") {
+		// A flag that already carries its value after "=" (`--deserialize=35`)
+		// takes nothing from the next word, which stays an operand.
+		if key != "-" && strings.HasPrefix(key, "-") && !strings.Contains(key, "=") {
 			if i+1 < n && !strings.HasPrefix(args[i+1], "-") {
 				preparedArgs = append(preparedArgs, key+"="+args[i+1])
 				i++
