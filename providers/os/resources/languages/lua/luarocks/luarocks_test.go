@@ -55,3 +55,52 @@ func TestParseRocksDir(t *testing.T) {
 		}
 	}
 }
+
+func memFS(t *testing.T, files map[string]string) *afero.Afero {
+	t.Helper()
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	for p, content := range files {
+		require.NoError(t, afs.WriteFile(p, []byte(content), 0o644))
+	}
+	return afs
+}
+
+// /usr/share/lua/5.1 as the Ubuntu luarocks package installs it: the modules
+// of luarocks itself, two levels deep. None of it is a rock.
+func TestParseRocksDirIgnoresLuaModuleDirectories(t *testing.T) {
+	afs := memFS(t, map[string]string{
+		"/usr/share/lua/5.1/luarocks/build/builtin.lua": "",
+		"/usr/share/lua/5.1/luarocks/build/make.lua":    "",
+		"/usr/share/lua/5.1/luarocks/fs/lua.lua":        "",
+		"/usr/share/lua/5.1/luarocks/fs/unix/tools.lua": "",
+		"/usr/share/lua/5.1/luarocks/cmd/install.lua":   "",
+	})
+	pkgs, fps := ParseRocksDir(afs, "/usr/share/lua/5.1")
+	assert.Empty(t, pkgs)
+	assert.Empty(t, fps)
+}
+
+// A rock installed by LuaRocks has a rock_manifest beside its rockspec. Either
+// one marks the directory as a rock; the rockspec is the preferred evidence.
+func TestParseRocksDirEvidence(t *testing.T) {
+	afs := memFS(t, map[string]string{
+		"/r/inspect/3.1.1-0/inspect-3.1.1-0.rockspec": "",
+		"/r/inspect/3.1.1-0/rock_manifest":            "",
+		"/r/inspect/3.1.1-0/doc/README.md":            "",
+		"/r/argparse/0.7.1-1/rock_manifest":           "",
+		"/r/stray/notaversion/README":                 "",
+	})
+	pkgs, fps := ParseRocksDir(afs, "/r")
+	require.Len(t, pkgs, 2)
+	require.Len(t, fps, 2)
+
+	got := map[string]string{}
+	for i, p := range pkgs {
+		got[p.Name+"@"+p.Version] = fps[i]
+		assert.Equal(t, "/r/"+p.Name+"/"+p.Version, p.EvidenceList[0].Value)
+	}
+	assert.Equal(t, map[string]string{
+		"inspect@3.1.1-0":  "/r/inspect/3.1.1-0/inspect-3.1.1-0.rockspec",
+		"argparse@0.7.1-1": "/r/argparse/0.7.1-1/rock_manifest",
+	}, got)
+}

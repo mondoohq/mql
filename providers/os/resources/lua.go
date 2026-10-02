@@ -7,6 +7,7 @@ import (
 	"errors"
 	"path"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/rs/zerolog/log"
@@ -19,14 +20,19 @@ import (
 	"go.mondoo.com/mql/types"
 )
 
-// Default paths where LuaRocks installs packages
-var defaultLuaRocksPaths = []string{
-	"/usr/local/lib/luarocks/rocks-5.4",
-	"/usr/local/lib/luarocks/rocks-5.3",
-	"/usr/local/lib/luarocks/rocks-5.1",
-	"/usr/share/lua/5.4",
-	"/usr/share/lua/5.3",
-	"/usr/share/lua/5.1",
+// System rock trees. A rock tree keeps its installed rocks under
+// lib/luarocks/rocks (LuaRocks 2.x, every Lua version together) or
+// lib/luarocks/rocks-<lua version> (LuaRocks 3.x).
+var defaultLuaRocksSystemTrees = []string{
+	"/usr/local",
+	"/usr",
+}
+
+// Per-user rock trees (`luarocks --local`). `luarocks list` reports only the
+// trees of the user running it, so these are always read from disk.
+var defaultLuaRocksUserTreeGlobs = []string{
+	"/root/.luarocks",
+	"/home/*/.luarocks",
 }
 
 func initLuaPackages(_ *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -93,14 +99,21 @@ func (r *mqlLuaPackages) gatherData() error {
 			}
 		}
 
-		// If CLI didn't return results, scan filesystem
+		// Without the CLI (no luarocks binary, or a target that cannot run
+		// commands), read the system trees from disk.
+		var trees []string
 		if len(transitiveDeps) == 0 {
-			for _, rocksPath := range defaultLuaRocksPaths {
-				pkgs, fps := luarocks.ParseRocksDir(afs, rocksPath)
-				transitiveDeps = append(transitiveDeps, pkgs...)
-				filePaths = append(filePaths, fps...)
-			}
+			trees = append(trees, defaultLuaRocksSystemTrees...)
 		}
+		for _, pattern := range defaultLuaRocksUserTreeGlobs {
+			matches, err := afero.Glob(afs, pattern)
+			if err != nil {
+				log.Debug().Err(err).Str("pattern", pattern).Msg("mql[lua]> could not search for per-user rock trees")
+				continue
+			}
+			trees = append(trees, matches...)
+		}
+		transitiveDeps, filePaths = addLuaRockTrees(afs, transitiveDeps, filePaths, trees)
 	}
 
 	slices.SortFunc(transitiveDeps, languages.SortFn)
@@ -127,33 +140,80 @@ func (r *mqlLuaPackages) gatherData() error {
 	return nil
 }
 
+// addLuaRockTrees adds the rocks of each tree to pkgs, skipping a rock already
+// listed with the same version directory: the CLI reports the trees of the
+// user running it, and those are read from disk again here.
+func addLuaRockTrees(afs *afero.Afero, pkgs []*languages.Package, filePaths []string, trees []string) ([]*languages.Package, []string) {
+	seen := map[string]struct{}{}
+	for _, pkg := range pkgs {
+		if len(pkg.EvidenceList) > 0 {
+			seen[pkg.EvidenceList[0].Value] = struct{}{}
+		}
+	}
+	for _, tree := range trees {
+		treePkgs, treeFps := collectLuaRockTree(afs, tree)
+		for i, pkg := range treePkgs {
+			if _, ok := seen[pkg.EvidenceList[0].Value]; ok {
+				continue
+			}
+			seen[pkg.EvidenceList[0].Value] = struct{}{}
+			pkgs = append(pkgs, pkg)
+			filePaths = append(filePaths, treeFps[i])
+		}
+	}
+	return pkgs, filePaths
+}
+
+// collectLuaPackages reads the rocks under searchPath, which may be a rocks
+// directory itself (/usr/local/lib/luarocks/rocks-5.1), the directory holding
+// the rocks directories (/usr/local/lib/luarocks), or a rock tree (/usr/local,
+// ~/.luarocks).
 func collectLuaPackages(afs *afero.Afero, searchPath string) ([]*languages.Package, []string) {
 	isDir, err := afs.IsDir(searchPath)
-	if err != nil {
+	if err != nil || !isDir {
 		return nil, nil
 	}
 
-	if isDir {
-		// Check if it's a rocks directory directly
-		pkgs, fps := luarocks.ParseRocksDir(afs, searchPath)
-		if len(pkgs) > 0 {
-			return pkgs, fps
-		}
-
-		// Accumulate results across all rocks subdirectories
-		var allPkgs []*languages.Package
-		var allFps []string
-		for _, suffix := range []string{"rocks-5.4", "rocks-5.3", "rocks-5.1"} {
-			// path.Join (not filepath.Join) — always Linux paths
-			rocksPath := path.Join(searchPath, suffix)
-			pkgs, fps := luarocks.ParseRocksDir(afs, rocksPath)
-			allPkgs = append(allPkgs, pkgs...)
-			allFps = append(allFps, fps...)
-		}
-		return allPkgs, allFps
+	if pkgs, fps := luarocks.ParseRocksDir(afs, searchPath); len(pkgs) > 0 {
+		return pkgs, fps
 	}
 
-	return nil, nil
+	if pkgs, fps := collectRocksDirsIn(afs, searchPath); len(pkgs) > 0 {
+		return pkgs, fps
+	}
+
+	return collectLuaRockTree(afs, searchPath)
+}
+
+// collectLuaRockTree reads every rocks directory of the rock tree rooted at
+// tree.
+func collectLuaRockTree(afs *afero.Afero, tree string) ([]*languages.Package, []string) {
+	// path.Join (not filepath.Join) — always Linux paths
+	return collectRocksDirsIn(afs, path.Join(tree, "lib", "luarocks"))
+}
+
+// collectRocksDirsIn reads the rocks directories directly inside dir: "rocks"
+// (LuaRocks 2.x) and "rocks-<lua version>" (LuaRocks 3.x).
+func collectRocksDirsIn(afs *afero.Afero, dir string) ([]*languages.Package, []string) {
+	entries, err := afs.ReadDir(dir)
+	if err != nil {
+		return nil, nil
+	}
+	var allPkgs []*languages.Package
+	var allFps []string
+	for _, entry := range entries {
+		if !entry.IsDir() || !isRocksDirName(entry.Name()) {
+			continue
+		}
+		pkgs, fps := luarocks.ParseRocksDir(afs, path.Join(dir, entry.Name()))
+		allPkgs = append(allPkgs, pkgs...)
+		allFps = append(allFps, fps...)
+	}
+	return allPkgs, allFps
+}
+
+func isRocksDirName(name string) bool {
+	return name == "rocks" || strings.HasPrefix(name, "rocks-")
 }
 
 func (r *mqlLuaPackages) list() ([]any, error) {

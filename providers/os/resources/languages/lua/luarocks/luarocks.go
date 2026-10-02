@@ -82,7 +82,17 @@ func ParseLuaRocksList(r io.Reader, evidencePath string) (languages.Packages, []
 }
 
 // ParseRocksDir scans a LuaRocks rocks directory for installed packages.
-// Structure: ROCKS_DIR/NAME/VERSION/*.rockspec
+// Structure: ROCKS_DIR/NAME/VERSION/{NAME-VERSION.rockspec,rock_manifest}
+//
+// A version directory counts as an installed rock only when it holds the
+// rockspec or the rock_manifest LuaRocks writes on install. Without that check
+// any directory two levels deep reads as a rock: pointed at a Lua module
+// directory such as /usr/share/lua/5.1, the modules of luarocks itself
+// (luarocks/cmd, luarocks/fs, ...) came back as packages named "luarocks" with
+// versions "cmd" and "fs".
+//
+// Every package carries one evidence entry, its version directory, and the
+// returned file paths hold one file per package in the same order.
 func ParseRocksDir(afs *afero.Afero, rocksDir string) (languages.Packages, []string) {
 	entries, err := afs.ReadDir(rocksDir)
 	if err != nil {
@@ -111,26 +121,12 @@ func ParseRocksDir(afs *afero.Afero, rocksDir string) (languages.Packages, []str
 			}
 			version := vEntry.Name()
 
-			// Look for .rockspec file inside
 			versionDir := path.Join(pkgDir, version)
-			files, err := afs.ReadDir(versionDir)
-			if err != nil {
+			evidence := rockEvidence(afs, versionDir)
+			if evidence == "" {
 				continue
 			}
-
-			hasRockspec := false
-			for _, f := range files {
-				if strings.HasSuffix(f.Name(), ".rockspec") {
-					hasRockspec = true
-					filePaths = append(filePaths, path.Join(versionDir, f.Name()))
-					break
-				}
-			}
-
-			if !hasRockspec {
-				// Even without a rockspec, the directory name is enough
-				filePaths = append(filePaths, versionDir)
-			}
+			filePaths = append(filePaths, evidence)
 
 			pkgs = append(pkgs, &languages.Package{
 				Name:    pkgName,
@@ -149,6 +145,29 @@ func ParseRocksDir(afs *afero.Afero, rocksDir string) (languages.Packages, []str
 
 	log.Debug().Int("count", len(pkgs)).Str("dir", rocksDir).Msg("mql[lua]> found luarocks packages")
 	return pkgs, filePaths
+}
+
+// rockEvidence returns the file that marks versionDir as an installed rock:
+// its rockspec, or else its rock_manifest. It returns "" for a directory that
+// is not a rock.
+func rockEvidence(afs *afero.Afero, versionDir string) string {
+	files, err := afs.ReadDir(versionDir)
+	if err != nil {
+		return ""
+	}
+	manifest := ""
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		switch {
+		case strings.HasSuffix(f.Name(), ".rockspec"):
+			return path.Join(versionDir, f.Name())
+		case f.Name() == "rock_manifest":
+			manifest = path.Join(versionDir, f.Name())
+		}
+	}
+	return manifest
 }
 
 type luarocksBom struct {
