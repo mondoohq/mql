@@ -73,6 +73,9 @@ func TestMarkerMayHold(t *testing.T) {
 		{`python_version < "3.8"`, py3, true},
 		{`python_version > "3.0"`, py3, true},
 		{`python_version == "2.6"`, py3, false},
+		{`python_version == "3.8.*"`, py3, true},
+		{`python_version != "3.8.*"`, py3, true},
+		{`python_version == "2.*"`, py3, false},
 		// nothing known: only extras are decided
 		{`sys_platform == "win32"`, nothing, true},
 		{`python_version < "3"`, nothing, true},
