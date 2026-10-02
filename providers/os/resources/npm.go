@@ -294,7 +294,9 @@ func collectNpmPackages(runtime *plugin.Runtime, fs afero.Fs, path string) (lang
 		var extractor languages.Extractor
 
 		if strings.HasSuffix(searchPath, "package-lock.json") {
-			extractor = &packagelockjson.Extractor{}
+			extractor = &packagelockjson.Extractor{
+				DeclaredDependencies: npmDeclaredDependencies(runtime, fs, filepath.Join(filepath.Dir(searchPath), "package.json")),
+			}
 		} else if strings.HasSuffix(searchPath, "pnpm-lock.yaml") {
 			extractor = &pnpmlock.Extractor{}
 		} else if strings.HasSuffix(searchPath, "yarn.lock") {
@@ -313,6 +315,41 @@ func collectNpmPackages(runtime *plugin.Runtime, fs afero.Fs, path string) (lang
 	}
 
 	return nil, errors.New("could not parse package-lock.json or package.json file")
+}
+
+// npmDeclaredDependencies returns the production dependency names of a
+// package.json, or nil when there is none or it does not parse. A
+// lockfileVersion 1 package-lock.json needs them to tell direct dependencies
+// from the hoisted transitive ones beside them.
+func npmDeclaredDependencies(runtime *plugin.Runtime, fs afero.Fs, manifest string) []string {
+	if fi, err := fs.Stat(manifest); err != nil || fi.IsDir() {
+		return nil
+	}
+	f, err := newFile(runtime, manifest)
+	if err != nil {
+		return nil
+	}
+	content := f.GetContent()
+	if content.Error != nil {
+		log.Debug().Err(content.Error).Str("path", manifest).Msg("cannot read package.json beside package-lock.json")
+		return nil
+	}
+	return parseNpmDeclaredDependencies([]byte(content.Data))
+}
+
+func parseNpmDeclaredDependencies(data []byte) []string {
+	var manifest struct {
+		Dependencies map[string]string `json:"dependencies"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(manifest.Dependencies))
+	for name := range manifest.Dependencies {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 type mqlNpmPackagesInternal struct {
@@ -562,7 +599,7 @@ func newNpmPackage(runtime *plugin.Runtime, pkg *languages.Package) (*mqlNpmPack
 		}
 	}
 	mqlPkg, err := CreateResource(runtime, "npm.package", map[string]*llx.RawData{
-		"id":          llx.StringData(pkg.Name + path),
+		"id":          llx.StringData(npmPackageID(pkg, path)),
 		"name":        llx.StringData(pkg.Name),
 		"version":     llx.StringData(pkg.Version),
 		"purl":        llx.StringData(pkg.Purl),
@@ -576,6 +613,15 @@ func newNpmPackage(runtime *plugin.Runtime, pkg *languages.Package) (*mqlNpmPack
 		return nil, err
 	}
 	return mqlPkg.(*mqlNpmPackage), nil
+}
+
+// npmPackageID is the cache key of one npm.package. A lockfile can install the
+// same name at several versions (a nested node_modules/<dep>/node_modules/<name>
+// next to the hoisted one), and every entry shares the lockfile as its evidence
+// path, so the version has to be part of the key. Without it CreateResource
+// returned the first version for every later one and the others vanished.
+func npmPackageID(pkg *languages.Package, path string) string {
+	return pkg.Name + "@" + pkg.Version + path
 }
 
 func (k *mqlNpmPackage) id() (string, error) {
