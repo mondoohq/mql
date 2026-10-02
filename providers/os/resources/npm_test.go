@@ -367,3 +367,60 @@ func TestNpmPackagesScripts(t *testing.T) {
 		require.Equal(t, map[string]any{"postinstall": "node setup.js"}, scripts.Data)
 	})
 }
+
+// The default search skips directories without a lockfile quietly, but must not
+// treat a lockfile it cannot parse the same way.
+func TestCollectNpmPackagesErrorKinds(t *testing.T) {
+	mockFS := afero.NewMemMapFs()
+	require.NoError(t, mockFS.MkdirAll("/srv/empty", 0o755))
+	require.NoError(t, afero.WriteFile(mockFS, "/srv/broken/yarn.lock", []byte("__metadata:\n  version: 8\n\"x@npm:1.0.0\":\n  version: [\n"), 0o644))
+	conn, err := fs.NewFileSystemConnectionWithFs(0, &inventory.Config{}, &inventory.Asset{}, "", nil, mockFS)
+	require.NoError(t, err)
+	r := &plugin.Runtime{
+		Resources:  &syncx.Map[plugin.Resource]{},
+		Connection: conn,
+		Callback:   &providerCallbacks{},
+	}
+
+	_, err = collectNpmPackages(r, mockFS, "/srv/empty")
+	require.ErrorIs(t, err, errNoNpmManifest)
+
+	_, err = collectNpmPackages(r, mockFS, "/srv/broken")
+	require.Error(t, err)
+	require.NotErrorIs(t, err, errNoNpmManifest)
+}
+
+// A yarn.lock from yarn 1 with mixed quoted/unquoted entry headers, and one
+// from yarn 4, both read through npm.packages.
+func TestNpmPackagesYarnLock(t *testing.T) {
+	for _, lock := range []string{"classic-multispec-yarn.lock", "berry-yarn.lock"} {
+		t.Run(lock, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("languages", "javascript", "yarnlock", "testdata", lock))
+			require.NoError(t, err)
+			mockFS := afero.NewMemMapFs()
+			require.NoError(t, afero.WriteFile(mockFS, "/srv/app/yarn.lock", data, 0o644))
+			conn, err := fs.NewFileSystemConnectionWithFs(0, &inventory.Config{}, &inventory.Asset{}, "", nil, mockFS)
+			require.NoError(t, err)
+			r := &plugin.Runtime{
+				Resources:  &syncx.Map[plugin.Resource]{},
+				Connection: conn,
+				Callback:   &providerCallbacks{},
+			}
+			raw, err := CreateResource(r, "npm.packages", map[string]*llx.RawData{
+				"path": llx.StringData("/srv/app"),
+			})
+			require.NoError(t, err)
+			pkgs := raw.(*mqlNpmPackages)
+			require.NoError(t, pkgs.gatherData())
+
+			found := false
+			for _, p := range pkgs.List.Data {
+				pkg := p.(*mqlNpmPackage)
+				if pkg.Name.Data == "lodash" && pkg.Version.Data == "4.17.20" {
+					found = true
+				}
+			}
+			require.True(t, found, "lodash 4.17.20 is in the lockfile")
+		})
+	}
+}

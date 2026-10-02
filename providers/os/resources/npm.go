@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -115,9 +116,15 @@ func collectNpmPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []str
 	evidenceFiles := []string{}
 
 	handler := func(nodeModulesPath string) {
-		// Not found is an expected error and we handle that properly
 		bom, err := collectNpmPackages(runtime, fs, nodeModulesPath)
 		if err != nil {
+			// a directory without a lockfile or package.json is expected while
+			// searching; a lockfile that is there but cannot be read or parsed
+			// is not, and must not disappear without a trace. One bad project
+			// must not fail the whole search either, so it is logged and skipped.
+			if !errors.Is(err, errNoNpmManifest) && !errors.Is(err, os.ErrNotExist) {
+				log.Warn().Err(err).Str("path", nodeModulesPath).Msg("could not parse npm packages, skipping")
+			}
 			return
 		}
 
@@ -233,6 +240,10 @@ func hasLockfile(runtime *plugin.Runtime, fs afero.Fs, path string) bool {
 	return len(filteredSearchPath) > 0
 }
 
+// errNoNpmManifest reports a path without a supported JavaScript lockfile or
+// package.json.
+var errNoNpmManifest = errors.New("not a supported JavaScript lockfile or package.json")
+
 func collectNpmPackages(runtime *plugin.Runtime, fs afero.Fs, path string) (languages.Bom, error) {
 	// specific path was provided
 	afs := &afero.Afero{Fs: fs}
@@ -276,7 +287,7 @@ func collectNpmPackages(runtime *plugin.Runtime, fs afero.Fs, path string) (lang
 	}
 
 	if len(filteredSearchPath) == 0 {
-		return nil, fmt.Errorf("path %s is not a supported JavaScript lockfile or package.json", path)
+		return nil, fmt.Errorf("path %s: %w", path, errNoNpmManifest)
 	}
 
 	// technically we should only have one file, this logic will always pick the first one

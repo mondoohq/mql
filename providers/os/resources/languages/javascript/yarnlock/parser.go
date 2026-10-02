@@ -64,7 +64,10 @@ type yarnLockEntry struct {
 	Dependencies map[string]string
 }
 
-var yarnPkgNameRe = regexp.MustCompile(`^(.*)@(.*)$`)
+// The name ends at the first "@" after an optional scope. Berry keys carry a
+// protocol that can contain more "@" signs, as in
+// "typescript@patch:typescript@npm%3A^5.4.5#optional!builtin<compat/typescript>".
+var yarnPkgNameRe = regexp.MustCompile(`^(@?[^@]+)@(.*)$`)
 
 // parseYarnPackageName extracts the package name and version specifier from
 // a yarn.lock map key. Keys may list multiple specifiers separated by commas
