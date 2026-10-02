@@ -100,9 +100,7 @@ func mergeIncludedBlocks(matchConditions map[string]*MatchBlock, blocks MatchBlo
 				existing.Params = map[string]any{}
 			}
 			for k, v := range block.Params {
-				if _, ok := existing.Params[k]; !ok {
-					existing.Params[k] = v
-				}
+				setParam(existing.Params, k, v.(string))
 			}
 			continue
 		}
@@ -124,9 +122,7 @@ func mergeIncludedBlocks(matchConditions map[string]*MatchBlock, blocks MatchBlo
 		}
 
 		for k, v := range block.Params {
-			if _, ok := existing.Params[k]; !ok {
-				existing.Params[k] = v
-			}
+			setParam(existing.Params, k, v.(string))
 		}
 	}
 }

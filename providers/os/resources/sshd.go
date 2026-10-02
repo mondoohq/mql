@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -69,6 +70,12 @@ const (
 )
 
 const sshdEffectiveConfigCommand = "sshd -T"
+
+// defaultSshdPidFile is where sshd writes its pid unless PidFile says
+// otherwise.
+const defaultSshdPidFile = "/var/run/sshd.pid"
+
+var sshdPidRegex = regexp.MustCompile(`^[0-9]+$`)
 
 // Solaris and illumos install sshd in /usr/lib/ssh, which is on no user's
 // PATH, not even root's.
@@ -468,26 +475,120 @@ func (s *mqlSshdConfig) effectiveParams() (map[string]string, error) {
 		return nil, err
 	}
 
-	cmd, err := conn.RunCommand(command)
+	params, err := runEffectiveSshdConfig(conn, command)
 	if err != nil {
 		s.effectiveParamsErr = err
+		return nil, err
+	}
+
+	// Options on the running daemon's command line override sshd_config.
+	// RHEL 8 passes the system crypto policy that way, so ask sshd -T again
+	// with the same options to report what the daemon accepts.
+	if opts := s.daemonOptions(conn, params); len(opts) > 0 {
+		params, err = runEffectiveSshdConfig(conn, sshdCommandWithOptions(command, opts))
+		if err != nil {
+			s.effectiveParamsErr = err
+			return nil, err
+		}
+	}
+
+	s.effectiveParamsCache = params
+	return s.effectiveParamsCache, nil
+}
+
+// sshdCommandWithOptions appends each option as a shell-quoted -o argument.
+func sshdCommandWithOptions(command string, opts []string) string {
+	var sb strings.Builder
+	sb.WriteString(command)
+	for _, opt := range opts {
+		sb.WriteString(" -o ")
+		sb.WriteString(shared.ShellEscape(opt))
+	}
+	return sb.String()
+}
+
+func runEffectiveSshdConfig(conn shared.Connection, command string) (map[string]string, error) {
+	cmd, err := conn.RunCommand(command)
+	if err != nil {
 		return nil, err
 	}
 	if cmd.ExitStatus != 0 {
 		stderr, _ := io.ReadAll(cmd.Stderr)
-		err := fmt.Errorf("%s failed (exit %d): %s", command, cmd.ExitStatus, strings.TrimSpace(string(stderr)))
-		s.effectiveParamsErr = err
-		return nil, err
+		return nil, fmt.Errorf("%s failed (exit %d): %s", command, cmd.ExitStatus, strings.TrimSpace(string(stderr)))
 	}
 
 	stdout, err := io.ReadAll(cmd.Stdout)
 	if err != nil {
-		s.effectiveParamsErr = err
 		return nil, err
 	}
+	return parseEffectiveSshdConfig(string(stdout)), nil
+}
 
-	s.effectiveParamsCache = parseEffectiveSshdConfig(string(stdout))
-	return s.effectiveParamsCache, nil
+// daemonOptions returns the -o options of the running sshd when it reads the
+// configuration file this resource describes. It finds the daemon through
+// the PidFile sshd -T reported and reads its command line from /proc, so it
+// only applies to Linux. No running daemon, or one that cannot be read,
+// leaves the sshd_config view as it is.
+func (s *mqlSshdConfig) daemonOptions(conn shared.Connection, params map[string]string) []string {
+	if s.isWindows() || s.isSolaris() {
+		return nil
+	}
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil || !asset.Platform.IsFamily(inventory.FAMILY_LINUX) {
+		return nil
+	}
+
+	configPath := defaultSshdConfig
+	if file := s.GetFile(); file.Error == nil && file.Data != nil && file.Data.Path.Data != "" {
+		configPath = file.Data.Path.Data
+	}
+
+	pidFile := params["pidfile"]
+	if pidFile == "" {
+		pidFile = defaultSshdPidFile
+	}
+	if strings.EqualFold(pidFile, "none") {
+		return nil
+	}
+
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	rawPid, err := afs.ReadFile(pidFile)
+	if err != nil {
+		log.Debug().Err(err).Str("pidfile", pidFile).Msg("sshd> cannot read the running daemon's pid file")
+		return nil
+	}
+	pid := strings.TrimSpace(string(rawPid))
+	if !sshdPidRegex.MatchString(pid) {
+		return nil
+	}
+
+	// read through a command: /proc files report a size of 0 and some
+	// file transfer backends cannot stat them
+	cmd, err := conn.RunCommand("cat /proc/" + pid + "/cmdline")
+	if err != nil {
+		log.Debug().Err(err).Str("pid", pid).Msg("sshd> cannot read the running daemon's command line")
+		return nil
+	}
+	if cmd.ExitStatus != 0 {
+		return nil
+	}
+	cmdline, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		log.Debug().Err(err).Str("pid", pid).Msg("sshd> cannot read the running daemon's command line")
+		return nil
+	}
+	daemon, ok := sshd.ParseDaemonCommandLine(cmdline)
+	if !ok {
+		return nil
+	}
+	daemonConfig := daemon.ConfigFile
+	if daemonConfig == "" {
+		daemonConfig = defaultSshdConfig
+	}
+	if pathpkg.Clean(daemonConfig) != pathpkg.Clean(configPath) {
+		return nil
+	}
+	return daemon.Options
 }
 
 func (s *mqlSshdConfig) effectiveConfigCommand() (string, error) {
