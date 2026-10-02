@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	pathpkg "path"
 	"path/filepath"
@@ -388,13 +389,14 @@ func (s *mqlSshdConfig) parse(file *mqlFile) error {
 // /etc/ssh/sshd_config.d/*.conf, where a 0600 drop-in is unreadable to a
 // non-root scan. v13 skipped such an include and reported the rest of the
 // configuration as if it were complete.
-// The path is added when the error does not name it already, as an SSH
-// transfer's "permission denied" does not.
+// The path is added unless the error is a *fs.PathError for it already; an
+// SSH transfer's "permission denied" names no file.
 func sshdIncludeReadError(path string, err error) error {
 	if !errors.Is(err, os.ErrPermission) || !plugin.StructuredErrors() {
 		return err
 	}
-	if !strings.Contains(err.Error(), path) {
+	var pathErr *fs.PathError
+	if !errors.As(err, &pathErr) || pathErr.Path != path {
 		err = fmt.Errorf("%s: %w", path, err)
 	}
 	return llx.Forbidden(err)
@@ -552,10 +554,13 @@ func runEffectiveSshdConfig(conn shared.Connection, command string) (map[string]
 		return nil, err
 	}
 	if exit != 0 && needsSshdConnectionSpec(stderr) {
-		command += " -C " + sshdTestConnectionSpec
-		stdout, stderr, exit, err = runSshdCommand(conn, command)
+		retryCommand := command + " -C " + sshdTestConnectionSpec
+		stdout, stderr, exit, err = runSshdCommand(conn, retryCommand)
 		if err != nil {
 			return nil, err
+		}
+		if exit != 0 {
+			return nil, fmt.Errorf("%s failed (exit %d): %s", retryCommand, exit, strings.TrimSpace(stderr))
 		}
 	}
 	if exit != 0 {
