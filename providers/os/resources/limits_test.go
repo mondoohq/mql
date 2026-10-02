@@ -38,3 +38,77 @@ func TestLimitsEntryID(t *testing.T) {
 		assert.Equal(t, "/etc/security/limits.conf:42", id)
 	})
 }
+
+func limitsTestFiles(paths ...string) []*mqlFile {
+	files := make([]*mqlFile, len(paths))
+	for i, p := range paths {
+		f := &mqlFile{}
+		f.Path.Data = p
+		f.Path.State = plugin.StateIsSet
+		files[i] = f
+	}
+	return files
+}
+
+func limitsTestPaths(files []*mqlFile) []string {
+	paths := make([]string, len(files))
+	for i, f := range files {
+		paths[i] = f.Path.Data
+	}
+	return paths
+}
+
+// pam_limits reads limits.d files sorted by file name with strcmp, across
+// /etc/security/limits.d and the vendor directory (read_limits_dir in
+// pam_limits.c).
+func TestSortLimitsDropIns(t *testing.T) {
+	t.Run("Debian 13 directory order", func(t *testing.T) {
+		// the order files.find returned them on Debian 13
+		files := limitsTestFiles(
+			"/etc/security/limits.d/60-mqltest.conf",
+			"/etc/security/limits.d/10-coredump-debian.conf",
+		)
+		sortLimitsDropIns(files)
+		assert.Equal(t, []string{
+			"/etc/security/limits.d/10-coredump-debian.conf",
+			"/etc/security/limits.d/60-mqltest.conf",
+		}, limitsTestPaths(files))
+	})
+
+	t.Run("merged across /etc and /usr/etc by file name", func(t *testing.T) {
+		files := limitsTestFiles(
+			"/etc/security/limits.d/90-local.conf",
+			"/etc/security/limits.d/10-site.conf",
+			"/usr/etc/security/limits.d/50-vendor.conf",
+		)
+		sortLimitsDropIns(files)
+		assert.Equal(t, []string{
+			"/etc/security/limits.d/10-site.conf",
+			"/usr/etc/security/limits.d/50-vendor.conf",
+			"/etc/security/limits.d/90-local.conf",
+		}, limitsTestPaths(files))
+	})
+
+	t.Run("byte order, not natural order", func(t *testing.T) {
+		files := limitsTestFiles(
+			"/etc/security/limits.d/a.conf",
+			"/etc/security/limits.d/9-x.conf",
+			"/etc/security/limits.d/Z.conf",
+			"/etc/security/limits.d/10-x.conf",
+		)
+		sortLimitsDropIns(files)
+		assert.Equal(t, []string{
+			"/etc/security/limits.d/10-x.conf",
+			"/etc/security/limits.d/9-x.conf",
+			"/etc/security/limits.d/Z.conf",
+			"/etc/security/limits.d/a.conf",
+		}, limitsTestPaths(files))
+	})
+}
+
+func TestIsLimitsDropIn(t *testing.T) {
+	assert.True(t, isLimitsDropIn("60-mqltest.conf"))
+	assert.False(t, isLimitsDropIn("mqltest.notconf"))
+	assert.False(t, isLimitsDropIn(".hidden.conf"))
+	assert.False(t, isLimitsDropIn("60-mqltest.conf.dpkg-old"))
+}

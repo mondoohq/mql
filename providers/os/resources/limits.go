@@ -6,6 +6,8 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"path"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -72,10 +74,14 @@ func (l *mqlLimits) files() ([]any, error) {
 
 	// Drop-ins merge across both trees, with /etc shadowing a same-named file
 	// in /usr/etc.
+	var dropIns []*mqlFile
 	for _, dir := range vendorConfigDirs(fs, defaultLimitsDir) {
+		// pam_limits globs limits.d/*.conf, which does not descend into
+		// subdirectories
 		files, err := CreateResource(l.MqlRuntime, "files.find", map[string]*llx.RawData{
-			"from": llx.StringData(dir),
-			"type": llx.StringData("file"),
+			"from":  llx.StringData(dir),
+			"type":  llx.StringData("file"),
+			"depth": llx.IntData(1),
 		})
 		if err != nil {
 			return nil, err
@@ -95,18 +101,40 @@ func (l *mqlLimits) files() ([]any, error) {
 				continue
 			}
 
-			// Only include .conf files
-			if !strings.HasSuffix(basename.Data, ".conf") {
+			if !isLimitsDropIn(basename.Data) {
 				continue
 			}
 			if vendorConfigShadowed(fs, file.Path.Data) {
 				continue
 			}
-			allFiles = append(allFiles, file)
+			dropIns = append(dropIns, file)
 		}
 	}
 
+	sortLimitsDropIns(dropIns)
+	for _, file := range dropIns {
+		allFiles = append(allFiles, file)
+	}
+
 	return allFiles, nil
+}
+
+// isLimitsDropIn reports whether pam_limits' limits.d/*.conf glob matches a
+// file name. Like any glob `*`, it does not match a leading dot.
+func isLimitsDropIn(name string) bool {
+	return strings.HasSuffix(name, ".conf") && !strings.HasPrefix(name, ".")
+}
+
+// sortLimitsDropIns puts limits.d files in the order pam_limits reads them:
+// sorted by file name with strcmp, whichever of /etc and /usr/etc they come
+// from (read_limits_dir in pam_limits.c). files.find returns them in
+// directory order, so on Debian 13 60-local.conf came before
+// 10-coredump-debian.conf. Order matters: for the same kind of domain, an
+// entry read later replaces an earlier one.
+func sortLimitsDropIns(files []*mqlFile) {
+	sort.SliceStable(files, func(i, j int) bool {
+		return path.Base(files[i].Path.Data) < path.Base(files[j].Path.Data)
+	})
 }
 
 // entries parses all limits files and returns structured entries
