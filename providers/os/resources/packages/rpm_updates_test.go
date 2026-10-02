@@ -189,6 +189,8 @@ func TestParseRpmCheckUpdateWrappedLines(t *testing.T) {
 		"g03-new.x86_64                 2.0-1        g03repo",
 		"    g03-old-with-a-long-name.x86_64",
 		"                               1.0-1        installed",
+		// the repo yum 3 names for the obsoleted, installed package
+		"g03-unindented.x86_64          1.0-1        installed",
 		"",
 	}, "\n")))
 	require.NoError(t, err)

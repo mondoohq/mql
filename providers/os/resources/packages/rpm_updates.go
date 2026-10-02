@@ -136,7 +136,7 @@ func ParseRpmCheckUpdate(input io.Reader) (map[string]PackageUpdate, error) {
 	add := func(name, arch, available, repo string) {
 		// the installed side of an obsoletes pair, not an update
 		// (dnf prints @System, yum 3 prints installed; both are indented)
-		if repo == "@System" {
+		if repo == "@System" || repo == "installed" {
 			return
 		}
 		pkgs[name+"."+arch] = PackageUpdate{
