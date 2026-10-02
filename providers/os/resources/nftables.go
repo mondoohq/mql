@@ -465,6 +465,10 @@ func (n *mqlNftables) fetchRuleset() (*nftRuleset, error) {
 // the netlink refusal and prints only the metainfo header with exit code 0,
 // which looks exactly like a host without any tables. When the capability
 // set cannot be read the empty ruleset is trusted as before.
+//
+// /proc/self is the cat process, not the scanner. cat runs through the same
+// command resource as nft, on the same connection and with the same sudo
+// wrapping, so its capability set stands in for the one nft ran with.
 func (n *mqlNftables) checkEmptyRulesetReadable() error {
 	o, err := CreateResource(n.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData("cat /proc/self/status"),
