@@ -16,8 +16,8 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
-// withStructuredErrors turns the process-wide flag on for one test.
-func withStructuredErrors(t *testing.T) {
+// enableStructuredErrorsForTest turns the process-wide flag on for one test.
+func enableStructuredErrorsForTest(t *testing.T) {
 	t.Helper()
 	plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
 	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
@@ -37,7 +37,7 @@ func TestCertificateReadError(t *testing.T) {
 	})
 
 	t.Run("structured errors", func(t *testing.T) {
-		withStructuredErrors(t)
+		enableStructuredErrorsForTest(t)
 
 		err := certificateReadError(denied)
 		require.Error(t, err)
