@@ -118,13 +118,21 @@ func commandOutput(cmd *mqlCommand, what string) (string, error) {
 		return "", err
 	}
 	if run.exitcode != 0 {
-		return "", errors.New(what + " failed: " + run.stderr)
+		// Some tools print their diagnostic on stdout and leave stderr empty.
+		msg := strings.TrimSpace(run.stderr)
+		if msg == "" {
+			msg = strings.TrimSpace(run.stdout)
+		}
+		return "", errors.New(what + " failed: " + msg)
 	}
 	return run.stdout, nil
 }
 
 // commandRefused reports whether a command's output names a refused open, the
 // way a tool run without root says it could not read what it was asked for.
+// It matches only EACCES's "permission denied". Other wordings ("Operation not
+// permitted", "Access denied") also appear for failures that are not a missing
+// grant, so they stay unclassified until a caller knows its tool's meaning.
 func commandRefused(output string) bool {
 	return strings.Contains(strings.ToLower(output), "permission denied")
 }
