@@ -702,3 +702,48 @@ func TestInterfacesDarwinPlistIsTheFallbackWithoutIfconfig(t *testing.T) {
 			"%s should come from the plist when ifconfig cannot run", name)
 	}
 }
+
+// Non-root on RHEL 7 the sysfs walk answers. The trailing newline of the flags
+// value made every interface report no flags, so a PROMISC check passed on
+// an interface in promiscuous mode; operstate "unknown" left active null; and
+// loopback's all-zero address was attributed to XEROX.
+func TestInterfacesLinuxSysfsRhel7NonRoot(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/linux_sys_class_net_rhel7.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	interfaces, err := subject.Interfaces(conn, platform)
+	require.NoError(t, err)
+	require.Len(t, interfaces, 4)
+
+	byName := map[string]subject.Interface{}
+	for _, i := range interfaces {
+		byName[i.Name] = i
+	}
+
+	eth0 := byName["eth0"]
+	assert.Equal(t, []string{"BROADCAST", "MULTICAST", "PROMISC", "UP"}, eth0.Flags)
+	if assert.NotNil(t, eth0.Active) {
+		assert.True(t, *eth0.Active)
+	}
+
+	lo := byName["lo"]
+	assert.Equal(t, []string{"LOOPBACK", "UP"}, lo.Flags)
+	if assert.NotNil(t, lo.Active) {
+		assert.True(t, *lo.Active)
+	}
+	assert.Equal(t, "00:00:00:00:00:00", lo.MACAddress)
+	assert.Equal(t, "", lo.Vendor)
+
+	port := byName["g01-int0"]
+	if assert.NotNil(t, port.Active) {
+		assert.True(t, *port.Active)
+	}
+
+	ovs := byName["ovs-system"]
+	assert.Equal(t, []string{"BROADCAST", "MULTICAST", "PROMISC"}, ovs.Flags)
+	if assert.NotNil(t, ovs.Active) {
+		assert.False(t, *ovs.Active)
+	}
+}

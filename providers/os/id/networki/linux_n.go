@@ -223,8 +223,11 @@ func (n *neti) getLinuxSysfsInterfaces() (interfaces []Interface, err error) {
 			n.connection.FileSystem(),
 			filepath.Join("/sys/class/net/", ifaceName, "flags"),
 		)
+		flagBits, flagsOK := int64(0), false
 		if err == nil {
-			iinterface.Flags = parseHexFlags(strings.TrimPrefix(string(flags), "0x"))
+			// sysfs values end in a newline, "0x1003\n"
+			flagBits, flagsOK = parseHexFlagBits(strings.TrimPrefix(strings.TrimSpace(string(flags)), "0x"))
+			iinterface.Flags = hexFlagNames(flagBits)
 		}
 
 		// Read Status
@@ -238,6 +241,13 @@ func (n *neti) getLinuxSysfsInterfaces() (interfaces []Interface, err error) {
 				iinterface.Active = convert.ToPtr(true)
 			case "down":
 				iinterface.Active = convert.ToPtr(false)
+			case "unknown":
+				// Drivers that don't track carrier (loopback, tun/tap, vxlan,
+				// OVS internal ports) always read "unknown". `ip` reports them
+				// by the UP flag, and so does the command detector.
+				if flagsOK {
+					iinterface.Active = convert.ToPtr(flagBits&linuxIffUp != 0)
+				}
 			}
 		}
 
@@ -255,33 +265,50 @@ func (n *neti) getLinuxSysfsInterfaces() (interfaces []Interface, err error) {
 	return
 }
 
-func parseHexFlags(hexStr string) []string {
-	flagsMap := map[int]string{
-		0x1:    "UP",
-		0x2:    "BROADCAST",
-		0x4:    "DEBUG",
-		0x8:    "LOOPBACK",
-		0x10:   "POINTOPOINT",
-		0x20:   "NOTRAILERS",
-		0x40:   "RUNNING",
-		0x80:   "NOARP",
-		0x100:  "PROMISC",
-		0x200:  "ALLMULTI",
-		0x400:  "MASTER",
-		0x800:  "SLAVE",
-		0x1000: "MULTICAST",
-		0x2000: "PORTSEL",
-		0x4000: "AUTOMEDIA",
-		0x8000: "DYNAMIC",
-	}
-	flagsInt, err := strconv.ParseInt(hexStr, 16, 32)
+// linuxIffUp is IFF_UP in the interface flags.
+const linuxIffUp = 0x1
+
+// linuxIfFlags are the IFF_* bits /sys/class/net/<iface>/flags carries, in
+// the order `ip link` prints them (print_link_flags in iproute2), so the list
+// comes out the same on every scan.
+var linuxIfFlags = []struct {
+	bit  int64
+	name string
+}{
+	{0x8, "LOOPBACK"},
+	{0x2, "BROADCAST"},
+	{0x10, "POINTOPOINT"},
+	{0x1000, "MULTICAST"},
+	{0x80, "NOARP"},
+	{0x200, "ALLMULTI"},
+	{0x100, "PROMISC"},
+	{0x20, "NOTRAILERS"},
+	{0x4, "DEBUG"},
+	{0x8000, "DYNAMIC"},
+	{0x4000, "AUTOMEDIA"},
+	{0x2000, "PORTSEL"},
+	{0x400, "MASTER"},
+	{0x800, "SLAVE"},
+	{linuxIffUp, "UP"},
+	{0x40, "RUNNING"},
+}
+
+// parseHexFlagBits parses the hex value of /sys/class/net/<iface>/flags
+// without its 0x prefix.
+func parseHexFlagBits(hexStr string) (int64, bool) {
+	bits, err := strconv.ParseInt(hexStr, 16, 32)
 	if err != nil {
-		return []string{}
+		return 0, false
 	}
-	var flags []string
-	for bit, name := range flagsMap {
-		if int(flagsInt)&bit != 0 {
-			flags = append(flags, name)
+	return bits, true
+}
+
+// hexFlagNames names the IFF_* bits set in bits.
+func hexFlagNames(bits int64) []string {
+	flags := []string{}
+	for _, f := range linuxIfFlags {
+		if bits&f.bit != 0 {
+			flags = append(flags, f.name)
 		}
 	}
 	return flags

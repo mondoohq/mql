@@ -90,8 +90,18 @@ type enrichmentFn func(in *Interface)
 func (i *Interface) SetMAC(mac string) {
 	if mac != "" {
 		i.MACAddress = strings.ReplaceAll(mac, "-", ":")
-		i.Vendor = oui.Vendor(i.MACAddress)
+		// An all-zero address (loopback, tunnels) is no address, and its
+		// 00:00:00 prefix would otherwise read as XEROX's OUI.
+		if !isZeroMAC(i.MACAddress) {
+			i.Vendor = oui.Vendor(i.MACAddress)
+		}
 	}
+}
+
+// isZeroMAC reports whether every hex digit of a colon-separated hardware
+// address is zero.
+func isZeroMAC(mac string) bool {
+	return strings.Trim(mac, "0:") == ""
 }
 
 // AddOrUpdateInterfaces adds or updates one or many network interfaces

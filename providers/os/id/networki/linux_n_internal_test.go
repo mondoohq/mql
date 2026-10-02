@@ -34,9 +34,22 @@ func TestParseHexFlags(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run("hexStr="+test.hexStr, func(t *testing.T) {
-			assert.ElementsMatch(t, test.expected, parseHexFlags(test.hexStr))
+			bits, _ := parseHexFlagBits(test.hexStr)
+			assert.ElementsMatch(t, test.expected, hexFlagNames(bits))
 		})
 	}
+}
+
+// /sys/class/net/<iface>/flags values from RHEL 7 come out in the order
+// `ip link` prints.
+func TestParseHexFlagBits_Order(t *testing.T) {
+	bits, ok := parseHexFlagBits("1103")
+	require.True(t, ok)
+	assert.Equal(t, []string{"BROADCAST", "MULTICAST", "PROMISC", "UP"}, hexFlagNames(bits))
+
+	bits, ok = parseHexFlagBits("9")
+	require.True(t, ok)
+	assert.Equal(t, []string{"LOOPBACK", "UP"}, hexFlagNames(bits))
 }
 
 // Every devtype the kernel reports here names a device it synthesized, so
