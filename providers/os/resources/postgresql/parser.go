@@ -88,11 +88,14 @@ type GlobExpander func(pattern string) ([]string, error)
 func ParseConf(path string, fileReader FileReader, dirLister DirLister) (*Conf, error) {
 	c := &Conf{Params: map[string]string{}}
 	visited := map[string]bool{}
-	err := parseConfRec(c, path, fileReader, dirLister, visited)
+	err := parseConfRec(c, path, false, fileReader, dirLister, visited)
 	return c, err
 }
 
-func parseConfRec(c *Conf, path string, fileReader FileReader, dirLister DirLister, visited map[string]bool) error {
+// parseConfRec reads one file and the files it includes. With optional set
+// (an include_if_exists target), a missing path is skipped; a missing file
+// further down, named by a plain include inside it, is still an error.
+func parseConfRec(c *Conf, path string, optional bool, fileReader FileReader, dirLister DirLister, visited map[string]bool) error {
 	// Canonicalise the path before checking the cycle guard so equivalent
 	// spellings (`./foo.conf` vs `conf.d/../foo.conf` vs `foo.conf`) collapse
 	// to the same key. Without this the recursive include detection would
@@ -105,6 +108,9 @@ func parseConfRec(c *Conf, path string, fileReader FileReader, dirLister DirList
 
 	content, err := fileReader(path)
 	if err != nil {
+		if optional && isNotExist(err) {
+			return nil
+		}
 		return err
 	}
 	c.Files = append(c.Files, path)
@@ -132,12 +138,12 @@ func parseConfRec(c *Conf, path string, fileReader FileReader, dirLister DirList
 		switch key {
 		case "include":
 			next := resolveInclude(baseDir, value)
-			if err := parseConfRec(c, next, fileReader, dirLister, visited); err != nil {
+			if err := parseConfRec(c, next, false, fileReader, dirLister, visited); err != nil {
 				return err
 			}
 		case "include_if_exists":
 			next := resolveInclude(baseDir, value)
-			if err := parseConfRec(c, next, fileReader, dirLister, visited); err != nil && !isNotExist(err) {
+			if err := parseConfRec(c, next, true, fileReader, dirLister, visited); err != nil {
 				return err
 			}
 		case "include_dir":
@@ -146,7 +152,7 @@ func parseConfRec(c *Conf, path string, fileReader FileReader, dirLister DirList
 				return err
 			}
 			for _, entry := range entries {
-				if err := parseConfRec(c, entry, fileReader, dirLister, visited); err != nil {
+				if err := parseConfRec(c, entry, false, fileReader, dirLister, visited); err != nil {
 					return err
 				}
 			}
@@ -438,7 +444,7 @@ func ParseHba(content string) []HbaRule {
 // rules in place of its directive, each tagged with the file it came from.
 func ParseHbaFile(path string, fileReader FileReader, dirLister DirLister) ([]HbaRule, error) {
 	var rules []HbaRule
-	err := walkAuthFile(path, fileReader, dirLister, map[string]bool{}, func(file string, rec record) {
+	err := walkAuthFile(path, false, fileReader, dirLister, map[string]bool{}, func(file string, rec record) {
 		if rule, ok := hbaRule(rec); ok {
 			rule.File = file
 			rules = append(rules, rule)
@@ -453,9 +459,10 @@ func ParseHbaFile(path string, fileReader FileReader, dirLister DirLister) ([]Hb
 // `include`, `include_if_exists` or `include_dir`. A relative target is
 // resolved against the directory of the file that names it. A missing
 // `include` target is an error (the server refuses to load the file); a
-// missing `include_if_exists` target or include_dir directory contributes
-// nothing.
-func walkAuthFile(path string, fileReader FileReader, dirLister DirLister, visited map[string]bool, fn func(file string, rec record)) error {
+// missing `include_if_exists` target (optional set) or include_dir directory
+// contributes nothing, while a missing file named by a plain include inside
+// that target is still an error.
+func walkAuthFile(path string, optional bool, fileReader FileReader, dirLister DirLister, visited map[string]bool, fn func(file string, rec record)) error {
 	key := filepath.Clean(path)
 	if visited[key] {
 		return nil
@@ -464,6 +471,9 @@ func walkAuthFile(path string, fileReader FileReader, dirLister DirLister, visit
 
 	content, err := fileReader(path)
 	if err != nil {
+		if optional && isNotExist(err) {
+			return nil
+		}
 		return err
 	}
 	baseDir := filepath.Dir(path)
@@ -479,12 +489,11 @@ func walkAuthFile(path string, fileReader FileReader, dirLister DirLister, visit
 		}
 		switch tokens[0] {
 		case "include":
-			if err := walkAuthFile(resolveInclude(baseDir, tokens[1]), fileReader, dirLister, visited, fn); err != nil {
+			if err := walkAuthFile(resolveInclude(baseDir, tokens[1]), false, fileReader, dirLister, visited, fn); err != nil {
 				return err
 			}
 		case "include_if_exists":
-			err := walkAuthFile(resolveInclude(baseDir, tokens[1]), fileReader, dirLister, visited, fn)
-			if err != nil && !isNotExist(err) {
+			if err := walkAuthFile(resolveInclude(baseDir, tokens[1]), true, fileReader, dirLister, visited, fn); err != nil {
 				return err
 			}
 		case "include_dir":
@@ -493,7 +502,7 @@ func walkAuthFile(path string, fileReader FileReader, dirLister DirLister, visit
 				return err
 			}
 			for _, entry := range entries {
-				if err := walkAuthFile(entry, fileReader, dirLister, visited, fn); err != nil {
+				if err := walkAuthFile(entry, false, fileReader, dirLister, visited, fn); err != nil {
 					return err
 				}
 			}
@@ -653,7 +662,7 @@ func ParseIdent(content string) []IdentMapping {
 // each mapping tagged with the file it came from.
 func ParseIdentFile(path string, fileReader FileReader, dirLister DirLister) ([]IdentMapping, error) {
 	var out []IdentMapping
-	err := walkAuthFile(path, fileReader, dirLister, map[string]bool{}, func(file string, rec record) {
+	err := walkAuthFile(path, false, fileReader, dirLister, map[string]bool{}, func(file string, rec record) {
 		if m, ok := identMapping(rec); ok {
 			m.File = file
 			out = append(out, m)
