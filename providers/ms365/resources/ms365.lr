@@ -2238,7 +2238,9 @@ private microsoft.device @defaults("id displayName") {
 private microsoft.deviceLocalCredential @defaults("deviceName lastBackupDateTime") {
   // Microsoft Entra device identifier of the device that backed up the password
   //
-  // Matches the deviceId field of microsoft.device.
+  // The device's deviceId, not an identifier of its own: Microsoft Entra ID
+  // keeps one backup record per device and keys it by the device. Matches the
+  // deviceId field of microsoft.device.
   id string
   // Display name of the device
   deviceName string
@@ -2270,7 +2272,7 @@ private microsoft.bitlockerRecoveryKey @defaults("deviceId volumeType createdDat
   // Type of volume the key unlocks
   //
   // One of operatingSystemVolume, fixedDataVolume, or removableDataVolume.
-  // Other values may also be returned.
+  // Null when Microsoft Entra ID reports a volume type outside that list.
   volumeType string
   // Device the key was backed up from
   //

@@ -130,26 +130,26 @@ func TestBitlockerRecoveryKeyArgs(t *testing.T) {
 	assert.Nil(t, unknown["deviceId"].Value)
 }
 
-func TestClassifyEscrowError(t *testing.T) {
+func TestClassifyGraphError_Escrow(t *testing.T) {
 	forbidden := odataerrors.NewODataError()
 	forbidden.ResponseStatusCode = http.StatusForbidden
-	err := classifyEscrowError(forbidden, permBitlockerReadBasic)
+	err := classifyGraphError(forbidden, permBitlockerReadBasic)
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
 	var lerr *llx.Error
 	require.True(t, errors.As(err, &lerr))
 	assert.Equal(t, []string{permBitlockerReadBasic}, lerr.Permissions)
 
 	// a refusal that already went through transformError still classifies
-	wrapped := classifyEscrowError(&graphRequestError{msg: "denied", cause: forbidden}, permLapsReadBasic)
+	wrapped := classifyGraphError(&graphRequestError{msg: "denied", cause: forbidden}, permLapsReadBasic)
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(wrapped))
 
 	notFound := odataerrors.NewODataError()
 	notFound.ResponseStatusCode = http.StatusNotFound
-	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(classifyEscrowError(notFound, permLapsReadBasic)))
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(classifyGraphError(notFound, permLapsReadBasic)))
 
 	transport := errors.New("dial tcp: connection refused")
-	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(classifyEscrowError(transport, permLapsReadBasic)))
-	assert.NoError(t, classifyEscrowError(nil, permLapsReadBasic))
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(classifyGraphError(transport, permLapsReadBasic)))
+	assert.NoError(t, classifyGraphError(nil, permLapsReadBasic))
 }
 
 func escrowArgKeys(m map[string]*llx.RawData) []string {

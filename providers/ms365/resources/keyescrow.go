@@ -5,13 +5,10 @@ package resources
 
 import (
 	"context"
-	"net/http"
 	"sync"
 
-	"github.com/cockroachdb/errors"
 	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/ms365/connection"
@@ -43,20 +40,6 @@ type keyEscrowCache struct {
 	devicesOnce       sync.Once
 	devicesByDeviceId map[string]*mqlMicrosoftDevice
 	devicesErr        error
-}
-
-// classifyEscrowError turns a refused escrow listing into a Forbidden error
-// naming the permission the scan identity is missing. Anything else is
-// returned unclassified.
-func classifyEscrowError(err error, permission string) error {
-	if err == nil {
-		return nil
-	}
-	var oDataErr *odataerrors.ODataError
-	if errors.As(err, &oDataErr) && oDataErr != nil && oDataErr.ResponseStatusCode == http.StatusForbidden {
-		return llx.Forbidden(transformError(err), llx.WithPermissions(permission))
-	}
-	return transformError(err)
 }
 
 func escrowMicrosoftRoot(runtime *plugin.Runtime) (*mqlMicrosoft, error) {
@@ -120,12 +103,12 @@ func (a *mqlMicrosoft) loadDeviceLocalCredentials() ([]any, map[string]*mqlMicro
 func fetchDeviceLocalCredentials(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient) ([]models.DeviceLocalCredentialInfoable, error) {
 	resp, err := graphClient.Directory().DeviceLocalCredentials().Get(ctx, nil)
 	if err != nil {
-		return nil, classifyEscrowError(err, permLapsReadBasic)
+		return nil, classifyGraphError(err, permLapsReadBasic)
 	}
 	infos, err := iterate[models.DeviceLocalCredentialInfoable](ctx, resp, graphClient.GetAdapter(),
 		models.CreateDeviceLocalCredentialInfoCollectionResponseFromDiscriminatorValue)
 	if err != nil {
-		return nil, classifyEscrowError(err, permLapsReadBasic)
+		return nil, classifyGraphError(err, permLapsReadBasic)
 	}
 	return infos, nil
 }
@@ -138,12 +121,12 @@ func fetchDeviceLocalCredentials(ctx context.Context, graphClient *msgraphsdkgo.
 func fetchBitlockerRecoveryKeys(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient) ([]models.BitlockerRecoveryKeyable, error) {
 	resp, err := graphClient.InformationProtection().Bitlocker().RecoveryKeys().Get(ctx, nil)
 	if err != nil {
-		return nil, classifyEscrowError(err, permBitlockerReadBasic)
+		return nil, classifyGraphError(err, permBitlockerReadBasic)
 	}
 	keys, err := iterate[models.BitlockerRecoveryKeyable](ctx, resp, graphClient.GetAdapter(),
 		models.CreateBitlockerRecoveryKeyCollectionResponseFromDiscriminatorValue)
 	if err != nil {
-		return nil, classifyEscrowError(err, permBitlockerReadBasic)
+		return nil, classifyGraphError(err, permBitlockerReadBasic)
 	}
 	return keys, nil
 }
