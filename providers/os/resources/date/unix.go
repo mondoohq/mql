@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -97,14 +98,17 @@ func timezoneFromFS(fs afero.Fs) (string, error) {
 		}
 	}
 
-	// 2. Try /etc/timezone (Debian/Ubuntu)
-	if f, err := fs.Open("/etc/timezone"); err == nil {
-		defer f.Close()
-		content, err := io.ReadAll(f)
-		if err == nil {
-			if tz := strings.TrimSpace(string(content)); tz != "" {
-				return tz, nil
-			}
+	// 2. Try /etc/timezone (Debian/Ubuntu). libc reads /etc/localtime, not
+	// /etc/timezone, so when /etc/localtime is a TZif file (a copy rather
+	// than a symlink) the name is accepted only if that zone's file is
+	// byte-identical to it. A stale name falls through to step 4.
+	if tz := readEtcTimezone(fs); tz != "" {
+		localtime, err := afero.ReadFile(fs, "/etc/localtime")
+		if err != nil || !isTZif(localtime) {
+			return tz, nil
+		}
+		if zoneFileMatches(fs, tz, localtime) != zoneMismatch {
+			return tz, nil
 		}
 	}
 
@@ -126,6 +130,52 @@ func timezoneFromFS(fs afero.Fs) (string, error) {
 	}
 
 	return "", fmt.Errorf("could not detect timezone from filesystem")
+}
+
+// readEtcTimezone returns the zone name in /etc/timezone, or "" when the file
+// is missing, unreadable or empty.
+func readEtcTimezone(fs afero.Fs) string {
+	content, err := afero.ReadFile(fs, "/etc/timezone")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(content))
+}
+
+func isTZif(data []byte) bool {
+	return len(data) >= 4 && string(data[:4]) == "TZif"
+}
+
+type zoneFileMatch int
+
+const (
+	// zoneUnknown: no zone file for the name could be read, so nothing
+	// proves or disproves it.
+	zoneUnknown zoneFileMatch = iota
+	zoneMatch
+	// zoneMismatch: the zone file differs from /etc/localtime, or the name
+	// is not a path inside the zoneinfo tree.
+	zoneMismatch
+)
+
+// zoneFileMatches compares the zoneinfo file for the IANA name tz with the
+// contents of /etc/localtime.
+func zoneFileMatches(fs afero.Fs, tz string, localtime []byte) zoneFileMatch {
+	if path.IsAbs(tz) || path.Clean(tz) != tz || tz == ".." || strings.HasPrefix(tz, "../") {
+		return zoneMismatch
+	}
+	result := zoneUnknown
+	for _, base := range []string{"/usr/share/zoneinfo", "/usr/share/lib/zoneinfo"} {
+		candidate, err := afero.ReadFile(fs, base+"/"+tz)
+		if err != nil {
+			continue
+		}
+		if bytes.Equal(candidate, localtime) {
+			return zoneMatch
+		}
+		result = zoneMismatch
+	}
+	return result
 }
 
 // extractTZFromPath extracts the IANA timezone name from a symlink target path.
@@ -157,7 +207,7 @@ func matchLocaltimeToZoneinfo(fs afero.Fs) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(localtime) < 4 || string(localtime[:4]) != "TZif" {
+	if !isTZif(localtime) {
 		return "", fmt.Errorf("/etc/localtime is not a valid TZif file")
 	}
 

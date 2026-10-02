@@ -392,3 +392,60 @@ func TestLocationFromFS(t *testing.T) {
 		assert.Nil(t, LocationFromFS(fs), "a zone the scanner cannot load must report nil, not UTC")
 	})
 }
+
+// A Debian host whose /etc/localtime was replaced by a copy of another zone
+// (cp, not timedatectl) keeps the old name in /etc/timezone. The copied
+// TZif file is what libc reads, so it wins over the stale name.
+func TestTimezoneFromFS_CopiedLocaltimeBeatsStaleEtcTimezone(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	kathmandu := buildTZifV2("<+0545>-5:45")
+	require.NoError(t, afero.WriteFile(fs, "/etc/localtime", kathmandu, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("Etc/UTC\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/usr/share/zoneinfo/Etc/UTC", buildTZifV2("UTC0"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/usr/share/zoneinfo/Asia/Kathmandu", kathmandu, 0o644))
+
+	tz, err := timezoneFromFS(fs)
+	require.NoError(t, err)
+	assert.Equal(t, "Asia/Kathmandu", tz)
+}
+
+// When /etc/timezone names the zone the copied /etc/localtime really is, its
+// name is kept, even where the TZif footer alone would map to another zone
+// sharing the same rules (CST-8 maps to Asia/Shanghai).
+func TestTimezoneFromFS_CopiedLocaltimeConfirmsEtcTimezone(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	taipei := buildTZifV2("CST-8")
+	require.NoError(t, afero.WriteFile(fs, "/etc/localtime", taipei, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("Asia/Taipei\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/usr/share/zoneinfo/Asia/Taipei", taipei, 0o644))
+
+	tz, err := timezoneFromFS(fs)
+	require.NoError(t, err)
+	assert.Equal(t, "Asia/Taipei", tz)
+}
+
+// Without the zone file there is nothing to prove /etc/timezone stale, so it
+// is still trusted (minimal images that copy localtime but ship no tzdata).
+func TestTimezoneFromFS_CopiedLocaltimeWithoutZoneinfoKeepsEtcTimezone(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/etc/localtime", buildTZifV2("CST-8"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("Asia/Taipei\n"), 0o644))
+
+	tz, err := timezoneFromFS(fs)
+	require.NoError(t, err)
+	assert.Equal(t, "Asia/Taipei", tz)
+}
+
+// A name in /etc/timezone that climbs out of the zoneinfo tree must not be
+// confirmed by comparing /etc/localtime with itself.
+func TestTimezoneFromFS_EtcTimezoneOutsideZoneinfoIsNotConfirmed(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	tokyo := buildTZifV2("JST-9")
+	require.NoError(t, afero.WriteFile(fs, "/etc/localtime", tokyo, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("../../../etc/localtime\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/usr/share/zoneinfo/Asia/Tokyo", tokyo, 0o644))
+
+	tz, err := timezoneFromFS(fs)
+	require.NoError(t, err)
+	assert.Equal(t, "Asia/Tokyo", tz)
+}
