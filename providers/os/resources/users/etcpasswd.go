@@ -8,9 +8,11 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/shadow"
 )
 
 // a good description of this file is available at:
@@ -78,11 +80,81 @@ func (s *UnixUserManager) User(id string) (*User, error) {
 
 func (s *UnixUserManager) List() ([]*User, error) {
 	users, err := s.listGetentPasswd()
-	if err == nil && len(users) != 0 {
-		return users, nil
+	if err != nil || len(users) == 0 {
+		// fallback to /etc/passwd
+		users, err = s.listEtcPasswd()
+		if err != nil {
+			return nil, err
+		}
 	}
-	// fallback to /etc/passwd
-	return s.listEtcPasswd()
+	s.setEnabledFromShadow(users, time.Now())
+	return users, nil
+}
+
+const etcShadowPath = "/etc/shadow"
+
+// setEnabledFromShadow derives each user's Enabled state from /etc/shadow.
+// When the file cannot be read (non-root scan, no /etc/shadow on this
+// platform) or has no entry for a user (directory-service accounts), the
+// state is unknown rather than false.
+func (s *UnixUserManager) setEnabledFromShadow(users []*User, now time.Time) {
+	entries, err := s.readShadow()
+	if err != nil {
+		log.Debug().Err(err).Msg("cannot read /etc/shadow, user enabled state is unknown")
+	}
+	ApplyShadowEnabled(users, entries, now)
+}
+
+func (s *UnixUserManager) readShadow() ([]shadow.ShadowEntry, error) {
+	f, err := s.conn.FileSystem().Open(etcShadowPath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return shadow.ParseShadow(f)
+}
+
+// ApplyShadowEnabled sets Enabled on every user that has a shadow entry and
+// marks every other user's state as unknown. A nil entries slice (shadow not
+// readable) marks all users unknown.
+func ApplyShadowEnabled(users []*User, entries []shadow.ShadowEntry, now time.Time) {
+	byName := make(map[string]shadow.ShadowEntry, len(entries))
+	for _, e := range entries {
+		if _, ok := byName[e.User]; !ok {
+			byName[e.User] = e
+		}
+	}
+	for _, u := range users {
+		e, ok := byName[u.Name]
+		if !ok {
+			u.Enabled = false
+			u.EnabledUnknown = true
+			continue
+		}
+		u.Enabled = ShadowAccountEnabled(e, now)
+		u.EnabledUnknown = false
+	}
+}
+
+// ShadowAccountEnabled reports whether a shadow entry describes an account
+// that is neither locked nor expired, matching `passwd -S` and shadow-utils:
+// a password field starting with '!' or '*' is locked (status L), and an
+// account whose expiry date (days since 1970-01-01) is set, positive, and on
+// or before today has expired.
+func ShadowAccountEnabled(e shadow.ShadowEntry, now time.Time) bool {
+	if strings.HasPrefix(e.Password, "!") || strings.HasPrefix(e.Password, "*") {
+		return false
+	}
+	if e.ExpiryDates != "" {
+		expire, err := strconv.ParseInt(e.ExpiryDates, 10, 64)
+		if err == nil && expire > 0 {
+			today := now.UTC().Unix() / 86400
+			if today >= expire {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (s *UnixUserManager) listEtcPasswd() ([]*User, error) {
