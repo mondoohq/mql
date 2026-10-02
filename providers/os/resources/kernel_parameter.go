@@ -52,21 +52,29 @@ func (k *mqlKernel) loadSysctls() (*kernelSysctls, error) {
 	return k.sysctlState, k.sysctlErr
 }
 
-// readLiveSysctls reads the running kernel's parameters. It reports them as
-// not observable when there is no running kernel to read: the connection
-// can't run commands and no /proc/sys was found, which is an image or a
-// mounted filesystem. A running Linux, macOS or BSD kernel exposes hundreds
-// of parameters, so an empty result means nothing was read.
+// readLiveSysctls reads the running kernel's parameters, and reports whether
+// there was a running kernel to read.
+//
+// There is none when the connection can't run commands and the target has
+// no /proc/sys: an image or a mounted filesystem. That is decided before
+// reading, so a read that is attempted and fails is returned as an error
+// rather than reported as "no kernel". A running Linux, macOS or BSD kernel
+// exposes hundreds of parameters, so an empty result also means nothing was
+// read: on Linux the /proc/sys walk skips entries it can't read rather than
+// failing.
 func readLiveSysctls(conn shared.Connection) (map[string]string, bool, error) {
+	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		if _, err := conn.FileSystem().Stat("/proc/sys"); err != nil {
+			return map[string]string{}, false, nil
+		}
+	}
+
 	mm, err := kernel.ResolveManager(conn)
 	if err != nil {
 		return nil, false, err
 	}
 	params, err := mm.Parameters()
 	if err != nil {
-		if !conn.Capabilities().Has(shared.Capability_RunCommand) {
-			return map[string]string{}, false, nil
-		}
 		return nil, false, err
 	}
 	if len(params) == 0 {
@@ -85,6 +93,11 @@ func readLiveSysctls(conn shared.Connection) (map[string]string, bool, error) {
 // error: leaving it out would report a configured value that isn't the one
 // the system applies.
 func readSysctlConfig(runtime *plugin.Runtime, conn shared.Connection) (*kernel.SysctlConfig, error) {
+	// listConfDFiles returns the files it could list alongside the error for
+	// a directory it couldn't. modprobe uses that partial list; here it is
+	// rejected, because a missing directory can hide the file whose
+	// assignment wins, and configured would name a value the system does
+	// not apply.
 	files, err := sysctlConfigFiles(runtime, conn)
 	if err != nil {
 		return nil, err

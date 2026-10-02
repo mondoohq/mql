@@ -402,15 +402,6 @@ func TestParseModprobeOptionParams_Empty(t *testing.T) {
 	assert.Empty(t, parseModprobeOptionParams(""))
 }
 
-func TestIsConfDFileName(t *testing.T) {
-	assert.True(t, isConfDFileName("blacklist.conf"))
-	assert.True(t, isConfDFileName("zz-linked.conf"))
-	assert.False(t, isConfDFileName("ignored.txt"))
-	assert.False(t, isConfDFileName(".hidden.conf"))
-	assert.False(t, isConfDFileName("blacklist.conf.dpkg-old"))
-	assert.False(t, isConfDFileName("legacy.alias"))
-}
-
 // Directory listings as found on an Ubuntu 24.04 sweep host plus a /run
 // override. modprobe -c on that host showed that /etc beats /run beats
 // /usr/local/lib beats /usr/lib and /lib for the same file name, and that

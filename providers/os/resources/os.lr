@@ -6968,8 +6968,11 @@ kernel @defaults("info") {
   info() dict
   // Kernel parameters map (sysctl key-value pairs)
   //
-  // Live values only. Use `sysctls` or `kernel.parameter` for the value
-  // the configuration files set as well.
+  // Live values only, as the kernel prints them. Use `sysctls` or
+  // `kernel.parameter` for the value the configuration files set as well.
+  // Those collapse whitespace in values (the tab in
+  // `net.ipv4.ip_local_port_range` becomes a space), so the same parameter
+  // can read differently here.
   parameters() map[string]string
   // Every kernel parameter that is live, configured, or both
   //
@@ -7025,8 +7028,9 @@ kernel.parameter @defaults("name value configured") {
   // Value the running kernel uses
   //
   // Whitespace runs are collapsed to one space, so a value with several
-  // parts compares equal to the same value in a configuration file. Null
-  // when the parameter is not active.
+  // parts compares equal to the same value in a configuration file:
+  // `32768 60999`, where `kernel.parameters` has `32768\t60999`. Null when
+  // the parameter is not active.
   value string
   // Value the configuration files set
   //
