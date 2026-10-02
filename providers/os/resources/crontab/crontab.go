@@ -25,6 +25,34 @@ type Entry struct {
 // If hasUserField is true, it expects the user field after the time fields
 // (system crontab format). Otherwise, it parses user crontab format.
 func ParseCrontab(r io.Reader, hasUserField bool) ([]Entry, error) {
+	return parseCrontab(r, hasUserField, noLogPrefixNone)
+}
+
+// ParseCronieCrontab parses a crontab the way cronie reads it. cronie lets a
+// privileged crontab (a system crontab, or root's own) start an entry with
+// "-", which only stops cron from logging the command to syslog: SUSE's
+// /etc/crontab runs run-crons as `-*/15 * * * *`. An unprivileged user's
+// crontab may not, and cronie refuses such a line.
+func ParseCronieCrontab(r io.Reader, hasUserField bool, privileged bool) ([]Entry, error) {
+	if privileged {
+		return parseCrontab(r, hasUserField, noLogPrefixStrip)
+	}
+	return parseCrontab(r, hasUserField, noLogPrefixRefuse)
+}
+
+// noLogPrefix says what a leading "-" on an entry means.
+type noLogPrefix int
+
+const (
+	// noLogPrefixNone reads the "-" as part of the minute field
+	noLogPrefixNone noLogPrefix = iota
+	// noLogPrefixStrip drops the "-" and reads the entry after it
+	noLogPrefixStrip
+	// noLogPrefixRefuse leaves out an entry that starts with "-"
+	noLogPrefixRefuse
+)
+
+func parseCrontab(r io.Reader, hasUserField bool, dash noLogPrefix) ([]Entry, error) {
 	var entries []Entry
 
 	scanner := bufio.NewScanner(r)
@@ -44,6 +72,15 @@ func ParseCrontab(r io.Reader, hasUserField bool) ([]Entry, error) {
 			// Check if this looks like a variable assignment (key=value without spaces before =)
 			parts := strings.SplitN(line, "=", 2)
 			if len(parts) == 2 && !strings.ContainsAny(parts[0], " \t") {
+				continue
+			}
+		}
+
+		if strings.HasPrefix(line, "-") {
+			switch dash {
+			case noLogPrefixStrip:
+				line = line[1:]
+			case noLogPrefixRefuse:
 				continue
 			}
 		}

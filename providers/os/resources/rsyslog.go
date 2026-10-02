@@ -6,6 +6,7 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -267,9 +268,17 @@ func (s *mqlRsyslogConf) files(path string) ([]any, error) {
 				if errors.Is(content.Error, resources.NotFoundError{}) {
 					continue
 				}
-				// Other read errors (permission denied, IO) are non-fatal here:
-				// the file is still listed via the resource, and the caller can
-				// inspect it for the error. Don't abort the whole walk.
+				// A file rsyslog reads that the scan may not read (SUSE ships
+				// rsyslog.conf, rsyslog.d/remote.conf and *.frule as 0600) is
+				// a refusal: parsing on without it reported a non-root scan's
+				// remote forwarding and file modes from what was left over.
+				// Before structured errors (ADR 046 §9) the walk went on.
+				if plugin.StructuredErrors() {
+					if errors.Is(content.Error, os.ErrPermission) {
+						return llx.Forbidden(fmt.Errorf("cannot read rsyslog configuration %s: %w", clean, content.Error))
+					}
+					return content.Error
+				}
 				continue
 			}
 

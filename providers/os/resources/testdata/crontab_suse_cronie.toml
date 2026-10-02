@@ -1,0 +1,131 @@
+# /etc/crontab and /etc/cron.d on SLES 15 SP7 (cronie 1.5.7), names, modes and
+# owners as `stat -c "%a %u"` showed them. Every cron.d job touches a marker;
+# the markers that appeared each minute were g04, bak, dotted, dpkgold and
+# okname. cron's journal: BAD FILE MODE for g04badmode, g04exec and g04worldw,
+# WRONG FILE OWNER for g04notroot.
+
+[files."/etc/cron.d"]
+path = "/etc/cron.d"
+[files."/etc/cron.d".stat]
+isdir = true
+
+[files."/etc/crontab"]
+path = "/etc/crontab"
+content = """SHELL=/bin/sh
+PATH=/usr/bin:/usr/sbin:/sbin:/bin:/usr/lib/news/bin
+MAILTO=root
+-*/15 * * * *   root  test -x /usr/lib/cron/run-crons && /usr/lib/cron/run-crons >/dev/null 2>&1
+"""
+[files."/etc/crontab".stat]
+mode = 384
+
+[files."/etc/cron.d/g04"]
+path = "/etc/cron.d/g04"
+content = """SHELL=/bin/bash
+MAILTO=root
+*/5 * * * * root /usr/bin/true g04-a
+-*/10 * * * * root /usr/bin/true g04-nolog
+* * * * * root /usr/bin/touch /var/tmp/g04cron/g04
+"""
+[files."/etc/cron.d/g04".stat]
+mode = 420
+
+[files."/etc/cron.d/g04~"]
+path = "/etc/cron.d/g04~"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/tilde
+"""
+[files."/etc/cron.d/g04~".stat]
+mode = 420
+
+[files."/etc/cron.d/g04badmode"]
+path = "/etc/cron.d/g04badmode"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/badmode
+"""
+[files."/etc/cron.d/g04badmode".stat]
+mode = 436
+
+[files."/etc/cron.d/g04.bak"]
+path = "/etc/cron.d/g04.bak"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/bak
+"""
+[files."/etc/cron.d/g04.bak".stat]
+mode = 420
+
+[files."/etc/cron.d/g04.dotted"]
+path = "/etc/cron.d/g04.dotted"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/dotted
+"""
+[files."/etc/cron.d/g04.dotted".stat]
+mode = 420
+
+[files."/etc/cron.d/g04.dpkg-old"]
+path = "/etc/cron.d/g04.dpkg-old"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/dpkgold
+"""
+[files."/etc/cron.d/g04.dpkg-old".stat]
+mode = 420
+
+[files."/etc/cron.d/g04exec"]
+path = "/etc/cron.d/g04exec"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/exec
+"""
+[files."/etc/cron.d/g04exec".stat]
+mode = 493
+
+[files."/etc/cron.d/#g04hash"]
+path = "/etc/cron.d/#g04hash"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/hash
+"""
+[files."/etc/cron.d/#g04hash".stat]
+mode = 420
+
+[files."/etc/cron.d/g04notroot"]
+path = "/etc/cron.d/g04notroot"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/notroot
+"""
+[files."/etc/cron.d/g04notroot".stat]
+mode = 420
+uid = 1000
+gid = 1000
+
+[files."/etc/cron.d/g04-ok_name"]
+path = "/etc/cron.d/g04-ok_name"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/okname
+"""
+[files."/etc/cron.d/g04-ok_name".stat]
+mode = 420
+
+[files."/etc/cron.d/g04.rpmnew"]
+path = "/etc/cron.d/g04.rpmnew"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/rpmnew
+"""
+[files."/etc/cron.d/g04.rpmnew".stat]
+mode = 420
+
+[files."/etc/cron.d/g04.rpmorig"]
+path = "/etc/cron.d/g04.rpmorig"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/rpmorig
+"""
+[files."/etc/cron.d/g04.rpmorig".stat]
+mode = 420
+
+[files."/etc/cron.d/g04.rpmsave"]
+path = "/etc/cron.d/g04.rpmsave"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/rpmsave
+"""
+[files."/etc/cron.d/g04.rpmsave".stat]
+mode = 420
+
+[files."/etc/cron.d/g04worldw"]
+path = "/etc/cron.d/g04worldw"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/worldw
+"""
+[files."/etc/cron.d/g04worldw".stat]
+mode = 438
+
+[files."/etc/cron.d/.g04hidden"]
+path = "/etc/cron.d/.g04hidden"
+content = """* * * * * root /usr/bin/touch /var/tmp/g04cron/hidden
+"""
+[files."/etc/cron.d/.g04hidden".stat]
+mode = 420
