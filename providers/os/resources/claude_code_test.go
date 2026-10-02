@@ -558,3 +558,73 @@ func jsonString(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
 }
+
+// The live state and backup contents below mirror an Ubuntu host where
+// `claude mcp add --scope user real-added-ubuntu -- echo hi` ran after a
+// `claude mcp remove`: Claude Code snapshots the old file into backups/ before
+// writing, so the newest backup is one change behind the live ~/.claude.json.
+const (
+	testClaudeLiveState = `{"oauthAccount":{"accountUuid":"uuid-u-primary","emailAddress":"ubuntu@example.com"},
+"mcpServers":{"user-fs":{"command":"npx"},"real-added-ubuntu":{"type":"stdio","command":"echo","args":["hi"],"env":{}}}}`
+	testClaudeNewestBackup = `{"oauthAccount":{"accountUuid":"uuid-u-backup","emailAddress":"ubuntu@example.com"},
+"mcpServers":{"user-fs":{"command":"npx"}}}`
+	testClaudeOlderBackup = `{"oauthAccount":{"accountUuid":"uuid-u-old"},"mcpServers":{}}`
+)
+
+func writeClaudeBackups(t *testing.T, afs *afero.Afero, configDir string) {
+	t.Helper()
+	require.NoError(t, afs.WriteFile(configDir+"/backups/.claude.json.backup.1790911549739", []byte(testClaudeOlderBackup), 0o644))
+	require.NoError(t, afs.WriteFile(configDir+"/backups/.claude.json.backup.1790913703572", []byte(testClaudeNewestBackup), 0o644))
+	require.NoError(t, afs.WriteFile(configDir+"/backups/.claude.json.backup.notanumber", []byte(`{"stale":true}`), 0o644))
+}
+
+func TestReadClaudeStatePrefersLiveFileInHome(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	writeClaudeBackups(t, afs, "/home/ubuntu/.claude")
+	require.NoError(t, afs.WriteFile("/home/ubuntu/.claude.json", []byte(testClaudeLiveState), 0o644))
+
+	state, err := readClaudeState(afs, "/home/ubuntu/.claude")
+	require.NoError(t, err)
+	assert.Equal(t, "uuid-u-primary", state.OAuthAccount.AccountUuid)
+	assert.Contains(t, state.McpServers, "real-added-ubuntu")
+}
+
+func TestReadClaudeStateCustomConfigDir(t *testing.T) {
+	// CLAUDE_CONFIG_DIR=/srv/claude keeps .claude.json inside that directory.
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	writeClaudeBackups(t, afs, "/srv/claude")
+	require.NoError(t, afs.WriteFile("/srv/claude/.claude.json", []byte(testClaudeLiveState), 0o644))
+	// A ~/.claude.json-style sibling must not be picked up for a custom dir.
+	require.NoError(t, afs.WriteFile("/srv/.claude.json", []byte(testClaudeOlderBackup), 0o644))
+
+	state, err := readClaudeState(afs, "/srv/claude")
+	require.NoError(t, err)
+	assert.Equal(t, "uuid-u-primary", state.OAuthAccount.AccountUuid)
+}
+
+func TestReadClaudeStateFallsBackToNewestBackup(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	writeClaudeBackups(t, afs, "/home/ubuntu/.claude")
+
+	state, err := readClaudeState(afs, "/home/ubuntu/.claude")
+	require.NoError(t, err)
+	assert.Equal(t, "uuid-u-backup", state.OAuthAccount.AccountUuid)
+	assert.NotContains(t, state.McpServers, "real-added-ubuntu")
+}
+
+func TestReadClaudeStateNothingIsNotExist(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	_, err := readClaudeState(afs, "/home/ubuntu/.claude")
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestReadClaudeStateMalformedLiveFileIsAnError(t *testing.T) {
+	// A live file that doesn't parse must not be papered over with an older
+	// backup: that would report state the user has since changed.
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	writeClaudeBackups(t, afs, "/home/ubuntu/.claude")
+	require.NoError(t, afs.WriteFile("/home/ubuntu/.claude.json", []byte(`{"mcpServers":`), 0o644))
+
+	_, err := readClaudeState(afs, "/home/ubuntu/.claude")
+	assert.Error(t, err)
+}

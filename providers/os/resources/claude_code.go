@@ -560,23 +560,50 @@ func pathToProjectDir(path string) string {
 
 func (r *mqlClaudeCode) loadBackupState() (*claudeBackupState, error) {
 	r.backupOnce.Do(func() {
-		afs := r.afs()
-		dir := r.configDir()
-
-		backupFile, err := findLatestBackupAfero(afs, dir)
-		if err != nil {
-			r.backupErr = err
-			return
-		}
-		var state claudeBackupState
-		if err := readJSONFileAfero(afs, dir, filepath.Join("backups", backupFile), &state); err != nil {
-			r.backupErr = err
-			return
-		}
-		r.backupState = &state
+		r.backupState, r.backupErr = readClaudeState(r.afs(), r.configDir())
 	})
 
 	return r.backupState, r.backupErr
+}
+
+// claudeStateFiles returns the locations of Claude Code's live global state
+// file for a config directory, in lookup order. With CLAUDE_CONFIG_DIR set,
+// Claude Code keeps .claude.json inside that directory; in the default layout
+// the config directory is ~/.claude and the state file is ~/.claude.json next
+// to it.
+func claudeStateFiles(configDir string) []string {
+	files := []string{filepath.Join(configDir, ".claude.json")}
+	if filepath.Base(configDir) == defaultClaudeCodeConfigDir {
+		files = append(files, filepath.Join(filepath.Dir(configDir), ".claude.json"))
+	}
+	return files
+}
+
+// readClaudeState reads Claude Code's global state (.claude.json). The live
+// file is authoritative: Claude Code snapshots it into backups/ before a
+// write, so the newest backup lags the live file by one change. The newest
+// backup is only the fallback for when no live file exists.
+func readClaudeState(afs *afero.Afero, configDir string) (*claudeBackupState, error) {
+	for _, path := range claudeStateFiles(configDir) {
+		var state claudeBackupState
+		err := readJSONFileAfero(afs, "", path, &state)
+		if err == nil {
+			return &state, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	}
+
+	backupFile, err := findLatestBackupAfero(afs, configDir)
+	if err != nil {
+		return nil, err
+	}
+	var state claudeBackupState
+	if err := readJSONFileAfero(afs, configDir, filepath.Join("backups", backupFile), &state); err != nil {
+		return nil, err
+	}
+	return &state, nil
 }
 
 func (r *mqlClaudeCode) loadOAuthAccount() (*oauthAccount, error) {
