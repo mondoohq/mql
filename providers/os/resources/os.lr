@@ -9657,10 +9657,11 @@ private apparmor.process @defaults("pid profile status") {
 // SELinux mandatory access control
 //
 // SELinux enforcement mode, configured mode, active policy type, tunable
-// booleans, and loaded policy modules. The runtime `mode` (from
-// getenforce, /sys/fs/selinux/enforce, or config) may differ from
-// `configMode`, which is what persists across reboot; compare the two to
-// catch a system left permissive at runtime.
+// booleans, and loaded policy modules. The runtime `mode` (from getenforce
+// or /sys/fs/selinux on a running system, from /etc/selinux/config in a disk
+// or image scan) may differ from `configMode`, which is what persists across
+// reboot; compare the two to catch a system left permissive at runtime or
+// booted with SELinux disabled.
 selinux @defaults("mode") {
   // Whether SELinux is installed on the system
   installed() bool

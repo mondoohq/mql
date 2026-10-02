@@ -213,3 +213,29 @@ func TestSelinuxBooleanFileValue(t *testing.T) {
 	assert.True(t, selinuxBooleanFileValue([]byte("1 0")))
 	assert.True(t, selinuxBooleanFileValue([]byte("1\n")))
 }
+
+// Debian 9 to 13 with the SELinux packages installed and SELINUX=permissive
+// configured, booted without SELinux: /sys/fs/selinux does not exist and a
+// non-root PATH has no getenforce. The kernel enforces nothing.
+func TestSelinuxRuntimeMode(t *testing.T) {
+	mode, err := selinuxRuntimeMode(false, nil, "permissive")
+	require.NoError(t, err)
+	assert.Equal(t, "disabled", mode)
+
+	// no SELinux on the host at all
+	mode, err = selinuxRuntimeMode(false, nil, "")
+	require.NoError(t, err)
+	assert.Equal(t, "", mode)
+
+	// RHEL with SELinux enabled: the enforce file wins over the config
+	mode, err = selinuxRuntimeMode(true, []byte("1"), "permissive")
+	require.NoError(t, err)
+	assert.Equal(t, "enforcing", mode)
+
+	mode, err = selinuxRuntimeMode(true, []byte("0\n"), "enforcing")
+	require.NoError(t, err)
+	assert.Equal(t, "permissive", mode)
+
+	_, err = selinuxRuntimeMode(true, []byte(""), "enforcing")
+	assert.Error(t, err)
+}

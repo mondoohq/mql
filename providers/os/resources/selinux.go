@@ -5,6 +5,7 @@ package resources
 
 import (
 	"bufio"
+	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -37,6 +38,14 @@ func (s *mqlSelinuxModule) id() (string, error) {
 	return "selinux.module:" + s.Name.Data, nil
 }
 
+// getenforceCmd runs getenforce from /usr/sbin, where libselinux installs it
+// on every distribution, before searching PATH. A non-root PATH on Debian has
+// no sbin directory, and getenforce needs no privileges.
+const getenforceCmd = "/usr/sbin/getenforce 2>/dev/null || getenforce"
+
+// selinuxfsPath is where the kernel exposes SELinux while it is enabled.
+const selinuxfsPath = "/sys/fs/selinux"
+
 // fetchGetenforce runs getenforce once and caches the result.
 // Uses double-checked locking (same pattern as apparmor.fetchStatus):
 // the first unlocked check is the fast path for already-cached results,
@@ -58,7 +67,7 @@ func (s *mqlSelinux) fetchGetenforce() (available bool, mode string, err error) 
 	}
 
 	o, err := CreateResource(s.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("getenforce"),
+		"command": llx.StringData(getenforceCmd),
 	})
 	if err != nil {
 		s.getenforced = true
@@ -95,6 +104,16 @@ func (s *mqlSelinux) installed() (bool, error) {
 }
 
 func (s *mqlSelinux) mode() (string, error) {
+	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
+	if !ok || !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		// A disk or image scan has no running kernel, so the configured
+		// mode is the only answer.
+		if err := s.parseConfig(); err != nil {
+			return "", err
+		}
+		return s.cfgMode, nil
+	}
+
 	avail, mode, err := s.fetchGetenforce()
 	if err != nil {
 		return "", err
@@ -102,24 +121,46 @@ func (s *mqlSelinux) mode() (string, error) {
 	if avail {
 		return mode, nil
 	}
-	// Fall back to /sys/fs/selinux/enforce (available on live systems without
-	// getenforce in $PATH): contains "1" for enforcing, "0" for permissive.
-	if conn, ok := s.MqlRuntime.Connection.(shared.Connection); ok {
-		data, err := afero.ReadFile(conn.FileSystem(), "/sys/fs/selinux/enforce")
-		if err == nil {
-			switch strings.TrimSpace(string(data)) {
-			case "1":
-				return "enforcing", nil
-			case "0":
-				return "permissive", nil
-			}
+
+	// Without getenforce, the kernel's selinuxfs answers. The configured mode
+	// does not: SELINUX=permissive in /etc/selinux/config on a host booted
+	// with SELinux disabled is not what the kernel enforces.
+	fs := conn.FileSystem()
+	present, err := afero.DirExists(fs, selinuxfsPath)
+	if err != nil {
+		return "", err
+	}
+	var enforce []byte
+	if present {
+		enforce, err = afero.ReadFile(fs, selinuxfsPath+"/enforce")
+		if err != nil {
+			return "", fmt.Errorf("could not read SELinux mode from %s/enforce: %w", selinuxfsPath, err)
 		}
 	}
-	// Fall back to configured mode from /etc/selinux/config (disk scans)
 	if err := s.parseConfig(); err != nil {
 		return "", err
 	}
-	return s.cfgMode, nil
+	return selinuxRuntimeMode(present, enforce, s.cfgMode)
+}
+
+// selinuxRuntimeMode reports the mode a live kernel enforces from selinuxfs:
+// its enforce file holds "1" for enforcing and "0" for permissive, and the
+// file system is not there while SELinux is disabled. A host that does not
+// have SELinux at all (no configured mode) keeps an empty mode.
+func selinuxRuntimeMode(selinuxfsPresent bool, enforce []byte, configMode string) (string, error) {
+	if !selinuxfsPresent {
+		if configMode == "" {
+			return "", nil
+		}
+		return "disabled", nil
+	}
+	switch strings.TrimSpace(string(enforce)) {
+	case "1":
+		return "enforcing", nil
+	case "0":
+		return "permissive", nil
+	}
+	return "", fmt.Errorf("unexpected SELinux enforce value %q", strings.TrimSpace(string(enforce)))
 }
 
 // parseConfig reads /etc/selinux/config and extracts SELINUX= and SELINUXTYPE= values.
