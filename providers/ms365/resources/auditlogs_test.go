@@ -103,26 +103,28 @@ func TestInitAuditLogListFillsFields(t *testing.T) {
 	assert.Equal(t, "microsoft.auditLogs.directoryAudits/since/default/filter/<none>", args["__id"].Value)
 }
 
-func odataErrWithStatus(status int, code string) error {
-	err := odataErrWithCode(code)
-	err.ResponseStatusCode = status
-	return err
-}
-
 func TestClassifyAuditLogError(t *testing.T) {
 	assert.Nil(t, classifyAuditLogError(nil))
 
-	denied := classifyAuditLogError(transformError(odataErrWithStatus(http.StatusForbidden, "Authorization_RequestDenied")))
+	denied := classifyAuditLogError(transformError(odataErrWithStatus("Authorization_RequestDenied", http.StatusForbidden)))
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(denied))
 	var e *llx.Error
 	require.True(t, errors.As(denied, &e))
 	assert.Equal(t, []string{"AuditLog.Read.All"}, e.Permissions)
 
-	unlicensed := classifyAuditLogError(transformError(odataErrWithStatus(http.StatusForbidden, graphCodeNonPremiumTenant)))
+	unlicensed := classifyAuditLogError(transformError(odataErrWithStatus(graphCodeNonPremiumTenant, http.StatusForbidden)))
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE, llx.KindOf(unlicensed))
 
-	badRequest := odataErrWithStatus(http.StatusBadRequest, "BadRequest")
-	assert.Equal(t, badRequest, classifyAuditLogError(badRequest))
+	// An error straight from the SDK is classified the same as one that
+	// already went through transformError.
+	rawDenied := classifyAuditLogError(odataErrWithStatus("Authorization_RequestDenied", http.StatusForbidden))
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(rawDenied))
+	rawUnlicensed := classifyAuditLogError(odataErrWithStatus(graphCodeNonPremiumTenant, http.StatusForbidden))
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE, llx.KindOf(rawUnlicensed))
+
+	badRequest := classifyAuditLogError(odataErrWithStatus("BadRequest", http.StatusBadRequest))
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(badRequest))
+	assert.Equal(t, http.StatusBadRequest, graphStatusCode(badRequest), "the Graph error stays reachable")
 
 	transport := &net.OpError{Op: "dial", Err: errors.New("connection refused")}
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(classifyAuditLogError(transport)))

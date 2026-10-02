@@ -13,7 +13,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/microsoftgraph/msgraph-sdk-go/auditlogs"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/ms365/connection"
@@ -126,30 +125,17 @@ func windowOf(since plugin.TValue[*time.Time], filter plugin.TValue[string]) aud
 	return w
 }
 
-// classifyAuditLogError turns a refused audit log request into a classified
-// error. A tenant without the required Entra ID license gets NotApplicable,
-// any other 403 is a missing AuditLog.Read.All grant. Everything else is
-// returned as is.
+// classifyAuditLogError turns a failed audit log request into the error the
+// list reports. A tenant without the Entra ID license the endpoint needs gets
+// NotApplicable; any other 403 is a missing AuditLog.Read.All grant.
 func classifyAuditLogError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if graphStatusCode(err) != http.StatusForbidden {
-		return err
+	if graphStatusCode(err) == http.StatusForbidden && graphErrorCode(err) == graphCodeNonPremiumTenant {
+		return llx.NotApplicable(transformError(err))
 	}
-	if graphErrorCode(err) == graphCodeNonPremiumTenant {
-		return llx.NotApplicable(err)
-	}
-	return llx.Forbidden(err, llx.WithPermissions(auditLogReadPermission))
-}
-
-// graphStatusCode returns the HTTP status of a v1 Graph ODataError, or 0.
-func graphStatusCode(err error) int {
-	var oDataErr *odataerrors.ODataError
-	if errors.As(err, &oDataErr) && oDataErr != nil {
-		return oDataErr.ResponseStatusCode
-	}
-	return 0
+	return classifyGraphError(err, auditLogReadPermission)
 }
 
 // auditLogRefs resolves the directory objects named by audit events against
@@ -272,7 +258,7 @@ func (a *mqlMicrosoftAuditLogsDirectoryAudits) list() ([]any, error) {
 		},
 	})
 	if err != nil {
-		return nil, classifyAuditLogError(transformError(err))
+		return nil, classifyAuditLogError(err)
 	}
 	audits, err := iterate[models.DirectoryAuditable](ctx, resp, graphClient.GetAdapter(), models.CreateDirectoryAuditCollectionResponseFromDiscriminatorValue)
 	if err != nil {
@@ -441,7 +427,7 @@ func (a *mqlMicrosoftAuditLogsProvisioningEvents) list() ([]any, error) {
 		},
 	})
 	if err != nil {
-		return nil, classifyAuditLogError(transformError(err))
+		return nil, classifyAuditLogError(err)
 	}
 	events, err := iterate[models.ProvisioningObjectSummaryable](ctx, resp, graphClient.GetAdapter(), models.CreateProvisioningObjectSummaryCollectionResponseFromDiscriminatorValue)
 	if err != nil {
