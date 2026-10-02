@@ -28,6 +28,8 @@ var defaultPhpPaths = []string{
 	"/app",
 	"/var/www/html",
 	"/var/www",
+	// SUSE's Apache document root
+	"/srv/www/htdocs",
 	"/usr/src/app",
 	"/home/*/app",
 }

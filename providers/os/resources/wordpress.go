@@ -17,6 +17,9 @@ import (
 
 // defaultWordPressPluginPaths are searched for WordPress plugin directories.
 var defaultWordPressPluginPaths = []string{
+	// SUSE's Apache document root, with WordPress in it or in a subdirectory
+	"/srv/www/htdocs/wp-content/plugins",
+	"/srv/www/htdocs/wordpress/wp-content/plugins",
 	"/var/www/html/wp-content/plugins",
 	"/var/www/wordpress/wp-content/plugins",
 	"/usr/share/wordpress/wp-content/plugins",
