@@ -86,3 +86,52 @@ func TestSolarisNtpConfPath(t *testing.T) {
 	assert.Equal(t, "/etc/inet/ntp.conf", solarisNtpConfPath("svcprop: Pattern 'svc:/network/ntp:default' doesn't match any entities\n", 1))
 	assert.Equal(t, "/etc/inet/ntp.conf", solarisNtpConfPath("\"\"\n", 0))
 }
+
+// pool and peer lines are time sources as much as server lines; stock Debian
+// and Ubuntu configure only pools.
+func TestNtpConfPoolsAndPeers(t *testing.T) {
+	settings := anyLines(
+		"driftfile /var/lib/ntpsec/ntp.drift",
+		"pool 0.debian.pool.ntp.org iburst",
+		"pool\t1.debian.pool.ntp.org iburst",
+		"server 192.0.2.40 iburst",
+		"peer 192.0.2.50",
+		"restrict default kod nomodify nopeer noquery limited",
+	)
+	n := &mqlNtpConf{}
+
+	pools, err := n.pools(settings)
+	assert.NoError(t, err)
+	assert.Equal(t, []any{"0.debian.pool.ntp.org iburst", "1.debian.pool.ntp.org iburst"}, pools)
+
+	peers, err := n.peers(settings)
+	assert.NoError(t, err)
+	assert.Equal(t, []any{"192.0.2.50"}, peers)
+
+	servers, err := n.servers(settings)
+	assert.NoError(t, err)
+	assert.Equal(t, []any{"192.0.2.40 iburst"}, servers)
+}
+
+func TestNtpConfPath(t *testing.T) {
+	has := func(paths ...string) func(string) bool {
+		return func(p string) bool {
+			for _, x := range paths {
+				if x == p {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	// classic ntp (Debian 9 to 11)
+	assert.Equal(t, "/etc/ntp.conf", ntpConfPath(has("/etc/ntp.conf")))
+	// NTPsec on Debian 12 and 13: only its own file
+	assert.Equal(t, "/etc/ntpsec/ntp.conf", ntpConfPath(has("/etc/ntpsec/ntp.conf")))
+	// NTPsec installed over a leftover /etc/ntp.conf
+	assert.Equal(t, "/etc/ntpsec/ntp.conf", ntpConfPath(has("/etc/ntp.conf", "/etc/ntpsec/ntp.conf", ntpsecDpkgList)))
+	// NTPsec removed (conffile left), classic ntp in use
+	assert.Equal(t, "/etc/ntp.conf", ntpConfPath(has("/etc/ntp.conf", "/etc/ntpsec/ntp.conf")))
+	// nothing installed
+	assert.Equal(t, "/etc/ntp.conf", ntpConfPath(has()))
+}

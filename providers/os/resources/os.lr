@@ -8764,12 +8764,14 @@ secpol {
 
 // NTP daemon configuration
 //
-// Classic ntpd configuration parsed into structured directives. `servers`
-// lists the configured upstream time sources, `restrict` reports the access
-// control directives that govern which peers and clients may interact with
-// the daemon, and `fudge` carries reference-clock adjustments. `settings`
-// returns every effective directive line. Select a file with
-// `ntp.conf("...")`.
+// Classic ntpd and NTPsec configuration parsed into structured directives.
+// `servers`, `pools`, and `peers` list the configured upstream time sources,
+// `restrict` reports the access control directives that govern which peers
+// and clients may interact with the daemon, and `fudge` carries
+// reference-clock adjustments. `settings` returns every effective directive
+// line. The default file is /etc/ntp.conf, or /etc/ntpsec/ntp.conf where
+// NTPsec keeps it (Debian 12 and later, Ubuntu 24.04 and later). Select a
+// file with `ntp.conf("...")`.
 ntp.conf {
   init(path string)
   // File of the NTP service configuration
@@ -8780,6 +8782,14 @@ ntp.conf {
   settings(content) []string
   // List of servers for the NTP service
   servers(settings) []string
+  // List of pools for the NTP service
+  //
+  // Each `pool` line with its arguments, for example `0.debian.pool.ntp.org iburst`. A pool resolves to several servers, and stock Debian and Ubuntu configure their time sources only this way.
+  pools(settings) []string
+  // List of symmetric peers for the NTP service
+  //
+  // Each `peer` line with its arguments.
+  peers(settings) []string
   // List of access control restrictions for the NTP service
   restrict(settings) []string
   // Additional information for clock drivers

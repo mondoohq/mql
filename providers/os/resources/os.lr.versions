@@ -2886,6 +2886,8 @@ ntp.conf 9.0.1
 ntp.conf.content 9.0.1
 ntp.conf.file 9.0.1
 ntp.conf.fudge 9.0.1
+ntp.conf.peers 14.14.1
+ntp.conf.pools 14.14.1
 ntp.conf.restrict 9.0.1
 ntp.conf.servers 9.0.1
 ntp.conf.settings 9.0.1

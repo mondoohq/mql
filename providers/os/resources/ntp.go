@@ -34,6 +34,27 @@ func initNtpConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 
 const defaultNtpConf = "/etc/ntp.conf"
 
+// NTPsec on Debian (12 and later) and Ubuntu (24.04 and later) reads
+// /etc/ntpsec/ntp.conf. The dpkg file list says the package is installed, as
+// opposed to removed with its conffiles left behind.
+const (
+	ntpsecNtpConf  = "/etc/ntpsec/ntp.conf"
+	ntpsecDpkgList = "/var/lib/dpkg/info/ntpsec.list"
+)
+
+// ntpConfPath picks the file ntpd reads on hosts other than Solaris: NTPsec's
+// when NTPsec is installed or when only its file is there, /etc/ntp.conf
+// otherwise.
+func ntpConfPath(exists func(path string) bool) string {
+	if !exists(ntpsecNtpConf) {
+		return defaultNtpConf
+	}
+	if exists(ntpsecDpkgList) || !exists(defaultNtpConf) {
+		return ntpsecNtpConf
+	}
+	return defaultNtpConf
+}
+
 // Solaris keeps its ntp configuration under /etc/inet, and the file ntpd reads
 // is an SMF property of the ntp service: the Oracle Cloud image points it at
 // /etc/inet/ntp.linklocal.
@@ -80,6 +101,12 @@ func (s *mqlNtpConf) file() (*mqlFile, error) {
 			return nil, exit.Error
 		}
 		path = solarisNtpConfPath(cmd.GetStdout().Data, exit.Data)
+	} else if ok {
+		fs := conn.FileSystem()
+		path = ntpConfPath(func(p string) bool {
+			_, err := fs.Stat(p)
+			return err == nil
+		})
 	}
 
 	f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
@@ -117,6 +144,14 @@ func (s *mqlNtpConf) settings(content string) ([]any, error) {
 
 func (s *mqlNtpConf) servers(settings []any) ([]any, error) {
 	return directiveValues(settings, "server"), nil
+}
+
+func (s *mqlNtpConf) pools(settings []any) ([]any, error) {
+	return directiveValues(settings, "pool"), nil
+}
+
+func (s *mqlNtpConf) peers(settings []any) ([]any, error) {
+	return directiveValues(settings, "peer"), nil
 }
 
 func (s *mqlNtpConf) restrict(settings []any) ([]any, error) {

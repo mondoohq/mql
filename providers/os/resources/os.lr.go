@@ -10066,6 +10066,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ntp.conf.servers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNtpConf).GetServers()).ToDataRes(types.Array(types.String))
 	},
+	"ntp.conf.pools": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlNtpConf).GetPools()).ToDataRes(types.Array(types.String))
+	},
+	"ntp.conf.peers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlNtpConf).GetPeers()).ToDataRes(types.Array(types.String))
+	},
 	"ntp.conf.restrict": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNtpConf).GetRestrict()).ToDataRes(types.Array(types.String))
 	},
@@ -28229,6 +28235,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ntp.conf.servers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlNtpConf).Servers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ntp.conf.pools": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlNtpConf).Pools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ntp.conf.peers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlNtpConf).Peers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ntp.conf.restrict": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -69491,6 +69505,8 @@ type mqlNtpConf struct {
 	Content  plugin.TValue[string]
 	Settings plugin.TValue[[]any]
 	Servers  plugin.TValue[[]any]
+	Pools    plugin.TValue[[]any]
+	Peers    plugin.TValue[[]any]
 	Restrict plugin.TValue[[]any]
 	Fudge    plugin.TValue[[]any]
 }
@@ -69578,6 +69594,28 @@ func (c *mqlNtpConf) GetServers() *plugin.TValue[[]any] {
 		}
 
 		return c.servers(vargSettings.Data)
+	})
+}
+
+func (c *mqlNtpConf) GetPools() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Pools, func() ([]any, error) {
+		vargSettings := c.GetSettings()
+		if vargSettings.Error != nil {
+			return nil, vargSettings.Error
+		}
+
+		return c.pools(vargSettings.Data)
+	})
+}
+
+func (c *mqlNtpConf) GetPeers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Peers, func() ([]any, error) {
+		vargSettings := c.GetSettings()
+		if vargSettings.Error != nil {
+			return nil, vargSettings.Error
+		}
+
+		return c.peers(vargSettings.Data)
 	})
 }
 

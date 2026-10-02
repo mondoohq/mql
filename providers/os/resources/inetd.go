@@ -10,13 +10,31 @@ import (
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/inetd"
 )
 
 const (
 	defaultInetdConfig    = "/etc/inetd.conf"
 	defaultInetdConfigDir = "/etc/inetd.d"
+	// debianInetutilsInetd is GNU inetutils' inetd as Debian and Ubuntu
+	// install it (package inetutils-inetd)
+	debianInetutilsInetd = "/usr/sbin/inetutils-inetd"
 )
+
+// inetdReadsDropIns reports whether the host's inetd reads /etc/inetd.d next
+// to /etc/inetd.conf. GNU inetutils' inetd does. openbsd-inetd, Debian's and
+// Ubuntu's default inetd, reads only inetd.conf, so on Debian-family hosts the
+// directory counts only when inetutils-inetd is installed. Other platforms
+// keep reading it.
+func inetdReadsDropIns(conn shared.Connection) bool {
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil || !asset.Platform.IsFamily("debian") {
+		return true
+	}
+	_, err := conn.FileSystem().Stat(debianInetutilsInetd)
+	return err == nil
+}
 
 func initInetdConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if x, ok := args["path"]; ok {
@@ -65,9 +83,13 @@ func (s *mqlInetdConfig) files(file *mqlFile) ([]any, error) {
 	res := []any{file}
 
 	// Drop-in files under /etc/inetd.d are only part of the default
-	// configuration. When the caller points at a custom file, we read just
-	// that file.
-	if file.Path.Data == defaultInetdConfig {
+	// configuration, and only for an inetd that reads them. When the caller
+	// points at a custom file, we read just that file.
+	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return nil, errors.New("wrong connection type")
+	}
+	if file.Path.Data == defaultInetdConfig && inetdReadsDropIns(conn) {
 		dropins, err := s.dropInFiles()
 		if err != nil {
 			return nil, err
