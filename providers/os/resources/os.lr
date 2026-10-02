@@ -6530,9 +6530,10 @@ systemd.resolved @defaults("active dns") {
 // daemon is `active`, whether the system clock is currently
 // `synchronized`, the configured `servers` and `fallbackServers`, the
 // currently selected NTP `serverName` and `serverAddress`, the current
-// poll interval, and the leap-second status. Backed by `timedatectl
-// show` and `timedatectl show-timesync`. Useful for asserting that time
-// is synchronized to an approved source.
+// poll interval, and the leap-second status. Only a running daemon reports
+// its servers, poll interval and leap status, so those fields are null while
+// systemd-timesyncd is not active. Useful for asserting that time is
+// synchronized to an approved source.
 systemd.timesyncd @defaults("active synchronized serverName") {
   // Whether the systemd-timesyncd daemon is currently active
   active() bool
