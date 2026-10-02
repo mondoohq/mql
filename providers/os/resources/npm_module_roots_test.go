@@ -184,3 +184,19 @@ specifiers:
 	require.NoError(t, err)
 	assert.Equal(t, []string{"browserslist@4.21.4"}, npmNameVersions(direct))
 }
+
+// Fails if /usr/lib64 is dropped from defaultNpmPaths: on SLES and openSUSE
+// Leap the npm bundled with each nodejs package is the only npm on the host,
+// and npm.packages.list.none(name == "npm") passes.
+func TestCollectNpmPackagesInPaths_suseLib64BundledNpm(t *testing.T) {
+	mockFS := afero.NewMemMapFs()
+	// SLES 16.0 with nodejs22 and nodejs24: no /usr/lib/node_modules, each
+	// npm in /usr/lib64/node_modules/npm<major> (versions from those hosts)
+	writeNpmManifest(t, mockFS, "/usr/lib64/node_modules/npm22", "npm", "10.9.8")
+	writeNpmManifest(t, mockFS, "/usr/lib64/node_modules/npm24", "npm", "11.16.0")
+
+	r := npmTestRuntime(t, mockFS)
+	direct, _, _, err := collectNpmPackagesInPaths(r, mockFS, defaultNpmPaths)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"npm@10.9.8", "npm@11.16.0"}, npmNameVersions(direct))
+}

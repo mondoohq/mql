@@ -37,6 +37,8 @@ var defaultNpmPaths = []string{
 	"/usr/local/lib",
 	"/opt/homebrew/lib",
 	"/usr/lib",
+	// SUSE: nodejs's bundled npm is installed as /usr/lib64/node_modules/npm<major>
+	"/usr/lib64",
 	// Fedora and RHEL 10 nodejs streams, e.g. nodejs24-npm
 	"/usr/lib/node_modules_*",
 	// Debian and Ubuntu packaged modules (node-*, npm)
