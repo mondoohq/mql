@@ -84,7 +84,7 @@ func TestRawValuesEqual(t *testing.T) {
 	v4 := ParseIP("192.0.2.1")
 	// The same address held in its 16-byte form, as net.ParseIP returns it.
 	v4in16 := v4
-	v4in16.IP = v4.IP.To16()
+	v4in16.IP = v4.To16()
 	require.Len(t, v4in16.IP, 16)
 
 	withPrefix := ParseIP("192.0.2.1/25")
