@@ -70,9 +70,11 @@ func (c *mqlOllamaConfig) resolve() (*ollama.Config, error) {
 
 	unit, hasUnit := systemd.ResolveUnitEnv(afs, ollama.UnitName)
 	if hasUnit {
-		// Which drop-in directories apply depends on the systemd release, so
-		// re-read the unit once the target's version is known.
-		if v := targetSystemdVersion(c.MqlRuntime); v != 0 {
+		// Type-level and prefix drop-ins only apply from systemd 239 on. The
+		// version is only asked for once a unit exists, so hosts without
+		// Ollama never run systemctl, and the unit is only re-read on the old
+		// releases where the answer differs.
+		if v := targetSystemdVersion(c.MqlRuntime); !systemd.ReadsTypeAndPrefixDropIns(v) {
 			unit, _ = systemd.ResolveUnitEnvForVersion(afs, ollama.UnitName, v)
 		}
 		c.unit = unit

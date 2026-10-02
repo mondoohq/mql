@@ -191,6 +191,13 @@ func findFragment(afs *afero.Afero, unitName string) (string, bool) {
 // (RHEL 8), which reads them.
 const typeAndPrefixDropInsSince = 239
 
+// ReadsTypeAndPrefixDropIns reports whether a systemd release applies
+// type-level and dash-prefix drop-in directories. An unknown version (0) is
+// treated as a current release.
+func ReadsTypeAndPrefixDropIns(systemdVersion int) bool {
+	return systemdVersion == 0 || systemdVersion >= typeAndPrefixDropInsSince
+}
+
 // findDropIns collects the *.conf drop-ins systemd applies to a unit, as
 // systemd.unit(5) describes and `systemctl show -p DropInPaths` reports them.
 //
@@ -207,7 +214,7 @@ const typeAndPrefixDropInsSince = 239
 // the copy from the highest-precedence directory is the one applied. Before
 // systemd 239 only the unit's own directories exist.
 func findDropIns(afs *afero.Afero, unitName string, systemdVersion int) []string {
-	modern := systemdVersion == 0 || systemdVersion >= typeAndPrefixDropInsSince
+	modern := ReadsTypeAndPrefixDropIns(systemdVersion)
 
 	names := []string{unitName}
 	if modern {

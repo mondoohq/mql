@@ -461,3 +461,11 @@ func TestParseSystemctlVersion(t *testing.T) {
 		assert.Equal(t, want, ParseSystemctlVersion(in), in)
 	}
 }
+
+func TestReadsTypeAndPrefixDropIns(t *testing.T) {
+	assert.True(t, ReadsTypeAndPrefixDropIns(0), "unknown version reads like a current release")
+	assert.False(t, ReadsTypeAndPrefixDropIns(219))
+	assert.False(t, ReadsTypeAndPrefixDropIns(238))
+	assert.True(t, ReadsTypeAndPrefixDropIns(239))
+	assert.True(t, ReadsTypeAndPrefixDropIns(259))
+}
