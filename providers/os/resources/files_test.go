@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
@@ -69,6 +70,18 @@ func TestFilesFind_UnixCmd_FailedCommandIsAnError(t *testing.T) {
 	assert.Empty(t, found)
 	assert.Contains(t, err.Error(), "127")
 	assert.Contains(t, err.Error(), "find: command not found")
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_NOT_FOUND, llx.KindOf(err))
+}
+
+// A search that ran and failed for another reason (a start path it could not
+// read, an option it rejected) stays unclassified: the exit code alone does
+// not say which.
+func TestFilesFind_UnixCmd_OtherFailureIsUnclassified(t *testing.T) {
+	res := filesFindWithCmdResult(t, "/etc", "file", "", "find: '/etc': Permission denied", 1)
+
+	_, err := res.unixFilesFindCmd()
+	require.Error(t, err)
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(err))
 }
 
 // GNU find exits 1 when it cannot descend into a subdirectory while still

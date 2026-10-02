@@ -215,6 +215,10 @@ func checkFindExit(tool string, cmdline string, exitcode int64, stdout string, s
 		if stderr != "" {
 			msg += ": " + stderr
 		}
+		if exitcode == 127 {
+			// the shell could not find the tool: it is not installed
+			return llx.NotFound(errors.New(msg))
+		}
 		return errors.New(msg)
 	}
 
