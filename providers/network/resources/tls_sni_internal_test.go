@@ -76,8 +76,9 @@ func TestGatherTlsCertificatesWithoutSNI(t *testing.T) {
 
 	// The host is a name, as in a scan of https://localhost:<port>: a dial
 	// that derives ServerName from it sends SNI in both handshakes.
-	certs, nonSni, err := gatherTlsCertificates("tcp", "localhost", port, "localhost")
+	certs, nonSni, nonSniErr, err := gatherTlsCertificates("tcp", "localhost", port, "localhost")
 	require.NoError(t, err)
+	require.NoError(t, nonSniErr)
 	require.Len(t, certs, 1)
 	assert.Equal(t, "sni.example", certs[0].Subject.CommonName)
 	require.Len(t, nonSni, 1)
@@ -93,8 +94,9 @@ func TestGatherTlsCertificatesReportsAnIdenticalNonSniChain(t *testing.T) {
 		return &same, nil
 	})
 
-	certs, nonSni, err := gatherTlsCertificates("tcp", "localhost", port, "localhost")
+	certs, nonSni, nonSniErr, err := gatherTlsCertificates("tcp", "localhost", port, "localhost")
 	require.NoError(t, err)
+	require.NoError(t, nonSniErr)
 	require.Len(t, certs, 1)
 	require.Len(t, nonSni, 1)
 	assert.Equal(t, "same.example", nonSni[0].Subject.CommonName)
@@ -112,9 +114,41 @@ func TestGatherTlsCertificatesEndpointRequiresSNI(t *testing.T) {
 		return &sni, nil
 	})
 
-	certs, nonSni, err := gatherTlsCertificates("tcp", "localhost", port, "localhost")
+	certs, nonSni, nonSniErr, err := gatherTlsCertificates("tcp", "localhost", port, "localhost")
 	require.NoError(t, err)
+	require.NoError(t, nonSniErr)
 	require.Len(t, certs, 1)
 	assert.Equal(t, "sni.example", certs[0].Subject.CommonName)
 	assert.Nil(t, nonSni)
+}
+
+// A second connection that cannot be made says nothing about whether the
+// endpoint requires SNI, so it fails the non-SNI chain instead of reading as
+// null. The listener closes after its first accept, so the non-SNI dial is
+// refused while the SNI handshake still completes.
+func TestGatherTlsCertificatesNonSniDialFailureIsAnError(t *testing.T) {
+	sni := tlsCert(t, "sni.example", 1)
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return &sni, nil },
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		c, err := ln.Accept()
+		ln.Close()
+		if err != nil {
+			return
+		}
+		_ = c.(*tls.Conn).Handshake()
+		c.Close()
+	}()
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	require.NoError(t, err)
+
+	certs, nonSni, nonSniErr, err := gatherTlsCertificates("tcp", "127.0.0.1", port, "localhost")
+	require.NoError(t, err)
+	require.Len(t, certs, 1)
+	assert.Nil(t, nonSni)
+	require.Error(t, nonSniErr)
+	assert.False(t, errors.Is(nonSniErr, errNonSniHandshake))
 }

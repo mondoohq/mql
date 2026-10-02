@@ -423,11 +423,13 @@ func (s *mqlTls) extensions(params any) ([]any, error) {
 // opposite. The interesting case, a default virtual host answering with an
 // unrelated certificate, reads the same way in both shapes.
 //
-// Only a failure of the first connection is an error. A server that requires
-// SNI rejects the second handshake, and that is an answer about the endpoint
-// rather than a failure of the scan: the non-SNI chain comes back nil and the
-// caller reports it as unknown.
-func gatherTlsCertificates(proto, host, port, domainName string) ([]*x509.Certificate, []*x509.Certificate, error) {
+// A failure of the first connection is an error for both chains. A server that
+// requires SNI rejects the second handshake, and that is an answer about the
+// endpoint rather than a failure of the scan: the non-SNI chain comes back nil
+// and the caller reports it as unknown. A second connection that cannot be
+// made at all says nothing about SNI, so it comes back as nonSniErr and fails
+// only the non-SNI chain.
+func gatherTlsCertificates(proto, host, port, domainName string) (sniCerts, nonSniCerts []*x509.Certificate, nonSniErr, err error) {
 	dialer := &net.Dialer{Timeout: DefaultDialerTimeout}
 	addr := net.JoinHostPort(host, port)
 	log.Trace().
@@ -440,26 +442,34 @@ func gatherTlsCertificates(proto, host, port, domainName string) ([]*x509.Certif
 		ServerName:         domainName,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	defer conn.Close()
 
-	sniCerts := conn.ConnectionState().PeerCertificates
+	sniCerts = conn.ConnectionState().PeerCertificates
 
-	nonSniCerts, err := nonSniPeerCertificates(dialer, proto, addr)
+	nonSniCerts, err = nonSniPeerCertificates(dialer, proto, addr)
 	if err != nil {
+		if !errors.Is(err, errNonSniHandshake) {
+			return sniCerts, nil, err, nil
+		}
 		log.Debug().
 			Str("address", addr).
 			Err(err).
 			Msg("network.tls> endpoint completed no handshake without SNI")
-		return sniCerts, nil, nil
+		return sniCerts, nil, nil, nil
 	}
 	if nonSniCerts == nil {
 		nonSniCerts = []*x509.Certificate{}
 	}
 
-	return sniCerts, nonSniCerts, nil
+	return sniCerts, nonSniCerts, nil, nil
 }
+
+// errNonSniHandshake marks a non-SNI connection that was made but whose TLS
+// handshake the server did not complete, as opposed to one that could not be
+// made at all.
+var errNonSniHandshake = errors.New("tls handshake without SNI failed")
 
 // nonSniPeerCertificates returns the certificates the server presents to a
 // client that sends no SNI. It cannot use tls.DialWithDialer, which sets
@@ -484,7 +494,7 @@ func nonSniPeerCertificates(dialer *net.Dialer, proto, addr string) ([]*x509.Cer
 	// not verify is the finding, not a reason to refuse the connection.
 	conn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
 	if err := conn.Handshake(); err != nil {
-		return nil, err
+		return nil, errors.Mark(err, errNonSniHandshake)
 	}
 	return conn.ConnectionState().PeerCertificates, nil
 }
@@ -578,7 +588,7 @@ func (s *mqlTls) populateCertificates(socket *mqlSocket, domainName string) erro
 	port := socket.Port.Data
 	proto := socket.Protocol.Data
 
-	certs, nonSniCerts, err := gatherTlsCertificates(proto, host, strconv.FormatInt(port, 10), domainName)
+	certs, nonSniCerts, nonSniErr, err := gatherTlsCertificates(proto, host, strconv.FormatInt(port, 10), domainName)
 	if err != nil {
 		s.Certificates = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet}
 		s.NonSniCertificates = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet}
@@ -607,6 +617,11 @@ func (s *mqlTls) populateCertificates(socket *mqlSocket, domainName string) erro
 		s.Certificates = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet}
 	} else {
 		s.Certificates = plugin.TValue[[]any]{Data: mqlCerts, State: plugin.StateIsSet}
+	}
+
+	if nonSniErr != nil {
+		s.NonSniCertificates = plugin.TValue[[]any]{Error: nonSniErr, State: plugin.StateIsSet}
+		return nil
 	}
 
 	// A server that requires SNI rejects the handshake that omits it, so there
