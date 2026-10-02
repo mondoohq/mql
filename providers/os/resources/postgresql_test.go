@@ -558,3 +558,14 @@ func TestPostgresqlPreferredConfigsOrder(t *testing.T) {
 		"/srv/pgdata/postgresql.conf",
 	}, postgresqlPreferredConfigs(fs, running, units))
 }
+
+func TestPostgresqlHomes(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	assert.Nil(t, postgresqlHomes(afs), "no /etc/passwd")
+
+	// SLES 15 SP7
+	require.NoError(t, afs.WriteFile("/etc/passwd", []byte("root:x:0:0:root:/root:/bin/bash\n"+
+		"postgresql:x:473:473:not the server account:/srv/other:/bin/false\n"+
+		"postgres:x:472:472:PostgreSQL Server:/var/lib/pgsql:/bin/bash\n"), 0o644))
+	assert.Equal(t, map[string]string{"postgres": "/var/lib/pgsql"}, postgresqlHomes(afs))
+}

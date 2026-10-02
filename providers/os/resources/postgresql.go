@@ -268,14 +268,16 @@ func runningPostmasters(runtime *plugin.Runtime) []postgresql.Instance {
 	return out
 }
 
-// postgresqlUnitsCmd shows the environment and ExecStart of every installed
-// postgresql unit. The names come from the unit files: a unit pattern given
-// to systemctl show only matches loaded units, and systemd unloads a stopped
-// unit nothing depends on (PGDG's postgresql-17.service once stopped).
-// Templates (Debian's postgresql@.service) carry no data directory and are
-// skipped. Without any unit the command exits 1 rather than showing the
-// manager's own properties.
-const postgresqlUnitsCmd = `u=$(systemctl list-unit-files --no-legend 'postgresql*.service' 2>/dev/null | awk '$1 !~ /@\.service$/ {print $1}'); [ -n "$u" ] && systemctl show -p Id -p Environment -p ExecStart $u`
+// postgresqlUnitsCmd shows the environment, environment files and ExecStart
+// of every installed postgresql unit. The names come from the unit files: a
+// unit pattern given to systemctl show only matches loaded units, and systemd
+// unloads a stopped unit nothing depends on (PGDG's postgresql-17.service
+// once stopped). Templates (Debian's postgresql@.service) carry no data
+// directory and are skipped. Without any unit, xargs -r shows nothing rather
+// than the manager's own properties. The command is a plain pipeline, not a
+// shell assignment, so it still runs when an SSH scan with --sudo prefixes it
+// with sudo.
+const postgresqlUnitsCmd = `systemctl list-unit-files --no-legend 'postgresql*.service' 2>/dev/null | awk '$1 !~ /@\.service$/ {print $1}' | xargs -r systemctl show -p Id -p Environment -p EnvironmentFiles -p ExecStart`
 
 // postgresqlUnits returns the clusters the postgresql systemd units start.
 // A host without systemctl, or one where it fails, has no units to report.
@@ -288,13 +290,41 @@ func postgresqlUnits(runtime *plugin.Runtime) []postgresql.Instance {
 	if err != nil || !ok {
 		return nil
 	}
+	afs := &afero.Afero{Fs: conn.FileSystem()}
 	var insts []postgresql.Instance
 	for _, u := range postgresql.ParseSystemctlShow(out) {
+		// An environment file that cannot be read is skipped, as systemd
+		// skips a missing optional one (and refuses to start the unit
+		// otherwise, so its content never applied).
+		for _, f := range u.EnvironmentFiles {
+			if data, err := afs.ReadFile(f); err == nil {
+				u.ApplyEnvironmentFile(string(data))
+			}
+		}
+		if u.IsSuseStartScript() {
+			u.Homes = postgresqlHomes(afs)
+		}
 		if inst, ok := postgresql.UnitInstance(u); ok {
 			insts = append(insts, inst)
 		}
 	}
 	return insts
+}
+
+// postgresqlHomes returns the home directory of the postgres account from
+// /etc/passwd, which SUSE's sysconfig names as ~postgres.
+func postgresqlHomes(afs *afero.Afero) map[string]string {
+	data, err := afs.ReadFile("/etc/passwd")
+	if err != nil {
+		return nil
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Split(line, ":")
+		if len(fields) >= 6 && fields[0] == "postgres" && fields[5] != "" {
+			return map[string]string{"postgres": fields[5]}
+		}
+	}
+	return nil
 }
 
 // postgresqlPreferredConfigs orders the config files of the given clusters

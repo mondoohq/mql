@@ -189,3 +189,85 @@ func TestAuxFilePath(t *testing.T) {
 		AuxFilePath(debConf, map[string]string{"data_directory": "/var/lib/postgresql/16/main"}, "ident_file", "pg_ident.conf"),
 		"without ident_file the server reads the data directory's pg_ident.conf")
 }
+
+// systemctlShowSuse is `systemctl show -p Id -p Environment -p
+// EnvironmentFiles -p ExecStart postgresql.service` on SLES 15 SP7.
+const systemctlShowSuse = `ExecStart={ path=/usr/share/postgresql/postgresql-script ; argv[]=/usr/share/postgresql/postgresql-script start ; ignore_errors=no ; start_time=[Fri 2026-10-02 14:44:35 UTC] ; stop_time=[Fri 2026-10-02 14:44:35 UTC] ; pid=21252 ; code=exited ; status=0 }
+Environment=
+EnvironmentFiles=/etc/sysconfig/postgresql (ignore_errors=yes)
+Id=postgresql.service
+`
+
+// suseSysconfig is the shipped /etc/sysconfig/postgresql of SLES 15 SP7, its
+// comments left out, with the data directory and options to use.
+func suseSysconfig(datadir, options string) string {
+	return `## Path:	   Applications/PostgreSQL
+## Default:	   "~postgres/data"
+POSTGRES_DATADIR="` + datadir + `"
+## Default:        ""
+POSTGRES_OPTIONS="` + options + `"
+POSTGRES_TIMEOUT="600"
+POSTGRES_LANG=""
+POSTGRES_INITDB_OPTS="--auth=ident"
+POSTGRES_DEFAULTVERSION=""
+`
+}
+
+func TestSuseUnitInstance(t *testing.T) {
+	suseHomes := map[string]string{"postgres": "/var/lib/pgsql"}
+	suseUnit := func(sysconfig string) Unit {
+		u := ParseSystemctlShow(systemctlShowSuse)[0]
+		if sysconfig != "" {
+			u.ApplyEnvironmentFile(sysconfig)
+		}
+		u.Homes = suseHomes
+		return u
+	}
+
+	units := ParseSystemctlShow(systemctlShowSuse)
+	require.Len(t, units, 1)
+	assert.Equal(t, []string{"/etc/sysconfig/postgresql"}, units[0].EnvironmentFiles)
+	assert.Empty(t, units[0].Environment, "the unit sets nothing inline")
+	assert.True(t, units[0].IsSuseStartScript())
+	assert.False(t, ParseSystemctlShow(systemctlShowRhel7)[0].IsSuseStartScript())
+
+	// stock: ~postgres/data is the postgres home's data directory
+	inst, ok := UnitInstance(suseUnit(suseSysconfig("~postgres/data", "")))
+	require.True(t, ok)
+	assert.Equal(t, "/var/lib/pgsql/data/postgresql.conf", inst.ConfigFile())
+	assert.Empty(t, inst.Settings["port"])
+
+	// no sysconfig file: the script's own default
+	inst, ok = UnitInstance(suseUnit(""))
+	require.True(t, ok)
+	assert.Equal(t, "/var/lib/pgsql/data/postgresql.conf", inst.ConfigFile())
+
+	// relocated, with the port passed through pg_ctl -o
+	inst, ok = UnitInstance(suseUnit(suseSysconfig("/var/lib/pgsql/reloc/data", "-p 5433")))
+	require.True(t, ok)
+	assert.Equal(t, "/var/lib/pgsql/reloc/data/postgresql.conf", inst.ConfigFile())
+	assert.Equal(t, "5433", inst.Settings["port"])
+	assert.Equal(t, int64(5433), EffectivePort("5432", &inst), "the command line beats the file")
+
+	// config_file given among the options
+	inst, ok = UnitInstance(suseUnit(suseSysconfig("~postgres/data", "-c config_file=/etc/pgsql/sweep.conf --port=6000")))
+	require.True(t, ok)
+	assert.Equal(t, "/etc/pgsql/sweep.conf", inst.ConfigFile())
+	assert.Equal(t, "6000", inst.Settings["port"])
+	assert.Equal(t, "/var/lib/pgsql/data", inst.DataDir)
+
+	// a home that is not known yields no cluster rather than a guess
+	u := suseUnit(suseSysconfig("~postgres/data", ""))
+	u.Homes = nil
+	_, ok = UnitInstance(u)
+	assert.False(t, ok)
+}
+
+func TestApplyEnvironmentFileOverridesEnvironment(t *testing.T) {
+	u := ParseSystemctlShow(systemctlShowRhel7)[0]
+	u.ApplyEnvironmentFile("PGDATA=/srv/pgdata\n")
+	inst, ok := UnitInstance(u)
+	require.True(t, ok)
+	assert.Equal(t, "/srv/pgdata", inst.DataDir)
+	assert.Equal(t, "5432", inst.Env["PGPORT"], "Environment= stays for what the file does not set")
+}

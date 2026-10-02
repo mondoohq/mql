@@ -8,6 +8,9 @@ import (
 	"path"
 	"strconv"
 	"strings"
+
+	"github.com/kballard/go-shellquote"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
 )
 
 // Instance is a PostgreSQL cluster as the host starts it: the data directory
@@ -107,13 +110,90 @@ func (i *Instance) setSetting(name, value string) {
 }
 
 // Unit is one service block of `systemctl show -p Id -p Environment -p
-// ExecStart` output.
+// EnvironmentFiles -p ExecStart` output.
 type Unit struct {
 	ID          string
 	Environment map[string]string
+	// EnvironmentFiles are the unit's EnvironmentFile= paths. Their variables
+	// are not in Environment until ApplyEnvironmentFile adds them.
+	EnvironmentFiles []string
 	// ExecStart is the argv of the first ExecStart= command, with ${VAR} and
 	// $VAR references still unexpanded.
 	ExecStart []string
+	// Homes holds the home directories of the accounts a path in the unit's
+	// environment names as ~user.
+	Homes map[string]string
+}
+
+// ApplyEnvironmentFile adds the variables of one of the unit's environment
+// files. As in systemd, they override Environment= whatever the order.
+func (u *Unit) ApplyEnvironmentFile(content string) {
+	if u.Environment == nil {
+		u.Environment = map[string]string{}
+	}
+	for k, v := range systemd.ParseEnvFile(content) {
+		u.Environment[k] = v
+	}
+}
+
+// suseStartScript is what SUSE's postgresql.service runs. It reads the data
+// directory from POSTGRES_DATADIR and the server options from
+// POSTGRES_OPTIONS in /etc/sysconfig/postgresql, the unit's environment file,
+// and starts `pg_ctl start -D $DATADIR -o "$POSTGRES_OPTIONS"`.
+const suseStartScript = "postgresql-script"
+
+// suseDefaultDataDir is the script's data directory when POSTGRES_DATADIR is
+// unset.
+const suseDefaultDataDir = "~postgres/data"
+
+// IsSuseStartScript reports whether the unit starts the server through SUSE's
+// start script, whose data directory may name the postgres home as ~postgres.
+func (u Unit) IsSuseStartScript() bool {
+	return len(u.ExecStart) > 0 && path.Base(u.ExecStart[0]) == suseStartScript
+}
+
+// suseScriptInstance returns the cluster SUSE's start script starts.
+func suseScriptInstance(u Unit) (Instance, bool) {
+	dir := u.Environment["POSTGRES_DATADIR"]
+	if dir == "" {
+		dir = suseDefaultDataDir
+	}
+	// The script runs as User=postgres, so a bare ~ is its home too.
+	dir, ok := expandHome(dir, "postgres", u.Homes)
+	if !ok {
+		return Instance{}, false
+	}
+
+	words, err := shellquote.Split(u.Environment["POSTGRES_OPTIONS"])
+	if err != nil {
+		return Instance{}, false
+	}
+	// pg_ctl passes -D before the options, so a -D among them wins, as it
+	// does for postgres
+	inst, _ := ParsePostmasterArgs(append([]string{"postgres", "-D", dir}, words...))
+	inst.Env = map[string]string{}
+	for k, v := range u.Environment {
+		inst.Env[k] = v
+	}
+	return inst, true
+}
+
+// expandHome resolves a leading ~ or ~user the way the shell does, from the
+// given home directories. A bare ~ is the home of self. It reports false when
+// the home is not known.
+func expandHome(p, self string, homes map[string]string) (string, bool) {
+	if !strings.HasPrefix(p, "~") {
+		return p, true
+	}
+	user, rest, _ := strings.Cut(p[1:], "/")
+	if user == "" {
+		user = self
+	}
+	home := homes[user]
+	if home == "" {
+		return "", false
+	}
+	return path.Join(home, rest), true
 }
 
 // ParseSystemctlShow splits `systemctl show` output for several units into
@@ -151,6 +231,11 @@ func ParseSystemctlShow(out string) []Unit {
 				if k, v, ok := strings.Cut(kv, "="); ok {
 					cur.Environment[k] = v
 				}
+			}
+		case "EnvironmentFiles":
+			// one line per file: "/etc/sysconfig/postgresql (ignore_errors=yes)"
+			if f, _, _ := strings.Cut(value, " ("); f != "" {
+				cur.EnvironmentFiles = append(cur.EnvironmentFiles, f)
 			}
 		case "ExecStart":
 			if cur.ExecStart == nil {
@@ -214,8 +299,13 @@ func splitShellWords(s string) []string {
 // port the unit forces on the command line is a setting: RHEL 7's unit runs
 // `pg_ctl start -D ${PGDATA} -o "-p ${PGPORT}"`, which overrides the port in
 // postgresql.conf. It reports false for units that name no data directory,
-// such as Debian's pg_ctlcluster wrappers.
+// such as Debian's pg_ctlcluster wrappers. SUSE's unit runs a start script
+// configured from its environment file instead (see suseScriptInstance).
 func UnitInstance(u Unit) (Instance, bool) {
+	if u.IsSuseStartScript() {
+		return suseScriptInstance(u)
+	}
+
 	argv := make([]string, len(u.ExecStart))
 	for i, a := range u.ExecStart {
 		argv[i] = expandEnv(a, u.Environment)
