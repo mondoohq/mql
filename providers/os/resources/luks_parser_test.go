@@ -470,3 +470,21 @@ func TestCollectLuksDevices_Empty(t *testing.T) {
 		{Name: "/dev/sda", Fstype: "ext4"},
 	}))
 }
+
+// cryptsetup 2.0.3 (RHEL 7) prints the keyslot's volume key size as "Key:"
+// and has no "Cipher key:" line.
+func TestParseLuksDump_LUKS2_Cryptsetup203(t *testing.T) {
+	d, err := parseLuksDump(loadTestdata(t, "luks2_cryptsetup_2.0.3.txt"))
+	require.NoError(t, err)
+
+	assert.Equal(t, 2, d.Version)
+	assert.Equal(t, "2e5cfd73-618a-4bc6-b2ae-eb90a9d06ee0", d.UUID)
+	assert.Equal(t, "g05label", d.Label)
+	assert.Equal(t, "g05sub", d.Subsystem)
+	assert.Equal(t, 256, d.MasterKeyBits)
+	assert.Equal(t, 256, d.Cipher.KeySize)
+	assert.Equal(t, "aes-xts-plain64", d.Cipher.Spec)
+	require.Len(t, d.Keyslots, 2)
+	assert.Equal(t, []int{0, 2}, []int{d.Keyslots[0].Index, d.Keyslots[1].Index})
+	assert.Equal(t, "argon2i", d.Keyslots[1].KDF)
+}

@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"slices"
@@ -19,8 +20,16 @@ import (
 
 // lsblkCommand appends TYPE and KNAME to the --fs columns. Both columns and
 // the "+" form of --output predate --json (util-linux 2.27), so every lsblk
-// that can answer in JSON accepts them.
-const lsblkCommand = "lsblk --json --fs --output +TYPE,KNAME"
+// that can answer in JSON accepts them. An lsblk older than 2.27 (RHEL 7
+// ships 2.23) rejects --json, and the same columns are read from its
+// key="value" list instead, with PKNAME to rebuild the tree.
+const lsblkCommand = "lsblk --json --fs --output +TYPE,KNAME || lsblk --pairs --output " + lsblkPairsColumns
+
+// luksLsblkCommand lists block devices by their full /dev path, which
+// cryptsetup luksDump needs, with the same key="value" fallback.
+const luksLsblkCommand = "lsblk --json --fs --paths || lsblk --pairs --paths --output " + lsblkPairsColumns
+
+const lsblkPairsColumns = "NAME,KNAME,PKNAME,TYPE,FSTYPE,LABEL,UUID,MOUNTPOINT"
 
 type mqlLsblkInternal struct {
 	lock     sync.Mutex
@@ -403,7 +412,13 @@ func unescapeUdev(s string) string {
 	return b.String()
 }
 
+// parseBlockEntries reads lsblk output, either the JSON tree or, from an
+// lsblk without --json, the key="value" list of lsblkPairsColumns.
 func parseBlockEntries(data []byte) (blockdevices, error) {
+	if bytes.HasPrefix(bytes.TrimSpace(data), []byte(`NAME="`)) {
+		return parseBlockPairs(string(data))
+	}
+
 	blockEntries := blockdevices{}
 	if err := json.Unmarshal(data, &blockEntries); err != nil {
 		return blockEntries, err
@@ -412,6 +427,116 @@ func parseBlockEntries(data []byte) (blockdevices, error) {
 	normalizeMountpoints(blockEntries.Blockdevices)
 
 	return blockEntries, nil
+}
+
+// parseBlockPairs rebuilds the lsblk device tree from `lsblk --pairs` output.
+// The list prints a device once under each of its parents, naming that parent
+// in PKNAME, and repeats everything stacked on it. Each device becomes one
+// entry, placed under every parent it was printed with; a device whose
+// parents are all missing from the list is a top-level device.
+func parseBlockPairs(out string) (blockdevices, error) {
+	type pairNode struct {
+		dev     blockdevice
+		parents []string
+	}
+	nodes := map[string]*pairNode{}
+	order := []string{}
+
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields, err := parseLsblkPairsLine(line)
+		if err != nil {
+			return blockdevices{}, err
+		}
+		key := fields["KNAME"]
+		if key == "" {
+			key = fields["NAME"]
+		}
+		if key == "" {
+			return blockdevices{}, errors.New("lsblk pairs line without NAME or KNAME: " + line)
+		}
+
+		node, ok := nodes[key]
+		if !ok {
+			node = &pairNode{dev: blockdevice{
+				Name:       fields["NAME"],
+				Kname:      fields["KNAME"],
+				Type:       fields["TYPE"],
+				Fstype:     fields["FSTYPE"],
+				Label:      fields["LABEL"],
+				Uuid:       fields["UUID"],
+				Mountpoint: fields["MOUNTPOINT"],
+			}}
+			nodes[key] = node
+			order = append(order, key)
+		}
+		if p := fields["PKNAME"]; p != "" && p != key && !slices.Contains(node.parents, p) {
+			node.parents = append(node.parents, p)
+		}
+	}
+
+	children := map[string][]string{}
+	roots := []string{}
+	for _, key := range order {
+		attached := false
+		for _, p := range nodes[key].parents {
+			if _, ok := nodes[p]; ok {
+				children[p] = append(children[p], key)
+				attached = true
+			}
+		}
+		if !attached {
+			roots = append(roots, key)
+		}
+	}
+
+	var build func(key string, path map[string]bool) blockdevice
+	build = func(key string, path map[string]bool) blockdevice {
+		dev := nodes[key].dev
+		path[key] = true
+		defer delete(path, key)
+		for _, c := range children[key] {
+			if path[c] {
+				continue
+			}
+			dev.Children = append(dev.Children, build(c, path))
+		}
+		return dev
+	}
+
+	res := blockdevices{Blockdevices: []blockdevice{}}
+	for _, key := range roots {
+		res.Blockdevices = append(res.Blockdevices, build(key, map[string]bool{}))
+	}
+	normalizeMountpoints(res.Blockdevices)
+	return res, nil
+}
+
+// parseLsblkPairsLine splits one `lsblk --pairs` line, KEY="value" fields
+// separated by spaces, into a map. lsblk writes a double quote, a backslash
+// and unprintable bytes inside a value as \xHH.
+func parseLsblkPairsLine(line string) (map[string]string, error) {
+	fields := map[string]string{}
+	rest := line
+	for {
+		rest = strings.TrimLeft(rest, " ")
+		if rest == "" {
+			return fields, nil
+		}
+		key, after, ok := strings.Cut(rest, `="`)
+		if !ok || key == "" || strings.Contains(key, " ") {
+			return nil, errors.New("malformed lsblk pairs line: " + line)
+		}
+		value, tail, ok := strings.Cut(after, `"`)
+		if !ok {
+			return nil, errors.New("malformed lsblk pairs line: " + line)
+		}
+		fields[key] = unescapeUdev(value)
+		rest = tail
+	}
 }
 
 // normalizeMountpoints reconciles the mountpoint shapes across lsblk versions

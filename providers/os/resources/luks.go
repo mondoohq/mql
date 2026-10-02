@@ -38,7 +38,7 @@ func (l *mqlLuks) volumes() ([]any, error) {
 	// `cryptsetup luksDump` needs a device path, and only `--paths`
 	// yields the canonical `/dev/...` form.
 	o, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("lsblk --json --fs --paths"),
+		"command": llx.StringData(luksLsblkCommand),
 	})
 	if err != nil {
 		return nil, err
