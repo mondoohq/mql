@@ -6,7 +6,9 @@ package resources
 import (
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseUfwKeyValue(t *testing.T) {
@@ -243,4 +245,73 @@ ports=8080/tcp
 	assert.Len(t, apps, 1)
 	assert.Equal(t, "MyApp", apps[0].name)
 	assert.Equal(t, "8080/tcp", apps[0].ports)
+}
+
+// Tuples captured from /etc/ufw/user.rules on Ubuntu 16.04 through 26.04
+// after `ufw allow in on ens5 to any port 8080 proto tcp comment 'web alt'`
+// and `ufw route allow in on ens5 out on lo to any port 80 proto tcp`.
+func TestParseUfwTuplesCommentAndRoute(t *testing.T) {
+	rules := parseUfwTuples(`### tuple ### allow tcp 8080 0.0.0.0/0 any 0.0.0.0/0 in_ens5 comment=77656220616c74
+### tuple ### route:allow tcp 80 0.0.0.0/0 any 0.0.0.0/0 in_ens5!out_lo
+### tuple ### route:deny_log tcp 3306 ::/0 any ::/0 out_lo
+### tuple ### allow tcp 22 0.0.0.0/0 any 0.0.0.0/0 OpenSSH - in comment=73736820696e
+`)
+	require.Len(t, rules, 4)
+
+	assert.Equal(t, "ALLOW", rules[0].action)
+	assert.Equal(t, "IN", rules[0].direction)
+	assert.Equal(t, "ens5", rules[0].iface)
+	assert.Equal(t, "8080", rules[0].port)
+
+	assert.Equal(t, "ALLOW", rules[1].action)
+	assert.Equal(t, "FWD", rules[1].direction)
+	assert.Equal(t, "ens5", rules[1].iface)
+	assert.Equal(t, "80", rules[1].port)
+
+	assert.Equal(t, "DENY", rules[2].action)
+	assert.Equal(t, "FWD", rules[2].direction)
+	assert.Equal(t, "lo", rules[2].iface)
+
+	assert.Equal(t, "ALLOW", rules[3].action)
+	assert.Equal(t, "IN", rules[3].direction)
+	assert.Empty(t, rules[3].iface)
+}
+
+func TestReadUfwState(t *testing.T) {
+	enabledConf := "# /etc/ufw/ufw.conf\nENABLED=yes\nLOGLEVEL=low\n"
+	defaults := "DEFAULT_INPUT_POLICY=\"DROP\"\nDEFAULT_OUTPUT_POLICY=\"ACCEPT\"\nDEFAULT_FORWARD_POLICY=\"DROP\"\n"
+
+	newFs := func(files map[string]string) afero.Afero {
+		afs := afero.Afero{Fs: afero.NewMemMapFs()}
+		for p, c := range files {
+			require.NoError(t, afs.WriteFile(p, []byte(c), 0o644))
+		}
+		return afs
+	}
+
+	t.Run("installed and enabled", func(t *testing.T) {
+		st, err := readUfwState(newFs(map[string]string{
+			ufwConfPath: enabledConf, ufwDefaultsPath: defaults, "/usr/sbin/ufw": "#!/usr/bin/python3\n",
+		}))
+		require.NoError(t, err)
+		assert.Equal(t, "active", st.status)
+		assert.Equal(t, "deny", st.defIncoming)
+		assert.Equal(t, "low", st.logging)
+	})
+
+	t.Run("removed but not purged", func(t *testing.T) {
+		// dpkg -r ufw keeps the conffiles, ENABLED=yes included, and deletes the command.
+		st, err := readUfwState(newFs(map[string]string{
+			ufwConfPath: enabledConf, ufwDefaultsPath: defaults,
+		}))
+		require.NoError(t, err)
+		assert.Equal(t, "not installed", st.status)
+		assert.Empty(t, st.defIncoming)
+	})
+
+	t.Run("purged", func(t *testing.T) {
+		st, err := readUfwState(newFs(map[string]string{}))
+		require.NoError(t, err)
+		assert.Equal(t, "not installed", st.status)
+	})
 }

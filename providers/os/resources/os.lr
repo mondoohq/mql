@@ -8185,6 +8185,9 @@ private nftables.set @defaults("family table name") {
 // service profiles UFW can reference by name.
 ufw @defaults("status rules") {
   // Whether UFW is active ("active", "inactive", "not installed")
+  //
+  // "not installed" when the ufw command is missing, including a package
+  // that was removed but not purged and left /etc/ufw/ufw.conf behind.
   status() string
   // Default policy for incoming traffic (e.g., "deny", "allow", "reject")
   defaultIncoming() string
@@ -8227,6 +8230,9 @@ private ufw.rule @defaults("action direction port") {
   // Port or port range (e.g., "22", "6000:6007", "any")
   port string
   // Network interface (e.g., "eth0"), empty if not specified
+  //
+  // For a routed (FWD) rule that names both interfaces, such as
+  // `ufw route allow in on eth0 out on eth1`, the incoming interface.
   interface string
   // Source address or subnet (e.g., "192.168.1.0/24", "Anywhere")
   from string

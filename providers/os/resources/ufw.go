@@ -59,39 +59,84 @@ func (u *mqlUfw) fetchStatus() error {
 		return err
 	}
 
+	st, err := readUfwState(afs)
+	if err != nil {
+		return err
+	}
+	u.cacheStatus = st.status
+	u.cacheLogging = st.logging
+	u.cacheDefIncoming = st.defIncoming
+	u.cacheDefOutgoing = st.defOutgoing
+	u.cacheDefRouted = st.defRouted
+	u.fetched = true
+	return nil
+}
+
+// ufwBinaryPaths are where the ufw package installs its command. /sbin/ufw
+// is the same file on usrmerged systems.
+var ufwBinaryPaths = []string{"/usr/sbin/ufw", "/sbin/ufw"}
+
+type ufwState struct {
+	status      string
+	logging     string
+	defIncoming string
+	defOutgoing string
+	defRouted   string
+}
+
+// readUfwState reads the UFW configuration. Removing the ufw package without
+// purging it (dpkg state "rc") deletes the ufw command and unloads its rules
+// but keeps /etc/ufw/ufw.conf, often with ENABLED=yes, so the configuration
+// alone is not proof that UFW is installed.
+func readUfwState(afs afero.Afero) (ufwState, error) {
+	var st ufwState
+
 	// Read /etc/ufw/ufw.conf for ENABLED and LOGLEVEL
 	confData, err := afs.ReadFile(ufwConfPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			u.cacheStatus = "not installed"
-			u.fetched = true
-			return nil
+			st.status = "not installed"
+			return st, nil
 		}
-		return err
+		return st, err
+	}
+
+	installed := false
+	for _, p := range ufwBinaryPaths {
+		ok, err := afs.Exists(p)
+		if err != nil {
+			return st, err
+		}
+		if ok {
+			installed = true
+			break
+		}
+	}
+	if !installed {
+		st.status = "not installed"
+		return st, nil
 	}
 
 	conf := parseUfwKeyValue(string(confData))
 	if strings.EqualFold(conf["ENABLED"], "yes") {
-		u.cacheStatus = "active"
+		st.status = "active"
 	} else {
-		u.cacheStatus = "inactive"
+		st.status = "inactive"
 	}
-	u.cacheLogging = strings.ToLower(conf["LOGLEVEL"])
+	st.logging = strings.ToLower(conf["LOGLEVEL"])
 
 	// Read /etc/default/ufw for default policies
 	defaultsData, err := afs.ReadFile(ufwDefaultsPath)
 	if err != nil && !os.IsNotExist(err) {
-		return err
+		return st, err
 	}
 	if err == nil {
 		defaults := parseUfwKeyValue(string(defaultsData))
-		u.cacheDefIncoming = ufwPolicyName(defaults["DEFAULT_INPUT_POLICY"])
-		u.cacheDefOutgoing = ufwPolicyName(defaults["DEFAULT_OUTPUT_POLICY"])
-		u.cacheDefRouted = ufwPolicyName(defaults["DEFAULT_FORWARD_POLICY"])
+		st.defIncoming = ufwPolicyName(defaults["DEFAULT_INPUT_POLICY"])
+		st.defOutgoing = ufwPolicyName(defaults["DEFAULT_OUTPUT_POLICY"])
+		st.defRouted = ufwPolicyName(defaults["DEFAULT_FORWARD_POLICY"])
 	}
-
-	u.fetched = true
-	return nil
+	return st, nil
 }
 
 func (u *mqlUfw) status() (string, error) {
@@ -368,6 +413,8 @@ type ufwParsedRule struct {
 //	### tuple ### ACTION PROTOCOL DPORT DST SPORT SRC DAPP SAPP DIRECTION
 //
 // Direction is always the last field and may include an interface: "in", "out", "in_eth0".
+// Routed rules prefix the action with "route:" and may name both interfaces
+// ("in_eth0!out_eth1"). A rule with a comment ends in "comment=<hex>".
 //
 // Examples:
 //
@@ -375,6 +422,8 @@ type ufwParsedRule struct {
 //	### tuple ### deny tcp 3306 0.0.0.0/0 any 0.0.0.0/0 in
 //	### tuple ### allow tcp 443 0.0.0.0/0 any 10.0.0.0/8 in_eth0
 //	### tuple ### limit tcp 22 0.0.0.0/0 any 0.0.0.0/0 in
+//	### tuple ### allow tcp 8080 0.0.0.0/0 any 0.0.0.0/0 in_ens5 comment=77656220616c74
+//	### tuple ### route:allow tcp 80 0.0.0.0/0 any 0.0.0.0/0 in_ens5!out_lo
 func parseUfwTuples(data string) []ufwParsedRule {
 	var rules []ufwParsedRule
 	for _, line := range strings.Split(data, "\n") {
@@ -390,8 +439,18 @@ func parseUfwTuples(data string) []ufwParsedRule {
 
 		rule := ufwParsedRule{raw: line}
 
-		// Action is first field, may have _log or _log-all suffix
-		action := fields[0]
+		// A rule added with `comment '...'` carries a trailing
+		// "comment=<hex>" field after the direction.
+		if strings.HasPrefix(fields[len(fields)-1], "comment=") {
+			fields = fields[:len(fields)-1]
+			if len(fields) < 7 {
+				continue
+			}
+		}
+
+		// Action is first field. Routed rules are prefixed with "route:",
+		// and logging rules carry a _log or _log-all suffix.
+		action, routed := strings.CutPrefix(fields[0], "route:")
 		if i := strings.Index(action, "_log"); i != -1 {
 			action = action[:i]
 		}
@@ -403,12 +462,19 @@ func parseUfwTuples(data string) []ufwParsedRule {
 		// fields[4] is sport (source port), usually "any"
 		rule.from = fields[5]
 
-		// Direction is always the last field
+		// Direction is always the last field: "in", "out", "in_eth0", or
+		// for routed rules with both interfaces "in_eth0!out_eth1".
 		dirField := fields[len(fields)-1]
-		dir, iface, hasIface := strings.Cut(dirField, "_")
+		inPart, outPart, _ := strings.Cut(dirField, "!")
+		dir, iface, hasIface := strings.Cut(inPart, "_")
 		rule.direction = strings.ToUpper(dir)
 		if hasIface {
 			rule.iface = iface
+		} else if _, outIface, ok := strings.Cut(outPart, "_"); ok {
+			rule.iface = outIface
+		}
+		if routed {
+			rule.direction = "FWD"
 		}
 
 		rules = append(rules, rule)
