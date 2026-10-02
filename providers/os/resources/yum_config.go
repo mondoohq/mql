@@ -263,12 +263,13 @@ func readDnf5ConfDropIns(afs *afero.Afero) ([]string, error) {
 	return contents, nil
 }
 
-// yumOptionDefaults holds the options whose compiled-in default is true; every
-// other boolean option defaults to false. yum 3 defaults
+// yumOptionDefaults holds the compiled-in defaults of the options the bool
+// fields read; on dnf 5 gpgcheck is read as pkg_gpgcheck. yum 3 defaults
 // clean_requirements_on_remove to false, dnf 4 and dnf 5 to true.
 var yumOptionDefaults = map[yumManager]map[string]bool{
-	dnf4: {"clean_requirements_on_remove": true},
-	dnf5: {"clean_requirements_on_remove": true},
+	yum3: {"gpgcheck": false, "localpkg_gpgcheck": false, "repo_gpgcheck": false, "clean_requirements_on_remove": false},
+	dnf4: {"gpgcheck": false, "localpkg_gpgcheck": false, "repo_gpgcheck": false, "clean_requirements_on_remove": true},
+	dnf5: {"pkg_gpgcheck": false, "localpkg_gpgcheck": false, "repo_gpgcheck": false, "clean_requirements_on_remove": true},
 }
 
 // effectiveBool returns a boolean option the way the package manager resolves
