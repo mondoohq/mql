@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
@@ -136,10 +137,83 @@ type skillInfo struct {
 }
 
 type skillFrontmatter struct {
-	Name         string `json:"name" yaml:"name"`
-	Description  string `json:"description" yaml:"description"`
-	AllowedTools string `json:"allowed-tools" yaml:"allowed-tools"`
-	ArgumentHint string `json:"argument-hint" yaml:"argument-hint"`
+	Name         string          `json:"name" yaml:"name"`
+	Description  string          `json:"description" yaml:"description"`
+	AllowedTools skillToolsField `json:"allowed-tools" yaml:"allowed-tools"`
+	ArgumentHint string          `json:"argument-hint" yaml:"argument-hint"`
+}
+
+// skillToolsField holds the allowed-tools frontmatter value. The Agent Skills
+// specification (agentskills.io) defines it as a space-delimited string
+// ("Bash(git:*) Bash(jq:*) Read"); Claude Code also accepts a comma-separated
+// string ("Read, Grep, Glob") and a YAML list.
+type skillToolsField []string
+
+func (t *skillToolsField) UnmarshalJSON(data []byte) error {
+	var list []string
+	if err := json.Unmarshal(data, &list); err == nil {
+		var tools []string
+		for _, item := range list {
+			if item = strings.TrimSpace(item); item != "" {
+				tools = append(tools, item)
+			}
+		}
+		*t = tools
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+	*t = splitSkillTools(str)
+	return nil
+}
+
+// splitSkillTools splits an allowed-tools string on whitespace and commas,
+// keeping a parenthesized argument intact so a rule such as
+// "Bash(git status:*)" stays one tool.
+func splitSkillTools(s string) []string {
+	var tools []string
+	var cur strings.Builder
+	depth := 0
+	flush := func() {
+		if tool := strings.TrimSpace(cur.String()); tool != "" {
+			tools = append(tools, tool)
+		}
+		cur.Reset()
+	}
+	for _, r := range s {
+		switch {
+		case r == '(':
+			depth++
+		case r == ')' && depth > 0:
+			depth--
+		case depth == 0 && (r == ',' || unicode.IsSpace(r)):
+			flush()
+			continue
+		}
+		cur.WriteRune(r)
+	}
+	flush()
+	return tools
+}
+
+// skillFrontmatterBlock returns the YAML between the opening and closing
+// "---" lines of a SKILL.md file, tolerating a UTF-8 byte order mark and CRLF
+// line endings. ok is false when the file has no frontmatter.
+func skillFrontmatterBlock(content string) (string, bool) {
+	content = strings.TrimPrefix(content, "\ufeff")
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	lines := strings.Split(content, "\n")
+	if len(lines) == 0 || strings.TrimRight(lines[0], " \t") != "---" {
+		return "", false
+	}
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimRight(lines[i], " \t") == "---" {
+			return strings.Join(lines[1:i], "\n"), true
+		}
+	}
+	return "", false
 }
 
 func parseSkillMd(name, sourcePath, content string) skillInfo {
@@ -149,19 +223,14 @@ func parseSkillMd(name, sourcePath, content string) skillInfo {
 		content: content,
 	}
 
-	// Extract YAML frontmatter between --- delimiters
-	if !strings.HasPrefix(content, "---\n") {
+	frontmatter, ok := skillFrontmatterBlock(content)
+	if !ok {
 		return info
 	}
 
-	endIdx := strings.Index(content[4:], "\n---")
-	if endIdx == -1 {
-		return info
-	}
-
-	frontmatter := content[4 : 4+endIdx]
 	var fm skillFrontmatter
 	if err := yaml.Unmarshal([]byte(frontmatter), &fm); err != nil {
+		log.Debug().Err(err).Str("path", sourcePath).Msg("could not parse SKILL.md frontmatter")
 		return info
 	}
 
@@ -170,16 +239,7 @@ func parseSkillMd(name, sourcePath, content string) skillInfo {
 	}
 	info.description = fm.Description
 	info.argumentHint = fm.ArgumentHint
-
-	// allowed-tools is a comma-separated string in both Claude Code and Codex SKILL.md files
-	if fm.AllowedTools != "" {
-		for _, tool := range strings.Split(fm.AllowedTools, ",") {
-			tool = strings.TrimSpace(tool)
-			if tool != "" {
-				info.allowedTools = append(info.allowedTools, tool)
-			}
-		}
-	}
+	info.allowedTools = fm.AllowedTools
 
 	return info
 }
