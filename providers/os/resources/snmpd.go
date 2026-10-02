@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/afero"
@@ -117,6 +118,10 @@ func (s *mqlSnmpdConfig) files(file *mqlFile) ([]any, error) {
 		return nil, errors.New("no base snmpd config file to read")
 	}
 
+	if err := snmpdExplicitConfigExists(file); err != nil {
+		return nil, err
+	}
+
 	visited := map[string]bool{}
 	res := []any{}
 
@@ -141,6 +146,27 @@ func (s *mqlSnmpdConfig) files(file *mqlFile) ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// snmpdExplicitConfigExists returns an error when snmpd.config(path) names a
+// file that does not exist, the way nginx.conf, haproxy.config and bind9
+// report a missing explicit path. Only a missing default location means snmpd
+// is not configured on the host, which reads as no directives.
+func snmpdExplicitConfigExists(file *mqlFile) error {
+	if slices.Contains(snmpdConfigCandidates, file.Path.Data) {
+		return nil
+	}
+	exists := file.GetExists()
+	if exists.Error != nil {
+		return exists.Error
+	}
+	if exists.Data {
+		return nil
+	}
+	if content := file.GetContent(); content.Error != nil {
+		return content.Error
+	}
+	return fmt.Errorf("could not read %q: no such file", file.Path.Data)
 }
 
 // collectIfExists collects the file at path when it exists and reports

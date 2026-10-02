@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestSnmpdConfigPath(t *testing.T) {
@@ -41,5 +43,46 @@ func TestSnmpdConfigPath(t *testing.T) {
 
 	t.Run("nothing installed names the default path", func(t *testing.T) {
 		assert.Equal(t, "/etc/snmp/snmpd.conf", snmpdConfigPath(afero.NewMemMapFs()))
+	})
+}
+
+// snmpd.config("/nonexistent") used to resolve to empty lists, so
+// roCommunities.none(_ == "public") passed against a file that is not there.
+// An explicit path that does not exist is an error; a missing default
+// location still means snmpd is not configured and reads as empty.
+func TestSnmpdConfigMissingExplicitPath(t *testing.T) {
+	newConfig := func(t *testing.T, files map[string]*mock.MockFileData, path string) *mqlSnmpdConfig {
+		t.Helper()
+		runtime := tomcatMockRuntime(t, files)
+		raw, err := NewResource(runtime, "snmpd.config", map[string]*llx.RawData{
+			"path": llx.StringData(path),
+		})
+		require.NoError(t, err)
+		return raw.(*mqlSnmpdConfig)
+	}
+
+	t.Run("a missing explicit path is an error", func(t *testing.T) {
+		cfg := newConfig(t, map[string]*mock.MockFileData{}, "/opt/snmp/custom.conf")
+		files := cfg.GetFiles()
+		require.Error(t, files.Error)
+		assert.Contains(t, files.Error.Error(), "/opt/snmp/custom.conf")
+		require.Error(t, cfg.GetRoCommunities().Error)
+	})
+
+	t.Run("a missing default path reads as not configured", func(t *testing.T) {
+		cfg := newConfig(t, map[string]*mock.MockFileData{}, defaultSnmpdConfig)
+		require.NoError(t, cfg.GetFiles().Error)
+		ro := cfg.GetRoCommunities()
+		require.NoError(t, ro.Error)
+		assert.Empty(t, ro.Data)
+	})
+
+	t.Run("an existing explicit path is read", func(t *testing.T) {
+		cfg := newConfig(t, map[string]*mock.MockFileData{
+			"/opt/snmp/custom.conf": {StatData: mock.FileInfo{Mode: 0o644}, Content: "rocommunity public 127.0.0.1\n"},
+		}, "/opt/snmp/custom.conf")
+		ro := cfg.GetRoCommunities()
+		require.NoError(t, ro.Error)
+		assert.Equal(t, []any{"public"}, ro.Data)
 	})
 }
