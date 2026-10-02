@@ -6,6 +6,7 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 
@@ -98,14 +99,19 @@ func (l *mqlLogrotate) files() ([]any, error) {
 		allFiles = append(allFiles, f)
 	}
 
+	skip, recursive := l.dropInFilter(fs)
+
 	// Drop-ins merge across both trees, with /etc shadowing a same-named file
 	// in /usr/etc.
 	for _, dir := range dropInDirs {
-		files, err := CreateResource(l.MqlRuntime, "files.find", map[string]*llx.RawData{
-			"from":  llx.StringData(dir),
-			"type":  llx.StringData("file"),
-			"depth": llx.IntData(1),
-		})
+		findArgs := map[string]*llx.RawData{
+			"from": llx.StringData(dir),
+			"type": llx.StringData("file"),
+		}
+		if !recursive {
+			findArgs["depth"] = llx.IntData(1)
+		}
+		files, err := CreateResource(l.MqlRuntime, "files.find", findArgs)
 		if err != nil {
 			return nil, err
 		}
@@ -123,12 +129,7 @@ func (l *mqlLogrotate) files() ([]any, error) {
 				continue
 			}
 
-			// Skip common backup/temp file extensions that logrotate ignores
-			name := basename.Data
-			if strings.HasSuffix(name, ".bak") || strings.HasSuffix(name, ".old") ||
-				strings.HasSuffix(name, ".rpmsave") || strings.HasSuffix(name, ".rpmorig") ||
-				strings.HasSuffix(name, ".dpkg-old") || strings.HasSuffix(name, ".dpkg-new") ||
-				strings.HasSuffix(name, ".dpkg-dist") || strings.HasSuffix(name, "~") {
+			if skip(basename.Data) {
 				continue
 			}
 			if vendorConfigShadowed(fs, file.Path.Data) {
@@ -140,6 +141,165 @@ func (l *mqlLogrotate) files() ([]any, error) {
 	}
 
 	return allFiles, nil
+}
+
+const (
+	// logrotateAllPath is the wrapper SUSE's logrotate.service runs on SLE 16
+	// and openSUSE Leap 16. It hands logrotate every file in
+	// {/usr,}/etc/logrotate.d by name, so no taboo list applies to them.
+	logrotateAllPath = "/usr/sbin/logrotate-all"
+	logrotateBinPath = "/usr/sbin/logrotate"
+)
+
+// logrotateServiceUnits are the logrotate.service unit files in the order
+// systemd looks them up.
+var logrotateServiceUnits = []string{
+	"/etc/systemd/system/logrotate.service",
+	"/usr/lib/systemd/system/logrotate.service",
+	"/lib/systemd/system/logrotate.service",
+}
+
+// dropInFilter returns the test that drops a logrotate.d file logrotate does
+// not read, and whether files in subdirectories count.
+//
+//   - When logrotate.service runs logrotate-all, every regular file in the
+//     drop-in trees, subdirectories included, is passed to logrotate.
+//   - On SUSE, logrotate reads the directory through `include` and skips the
+//     names matching its built-in taboo list, which depends on its version.
+//   - Elsewhere the long-standing suffix list applies.
+func (l *mqlLogrotate) dropInFilter(fs afero.Fs) (func(string) bool, bool) {
+	if logrotateAllDrivesRotation(fs) {
+		return func(string) bool { return false }, true
+	}
+
+	conn, ok := l.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return logrotateLegacySkip, false
+	}
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil || !asset.Platform.IsFamily("suse") {
+		return logrotateLegacySkip, false
+	}
+
+	version := ""
+	for _, cmd := range []string{logrotateBinPath + " --version", "logrotate --version"} {
+		if stdout, ok, err := runSystemctl(l.MqlRuntime, cmd); err == nil && ok {
+			version = parseLogrotateVersion(stdout)
+			if version != "" {
+				break
+			}
+		}
+	}
+	exts := logrotateTabooExts(version)
+	return func(name string) bool { return logrotateTabooMatch(exts, name) }, false
+}
+
+// logrotateAllDrivesRotation reports whether logrotate.service runs the
+// logrotate-all wrapper instead of logrotate with its main configuration.
+func logrotateAllDrivesRotation(fs afero.Fs) bool {
+	if fs == nil {
+		return false
+	}
+	if _, err := fs.Stat(logrotateAllPath); err != nil {
+		return false
+	}
+	for _, unit := range logrotateServiceUnits {
+		content, err := afero.ReadFile(fs, unit)
+		if err != nil {
+			continue
+		}
+		// the first unit file found is the one systemd loads
+		for _, line := range strings.Split(string(content), "\n") {
+			key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+			if ok && strings.TrimSpace(key) == "ExecStart" && strings.Contains(value, logrotateAllPath) {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// logrotateLegacySkip is the suffix list applied outside SUSE.
+func logrotateLegacySkip(name string) bool {
+	for _, suffix := range []string{".bak", ".old", ".rpmsave", ".rpmorig", ".dpkg-old", ".dpkg-new", ".dpkg-dist", "~"} {
+		if strings.HasSuffix(name, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// parseLogrotateVersion reads the version from the first line of
+// `logrotate --version`, which is `logrotate 3.18.1`.
+func parseLogrotateVersion(stdout string) string {
+	first, _, _ := strings.Cut(strings.TrimSpace(stdout), "\n")
+	name, version, ok := strings.Cut(strings.TrimSpace(first), " ")
+	if !ok || name != "logrotate" {
+		return ""
+	}
+	return strings.TrimSpace(version)
+}
+
+// logrotateTabooExts returns logrotate's built-in taboo extensions
+// (defTabooExts in config.c) for a version. An unknown version gets the list
+// of 3.17 to 3.21, which covers the logrotate of SLE 15 and openSUSE Leap 15.
+func logrotateTabooExts(version string) []string {
+	exts := []string{",v", ".cfsaved", ".disabled", ".dpkg-dist", ".dpkg-new", ".dpkg-old",
+		".rhn-cfg-tmp-*", ".rpmnew", ".rpmorig", ".rpmsave", ".swp", ".ucf-dist", ".ucf-new", ".ucf-old", "~"}
+
+	major, minor, ok := logrotateMajorMinor(version)
+	if !ok {
+		major, minor = 3, 18
+	}
+	atLeast := func(m int) bool { return major > 3 || (major == 3 && minor >= m) }
+	if atLeast(13) {
+		exts = append(exts, ".dpkg-bak", ".dpkg-del")
+	}
+	if atLeast(14) {
+		exts = append(exts, ".dpkg-tmp")
+	}
+	if atLeast(17) {
+		exts = append(exts, ".bak")
+	}
+	if atLeast(22) {
+		exts = append(exts, ".new", ".old", ".orig")
+	}
+	return exts
+}
+
+func logrotateMajorMinor(version string) (int, int, bool) {
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, false
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, false
+	}
+	return major, minor, true
+}
+
+// logrotateTabooMatch reports whether logrotate skips a drop-in name. It
+// matches each extension as the pattern `*<ext>` with fnmatch(FNM_PERIOD), so
+// a name starting with a dot is never taboo, and `.` and `..` are skipped.
+func logrotateTabooMatch(exts []string, name string) bool {
+	if name == "." || name == ".." {
+		return true
+	}
+	if strings.HasPrefix(name, ".") {
+		return false
+	}
+	for _, ext := range exts {
+		if ok, err := path.Match("*"+ext, name); err == nil && ok {
+			return true
+		}
+	}
+	return false
 }
 
 // globalConfig parses all config files and returns the global directives.

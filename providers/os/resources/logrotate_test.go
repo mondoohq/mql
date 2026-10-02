@@ -95,3 +95,113 @@ func TestLogrotateLocations(t *testing.T) {
 		assert.Empty(t, dirs)
 	})
 }
+
+// `logrotate -d /etc/logrotate.conf` on SLE 15 SP7 and openSUSE Leap 15.6
+// (logrotate 3.18.1) reads g04 and g04.old and ignores g04.bak, g04.rpmnew
+// and g04.disabled ("Ignoring g04.bak, because of *.bak pattern match").
+// Hidden .g04hidden and .g04.bak are read too: fnmatch(FNM_PERIOD) never lets
+// `*` match a leading dot.
+func TestLogrotateTabooMatchSLE15(t *testing.T) {
+	exts := logrotateTabooExts("3.18.1")
+
+	for _, name := range []string{"g04", "g04.old", ".g04hidden", ".g04.bak", "chrony", "zypp-history.lr", "syslog"} {
+		assert.False(t, logrotateTabooMatch(exts, name), name)
+	}
+	for _, name := range []string{"g04.bak", "g04.rpmnew", "g04.disabled", "g04.rpmsave", "g04~", "g04,v", "g04.dpkg-tmp", "g04.rhn-cfg-tmp-1234"} {
+		assert.True(t, logrotateTabooMatch(exts, name), name)
+	}
+}
+
+func TestLogrotateTabooExtsByVersion(t *testing.T) {
+	// .bak became taboo in 3.17; .old, .new and .orig in 3.22
+	assert.False(t, logrotateTabooMatch(logrotateTabooExts("3.16.0"), "g04.bak"))
+	assert.True(t, logrotateTabooMatch(logrotateTabooExts("3.17.0"), "g04.bak"))
+	assert.False(t, logrotateTabooMatch(logrotateTabooExts("3.21.0"), "g04.old"))
+	assert.True(t, logrotateTabooMatch(logrotateTabooExts("3.22.0"), "g04.old"))
+	assert.True(t, logrotateTabooMatch(logrotateTabooExts("3.22.0"), "g04.orig"))
+	// .dpkg-bak in 3.13, .dpkg-tmp in 3.14
+	assert.False(t, logrotateTabooMatch(logrotateTabooExts("3.12.3"), "g04.dpkg-bak"))
+	assert.True(t, logrotateTabooMatch(logrotateTabooExts("3.13.0"), "g04.dpkg-bak"))
+	assert.False(t, logrotateTabooMatch(logrotateTabooExts("3.13.0"), "g04.dpkg-tmp"))
+	assert.True(t, logrotateTabooMatch(logrotateTabooExts("3.14.0"), "g04.dpkg-tmp"))
+	// an unknown version reads as SLE 15's 3.18
+	assert.Equal(t, logrotateTabooExts("3.18.1"), logrotateTabooExts(""))
+}
+
+func TestParseLogrotateVersion(t *testing.T) {
+	// SLE 15 SP7
+	out := "logrotate 3.18.1\n\n    Default mail command:       /bin/mail\n    Default compress command:   /bin/gzip\n"
+	assert.Equal(t, "3.18.1", parseLogrotateVersion(out))
+	assert.Equal(t, "3.22.0", parseLogrotateVersion("logrotate 3.22.0\n"))
+	assert.Equal(t, "", parseLogrotateVersion("bash: logrotate: command not found\n"))
+	assert.Equal(t, "", parseLogrotateVersion(""))
+}
+
+// The logrotate.service SLE 16 and openSUSE Leap 16 ship.
+const sle16LogrotateService = `[Unit]
+Description=Rotate log files
+Documentation=man:logrotate(8) man:logrotate.conf(5)
+RequiresMountsFor=/var/log
+ConditionACPower=true
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/logrotate-all
+
+# performance options
+Nice=19
+`
+
+// The logrotate.service of SLE 15 SP7 and Leap 15.6.
+const sle15LogrotateService = `[Unit]
+Description=Rotate log files
+Documentation=man:logrotate(8) man:logrotate.conf(5)
+RequiresMountsFor=/var/log
+ConditionACPower=true
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/logrotate /etc/logrotate.conf
+`
+
+func TestLogrotateAllDrivesRotation(t *testing.T) {
+	write := func(t *testing.T, fs afero.Fs, path, content string) {
+		t.Helper()
+		require.NoError(t, afero.WriteFile(fs, path, []byte(content), 0o644))
+	}
+
+	t.Run("SLE 16 runs logrotate-all", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(t, fs, "/usr/sbin/logrotate-all", "#!/bin/sh\n")
+		write(t, fs, "/usr/lib/systemd/system/logrotate.service", sle16LogrotateService)
+		assert.True(t, logrotateAllDrivesRotation(fs))
+	})
+
+	t.Run("SLE 15 runs logrotate with its configuration", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(t, fs, "/usr/lib/systemd/system/logrotate.service", sle15LogrotateService)
+		assert.False(t, logrotateAllDrivesRotation(fs))
+	})
+
+	t.Run("an /etc unit that runs logrotate directly wins", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(t, fs, "/usr/sbin/logrotate-all", "#!/bin/sh\n")
+		write(t, fs, "/usr/lib/systemd/system/logrotate.service", sle16LogrotateService)
+		write(t, fs, "/etc/systemd/system/logrotate.service", sle15LogrotateService)
+		assert.False(t, logrotateAllDrivesRotation(fs))
+	})
+
+	t.Run("the unit names a wrapper that is not installed", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(t, fs, "/usr/lib/systemd/system/logrotate.service", sle16LogrotateService)
+		assert.False(t, logrotateAllDrivesRotation(fs))
+	})
+}
+
+// Outside SUSE the suffix list stays as it was.
+func TestLogrotateLegacySkip(t *testing.T) {
+	for _, name := range []string{"apt.bak", "apt.old", "apt.dpkg-old", "apt.dpkg-dist", "apt~"} {
+		assert.True(t, logrotateLegacySkip(name), name)
+	}
+	assert.False(t, logrotateLegacySkip("apt"))
+}
