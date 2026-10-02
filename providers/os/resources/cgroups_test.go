@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func TestNormalizeCgroupPath(t *testing.T) {
@@ -217,4 +219,94 @@ func TestFlattenCgroupAttr(t *testing.T) {
 	assert.Equal(t, "", flattenCgroupAttr([]byte("")))
 	assert.Equal(t, "", flattenCgroupAttr([]byte("\n")))
 	assert.Equal(t, "50000 100000", flattenCgroupAttr([]byte("50000 100000\n")))
+}
+
+// /proc/cgroups from a RHEL 8.10 host booted with cgroup v1.
+const rhel8ProcCgroups = `#subsys_name	hierarchy	num_cgroups	enabled
+cpuset	8	1	1
+cpu	4	78	1
+cpuacct	4	78	1
+blkio	9	78	1
+memory	11	185	1
+devices	12	78	1
+freezer	5	1	1
+net_cls	10	1	1
+perf_event	3	1	1
+net_prio	10	1	1
+hugetlb	2	1	1
+pids	6	86	1
+rdma	7	1	1
+`
+
+func TestParseProcCgroups(t *testing.T) {
+	assert.Equal(t, []string{
+		"cpuset", "cpu", "cpuacct", "blkio", "memory", "devices", "freezer",
+		"net_cls", "perf_event", "net_prio", "hugetlb", "pids", "rdma",
+	}, parseProcCgroups(rhel8ProcCgroups))
+
+	// a controller on no v1 hierarchy (hierarchy 0, as on a hybrid host where
+	// it sits on the unified one) or disabled with cgroup_disable= is not
+	// available to v1 cgroups
+	assert.Equal(t, []string{"cpu"}, parseProcCgroups("#subsys_name\thierarchy\tnum_cgroups\tenabled\ncpu\t4\t78\t1\nmemory\t0\t1\t1\nrdma\t7\t1\t0\n"))
+
+	assert.Empty(t, parseProcCgroups(""))
+}
+
+// cgroupFsConn serves a mock connection's files from fs.
+type cgroupFsConn struct {
+	mockConn
+	fs afero.Fs
+}
+
+func (c *cgroupFsConn) FileSystem() afero.Fs { return c.fs }
+
+// On cgroup v1 (RHEL 7 and 8, Alma 8) controllers read [] because only the v2
+// marker file was consulted, and list read [] as if the host ran no cgroups.
+func TestCgroupsV1(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/sys/fs/cgroup/memory", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/proc/cgroups", []byte(rhel8ProcCgroups), 0o444))
+
+	runtime := &plugin.Runtime{
+		Connection: &cgroupFsConn{fs: fs},
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}
+	raw, err := CreateResource(runtime, "cgroups", nil)
+	require.NoError(t, err)
+	cg := raw.(*mqlCgroups)
+
+	version := cg.GetVersion()
+	require.NoError(t, version.Error)
+	assert.Equal(t, int64(1), version.Data)
+
+	controllers := cg.GetControllers()
+	require.NoError(t, controllers.Error)
+	assert.Len(t, controllers.Data, 13)
+	assert.Contains(t, controllers.Data, "memory")
+
+	list := cg.GetList()
+	require.NoError(t, list.Error)
+	assert.Nil(t, list.Data)
+	assert.True(t, list.IsNull())
+
+	root := cg.GetRoot()
+	require.NoError(t, root.Error)
+	assert.Nil(t, root.Data)
+}
+
+// A v1 host whose /proc/cgroups cannot be read fails controllers, not version.
+func TestCgroupsV1UnreadableProcCgroups(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/sys/fs/cgroup/memory", 0o755))
+
+	runtime := &plugin.Runtime{
+		Connection: &cgroupFsConn{fs: fs},
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}
+	raw, err := CreateResource(runtime, "cgroups", nil)
+	require.NoError(t, err)
+	cg := raw.(*mqlCgroups)
+
+	assert.Equal(t, int64(1), cg.GetVersion().Data)
+	assert.Error(t, cg.GetControllers().Error)
 }

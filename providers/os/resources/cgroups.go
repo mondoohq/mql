@@ -29,6 +29,10 @@ const (
 	// under cgroup v1.
 	cgroupV1MemoryDir = "memory"
 
+	// procCgroupsPath lists the controllers the kernel knows and the v1
+	// hierarchy each one is attached to.
+	procCgroupsPath = "/proc/cgroups"
+
 	// cgroupWalkMaxDepth bounds how far below the cgroup root the walk
 	// descends. Busy hosts (e.g. K8s nodes with thousands of pod
 	// cgroups) would otherwise cost one directory listing per pod
@@ -68,8 +72,11 @@ type mqlCgroupInternal struct {
 type cgroupDetection struct {
 	version     int64
 	controllers []string
-	root        *mqlCgroup
-	flat        []*mqlCgroup
+	// controllersErr is why controllers could not be read, when they could
+	// not; it fails only that field, not the version.
+	controllersErr error
+	root           *mqlCgroup
+	flat           []*mqlCgroup
 }
 
 func (c *mqlCgroups) id() (string, error) {
@@ -100,9 +107,21 @@ func (c *mqlCgroups) doProbe() (*cgroupDetection, error) {
 	fs := conn.FileSystem()
 
 	det.version = detectCgroupVersion(fs)
+	if det.version == 1 {
+		// v1 has no cgroup.controllers file; the kernel lists its
+		// controllers in /proc/cgroups instead. The per-controller
+		// hierarchies themselves are not modeled, so root and list stay
+		// null rather than reading as a host with no cgroups.
+		content, err := afero.ReadFile(fs, procCgroupsPath)
+		if err != nil {
+			det.controllersErr = fmt.Errorf("cannot read the cgroup v1 controllers from %s: %w", procCgroupsPath, err)
+			return det, nil
+		}
+		det.controllers = parseProcCgroups(string(content))
+		return det, nil
+	}
 	if det.version != 2 {
-		// v1's per-controller hierarchies are intentionally unmodeled,
-		// and version 0 means there is no cgroup mount to walk.
+		// version 0 means there is no cgroup mount to walk
 		return det, nil
 	}
 
@@ -154,6 +173,32 @@ func (c *mqlCgroups) doProbe() (*cgroupDetection, error) {
 		det.version = 0
 	}
 	return det, nil
+}
+
+// parseProcCgroups returns the controllers /proc/cgroups lists as enabled
+// and attached to a v1 hierarchy, in the kernel's order. A controller with
+// hierarchy 0 is not mounted on any v1 hierarchy (on a hybrid host it may
+// sit on the unified one), so it is not available to v1 cgroups.
+//
+//	#subsys_name	hierarchy	num_cgroups	enabled
+//	cpuset	3	1	1
+func parseProcCgroups(content string) []string {
+	controllers := []string{}
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		if fields[1] == "0" || fields[3] != "1" {
+			continue
+		}
+		controllers = append(controllers, fields[0])
+	}
+	return controllers
 }
 
 // detectCgroupVersion reports what cgroup mode the target is running in
@@ -263,6 +308,9 @@ func (c *mqlCgroups) controllers() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if d.controllersErr != nil {
+		return nil, classifyFsError(d.controllersErr)
+	}
 	out := make([]any, len(d.controllers))
 	for i, s := range d.controllers {
 		out[i] = s
@@ -286,6 +334,11 @@ func (c *mqlCgroups) list() ([]any, error) {
 	d, err := c.probe()
 	if err != nil {
 		return nil, err
+	}
+	if d.version == 1 {
+		// the v1 hierarchies are not walked, so the list is unknown, not empty
+		c.List.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	out := make([]any, len(d.flat))
 	for i, cg := range d.flat {
