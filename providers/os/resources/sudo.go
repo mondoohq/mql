@@ -148,7 +148,9 @@ func resolveVisudoPath(conn shared.Connection) string {
 }
 
 // visudoForSudo returns the visudo that belongs to the sudo binary at
-// sudoPath, or "" when there is none. Each implementation ships its own
+// sudoPath, or "" when there is none. The name is "vi" + the sudo binary's
+// name, so a binary not named sudo or sudo-rs has no validator and validate
+// is null for it. Each implementation ships its own
 // validator under the matching name: sudo with visudo, sudo-rs with
 // visudo-rs. The validator sits next to the binary or in the sbin sibling of
 // its bin directory (/usr/bin/sudo, /usr/sbin/visudo). sudo-rs rejects
@@ -447,14 +449,10 @@ func (s *mqlSudo) validate() (*mqlSudoValidation, error) {
 	}
 
 	valid := cmd.ExitStatus == 0 && len(parseErrors) == 0
-	validationID := "sudo.validation/" + visudo + "/invalid"
-	if valid {
-		validationID = "sudo.validation/" + visudo + "/valid"
-	}
 	res, err := CreateResource(s.MqlRuntime, "sudo.validation", map[string]*llx.RawData{
 		// one result per validator: sudo and sudo-rs report different
 		// errors for the same files
-		"__id":   llx.StringData(validationID),
+		"__id":   llx.StringData("sudo.validation/" + visudo),
 		"valid":  llx.BoolData(valid),
 		"errors": llx.ArrayData(errsResources, types.Resource("sudo.validation.error")),
 	})
