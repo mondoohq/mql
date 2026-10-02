@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"bytes"
 	"crypto/dsa" //nolint:staticcheck // DSA is deprecated, but we still detect legacy DSA keys for crypto-posture auditing
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -61,12 +62,61 @@ func inspectPrivateKey(data []byte) (privateKeyInfo, error) {
 		return info, nil
 	}
 
-	// PKCS#8 encrypted keys (`openssl pkcs8 -topk8 -v2 aes256`) are not
-	// supported by x/crypto/ssh; the algorithm sits inside the ciphertext.
-	if block, _ := pem.Decode(data); block != nil && block.Type == "ENCRYPTED PRIVATE KEY" {
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return privateKeyInfo{}, err
+	}
+	switch block.Type {
+	case "ENCRYPTED PRIVATE KEY":
+		// PKCS#8 encrypted keys (`openssl pkcs8 -topk8 -v2 aes256`) are not
+		// supported by x/crypto/ssh; the algorithm sits inside the ciphertext.
 		return privateKeyInfo{Encrypted: true}, nil
+	case "OPENSSH PRIVATE KEY":
+		// x/crypto/ssh decodes OpenSSH-format RSA, ECDSA and Ed25519 keys
+		// only. A DSA key written by ssh-keygen 7.8 or later fails with
+		// "ssh: unhandled key type", but the format stores the public key
+		// and cipher name in the clear, which is all that is reported here.
+		if info, ok := inspectOpenSSHKeyHeader(block.Bytes); ok {
+			return info, nil
+		}
 	}
 	return privateKeyInfo{}, err
+}
+
+const opensshKeyMagic = "openssh-key-v1\x00"
+
+// opensshKeyHeader is the unencrypted part of an openssh-key-v1 private key
+// (PROTOCOL.key in the OpenSSH sources), up to and including the first
+// public key. The private key section follows and is not read.
+type opensshKeyHeader struct {
+	CipherName string
+	KdfName    string
+	KdfOpts    string
+	NumKeys    uint32
+	PubKey     []byte
+	Rest       []byte `ssh:"rest"`
+}
+
+// inspectOpenSSHKeyHeader reads the algorithm, size and encryption of an
+// openssh-key-v1 key from its unencrypted header. ok is false when the data
+// is not a well-formed header.
+func inspectOpenSSHKeyHeader(data []byte) (privateKeyInfo, bool) {
+	if !bytes.HasPrefix(data, []byte(opensshKeyMagic)) {
+		return privateKeyInfo{}, false
+	}
+	var hdr opensshKeyHeader
+	if err := ssh.Unmarshal(data[len(opensshKeyMagic):], &hdr); err != nil || hdr.NumKeys != 1 {
+		return privateKeyInfo{}, false
+	}
+	pub, err := ssh.ParsePublicKey(hdr.PubKey)
+	if err != nil {
+		return privateKeyInfo{}, false
+	}
+	info := privateKeyInfo{Encrypted: hdr.CipherName != "none"}
+	if cpk, ok := pub.(ssh.CryptoPublicKey); ok {
+		info.Algorithm, info.Bits = publicKeyAlgorithmBits(cpk.CryptoPublicKey())
+	}
+	return info, true
 }
 
 // pemBlockAlgorithm maps legacy PEM block types, which stay readable when the
