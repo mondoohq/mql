@@ -33,5 +33,11 @@
     {
       "pattern": "^https:\\/\\/(docs\\.)?cloud\\.google\\.com\\/.*substitute-variable-values"
     }
+  ],
+  "replacementPatterns": [
+    {
+      "pattern": "^https://github\\.com/([^/]+)/([^/]+)/blob/",
+      "replacement": "https://raw.githubusercontent.com/$1/$2/"
+    }
   ]
 }
