@@ -2107,6 +2107,14 @@ ms365.exchangeonline.quarantinePolicyEntry.endUserQuarantinePermissionsValue 13.
 ms365.exchangeonline.quarantinePolicyEntry.esnEnabled 13.3.1
 ms365.exchangeonline.quarantinePolicyEntry.identity 13.3.1
 ms365.exchangeonline.quarantinePolicyEntry.name 13.3.1
+ms365.exchangeonline.quarantinePolicyEntry.permissionToAllowSender 14.0.2
+ms365.exchangeonline.quarantinePolicyEntry.permissionToBlockSender 14.0.2
+ms365.exchangeonline.quarantinePolicyEntry.permissionToDelete 14.0.2
+ms365.exchangeonline.quarantinePolicyEntry.permissionToDownload 14.0.2
+ms365.exchangeonline.quarantinePolicyEntry.permissionToPreview 14.0.2
+ms365.exchangeonline.quarantinePolicyEntry.permissionToRelease 14.0.2
+ms365.exchangeonline.quarantinePolicyEntry.permissionToRequestRelease 14.0.2
+ms365.exchangeonline.quarantinePolicyEntry.permissionToViewHeader 14.0.2
 ms365.exchangeonline.remoteDomainEntry 13.3.1
 ms365.exchangeonline.remoteDomainEntry.allowedOOFType 13.3.1
 ms365.exchangeonline.remoteDomainEntry.autoForwardEnabled 13.3.1

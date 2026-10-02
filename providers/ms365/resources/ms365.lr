@@ -7710,9 +7710,10 @@ private ms365.exchangeonline.remoteDomainEntry @defaults("name domainName autoFo
 // Exchange Online quarantine policy
 //
 // Single quarantine policy returned by Get-QuarantinePolicy,
-// selected by `name`. Each policy reports the
-// `endUserQuarantinePermissionsValue` bitmask that controls what recipients
-// may do with their quarantined messages, and whether end-user spam
+// selected by `name`. Each policy reports what recipients may do with their
+// quarantined messages, both as individual permissions (permissionToRelease,
+// permissionToRequestRelease, permissionToDelete, and so on) and as the
+// `endUserQuarantinePermissionsValue` bitmask, and whether end-user spam
 // (quarantine) notifications are enabled.
 private ms365.exchangeonline.quarantinePolicyEntry @defaults("name esnEnabled") {
   // The policy identity
@@ -7720,7 +7721,30 @@ private ms365.exchangeonline.quarantinePolicyEntry @defaults("name esnEnabled") 
   // The policy name
   name string
   // Bitmask of end-user permissions granted for quarantined messages
+  //
+  // Bits from highest to lowest: PermissionToViewHeader (128), PermissionToDownload (64),
+  // PermissionToAllowSender (32), PermissionToBlockSender (16), PermissionToRequestRelease (8),
+  // PermissionToRelease (4), PermissionToPreview (2), PermissionToDelete (1).
+  // A policy with no end-user permissions is 0.
   endUserQuarantinePermissionsValue int
+  // Whether recipients can release their quarantined messages
+  permissionToRelease bool
+  // Whether recipients can request release of their quarantined messages
+  //
+  // An administrator approves or denies the request.
+  permissionToRequestRelease bool
+  // Whether recipients can delete their quarantined messages
+  permissionToDelete bool
+  // Whether recipients can preview their quarantined messages
+  permissionToPreview bool
+  // Whether recipients can add the sender of a quarantined message to their Safe Senders list
+  permissionToAllowSender bool
+  // Whether recipients can add the sender of a quarantined message to their Blocked Senders list
+  permissionToBlockSender bool
+  // Whether recipients can download their quarantined messages
+  permissionToDownload bool
+  // Whether recipients can view the message header of their quarantined messages
+  permissionToViewHeader bool
   // Whether end-user spam notifications (quarantine notifications) are enabled
   esnEnabled bool
 }

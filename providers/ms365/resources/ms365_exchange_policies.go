@@ -5,6 +5,7 @@ package resources
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
@@ -706,10 +707,96 @@ func convertRemoteDomains(r *mqlMs365Exchangeonline, raw any) ([]any, error) {
 // --- Quarantine policies ---
 
 type ExchangeQuarantinePolicy struct {
-	Identity                          string `json:"Identity"`
-	Name                              string `json:"Name"`
-	EndUserQuarantinePermissionsValue int64  `json:"EndUserQuarantinePermissionsValue"`
-	ESNEnabled                        bool   `json:"ESNEnabled"`
+	Identity string `json:"Identity"`
+	Name     string `json:"Name"`
+	// EndUserQuarantinePermissionsValue is no longer returned by
+	// Get-QuarantinePolicy; EndUserQuarantinePermissions carries the same data.
+	EndUserQuarantinePermissionsValue *int64 `json:"EndUserQuarantinePermissionsValue"`
+	// EndUserQuarantinePermissions is a string such as
+	// "[PermissionToBlockSender: False\r\nPermissionToDelete: True\r\n...]".
+	EndUserQuarantinePermissions string `json:"EndUserQuarantinePermissions"`
+	ESNEnabled                   bool   `json:"ESNEnabled"`
+}
+
+// quarantinePermissionBits maps each end-user quarantine permission to its bit
+// in EndUserQuarantinePermissionsValue, as documented for
+// New-QuarantinePolicy -EndUserQuarantinePermissionsValue.
+var quarantinePermissionBits = []struct {
+	name  string // permission name in EndUserQuarantinePermissions
+	field string // MQL field
+	bit   int64
+}{
+	{"PermissionToViewHeader", "permissionToViewHeader", 128},
+	{"PermissionToDownload", "permissionToDownload", 64},
+	{"PermissionToAllowSender", "permissionToAllowSender", 32},
+	{"PermissionToBlockSender", "permissionToBlockSender", 16},
+	{"PermissionToRequestRelease", "permissionToRequestRelease", 8},
+	{"PermissionToRelease", "permissionToRelease", 4},
+	{"PermissionToPreview", "permissionToPreview", 2},
+	{"PermissionToDelete", "permissionToDelete", 1},
+}
+
+// parseQuarantinePermissions parses the EndUserQuarantinePermissions string
+// into permission name -> granted. Unknown or malformed lines are skipped.
+func parseQuarantinePermissions(s string) map[string]bool {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "[")
+	s = strings.TrimSuffix(s, "]")
+	out := map[string]bool{}
+	for _, line := range strings.FieldsFunc(s, func(r rune) bool { return r == '\r' || r == '\n' || r == ',' || r == ';' }) {
+		key, val, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		b, err := strconv.ParseBool(strings.TrimSpace(val))
+		if err != nil {
+			continue
+		}
+		out[strings.TrimSpace(key)] = b
+	}
+	return out
+}
+
+// quarantinePolicyPermissions returns the bitmask and per-permission flags of a
+// quarantine policy. The bitmask comes from EndUserQuarantinePermissionsValue
+// when present, otherwise it is computed from EndUserQuarantinePermissions.
+// Each flag comes from EndUserQuarantinePermissions when it names the
+// permission, otherwise from the bitmask. With neither source, the bitmask
+// and flags are null.
+func quarantinePolicyPermissions(p *ExchangeQuarantinePolicy) (*int64, map[string]*bool) {
+	parsed := parseQuarantinePermissions(p.EndUserQuarantinePermissions)
+	flags := make(map[string]*bool, len(quarantinePermissionBits))
+
+	mask := p.EndUserQuarantinePermissionsValue
+	if mask == nil {
+		var computed int64
+		known := false
+		for _, perm := range quarantinePermissionBits {
+			granted, ok := parsed[perm.name]
+			if !ok {
+				continue
+			}
+			known = true
+			if granted {
+				computed |= perm.bit
+			}
+		}
+		if known {
+			mask = &computed
+		}
+	}
+
+	for _, perm := range quarantinePermissionBits {
+		if granted, ok := parsed[perm.name]; ok {
+			flags[perm.field] = &granted
+		} else if mask != nil {
+			granted := *mask&perm.bit != 0
+			flags[perm.field] = &granted
+		} else {
+			flags[perm.field] = nil
+		}
+	}
+	return mask, flags
 }
 
 func convertQuarantinePolicies(r *mqlMs365Exchangeonline, raw any) ([]any, error) {
@@ -722,14 +809,18 @@ func convertQuarantinePolicies(r *mqlMs365Exchangeonline, raw any) ([]any, error
 		if p == nil {
 			continue
 		}
-		mql, err := CreateResource(r.MqlRuntime, "ms365.exchangeonline.quarantinePolicyEntry",
-			map[string]*llx.RawData{
-				"__id":                              llx.StringData("quarantinePolicy-" + p.Identity),
-				"identity":                          llx.StringData(p.Identity),
-				"name":                              llx.StringData(p.Name),
-				"endUserQuarantinePermissionsValue": llx.IntData(p.EndUserQuarantinePermissionsValue),
-				"esnEnabled":                        llx.BoolData(p.ESNEnabled),
-			})
+		mask, flags := quarantinePolicyPermissions(p)
+		args := map[string]*llx.RawData{
+			"__id":                              llx.StringData("quarantinePolicy-" + p.Identity),
+			"identity":                          llx.StringData(p.Identity),
+			"name":                              llx.StringData(p.Name),
+			"endUserQuarantinePermissionsValue": llx.IntDataPtr(mask),
+			"esnEnabled":                        llx.BoolData(p.ESNEnabled),
+		}
+		for field, v := range flags {
+			args[field] = llx.BoolDataPtr(v)
+		}
+		mql, err := CreateResource(r.MqlRuntime, "ms365.exchangeonline.quarantinePolicyEntry", args)
 		if err != nil {
 			return nil, err
 		}

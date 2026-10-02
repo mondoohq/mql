@@ -7684,6 +7684,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ms365.exchangeonline.quarantinePolicyEntry.endUserQuarantinePermissionsValue": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).GetEndUserQuarantinePermissionsValue()).ToDataRes(types.Int)
 	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToRelease": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).GetPermissionToRelease()).ToDataRes(types.Bool)
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToRequestRelease": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).GetPermissionToRequestRelease()).ToDataRes(types.Bool)
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToDelete": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).GetPermissionToDelete()).ToDataRes(types.Bool)
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToPreview": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).GetPermissionToPreview()).ToDataRes(types.Bool)
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToAllowSender": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).GetPermissionToAllowSender()).ToDataRes(types.Bool)
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToBlockSender": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).GetPermissionToBlockSender()).ToDataRes(types.Bool)
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToDownload": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).GetPermissionToDownload()).ToDataRes(types.Bool)
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToViewHeader": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).GetPermissionToViewHeader()).ToDataRes(types.Bool)
+	},
 	"ms365.exchangeonline.quarantinePolicyEntry.esnEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).GetEsnEnabled()).ToDataRes(types.Bool)
 	},
@@ -17221,6 +17245,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ms365.exchangeonline.quarantinePolicyEntry.endUserQuarantinePermissionsValue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).EndUserQuarantinePermissionsValue, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToRelease": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).PermissionToRelease, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToRequestRelease": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).PermissionToRequestRelease, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToDelete": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).PermissionToDelete, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToPreview": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).PermissionToPreview, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToAllowSender": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).PermissionToAllowSender, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToBlockSender": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).PermissionToBlockSender, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToDownload": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).PermissionToDownload, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ms365.exchangeonline.quarantinePolicyEntry.permissionToViewHeader": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineQuarantinePolicyEntry).PermissionToViewHeader, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"ms365.exchangeonline.quarantinePolicyEntry.esnEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -41432,6 +41488,14 @@ type mqlMs365ExchangeonlineQuarantinePolicyEntry struct {
 	Identity                          plugin.TValue[string]
 	Name                              plugin.TValue[string]
 	EndUserQuarantinePermissionsValue plugin.TValue[int64]
+	PermissionToRelease               plugin.TValue[bool]
+	PermissionToRequestRelease        plugin.TValue[bool]
+	PermissionToDelete                plugin.TValue[bool]
+	PermissionToPreview               plugin.TValue[bool]
+	PermissionToAllowSender           plugin.TValue[bool]
+	PermissionToBlockSender           plugin.TValue[bool]
+	PermissionToDownload              plugin.TValue[bool]
+	PermissionToViewHeader            plugin.TValue[bool]
 	EsnEnabled                        plugin.TValue[bool]
 }
 
@@ -41477,6 +41541,38 @@ func (c *mqlMs365ExchangeonlineQuarantinePolicyEntry) GetName() *plugin.TValue[s
 
 func (c *mqlMs365ExchangeonlineQuarantinePolicyEntry) GetEndUserQuarantinePermissionsValue() *plugin.TValue[int64] {
 	return &c.EndUserQuarantinePermissionsValue
+}
+
+func (c *mqlMs365ExchangeonlineQuarantinePolicyEntry) GetPermissionToRelease() *plugin.TValue[bool] {
+	return &c.PermissionToRelease
+}
+
+func (c *mqlMs365ExchangeonlineQuarantinePolicyEntry) GetPermissionToRequestRelease() *plugin.TValue[bool] {
+	return &c.PermissionToRequestRelease
+}
+
+func (c *mqlMs365ExchangeonlineQuarantinePolicyEntry) GetPermissionToDelete() *plugin.TValue[bool] {
+	return &c.PermissionToDelete
+}
+
+func (c *mqlMs365ExchangeonlineQuarantinePolicyEntry) GetPermissionToPreview() *plugin.TValue[bool] {
+	return &c.PermissionToPreview
+}
+
+func (c *mqlMs365ExchangeonlineQuarantinePolicyEntry) GetPermissionToAllowSender() *plugin.TValue[bool] {
+	return &c.PermissionToAllowSender
+}
+
+func (c *mqlMs365ExchangeonlineQuarantinePolicyEntry) GetPermissionToBlockSender() *plugin.TValue[bool] {
+	return &c.PermissionToBlockSender
+}
+
+func (c *mqlMs365ExchangeonlineQuarantinePolicyEntry) GetPermissionToDownload() *plugin.TValue[bool] {
+	return &c.PermissionToDownload
+}
+
+func (c *mqlMs365ExchangeonlineQuarantinePolicyEntry) GetPermissionToViewHeader() *plugin.TValue[bool] {
+	return &c.PermissionToViewHeader
 }
 
 func (c *mqlMs365ExchangeonlineQuarantinePolicyEntry) GetEsnEnabled() *plugin.TValue[bool] {
