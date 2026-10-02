@@ -43,13 +43,14 @@ func (x *mqlSystemdTargets) list() ([]any, error) {
 		return []any{}, nil
 	}
 
-	// Batch every target's properties into a single `systemctl show`
-	// invocation. systemctl emits one block per unit separated by a blank
-	// line, in the same order we passed the unit names. This collapses
-	// what was previously N round-trips through the command resource into
-	// one — meaningful on remote/SSH connections where each command pays
-	// a full connection round-trip.
-	propsByName, err := showSystemdTargetPropertiesBatch(x.MqlRuntime, names)
+	// Batch every concrete target's properties into a single `systemctl show`
+	// invocation. This collapses what was previously N round-trips through
+	// the command resource into one, meaningful on remote/SSH connections
+	// where each command pays a full connection round-trip. Template targets
+	// (blockdev@) are left out: systemctl rejects a template name, and one
+	// rejected name fails the whole call. They are read from their unit files.
+	concrete, templates := splitSystemdTemplateTargets(names)
+	propsByName, err := showSystemdTargetPropertiesBatch(x.MqlRuntime, concrete)
 	if err != nil {
 		return nil, err
 	}
@@ -61,6 +62,10 @@ func (x *mqlSystemdTargets) list() ([]any, error) {
 	// not read them rather than claiming the target is inactive.
 	if len(propsByName) == 0 {
 		propsByName = services.ReadSystemdFSTargetProperties(conn.FileSystem(), names)
+	} else if len(templates) > 0 {
+		for name, props := range services.ReadSystemdFSTargetProperties(conn.FileSystem(), templates) {
+			propsByName[name] = props
+		}
 	}
 
 	res := make([]any, 0, len(names))
@@ -133,13 +138,24 @@ func listSystemdTargetNames(runtime *plugin.Runtime) ([]string, error) {
 	return names, nil
 }
 
+// splitSystemdTemplateTargets separates template targets (name ends in "@",
+// as in blockdev@) from concrete ones, keeping the order of each.
+func splitSystemdTemplateTargets(names []string) (concrete, templates []string) {
+	for _, name := range names {
+		if strings.HasSuffix(name, "@") {
+			templates = append(templates, name)
+			continue
+		}
+		concrete = append(concrete, name)
+	}
+	return concrete, templates
+}
+
 // showSystemdTargetPropertiesBatch runs a single `systemctl show` for
 // every target name in `names` and returns the per-target property maps,
-// keyed by the input name (no `.target` suffix). systemctl prints unit
-// blocks separated by a blank line in the same order the units were
-// passed, so we split on the blank line and zip blocks back to names.
-// On a system without systemctl we return an empty map and let the
-// caller render bare target shells.
+// keyed by the input name (no `.target` suffix). On a system without
+// systemctl we return an empty map and let the caller render bare target
+// shells.
 func showSystemdTargetPropertiesBatch(runtime *plugin.Runtime, names []string) (map[string]map[string]string, error) {
 	if len(names) == 0 {
 		return map[string]map[string]string{}, nil
@@ -161,15 +177,36 @@ func showSystemdTargetPropertiesBatch(runtime *plugin.Runtime, names []string) (
 		return map[string]map[string]string{}, nil
 	}
 
-	blocks := splitSystemctlShowBlocks(stdout)
-	out := make(map[string]map[string]string, len(names))
-	for i, name := range names {
-		if i >= len(blocks) {
-			break
+	return mapSystemdShowBlocksToNames(splitSystemctlShowBlocks(stdout), names), nil
+}
+
+// mapSystemdShowBlocksToNames assigns each `systemctl show` block to the
+// requested target names it answers for. A block is matched by its Id and
+// by every alias in Names, never by its position: an alias target
+// (default.target) answers with its unit's block (Id=graphical.target), and
+// a name systemctl skips shifts every block after it.
+func mapSystemdShowBlocksToNames(blocks []string, names []string) map[string]map[string]string {
+	byUnit := make(map[string]map[string]string, len(blocks))
+	for _, block := range blocks {
+		props := parseSystemdShowOutput(block)
+		id := props["Id"]
+		if id == "" {
+			continue
 		}
-		out[name] = parseSystemdShowOutput(blocks[i])
+		// a unit name belongs to exactly one unit, so these never collide
+		byUnit[id] = props
+		for _, alias := range strings.Fields(props["Names"]) {
+			byUnit[alias] = props
+		}
 	}
-	return out, nil
+
+	out := make(map[string]map[string]string, len(names))
+	for _, name := range names {
+		if props, ok := byUnit[name+".target"]; ok {
+			out[name] = props
+		}
+	}
+	return out
 }
 
 // splitSystemctlShowBlocks splits `systemctl show` output for multiple

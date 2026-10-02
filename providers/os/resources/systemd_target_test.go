@@ -151,3 +151,63 @@ ActiveState=active
 	// Empty input returns no blocks.
 	assert.Empty(t, splitSystemctlShowBlocks(""))
 }
+
+func TestSplitSystemdTemplateTargets(t *testing.T) {
+	concrete, templates := splitSystemdTemplateTargets([]string{
+		"basic", "blockdev@", "getty", "container-getty@", "user-runtime-dir@1000",
+	})
+	assert.Equal(t, []string{"basic", "getty", "user-runtime-dir@1000"}, concrete)
+	assert.Equal(t, []string{"blockdev@", "container-getty@"}, templates)
+}
+
+// Blocks taken from a live Ubuntu 24.04 host (systemd 255), trimmed to a few
+// properties: `systemctl show --no-pager -- basic.target default.target
+// multi-user.target`. default.target is an alias and answers with the
+// graphical.target block.
+const liveTargetShowBlocks = `Id=basic.target
+Names=basic.target
+Description=Basic System
+ActiveState=active
+SubState=active
+
+Id=graphical.target
+Names=graphical.target default.target runlevel5.target
+Before=shutdown.target systemd-update-utmp-runlevel.service
+Description=Graphical Interface
+ActiveState=active
+SubState=active
+
+Id=multi-user.target
+Names=multi-user.target runlevel2.target runlevel4.target runlevel3.target
+Before=shutdown.target graphical.target cloud-init.target cloud-final.service systemd-update-utmp-runlevel.service
+Description=Multi-User System
+ActiveState=active
+SubState=active
+`
+
+func TestMapSystemdShowBlocksToNames(t *testing.T) {
+	blocks := splitSystemctlShowBlocks(liveTargetShowBlocks)
+
+	t.Run("alias resolves to its unit's block", func(t *testing.T) {
+		out := mapSystemdShowBlocksToNames(blocks, []string{"basic", "default", "multi-user"})
+		require.Len(t, out, 3)
+		assert.Equal(t, "Basic System", out["basic"]["Description"])
+		assert.Equal(t, "Graphical Interface", out["default"]["Description"])
+		assert.Equal(t, "Multi-User System", out["multi-user"]["Description"])
+		assert.Equal(t, "active", out["multi-user"]["ActiveState"])
+	})
+
+	t.Run("a missing block does not shift the others", func(t *testing.T) {
+		// systemctl printed nothing for "gone"; every later name must still
+		// get its own block, not its neighbour's.
+		out := mapSystemdShowBlocksToNames(blocks, []string{"basic", "gone", "default", "multi-user"})
+		assert.NotContains(t, out, "gone")
+		assert.Equal(t, "Graphical Interface", out["default"]["Description"])
+		assert.Equal(t, "Multi-User System", out["multi-user"]["Description"])
+	})
+
+	t.Run("a block without Id is ignored", func(t *testing.T) {
+		out := mapSystemdShowBlocksToNames([]string{"Description=orphan\n"}, []string{"orphan"})
+		assert.Empty(t, out)
+	})
+}
