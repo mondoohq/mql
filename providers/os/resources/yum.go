@@ -110,20 +110,28 @@ func (y *mqlYum) vars() (map[string]any, error) {
 		return nil, errors.New("yum.vars is only supported on redhat-based platforms")
 	}
 
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	isDnf5, _ := afs.Exists(dnf5Binary)
+
 	res := map[string]any{}
-	builtins, err := y.builtinVars(platform.IsFamily("redhat"), platform.Version)
+	var builtins map[string]string
+	var err error
+	if isDnf5 {
+		builtins, err = y.dnf5BuiltinVars()
+	} else {
+		builtins, err = y.builtinVars(platform.IsFamily("redhat"), platform.Version)
+	}
 	if err != nil {
-		// The built-in substitutions come from dnf's Python API, which dnf5 hosts
-		// and image scans do not have. The variables on disk are still readable.
+		// The built-in substitutions come from the package manager, which
+		// image scans cannot run. The variables on disk are still readable.
 		log.Debug().Err(err).Msg("yum.vars> could not retrieve built-in variables")
 	}
 	for k, v := range builtins {
 		res[k] = v
 	}
 
-	afs := &afero.Afero{Fs: conn.FileSystem()}
 	dirs := dnf4VarsDirs
-	if ok, _ := afs.Exists(dnf5Binary); ok {
+	if isDnf5 {
 		dirs = dnf5VarsDirs
 	}
 	fileVars, err := readYumVarsDirs(afs, dirs)
@@ -168,6 +176,26 @@ func (y *mqlYum) builtinVars(isRedhat bool, version string) (map[string]string, 
 	}
 
 	return yum.ParseVariables(strings.NewReader(cmd.Stdout.Data))
+}
+
+// dnf5BuiltinVars returns the substitutions dnf5 computes for this host. dnf5
+// has no Python API; it prints them with --dump-variables.
+func (y *mqlYum) dnf5BuiltinVars() (map[string]string, error) {
+	o, err := CreateResource(y.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData(yum.Dnf5DumpVariablesCommand),
+	})
+	if err != nil {
+		return nil, err
+	}
+	cmd := o.(*mqlCommand)
+	exit := cmd.GetExitcode()
+	if exit.Error != nil {
+		return nil, exit.Error
+	}
+	if exit.Data != 0 {
+		return nil, errors.New("could not retrieve dnf5 variables")
+	}
+	return yum.ParseDnf5Variables(strings.NewReader(cmd.Stdout.Data))
 }
 
 // readYumVarsDirs reads the variables defined on disk in dirs, least important

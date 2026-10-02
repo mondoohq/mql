@@ -10285,8 +10285,9 @@ yum {
   // and `/etc/dnf/vars` (dnf 5), named after the file with the file's first
   // line as the value. A variable in `/etc/dnf/vars` overrides one of the same
   // name in the other directory, and a custom variable overrides a built-in
-  // one, the same way dnf resolves them. The built-in variables are missing
-  // where dnf's Python API is unavailable, such as dnf 5 hosts and image scans.
+  // one, the same way dnf resolves them. The built-in variables come from
+  // dnf's Python API, yum's on RHEL 7 and older, or `dnf5 --dump-variables`,
+  // and are missing where none of these can run, such as image scans.
   vars() map[string]string
   // List of all configured Yum repositories
   repos() []yum.repo
@@ -10334,11 +10335,15 @@ yum.repo {
 // `gpgcheck` and `localPkgGpgcheck` to assert that package signature
 // verification is enforced for every repository and for locally
 // installed packages, a core CIS supply-chain control; `repoGpgcheck`
-// extends that to repository metadata. The bool accessors reflect the
-// explicit directive and are `false` when the directive is absent.
-// `params` exposes every `[main]` directive as a raw string map for
-// settings without a dedicated accessor. Select an alternate file with
-// `yum.config(path: "...")`.
+// extends that to repository metadata. The bool accessors report the value
+// the package manager uses: the directive in the file, on dnf 5 applied over
+// the drop-in files in `/usr/share/dnf5/libdnf.conf.d` and
+// `/etc/dnf/libdnf5.conf.d` (on dnf 5 `gpgcheck` reads `pkg_gpgcheck`, the
+// option it is another name for), and the package manager's default when no
+// file sets it. `params` exposes every `[main]` directive of the file as a
+// raw string map for settings without a dedicated accessor. Select an
+// alternate file with `yum.config(path: "...")`; drop-in files do not apply
+// to it.
 yum.config {
   init(path string)
   // File backing the [main] configuration section

@@ -44,7 +44,8 @@ Repo-filename: /etc/yum.repos.d/CentOS-Media.repo
 	assert.Equal(t, 2, len(repos))
 
 	repo := repos[0]
-	assert.Equal(t, "base/7/x86_64", repo.Id)
+	// yum 3 appends $releasever/$basearch to the id; the repo id is "base"
+	assert.Equal(t, "base", repo.Id)
 	assert.Equal(t, "CentOS-7 - Base", repo.Name)
 	assert.Equal(t, "enabled", repo.Status)
 	assert.Equal(t, "1587512243", repo.Revision)
@@ -215,4 +216,91 @@ func TestParseReposMetalink(t *testing.T) {
 	assert.Equal(t, []string{"https://download.cf.centos.org/9-stream/AppStream/x86_64/os/"}, repo.Baseurl)
 	assert.Equal(t, "20,894", repo.Pkgs)
 	assert.Equal(t, "/etc/yum.repos.d/centos.repo", repo.Filename)
+}
+
+// `yum -v repolist all` on RHEL 7 (yum 3.4.3) with the g03 test repos: a repo
+// whose metalink uses $releasever and $basearch, and a name long enough to
+// wrap.
+func TestParseReposYum3Rhel7(t *testing.T) {
+	f, err := os.Open("./testdata/yum3_rhel7_repolist.txt")
+	require.NoError(t, err)
+	defer f.Close()
+	repos, err := ParseRepos(f)
+	require.NoError(t, err)
+	require.Len(t, repos, 29)
+
+	byID := map[string]*YumRepo{}
+	for _, r := range repos {
+		assert.NotContains(t, r.Id, "/", "yum 3 appends /$releasever/$basearch to the id")
+		byID[r.Id] = r
+	}
+
+	metalink := byID["g03-metalink"]
+	require.NotNil(t, metalink, "printed as g03-metalink/7Server/x86_64")
+	assert.Equal(t, "https://mirrors.example.invalid/metalink?repo=g03-7Server&arch=x86_64", metalink.Mirrors)
+
+	disabled := byID["g03-disabled"]
+	require.NotNil(t, disabled)
+	assert.Equal(t, "G03 disabled repo with two base URLs and a long name to make yum wrap the line", disabled.Name)
+	assert.Equal(t, []string{"file:///srv/g03a/", "file:///srv/g03b/"}, disabled.Baseurl)
+	assert.Equal(t, "disabled", disabled.Status)
+	assert.Equal(t, "/etc/yum.repos.d/g03.repo", disabled.Filename)
+
+	devtools := byID["rhel-7-server-devtools-rhui-rpms"]
+	require.NotNil(t, devtools)
+	assert.Equal(t, "Red Hat Developer Tools RPMs for Red Hat Enterprise Linux 7 Server from RHUI", devtools.Name)
+
+	g03 := byID["g03repo"]
+	require.NotNil(t, g03)
+	assert.Equal(t, "G03 local test repo 7Server g03value", g03.Name)
+	assert.Equal(t, "enabled", g03.Status)
+}
+
+func TestParseReposWrappedBaseurl(t *testing.T) {
+	repos, err := ParseRepos(strings.NewReader(strings.Join([]string{
+		// a continuation before any repo is ignored
+		"             : stray",
+		"Repo-id      : multi",
+		"Repo-baseurl : file:///a/, file:///b/,",
+		"             : file:///c/",
+		"Repo-status  : enabled",
+	}, "\n")))
+	require.NoError(t, err)
+	require.Len(t, repos, 1)
+	assert.Equal(t, []string{"file:///a/", "file:///b/", "file:///c/"}, repos[0].Baseurl)
+}
+
+// yum 3 prints "Loaded plugins: ..." on stdout before the variables.
+func TestParseVariablesYum3PluginBanner(t *testing.T) {
+	f, err := os.Open("./testdata/yum3_rhel7_vars.txt")
+	require.NoError(t, err)
+	defer f.Close()
+	vars, err := ParseVariables(f)
+	require.NoError(t, err)
+	assert.Equal(t, "7Server", vars["releasever"])
+	assert.Equal(t, "x86_64", vars["basearch"])
+	assert.Equal(t, "ia32e", vars["arch"])
+	assert.Equal(t, "g03value", vars["g03var"])
+
+	_, err = ParseVariables(strings.NewReader("Loaded plugins: product-id\n"))
+	require.Error(t, err)
+}
+
+func TestParseDnf5Variables(t *testing.T) {
+	f, err := os.Open("./testdata/dnf5_fedora44_dump_variables.txt")
+	require.NoError(t, err)
+	defer f.Close()
+	vars, err := ParseDnf5Variables(f)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{
+		"arch":             "x86_64",
+		"basearch":         "x86_64",
+		"g03var":           "g03value",
+		"releasever":       "44",
+		"releasever_major": "",
+		"releasever_minor": "",
+	}, vars)
+
+	_, err = ParseDnf5Variables(strings.NewReader("Unknown argument \"--dump-variables\"\n"))
+	require.Error(t, err)
 }

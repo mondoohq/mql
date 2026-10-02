@@ -149,3 +149,47 @@ func TestYumVarsWithoutPython(t *testing.T) {
 		"awsdomain": "amazonaws.com",
 	}, got, "dnf5 does not read /etc/yum/vars")
 }
+
+// Fedora 44 has dnf5 and no dnf Python API: the built-in variables come from
+// `dnf5 --dump-variables` (captured on the host), custom ones from disk.
+func TestYumVarsDnf5DumpVariables(t *testing.T) {
+	dump, err := os.ReadFile("./yum/testdata/dnf5_fedora44_dump_variables.txt")
+	require.NoError(t, err)
+	rt := newYumRuntime(t, map[string]string{
+		"/usr/bin/dnf5":        "",
+		"/etc/dnf/vars/g03var": "g03value\n",
+	}, map[string]*mock.Command{
+		yum.Dnf5DumpVariablesCommand: {Stdout: string(dump)},
+	})
+
+	y := &mqlYum{MqlRuntime: rt}
+	got, err := y.vars()
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{
+		"arch":             "x86_64",
+		"basearch":         "x86_64",
+		"releasever":       "44",
+		"releasever_major": "",
+		"releasever_minor": "",
+		"g03var":           "g03value",
+	}, got)
+}
+
+// RHEL 7: yum prints its plugin banner before the variables.
+func TestYumVarsYum3PluginBanner(t *testing.T) {
+	out, err := os.ReadFile("./yum/testdata/yum3_rhel7_vars.txt")
+	require.NoError(t, err)
+	fileData := map[string]*mock.MockFileData{}
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "redhat", Version: "7.9", Family: []string{"redhat", "linux", "unix", "os"}},
+	}, mock.WithData(&mock.TomlData{Files: fileData, Commands: map[string]*mock.Command{
+		yum.Rhel6VarsCommand: {Stdout: string(out)},
+	}}))
+	require.NoError(t, err)
+	rt := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+
+	got, err := (&mqlYum{MqlRuntime: rt}).vars()
+	require.NoError(t, err)
+	assert.Equal(t, "7Server", got["releasever"])
+	assert.Equal(t, "x86_64", got["basearch"])
+}

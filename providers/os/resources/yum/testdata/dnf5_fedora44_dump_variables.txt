@@ -1,0 +1,7 @@
+======== Variables: ========
+arch = x86_64
+basearch = x86_64
+g03var = g03value
+releasever = 44
+releasever_major = 
+releasever_minor = 

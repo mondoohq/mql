@@ -18,7 +18,9 @@ package yum
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"regexp"
 	"strings"
@@ -73,22 +75,88 @@ const (
 	Filename = "Repo-filename"
 )
 
+// ParseVariables reads the JSON object the Python snippets print. yum 3 (RHEL
+// 7) prints its plugin banner first, on stdout:
+//
+//	Loaded plugins: amazon-id, product-id, versionlock
+//	{"g03var": "g03value", "basearch": "x86_64", "arch": "ia32e", ...}
+//
+// so the object is read from the first line that starts one.
 func ParseVariables(r io.Reader) (map[string]string, error) {
 	content, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
 
+	start := 0
+	for start < len(content) && content[start] != '{' {
+		next := bytes.IndexByte(content[start:], '\n')
+		if next < 0 {
+			start = len(content)
+			break
+		}
+		start += next + 1
+	}
+	if start >= len(content) {
+		return nil, errors.New("no variables in the output")
+	}
+
 	data := map[string]string{}
-	err = json.Unmarshal(content, &data)
-	if err != nil {
+	if err := json.NewDecoder(bytes.NewReader(content[start:])).Decode(&data); err != nil {
 		return nil, err
 	}
 	return data, nil
 }
 
+// Dnf5DumpVariablesCommand prints the variables dnf5 substitutes in repository
+// configuration, the built-in ones included. dnf5 has no Python API to ask.
+const Dnf5DumpVariablesCommand = "dnf5 --dump-variables"
+
+// ParseDnf5Variables parses `dnf5 --dump-variables`:
+//
+//	======== Variables: ========
+//	arch = x86_64
+//	basearch = x86_64
+//	releasever = 44
+//	releasever_major =
+func ParseDnf5Variables(r io.Reader) (map[string]string, error) {
+	res := map[string]string{}
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "=") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		if key == "" || strings.ContainsAny(key, " \t") {
+			continue
+		}
+		res[key] = strings.TrimSpace(value)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if len(res) == 0 {
+		return nil, errors.New("no variables in the dnf5 output")
+	}
+	return res, nil
+}
+
 // Parses the output of yum -v repolist all
 // It requires yum to be installed
+//
+// yum 3 (RHEL 7) differs from dnf in two ways. It prints the id of a repo
+// whose URL uses $releasever or $basearch with those appended
+// (`Repo-id : rhel-7-server-rhui-rpms/7Server/x86_64`); a repo id cannot
+// contain a slash, so the id is what comes before the first one. And it wraps
+// a value longer than the line onto continuation lines that have no key:
+//
+//	Repo-name    : Red Hat Developer Tools RPMs for Red Hat Enterprise Linux 7
+//	             : Server from RHUI
 func ParseRepos(r io.Reader) ([]*YumRepo, error) {
 	res := []*YumRepo{}
 
@@ -99,6 +167,8 @@ func ParseRepos(r io.Reader) ([]*YumRepo, error) {
 		}
 		res = append(res, new)
 	}
+	// lastKey is the key of the previous line, which a continuation extends
+	lastKey := ""
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -107,10 +177,28 @@ func ParseRepos(r io.Reader) ([]*YumRepo, error) {
 			key := strings.TrimSpace(m[1])
 			value := strings.TrimSpace(m[2])
 
+			if key == "" {
+				if entry == nil {
+					continue
+				}
+				switch lastKey {
+				case Name:
+					entry.Name = strings.TrimSpace(entry.Name + " " + value)
+				case Baseurl:
+					entry.Baseurl = append(entry.Baseurl, parseYumBaseurls(value)...)
+				}
+				continue
+			}
+			lastKey = key
+			if key != Id && entry == nil {
+				continue
+			}
+
 			switch key {
 			case Id:
 				add(entry)
-				entry = &YumRepo{Id: value}
+				id, _, _ := strings.Cut(value, "/")
+				entry = &YumRepo{Id: id}
 			case Name:
 				entry.Name = value
 			case Status:
@@ -127,16 +215,7 @@ func ParseRepos(r io.Reader) ([]*YumRepo, error) {
 				// dnf prints either the metalink or the mirrorlist of a repo
 				entry.Mirrors = value
 			case Baseurl:
-				// remove (0 more)
-				// split by ,
-				m := yumbaseurl.FindStringSubmatch(value)
-				if len(m) >= 2 {
-					entries := strings.Split(m[1], ",")
-					entry.Baseurl = []string{}
-					for i := range entries {
-						entry.Baseurl = append(entry.Baseurl, strings.TrimSpace(entries[i]))
-					}
-				}
+				entry.Baseurl = parseYumBaseurls(value)
 			case Expire:
 				entry.Expire = value
 			case Filter:
@@ -151,6 +230,22 @@ func ParseRepos(r io.Reader) ([]*YumRepo, error) {
 	add(entry)
 
 	return res, nil
+}
+
+// parseYumBaseurls splits a Repo-baseurl value: comma-separated URLs, where a
+// URL taken from a mirror list is followed by "(N more)".
+func parseYumBaseurls(value string) []string {
+	res := []string{}
+	m := yumbaseurl.FindStringSubmatch(value)
+	if len(m) < 2 {
+		return res
+	}
+	for _, u := range strings.Split(m[1], ",") {
+		if u = strings.TrimSpace(u); u != "" {
+			res = append(res, u)
+		}
+	}
+	return res
 }
 
 // labels printed by `dnf5 repo info`

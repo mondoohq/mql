@@ -1,0 +1,308 @@
+Not loading "rhnplugin" plugin, as it is disabled
+Loading "amazon-id" plugin
+Loading "product-id" plugin
+Loading "search-disabled-repos" plugin
+Not loading "subscription-manager" plugin, as it is disabled
+Loading "versionlock" plugin
+Config time: 0.086
+Yum version: 3.4.3
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/os
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/optional/os
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/rh-common/debug
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/devtools/1/os
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/supplementary/os
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/extras/os
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/supplementary/debug
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/protected/rhui-client-config/rhel/server/7/x86_64/os
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/supplementary/source/SRPMS
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/extras/source/SRPMS
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/rh-common/os
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/rhscl/1/source/SRPMS
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/devtools/1/debug
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/rhscl/1/os
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/devtools/1/source/SRPMS
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/rh-common/source/SRPMS
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/optional/source/SRPMS
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/debug
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/source/SRPMS
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror//content/dist/rhel/rhui/server/7/7Server/x86_64/dotnet/1/debug
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror//content/dist/rhel/rhui/server/7/7Server/x86_64/dotnet/1/os
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/extras/debug
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/rhscl/1/debug
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/optional/debug
+mirrorlist: https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror//content/dist/rhel/rhui/server/7/7Server/x86_64/dotnet/1/source/SRPMS
+Setting up Package Sacks
+Reading version lock configuration
+Excluding 1 update due to versionlock (use "yum versionlock status" to show it)
+pkgsack time: 0.011
+Repo-id      : g03-disabled
+Repo-name    : G03 disabled repo with two base URLs and a long name to make yum
+             : wrap the line
+Repo-status  : disabled
+Repo-baseurl : file:///srv/g03a/, file:///srv/g03b/
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/g03.repo
+
+Repo-id      : g03-metalink/7Server/x86_64
+Repo-name    : G03 metalink repo
+Repo-status  : disabled
+Repo-metalink: https://mirrors.example.invalid/metalink?repo=g03-7Server&arch=x86_64
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/g03.repo
+
+Repo-id      : g03-mirrorlist
+Repo-name    : G03 mirrorlist repo
+Repo-status  : disabled
+Repo-mirrors : file:///srv/g03mirrorlist.txt
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/g03.repo
+
+Repo-id      : g03repo
+Repo-name    : G03 local test repo 7Server g03value
+Repo-status  : enabled
+Repo-revision: 1790924424
+Repo-updated : Fri Oct  2 07:00:24 2026
+Repo-pkgs    : 10
+Repo-size    : 15 k
+Repo-baseurl : file:///srv/g03repo/
+Repo-expire  : 60 second(s) (last: Fri Oct  2 07:10:43 2026)
+  Filter     : read-only:present
+Repo-excluded: 1
+Repo-filename: /etc/yum.repos.d/g03.repo
+
+Repo-id      : rhel-7-server-devtools-debug-rhui-rpms/7Server/x86_64
+Repo-name    : Red Hat Developer Tools Debug RPMs for Red Hat Enterprise Linux 7
+             : Server from RHUI
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/devtools/1/debug
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-devtools-rhui-rpms/7Server/x86_64
+Repo-name    : Red Hat Developer Tools RPMs for Red Hat Enterprise Linux 7
+             : Server from RHUI
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/devtools/1/os
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-devtools-source-rhui-rpms/7Server/x86_64
+Repo-name    : Red Hat Developer Tools Source RPMs for Red Hat Enterprise Linux
+             : 7 Server from RHUI
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/devtools/1/source/SRPMS
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-dotnet-rhui-debug-rpms/7Server/x86_64
+Repo-name    : dotNET on RHEL Debug RPMs for Red Hat Enterprise Linux 7 Server
+             : from RHUI
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror//content/dist/rhel/rhui/server/7/7Server/x86_64/dotnet/1/debug
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-dotnet-rhui-rpms/7Server/x86_64
+Repo-name    : dotNET on RHEL RPMs for Red Hat Enterprise Linux 7 Server from
+             : RHUI
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror//content/dist/rhel/rhui/server/7/7Server/x86_64/dotnet/1/os
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-dotnet-rhui-source-rpms/7Server/x86_64
+Repo-name    : dotNET on RHEL Source RPMs for Red Hat Enterprise Linux 7 Server
+             : from RHUI
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror//content/dist/rhel/rhui/server/7/7Server/x86_64/dotnet/1/source/SRPMS
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-debug-rpms/7Server/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server from RHUI (Debug RPMs)
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/debug
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-extras-debug-rpms/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server - Extras from RHUI (Debug RPMs)
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/extras/debug
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-extras-rpms/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server - Extras from RHUI (RPMs)
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/extras/os
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-extras-source-rpms/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server - Extras from RHUI (Source
+             : RPMs)
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/extras/source/SRPMS
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-optional-debug-rpms/7Server/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server - Optional from RHUI (Debug
+             : RPMs)
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/optional/debug
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-optional-rpms/7Server/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server - Optional from RHUI (RPMs)
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/optional/os
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-optional-source-rpms/7Server/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server - Optional from RHUI (Source
+             : RPMs)
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/optional/source/SRPMS
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-rh-common-debug-rpms/7Server/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server - RH Common from RHUI (Debug
+             : RPMs)
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/rh-common/debug
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-rh-common-rpms/7Server/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server - RH Common from RHUI (RPMs)
+Repo-status  : enabled
+Repo-revision: 1601124899
+Repo-updated : Sat Sep 26 12:54:59 2020
+Repo-pkgs    : 243
+Repo-size    : 4.5 G
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/rh-common/os
+Repo-baseurl : https://rhui.us-west-2.aws.ce.redhat.com/pulp/content/content/dist/rhel/rhui/server/7/7Server/x86_64/rh-common/os/
+Repo-expire  : 21,600 second(s) (last: Fri Oct  2 06:44:52 2026)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-rh-common-source-rpms/7Server/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server - RH Common from RHUI (Source
+             : RPMs)
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/rh-common/source/SRPMS
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-rpms/7Server/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server from RHUI (RPMs)
+Repo-status  : enabled
+Repo-revision: 1787647857
+Repo-updated : Tue Aug 25 08:54:48 2026
+Repo-pkgs    : 34,484
+Repo-size    : 66 G
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/os
+Repo-baseurl : https://rhui.us-west-2.aws.ce.redhat.com/pulp/content/content/dist/rhel/rhui/server/7/7Server/x86_64/os/
+Repo-expire  : 21,600 second(s) (last: Fri Oct  2 06:44:52 2026)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-source-rpms/7Server/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server from RHUI (Source RPMs)
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/source/SRPMS
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-supplementary-debug-rpms/7Server/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server - Supplementary from RHUI
+             : (Debug RPMs)
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/supplementary/debug
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-supplementary-rpms/7Server/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server - Supplementary from RHUI
+             : (RPMs)
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/supplementary/os
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-7-server-rhui-supplementary-source-rpms/7Server/x86_64
+Repo-name    : Red Hat Enterprise Linux 7 Server - Supplementary from RHUI
+             : (Source RPMs)
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/supplementary/source/SRPMS
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-server-rhui-rhscl-7-debug-rpms/7Server/x86_64
+Repo-name    : Red Hat Software Collections Debug RPMs for Red Hat Enterprise
+             : Linux 7 Server from RHUI
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/rhscl/1/debug
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-server-rhui-rhscl-7-rpms/7Server/x86_64
+Repo-name    : Red Hat Software Collections RPMs for Red Hat Enterprise Linux 7
+             : Server from RHUI
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/rhscl/1/os
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhel-server-rhui-rhscl-7-source-rpms/7Server/x86_64
+Repo-name    : Red Hat Software Collections Source RPMs for Red Hat Enterprise
+             : Linux 7 Server from RHUI
+Repo-status  : disabled
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/content/dist/rhel/rhui/server/7/7Server/x86_64/rhscl/1/source/SRPMS
+Repo-expire  : 21,600 second(s) (last: Unknown)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui.repo
+
+Repo-id      : rhui-client-config-server-7/x86_64
+Repo-name    : RHUI Client Configuration Server 7
+Repo-status  : enabled
+Repo-revision: 1780568316
+Repo-updated : Thu Jun  4 10:18:36 2026
+Repo-pkgs    : 2
+Repo-size    : 54 k
+Repo-mirrors : https://rhui.us-west-2.aws.ce.redhat.com/pulp/mirror/protected/rhui-client-config/rhel/server/7/x86_64/os
+Repo-baseurl : https://rhui.us-west-2.aws.ce.redhat.com/pulp/content/protected/rhui-client-config/rhel/server/7/x86_64/os/
+Repo-expire  : 21,600 second(s) (last: Fri Oct  2 06:44:52 2026)
+  Filter     : read-only:present
+Repo-filename: /etc/yum.repos.d/redhat-rhui-client-config.repo
+
+repolist: 34,739
