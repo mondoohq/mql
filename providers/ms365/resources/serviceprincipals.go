@@ -389,31 +389,9 @@ func newMqlMicrosoftServicePrincipal(runtime *plugin.Runtime, sp models.ServiceP
 		secrets = append(secrets, secret)
 	}
 
-	mqlAppRoleList := []any{}
-	appRoles := sp.GetAppRoles()
-	for i := range appRoles {
-		appRole := appRoles[i]
-
-		uuid := appRole.GetId()
-		if uuid == nil {
-			log.Debug().Msg("appRole ID is nil")
-			continue
-		}
-
-		mqlAppRoleResource, err := CreateResource(runtime, "microsoft.application.role",
-			map[string]*llx.RawData{
-				"__id":               llx.StringData(uuid.String()),
-				"id":                 llx.StringData(uuid.String()),
-				"name":               llx.StringDataPtr(appRole.GetDisplayName()),
-				"description":        llx.StringDataPtr(appRole.GetDescription()),
-				"value":              llx.StringDataPtr(appRole.GetValue()),
-				"allowedMemberTypes": llx.ArrayData(convert.SliceAnyToInterface(appRole.GetAllowedMemberTypes()), types.String),
-				"isEnabled":          llx.BoolDataPtr(appRole.GetIsEnabled()),
-			})
-		if err != nil {
-			return nil, err
-		}
-		mqlAppRoleList = append(mqlAppRoleList, mqlAppRoleResource)
+	mqlAppRoleList, err := newMqlMicrosoftApplicationRoles(runtime, convert.ToValue(sp.GetId()), sp.GetAppRoles())
+	if err != nil {
+		return nil, err
 	}
 
 	args := map[string]*llx.RawData{

@@ -165,31 +165,9 @@ func newMqlMicrosoftApplication(runtime *plugin.Runtime, app models.Applicationa
 		nativeAuthenticationApisEnabled = &val
 	}
 
-	mqlAppRoleList := []any{}
-	appRoles := app.GetAppRoles()
-	for i := range appRoles {
-		appRole := appRoles[i]
-
-		uuid := appRole.GetId()
-		if uuid == nil {
-			log.Debug().Msg("appRole ID is nil")
-			continue
-		}
-
-		mqlAppRoleResource, err := CreateResource(runtime, "microsoft.application.role",
-			map[string]*llx.RawData{
-				"__id":               llx.StringData(uuid.String()),
-				"id":                 llx.StringData(uuid.String()),
-				"name":               llx.StringDataPtr(appRole.GetDisplayName()),
-				"description":        llx.StringDataPtr(appRole.GetDescription()),
-				"value":              llx.StringDataPtr(appRole.GetValue()),
-				"allowedMemberTypes": llx.ArrayData(convert.SliceAnyToInterface(appRole.GetAllowedMemberTypes()), types.String),
-				"isEnabled":          llx.BoolDataPtr(appRole.GetIsEnabled()),
-			})
-		if err != nil {
-			return nil, err
-		}
-		mqlAppRoleList = append(mqlAppRoleList, mqlAppRoleResource)
+	mqlAppRoleList, err := newMqlMicrosoftApplicationRoles(runtime, convert.ToValue(app.GetId()), app.GetAppRoles())
+	if err != nil {
+		return nil, err
 	}
 
 	mqlResource, err := CreateResource(runtime, "microsoft.application",
@@ -589,4 +567,35 @@ func (a *mqlMicrosoftApplication) appManagementPolicies() ([]any, error) {
 		return nil, classifyGraphError(err, "Application.Read.All", "Policy.Read.All")
 	}
 	return newMqlAppManagementPolicies(a.MqlRuntime, policies)
+}
+
+// newMqlMicrosoftApplicationRoles creates the app roles published by an
+// application or service principal. Microsoft reuses appRole UUIDs across
+// different resource service principals with different text, so the resource
+// is keyed on the parent's object ID; the public id stays the role UUID.
+func newMqlMicrosoftApplicationRoles(runtime *plugin.Runtime, parentID string, appRoles []models.AppRoleable) ([]any, error) {
+	list := []any{}
+	for _, appRole := range appRoles {
+		uuid := appRole.GetId()
+		if uuid == nil {
+			log.Debug().Msg("appRole ID is nil")
+			continue
+		}
+
+		mqlAppRoleResource, err := CreateResource(runtime, "microsoft.application.role",
+			map[string]*llx.RawData{
+				"__id":               llx.StringData(parentID + "/appRoles/" + uuid.String()),
+				"id":                 llx.StringData(uuid.String()),
+				"name":               llx.StringDataPtr(appRole.GetDisplayName()),
+				"description":        llx.StringDataPtr(appRole.GetDescription()),
+				"value":              llx.StringDataPtr(appRole.GetValue()),
+				"allowedMemberTypes": llx.ArrayData(convert.SliceAnyToInterface(appRole.GetAllowedMemberTypes()), types.String),
+				"isEnabled":          llx.BoolDataPtr(appRole.GetIsEnabled()),
+			})
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, mqlAppRoleResource)
+	}
+	return list, nil
 }
