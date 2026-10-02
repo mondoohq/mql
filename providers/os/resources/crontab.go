@@ -255,6 +255,7 @@ func debianCronRefuses(info shared.FileInfoDetails) bool {
 	if info.Mode.Perm()&0o022 != 0 {
 		return true
 	}
+	// Uid 0 is root and -1 is unknown; neither is a wrong owner
 	return info.Uid > 0
 }
 
