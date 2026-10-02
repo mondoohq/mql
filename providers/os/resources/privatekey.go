@@ -8,6 +8,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
+	"encoding/pem"
 	"errors"
 	"sync"
 
@@ -16,14 +17,106 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// mqlPrivatekeyInternal caches the parsed PEM key so the independently
+// mqlPrivatekeyInternal caches the parsed key details so the independently
 // lazy-loaded publicKeyAlgorithm and publicKeyBits accessors don't each
 // re-parse the payload. The result is computed inside parseOnce, whose
-// happens-before guarantee makes the captured key/err safe to read afterward.
+// happens-before guarantee makes the captured info/err safe to read afterward.
 type mqlPrivatekeyInternal struct {
 	parseOnce sync.Once
-	parsedKey any
+	parsed    privateKeyInfo
 	parseErr  error
+}
+
+// privateKeyInfo is what can be learned about a private key without its
+// passphrase. Algorithm is empty and Bits is 0 when they are not known.
+type privateKeyInfo struct {
+	Encrypted bool
+	Algorithm string
+	Bits      int64
+}
+
+// inspectPrivateKey reads the algorithm and size of a PEM or OpenSSH private
+// key. An encrypted key is not an error: OpenSSH-format keys carry their public
+// key in the clear, legacy PEM encryption still names the algorithm in the
+// block type, and an encrypted PKCS#8 key reveals neither.
+func inspectPrivateKey(data []byte) (privateKeyInfo, error) {
+	key, err := ssh.ParseRawPrivateKey(data)
+	if err == nil {
+		algo, bits := privateKeyAlgorithmBits(key)
+		return privateKeyInfo{Algorithm: algo, Bits: bits}, nil
+	}
+
+	var passphraseErr *ssh.PassphraseMissingError
+	if errors.As(err, &passphraseErr) {
+		info := privateKeyInfo{Encrypted: true}
+		if passphraseErr.PublicKey != nil {
+			if cpk, ok := passphraseErr.PublicKey.(ssh.CryptoPublicKey); ok {
+				info.Algorithm, info.Bits = publicKeyAlgorithmBits(cpk.CryptoPublicKey())
+			}
+			return info, nil
+		}
+		if block, _ := pem.Decode(data); block != nil {
+			info.Algorithm = pemBlockAlgorithm[block.Type]
+		}
+		return info, nil
+	}
+
+	// PKCS#8 encrypted keys (`openssl pkcs8 -topk8 -v2 aes256`) are not
+	// supported by x/crypto/ssh; the algorithm sits inside the ciphertext.
+	if block, _ := pem.Decode(data); block != nil && block.Type == "ENCRYPTED PRIVATE KEY" {
+		return privateKeyInfo{Encrypted: true}, nil
+	}
+	return privateKeyInfo{}, err
+}
+
+// isPrivateKeyEncrypted reports whether a private key needs a passphrase.
+// The PEM text only says so for legacy PEM (`Proc-Type: 4,ENCRYPTED`) and
+// PKCS#8 (`ENCRYPTED PRIVATE KEY`); an OpenSSH-format key records its cipher
+// inside the base64 body.
+func isPrivateKeyEncrypted(data []byte) bool {
+	info, err := inspectPrivateKey(data)
+	if err != nil {
+		return false
+	}
+	return info.Encrypted
+}
+
+// pemBlockAlgorithm maps legacy PEM block types, which stay readable when the
+// body is encrypted, to the algorithm names publicKeyAlgorithm reports.
+var pemBlockAlgorithm = map[string]string{
+	"RSA PRIVATE KEY": "RSA",
+	"EC PRIVATE KEY":  "ECDSA",
+	"DSA PRIVATE KEY": "DSA",
+}
+
+func privateKeyAlgorithmBits(key any) (string, int64) {
+	switch k := key.(type) {
+	case *rsa.PrivateKey:
+		return "RSA", int64(k.N.BitLen())
+	case *ecdsa.PrivateKey:
+		return "ECDSA", int64(k.Curve.Params().BitSize)
+	case ed25519.PrivateKey, *ed25519.PrivateKey:
+		return "Ed25519", 256
+	case *dsa.PrivateKey:
+		return "DSA", int64(k.P.BitLen())
+	default:
+		return "", 0
+	}
+}
+
+func publicKeyAlgorithmBits(key any) (string, int64) {
+	switch k := key.(type) {
+	case *rsa.PublicKey:
+		return "RSA", int64(k.N.BitLen())
+	case *ecdsa.PublicKey:
+		return "ECDSA", int64(k.Curve.Params().BitSize)
+	case ed25519.PublicKey:
+		return "Ed25519", 256
+	case *dsa.PublicKey:
+		return "DSA", int64(k.P.BitLen())
+	default:
+		return "", 0
+	}
 }
 
 func initPrivatekey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -58,78 +151,44 @@ func (r *mqlPrivatekey) id() (string, error) {
 	return "privatekey:" + file.Data.Path.Data, nil
 }
 
-// parseKey parses the resource's PEM payload into a Go crypto private key once
-// and caches the result, so the independently lazy-loaded publicKeyAlgorithm and
-// publicKeyBits accessors share a single parse per query.
-func (r *mqlPrivatekey) parseKey() (any, error) {
+// parseKey inspects the resource's PEM payload once and caches the result, so
+// the independently lazy-loaded publicKeyAlgorithm and publicKeyBits accessors
+// share a single parse per query.
+func (r *mqlPrivatekey) parseKey() (privateKeyInfo, error) {
 	r.parseOnce.Do(func() {
-		r.parsedKey, r.parseErr = r.doParseKey()
-	})
-	return r.parsedKey, r.parseErr
-}
-
-// doParseKey parses the resource's PEM payload into a Go crypto private key.
-// Encrypted keys (which require a passphrase to introspect) return a nil key
-// and a nil error, letting callers report empty/zero values instead of failing.
-func (r *mqlPrivatekey) doParseKey() (any, error) {
-	pem := r.GetPem()
-	if pem.Error != nil {
-		return nil, pem.Error
-	}
-	if pem.Data == "" {
-		return nil, nil
-	}
-
-	key, err := ssh.ParseRawPrivateKey([]byte(pem.Data))
-	if err != nil {
-		// Encrypted keys cannot be introspected without the passphrase; treat
-		// them as "unknown" rather than a hard failure.
-		var passphraseErr *ssh.PassphraseMissingError
-		if errors.As(err, &passphraseErr) {
-			return nil, nil
+		pemData := r.GetPem()
+		if pemData.Error != nil {
+			r.parseErr = pemData.Error
+			return
 		}
-		return nil, err
-	}
-
-	return key, nil
+		if pemData.Data == "" {
+			return
+		}
+		r.parsed, r.parseErr = inspectPrivateKey([]byte(pemData.Data))
+	})
+	return r.parsed, r.parseErr
 }
 
 func (r *mqlPrivatekey) publicKeyAlgorithm() (string, error) {
-	key, err := r.parseKey()
+	info, err := r.parseKey()
 	if err != nil {
 		return "", err
 	}
-
-	switch key.(type) {
-	case *rsa.PrivateKey:
-		return "RSA", nil
-	case *ecdsa.PrivateKey:
-		return "ECDSA", nil
-	case ed25519.PrivateKey, *ed25519.PrivateKey:
-		return "Ed25519", nil
-	case *dsa.PrivateKey:
-		return "DSA", nil
-	default:
+	if info.Algorithm == "" {
+		r.PublicKeyAlgorithm.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
+	return info.Algorithm, nil
 }
 
 func (r *mqlPrivatekey) publicKeyBits() (int64, error) {
-	key, err := r.parseKey()
+	info, err := r.parseKey()
 	if err != nil {
 		return 0, err
 	}
-
-	switch k := key.(type) {
-	case *rsa.PrivateKey:
-		return int64(k.N.BitLen()), nil
-	case *ecdsa.PrivateKey:
-		return int64(k.Curve.Params().BitSize), nil
-	case ed25519.PrivateKey, *ed25519.PrivateKey:
-		return 256, nil
-	case *dsa.PrivateKey:
-		return int64(k.P.BitLen()), nil
-	default:
+	if info.Bits == 0 {
+		r.PublicKeyBits.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
+	return info.Bits, nil
 }

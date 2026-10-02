@@ -334,10 +334,8 @@ func (u *mqlUser) sshkeys() ([]any, error) {
 
 		// check if content contains PRIVATE KEY
 		isPrivateKey := strings.Contains(content, "PRIVATE KEY")
-		// check if the key is encrypted ENCRYPTED
-		isEncrypted := strings.Contains(content, "ENCRYPTED")
-
 		if isPrivateKey {
+			isEncrypted := isPrivateKeyEncrypted(data)
 			// NOTE: we use new instead of create so that the file resource is properly initialized
 			upk, err := NewResource(u.MqlRuntime, "privatekey", map[string]*llx.RawData{
 				"pem":       llx.StringData(content),
