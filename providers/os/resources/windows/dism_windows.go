@@ -116,9 +116,10 @@ func NativeOptionalFeatures() ([]WindowsOptionalFeature, error) {
 	for i := 0; i < int(count); i++ {
 		f := dismFeatureLayout.element(features, i)
 		name := windows.UTF16PtrToString((*uint16)(dismFeatureLayout.ptr(f, dismFeatureName)))
-		state, err := featureStateFromDism(dismFeatureLayout.uint32(f, dismFeatureState))
+		rawState := dismFeatureLayout.uint32(f, dismFeatureState)
+		state, err := featureStateFromDism(rawState)
 		if err != nil || name == "" {
-			return nil, fmt.Errorf("DismGetFeatures: feature %d of %d could not be read", i, count)
+			return nil, fmt.Errorf("DismGetFeatures: feature %d of %d could not be read (name %q, state %d)", i, count, name, rawState)
 		}
 		res = append(res, WindowsOptionalFeature{Name: name, State: state, Enabled: state == 2})
 	}
@@ -153,9 +154,10 @@ func NativeOptionalFeature(name string) (feature WindowsOptionalFeature, found b
 	defer procDismDelete.Call(uintptr(info)) //nolint:errcheck
 
 	l := dismFeatureInfoLayout
-	state, err := featureStateFromDism(l.uint32(info, dismFeatureInfoState))
+	rawState := l.uint32(info, dismFeatureInfoState)
+	state, err := featureStateFromDism(rawState)
 	if err != nil {
-		return feature, false, fmt.Errorf("DismGetFeatureInfo %q: the result could not be read", name)
+		return feature, false, fmt.Errorf("DismGetFeatureInfo %q: the result could not be read (state %d)", name, rawState)
 	}
 	feature = WindowsOptionalFeature{
 		Name:        windows.UTF16PtrToString((*uint16)(l.ptr(info, dismFeatureInfoName))),
