@@ -10387,13 +10387,28 @@ apt {
 apt.config {
   // Effective APT configuration, every option as a key/value string
   params() map[string]string
-  // Whether repositories without a valid signature can be used (Acquire::AllowInsecureRepositories, default false)
+  // Whether repositories without a valid signature can be used
+  //
+  // Acquire::AllowInsecureRepositories, default false. True when the base
+  // option or the `Binary::apt-get::` or `Binary::apt::` override of it is
+  // true, since that front-end then loads unsigned repositories. apt 1.4
+  // (Debian 9) sets the `apt-get` override by default.
   allowInsecureRepositories(params) bool
-  // Whether repositories signed only with weak algorithms can be used (Acquire::AllowWeakRepositories, default false)
+  // Whether repositories signed only with weak algorithms can be used
+  //
+  // Acquire::AllowWeakRepositories, default false. True when the base option
+  // or its `Binary::apt-get::` or `Binary::apt::` override is true.
   allowWeakRepositories(params) bool
-  // Whether a signed repository may become unsigned (Acquire::AllowDowngradeToInsecureRepositories, default false)
+  // Whether a signed repository may become unsigned
+  //
+  // Acquire::AllowDowngradeToInsecureRepositories, default false. True when
+  // the base option or its `Binary::apt-get::` or `Binary::apt::` override
+  // is true.
   allowDowngradeToInsecureRepositories(params) bool
-  // Whether the Date of repository metadata is checked against the system clock (Acquire::Check-Date, default true)
+  // Whether the Date of repository metadata is checked against the system clock
+  //
+  // Acquire::Check-Date, default true. False when the base option or its
+  // `Binary::apt-get::` or `Binary::apt::` override is false.
   checkDate(params) bool
   // Whether recommended packages are installed with a package (APT::Install-Recommends, default true)
   installRecommends(params) bool

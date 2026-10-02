@@ -132,3 +132,44 @@ Acquire::check-date "no";
 	assert.True(t, aptBoolParam(map[string]any{"acquire::allowinsecurerepositories": "true"}, "Acquire::AllowInsecureRepositories", false))
 	assert.False(t, aptBoolParam(map[string]any{"APT::INSTALL-RECOMMENDS": "0"}, "APT::Install-Recommends", true))
 }
+
+// apt 1.4 (Debian 9) sets `Binary::apt-get::Acquire::AllowInsecureRepositories
+// "1"` as a built-in default while the base option is "0". On the Debian 9
+// sweep host `apt-get update` loaded an unsigned repository's indexes and
+// `apt update` refused it, so the host accepts unsigned repositories.
+func TestAptConfigDebianStretchApt14(t *testing.T) {
+	a := &mqlAptConfig{}
+	params := aptConfigFixture(t, "debian-stretch")
+	require.Equal(t, "0", params["Acquire::AllowInsecureRepositories"])
+
+	v, _ := a.allowInsecureRepositories(params)
+	assert.True(t, v, "apt-get's built-in override")
+	v, _ = a.allowWeakRepositories(params)
+	assert.False(t, v)
+	v, _ = a.allowDowngradeToInsecureRepositories(params)
+	assert.False(t, v)
+	v, _ = a.checkDate(params)
+	assert.True(t, v)
+}
+
+func TestAptWeakestBool(t *testing.T) {
+	const key = "Acquire::AllowInsecureRepositories"
+	for _, tc := range []struct {
+		name   string
+		params map[string]any
+		want   bool
+	}{
+		{"base weak", map[string]any{key: "1", "Binary::apt-get::" + key: "0"}, true},
+		{"apt-get weak", map[string]any{key: "0", "Binary::apt-get::" + key: "true"}, true},
+		{"apt weak, base unset", map[string]any{"Binary::apt::" + key: "yes"}, true},
+		{"overrides strict", map[string]any{"Binary::apt::" + key: "no", "Binary::apt-get::" + key: "0"}, false},
+		{"another binary's scope does not count", map[string]any{"Binary::apt-cache::" + key: "1"}, false},
+		{"override in lower case", map[string]any{"binary::apt-get::acquire::allowinsecurerepositories": "1"}, true},
+	} {
+		assert.Equal(t, tc.want, aptWeakestBool(tc.params, key, false, true), tc.name)
+	}
+
+	// Acquire::Check-Date is weak when false
+	assert.False(t, aptWeakestBool(map[string]any{"Binary::apt-get::Acquire::Check-Date": "false"}, "Acquire::Check-Date", true, false))
+	assert.True(t, aptWeakestBool(map[string]any{"Binary::apt-get::Acquire::Check-Date": "true"}, "Acquire::Check-Date", true, false))
+}

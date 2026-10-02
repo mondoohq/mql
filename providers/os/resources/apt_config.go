@@ -111,20 +111,44 @@ func aptParam(params map[string]any, key string) (string, bool) {
 	return "", false
 }
 
+// aptFrontends are the binaries whose Binary::<name>:: scope APT copies over
+// the configuration when that binary runs (BinarySpecificConfiguration). apt
+// 1.4 (Debian 9) ships `Binary::apt-get::Acquire::AllowInsecureRepositories
+// "1"`: apt refuses an unsigned repository there, apt-get still loads it.
+var aptFrontends = []string{"apt-get", "apt"}
+
+// aptWeakestBool resolves a repository-trust option the way every APT
+// front-end sees it and returns the weaker answer: weak when the base
+// configuration or any front-end's Binary:: override sets the option to
+// weak. A host whose apt-get accepts unsigned repositories accepts them,
+// whatever apt does.
+func aptWeakestBool(params map[string]any, key string, def bool, weak bool) bool {
+	base := aptBoolParam(params, key, def)
+	if base == weak {
+		return weak
+	}
+	for _, bin := range aptFrontends {
+		if aptBoolParam(params, "Binary::"+bin+"::"+key, base) == weak {
+			return weak
+		}
+	}
+	return base
+}
+
 func (a *mqlAptConfig) allowInsecureRepositories(params map[string]any) (bool, error) {
-	return aptBoolParam(params, "Acquire::AllowInsecureRepositories", false), nil
+	return aptWeakestBool(params, "Acquire::AllowInsecureRepositories", false, true), nil
 }
 
 func (a *mqlAptConfig) allowWeakRepositories(params map[string]any) (bool, error) {
-	return aptBoolParam(params, "Acquire::AllowWeakRepositories", false), nil
+	return aptWeakestBool(params, "Acquire::AllowWeakRepositories", false, true), nil
 }
 
 func (a *mqlAptConfig) allowDowngradeToInsecureRepositories(params map[string]any) (bool, error) {
-	return aptBoolParam(params, "Acquire::AllowDowngradeToInsecureRepositories", false), nil
+	return aptWeakestBool(params, "Acquire::AllowDowngradeToInsecureRepositories", false, true), nil
 }
 
 func (a *mqlAptConfig) checkDate(params map[string]any) (bool, error) {
-	return aptBoolParam(params, "Acquire::Check-Date", true), nil
+	return aptWeakestBool(params, "Acquire::Check-Date", true, false), nil
 }
 
 func (a *mqlAptConfig) installRecommends(params map[string]any) (bool, error) {
