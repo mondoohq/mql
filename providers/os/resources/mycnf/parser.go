@@ -309,6 +309,7 @@ func parseOption(line string) (Option, bool) {
 // any boolean option it knows; this parser has no copy of the server's option
 // registry, so it resolves them only for the options the mysql.conf and
 // mariadb.conf resources report. Other prefixed names are kept as written.
+// A new boolean field on either resource needs its option added here.
 var booleanOptions = map[string]bool{
 	"allow_suspicious_udfs":             true,
 	"automatic_sp_privileges":           true,
