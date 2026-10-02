@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"os"
 	"path"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -636,10 +635,12 @@ func (s *SystemdFSServiceManager) readUnit(unitPath string, uInfo *unitInfo) err
 		linkPath, err := lr.ReadlinkIfPossible(unitPath)
 		if err == nil {
 			// If the linkPath is not absolute, use the directory of unitPath and append the
-			// filename.
-			if !filepath.IsAbs(linkPath) {
-				directory := filepath.Dir(unitPath)
-				linkPath = filepath.Join(directory, linkPath)
+			// filename. The unit belongs to a Unix file system, so its paths are
+			// slash-separated whatever OS the scanner runs on: path, not
+			// path/filepath, which on Windows treats "/lib/..." as relative.
+			if !path.IsAbs(linkPath) {
+				directory := path.Dir(unitPath)
+				linkPath = path.Join(directory, linkPath)
 			}
 			unitPath = linkPath
 		}
