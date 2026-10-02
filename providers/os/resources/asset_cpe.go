@@ -82,7 +82,9 @@ func (a *mqlAsset) cpes() ([]any, error) {
 }
 
 // osReleaseCPE returns the CPE_NAME of the first os-release file that exists,
-// bound to CPE 2.3, or "" when there is none.
+// bound to CPE 2.3, or "" when there is none. Per os-release(5) the first file
+// found is the only one read: /usr/lib/os-release is a fallback for a missing
+// /etc/os-release, not for one without CPE_NAME.
 func (a *mqlAsset) osReleaseCPE() (string, error) {
 	for _, path := range []string{"/etc/os-release", "/usr/lib/os-release"} {
 		f, err := CreateResource(a.MqlRuntime, "file", map[string]*llx.RawData{
