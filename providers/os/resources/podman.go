@@ -652,6 +652,10 @@ func listPodmanImages(runtime *plugin.Runtime, filters ...string) ([]any, error)
 	if err != nil {
 		return nil, err
 	}
+	entries = podmanUniqueImages(entries)
+	if err := inspectPodmanImages(runtime, entries); err != nil {
+		return nil, err
+	}
 
 	res := make([]any, 0, len(entries))
 	for i := range entries {
@@ -662,6 +666,47 @@ func listPodmanImages(runtime *plugin.Runtime, filters ...string) ([]any, error)
 		res = append(res, resource)
 	}
 	return res, nil
+}
+
+// podmanImageInspectBatch caps how many images one "podman image inspect" call
+// names, so a large image store stays well under the argument length limit.
+const podmanImageInspectBatch = 100
+
+// inspectPodmanImages fills in what "podman images" leaves out on the running
+// podman release, with one "podman image inspect" call per batch of images.
+func inspectPodmanImages(runtime *plugin.Runtime, entries []podmanImageEntry) error {
+	ids := []string{}
+	for i := range entries {
+		if podmanImageNeedsInspect(entries[i]) {
+			ids = append(ids, entries[i].ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	inspected := make(map[string]podmanImageInspectEntry, len(ids))
+	for start := 0; start < len(ids); start += podmanImageInspectBatch {
+		end := min(start+podmanImageInspectBatch, len(ids))
+		out, err := runPodman(runtime, append([]string{"image", "inspect"}, ids[start:end]...)...)
+		if err != nil {
+			return err
+		}
+		records, err := parsePodmanImageInspect(out)
+		if err != nil {
+			return err
+		}
+		for _, record := range records {
+			inspected[record.ID] = record
+		}
+	}
+
+	for i := range entries {
+		if record, ok := inspected[entries[i].ID]; ok {
+			podmanMergeImageInspect(&entries[i], record)
+		}
+	}
+	return nil
 }
 
 func newPodmanImageResource(runtime *plugin.Runtime, entry podmanImageEntry) (plugin.Resource, error) {

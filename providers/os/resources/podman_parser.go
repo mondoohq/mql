@@ -78,6 +78,16 @@ type podmanImageEntry struct {
 	Created      int64             `json:"Created"`
 }
 
+// podmanImageInspectEntry is the part of one "podman image inspect" record that
+// "podman images" leaves out. Podman 5 and older list no platform at all, and
+// podman 3 lists repo digests without the repository they belong to.
+type podmanImageInspectEntry struct {
+	ID           string   `json:"Id"`
+	RepoDigests  []string `json:"RepoDigests"`
+	Os           string   `json:"Os"`
+	Architecture string   `json:"Architecture"`
+}
+
 // podmanPodEntry is one record of "podman pod ps --format json".
 type podmanPodEntry struct {
 	ID      string            `json:"Id"`
@@ -167,6 +177,57 @@ func parsePodmanImages(data string) ([]podmanImageEntry, error) {
 		return nil, err
 	}
 	return res, nil
+}
+
+func parsePodmanImageInspect(data string) ([]podmanImageInspectEntry, error) {
+	res := []podmanImageInspectEntry{}
+	if err := unmarshalPodmanList(data, &res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// podmanUniqueImages drops the repeated records "podman images" prints for an
+// image with more than one tag. Every repeat carries the same ID and names.
+func podmanUniqueImages(entries []podmanImageEntry) []podmanImageEntry {
+	seen := make(map[string]struct{}, len(entries))
+	res := make([]podmanImageEntry, 0, len(entries))
+	for _, entry := range entries {
+		if _, ok := seen[entry.ID]; ok {
+			continue
+		}
+		seen[entry.ID] = struct{}{}
+		res = append(res, entry)
+	}
+	return res
+}
+
+// podmanImageNeedsInspect reports whether "podman images" left out something
+// only "podman image inspect" reports: the platform, or the repository of a
+// repo digest.
+func podmanImageNeedsInspect(entry podmanImageEntry) bool {
+	if entry.Os == "" || entry.Architecture == "" {
+		return true
+	}
+	for _, digest := range entry.RepoDigests {
+		if !strings.Contains(digest, "@") {
+			return true
+		}
+	}
+	return false
+}
+
+// podmanMergeImageInspect fills an image list record with what inspect reports.
+// Inspect is the authority for repo digests: a bare digest is no reference an
+// image can be pulled by.
+func podmanMergeImageInspect(entry *podmanImageEntry, inspect podmanImageInspectEntry) {
+	entry.RepoDigests = inspect.RepoDigests
+	if inspect.Os != "" {
+		entry.Os = inspect.Os
+	}
+	if inspect.Architecture != "" {
+		entry.Architecture = inspect.Architecture
+	}
 }
 
 func parsePodmanPods(data string) ([]podmanPodEntry, error) {

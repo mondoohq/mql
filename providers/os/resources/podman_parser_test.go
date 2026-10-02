@@ -462,3 +462,191 @@ func TestPodmanCheckSupported(t *testing.T) {
 	assert.NoError(t, podmanCheckSupported("5.8.2"))
 	assert.NoError(t, podmanCheckSupported(""), "an unreadable version blocks nothing")
 }
+
+// captured from "podman images --format json" on Podman 3.4.2 (Debian 10), with
+// quay.io/libpod/alpine:latest also tagged localhost/g08fix:extra. The image is
+// listed once per tag, and its repo digests lack the repository.
+const podmanTestImagesV3 = `[
+  {
+    "Id": "ed210e3e4a5bae1237f1bb44d72a05a2f1e5c6bfe7a7e73da179e2534269c459",
+    "ParentId": "",
+    "RepoTags": null,
+    "RepoDigests": [
+      "sha256:1ff6c18fbef2045af6b9c16bf034cc421a29027b800e4f9b68ae9b1cb3e9ae07",
+      "sha256:369201a612f7b2b585a8e6ca99f77a36bcdbd032463d815388a96800b63ef2c8"
+    ],
+    "Size": 689969,
+    "SharedSize": 0,
+    "VirtualSize": 689969,
+    "Labels": null,
+    "Containers": 2,
+    "Names": ["k8s.gcr.io/pause:3.5"],
+    "Digest": "sha256:1ff6c18fbef2045af6b9c16bf034cc421a29027b800e4f9b68ae9b1cb3e9ae07",
+    "History": ["k8s.gcr.io/pause:3.5"],
+    "Created": 1615900617,
+    "CreatedAt": "2021-03-16T13:16:57Z"
+  },
+  {
+    "Id": "961769676411f082461f9ef46626dd7a2d1e2b2a38e6a44364bcbecf51e66dd4",
+    "ParentId": "",
+    "RepoTags": null,
+    "RepoDigests": [
+      "sha256:fa93b01658e3a5a1686dc3ae55f170d8de487006fb53a28efcd12ab0710a2e5f",
+      "sha256:634a8f35b5f16dcf4aaa0822adc0b1964bb786fca12f6831de8ddc45e5986a00"
+    ],
+    "Size": 5847966,
+    "Labels": null,
+    "Containers": 8,
+    "Names": ["quay.io/libpod/alpine:latest", "localhost/g08fix:extra"],
+    "Digest": "sha256:fa93b01658e3a5a1686dc3ae55f170d8de487006fb53a28efcd12ab0710a2e5f",
+    "History": ["localhost/g08fix:extra", "quay.io/libpod/alpine:latest"],
+    "Created": 1566332395,
+    "CreatedAt": "2019-08-20T20:19:55Z"
+  },
+  {
+    "Id": "961769676411f082461f9ef46626dd7a2d1e2b2a38e6a44364bcbecf51e66dd4",
+    "ParentId": "",
+    "RepoTags": null,
+    "RepoDigests": [
+      "sha256:fa93b01658e3a5a1686dc3ae55f170d8de487006fb53a28efcd12ab0710a2e5f",
+      "sha256:634a8f35b5f16dcf4aaa0822adc0b1964bb786fca12f6831de8ddc45e5986a00"
+    ],
+    "Size": 5847966,
+    "Labels": null,
+    "Containers": 8,
+    "Names": ["quay.io/libpod/alpine:latest", "localhost/g08fix:extra"],
+    "Digest": "sha256:fa93b01658e3a5a1686dc3ae55f170d8de487006fb53a28efcd12ab0710a2e5f",
+    "History": ["localhost/g08fix:extra", "quay.io/libpod/alpine:latest"],
+    "Created": 1566332395,
+    "CreatedAt": "2019-08-20T20:19:55Z"
+  }
+]`
+
+// captured from "podman images --format json" on Podman 5.4.2 (Debian 13): repo
+// digests carry the repository, but there is no platform
+const podmanTestImagesV5 = `[
+  {
+    "Id": "f0b02e9d092d905d0d87a8455a1ae3e9bb47b4aa3dc125125ca5cd10d6441c9f",
+    "ParentId": "",
+    "RepoTags": null,
+    "RepoDigests": [
+      "quay.io/libpod/busybox@sha256:a9286defaba7b3a519d585ba0e37d0b2cbee74ebfe590960b0b1d6a5e97d1e1d",
+      "quay.io/libpod/busybox@sha256:c9249fdf56138f0d929e2080ae98ee9cb2946f71498fc1484288e6a935b5e5bc"
+    ],
+    "Size": 1454611,
+    "SharedSize": 0,
+    "VirtualSize": 1454611,
+    "Labels": null,
+    "Containers": 1,
+    "Digest": "sha256:a9286defaba7b3a519d585ba0e37d0b2cbee74ebfe590960b0b1d6a5e97d1e1d",
+    "History": ["quay.io/libpod/busybox:latest"],
+    "Names": ["quay.io/libpod/busybox:latest"],
+    "Created": 1602670054,
+    "CreatedAt": "2020-10-14T10:07:34Z"
+  }
+]`
+
+// captured from "podman image inspect 961769676411 ed210e3e4a5b" on Podman 3.4.2
+// (Debian 10), trimmed to the keys the image list leaves out
+const podmanTestImageInspectV3 = `[
+  {
+    "Id": "961769676411f082461f9ef46626dd7a2d1e2b2a38e6a44364bcbecf51e66dd4",
+    "Digest": "sha256:fa93b01658e3a5a1686dc3ae55f170d8de487006fb53a28efcd12ab0710a2e5f",
+    "RepoTags": ["quay.io/libpod/alpine:latest", "localhost/g08fix:extra"],
+    "RepoDigests": [
+      "localhost/g08fix@sha256:634a8f35b5f16dcf4aaa0822adc0b1964bb786fca12f6831de8ddc45e5986a00",
+      "localhost/g08fix@sha256:fa93b01658e3a5a1686dc3ae55f170d8de487006fb53a28efcd12ab0710a2e5f",
+      "quay.io/libpod/alpine@sha256:634a8f35b5f16dcf4aaa0822adc0b1964bb786fca12f6831de8ddc45e5986a00",
+      "quay.io/libpod/alpine@sha256:fa93b01658e3a5a1686dc3ae55f170d8de487006fb53a28efcd12ab0710a2e5f"
+    ],
+    "Os": "linux",
+    "Architecture": "amd64"
+  },
+  {
+    "Id": "ed210e3e4a5bae1237f1bb44d72a05a2f1e5c6bfe7a7e73da179e2534269c459",
+    "Digest": "sha256:1ff6c18fbef2045af6b9c16bf034cc421a29027b800e4f9b68ae9b1cb3e9ae07",
+    "RepoTags": ["k8s.gcr.io/pause:3.5"],
+    "RepoDigests": [
+      "k8s.gcr.io/pause@sha256:1ff6c18fbef2045af6b9c16bf034cc421a29027b800e4f9b68ae9b1cb3e9ae07",
+      "k8s.gcr.io/pause@sha256:369201a612f7b2b585a8e6ca99f77a36bcdbd032463d815388a96800b63ef2c8"
+    ],
+    "Os": "linux",
+    "Architecture": "amd64"
+  }
+]`
+
+func TestPodmanUniqueImages(t *testing.T) {
+	entries, err := parsePodmanImages(podmanTestImagesV3)
+	require.NoError(t, err)
+	require.Len(t, entries, 3)
+
+	unique := podmanUniqueImages(entries)
+	require.Len(t, unique, 2)
+	assert.Equal(t, "ed210e3e4a5bae1237f1bb44d72a05a2f1e5c6bfe7a7e73da179e2534269c459", unique[0].ID)
+	assert.Equal(t, "961769676411f082461f9ef46626dd7a2d1e2b2a38e6a44364bcbecf51e66dd4", unique[1].ID)
+	assert.Equal(t, []string{"quay.io/libpod/alpine:latest", "localhost/g08fix:extra"}, unique[1].Names)
+}
+
+func TestPodmanImageNeedsInspect(t *testing.T) {
+	v3, err := parsePodmanImages(podmanTestImagesV3)
+	require.NoError(t, err)
+	assert.True(t, podmanImageNeedsInspect(v3[0]), "podman 3 lists bare repo digests and no platform")
+
+	v5, err := parsePodmanImages(podmanTestImagesV5)
+	require.NoError(t, err)
+	assert.True(t, podmanImageNeedsInspect(v5[0]), "podman 5 lists no platform")
+
+	v6, err := parsePodmanImages(podmanTestImages)
+	require.NoError(t, err)
+	assert.False(t, podmanImageNeedsInspect(v6[0]), "podman 6 lists everything")
+	assert.False(t, podmanImageNeedsInspect(v6[1]), "a dangling image with no repo digests needs nothing more")
+
+	bareDigest := v6[0]
+	bareDigest.RepoDigests = []string{"sha256:177b1f25aaa28928f54ce9463fa1a2abf207c1b83bc12ecf0bf168fa13d6850a"}
+	assert.True(t, podmanImageNeedsInspect(bareDigest))
+}
+
+func TestParsePodmanImageInspect(t *testing.T) {
+	records, err := parsePodmanImageInspect(podmanTestImageInspectV3)
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+
+	alpine := records[0]
+	assert.Equal(t, "961769676411f082461f9ef46626dd7a2d1e2b2a38e6a44364bcbecf51e66dd4", alpine.ID)
+	assert.Equal(t, "linux", alpine.Os)
+	assert.Equal(t, "amd64", alpine.Architecture)
+	assert.Contains(t, alpine.RepoDigests, "quay.io/libpod/alpine@sha256:fa93b01658e3a5a1686dc3ae55f170d8de487006fb53a28efcd12ab0710a2e5f")
+	assert.Len(t, alpine.RepoDigests, 4)
+
+	for _, out := range []string{"", "null", "[]"} {
+		records, err := parsePodmanImageInspect(out)
+		require.NoError(t, err, out)
+		assert.Empty(t, records, out)
+	}
+}
+
+func TestPodmanMergeImageInspect(t *testing.T) {
+	entries, err := parsePodmanImages(podmanTestImagesV3)
+	require.NoError(t, err)
+	records, err := parsePodmanImageInspect(podmanTestImageInspectV3)
+	require.NoError(t, err)
+
+	pause := entries[0]
+	podmanMergeImageInspect(&pause, records[1])
+	assert.Equal(t, []string{
+		"k8s.gcr.io/pause@sha256:1ff6c18fbef2045af6b9c16bf034cc421a29027b800e4f9b68ae9b1cb3e9ae07",
+		"k8s.gcr.io/pause@sha256:369201a612f7b2b585a8e6ca99f77a36bcdbd032463d815388a96800b63ef2c8",
+	}, pause.RepoDigests)
+	assert.Equal(t, "linux", pause.Os)
+	assert.Equal(t, "amd64", pause.Architecture)
+	// the list keeps what inspect has no say in
+	assert.Equal(t, "sha256:1ff6c18fbef2045af6b9c16bf034cc421a29027b800e4f9b68ae9b1cb3e9ae07", pause.Digest)
+	assert.Equal(t, int64(689969), pause.Size)
+	assert.False(t, podmanImageNeedsInspect(pause))
+
+	// an image inspect knows no repo digests for has none, not bare digests
+	unpushed := entries[1]
+	podmanMergeImageInspect(&unpushed, podmanImageInspectEntry{ID: unpushed.ID, Os: "linux", Architecture: "arm64"})
+	assert.Empty(t, unpushed.RepoDigests)
+	assert.Equal(t, "arm64", unpushed.Architecture)
+}
