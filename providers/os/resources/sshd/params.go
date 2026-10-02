@@ -47,25 +47,28 @@ var isMultiParam = map[string]bool{
 	"HostKey":       true,
 }
 
+// Flatten returns the global configuration: the parameters set outside any
+// Match block, which is what `sshd -T` reports without a connection spec.
+// A value set only inside a Match block applies to the connections that
+// block matches and must not appear here, or a policy such as
+// `params["PermitRootLogin"] == "no"` passes on a server whose global
+// setting still permits root logins. Match blocks are available on their own.
+//
+// The criteria of all Match blocks are joined under the informational
+// "Match" key.
 func (m MatchBlocks) Flatten() map[string]any {
 	if len(m) == 0 {
 		return nil
 	}
-	if len(m) == 1 {
-		return m[0].Params
-	}
 
-	// We are using the first block as a starting point for the size.
-	// We can't just add the sizes of params across all blocks, because keys
-	// may be used across multiple blocks. It is likely that the size will
-	// have to grow, but it's the floor and a good starting point.
-	res := make(map[string]any, len(m[0].Params))
+	res := map[string]any{}
 	matchConditions := []string{}
 	for i := range m {
 		cur := m[i]
 
 		if cur.Criteria != "" {
 			matchConditions = append(matchConditions, cur.Criteria)
+			continue
 		}
 
 		for k, v := range cur.Params {
