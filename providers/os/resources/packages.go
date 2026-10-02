@@ -348,7 +348,8 @@ type pkgUpdates struct {
 	// architecture and noarch, see lookup.
 	noarchByName map[string]string
 	byName       map[string]string
-	// err is why the manager could not report its updates.
+	// err is why the manager could not report all of its updates. The maps
+	// hold the ones it did report.
 	err error
 }
 
@@ -361,15 +362,19 @@ func (u *pkgUpdates) load() {
 			log.Debug().Err(err).Str("manager", u.pm.Name()).Msg("mql[packages]> could not retrieve available updates")
 			return
 		}
-		// A check that ran and failed knows nothing about pending updates.
-		// v13 reported no newer version for every package, which a policy
-		// reads as "everything is patched".
+		// A check that ran and failed knows nothing about the updates it did
+		// not report. v13 reported no newer version for those packages, which
+		// a policy reads as "everything is patched".
 		if !plugin.StructuredErrors() {
 			log.Warn().Err(err).Str("manager", u.pm.Name()).Msg("mql[packages]> could not retrieve available updates, packages report no newer version")
+		} else {
+			u.err = err
+		}
+		// zypper prints the updates of the repositories it could read
+		// before it fails on another one. Those are real, so they are kept.
+		if available == nil {
 			return
 		}
-		u.err = err
-		return
 	}
 	u.byNameArch = make(map[string]string, len(available))
 	u.noarchByName = map[string]string{}
@@ -402,16 +407,21 @@ func (u *pkgUpdates) load() {
 // package takes an arch-specific update only when it is the only one.
 func (u *pkgUpdates) lookup(name, arch string) (string, error) {
 	u.once.Do(u.load)
-	if u.err != nil {
-		return "", u.err
-	}
 	if v, ok := u.byNameArch[name+"/"+arch]; ok {
 		return v, nil
 	}
+	var v string
 	if arch == "noarch" {
-		return u.byName[name], nil
+		v = u.byName[name]
+	} else {
+		v = u.noarchByName[name]
 	}
-	return u.noarchByName[name], nil
+	// a failed check that still found this package's update knows it is
+	// outdated; it does not know that any other package is not
+	if v == "" && u.err != nil {
+		return "", u.err
+	}
+	return v, nil
 }
 
 // fillPackageArgs resets args and fills in the resource arguments for one

@@ -7,9 +7,13 @@ import (
 	"bufio"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
+	"strings"
+
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 func ParseRpmUpdates(input io.Reader) (map[string]PackageUpdate, error) {
@@ -31,11 +35,14 @@ func ParseRpmUpdates(input io.Reader) (map[string]PackageUpdate, error) {
 }
 
 type zypperUpdate struct {
-	Name        string `xml:"name,attr"`
-	Kind        string `xml:"kind,attr"`
-	Arch        string `xml:"arch,attr"`
-	Edition     string `xml:"edition,attr"`
-	OldEdition  string `xml:"edition-old,attr"`
+	Name       string `xml:"name,attr"`
+	Kind       string `xml:"kind,attr"`
+	Arch       string `xml:"arch,attr"`
+	Edition    string `xml:"edition,attr"`
+	OldEdition string `xml:"edition-old,attr"`
+	// OldArch is the installed package's architecture. zypper sets it only
+	// when the update has another one (x86_64 -> noarch).
+	OldArch     string `xml:"arch-old,attr"`
 	Status      string `xml:"status,attr"`
 	Category    string `xml:"category,attr"`
 	Severity    string `xml:"severity,attr"`
@@ -47,34 +54,122 @@ type zypperUpdate struct {
 	Description string `xml:"description"`
 }
 
-type zypper struct {
-	XMLNode xml.Name       `xml:"stream"`
-	Updates []zypperUpdate `xml:"update-status>update-list>update"`
-	Blocked []zypperUpdate `xml:"update-status>blocked-update-list>update"`
+// zypperMessage is a <message> element of zypper's XML output. Its type is
+// info, warning or error.
+type zypperMessage struct {
+	Type string `xml:"type,attr"`
+	Text string `xml:",chardata"`
 }
 
-// for Suse, updates are package updates
-// parses the output of `zypper -n --xmlout list-updates`
+type zypper struct {
+	XMLNode  xml.Name        `xml:"stream"`
+	Messages []zypperMessage `xml:"message"`
+	Updates  []zypperUpdate  `xml:"update-status>update-list>update"`
+	Blocked  []zypperUpdate  `xml:"update-status>blocked-update-list>update"`
+}
+
+// errors returns the text of zypper's error messages, each on one line.
+func (z *zypper) errors() []string {
+	var res []string
+	for _, m := range z.Messages {
+		if m.Type != "error" {
+			continue
+		}
+		res = append(res, strings.Join(strings.Fields(m.Text), " "))
+	}
+	return res
+}
+
+// ParseZypperUpdates parses the output of `zypper -n --xmlout list-updates`
+// into the package updates, keyed by "<name>.<arch>".
+//
+// Arch is the architecture of the installed package, which is what
+// package.available joins on. An update that changes it carries the
+// installed one in arch-old:
+//
+//	<update kind="package" name="g03-archchg" edition="2.0-1" arch="noarch" edition-old="1.0-1" arch-old="x86_64">
+//
+// Read as arch, that update was looked up as g03-archchg/noarch and the
+// installed g03-archchg.x86_64 reported no newer version.
 func ParseZypperUpdates(input io.Reader) (map[string]PackageUpdate, error) {
-	pkgs := map[string]PackageUpdate{}
 	zypper, err := ParseZypper(input)
 	if err != nil {
 		return nil, err
 	}
+	return zypperPackageUpdates(zypper), nil
+}
 
+func zypperPackageUpdates(zypper *zypper) map[string]PackageUpdate {
+	pkgs := map[string]PackageUpdate{}
 	for _, u := range zypper.Updates {
 		// filter for kind package
 		if u.Kind != "package" {
 			continue
 		}
-		pkgs[u.Name] = PackageUpdate{
+		arch := u.Arch
+		if u.OldArch != "" {
+			arch = u.OldArch
+		}
+		pkgs[u.Name+"."+arch] = PackageUpdate{
 			Name:      u.Name,
 			Version:   u.OldEdition,
-			Arch:      u.Arch,
+			Arch:      arch,
 			Available: u.Edition,
 		}
 	}
-	return pkgs, nil
+	return pkgs
+}
+
+// zypperMaxErr caps how much of zypper's error messages goes into the error.
+const zypperMaxErr = 512
+
+// parseZypperListUpdatesResult reads a finished `zypper -n --xmlout
+// list-updates` run. Exit status 0 and the informational 100 to 103 are a
+// finished check. Anything else is a failed one: 7 when another zypper or
+// PackageKit holds the zypp lock, 106 when a repository was skipped because
+// its metadata could not be refreshed. zypper also exits 0 when it could not
+// load a repository at all, as a user who cannot write the metadata cache:
+// it then only reports error messages ("Resolvables from 'repo-oss' not
+// loaded because of error."). Every one of these printed fewer updates than
+// are pending, and was read as "up to date".
+//
+// A failed check returns the updates zypper did print together with an error
+// wrapping ErrUpdateCheckFailed: those updates are real, the absence of one
+// is not.
+func parseZypperListUpdatesResult(cmd *shared.Command) (map[string]PackageUpdate, error) {
+	var parsed *zypper
+	var parseErr error
+	if cmd.Stdout != nil {
+		parsed, parseErr = ParseZypper(cmd.Stdout)
+	} else {
+		parseErr = errors.New("no output")
+	}
+
+	var updates map[string]PackageUpdate
+	var msgs []string
+	if parseErr == nil {
+		updates = zypperPackageUpdates(parsed)
+		msgs = parsed.errors()
+	}
+
+	switch cmd.ExitStatus {
+	case 0, 100, 101, 102, 103:
+		if parseErr != nil {
+			return nil, fmt.Errorf("%w: could not parse zypper list-updates output: %w", ErrUpdateCheckFailed, parseErr)
+		}
+		if len(msgs) == 0 {
+			return updates, nil
+		}
+	}
+
+	msg := strings.Join(msgs, "; ")
+	if len(msg) > zypperMaxErr {
+		msg = strings.ToValidUTF8(msg[:zypperMaxErr], "") + "..."
+	}
+	if msg == "" {
+		return updates, fmt.Errorf("%w: zypper list-updates failed (exit status %d)", ErrUpdateCheckFailed, cmd.ExitStatus)
+	}
+	return updates, fmt.Errorf("%w: zypper list-updates failed (exit status %d): %s", ErrUpdateCheckFailed, cmd.ExitStatus, msg)
 }
 
 func ParseZypper(input io.Reader) (*zypper, error) {

@@ -554,9 +554,15 @@ func (rpm *RpmPkgManager) staticList() ([]Package, error) {
 	return resultList, nil
 }
 
-// TODO: Available() not implemented for RpmFileSystemManager
-// for now this is not an error since we can easily determine available packages
+// staticAvailable is the update check when rpm cannot be run, so there is
+// none. An image or a filesystem has no package manager to ask, and reports
+// no newer version, as it always has. A host that can run commands but where
+// rpm did not run cannot say which updates are pending: an empty map there
+// read as "every package is up to date".
 func (rpm *RpmPkgManager) staticAvailable() (map[string]PackageUpdate, error) {
+	if rpm.conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return nil, fmt.Errorf("%w: the rpm command could not be run on this host", ErrUpdateCheckFailed)
+	}
 	return map[string]PackageUpdate{}, nil
 }
 
@@ -658,13 +664,15 @@ func (spm *SusePkgManager) Available() (map[string]PackageUpdate, error) {
 	if spm.isStaticAnalysis() {
 		return spm.staticAvailable()
 	}
-	cmd, err := spm.conn.RunCommand("zypper -n --xmlout list-updates")
+	cmd, err := spm.conn.RunCommand(zypperListUpdatesCommand)
 	if err != nil {
 		log.Debug().Err(err).Msg("mql[packages]> could not read package updates")
-		return nil, fmt.Errorf("could not read rpm package update list")
+		return nil, fmt.Errorf("%w: %w", ErrUpdateCheckFailed, err)
 	}
-	return ParseZypperUpdates(cmd.Stdout)
+	return parseZypperListUpdatesResult(cmd)
 }
+
+const zypperListUpdatesCommand = "zypper -n --xmlout list-updates"
 
 // modularitySupportedByPlatform checks if the platform supports modularity
 // Not every rpm based distro supports modules.

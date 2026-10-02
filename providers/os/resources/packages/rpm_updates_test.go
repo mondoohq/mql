@@ -4,6 +4,7 @@
 package packages
 
 import (
+	"bytes"
 	"os"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 func TestRpmUpdateParser(t *testing.T) {
@@ -55,13 +57,141 @@ func TestZypperUpdateParser(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 22, len(m), "detected the right amount of package updates")
 
-	update := m["aaa_base"]
+	update := m["aaa_base.x86_64"]
 	assert.Equal(t, "aaa_base", update.Name, "pkg name detected")
 	assert.Equal(t, "13.2+git20140911.61c1681-28.3.1", update.Version, "pkg version detected")
 
-	update = m["bash"]
+	update = m["bash.x86_64"]
 	assert.Equal(t, "bash", update.Name, "pkg name detected")
 	assert.Equal(t, "4.3-83.3.1", update.Version, "pkg version detected")
+}
+
+// From `zypper -n --xmlout list-updates` on openSUSE Leap 16.0 with the g03
+// test packages installed from a local repository.
+func TestParseZypperUpdatesArchChange(t *testing.T) {
+	f, err := os.Open("./testdata/zypper-lu-leap16-g03.xml")
+	require.NoError(t, err)
+	defer f.Close()
+
+	m, err := ParseZypperUpdates(f)
+	require.NoError(t, err)
+
+	// installed as x86_64, updated by a noarch build; the installed arch is
+	// in arch-old and is what the update is keyed and joined on
+	require.Contains(t, m, "g03-archchg.x86_64")
+	assert.Equal(t, PackageUpdate{Name: "g03-archchg", Version: "1.0-1", Arch: "x86_64", Available: "2.0-1"}, m["g03-archchg.x86_64"])
+	assert.NotContains(t, m, "g03-archchg.noarch")
+
+	assert.Equal(t, PackageUpdate{Name: "g03-multi", Version: "1.0-1", Arch: "i686", Available: "2.0-1"}, m["g03-multi.i686"])
+	assert.Equal(t, "3:2.0-1", m["g03-epoch.x86_64"].Available)
+	assert.Equal(t, "noarch", m["ca-certificates-mozilla.noarch"].Arch)
+}
+
+func zypperResult(t *testing.T, file string, exit int) *shared.Command {
+	t.Helper()
+	raw, err := os.ReadFile(file)
+	require.NoError(t, err)
+	return &shared.Command{Stdout: bytes.NewBuffer(raw), Stderr: &bytes.Buffer{}, ExitStatus: exit}
+}
+
+// The failures are real `zypper -n --xmlout list-updates` runs on openSUSE
+// Leap 16.0. Each one printed fewer updates than were pending, and each was
+// read as "every package is up to date".
+func TestParseZypperListUpdatesResult(t *testing.T) {
+	t.Run("a finished check", func(t *testing.T) {
+		m, err := parseZypperListUpdatesResult(zypperResult(t, "./testdata/zypper-lu-leap16-g03.xml", 0))
+		require.NoError(t, err)
+		assert.Equal(t, "2.0-1", m["g03-archchg.x86_64"].Available)
+	})
+
+	t.Run("100 to 103 are informational", func(t *testing.T) {
+		for _, exit := range []int{100, 101, 102, 103} {
+			m, err := parseZypperListUpdatesResult(zypperResult(t, "./testdata/zypper-lu-leap16-g03.xml", exit))
+			require.NoError(t, err, "exit %d", exit)
+			assert.Contains(t, m, "g03-epoch.x86_64")
+		}
+	})
+
+	t.Run("the zypp lock is held", func(t *testing.T) {
+		m, err := parseZypperListUpdatesResult(zypperResult(t, "./testdata/zypper-lu-locked-leap16.xml", 7))
+		require.ErrorIs(t, err, ErrUpdateCheckFailed)
+		assert.Contains(t, err.Error(), "exit status 7")
+		assert.Contains(t, err.Error(), "System management is locked by the application with pid 15950 (zypper). Close this application")
+		assert.Empty(t, m)
+	})
+
+	// g03repo carries the g03 updates and its metadata is gone. zypper skips
+	// it, lists the updates of the other repositories and exits 106.
+	t.Run("a repository is skipped", func(t *testing.T) {
+		m, err := parseZypperListUpdatesResult(zypperResult(t, "./testdata/zypper-lu-broken-repo-leap16.xml", 106))
+		require.ErrorIs(t, err, ErrUpdateCheckFailed)
+		assert.Contains(t, err.Error(), "exit status 106")
+		assert.Contains(t, err.Error(), "Repository 'g03repo' is invalid.")
+		assert.NotContains(t, err.Error(), "Skipping repository", "a warning is not an error")
+		// the updates of the repositories zypper did read are kept
+		assert.Equal(t, "2.90-160000.1.1", m["ca-certificates-mozilla.noarch"].Available)
+		assert.NotContains(t, m, "g03-epoch.x86_64")
+	})
+
+	// As a user who cannot write the metadata cache, zypper loads no
+	// repository at all, lists no update, and exits 0.
+	t.Run("no repository could be loaded, exit 0", func(t *testing.T) {
+		m, err := parseZypperListUpdatesResult(zypperResult(t, "./testdata/zypper-lu-nonroot-nocache-leap16.xml", 0))
+		require.ErrorIs(t, err, ErrUpdateCheckFailed)
+		assert.Contains(t, err.Error(), "Resolvables from 'g03repo' not loaded because of error.")
+		assert.NotContains(t, err.Error(), "out-of-date", "an info message is not an error")
+		assert.Empty(t, m)
+	})
+
+	t.Run("output that is not zypper XML", func(t *testing.T) {
+		cmd := &shared.Command{Stdout: bytes.NewBufferString("zypper: command not found\n"), Stderr: &bytes.Buffer{}, ExitStatus: 0}
+		_, err := parseZypperListUpdatesResult(cmd)
+		require.ErrorIs(t, err, ErrUpdateCheckFailed)
+
+		cmd = &shared.Command{Stdout: bytes.NewBufferString(""), Stderr: &bytes.Buffer{}, ExitStatus: 127}
+		_, err = parseZypperListUpdatesResult(cmd)
+		require.ErrorIs(t, err, ErrUpdateCheckFailed)
+		assert.Contains(t, err.Error(), "exit status 127")
+	})
+
+	t.Run("long messages are capped", func(t *testing.T) {
+		long := `<?xml version='1.0'?><stream><message type="error">` + strings.Repeat("x", 2000) + `</message></stream>`
+		cmd := &shared.Command{Stdout: bytes.NewBufferString(long), Stderr: &bytes.Buffer{}, ExitStatus: 4}
+		_, err := parseZypperListUpdatesResult(cmd)
+		require.ErrorIs(t, err, ErrUpdateCheckFailed)
+		assert.Less(t, len(err.Error()), zypperMaxErr+200)
+	})
+}
+
+// staticAvailableConn is a connection that cannot run commands, like an
+// image or a filesystem.
+type staticAvailableConn struct {
+	shared.Connection
+}
+
+func (staticAvailableConn) Capabilities() shared.Capabilities {
+	return shared.Capability_File
+}
+
+// When rpm cannot be run the manager reads the rpm database without it and has
+// no update check. On a host that runs commands (rpm failed to run, or the
+// probe failed under --sudo) the empty map it returned read as "up to date".
+func TestRpmStaticAvailable(t *testing.T) {
+	base, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{}))
+	require.NoError(t, err)
+
+	live := &RpmPkgManager{conn: base, staticChecked: true, static: true}
+	_, err = live.Available()
+	require.ErrorIs(t, err, ErrUpdateCheckFailed)
+
+	suse := &SusePkgManager{RpmPkgManager{conn: base, staticChecked: true, static: true}}
+	_, err = suse.Available()
+	require.ErrorIs(t, err, ErrUpdateCheckFailed)
+
+	image := &RpmPkgManager{conn: staticAvailableConn{base}, staticChecked: true, static: true}
+	m, err := image.Available()
+	require.NoError(t, err)
+	assert.Empty(t, m)
 }
 
 // TestParseRpmCheckUpdate reads `dnf check-update` captured from live EC2
@@ -118,13 +248,13 @@ func TestParseRpmCheckUpdate(t *testing.T) {
 	})
 
 	t.Run("no updates yields an empty map, not an error", func(t *testing.T) {
-		m, err := ParseRpmCheckUpdate(strings.NewReader(""))
+		m, err := ParseRpmCheckUpdate(bytes.NewBufferString(""))
 		require.NoError(t, err)
 		assert.Empty(t, m)
 	})
 
 	t.Run("headers and indented lines are ignored", func(t *testing.T) {
-		m, err := ParseRpmCheckUpdate(strings.NewReader(
+		m, err := ParseRpmCheckUpdate(bytes.NewBufferString(
 			"Last metadata expiration check: 0:00:01 ago.\n\n" +
 				"Obsoleting Packages\n" +
 				"    grub2-tools.x86_64   1:2.06-105.el9_6.2   @System\n"))
@@ -178,7 +308,7 @@ func TestParseRpmCheckUpdateG03(t *testing.T) {
 }
 
 func TestParseRpmCheckUpdateWrappedLines(t *testing.T) {
-	m, err := ParseRpmCheckUpdate(strings.NewReader(strings.Join([]string{
+	m, err := ParseRpmCheckUpdate(bytes.NewBufferString(strings.Join([]string{
 		// a wrapped name whose continuation never comes is dropped, and the
 		// following package line is still read on its own
 		"first-long-name.x86_64",
