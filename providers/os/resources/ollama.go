@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"io"
 	"path"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/aimodel"
 	"go.mondoo.com/mql/providers/os/resources/ollama"
 	"go.mondoo.com/mql/providers/os/resources/systemd"
@@ -68,6 +70,11 @@ func (c *mqlOllamaConfig) resolve() (*ollama.Config, error) {
 
 	unit, hasUnit := systemd.ResolveUnitEnv(afs, ollama.UnitName)
 	if hasUnit {
+		// Which drop-in directories apply depends on the systemd release, so
+		// re-read the unit once the target's version is known.
+		if v := targetSystemdVersion(c.MqlRuntime); v != 0 {
+			unit, _ = systemd.ResolveUnitEnvForVersion(afs, ollama.UnitName, v)
+		}
 		c.unit = unit
 	}
 
@@ -114,6 +121,25 @@ func (c *mqlOllamaConfig) resolve() (*ollama.Config, error) {
 	c.cfg.Files = unit.Files()
 	c.resolved = true
 	return c.cfg, nil
+}
+
+// targetSystemdVersion returns the target's systemd release from
+// `systemctl --version`, or 0 when it cannot be run (a mounted image, a target
+// without systemd).
+func targetSystemdVersion(runtime *plugin.Runtime) int {
+	conn, ok := runtime.Connection.(shared.Connection)
+	if !ok || !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return 0
+	}
+	cmd, err := conn.RunCommand("systemctl --version")
+	if err != nil || cmd.ExitStatus != 0 {
+		return 0
+	}
+	out, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		return 0
+	}
+	return systemd.ParseSystemctlVersion(string(out))
 }
 
 // findBinary locates the server binary, preferring the path the unit itself

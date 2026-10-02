@@ -6,6 +6,7 @@ package systemd
 import (
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/afero"
@@ -59,19 +60,31 @@ func (e *UnitEnv) Files() []string {
 	return append(out, e.EnvironmentFilePaths...)
 }
 
-// ResolveUnitEnv resolves the environment of a system unit (e.g. "ollama.service")
+// ResolveUnitEnv resolves a unit's environment the way current systemd
+// releases (239 and later) read it. Use ResolveUnitEnvForVersion when the
+// target's systemd version is known.
+func ResolveUnitEnv(afs *afero.Afero, unitName string) (*UnitEnv, bool) {
+	return ResolveUnitEnvForVersion(afs, unitName, 0)
+}
+
+// ResolveUnitEnvForVersion resolves the environment of a system unit (e.g. "ollama.service")
 // from the target's filesystem, following systemd's own precedence rules:
 //
 //   - the unit file is taken from the highest-precedence directory that has one,
-//   - drop-ins from every directory are applied after it, ordered lexicographically
-//     by file name with /etc winning over /run winning over /usr for equal names,
+//   - drop-ins are applied after it, ordered lexicographically by file name
+//     across every drop-in directory (see findDropIns for which directories and
+//     which copy wins when two carry the same name),
 //   - an empty Environment= or EnvironmentFile= assignment resets what came before,
 //   - and EnvironmentFile= targets override Environment= regardless of the order
 //     the two appear in, as documented in systemd.exec(5).
 //
+// systemdVersion is the target's systemd version, 0 when unknown. Releases
+// before 239 read only the unit's own drop-in directories; unknown is treated
+// as a current release.
+//
 // It reports false when the unit is not installed. A unit with no environment
 // settings at all resolves to an empty, non-nil map.
-func ResolveUnitEnv(afs *afero.Afero, unitName string) (*UnitEnv, bool) {
+func ResolveUnitEnvForVersion(afs *afero.Afero, unitName string, systemdVersion int) (*UnitEnv, bool) {
 	env := &UnitEnv{Vars: map[string]string{}, Sources: map[string]string{}}
 
 	fragment, ok := findFragment(afs, unitName)
@@ -79,7 +92,7 @@ func ResolveUnitEnv(afs *afero.Afero, unitName string) (*UnitEnv, bool) {
 		return env, false
 	}
 	env.FragmentPath = fragment
-	env.DropInPaths = findDropIns(afs, unitName)
+	env.DropInPaths = findDropIns(afs, unitName, systemdVersion)
 
 	// Environment= assignments and the EnvironmentFile= list accumulate across
 	// the fragment and every drop-in before any file is read, because a later
@@ -172,14 +185,52 @@ func findFragment(afs *afero.Afero, unitName string) (string, bool) {
 	return "", false
 }
 
-// findDropIns collects <unit>.d/*.conf from every unit directory. Files are
-// applied in lexicographic order of their base name regardless of which
-// directory they live in; when two directories carry the same name, the
-// higher-precedence directory's copy is the one applied.
-func findDropIns(afs *afero.Afero, unitName string) []string {
+// typeAndPrefixDropInsSince is the first systemd release that reads type-level
+// (service.d) and dash-prefix (foo-.service.d) drop-in directories. Verified
+// against systemd 219 (RHEL 7) and 232 (Debian 9), which ignore them, and 239
+// (RHEL 8), which reads them.
+const typeAndPrefixDropInsSince = 239
+
+// findDropIns collects the *.conf drop-ins systemd applies to a unit, as
+// systemd.unit(5) describes and `systemctl show -p DropInPaths` reports them.
+//
+// The directories searched are, in descending precedence:
+//
+//  1. for each unit directory (/etc, /run, /usr/lib, /lib): the unit's own
+//     <unit>.d, then each dash-truncated prefix from longest to shortest
+//     (foo-bar-.service.d, foo-.service.d);
+//  2. for each unit directory in the same order: the type-level directory
+//     (service.d for a service).
+//
+// Files are applied in lexicographic order of their base name regardless of
+// which directory they live in; when several directories carry the same name,
+// the copy from the highest-precedence directory is the one applied. Before
+// systemd 239 only the unit's own directories exist.
+func findDropIns(afs *afero.Afero, unitName string, systemdVersion int) []string {
+	modern := systemdVersion == 0 || systemdVersion >= typeAndPrefixDropInsSince
+
+	names := []string{unitName}
+	if modern {
+		names = append(names, unitNamePrefixes(unitName)...)
+	}
+
+	var dirs []string
+	for i := len(UnitDirs) - 1; i >= 0; i-- {
+		for _, n := range names {
+			dirs = append(dirs, path.Join(UnitDirs[i], n+".d"))
+		}
+	}
+	if modern {
+		if dot := strings.LastIndex(unitName, "."); dot >= 0 && dot < len(unitName)-1 {
+			typeDir := unitName[dot+1:] + ".d"
+			for i := len(UnitDirs) - 1; i >= 0; i-- {
+				dirs = append(dirs, path.Join(UnitDirs[i], typeDir))
+			}
+		}
+	}
+
 	byName := map[string]string{}
-	for _, dir := range UnitDirs {
-		d := path.Join(dir, unitName+".d")
+	for _, d := range dirs {
 		entries, err := afs.ReadDir(d)
 		if err != nil {
 			continue
@@ -188,8 +239,11 @@ func findDropIns(afs *afero.Afero, unitName string) []string {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".conf") {
 				continue
 			}
-			// UnitDirs is in ascending precedence, so a later directory
-			// legitimately replaces an equally named earlier one.
+			// dirs is in descending precedence, so the first copy of a name
+			// is the one systemd applies.
+			if _, taken := byName[e.Name()]; taken {
+				continue
+			}
 			byName[e.Name()] = path.Join(d, e.Name())
 		}
 	}
@@ -197,17 +251,56 @@ func findDropIns(afs *afero.Afero, unitName string) []string {
 		return nil
 	}
 
-	names := make([]string, 0, len(byName))
+	fileNames := make([]string, 0, len(byName))
 	for n := range byName {
-		names = append(names, n)
+		fileNames = append(fileNames, n)
 	}
-	sort.Strings(names)
+	sort.Strings(fileNames)
 
-	out := make([]string, 0, len(names))
-	for _, n := range names {
+	out := make([]string, 0, len(fileNames))
+	for _, n := range fileNames {
 		out = append(out, byName[n])
 	}
 	return out
+}
+
+// unitNamePrefixes returns the dash-truncated prefix names of a unit, longest
+// first: foo-bar-baz.service yields foo-bar-.service and foo-.service. A
+// trailing dash before the type suffix is skipped, since foo-.service is not
+// its own prefix.
+func unitNamePrefixes(unitName string) []string {
+	dot := strings.LastIndex(unitName, ".")
+	if dot <= 0 {
+		return nil
+	}
+	stem, suffix := unitName[:dot], unitName[dot:]
+	stem = strings.TrimSuffix(stem, "-")
+
+	var out []string
+	for {
+		dash := strings.LastIndex(stem, "-")
+		if dash < 0 {
+			return out
+		}
+		stem = stem[:dash]
+		out = append(out, stem+"-"+suffix)
+	}
+}
+
+// ParseSystemctlVersion reads the release number from the first line of
+// `systemctl --version` ("systemd 257 (257-9.el10_0.2)"). It returns 0 when the
+// output carries none.
+func ParseSystemctlVersion(out string) int {
+	line, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+	fields := strings.Fields(line)
+	if len(fields) < 2 || fields[0] != "systemd" {
+		return 0
+	}
+	v, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 // expandEnvFilePattern resolves an EnvironmentFile= target, which systemd allows

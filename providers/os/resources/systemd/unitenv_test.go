@@ -335,3 +335,129 @@ func TestResolveUnitEnv_PrefersUsrLibOverLib(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "/usr/lib/systemd/system/ollama.service", env.FragmentPath)
 }
+
+// dropInProbe is the layout of a throwaway unit, mqlt-a-b.service, with
+// clashing drop-ins at every level systemd reads: the unit's own directory,
+// both dash prefixes (mqlt-a-.service.d, mqlt-.service.d) and the type-level
+// service.d, spread over /etc, /run and /usr/lib. Each value names where it
+// came from, so the winner of every clash is visible in the environment.
+var dropInProbe = map[string]string{
+	"/run/systemd/system/mqlt-a-b.service":                     "[Service]\nType=oneshot\nExecStart=/bin/true\n",
+	"/etc/systemd/system/service.d/50-proxy.conf":              "[Service]\nEnvironment=HTTPS_PROXY=http://proxy.example.com:3128 NO_PROXY=localhost,127.0.0.1\n",
+	"/etc/systemd/system/service.d/60-x.conf":                  "[Service]\nEnvironment=X60=etc-type\n",
+	"/run/systemd/system/mqlt-a-b.service.d/60-x.conf":         "[Service]\nEnvironment=X60=run-unit\n",
+	"/etc/systemd/system/service.d/61-y.conf":                  "[Service]\nEnvironment=X61=etc-type\n",
+	"/usr/lib/systemd/system/mqlt-a-b.service.d/61-y.conf":     "[Service]\nEnvironment=X61=usr-unit\n",
+	"/etc/systemd/system/mqlt-.service.d/62-z.conf":            "[Service]\nEnvironment=X62=etc-prefix1\n",
+	"/etc/systemd/system/mqlt-a-b.service.d/62-z.conf":         "[Service]\nEnvironment=X62=etc-unit\n",
+	"/etc/systemd/system/mqlt-.service.d/63-w.conf":            "[Service]\nEnvironment=X63=etc-prefix1\n",
+	"/run/systemd/system/mqlt-a-.service.d/63-w.conf":          "[Service]\nEnvironment=X63=run-prefix2\n",
+	"/etc/systemd/system/mqlt-a-.service.d/64-v.conf":          "[Service]\nEnvironment=X64=etc-prefix2\n",
+	"/usr/lib/systemd/system/mqlt-a-b.service.d/64-v.conf":     "[Service]\nEnvironment=X64=usr-unit\n",
+	"/run/systemd/system/mqlt-a-.service.d/70-p.conf":          "[Service]\nEnvironment=X70=run-prefix2\n",
+	"/usr/lib/systemd/system/service.d/71-q.conf":              "[Service]\nEnvironment=X71=usr-type\n",
+	"/usr/lib/systemd/system/socket.d/72-other-type.conf":      "[Service]\nEnvironment=X72=wrong-type\n",
+	"/etc/systemd/system/mqlt-a-b.service.d/73-not-a-conf.txt": "[Service]\nEnvironment=X73=not-conf\n",
+}
+
+// TestResolveUnitEnv_TypeAndPrefixDropIns pins the result systemctl show
+// reported for dropInProbe on systemd 239 (RHEL 8), 252 (RHEL 9) and 259
+// (Fedora 44), which all agreed:
+//
+//	DropInPaths=/etc/systemd/system/service.d/50-proxy.conf
+//	  /run/systemd/system/mqlt-a-b.service.d/60-x.conf
+//	  /usr/lib/systemd/system/mqlt-a-b.service.d/61-y.conf
+//	  /etc/systemd/system/mqlt-a-b.service.d/62-z.conf
+//	  /etc/systemd/system/mqlt-.service.d/63-w.conf
+//	  /etc/systemd/system/mqlt-a-.service.d/64-v.conf
+//	  /run/systemd/system/mqlt-a-.service.d/70-p.conf
+//	  /usr/lib/systemd/system/service.d/71-q.conf
+//
+// For a clashing file name the unit's own and its prefix directories rank by
+// directory first (/etc, /run, /usr/lib) and by specificity within one
+// directory, and all of them beat the type-level service.d.
+func TestResolveUnitEnv_TypeAndPrefixDropIns(t *testing.T) {
+	afs := testFs(dropInProbe)
+
+	env, ok := ResolveUnitEnvForVersion(afs, "mqlt-a-b.service", 252)
+	require.True(t, ok)
+
+	assert.Equal(t, []string{
+		"/etc/systemd/system/service.d/50-proxy.conf",
+		"/run/systemd/system/mqlt-a-b.service.d/60-x.conf",
+		"/usr/lib/systemd/system/mqlt-a-b.service.d/61-y.conf",
+		"/etc/systemd/system/mqlt-a-b.service.d/62-z.conf",
+		"/etc/systemd/system/mqlt-.service.d/63-w.conf",
+		"/etc/systemd/system/mqlt-a-.service.d/64-v.conf",
+		"/run/systemd/system/mqlt-a-.service.d/70-p.conf",
+		"/usr/lib/systemd/system/service.d/71-q.conf",
+	}, env.DropInPaths)
+	assert.Equal(t, map[string]string{
+		"HTTPS_PROXY": "http://proxy.example.com:3128",
+		"NO_PROXY":    "localhost,127.0.0.1",
+		"X60":         "run-unit",
+		"X61":         "usr-unit",
+		"X62":         "etc-unit",
+		"X63":         "etc-prefix1",
+		"X64":         "etc-prefix2",
+		"X70":         "run-prefix2",
+		"X71":         "usr-type",
+	}, env.Vars)
+	assert.Equal(t, "/etc/systemd/system/service.d/50-proxy.conf", env.Sources["HTTPS_PROXY"])
+
+	// Unknown version (systemctl not runnable, e.g. a mounted image) reads
+	// drop-ins the way every supported systemd release does.
+	unknown, ok := ResolveUnitEnv(afs, "mqlt-a-b.service")
+	require.True(t, ok)
+	assert.Equal(t, env.DropInPaths, unknown.DropInPaths)
+}
+
+// TestResolveUnitEnv_LegacySystemdIgnoresTypeAndPrefixDropIns pins systemd 219
+// (RHEL 7) and 232 (Debian 9) on the same layout: only the unit's own
+// directories count.
+//
+//	DropInPaths=/run/systemd/system/mqlt-a-b.service.d/60-x.conf
+//	  /usr/lib/systemd/system/mqlt-a-b.service.d/61-y.conf
+//	  /etc/systemd/system/mqlt-a-b.service.d/62-z.conf
+//	  /usr/lib/systemd/system/mqlt-a-b.service.d/64-v.conf
+func TestResolveUnitEnv_LegacySystemdIgnoresTypeAndPrefixDropIns(t *testing.T) {
+	afs := testFs(dropInProbe)
+
+	for _, v := range []int{219, 232, 238} {
+		env, ok := ResolveUnitEnvForVersion(afs, "mqlt-a-b.service", v)
+		require.True(t, ok)
+		assert.Equal(t, []string{
+			"/run/systemd/system/mqlt-a-b.service.d/60-x.conf",
+			"/usr/lib/systemd/system/mqlt-a-b.service.d/61-y.conf",
+			"/etc/systemd/system/mqlt-a-b.service.d/62-z.conf",
+			"/usr/lib/systemd/system/mqlt-a-b.service.d/64-v.conf",
+		}, env.DropInPaths, v)
+		assert.NotContains(t, env.Vars, "HTTPS_PROXY", v)
+	}
+}
+
+func TestUnitNamePrefixes(t *testing.T) {
+	assert.Equal(t, []string{"foo-bar-.service", "foo-.service"}, unitNamePrefixes("foo-bar-baz.service"))
+	assert.Empty(t, unitNamePrefixes("ollama.service"))
+	assert.Empty(t, unitNamePrefixes("noext"))
+	// A trailing dash names the prefix unit itself, which is not its own prefix.
+	assert.Equal(t, []string{"foo-.service"}, unitNamePrefixes("foo-bar-.service"))
+}
+
+func TestParseSystemctlVersion(t *testing.T) {
+	cases := map[string]int{
+		// RHEL 7
+		"systemd 219\n+PAM +AUDIT +SELINUX +IMA -APPARMOR +SMACK +SYSVINIT\n": 219,
+		// RHEL 8
+		"systemd 239 (239-82.el8_10.17)\n+PAM +AUDIT\n": 239,
+		// RHEL 10
+		"systemd 257 (257-9.el10_0.2-g02234d2)\n": 257,
+		// Fedora 44
+		"systemd 259 (259.9-1.fc44)\n":         259,
+		"":                                     0,
+		"bash: systemctl: command not found\n": 0,
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, ParseSystemctlVersion(in), in)
+	}
+}
