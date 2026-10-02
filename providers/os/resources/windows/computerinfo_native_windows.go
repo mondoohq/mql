@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 
 	"go.mondoo.com/mql/providers/os/resources/wmiquery"
@@ -119,10 +120,10 @@ func addCurrentVersion(info map[string]any) error {
 			info[key] = v
 		}
 	}
-	// InstallDate is seconds since the Unix epoch; Get-ComputerInfo reports it
-	// as a DateTime, which ConvertTo-Json writes as /Date(milliseconds)/.
+	// InstallDate is seconds since the Unix epoch, rendered as Get-ComputerInfo's
+	// JSON has it; see installDateJSON.
 	if v, _, err := k.GetIntegerValue("InstallDate"); err == nil && v != 0 {
-		info["WindowsInstallDateFromRegistry"] = "/Date(" + strconv.FormatUint(v*1000, 10) + ")/"
+		info["WindowsInstallDateFromRegistry"] = installDateJSON(v, time.Local)
 	}
 	return nil
 }
