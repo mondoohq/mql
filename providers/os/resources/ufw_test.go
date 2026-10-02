@@ -4,11 +4,14 @@
 package resources
 
 import (
+	"errors"
+	"os"
 	"testing"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 )
 
 func TestParseUfwKeyValue(t *testing.T) {
@@ -313,5 +316,85 @@ func TestReadUfwState(t *testing.T) {
 		st, err := readUfwState(newFs(map[string]string{}))
 		require.NoError(t, err)
 		assert.Equal(t, "not installed", st.status)
+	})
+}
+
+func TestReadUfwRules(t *testing.T) {
+	rpmV4, err := os.ReadFile("testdata/ufw/rhel9/user.rules")
+	require.NoError(t, err)
+	rpmV6, err := os.ReadFile("testdata/ufw/rhel9/user6.rules")
+	require.NoError(t, err)
+
+	newFs := func(files map[string][]byte) afero.Afero {
+		afs := afero.Afero{Fs: afero.NewMemMapFs()}
+		for p, c := range files {
+			require.NoError(t, afs.WriteFile(p, c, 0o600))
+		}
+		return afs
+	}
+
+	t.Run("fedora and epel keep user rules in /var/lib/ufw", func(t *testing.T) {
+		// captured on RHEL 9 with ufw 0.35 from EPEL; `ufw status numbered` lists 22 rules
+		rules, err := readUfwRules(newFs(map[string][]byte{
+			"/var/lib/ufw/user.rules":  rpmV4,
+			"/var/lib/ufw/user6.rules": rpmV6,
+		}))
+		require.NoError(t, err)
+		require.Len(t, rules, 22)
+		assert.Equal(t, int64(4), rules[3].number)
+		assert.Equal(t, "DENY", rules[3].action)
+		assert.Equal(t, "23", rules[3].port)
+		assert.False(t, rules[3].ipv6)
+		assert.Equal(t, int64(22), rules[21].number)
+		assert.Equal(t, "7070", rules[21].port)
+		assert.True(t, rules[21].ipv6)
+	})
+
+	t.Run("debian and ubuntu keep user rules in /etc/ufw", func(t *testing.T) {
+		rules, err := readUfwRules(newFs(map[string][]byte{
+			"/etc/ufw/user.rules": []byte("### tuple ### deny tcp 23 0.0.0.0/0 any 0.0.0.0/0 in\n"),
+		}))
+		require.NoError(t, err)
+		require.Len(t, rules, 1)
+		assert.Equal(t, "23", rules[0].port)
+		assert.False(t, rules[0].ipv6)
+	})
+
+	t.Run("no rules files", func(t *testing.T) {
+		rules, err := readUfwRules(newFs(nil))
+		require.NoError(t, err)
+		assert.Empty(t, rules)
+	})
+}
+
+func TestParseUfwStatus(t *testing.T) {
+	t.Run("active", func(t *testing.T) {
+		st, err := parseUfwStatus(0, "Status: active\nLogging: on (medium)\n", "")
+		require.NoError(t, err)
+		assert.Equal(t, "active", st)
+	})
+
+	t.Run("inactive with ENABLED=yes in ufw.conf", func(t *testing.T) {
+		// the Fedora and EPEL packages ship ENABLED=yes; ufw reports what is loaded
+		st, err := parseUfwStatus(0, "Status: inactive\n", "")
+		require.NoError(t, err)
+		assert.Equal(t, "inactive", st)
+	})
+
+	t.Run("non-root is refused", func(t *testing.T) {
+		_, err := parseUfwStatus(1, "", "ERROR: You need to be root to run this script\n")
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, llx.ErrForbidden))
+	})
+
+	t.Run("other failure is not a refusal", func(t *testing.T) {
+		_, err := parseUfwStatus(1, "", "ERROR: problem running iptables: modprobe failed\n")
+		require.Error(t, err)
+		assert.False(t, errors.Is(err, llx.ErrForbidden))
+	})
+
+	t.Run("unrecognized output", func(t *testing.T) {
+		_, err := parseUfwStatus(0, "Status: Aktiv\n", "")
+		require.Error(t, err)
 	})
 }

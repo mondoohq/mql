@@ -18,13 +18,18 @@ import (
 const (
 	ufwConfPath     = "/etc/ufw/ufw.conf"
 	ufwDefaultsPath = "/etc/default/ufw"
-	ufwRulesPath    = "/etc/ufw/user.rules"
-	ufwRules6Path   = "/etc/ufw/user6.rules"
 )
+
+// ufwRulesDirs are where ufw keeps user.rules and user6.rules, the rules added
+// with the ufw command. Debian and Ubuntu build ufw with its state in /etc/ufw;
+// the Fedora and EPEL packages keep it in /var/lib/ufw and ship no rules files
+// in /etc/ufw.
+var ufwRulesDirs = []string{"/etc/ufw", "/var/lib/ufw"}
 
 type mqlUfwInternal struct {
 	fetched          bool
-	cacheStatus      string
+	cacheStatus      string // from ufw.conf, status() asks ufw where it can
+	cacheBinary      string
 	cacheDefIncoming string
 	cacheDefOutgoing string
 	cacheDefRouted   string
@@ -63,7 +68,9 @@ func (u *mqlUfw) fetchStatus() error {
 	if err != nil {
 		return err
 	}
+
 	u.cacheStatus = st.status
+	u.cacheBinary = st.binary
 	u.cacheLogging = st.logging
 	u.cacheDefIncoming = st.defIncoming
 	u.cacheDefOutgoing = st.defOutgoing
@@ -77,6 +84,8 @@ func (u *mqlUfw) fetchStatus() error {
 var ufwBinaryPaths = []string{"/usr/sbin/ufw", "/sbin/ufw"}
 
 type ufwState struct {
+	// binary is the ufw command that was found, empty when ufw is not installed
+	binary      string
 	status      string
 	logging     string
 	defIncoming string
@@ -101,18 +110,17 @@ func readUfwState(afs afero.Afero) (ufwState, error) {
 		return st, err
 	}
 
-	installed := false
 	for _, p := range ufwBinaryPaths {
 		ok, err := afs.Exists(p)
 		if err != nil {
 			return st, err
 		}
 		if ok {
-			installed = true
+			st.binary = p
 			break
 		}
 	}
-	if !installed {
+	if st.binary == "" {
 		st.status = "not installed"
 		return st, nil
 	}
@@ -139,11 +147,74 @@ func readUfwState(afs afero.Afero) (ufwState, error) {
 	return st, nil
 }
 
+// runtimeStatus asks the installed ufw command whether the firewall is loaded.
+func (u *mqlUfw) runtimeStatus(binary string) (string, error) {
+	o, err := CreateResource(u.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData("env LC_ALL=C " + binary + " status"),
+	})
+	if err != nil {
+		return "", err
+	}
+	cmd := o.(*mqlCommand)
+	exit := cmd.GetExitcode()
+	if exit.Error != nil {
+		return "", exit.Error
+	}
+	return parseUfwStatus(exit.Data, cmd.GetStdout().Data, cmd.GetStderr().Data)
+}
+
+// parseUfwStatus reads the first line of `ufw status`, which ufw derives
+// from whether its ufw-user-input chain is loaded, not from ufw.conf.
+// ufw refuses to answer anyone but root.
+func parseUfwStatus(exitcode int64, stdout, stderr string) (string, error) {
+	if exitcode != 0 {
+		msg := strings.TrimSpace(stderr)
+		if msg == "" {
+			msg = strings.TrimSpace(stdout)
+		}
+		err := fmt.Errorf("cannot determine whether ufw is active: %s", msg)
+		if strings.Contains(msg, "You need to be root") {
+			return "", llx.Forbidden(err)
+		}
+		return "", err
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(stdout), "\n")
+	switch strings.TrimSpace(first) {
+	case "Status: active":
+		return "active", nil
+	case "Status: inactive":
+		return "inactive", nil
+	}
+	return "", fmt.Errorf("cannot determine whether ufw is active: unexpected ufw status output %q", first)
+}
+
 func (u *mqlUfw) status() (string, error) {
 	if err := u.fetchStatus(); err != nil {
 		return "", err
 	}
-	return u.cacheStatus, nil
+	if u.cacheBinary == "" {
+		return u.cacheStatus, nil
+	}
+
+	// ENABLED=yes in ufw.conf says ufw should start at boot, not that it is
+	// running: the Fedora and EPEL packages ship ENABLED=yes on a firewall
+	// that was never enabled, and `systemctl stop ufw` unloads the rules
+	// without touching the file. Where commands run, ask ufw itself, which
+	// checks that its chains are loaded. Image and other offline scans keep
+	// the configured state.
+	conn, ok := u.MqlRuntime.Connection.(shared.Connection)
+	if !ok || !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return u.cacheStatus, nil
+	}
+	status, err := u.runtimeStatus(u.cacheBinary)
+	if err != nil {
+		// v13 reported the configured state when ufw could not be asked
+		if !plugin.StructuredErrors() {
+			return u.cacheStatus, nil
+		}
+		return "", err
+	}
+	return status, nil
 }
 
 func (u *mqlUfw) defaultIncoming() (string, error) {
@@ -187,47 +258,65 @@ func (u *mqlUfw) rules() ([]any, error) {
 		return nil, err
 	}
 
-	var rules []any
+	parsed, err := readUfwRules(afs)
+	if err != nil {
+		return nil, err
+	}
+
+	rules := make([]any, 0, len(parsed))
+	for _, t := range parsed {
+		res, err := createUfwRuleResource(u.MqlRuntime, t)
+		if err != nil {
+			return nil, err
+		}
+		rules = append(rules, res)
+	}
+	return rules, nil
+}
+
+// ufwRulesFile returns the first of ufwRulesDirs that holds the named rules
+// file, or "" when none does.
+func ufwRulesFile(afs afero.Afero, name string) (string, error) {
+	for _, dir := range ufwRulesDirs {
+		p := dir + "/" + name
+		ok, err := afs.Exists(p)
+		if err != nil {
+			return "", err
+		}
+		if ok {
+			return p, nil
+		}
+	}
+	return "", nil
+}
+
+// readUfwRules parses the IPv4 rules, then the IPv6 rules, numbered in that
+// order.
+func readUfwRules(afs afero.Afero) ([]ufwParsedRule, error) {
+	var rules []ufwParsedRule
 	num := int64(1)
-
-	// Parse IPv4 rules
-	v4Data, err := afs.ReadFile(ufwRulesPath)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	if err == nil {
-		tuples := parseUfwTuples(string(v4Data))
-		for _, t := range tuples {
+	for _, f := range []struct {
+		name string
+		ipv6 bool
+	}{{"user.rules", false}, {"user6.rules", true}} {
+		p, err := ufwRulesFile(afs, f.name)
+		if err != nil {
+			return nil, err
+		}
+		if p == "" {
+			continue
+		}
+		data, err := afs.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		for _, t := range parseUfwTuples(string(data)) {
 			t.number = num
-			t.ipv6 = false
-			res, err := createUfwRuleResource(u.MqlRuntime, t)
-			if err != nil {
-				return nil, err
-			}
-			rules = append(rules, res)
+			t.ipv6 = f.ipv6
+			rules = append(rules, t)
 			num++
 		}
 	}
-
-	// Parse IPv6 rules
-	v6Data, err := afs.ReadFile(ufwRules6Path)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-	if err == nil {
-		tuples := parseUfwTuples(string(v6Data))
-		for _, t := range tuples {
-			t.number = num
-			t.ipv6 = true
-			res, err := createUfwRuleResource(u.MqlRuntime, t)
-			if err != nil {
-				return nil, err
-			}
-			rules = append(rules, res)
-			num++
-		}
-	}
-
 	return rules, nil
 }
 

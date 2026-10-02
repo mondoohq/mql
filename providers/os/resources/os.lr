@@ -8199,7 +8199,7 @@ private nftables.set @defaults("family table name") {
 // UFW (Uncomplicated Firewall) state and rules
 //
 // Uncomplicated Firewall status, default policies, configured rules, and
-// application profiles on Debian and Ubuntu systems. Check `status` to
+// application profiles on Debian, Ubuntu, Fedora, and EPEL systems. Check `status` to
 // confirm the firewall is active, and the `defaultIncoming` /
 // `defaultOutgoing` / `defaultRouted` policies for the baseline stance
 // (a hardened host typically denies incoming by default). Enumerate `rules`
@@ -8210,6 +8210,10 @@ ufw @defaults("status rules") {
   //
   // "not installed" when the ufw command is missing, including a package
   // that was removed but not purged and left /etc/ufw/ufw.conf behind.
+  // Where commands can run, "active" means the ufw rules are loaded, as
+  // `ufw status` reports, not only that ufw.conf sets ENABLED=yes. Fedora and
+  // EPEL ship ENABLED=yes on a firewall that was never enabled. Asking ufw
+  // needs root. Image scans read ENABLED from ufw.conf.
   status() string
   // Default policy for incoming traffic (e.g., "deny", "allow", "reject")
   defaultIncoming() string
@@ -8228,6 +8232,9 @@ ufw @defaults("status rules") {
   // Logging level (off, low, medium, high, full)
   logging() string
   // All UFW rules
+  //
+  // Read from user.rules and user6.rules in /etc/ufw on Debian and Ubuntu,
+  // or /var/lib/ufw on Fedora and EPEL.
   rules() []ufw.rule
   // Application profiles from /etc/ufw/applications.d/
   applications() []ufw.application
