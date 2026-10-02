@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go.mondoo.com/mql/llx"
 )
 
 // Me is the token-context payload returned by GET /platform/api/me. Only
@@ -219,7 +221,7 @@ func (c *RipplingConnection) get(ctx context.Context, path string, out any) erro
 	c.setHeaders(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return err
+		return classifyTransport(err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -227,9 +229,13 @@ func (c *RipplingConnection) get(ctx context.Context, path string, out any) erro
 		return err
 	}
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("rippling API %s returned %d: %s", path, resp.StatusCode, string(body))
+		err := fmt.Errorf("rippling API %s returned %d: %s", path, resp.StatusCode, string(body))
+		return classifyStatus(err, resp.StatusCode, resp.Header, time.Now())
 	}
-	return json.Unmarshal(body, out)
+	if err := json.Unmarshal(body, out); err != nil {
+		return llx.MalformedData(fmt.Errorf("rippling API %s returned an undecodable response: %w", path, err))
+	}
+	return nil
 }
 
 // pageSize is Rippling's standard page size for list endpoints.
@@ -260,7 +266,7 @@ func getPaginated[T any](ctx context.Context, c *RipplingConnection, path string
 		}
 		var records []T
 		if err := json.Unmarshal(body, &records); err != nil {
-			return nil, fmt.Errorf("rippling API %s returned an undecodable page at offset %d: %w", path, offset, err)
+			return nil, llx.MalformedData(fmt.Errorf("rippling API %s returned an undecodable page at offset %d: %w", path, offset, err))
 		}
 		if len(records) == 0 {
 			return out, nil
@@ -285,7 +291,7 @@ func (c *RipplingConnection) fetchPage(ctx context.Context, path string, offset 
 	c.setHeaders(req)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, classifyTransport(err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -293,7 +299,8 @@ func (c *RipplingConnection) fetchPage(ctx context.Context, path string, offset 
 		return nil, err
 	}
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("rippling API %s returned %d: %s", path, resp.StatusCode, string(body))
+		err := fmt.Errorf("rippling API %s returned %d: %s", path, resp.StatusCode, string(body))
+		return nil, classifyStatus(err, resp.StatusCode, resp.Header, time.Now())
 	}
 	return body, nil
 }
