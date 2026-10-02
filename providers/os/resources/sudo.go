@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"errors"
 	"io"
 	pathpkg "path"
 	"slices"
@@ -468,7 +469,14 @@ func (p *mqlSudoPlugin) id() (string, error) {
 	return "sudo.plugin/" + p.Name.Data + ":" + p.Version.Data, nil
 }
 
+// id is used only when sudo.validation is created without the __id that
+// validate sets, which happens for the bare path `sudo.validation`. Such a
+// resource carries no result: without this error it got the id of a failed
+// validate, "sudo.validation/invalid", and read back as a null valid.
 func (v *mqlSudoValidation) id() (string, error) {
+	if !v.Valid.IsSet() {
+		return "", errors.New("sudo.validation holds the result of sudo.validate, query sudo.validate instead")
+	}
 	if v.Valid.Data {
 		return "sudo.validation/valid", nil
 	}
