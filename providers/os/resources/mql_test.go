@@ -1112,7 +1112,6 @@ func TestResource_File_Permissions(t *testing.T) {
 		isFile          bool
 		isSymlink       bool
 
-		focus      bool
 		expectedID string
 	}{
 		{
@@ -1208,7 +1207,6 @@ func TestResource_File_Permissions(t *testing.T) {
 			otherExecutable: true,
 			isFile:          true,
 			sgid:            true,
-			focus:           true,
 			expectedID:      "-rwxr-sr-x",
 		},
 		{
@@ -1243,10 +1241,6 @@ func TestResource_File_Permissions(t *testing.T) {
 	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
 
 	for _, tc := range testCases {
-		if !tc.focus {
-			continue
-		}
-
 		permRaw, err := resources.CreateResource(
 			runtime,
 			"file.permissions",
