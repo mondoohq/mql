@@ -39,6 +39,8 @@ unparented = "unparented"
 signins = "signins"
 copywrite = "copywrite"
 exportfs = "exportfs"
+# shadow-utils command that changes password aging.
+chage = "chage"
 xwindows = "xwindows"
 snet = "snet"
 aci = "aci"
