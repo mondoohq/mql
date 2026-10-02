@@ -80,7 +80,7 @@ func (r *mqlSystemdResolved) resolveGlobal() (*resolvedGlobal, error) {
 
 // readResolvedConf reads the [Resolve] settings from resolved.conf and its
 // drop-ins in the order systemd-resolved applies them.
-func (r *mqlSystemdResolved) readResolvedConf() (resolvedConf, error) {
+func (r *mqlSystemdResolved) readResolvedConf() (*resolvedConf, error) {
 	conf := newResolvedConf()
 
 	conn, ok := r.MqlRuntime.Connection.(shared.Connection)
@@ -137,8 +137,8 @@ type resolvedConf struct {
 	assigned map[string]bool
 }
 
-func newResolvedConf() resolvedConf {
-	return resolvedConf{values: map[string]string{}, assigned: map[string]bool{}}
+func newResolvedConf() *resolvedConf {
+	return &resolvedConf{values: map[string]string{}, assigned: map[string]bool{}}
 }
 
 // applyCompiledDefaults takes the defaults systemd-resolved was built with
@@ -146,7 +146,7 @@ func newResolvedConf() resolvedConf {
 // generates that file at build time and says so in its header ("Entries in
 // this file show the compile time defaults"): Ubuntu documents #DNSSEC=no and
 // #LLMNR=no there, where upstream defaults are allow-downgrade and yes.
-func (c resolvedConf) applyCompiledDefaults(content string) {
+func (c *resolvedConf) applyCompiledDefaults(content string) {
 	inResolve := false
 	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
@@ -174,7 +174,7 @@ func (c resolvedConf) applyCompiledDefaults(content string) {
 
 // apply folds the [Resolve] assignments of one file into the settings. Keys
 // and section names are case-sensitive, as systemd reads them.
-func (c resolvedConf) apply(content string) {
+func (c *resolvedConf) apply(content string) {
 	inResolve := false
 	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
@@ -217,7 +217,7 @@ func (c resolvedConf) apply(content string) {
 
 // applyResolvedConf fills in what the status report did not say from the
 // configuration. The cache setting always comes from the configuration.
-func applyResolvedConf(g *resolvedGlobal, conf resolvedConf) {
+func applyResolvedConf(g *resolvedGlobal, conf *resolvedConf) {
 	if v, ok := conf.values["Cache"]; ok {
 		g.cache = parseResolvedCache(v, g.cache)
 	}
@@ -253,7 +253,8 @@ func applyResolvedConf(g *resolvedGlobal, conf resolvedConf) {
 
 // resolvedMode spells a configured mode the way the status report does: a
 // boolean as yes or no, anything else (resolve, allow-downgrade,
-// opportunistic) as written.
+// opportunistic) lowercased. An absent value returns "", which callers read as
+// not configured.
 func resolvedMode(value string) string {
 	if v, ok := parseSystemdBoolean(strings.TrimSpace(value)); ok {
 		if v {
