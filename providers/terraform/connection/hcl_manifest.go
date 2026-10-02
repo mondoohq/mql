@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
@@ -136,6 +137,22 @@ func tfvarsRank(name string) int {
 		return rankAuto
 	default:
 		return rankExplicit
+	}
+}
+
+// classifyHclLoadError tags a configuration-load failure with its ADR 046 kind
+// when the cause is clear: HCL diagnostics mean the file does not parse, and a
+// permission error means the scan user may not read it. Anything else, such as
+// a dangling symlink, stays unclassified.
+func classifyHclLoadError(err error) error {
+	var diags hcl.Diagnostics
+	switch {
+	case errors.As(err, &diags):
+		return llx.MalformedData(err)
+	case errors.Is(err, os.ErrPermission):
+		return llx.Forbidden(err)
+	default:
+		return err
 	}
 }
 
@@ -330,7 +347,7 @@ func newHclConnection(id uint32, path string, asset *inventory.Asset) (*Connecti
 	// Nothing parsed, so there is no configuration to report on. Connecting
 	// anyway would pass every policy over a project that was never read.
 	if parsed == 0 && parseErr != nil {
-		return nil, errors.Wrap(parseErr, "could not parse hcl file")
+		return nil, classifyHclLoadError(errors.Wrap(parseErr, "could not parse hcl file"))
 	}
 
 	// resolveConfigFiles sorts the variable files by path. Applying them in that

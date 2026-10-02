@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
@@ -204,4 +205,23 @@ func TestMultipleModuleManifestsAreMerged(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []string{"a-vpc", "b-vpc"}, keys,
 		"every stack's module manifest must be reported, not just the last one walked")
+}
+
+// When no configuration file parses, the connection fails, and a syntax error
+// is reported as malformed data (ADR 046) so a consumer can tell it apart from
+// a scan that was never allowed to read the files.
+func TestAllFilesUnparseableIsMalformedData(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "broken.tf"), `resource "aws_s3_bucket" {{{`)
+
+	_, err := NewHclConnection(0, hclAsset(root))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, llx.ErrMalformedData)
+}
+
+func TestClassifyHclLoadError(t *testing.T) {
+	assert.ErrorIs(t, classifyHclLoadError(&os.PathError{Op: "open", Path: "x.tf", Err: os.ErrPermission}), llx.ErrForbidden)
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED,
+		llx.KindOf(classifyHclLoadError(&os.PathError{Op: "open", Path: "x.tf", Err: os.ErrNotExist})),
+		"a missing or dangling file is neither malformed nor forbidden")
 }

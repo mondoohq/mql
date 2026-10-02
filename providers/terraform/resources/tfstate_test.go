@@ -131,19 +131,19 @@ func TestTerraformStateAccessors_NilStateDoNotPanic(t *testing.T) {
 
 	require.NotPanics(t, func() {
 		_, err := newState().outputs()
-		assert.Error(t, err)
+		assert.ErrorIs(t, err, llx.ErrNotApplicable)
 	})
 	require.NotPanics(t, func() {
 		_, err := newState().rootModule()
-		assert.Error(t, err)
+		assert.ErrorIs(t, err, llx.ErrNotApplicable)
 	})
 	require.NotPanics(t, func() {
 		_, err := newState().modules()
-		assert.Error(t, err)
+		assert.ErrorIs(t, err, llx.ErrNotApplicable)
 	})
 	require.NotPanics(t, func() {
 		_, err := newState().resources()
-		assert.Error(t, err)
+		assert.ErrorIs(t, err, llx.ErrNotApplicable)
 	})
 }
 
@@ -210,6 +210,7 @@ func TestTerraformStateModule_MissReportsNotFound(t *testing.T) {
 	require.Error(t, err, "a module address that does not exist must be reported, not faked")
 	assert.Nil(t, res)
 	assert.Contains(t, err.Error(), "module.nope")
+	assert.ErrorIs(t, err, llx.ErrNotFound)
 }
 
 // TestTerraformStateOutput_MissReportsNotFound covers the sibling fall-through.
@@ -222,6 +223,7 @@ func TestTerraformStateOutput_MissReportsNotFound(t *testing.T) {
 	require.Error(t, err, "an output that does not exist must be reported, not faked")
 	assert.Nil(t, res)
 	assert.Contains(t, err.Error(), "nope")
+	assert.ErrorIs(t, err, llx.ErrNotFound)
 }
 
 // TestTerraformStateModule_RootModuleIDIsDistinct pins the root module's id

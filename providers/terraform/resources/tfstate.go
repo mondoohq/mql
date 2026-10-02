@@ -41,8 +41,9 @@ func initTerraformState(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 // carries no state (an HCL or plan asset). conn.State() returns (nil, nil)
 // there, and every accessor below used to check only state.Values — so a
 // terraform.state.* query against such an asset dereferenced a nil state and
-// took the provider down.
-var errNoState = errors.New("cannot find state: this asset does not carry terraform state")
+// took the provider down. The question does not apply to such an asset, so it
+// is classified not applicable (ADR 046).
+var errNoState = llx.NotApplicable(errors.New("cannot find state: this asset does not carry terraform state"))
 
 func (t *mqlTerraformState) outputs() ([]any, error) {
 	conn := t.MqlRuntime.Connection.(*connection.Connection)
@@ -230,7 +231,7 @@ func initTerraformStateOutput(runtime *plugin.Runtime, args map[string]*llx.RawD
 		// Falling through here would have the runtime build an output with no
 		// value and no type, whose id collides with nothing useful; report the
 		// miss instead.
-		return nil, nil, fmt.Errorf("terraform.state.output with identifier %q not found", name)
+		return nil, nil, llx.NotFound(fmt.Errorf("terraform.state.output with identifier %q not found", name))
 	}
 
 	return args, nil, nil
@@ -322,7 +323,7 @@ func initTerraformStateModule(runtime *plugin.Runtime, args map[string]*llx.RawD
 		// Dropping the identifier and falling through built a module with no
 		// address, whose id was the ROOT module's id — so a typo'd address
 		// silently resolved to the root module's contents.
-		return nil, nil, fmt.Errorf("terraform.state.module with address %q not found", identifier)
+		return nil, nil, llx.NotFound(fmt.Errorf("terraform.state.module with address %q not found", identifier))
 	}
 
 	return args, nil, nil
