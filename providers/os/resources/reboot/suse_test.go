@@ -51,13 +51,27 @@ func TestZypperNoRebootNeeded(t *testing.T) {
 
 func TestZypperRebootNeeded(t *testing.T) {
 	conn := suseConn(t, &mock.Command{
-		Stdout:     "Core libraries or services have been updated.\nReboot is required...\n",
-		ExitStatus: zypperRebootNeededExit,
+		Stdout: "Since the last system boot core libraries or services have been updated.\n" +
+			"Reboot is suggested to ensure that your system benefits from these updates.\n",
+		// zypper(8): 102 ZYPPER_EXIT_INF_REBOOT_NEEDED, as zypper 1.14 exits
+		// on SLES 15/16 and Leap 15/16 with /run/reboot-needed present
+		ExitStatus: 102,
 	})
 
 	pending, err := (&ZypperNeedsRebooting{conn: conn}).RebootPending()
 	require.NoError(t, err)
 	assert.True(t, pending)
+}
+
+// 103 is ZYPPER_EXIT_INF_RESTART_NEEDED: zypper updated itself and wants to be
+// rerun. That is not a pending reboot of the machine.
+func TestZypperRestartNeededIsNotReboot(t *testing.T) {
+	conn := suseConn(t, &mock.Command{ExitStatus: 103})
+
+	pending, err := (&ZypperNeedsRebooting{conn: conn}).RebootPending()
+	require.Error(t, err)
+	assert.False(t, pending)
+	assert.Contains(t, err.Error(), "exited 103")
 }
 
 // An exit code that is neither of the two documented ones is reported rather

@@ -12,9 +12,11 @@ import (
 )
 
 // zypperRebootNeededExit is what `zypper needs-rebooting` exits with when core
-// libraries or the kernel have been updated since the machine booted. zypper
-// documents it as ZYPPER_EXIT_INF_REBOOT_NEEDED; a clean check exits 0.
-const zypperRebootNeededExit = 103
+// libraries or the kernel have been updated since the machine booted. zypper(8)
+// documents it as 102, ZYPPER_EXIT_INF_REBOOT_NEEDED; a clean check exits 0.
+// 103 is ZYPPER_EXIT_INF_RESTART_NEEDED, which means zypper updated itself and
+// must be rerun. It says nothing about the machine, so it is not a reboot.
+const zypperRebootNeededExit = 102
 
 // ZypperNeedsRebooting asks zypper whether anything updated since boot needs
 // the machine restarted.
