@@ -8,45 +8,53 @@ import (
 	"io"
 	"regexp"
 	"strings"
+
+	"go.mondoo.com/mql/providers/os/resources/languages/python"
 )
 
-// firstWordRegexp is just trying to catch everything leading up the >, >=, = in a requires.txt
-// Example:
+// ParseRequiresTxtDependencies parses an egg-info requires.txt and returns the
+// names of the packages it requires in env (without versions).
 //
-// nose>=1.2
-// Mock>=1.0
-// pycryptodome
+// setuptools writes the unconditional requirements first, then one section
+// per extra or marker:
 //
-// [crypto]
-// pycryptopp>=0.5.12
+//	requests>=2
 //
-// [cryptography]
-// cryptography
+//	[:python_version < "3.8"]
+//	importlib-metadata
 //
-// would match nose / Mock / pycrptodome / etc
-
-var firstWordRegexp = regexp.MustCompile(`^[a-zA-Z0-9\._-]*`)
-
-// ParseRequiresTxtDependencies parses a requires.txt / requirements.txt file
-// and returns a list of package names (without versions). This is the legacy
-// API used internally for egg-info requires.txt files where only names matter.
-func ParseRequiresTxtDependencies(r io.Reader) ([]string, error) {
+//	[socks]
+//	PySocks
+//
+//	[test:sys_platform == "win32"]
+//	pywin32
+//
+// A section with a name belongs to that extra and is optional. A section
+// with only a marker ("[:...]") is required wherever its marker holds.
+func ParseRequiresTxtDependencies(r io.Reader, env python.MarkerEnvironment) ([]string, error) {
 	fileScanner := bufio.NewScanner(r)
 	fileScanner.Split(bufio.ScanLines)
 
 	dependencies := []string{}
+	seen := map[string]bool{}
+	include := true
 	for fileScanner.Scan() {
-		line := fileScanner.Text()
+		line := strings.TrimSpace(fileScanner.Text())
 		if strings.HasPrefix(line, "[") {
-			// this means a new optional section of dependencies
-			// so stop processing
-			break
-		}
-		matched := firstWordRegexp.FindString(line)
-		if matched == "" {
+			section := strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
+			extra, marker, _ := strings.Cut(section, ":")
+			include = strings.TrimSpace(extra) == "" && python.MarkerMayHold(marker, env)
 			continue
 		}
-		dependencies = append(dependencies, matched)
+		if !include {
+			continue
+		}
+		name, marker := python.ParseRequirement(line)
+		if name == "" || !python.MarkerMayHold(marker, env) || seen[python.NormalizeName(name)] {
+			continue
+		}
+		seen[python.NormalizeName(name)] = true
+		dependencies = append(dependencies, name)
 	}
 
 	return dependencies, nil
