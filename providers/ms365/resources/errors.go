@@ -99,8 +99,8 @@ func transformError(err error) error {
 	return err
 }
 
-// graphStatusCode returns the HTTP status Graph answered with, or 0 when err is
-// not an ODataError (a transport failure, a decode error).
+// graphStatusCode returns the HTTP status of a Graph ODataError, from either
+// the v1 or the beta SDK, or 0 when err is not one.
 func graphStatusCode(err error) int {
 	var betaOdataErr *betaodataerrors.ODataError
 	if errors.As(err, &betaOdataErr) && betaOdataErr != nil {
@@ -113,20 +113,15 @@ func graphStatusCode(err error) int {
 	return 0
 }
 
-// classifyGraphError turns a failed Graph call into the error a field returns.
-// A 401 is unauthenticated and a 403 is forbidden, naming the Graph application
-// permissions the call needs; anything else, including a transport failure, is
-// left unclassified. The message is the one transformError builds either way.
+// classifyGraphError turns a Graph failure into the error a field returns. A
+// 403 is a refusal and is classified as forbidden, naming the permissions the
+// call needs. Anything else keeps the readable message transformError builds.
 func classifyGraphError(err error, permissions ...string) error {
 	if err == nil {
 		return nil
 	}
-	transformed := transformError(err)
-	switch graphStatusCode(err) {
-	case 401:
-		return llx.Unauthenticated(transformed)
-	case 403:
-		return llx.Forbidden(transformed, llx.WithPermissions(permissions...))
+	if graphStatusCode(err) == 403 {
+		return llx.Forbidden(transformError(err), llx.WithPermissions(permissions...))
 	}
-	return transformed
+	return transformError(err)
 }

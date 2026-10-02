@@ -36,9 +36,6 @@ func TestClassifyGraphError(t *testing.T) {
 	pageErr := transformError(odataErrWithStatus(403, "Authorization_RequestDenied"))
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(classifyGraphError(pageErr, "Policy.Read.All")))
 
-	unauth := classifyGraphError(odataErrWithStatus(401, "InvalidAuthenticationToken"), "Policy.Read.All")
-	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNAUTHENTICATED, llx.KindOf(unauth))
-
 	notFound := classifyGraphError(odataErrWithStatus(404, "Request_ResourceNotFound"), "Policy.Read.All")
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(notFound))
 
