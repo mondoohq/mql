@@ -30,7 +30,7 @@ var debian13SudoFiles = []string{
 
 func TestVisudoForSudo(t *testing.T) {
 	fs := afero.NewMemMapFs()
-	for _, p := range append(debian13SudoFiles, "/usr/local/bin/sudo", "/usr/local/sbin/visudo", "/opt/sudo/mysudo") {
+	for _, p := range append(debian13SudoFiles, "/usr/local/bin/sudo", "/usr/local/sbin/visudo", "/opt/sudo/mysudo", "/usr/sbin/sudo") {
 		require.NoError(t, afero.WriteFile(fs, p, []byte{}, 0o755))
 	}
 	afs := &afero.Afero{Fs: fs}
