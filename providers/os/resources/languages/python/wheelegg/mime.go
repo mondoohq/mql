@@ -55,9 +55,8 @@ func ParseMIME(r io.Reader, pythonMIMEFilepath string) (*python.PackageDetails, 
 // ParseMIMEInEnvironment parses METADATA or PKG-INFO, keeping the
 // Requires-Dist requirements that apply in env.
 func ParseMIMEInEnvironment(r io.Reader, pythonMIMEFilepath string, env python.MarkerEnvironment) (*python.PackageDetails, error) {
-	textReader := textproto.NewReader(bufio.NewReader(r))
-	mimeData, err := textReader.ReadMIMEHeader()
-	if err != nil && err != io.EOF {
+	mimeData, err := readMetadataHeader(r)
+	if err != nil {
 		return nil, fmt.Errorf("error reading MIME data: %s", err)
 	}
 
@@ -92,4 +91,82 @@ func metadataValue(h textproto.MIMEHeader, key string) string {
 		return ""
 	}
 	return v
+}
+
+// readMetadataHeader reads the header block of METADATA or PKG-INFO the way
+// Python's email parser does, which is what pip and importlib.metadata use.
+//
+// net/textproto rejected the whole file over one line it does not accept, and
+// the package lost all of its metadata. Two real cases:
+//
+//   - passlib 1.7.4 writes its Keywords over several lines, and only the first
+//     one is indented ("Keywords: password secret hash security" then
+//     "crypt md5-crypt"). Python ends the header block at the first line that
+//     is neither a header nor a continuation, keeps what came before, and
+//     reads the rest as the description. So does this.
+//   - PyGObject 3.52.3 pastes the LGPL into License, page breaks (form feeds)
+//     included. A control character is fine in a Python header value.
+//
+// Otherwise it gives what textproto gave: keys are canonicalized, the block
+// ends at the first empty line, and a continuation line is trimmed and joined
+// to its header with a single space.
+func readMetadataHeader(r io.Reader) (textproto.MIMEHeader, error) {
+	h := textproto.MIMEHeader{}
+	br := bufio.NewReader(r)
+	var key string
+	var value strings.Builder
+	flush := func() {
+		if key != "" {
+			h.Add(key, value.String())
+		}
+		key = ""
+		value.Reset()
+	}
+	for {
+		line, err := br.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			// the empty line between the headers and the description
+			break
+		}
+		if line[0] == ' ' || line[0] == '\t' {
+			if key == "" {
+				// a continuation with no header to continue
+				break
+			}
+			value.WriteByte(' ')
+			value.WriteString(strings.Trim(line, " \t"))
+		} else {
+			name, val, ok := strings.Cut(line, ":")
+			if !ok || !validMetadataKey(name) {
+				// not a header: the description starts here
+				break
+			}
+			flush()
+			key = name
+			value.WriteString(strings.TrimRight(strings.TrimLeft(val, " \t"), " \t"))
+		}
+		if err == io.EOF {
+			break
+		}
+	}
+	flush()
+	return h, nil
+}
+
+// validMetadataKey reports whether name is a header field name: printable
+// ASCII, no space, no colon (RFC 5322, as Python's email parser reads it).
+func validMetadataKey(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		if c := name[i]; c < 0x21 || c > 0x7e {
+			return false
+		}
+	}
+	return true
 }
