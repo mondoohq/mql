@@ -5,6 +5,7 @@ package platformid
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
 	"strings"
@@ -27,8 +28,11 @@ var MACOS_ID_REGEX = regexp.MustCompile(`\"IOPlatformUUID\"\s*=\s*\"(.*)\"`)
 
 func (p *MacOSIdProvider) ID() (string, error) {
 	c, err := p.connection.RunCommand("ioreg -rd1 -c IOPlatformExpertDevice")
-	if err != nil || c.ExitStatus != 0 {
+	if err != nil {
 		return "", err
+	}
+	if c.ExitStatus != 0 {
+		return "", fmt.Errorf("could not detect the machine id: ioreg exited with status %d", c.ExitStatus)
 	}
 
 	// parse string with regex with \"IOPlatformUUID\"\s*=\s*\"(.*)\"
