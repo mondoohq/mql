@@ -2170,10 +2170,16 @@ apache2.conf {
   // Environment variables sourced by Apache at startup (e.g. Debian's /etc/apache2/envvars)
   envvars() apache2.conf.envvars
   // ServerTokens disclosure level (Full, OS, Minimal, Minor, Major, Prod)
+  //
+  // Full when the configuration does not set ServerTokens, which is the httpd default.
   serverTokens(params) string
   // ServerSignature footer mode (On, Off, EMail)
+  //
+  // Off when the configuration does not set ServerSignature, which is the httpd default.
   serverSignature(params) string
   // TraceEnable directive value (on, off, extended)
+  //
+  // On when the configuration does not set TraceEnable, which is the httpd default.
   traceEnable(params) string
   // Response headers added via `Header always set NAME VALUE` (header name -> values)
   securityHeaders(file) map[string][]string

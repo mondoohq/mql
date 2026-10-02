@@ -220,3 +220,49 @@ func TestApache2ConfEnvvars(t *testing.T) {
 		assert.Nil(t, ev.Data)
 	})
 }
+
+// Apache 2.4 compiled-in defaults apply when a directive is absent: Debian's
+// security.conf is the only place that sets these, and `a2disconf security`
+// leaves them unset (the server then sends the full version banner and answers
+// TRACE).
+func TestApache2ConfDisclosureDefaults(t *testing.T) {
+	conf := &mqlApache2Conf{}
+
+	t.Run("unset uses the compiled-in defaults", func(t *testing.T) {
+		// params of a Debian apache2.conf with conf-enabled/security.conf disabled
+		params := map[string]any{
+			"DefaultRuntimeDir": "${APACHE_RUN_DIR}",
+			"PidFile":           "${APACHE_PID_FILE}",
+			"Timeout":           "300",
+			"KeepAlive":         "On",
+			"IncludeOptional":   "conf-enabled/*.conf",
+		}
+		tokens, err := conf.serverTokens(params)
+		require.NoError(t, err)
+		assert.Equal(t, "Full", tokens)
+		sig, err := conf.serverSignature(params)
+		require.NoError(t, err)
+		assert.Equal(t, "Off", sig)
+		trace, err := conf.traceEnable(params)
+		require.NoError(t, err)
+		assert.Equal(t, "On", trace)
+	})
+
+	t.Run("set values are reported as written", func(t *testing.T) {
+		// Debian's security.conf, any key casing
+		params := map[string]any{
+			"ServerTokens":    "OS",
+			"serversignature": "On",
+			"TRACEENABLE":     "Off",
+		}
+		tokens, err := conf.serverTokens(params)
+		require.NoError(t, err)
+		assert.Equal(t, "OS", tokens)
+		sig, err := conf.serverSignature(params)
+		require.NoError(t, err)
+		assert.Equal(t, "On", sig)
+		trace, err := conf.traceEnable(params)
+		require.NoError(t, err)
+		assert.Equal(t, "Off", trace)
+	})
+}
