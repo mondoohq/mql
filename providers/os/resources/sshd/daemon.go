@@ -19,7 +19,9 @@ type DaemonCommandLine struct {
 }
 
 // sshdFlagsWithArgument are the sshd(8) flags that take an argument
-// (getopt "C:E:b:c:f:g:h:k:o:p:u:").
+// (getopt "C:E:b:c:f:g:h:k:o:p:u:"). -b and -k are protocol 1 options that
+// OpenSSH 7.4 removed; they stay so a daemon from an older release that was
+// started with them is still parsed correctly.
 const sshdFlagsWithArgument = "CEbcfghkopu"
 
 // algorithmListKeywords are the keywords whose value is a comma-separated
