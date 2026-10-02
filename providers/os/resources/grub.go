@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"maps"
+	"os"
 	"path"
 	"regexp"
 	"strings"
@@ -191,13 +193,7 @@ func (g *mqlGrubConfig) params() (map[string]any, error) {
 		return nil, errors.New("filesystem not available")
 	}
 
-	f, err := fs.Open(defaultsPath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	params, err := ParseGrubDefaults(f)
+	params, err := loadGrubDefaults(fs, defaultsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -368,6 +364,63 @@ func (e *mqlGrubConfigEntry) id() (string, error) {
 	return e.MqlID(), nil
 }
 
+// loadGrubDefaults returns the settings grub-mkconfig sees: it sources the
+// defaults file (/etc/default/grub) and then every *.cfg file in the
+// matching .d directory (/etc/default/grub.d) in name order, so a drop-in
+// overrides the defaults file and a later drop-in overrides an earlier one.
+// Ubuntu cloud images set GRUB_CMDLINE_LINUX_DEFAULT in such a drop-in.
+func loadGrubDefaults(fs afero.Fs, defaultsPath string) (map[string]string, error) {
+	params, err := readGrubDefaultsFile(fs, defaultsPath)
+	if err != nil {
+		return nil, err
+	}
+
+	dropIns, err := grubDefaultsDropIns(fs, defaultsPath+".d")
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range dropIns {
+		vars, err := readGrubDefaultsFile(fs, name)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(params, vars)
+	}
+	return params, nil
+}
+
+func readGrubDefaultsFile(fs afero.Fs, name string) (map[string]string, error) {
+	f, err := fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return ParseGrubDefaults(f)
+}
+
+// grubDefaultsDropIns lists the files grub-mkconfig's `for x in
+// ${sysconfdir}/default/grub.d/*.cfg` loop sources, in glob order
+// (afero.ReadDir sorts by name). A missing directory means there are none.
+func grubDefaultsDropIns(fs afero.Fs, dir string) ([]string, error) {
+	entries, err := afero.ReadDir(fs, dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var names []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || strings.HasPrefix(name, ".") || !strings.HasSuffix(name, ".cfg") {
+			continue
+		}
+		names = append(names, path.Join(dir, name))
+	}
+	return names, nil
+}
+
 // ParseGrubDefaults parses /etc/default/grub which is a shell-style key=value file.
 func ParseGrubDefaults(r io.Reader) (map[string]string, error) {
 	params := map[string]string{}
@@ -384,6 +437,10 @@ func ParseGrubDefaults(r io.Reader) (map[string]string, error) {
 			continue
 		}
 		key := strings.TrimSpace(line[:idx])
+		// The file is sourced by a shell, where `export KEY=value` assigns KEY.
+		if fields := strings.Fields(key); len(fields) == 2 && fields[0] == "export" {
+			key = fields[1]
+		}
 		value := strings.TrimSpace(line[idx+1:])
 		// Strip surrounding quotes
 		value = stripQuotes(value)

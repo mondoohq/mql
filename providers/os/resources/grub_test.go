@@ -53,6 +53,122 @@ GRUB_TIMEOUT=10
 	assert.Equal(t, "10", params["GRUB_TIMEOUT"])
 }
 
+// grub-mkconfig sources the defaults file in a shell, so `export KEY=value`
+// assigns KEY. Taken from a hand-written defaults file on Ubuntu 24.04.
+func TestParseGrubDefaultsExport(t *testing.T) {
+	input := `# test defaults
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=5
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+GRUB_CMDLINE_LINUX="audit=1 apparmor=1 security=apparmor"
+export GRUB_DISABLE_RECOVERY='true'
+`
+	params, err := ParseGrubDefaults(strings.NewReader(input))
+	require.NoError(t, err)
+
+	assert.Equal(t, "true", params["GRUB_DISABLE_RECOVERY"])
+	assert.NotContains(t, params, "export GRUB_DISABLE_RECOVERY")
+	assert.Len(t, params, 5)
+}
+
+// The /etc/default/grub and /etc/default/grub.d files of an Ubuntu 22.04
+// cloud image. grub-mkconfig sources the drop-ins after the defaults file,
+// so the cloud image's GRUB_CMDLINE_LINUX_DEFAULT is the one that reaches
+// the kernel command line.
+func ubuntuCloudGrubDefaultsFs(t *testing.T) afero.Fs {
+	t.Helper()
+	fs := afero.NewMemMapFs()
+	files := map[string]string{
+		"/etc/default/grub": `# If you change this file, run 'update-grub' afterwards to update
+# /boot/grub/grub.cfg.
+# For full documentation of the options in this file, see:
+#   info -f grub -n 'Simple configuration'
+
+GRUB_DEFAULT=0
+GRUB_TIMEOUT_STYLE=hidden
+GRUB_TIMEOUT=0
+GRUB_DISTRIBUTOR=` + "`lsb_release -i -s 2> /dev/null || echo Debian`" + `
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+GRUB_CMDLINE_LINUX=""
+
+# Uncomment to disable graphical terminal (grub-pc only)
+#GRUB_TERMINAL=console
+`,
+		"/etc/default/grub.d/40-force-partuuid.cfg": `# Force boot without an initramfs by setting GRUB_FORCE_PARTUUID
+# Remove this line to enable boot with an initramfs
+GRUB_FORCE_PARTUUID=0d1f34a7-78b7-4ddf-9ea2-d42390d32d7c
+`,
+		"/etc/default/grub.d/50-cloudimg-settings.cfg": `# Cloud Image specific Grub settings for AWS EC2 images
+# CLOUD_IMG: This file was created/modified by the Cloud Image build process
+
+# Set the recordfail timeout
+GRUB_RECORDFAIL_TIMEOUT=0
+
+# Do not wait on grub prompt
+GRUB_TIMEOUT=0
+
+# Set the default commandline
+GRUB_CMDLINE_LINUX_DEFAULT="console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295"
+
+# Set the grub console type
+GRUB_TERMINAL=console
+
+GRUB_HIDDEN_TIMEOUT=0.1
+`,
+		"/etc/default/grub.d/init-select.cfg": `# Work around a bug in the obsolete init-select package which broke
+# grub-mkconfig when init-select was removed but not purged.  This file does
+# nothing and will be removed in a later release.
+`,
+	}
+	for name, content := range files {
+		require.NoError(t, afero.WriteFile(fs, name, []byte(content), 0o644))
+	}
+	return fs
+}
+
+func TestLoadGrubDefaultsDropIns(t *testing.T) {
+	fs := ubuntuCloudGrubDefaultsFs(t)
+
+	params, err := loadGrubDefaults(fs, "/etc/default/grub")
+	require.NoError(t, err)
+
+	assert.Equal(t, "console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295", params["GRUB_CMDLINE_LINUX_DEFAULT"])
+	assert.Equal(t, "console", params["GRUB_TERMINAL"])
+	assert.Equal(t, "0", params["GRUB_RECORDFAIL_TIMEOUT"])
+	assert.Equal(t, "0.1", params["GRUB_HIDDEN_TIMEOUT"])
+	assert.Equal(t, "0d1f34a7-78b7-4ddf-9ea2-d42390d32d7c", params["GRUB_FORCE_PARTUUID"])
+	// keys only the defaults file sets are kept
+	assert.Equal(t, "hidden", params["GRUB_TIMEOUT_STYLE"])
+	assert.Equal(t, "", params["GRUB_CMDLINE_LINUX"])
+}
+
+// Drop-ins are sourced in name order, so a later file wins, and only *.cfg
+// files are sourced.
+func TestLoadGrubDefaultsDropInOrder(t *testing.T) {
+	fs := ubuntuCloudGrubDefaultsFs(t)
+	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/99-local.cfg", []byte("GRUB_TIMEOUT=3\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/10-early.cfg", []byte("GRUB_TERMINAL=serial\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/99-local.cfg.dpkg-old", []byte("GRUB_TIMEOUT=30\n"), 0o644))
+
+	params, err := loadGrubDefaults(fs, "/etc/default/grub")
+	require.NoError(t, err)
+
+	assert.Equal(t, "3", params["GRUB_TIMEOUT"])
+	assert.Equal(t, "console", params["GRUB_TERMINAL"])
+}
+
+func TestLoadGrubDefaultsWithoutDropInDir(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub", []byte("GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash\"\n"), 0o644))
+
+	params, err := loadGrubDefaults(fs, "/etc/default/grub")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"GRUB_CMDLINE_LINUX_DEFAULT": "quiet splash"}, params)
+
+	_, err = loadGrubDefaults(fs, "/etc/default/missing")
+	assert.Error(t, err)
+}
+
 func TestParseGrubCfgEntries(t *testing.T) {
 	input := `#!/bin/sh
 exec tail -n +3 $0
