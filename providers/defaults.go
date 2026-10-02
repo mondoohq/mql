@@ -1334,6 +1334,21 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"rippling": {
+		Provider: &plugin.Provider{
+			Name:            "rippling",
+			ID:              "go.mondoo.com/mql/providers/rippling",
+			ConnectionTypes: []string{"rippling"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "rippling",
+					Use:   "rippling [--token <api-token>]",
+					Short: "a Rippling company",
+				},
+			},
+		},
+	},
+
 	"shodan": {
 		Provider: &plugin.Provider{
 			Name:            "shodan",
