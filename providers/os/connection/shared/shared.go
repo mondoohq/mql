@@ -363,8 +363,8 @@ var shellReservedWords = map[string]bool{
 // plain argv. sudo takes a command and its arguments, not a command line: for
 // `a && b`, `a | b`, `a > f` or `if ...` the invoking shell acts on the
 // operators first and only `a` runs elevated. Plain argvs return false and keep
-// the bare `sudo <cmd>` form, so the command lines recordings are keyed on do
-// not change.
+// the bare `sudo <cmd>` form, so the command lines that recordings are keyed
+// on do not change.
 func needsShellForSudo(cmd string) bool {
 	// Leading blanks are the shell's, not part of the first word. A leading
 	// newline is a command separator and must reach the scan below.
