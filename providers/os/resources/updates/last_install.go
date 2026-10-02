@@ -66,6 +66,12 @@ const (
 	// whatever the configured repositories offer, which on Alpine are the
 	// distribution's own but can include a third-party one.
 	LastUpdateSourceApkLog = "apk-log"
+	// LastUpdateSourceDnf5History is the newest completed dnf5 transaction
+	// that upgraded a package carrying an operating system vendor's
+	// %{VENDOR}, read from dnf5's transaction history. dnf5 (Fedora 41 and
+	// later) writes no rpm transaction log, so this is its counterpart of
+	// LastUpdateSourceDnfRpmLog.
+	LastUpdateSourceDnf5History = "dnf5-history"
 )
 
 // lastUpdateSkewTolerance is how far into the future an install timestamp may

@@ -674,7 +674,8 @@ os.base @root {
   //
   // Newest completed update the platform's own update mechanism recorded
   // for software the operating system vendor ships: a vendor package
-  // upgrade in dnf's transaction log, a completed apt upgrade run
+  // upgrade in dnf's transaction log or dnf5's transaction history (the
+  // transaction's end time), a completed apt upgrade run
   // (timestamped by its End-Date), a completed `apk upgrade` run that
   // upgraded at least one package (timestamped by when it started, the only
   // time apk records), a macOS update in the install history, or a Windows
@@ -716,8 +717,9 @@ os.base @root {
   lastUpdateAge() time
   // Record the last-update timestamp was read from
   //
-  // One of "dnf-rpm-log", "apt-security", "apt-history", "apk-log",
-  // "macos-install-history", "windows-update-agent", or "nixos-generation".
+  // One of "dnf-rpm-log", "dnf5-history", "apt-security", "apt-history",
+  // "apk-log", "macos-install-history", "windows-update-agent", or
+  // "nixos-generation".
   // Every one of them names an exact, completed install event, so this
   // reports provenance rather than precision, and how tightly the vendor
   // attribution holds is what separates them. "apt-security" is a completed

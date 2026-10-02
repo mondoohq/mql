@@ -196,7 +196,7 @@ func isImageBasedRpmPlatform(pf *inventory.Platform) bool {
 var rpmVendorAnchors = []string{"glibc", "bash", "coreutils", "systemd", "filesystem"}
 
 // lastInstalledRpm takes the newest vendor package upgrade recorded in dnf's
-// rpm transaction log.
+// rpm transaction log, or in dnf5's transaction history.
 //
 // The rpm database itself cannot answer. It records one %{INSTALLTIME} per
 // package, and that time reads the same for an upgrade and for an operator
@@ -220,10 +220,13 @@ func lastInstalledRpm(runtime *plugin.Runtime, conn shared.Connection, pf *inven
 		return nil, nil
 	}
 
-	// Without the transaction log there is no upgrade evidence to attribute,
-	// so skip the package listing the attribution would need. This is what a
-	// SUSE or Photon host answers: their package managers never write it.
-	if !updates.DnfRpmLogPresent(conn.FileSystem()) {
+	// Without the transaction log or dnf5's history there is no upgrade
+	// evidence to attribute, so skip the package listing the attribution
+	// would need. This is what a SUSE or Photon host answers: their package
+	// managers never write either.
+	hasRpmLog := updates.DnfRpmLogPresent(conn.FileSystem())
+	hasDnf5 := updates.Dnf5Present(conn.FileSystem())
+	if !hasRpmLog && !hasDnf5 {
 		return nil, nil
 	}
 
@@ -243,7 +246,27 @@ func lastInstalledRpm(runtime *plugin.Runtime, conn shared.Connection, pf *inven
 		// unattributable answer is not a coarser answer, it is none.
 		return nil, nil
 	}
-	return updates.LastInstalledRpm(conn.FileSystem(), isVendor)
+
+	// A host upgraded to dnf5 (Fedora 41 and later) keeps the rpm log dnf 4
+	// wrote before, and dnf5 records its own transactions only in its
+	// history. The newer of the two is the answer.
+	var newest *updates.LastInstalledUpdate
+	if hasRpmLog {
+		newest, err = updates.LastInstalledRpm(conn.FileSystem(), isVendor)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if hasDnf5 {
+		fromDnf5, err := updates.LastInstalledDnf5(conn, isVendor)
+		if err != nil {
+			return nil, err
+		}
+		if fromDnf5 != nil && (newest == nil || fromDnf5.Time.After(newest.Time)) {
+			newest = fromDnf5
+		}
+	}
+	return newest, nil
 }
 
 // rpmVendorPackageMatcher returns a predicate reporting whether a package name
