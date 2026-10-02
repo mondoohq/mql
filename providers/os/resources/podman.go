@@ -22,6 +22,11 @@ type mqlPodmanInternal struct {
 	loaded atomic.Bool
 	info   *podmanInfo
 	err    error
+
+	versionLock   sync.Mutex
+	versionLoaded atomic.Bool
+	engineVersion string
+	versionErr    error
 }
 
 func (p *mqlPodman) id() (string, error) {
@@ -93,24 +98,100 @@ func (p *mqlPodman) installed() (bool, error) {
 	return true, nil
 }
 
-func (p *mqlPodman) version() (string, error) {
+// loadVersion reads the podman release once. The engine settings carry it from
+// podman 2.0 on; older releases, and an engine that cannot be reached, only
+// answer "podman --version".
+func (p *mqlPodman) loadVersion() (string, error) {
+	if p.versionLoaded.Load() {
+		return p.engineVersion, p.versionErr
+	}
+
+	p.versionLock.Lock()
+	defer p.versionLock.Unlock()
+	if p.versionLoaded.Load() {
+		return p.engineVersion, p.versionErr
+	}
+
+	info, infoErr := p.loadInfo()
+	if infoErr == nil && info.Version.Version != "" {
+		p.engineVersion = info.Version.Version
+	} else {
+		out, err := runPodman(p.MqlRuntime, "--version")
+		switch {
+		case err != nil && infoErr != nil:
+			p.versionErr = infoErr
+		case err != nil:
+			p.versionErr = err
+		default:
+			p.engineVersion = parsePodmanVersionOutput(out)
+			if p.engineVersion == "" {
+				p.versionErr = fmt.Errorf("cannot read the podman version from %q", out)
+			}
+		}
+	}
+	p.versionLoaded.Store(true)
+
+	return p.engineVersion, p.versionErr
+}
+
+// checkSupported returns an error when the engine is a podman release whose
+// output the podman resources cannot decode. A version that cannot be read does
+// not block anything; the command that follows reports its own failure.
+func (p *mqlPodman) checkSupported() error {
+	version, err := p.loadVersion()
+	if err != nil {
+		return nil
+	}
+	return podmanCheckSupported(version)
+}
+
+// supportedInfo returns the engine settings of a supported podman release.
+func (p *mqlPodman) supportedInfo() (*podmanInfo, error) {
 	info, err := p.loadInfo()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return info.Version.Version, nil
+	if err := p.checkSupported(); err != nil {
+		return nil, err
+	}
+	return info, nil
+}
+
+// security returns the confinement settings the engine reports.
+func (p *mqlPodman) security() (*podmanInfoSecurity, error) {
+	info, err := p.supportedInfo()
+	if err != nil {
+		return nil, err
+	}
+	if info.Host.Security == nil {
+		return nil, errors.New("podman info did not report security settings")
+	}
+	return info.Host.Security, nil
+}
+
+// checkPodmanSupported is checkSupported for code that holds only the runtime.
+func checkPodmanSupported(runtime *plugin.Runtime) error {
+	podman, err := CreateResource(runtime, "podman", map[string]*llx.RawData{})
+	if err != nil {
+		return err
+	}
+	return podman.(*mqlPodman).checkSupported()
+}
+
+func (p *mqlPodman) version() (string, error) {
+	return p.loadVersion()
 }
 
 func (p *mqlPodman) rootless() (bool, error) {
-	info, err := p.loadInfo()
+	security, err := p.security()
 	if err != nil {
 		return false, err
 	}
-	return info.Host.Security.Rootless, nil
+	return security.Rootless, nil
 }
 
 func (p *mqlPodman) cgroupManager() (string, error) {
-	info, err := p.loadInfo()
+	info, err := p.supportedInfo()
 	if err != nil {
 		return "", err
 	}
@@ -134,7 +215,7 @@ func (p *mqlPodman) ociRuntime() (string, error) {
 }
 
 func (p *mqlPodman) networkBackend() (string, error) {
-	info, err := p.loadInfo()
+	info, err := p.supportedInfo()
 	if err != nil {
 		return "", err
 	}
@@ -150,35 +231,35 @@ func (p *mqlPodman) storageDriver() (string, error) {
 }
 
 func (p *mqlPodman) seccompEnabled() (bool, error) {
-	info, err := p.loadInfo()
+	security, err := p.security()
 	if err != nil {
 		return false, err
 	}
-	return info.Host.Security.SeccompEnabled, nil
+	return security.SeccompEnabled, nil
 }
 
 func (p *mqlPodman) seccompProfilePath() (string, error) {
-	info, err := p.loadInfo()
+	security, err := p.security()
 	if err != nil {
 		return "", err
 	}
-	return info.Host.Security.SeccompProfilePath, nil
+	return security.SeccompProfilePath, nil
 }
 
 func (p *mqlPodman) apparmorEnabled() (bool, error) {
-	info, err := p.loadInfo()
+	security, err := p.security()
 	if err != nil {
 		return false, err
 	}
-	return info.Host.Security.ApparmorEnabled, nil
+	return security.ApparmorEnabled, nil
 }
 
 func (p *mqlPodman) selinuxEnabled() (bool, error) {
-	info, err := p.loadInfo()
+	security, err := p.security()
 	if err != nil {
 		return false, err
 	}
-	return info.Host.Security.SelinuxEnabled, nil
+	return security.SelinuxEnabled, nil
 }
 
 func (p *mqlPodman) containers() ([]any, error) {
@@ -194,6 +275,10 @@ func (p *mqlPodman) pods() ([]any, error) {
 }
 
 func (p *mqlPodman) volumes() ([]any, error) {
+	if err := p.checkSupported(); err != nil {
+		return nil, err
+	}
+
 	out, err := runPodman(p.MqlRuntime, "volume", "ls", "--format", "json")
 	if err != nil {
 		return nil, err
@@ -227,6 +312,10 @@ func (p *mqlPodman) volumes() ([]any, error) {
 }
 
 func (p *mqlPodman) networks() ([]any, error) {
+	if err := p.checkSupported(); err != nil {
+		return nil, err
+	}
+
 	out, err := runPodman(p.MqlRuntime, "network", "ls", "--format", "json")
 	if err != nil {
 		return nil, err
@@ -286,6 +375,10 @@ func (c *mqlPodmanContainer) id() (string, error) {
 }
 
 func listPodmanContainers(runtime *plugin.Runtime, filters ...string) ([]any, error) {
+	if err := checkPodmanSupported(runtime); err != nil {
+		return nil, err
+	}
+
 	args := []string{"ps", "--all", "--format", "json"}
 	args = append(args, filters...)
 
@@ -311,16 +404,7 @@ func listPodmanContainers(runtime *plugin.Runtime, filters ...string) ([]any, er
 }
 
 func newPodmanContainerResource(runtime *plugin.Runtime, entry podmanPsEntry) (plugin.Resource, error) {
-	ports := make([]any, 0, len(entry.Ports))
-	for _, port := range entry.Ports {
-		ports = append(ports, map[string]any{
-			"hostIp":        port.HostIP,
-			"hostPort":      port.HostPort,
-			"containerPort": port.ContainerPort,
-			"protocol":      port.Protocol,
-			"range":         port.Range,
-		})
-	}
+	ports := podmanPortDicts(entry.Ports)
 
 	resource, err := CreateResource(runtime, "podman.container", map[string]*llx.RawData{
 		"__id":      llx.StringData("podman.container/" + entry.ID),
@@ -552,6 +636,10 @@ func (i *mqlPodmanImage) id() (string, error) {
 }
 
 func listPodmanImages(runtime *plugin.Runtime, filters ...string) ([]any, error) {
+	if err := checkPodmanSupported(runtime); err != nil {
+		return nil, err
+	}
+
 	args := []string{"images", "--format", "json"}
 	args = append(args, filters...)
 
@@ -635,6 +723,10 @@ func (p *mqlPodmanPod) id() (string, error) {
 }
 
 func listPodmanPods(runtime *plugin.Runtime, filters ...string) ([]any, error) {
+	if err := checkPodmanSupported(runtime); err != nil {
+		return nil, err
+	}
+
 	args := []string{"pod", "ps", "--format", "json"}
 	args = append(args, filters...)
 

@@ -391,3 +391,74 @@ func TestPodmanParseTime(t *testing.T) {
 	assert.Nil(t, podmanParseTime(""))
 	assert.Nil(t, podmanParseTime("not a time"))
 }
+
+// captured from "podman ps -a --format json" on podman 4.9.4 (RHEL 8): a port
+// published on every interface carries an empty host_ip, one bound to loopback
+// carries the address
+const podmanTestPsPorts = `[
+  {
+    "Id": "plocal",
+    "Names": ["plocal"],
+    "Ports": [
+      {"host_ip": "", "container_port": 90, "host_port": 9090, "range": 1, "protocol": "udp"},
+      {"host_ip": "127.0.0.1", "container_port": 80, "host_port": 8083, "range": 1, "protocol": "tcp"}
+    ]
+  }
+]`
+
+func TestPodmanPortDicts(t *testing.T) {
+	entries, err := parsePodmanPs(podmanTestPsPorts)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	ports := podmanPortDicts(entries[0].Ports)
+	require.Len(t, ports, 2)
+	assert.Equal(t, map[string]any{
+		"hostIp":        "0.0.0.0",
+		"hostPort":      int64(9090),
+		"containerPort": int64(90),
+		"protocol":      "udp",
+		"range":         int64(1),
+	}, ports[0], "an empty host_ip is every interface")
+	assert.Equal(t, "127.0.0.1", ports[1].(map[string]any)["hostIp"], "a bound address is kept")
+	assert.Empty(t, podmanPortDicts(nil))
+}
+
+// captured from "podman info --format json" on podman 1.6.4 (RHEL 7), trimmed
+const podmanTestInfoV1 = `{
+    "host": {
+        "BuildahVersion": "1.11.7",
+        "CgroupVersion": "v1",
+        "OCIRuntime": {"name": "runc", "path": "/usr/bin/runc"},
+        "os": "linux",
+        "rootless": false
+    },
+    "registries": {"search": ["docker.io"]},
+    "store": {"GraphDriverName": "overlay"}
+}`
+
+func TestParsePodmanInfo_V1HasNoSecurity(t *testing.T) {
+	info, err := parsePodmanInfo(podmanTestInfoV1)
+	require.NoError(t, err)
+	assert.Nil(t, info.Host.Security, "podman 1.x reports no security block")
+	assert.Equal(t, "", info.Version.Version, "podman 1.x reports no version")
+}
+
+func TestParsePodmanVersionOutput(t *testing.T) {
+	assert.Equal(t, "1.6.4", parsePodmanVersionOutput("podman version 1.6.4\n"))
+	assert.Equal(t, "4.9.4-rhel", parsePodmanVersionOutput("podman version 4.9.4-rhel\n"))
+	assert.Equal(t, "5.8.2", parsePodmanVersionOutput("podman version 5.8.2"))
+	assert.Equal(t, "", parsePodmanVersionOutput(""))
+	assert.Equal(t, "", parsePodmanVersionOutput("podman version"))
+}
+
+func TestPodmanCheckSupported(t *testing.T) {
+	err := podmanCheckSupported("1.6.4")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "podman 1.6.4 is not supported")
+
+	assert.NoError(t, podmanCheckSupported("2.0.0"))
+	assert.NoError(t, podmanCheckSupported("4.9.4-rhel"))
+	assert.NoError(t, podmanCheckSupported("5.8.2"))
+	assert.NoError(t, podmanCheckSupported(""), "an unreadable version blocks nothing")
+}

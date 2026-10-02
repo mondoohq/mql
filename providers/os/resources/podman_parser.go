@@ -5,6 +5,8 @@ package resources
 
 import (
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -131,13 +133,9 @@ type podmanInfo struct {
 		OciRuntime     struct {
 			Name string `json:"name"`
 		} `json:"ociRuntime"`
-		Security struct {
-			Rootless           bool   `json:"rootless"`
-			SeccompEnabled     bool   `json:"seccompEnabled"`
-			SeccompProfilePath string `json:"seccompProfilePath"`
-			ApparmorEnabled    bool   `json:"apparmorEnabled"`
-			SelinuxEnabled     bool   `json:"selinuxEnabled"`
-		} `json:"security"`
+		// Security is absent before podman 2.0, which reports none of these
+		// settings, so a missing block must not read as all of them disabled.
+		Security *podmanInfoSecurity `json:"security"`
 	} `json:"host"`
 	Store struct {
 		GraphDriverName string `json:"graphDriverName"`
@@ -145,6 +143,14 @@ type podmanInfo struct {
 	Version struct {
 		Version string `json:"Version"`
 	} `json:"version"`
+}
+
+type podmanInfoSecurity struct {
+	Rootless           bool   `json:"rootless"`
+	SeccompEnabled     bool   `json:"seccompEnabled"`
+	SeccompProfilePath string `json:"seccompProfilePath"`
+	ApparmorEnabled    bool   `json:"apparmorEnabled"`
+	SelinuxEnabled     bool   `json:"selinuxEnabled"`
 }
 
 func parsePodmanPs(data string) ([]podmanPsEntry, error) {
@@ -298,4 +304,66 @@ func podmanParseTime(value string) *time.Time {
 		}
 	}
 	return nil
+}
+
+// podmanAllInterfaces is the address a port published on every host interface
+// is reported with. Podman 4 and later leave host_ip empty for such a port.
+const podmanAllInterfaces = "0.0.0.0"
+
+// podmanPortDicts converts the port mappings of a container listing.
+func podmanPortDicts(ports []podmanPort) []any {
+	res := make([]any, 0, len(ports))
+	for _, port := range ports {
+		hostIP := strings.TrimSpace(port.HostIP)
+		if hostIP == "" {
+			hostIP = podmanAllInterfaces
+		}
+		res = append(res, map[string]any{
+			"hostIp":        hostIP,
+			"hostPort":      port.HostPort,
+			"containerPort": port.ContainerPort,
+			"protocol":      port.Protocol,
+			"range":         port.Range,
+		})
+	}
+	return res
+}
+
+// parsePodmanVersionOutput reads the release from "podman --version", which
+// prints "podman version 1.6.4".
+func parsePodmanVersionOutput(out string) string {
+	fields := strings.Fields(strings.TrimSpace(out))
+	for i, field := range fields {
+		if field == "version" && i+1 < len(fields) {
+			return fields[i+1]
+		}
+	}
+	return ""
+}
+
+// podmanMajorVersion returns the major release of a podman version string. The
+// second result is false when the version cannot be read.
+func podmanMajorVersion(version string) (int, bool) {
+	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
+	major, _, _ := strings.Cut(version, ".")
+	n, err := strconv.Atoi(major)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// podmanMinSupportedMajor is the first podman release whose JSON output the
+// podman resources decode. Podman 1.x prints different shapes for info, ps,
+// images, pods, volumes, and networks.
+const podmanMinSupportedMajor = 2
+
+// podmanCheckSupported returns an error for a podman release older than 2.0,
+// and nil for any newer or unreadable version.
+func podmanCheckSupported(version string) error {
+	major, ok := podmanMajorVersion(version)
+	if !ok || major >= podmanMinSupportedMajor {
+		return nil
+	}
+	return fmt.Errorf("podman %s is not supported, podman < %d.0 reports a different format", version, podmanMinSupportedMajor)
 }
