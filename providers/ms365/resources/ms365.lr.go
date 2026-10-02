@@ -96,6 +96,8 @@ const (
 	ResourceMicrosoftSecuritySecurityscoreControlScore                                                   string = "microsoft.security.securityscore.controlScore"
 	ResourceMicrosoftSecurityRiskyUser                                                                   string = "microsoft.security.riskyUser"
 	ResourceMicrosoftSecurityRiskDetection                                                               string = "microsoft.security.riskDetection"
+	ResourceMicrosoftSecurityRiskyServicePrincipal                                                       string = "microsoft.security.riskyServicePrincipal"
+	ResourceMicrosoftSecurityServicePrincipalRiskDetection                                               string = "microsoft.security.servicePrincipalRiskDetection"
 	ResourceMicrosoftSecurityAlert                                                                       string = "microsoft.security.alert"
 	ResourceMicrosoftSecurityIncident                                                                    string = "microsoft.security.incident"
 	ResourceMicrosoftSecurityExchange                                                                    string = "microsoft.security.exchange"
@@ -539,6 +541,14 @@ func init() {
 		"microsoft.security.riskDetection": {
 			// to override args, implement: initMicrosoftSecurityRiskDetection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftSecurityRiskDetection,
+		},
+		"microsoft.security.riskyServicePrincipal": {
+			// to override args, implement: initMicrosoftSecurityRiskyServicePrincipal(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftSecurityRiskyServicePrincipal,
+		},
+		"microsoft.security.servicePrincipalRiskDetection": {
+			// to override args, implement: initMicrosoftSecurityServicePrincipalRiskDetection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftSecurityServicePrincipalRiskDetection,
 		},
 		"microsoft.security.alert": {
 			// to override args, implement: initMicrosoftSecurityAlert(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -2799,6 +2809,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.security.riskDetections": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftSecurity).GetRiskDetections()).ToDataRes(types.Array(types.Resource("microsoft.security.riskDetection")))
 	},
+	"microsoft.security.riskyServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurity).GetRiskyServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.security.riskyServicePrincipal")))
+	},
+	"microsoft.security.servicePrincipalRiskDetections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurity).GetServicePrincipalRiskDetections()).ToDataRes(types.Array(types.Resource("microsoft.security.servicePrincipalRiskDetection")))
+	},
 	"microsoft.security.alerts": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftSecurity).GetAlerts()).ToDataRes(types.Array(types.Resource("microsoft.security.alert")))
 	},
@@ -2948,6 +2964,105 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.security.riskDetection.lastUpdatedDateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftSecurityRiskDetection).GetLastUpdatedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.security.riskyServicePrincipal.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityRiskyServicePrincipal).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.security.riskyServicePrincipal.appId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityRiskyServicePrincipal).GetAppId()).ToDataRes(types.String)
+	},
+	"microsoft.security.riskyServicePrincipal.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityRiskyServicePrincipal).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.security.riskyServicePrincipal.servicePrincipalType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityRiskyServicePrincipal).GetServicePrincipalType()).ToDataRes(types.String)
+	},
+	"microsoft.security.riskyServicePrincipal.isEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityRiskyServicePrincipal).GetIsEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.security.riskyServicePrincipal.isProcessing": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityRiskyServicePrincipal).GetIsProcessing()).ToDataRes(types.Bool)
+	},
+	"microsoft.security.riskyServicePrincipal.riskLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityRiskyServicePrincipal).GetRiskLevel()).ToDataRes(types.String)
+	},
+	"microsoft.security.riskyServicePrincipal.riskState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityRiskyServicePrincipal).GetRiskState()).ToDataRes(types.String)
+	},
+	"microsoft.security.riskyServicePrincipal.riskDetail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityRiskyServicePrincipal).GetRiskDetail()).ToDataRes(types.String)
+	},
+	"microsoft.security.riskyServicePrincipal.riskLastUpdatedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityRiskyServicePrincipal).GetRiskLastUpdatedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.security.riskyServicePrincipal.servicePrincipal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityRiskyServicePrincipal).GetServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
+	"microsoft.security.servicePrincipalRiskDetection.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.riskEventType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetRiskEventType()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.riskState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetRiskState()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.riskLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetRiskLevel()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.riskDetail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetRiskDetail()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetSource()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.detectionTimingType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetDetectionTimingType()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.activity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetActivity()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.tokenIssuerType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetTokenIssuerType()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.ipAddress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetIpAddress()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.city": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetCity()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetState()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.countryOrRegion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetCountryOrRegion()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.keyIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetKeyIds()).ToDataRes(types.Array(types.String))
+	},
+	"microsoft.security.servicePrincipalRiskDetection.servicePrincipalDisplayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetServicePrincipalDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.servicePrincipal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
+	"microsoft.security.servicePrincipalRiskDetection.correlationId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetCorrelationId()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.requestId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetRequestId()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.additionalInfo": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetAdditionalInfo()).ToDataRes(types.String)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.activityDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetActivityDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.detectedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetDetectedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.security.servicePrincipalRiskDetection.lastUpdatedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).GetLastUpdatedDateTime()).ToDataRes(types.Time)
 	},
 	"microsoft.security.alert.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftSecurityAlert).GetId()).ToDataRes(types.String)
@@ -8721,6 +8836,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftSecurity).RiskDetections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.security.riskyServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurity).RiskyServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurity).ServicePrincipalRiskDetections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.security.alerts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftSecurity).Alerts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -8935,6 +9058,146 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.security.riskDetection.lastUpdatedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftSecurityRiskDetection).LastUpdatedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.riskyServicePrincipal.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityRiskyServicePrincipal).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.security.riskyServicePrincipal.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityRiskyServicePrincipal).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.riskyServicePrincipal.appId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityRiskyServicePrincipal).AppId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.riskyServicePrincipal.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityRiskyServicePrincipal).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.riskyServicePrincipal.servicePrincipalType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityRiskyServicePrincipal).ServicePrincipalType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.riskyServicePrincipal.isEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityRiskyServicePrincipal).IsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.riskyServicePrincipal.isProcessing": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityRiskyServicePrincipal).IsProcessing, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.riskyServicePrincipal.riskLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityRiskyServicePrincipal).RiskLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.riskyServicePrincipal.riskState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityRiskyServicePrincipal).RiskState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.riskyServicePrincipal.riskDetail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityRiskyServicePrincipal).RiskDetail, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.riskyServicePrincipal.riskLastUpdatedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityRiskyServicePrincipal).RiskLastUpdatedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.riskyServicePrincipal.servicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityRiskyServicePrincipal).ServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.riskEventType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).RiskEventType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.riskState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).RiskState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.riskLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).RiskLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.riskDetail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).RiskDetail, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.detectionTimingType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).DetectionTimingType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.activity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).Activity, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.tokenIssuerType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).TokenIssuerType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.ipAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).IpAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.city": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).City, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.countryOrRegion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).CountryOrRegion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.keyIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).KeyIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.servicePrincipalDisplayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).ServicePrincipalDisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.servicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).ServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.correlationId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).CorrelationId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.requestId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).RequestId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.additionalInfo": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).AdditionalInfo, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.activityDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).ActivityDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.detectedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).DetectedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.security.servicePrincipalRiskDetection.lastUpdatedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftSecurityServicePrincipalRiskDetection).LastUpdatedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"microsoft.security.alert.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -20376,14 +20639,16 @@ type mqlMicrosoftSecurity struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMicrosoftSecurityInternal it will be used here
-	SecureScores          plugin.TValue[[]any]
-	LatestSecureScores    plugin.TValue[*mqlMicrosoftSecuritySecurityscore]
-	RiskyUsers            plugin.TValue[[]any]
-	RiskDetections        plugin.TValue[[]any]
-	Alerts                plugin.TValue[[]any]
-	Incidents             plugin.TValue[[]any]
-	Exchange              plugin.TValue[*mqlMicrosoftSecurityExchange]
-	InformationProtection plugin.TValue[*mqlMicrosoftSecurityInformationProtection]
+	SecureScores                   plugin.TValue[[]any]
+	LatestSecureScores             plugin.TValue[*mqlMicrosoftSecuritySecurityscore]
+	RiskyUsers                     plugin.TValue[[]any]
+	RiskDetections                 plugin.TValue[[]any]
+	RiskyServicePrincipals         plugin.TValue[[]any]
+	ServicePrincipalRiskDetections plugin.TValue[[]any]
+	Alerts                         plugin.TValue[[]any]
+	Incidents                      plugin.TValue[[]any]
+	Exchange                       plugin.TValue[*mqlMicrosoftSecurityExchange]
+	InformationProtection          plugin.TValue[*mqlMicrosoftSecurityInformationProtection]
 }
 
 // createMicrosoftSecurity creates a new instance of this resource
@@ -20479,6 +20744,38 @@ func (c *mqlMicrosoftSecurity) GetRiskDetections() *plugin.TValue[[]any] {
 		}
 
 		return c.riskDetections()
+	})
+}
+
+func (c *mqlMicrosoftSecurity) GetRiskyServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RiskyServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.security", c.__id, "riskyServicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.riskyServicePrincipals()
+	})
+}
+
+func (c *mqlMicrosoftSecurity) GetServicePrincipalRiskDetections() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ServicePrincipalRiskDetections, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.security", c.__id, "servicePrincipalRiskDetections")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.servicePrincipalRiskDetections()
 	})
 }
 
@@ -20958,6 +21255,273 @@ func (c *mqlMicrosoftSecurityRiskDetection) GetDetectedDateTime() *plugin.TValue
 }
 
 func (c *mqlMicrosoftSecurityRiskDetection) GetLastUpdatedDateTime() *plugin.TValue[*time.Time] {
+	return &c.LastUpdatedDateTime
+}
+
+// mqlMicrosoftSecurityRiskyServicePrincipal for the microsoft.security.riskyServicePrincipal resource
+type mqlMicrosoftSecurityRiskyServicePrincipal struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftSecurityRiskyServicePrincipalInternal it will be used here
+	Id                      plugin.TValue[string]
+	AppId                   plugin.TValue[string]
+	DisplayName             plugin.TValue[string]
+	ServicePrincipalType    plugin.TValue[string]
+	IsEnabled               plugin.TValue[bool]
+	IsProcessing            plugin.TValue[bool]
+	RiskLevel               plugin.TValue[string]
+	RiskState               plugin.TValue[string]
+	RiskDetail              plugin.TValue[string]
+	RiskLastUpdatedDateTime plugin.TValue[*time.Time]
+	ServicePrincipal        plugin.TValue[*mqlMicrosoftServiceprincipal]
+}
+
+// createMicrosoftSecurityRiskyServicePrincipal creates a new instance of this resource
+func createMicrosoftSecurityRiskyServicePrincipal(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftSecurityRiskyServicePrincipal{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.security.riskyServicePrincipal", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftSecurityRiskyServicePrincipal) MqlName() string {
+	return "microsoft.security.riskyServicePrincipal"
+}
+
+func (c *mqlMicrosoftSecurityRiskyServicePrincipal) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftSecurityRiskyServicePrincipal) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftSecurityRiskyServicePrincipal) GetAppId() *plugin.TValue[string] {
+	return &c.AppId
+}
+
+func (c *mqlMicrosoftSecurityRiskyServicePrincipal) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftSecurityRiskyServicePrincipal) GetServicePrincipalType() *plugin.TValue[string] {
+	return &c.ServicePrincipalType
+}
+
+func (c *mqlMicrosoftSecurityRiskyServicePrincipal) GetIsEnabled() *plugin.TValue[bool] {
+	return &c.IsEnabled
+}
+
+func (c *mqlMicrosoftSecurityRiskyServicePrincipal) GetIsProcessing() *plugin.TValue[bool] {
+	return &c.IsProcessing
+}
+
+func (c *mqlMicrosoftSecurityRiskyServicePrincipal) GetRiskLevel() *plugin.TValue[string] {
+	return &c.RiskLevel
+}
+
+func (c *mqlMicrosoftSecurityRiskyServicePrincipal) GetRiskState() *plugin.TValue[string] {
+	return &c.RiskState
+}
+
+func (c *mqlMicrosoftSecurityRiskyServicePrincipal) GetRiskDetail() *plugin.TValue[string] {
+	return &c.RiskDetail
+}
+
+func (c *mqlMicrosoftSecurityRiskyServicePrincipal) GetRiskLastUpdatedDateTime() *plugin.TValue[*time.Time] {
+	return &c.RiskLastUpdatedDateTime
+}
+
+func (c *mqlMicrosoftSecurityRiskyServicePrincipal) GetServicePrincipal() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.ServicePrincipal, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.security.riskyServicePrincipal", c.__id, "servicePrincipal")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.servicePrincipal()
+	})
+}
+
+// mqlMicrosoftSecurityServicePrincipalRiskDetection for the microsoft.security.servicePrincipalRiskDetection resource
+type mqlMicrosoftSecurityServicePrincipalRiskDetection struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftSecurityServicePrincipalRiskDetectionInternal
+	Id                          plugin.TValue[string]
+	RiskEventType               plugin.TValue[string]
+	RiskState                   plugin.TValue[string]
+	RiskLevel                   plugin.TValue[string]
+	RiskDetail                  plugin.TValue[string]
+	Source                      plugin.TValue[string]
+	DetectionTimingType         plugin.TValue[string]
+	Activity                    plugin.TValue[string]
+	TokenIssuerType             plugin.TValue[string]
+	IpAddress                   plugin.TValue[string]
+	City                        plugin.TValue[string]
+	State                       plugin.TValue[string]
+	CountryOrRegion             plugin.TValue[string]
+	KeyIds                      plugin.TValue[[]any]
+	ServicePrincipalDisplayName plugin.TValue[string]
+	ServicePrincipal            plugin.TValue[*mqlMicrosoftServiceprincipal]
+	CorrelationId               plugin.TValue[string]
+	RequestId                   plugin.TValue[string]
+	AdditionalInfo              plugin.TValue[string]
+	ActivityDateTime            plugin.TValue[*time.Time]
+	DetectedDateTime            plugin.TValue[*time.Time]
+	LastUpdatedDateTime         plugin.TValue[*time.Time]
+}
+
+// createMicrosoftSecurityServicePrincipalRiskDetection creates a new instance of this resource
+func createMicrosoftSecurityServicePrincipalRiskDetection(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftSecurityServicePrincipalRiskDetection{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.security.servicePrincipalRiskDetection", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) MqlName() string {
+	return "microsoft.security.servicePrincipalRiskDetection"
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetRiskEventType() *plugin.TValue[string] {
+	return &c.RiskEventType
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetRiskState() *plugin.TValue[string] {
+	return &c.RiskState
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetRiskLevel() *plugin.TValue[string] {
+	return &c.RiskLevel
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetRiskDetail() *plugin.TValue[string] {
+	return &c.RiskDetail
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetDetectionTimingType() *plugin.TValue[string] {
+	return &c.DetectionTimingType
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetActivity() *plugin.TValue[string] {
+	return &c.Activity
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetTokenIssuerType() *plugin.TValue[string] {
+	return &c.TokenIssuerType
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetIpAddress() *plugin.TValue[string] {
+	return &c.IpAddress
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetCity() *plugin.TValue[string] {
+	return &c.City
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetCountryOrRegion() *plugin.TValue[string] {
+	return &c.CountryOrRegion
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetKeyIds() *plugin.TValue[[]any] {
+	return &c.KeyIds
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetServicePrincipalDisplayName() *plugin.TValue[string] {
+	return &c.ServicePrincipalDisplayName
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetServicePrincipal() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.ServicePrincipal, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.security.servicePrincipalRiskDetection", c.__id, "servicePrincipal")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.servicePrincipal()
+	})
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetCorrelationId() *plugin.TValue[string] {
+	return &c.CorrelationId
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetRequestId() *plugin.TValue[string] {
+	return &c.RequestId
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetAdditionalInfo() *plugin.TValue[string] {
+	return &c.AdditionalInfo
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetActivityDateTime() *plugin.TValue[*time.Time] {
+	return &c.ActivityDateTime
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetDetectedDateTime() *plugin.TValue[*time.Time] {
+	return &c.DetectedDateTime
+}
+
+func (c *mqlMicrosoftSecurityServicePrincipalRiskDetection) GetLastUpdatedDateTime() *plugin.TValue[*time.Time] {
 	return &c.LastUpdatedDateTime
 }
 

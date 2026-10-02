@@ -2078,7 +2078,8 @@ microsoft.oauth2PermissionGrant @defaults("clientName resourceName consentType s
 // Microsoft 365 security posture and detections across the tenant.
 // `secureScores` and `latestSecureScores` report Secure Score posture,
 // `riskyUsers` and `riskDetections` surface Microsoft Entra ID Protection
-// risk signals, `alerts` and `incidents` cover Microsoft Defender XDR
+// risk signals for users, `riskyServicePrincipals` and
+// `servicePrincipalRiskDetections` do the same for workload identities, `alerts` and `incidents` cover Microsoft Defender XDR
 // detections, `exchange` exposes Exchange Online security settings, and
 // `informationProtection` covers sensitivity label configuration.
 microsoft.security {
@@ -2090,6 +2091,16 @@ microsoft.security {
   riskyUsers() []microsoft.security.riskyUser
   // Microsoft Entra ID Protection risk detections
   riskDetections() []microsoft.security.riskDetection
+  // Service principals that Microsoft Entra ID Protection reports as at risk
+  //
+  // Lists the workload identities whose `riskState` is atRisk or
+  // confirmedCompromised. Requires a Microsoft Entra Workload ID Premium
+  // license in the tenant.
+  riskyServicePrincipals() []microsoft.security.riskyServicePrincipal
+  // Microsoft Entra ID Protection risk detections for service principals
+  //
+  // Requires a Microsoft Entra Workload ID Premium license in the tenant.
+  servicePrincipalRiskDetections() []microsoft.security.servicePrincipalRiskDetection
   // Microsoft Defender XDR alerts
   alerts() []microsoft.security.alert
   // Microsoft Defender XDR incidents
@@ -2236,6 +2247,103 @@ microsoft.security.riskDetection @defaults("riskEventType riskLevel riskState de
   user() microsoft.user
   // Correlation identifier for the activity
   correlationId string
+  // Additional detection details as a JSON string
+  additionalInfo string
+  // Time of the activity that triggered the detection
+  activityDateTime time
+  // Time the risk was detected
+  detectedDateTime time
+  // Time the detection was last updated
+  lastUpdatedDateTime time
+}
+
+// Microsoft Entra ID risky service principal
+//
+// A Microsoft Entra ID Protection risky workload identity entry, flagging a
+// service principal that identity risk signals mark as potentially
+// compromised. The `riskLevel` (low, medium, high, hidden, none) and
+// `riskState` (none, confirmedSafe, remediated, dismissed, atRisk,
+// confirmedCompromised) report the current assessment, `riskDetail` explains
+// the reason, and `isEnabled` and `isProcessing` report the service principal
+// state. The `servicePrincipal` field links to the full
+// `microsoft.serviceprincipal` record.
+microsoft.security.riskyServicePrincipal @defaults("displayName riskLevel riskState riskLastUpdatedDateTime") {
+  // Risky service principal ID, the object ID of the service principal
+  id string
+  // Application ID of the service principal
+  appId string
+  // Display name of the service principal
+  displayName string
+  // Service principal type (Application, ManagedIdentity, Legacy, SocialIdp)
+  servicePrincipalType string
+  // Whether the service principal account is enabled
+  isEnabled bool
+  // Whether the backend is processing the service principal's risky state
+  isProcessing bool
+  // Risk level (low, medium, high, hidden, none, unknownFutureValue)
+  riskLevel string
+  // Risk state (none, confirmedSafe, remediated, dismissed, atRisk, confirmedCompromised, unknownFutureValue)
+  riskState string
+  // Risk detail
+  riskDetail string
+  // Time the risk state was last updated
+  riskLastUpdatedDateTime time
+  // Entra service principal
+  servicePrincipal() microsoft.serviceprincipal
+}
+
+// Microsoft Entra ID Protection service principal risk detection
+//
+// A single risk detection raised by Microsoft Entra ID Protection against a
+// workload identity, selected by its `id`. The `riskEventType` (for example
+// `investigationsThreatIntelligence`, `leakedCredentials`,
+// `suspiciousSignins`, or `adminConfirmedServicePrincipalCompromised`), the
+// `riskLevel` and `riskState`, `riskDetail`, the reporting `source`, and the
+// `detectionTimingType` (realtime versus offline) describe the detection. The
+// `activity` reports whether it relates to a sign-in or to the service
+// principal itself, `tokenIssuerType` names the token issuer, and `keyIds`
+// lists the credentials involved. Location is broken out into `ipAddress`,
+// `city`, `state`, and `countryOrRegion`, and the `activityDateTime`,
+// `detectedDateTime`, and `lastUpdatedDateTime` timestamps frame when it
+// happened. The `servicePrincipal` field links to the affected
+// `microsoft.serviceprincipal` record.
+microsoft.security.servicePrincipalRiskDetection @defaults("riskEventType riskLevel riskState detectedDateTime") {
+  // Risk detection ID
+  id string
+  // Type of risk event detected (for example investigationsThreatIntelligence, leakedCredentials, suspiciousSignins)
+  riskEventType string
+  // Risk state (none, confirmedSafe, remediated, dismissed, atRisk, confirmedCompromised, unknownFutureValue)
+  riskState string
+  // Risk level (low, medium, high, hidden, none, unknownFutureValue)
+  riskLevel string
+  // Risk detail
+  riskDetail string
+  // Source that reported the detection
+  source string
+  // Detection timing (notDefined, realtime, nearRealtime, offline, unknownFutureValue)
+  detectionTimingType string
+  // Activity the detection relates to (signin, user, unknownFutureValue, servicePrincipal)
+  activity string
+  // Type of the token issuer (AzureAD, ADFederationServices, AzureADBackupAuth, ADFederationServicesMFAAdapter, NPSExtension, UnknownFutureValue)
+  tokenIssuerType string
+  // IP address of the activity that triggered the detection
+  ipAddress string
+  // City the activity originated from
+  city string
+  // State or province the activity originated from
+  state string
+  // Country or region the activity originated from
+  countryOrRegion string
+  // Key IDs of the service principal credentials involved in the detection
+  keyIds []string
+  // Display name of the affected service principal
+  servicePrincipalDisplayName string
+  // Affected service principal
+  servicePrincipal() microsoft.serviceprincipal
+  // Correlation identifier for the activity
+  correlationId string
+  // Request identifier of the sign-in activity
+  requestId string
   // Additional detection details as a JSON string
   additionalInfo string
   // Time of the activity that triggered the detection
