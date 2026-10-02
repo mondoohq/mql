@@ -339,7 +339,7 @@ func (s *mqlSshdConfig) parse(file *mqlFile) error {
 
 		fileContent, err := fileRequiredContent(file)
 		if err != nil {
-			return "", err
+			return "", sshdIncludeReadError(path, err)
 		}
 
 		return fileContent + "\n", nil
@@ -347,7 +347,11 @@ func (s *mqlSshdConfig) parse(file *mqlFile) error {
 
 	// Function to expand glob patterns
 	globExpand := func(glob string) ([]string, error) {
-		return s.expandGlob(glob)
+		paths, err := s.expandGlob(glob)
+		if err != nil {
+			return nil, sshdIncludeReadError(glob, err)
+		}
+		return paths, nil
 	}
 
 	matchBlocks, err := sshd.ParseBlocksWithGlob(file.Path.Data, fileContent, globExpand)
@@ -376,6 +380,24 @@ func (s *mqlSshdConfig) parse(file *mqlFile) error {
 	}
 
 	return err
+}
+
+// sshdIncludeReadError classifies a configuration file or Include directory
+// that cannot be read for lack of permission as forbidden, which the parser
+// returns instead of skipping the include. Debian 11 and later include
+// /etc/ssh/sshd_config.d/*.conf, where a 0600 drop-in is unreadable to a
+// non-root scan. v13 skipped such an include and reported the rest of the
+// configuration as if it were complete.
+// The path is added when the error does not name it already, as an SSH
+// transfer's "permission denied" does not.
+func sshdIncludeReadError(path string, err error) error {
+	if !errors.Is(err, os.ErrPermission) || !plugin.StructuredErrors() {
+		return err
+	}
+	if !strings.Contains(err.Error(), path) {
+		err = fmt.Errorf("%s: %w", path, err)
+	}
+	return llx.Forbidden(err)
 }
 
 func (s *mqlSshdConfig) files(file *mqlFile) ([]any, error) {
@@ -507,21 +529,55 @@ func sshdCommandWithOptions(command string, opts []string) string {
 	return sb.String()
 }
 
+// sshdTestConnectionSpec is the connection passed to sshd -T -C when sshd
+// refuses to run -T without one. The effective* fields only report
+// Ciphers, MACs and KexAlgorithms, which a Match block cannot set, so the
+// connection chosen here does not change any reported value.
+const sshdTestConnectionSpec = "user=root,host=localhost,addr=127.0.0.1,laddr=127.0.0.1,lport=22"
+
+// needsSshdConnectionSpec reports whether sshd -T failed only because the
+// configuration has a Match block and no -C connection was given. OpenSSH
+// 7.9 (Debian 10) exits 255 with, for example:
+//
+//	'Match User' in configuration but 'user' not in connection test specification.
+//
+// Other releases run -T without a connection and skip such Match blocks.
+func needsSshdConnectionSpec(stderr string) bool {
+	return strings.Contains(stderr, "not in connection test specification")
+}
+
 func runEffectiveSshdConfig(conn shared.Connection, command string) (map[string]string, error) {
-	cmd, err := conn.RunCommand(command)
+	stdout, stderr, exit, err := runSshdCommand(conn, command)
 	if err != nil {
 		return nil, err
+	}
+	if exit != 0 && needsSshdConnectionSpec(stderr) {
+		command += " -C " + sshdTestConnectionSpec
+		stdout, stderr, exit, err = runSshdCommand(conn, command)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if exit != 0 {
+		return nil, fmt.Errorf("%s failed (exit %d): %s", command, exit, strings.TrimSpace(stderr))
+	}
+	return parseEffectiveSshdConfig(stdout), nil
+}
+
+func runSshdCommand(conn shared.Connection, command string) (string, string, int, error) {
+	cmd, err := conn.RunCommand(command)
+	if err != nil {
+		return "", "", 0, err
 	}
 	if cmd.ExitStatus != 0 {
 		stderr, _ := io.ReadAll(cmd.Stderr)
-		return nil, fmt.Errorf("%s failed (exit %d): %s", command, cmd.ExitStatus, strings.TrimSpace(string(stderr)))
+		return "", string(stderr), cmd.ExitStatus, nil
 	}
-
 	stdout, err := io.ReadAll(cmd.Stdout)
 	if err != nil {
-		return nil, err
+		return "", "", 0, err
 	}
-	return parseEffectiveSshdConfig(string(stdout)), nil
+	return string(stdout), "", 0, nil
 }
 
 // daemonOptions returns the -o options of the running sshd when it reads the

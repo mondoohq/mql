@@ -4,6 +4,7 @@
 package sshd
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -213,6 +214,14 @@ func ParseBlocks(filePath string, content string) (MatchBlocks, error) {
 	return res, nil
 }
 
+// isRefusal reports whether err is a classified refusal (forbidden). Such an
+// error is never skipped like a missing or malformed include: sshd reads
+// every included file, so leaving one out reports a configuration the server
+// does not run, and a denylist check over it passes vacuously.
+func isRefusal(err error) bool {
+	return errors.Is(err, llx.ErrForbidden)
+}
+
 // ParseBlocksWithGlob parses SSH config files, expanding glob patterns in Include directives.
 // It expands globs and calls ParseBlocksWithGlobRecursive for each matched file individually,
 func ParseBlocksWithGlob(rootPath string, fileContent fileContentFunc, globExpand globExpandFunc) (MatchBlocks, error) {
@@ -242,7 +251,7 @@ func ParseBlocksWithGlob(rootPath string, fileContent fileContentFunc, globExpan
 	for i, path := range paths {
 		content, err := fileContent(path)
 		if err != nil {
-			if i == 0 && (len(paths) == 1 || path == rootPath) {
+			if isRefusal(err) || (i == 0 && (len(paths) == 1 || path == rootPath)) {
 				return nil, err
 			}
 			log.Warn().Err(err).Str("path", path).Msg("unable to read file")
@@ -251,6 +260,9 @@ func ParseBlocksWithGlob(rootPath string, fileContent fileContentFunc, globExpan
 
 		blocks, err := ParseBlocksWithGlobRecursive(path, content, fileContent, globExpand)
 		if err != nil {
+			if isRefusal(err) {
+				return nil, err
+			}
 			log.Warn().Err(err).Str("path", path).Msg("unable to parse file")
 			continue
 		}
@@ -331,6 +343,9 @@ func ParseBlocksWithGlobRecursive(filePath string, content string, fileContent f
 				// Expand glob pattern if present
 				expandedPaths, err := globExpand(includePath)
 				if err != nil {
+					if isRefusal(err) {
+						return nil, err
+					}
 					log.Warn().Err(err).Str("path", includePath).Msg("unable to expand Include directive")
 					continue
 				}
@@ -339,12 +354,18 @@ func ParseBlocksWithGlobRecursive(filePath string, content string, fileContent f
 				for _, expandedPath := range expandedPaths {
 					subContent, err := fileContent(expandedPath)
 					if err != nil {
+						if isRefusal(err) {
+							return nil, err
+						}
 						log.Warn().Err(err).Str("path", expandedPath).Msg("unable to read included file")
 						continue
 					}
 
 					subBlocks, err := ParseBlocksWithGlobRecursive(expandedPath, subContent, fileContent, globExpand)
 					if err != nil {
+						if isRefusal(err) {
+							return nil, err
+						}
 						log.Warn().Err(err).Str("path", expandedPath).Msg("unable to parse included file")
 						continue
 					}
