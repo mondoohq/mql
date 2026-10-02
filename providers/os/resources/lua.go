@@ -158,10 +158,14 @@ func addLuaRockTrees(afs *afero.Afero, pkgs []*languages.Package, filePaths []st
 	for _, tree := range trees {
 		treePkgs, treeFps := collectLuaRockTree(afs, tree)
 		for i, pkg := range treePkgs {
-			if _, ok := seen[pkg.EvidenceList[0].Value]; ok {
-				continue
+			// ParseRocksDir gives every rock its version directory as
+			// evidence; a rock without one has nothing to dedupe by.
+			if len(pkg.EvidenceList) > 0 {
+				if _, ok := seen[pkg.EvidenceList[0].Value]; ok {
+					continue
+				}
+				seen[pkg.EvidenceList[0].Value] = struct{}{}
 			}
-			seen[pkg.EvidenceList[0].Value] = struct{}{}
 			pkgs = append(pkgs, pkg)
 			filePaths = append(filePaths, treeFps[i])
 		}
