@@ -439,6 +439,164 @@ microsoft.identityAndAccess {
   // with, who created and last modified it, and where the credential it
   // authenticates with is stored.
   externalOriginResourceConnectors() []microsoft.identityAndAccess.externalOriginResourceConnector
+  // External identity providers configured for the tenant
+  //
+  // The social, Apple, OpenID Connect, built-in, and SAML or WS-Fed
+  // identity providers guests and external users can sign in with. Each entry
+  // reports its `type` and the configuration that applies to it. Federation
+  // for the tenant's own verified domains is reported per domain under
+  // `microsoft.domain` instead.
+  identityProviders() []microsoft.identityAndAccess.identityProvider
+  // Self-service sign-up user flows for B2B collaboration
+  //
+  // The user flows that let external users sign themselves up for an
+  // application, with the identity providers each flow offers and the API
+  // connectors it calls. Flows only take effect when self-service sign-up is
+  // enabled for the tenant.
+  b2xUserFlows() []microsoft.identityAndAccess.b2xUserFlow
+}
+
+// External identity provider
+//
+// An identity provider external users can sign in with. The `type` field
+// reports which kind of provider it is (socialIdentityProvider,
+// builtInIdentityProvider, appleManagedIdentityProvider,
+// oidcIdentityProvider, samlOrWsFedExternalDomainFederation, or unknown)
+// and decides which of the remaining fields carry values. Fields that do not
+// apply to a provider's type are null. Client secrets and private keys are
+// never reported.
+private microsoft.identityAndAccess.identityProvider @defaults("displayName type") {
+  // Unique identifier of the identity provider
+  id string
+  // Display name of the identity provider
+  displayName string
+  // Kind of identity provider
+  //
+  // One of socialIdentityProvider, builtInIdentityProvider,
+  // appleManagedIdentityProvider, oidcIdentityProvider,
+  // samlOrWsFedExternalDomainFederation, or unknown when Microsoft Graph
+  // reports a kind this provider does not model.
+  type string
+  // Identity provider the configuration is for
+  //
+  // For a social provider, for example Google, Facebook, Amazon, LinkedIn, or
+  // Twitter. For a built-in provider, for example AADSignup, EmailOTP, or
+  // MicrosoftAccount. Null for other types.
+  identityProviderType string
+  // Client identifier of the application registered with the identity provider
+  //
+  // Carries a value for social and OpenID Connect providers.
+  clientId string
+  // Apple developer team identifier
+  //
+  // Carries a value for Apple providers.
+  developerId string
+  // Apple service identifier
+  //
+  // Carries a value for Apple providers.
+  serviceId string
+  // Identifier of the Apple signing key
+  //
+  // The key identifier only. The key itself is never reported. Carries a
+  // value for Apple providers.
+  keyId string
+  // Issuer the OpenID Connect provider signs its tokens as
+  //
+  // Carries a value for OpenID Connect providers.
+  issuer string
+  // OpenID Connect discovery document URL
+  //
+  // Carries a value for OpenID Connect providers.
+  wellKnownEndpoint string
+  // OpenID Connect response type
+  //
+  // One or more of code, id_token, or token, comma separated. Carries a value
+  // for OpenID Connect providers.
+  responseType string
+  // Scopes requested from the OpenID Connect provider
+  //
+  // Space separated, as configured. Carries a value for OpenID Connect
+  // providers.
+  scope string
+  // How the tenant authenticates to the OpenID Connect provider
+  //
+  // Either clientSecret or privateKeyJwt, or unknown for a method this
+  // provider does not model. Carries a value for OpenID Connect providers.
+  clientAuthenticationMethod string
+  // Issuer URI of the federation server
+  //
+  // Carries a value for SAML or WS-Fed providers.
+  issuerUri string
+  // URI of the metadata exchange endpoint used by rich client applications
+  //
+  // Carries a value for SAML or WS-Fed providers.
+  metadataExchangeUri string
+  // URI users are sent to when signing in
+  //
+  // Carries a value for SAML or WS-Fed providers.
+  passiveSignInUri string
+  // Protocol the federation uses
+  //
+  // Either saml or wsFed. Carries a value for SAML or WS-Fed providers.
+  preferredAuthenticationProtocol string
+  // Public certificate used to verify tokens issued by the federation server
+  //
+  // Base64 encoded. Carries a value for SAML or WS-Fed providers.
+  signingCertificate string
+  // Domains the federation applies to
+  //
+  // External domain names whose users sign in through this SAML or WS-Fed
+  // provider. Empty for other types.
+  domains []string
+}
+
+// Self-service sign-up user flow
+//
+// A B2B collaboration user flow that lets external users sign themselves up
+// for an application. Reports the flow's `userFlowType` and version, the
+// `identityProviders` users can sign up with, and the API connectors the flow
+// calls after federation (`postFederationSignupApiConnector`) and after
+// attribute collection (`postAttributeCollectionApiConnector`).
+private microsoft.identityAndAccess.b2xUserFlow @defaults("id userFlowType") {
+  // Unique identifier of the user flow
+  id string
+  // Kind of user flow
+  //
+  // Microsoft Graph reports signUp for self-service sign-up flows. Other
+  // values are signIn, signUpOrSignIn, passwordReset, profileUpdate, and
+  // resourceOwner.
+  userFlowType string
+  // Version of the user flow
+  userFlowTypeVersion float
+  // Identity providers users can sign up with in this flow
+  identityProviders() []microsoft.identityAndAccess.identityProvider
+  // API connector called after the user signs in with an identity provider
+  //
+  // Null when the flow calls no connector at this step.
+  postFederationSignupApiConnector() microsoft.identityAndAccess.apiConnector
+  // API connector called after the sign-up attributes are collected
+  //
+  // Null when the flow calls no connector at this step.
+  postAttributeCollectionApiConnector() microsoft.identityAndAccess.apiConnector
+}
+
+// API connector called by a user flow
+//
+// An external REST endpoint a user flow calls during sign-up. Reports the
+// `targetUrl` and how the flow authenticates to it. Passwords and
+// certificate private keys are never reported.
+private microsoft.identityAndAccess.apiConnector @defaults("displayName targetUrl") {
+  // Unique identifier of the API connector
+  id string
+  // Display name of the API connector
+  displayName string
+  // URL of the API endpoint
+  targetUrl string
+  // How the user flow authenticates to the API endpoint
+  //
+  // One of basic, clientCertificate, or unknown when Microsoft Graph reports
+  // a method this provider does not model.
+  authenticationType string
 }
 
 // External origin resource connector

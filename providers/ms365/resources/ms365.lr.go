@@ -33,6 +33,9 @@ const (
 	ResourceMicrosoftTenantFormsSettings                                                                 string = "microsoft.tenantFormsSettings"
 	ResourceMicrosoftUsers                                                                               string = "microsoft.users"
 	ResourceMicrosoftIdentityAndAccess                                                                   string = "microsoft.identityAndAccess"
+	ResourceMicrosoftIdentityAndAccessIdentityProvider                                                   string = "microsoft.identityAndAccess.identityProvider"
+	ResourceMicrosoftIdentityAndAccessB2xUserFlow                                                        string = "microsoft.identityAndAccess.b2xUserFlow"
+	ResourceMicrosoftIdentityAndAccessApiConnector                                                       string = "microsoft.identityAndAccess.apiConnector"
 	ResourceMicrosoftIdentityAndAccessExternalOriginResourceConnector                                    string = "microsoft.identityAndAccess.externalOriginResourceConnector"
 	ResourceMicrosoftIdentityAndAccessExternalOriginResourceConnectorConnection                          string = "microsoft.identityAndAccess.externalOriginResourceConnector.connection"
 	ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagement                                       string = "microsoft.identityAndAccess.privilegedIdentityManagement"
@@ -287,6 +290,18 @@ func init() {
 		"microsoft.identityAndAccess": {
 			// to override args, implement: initMicrosoftIdentityAndAccess(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftIdentityAndAccess,
+		},
+		"microsoft.identityAndAccess.identityProvider": {
+			// to override args, implement: initMicrosoftIdentityAndAccessIdentityProvider(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessIdentityProvider,
+		},
+		"microsoft.identityAndAccess.b2xUserFlow": {
+			// to override args, implement: initMicrosoftIdentityAndAccessB2xUserFlow(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessB2xUserFlow,
+		},
+		"microsoft.identityAndAccess.apiConnector": {
+			// to override args, implement: initMicrosoftIdentityAndAccessApiConnector(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessApiConnector,
 		},
 		"microsoft.identityAndAccess.externalOriginResourceConnector": {
 			// to override args, implement: initMicrosoftIdentityAndAccessExternalOriginResourceConnector(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1391,6 +1406,99 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.identityAndAccess.externalOriginResourceConnectors": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccess).GetExternalOriginResourceConnectors()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.externalOriginResourceConnector")))
+	},
+	"microsoft.identityAndAccess.identityProviders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccess).GetIdentityProviders()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.identityProvider")))
+	},
+	"microsoft.identityAndAccess.b2xUserFlows": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccess).GetB2xUserFlows()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.b2xUserFlow")))
+	},
+	"microsoft.identityAndAccess.identityProvider.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.identityProviderType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetIdentityProviderType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.clientId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetClientId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.developerId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetDeveloperId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.serviceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetServiceId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.keyId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetKeyId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.issuer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetIssuer()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.wellKnownEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetWellKnownEndpoint()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.responseType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetResponseType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetScope()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.clientAuthenticationMethod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetClientAuthenticationMethod()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.issuerUri": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetIssuerUri()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.metadataExchangeUri": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetMetadataExchangeUri()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.passiveSignInUri": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetPassiveSignInUri()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.preferredAuthenticationProtocol": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetPreferredAuthenticationProtocol()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.signingCertificate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetSigningCertificate()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.identityProvider.domains": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetDomains()).ToDataRes(types.Array(types.String))
+	},
+	"microsoft.identityAndAccess.b2xUserFlow.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessB2xUserFlow).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.b2xUserFlow.userFlowType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessB2xUserFlow).GetUserFlowType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.b2xUserFlow.userFlowTypeVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessB2xUserFlow).GetUserFlowTypeVersion()).ToDataRes(types.Float)
+	},
+	"microsoft.identityAndAccess.b2xUserFlow.identityProviders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessB2xUserFlow).GetIdentityProviders()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.identityProvider")))
+	},
+	"microsoft.identityAndAccess.b2xUserFlow.postFederationSignupApiConnector": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessB2xUserFlow).GetPostFederationSignupApiConnector()).ToDataRes(types.Resource("microsoft.identityAndAccess.apiConnector"))
+	},
+	"microsoft.identityAndAccess.b2xUserFlow.postAttributeCollectionApiConnector": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessB2xUserFlow).GetPostAttributeCollectionApiConnector()).ToDataRes(types.Resource("microsoft.identityAndAccess.apiConnector"))
+	},
+	"microsoft.identityAndAccess.apiConnector.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessApiConnector).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.apiConnector.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessApiConnector).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.apiConnector.targetUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessApiConnector).GetTargetUrl()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.apiConnector.authenticationType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessApiConnector).GetAuthenticationType()).ToDataRes(types.String)
 	},
 	"microsoft.identityAndAccess.externalOriginResourceConnector.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessExternalOriginResourceConnector).GetId()).ToDataRes(types.String)
@@ -6607,6 +6715,142 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.identityAndAccess.externalOriginResourceConnectors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccess).ExternalOriginResourceConnectors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProviders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccess).IdentityProviders, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.b2xUserFlows": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccess).B2xUserFlows, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.identityProviderType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).IdentityProviderType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.clientId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).ClientId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.developerId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).DeveloperId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.serviceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).ServiceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.keyId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).KeyId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.issuer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).Issuer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.wellKnownEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).WellKnownEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.responseType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).ResponseType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.clientAuthenticationMethod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).ClientAuthenticationMethod, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.issuerUri": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).IssuerUri, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.metadataExchangeUri": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).MetadataExchangeUri, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.passiveSignInUri": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).PassiveSignInUri, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.preferredAuthenticationProtocol": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).PreferredAuthenticationProtocol, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.signingCertificate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).SigningCertificate, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.identityProvider.domains": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).Domains, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.b2xUserFlow.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessB2xUserFlow).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.b2xUserFlow.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessB2xUserFlow).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.b2xUserFlow.userFlowType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessB2xUserFlow).UserFlowType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.b2xUserFlow.userFlowTypeVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessB2xUserFlow).UserFlowTypeVersion, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.b2xUserFlow.identityProviders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessB2xUserFlow).IdentityProviders, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.b2xUserFlow.postFederationSignupApiConnector": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessB2xUserFlow).PostFederationSignupApiConnector, ok = plugin.RawToTValue[*mqlMicrosoftIdentityAndAccessApiConnector](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.b2xUserFlow.postAttributeCollectionApiConnector": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessB2xUserFlow).PostAttributeCollectionApiConnector, ok = plugin.RawToTValue[*mqlMicrosoftIdentityAndAccessApiConnector](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.apiConnector.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessApiConnector).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.apiConnector.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessApiConnector).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.apiConnector.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessApiConnector).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.apiConnector.targetUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessApiConnector).TargetUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.apiConnector.authenticationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessApiConnector).AuthenticationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"microsoft.identityAndAccess.externalOriginResourceConnector.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -15107,6 +15351,8 @@ type mqlMicrosoftIdentityAndAccess struct {
 	IdentityAndSignIn                plugin.TValue[*mqlMicrosoftIdentityAndAccessIdentityAndSignIn]
 	Organization                     plugin.TValue[*mqlMicrosoftTenant]
 	ExternalOriginResourceConnectors plugin.TValue[[]any]
+	IdentityProviders                plugin.TValue[[]any]
+	B2xUserFlows                     plugin.TValue[[]any]
 }
 
 // createMicrosoftIdentityAndAccess creates a new instance of this resource
@@ -15224,6 +15470,336 @@ func (c *mqlMicrosoftIdentityAndAccess) GetExternalOriginResourceConnectors() *p
 
 		return c.externalOriginResourceConnectors()
 	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccess) GetIdentityProviders() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IdentityProviders, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess", c.__id, "identityProviders")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.identityProviders()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccess) GetB2xUserFlows() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.B2xUserFlows, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess", c.__id, "b2xUserFlows")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.b2xUserFlows()
+	})
+}
+
+// mqlMicrosoftIdentityAndAccessIdentityProvider for the microsoft.identityAndAccess.identityProvider resource
+type mqlMicrosoftIdentityAndAccessIdentityProvider struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftIdentityAndAccessIdentityProviderInternal it will be used here
+	Id                              plugin.TValue[string]
+	DisplayName                     plugin.TValue[string]
+	Type                            plugin.TValue[string]
+	IdentityProviderType            plugin.TValue[string]
+	ClientId                        plugin.TValue[string]
+	DeveloperId                     plugin.TValue[string]
+	ServiceId                       plugin.TValue[string]
+	KeyId                           plugin.TValue[string]
+	Issuer                          plugin.TValue[string]
+	WellKnownEndpoint               plugin.TValue[string]
+	ResponseType                    plugin.TValue[string]
+	Scope                           plugin.TValue[string]
+	ClientAuthenticationMethod      plugin.TValue[string]
+	IssuerUri                       plugin.TValue[string]
+	MetadataExchangeUri             plugin.TValue[string]
+	PassiveSignInUri                plugin.TValue[string]
+	PreferredAuthenticationProtocol plugin.TValue[string]
+	SigningCertificate              plugin.TValue[string]
+	Domains                         plugin.TValue[[]any]
+}
+
+// createMicrosoftIdentityAndAccessIdentityProvider creates a new instance of this resource
+func createMicrosoftIdentityAndAccessIdentityProvider(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessIdentityProvider{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.identityProvider", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) MqlName() string {
+	return "microsoft.identityAndAccess.identityProvider"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetIdentityProviderType() *plugin.TValue[string] {
+	return &c.IdentityProviderType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetClientId() *plugin.TValue[string] {
+	return &c.ClientId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetDeveloperId() *plugin.TValue[string] {
+	return &c.DeveloperId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetServiceId() *plugin.TValue[string] {
+	return &c.ServiceId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetKeyId() *plugin.TValue[string] {
+	return &c.KeyId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetIssuer() *plugin.TValue[string] {
+	return &c.Issuer
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetWellKnownEndpoint() *plugin.TValue[string] {
+	return &c.WellKnownEndpoint
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetResponseType() *plugin.TValue[string] {
+	return &c.ResponseType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetScope() *plugin.TValue[string] {
+	return &c.Scope
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetClientAuthenticationMethod() *plugin.TValue[string] {
+	return &c.ClientAuthenticationMethod
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetIssuerUri() *plugin.TValue[string] {
+	return &c.IssuerUri
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetMetadataExchangeUri() *plugin.TValue[string] {
+	return &c.MetadataExchangeUri
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetPassiveSignInUri() *plugin.TValue[string] {
+	return &c.PassiveSignInUri
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetPreferredAuthenticationProtocol() *plugin.TValue[string] {
+	return &c.PreferredAuthenticationProtocol
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetSigningCertificate() *plugin.TValue[string] {
+	return &c.SigningCertificate
+}
+
+func (c *mqlMicrosoftIdentityAndAccessIdentityProvider) GetDomains() *plugin.TValue[[]any] {
+	return &c.Domains
+}
+
+// mqlMicrosoftIdentityAndAccessB2xUserFlow for the microsoft.identityAndAccess.b2xUserFlow resource
+type mqlMicrosoftIdentityAndAccessB2xUserFlow struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftIdentityAndAccessB2xUserFlowInternal
+	Id                                  plugin.TValue[string]
+	UserFlowType                        plugin.TValue[string]
+	UserFlowTypeVersion                 plugin.TValue[float64]
+	IdentityProviders                   plugin.TValue[[]any]
+	PostFederationSignupApiConnector    plugin.TValue[*mqlMicrosoftIdentityAndAccessApiConnector]
+	PostAttributeCollectionApiConnector plugin.TValue[*mqlMicrosoftIdentityAndAccessApiConnector]
+}
+
+// createMicrosoftIdentityAndAccessB2xUserFlow creates a new instance of this resource
+func createMicrosoftIdentityAndAccessB2xUserFlow(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessB2xUserFlow{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.b2xUserFlow", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessB2xUserFlow) MqlName() string {
+	return "microsoft.identityAndAccess.b2xUserFlow"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessB2xUserFlow) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessB2xUserFlow) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessB2xUserFlow) GetUserFlowType() *plugin.TValue[string] {
+	return &c.UserFlowType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessB2xUserFlow) GetUserFlowTypeVersion() *plugin.TValue[float64] {
+	return &c.UserFlowTypeVersion
+}
+
+func (c *mqlMicrosoftIdentityAndAccessB2xUserFlow) GetIdentityProviders() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IdentityProviders, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.b2xUserFlow", c.__id, "identityProviders")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.identityProviders()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessB2xUserFlow) GetPostFederationSignupApiConnector() *plugin.TValue[*mqlMicrosoftIdentityAndAccessApiConnector] {
+	return plugin.GetOrCompute[*mqlMicrosoftIdentityAndAccessApiConnector](&c.PostFederationSignupApiConnector, func() (*mqlMicrosoftIdentityAndAccessApiConnector, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.b2xUserFlow", c.__id, "postFederationSignupApiConnector")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftIdentityAndAccessApiConnector), nil
+			}
+		}
+
+		return c.postFederationSignupApiConnector()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessB2xUserFlow) GetPostAttributeCollectionApiConnector() *plugin.TValue[*mqlMicrosoftIdentityAndAccessApiConnector] {
+	return plugin.GetOrCompute[*mqlMicrosoftIdentityAndAccessApiConnector](&c.PostAttributeCollectionApiConnector, func() (*mqlMicrosoftIdentityAndAccessApiConnector, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.b2xUserFlow", c.__id, "postAttributeCollectionApiConnector")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftIdentityAndAccessApiConnector), nil
+			}
+		}
+
+		return c.postAttributeCollectionApiConnector()
+	})
+}
+
+// mqlMicrosoftIdentityAndAccessApiConnector for the microsoft.identityAndAccess.apiConnector resource
+type mqlMicrosoftIdentityAndAccessApiConnector struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftIdentityAndAccessApiConnectorInternal it will be used here
+	Id                 plugin.TValue[string]
+	DisplayName        plugin.TValue[string]
+	TargetUrl          plugin.TValue[string]
+	AuthenticationType plugin.TValue[string]
+}
+
+// createMicrosoftIdentityAndAccessApiConnector creates a new instance of this resource
+func createMicrosoftIdentityAndAccessApiConnector(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessApiConnector{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.apiConnector", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessApiConnector) MqlName() string {
+	return "microsoft.identityAndAccess.apiConnector"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessApiConnector) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessApiConnector) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessApiConnector) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftIdentityAndAccessApiConnector) GetTargetUrl() *plugin.TValue[string] {
+	return &c.TargetUrl
+}
+
+func (c *mqlMicrosoftIdentityAndAccessApiConnector) GetAuthenticationType() *plugin.TValue[string] {
+	return &c.AuthenticationType
 }
 
 // mqlMicrosoftIdentityAndAccessExternalOriginResourceConnector for the microsoft.identityAndAccess.externalOriginResourceConnector resource
