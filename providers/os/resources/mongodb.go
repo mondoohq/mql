@@ -164,14 +164,14 @@ func (s *mqlMongodbConf) port(params any) (int64, error) {
 
 // bindIp resolves the addresses the server listens on.
 //
-// When the option is absent the server picks the addresses itself, and which
-// ones depends on its version (see mongodb.DefaultBindIp). Without a version
-// there is no way to tell a localhost-only server from one listening on every
-// interface, so the field is null rather than a guess.
+// net.bindIpAll binds every interface whatever net.bindIp lists. When neither
+// is set the server picks the addresses itself, and which ones depends on its
+// version (see mongodb.DefaultBindIp). Without a version there is no way to
+// tell a localhost-only server from one listening on every interface, so the
+// field is null rather than a guess.
 func (s *mqlMongodbConf) bindIp(params any) ([]any, error) {
 	p := mongoParams(params)
-	addrs := mongodb.List(p, "net", "bindIp")
-	if len(addrs) > 0 {
+	if addrs := mongodb.BindAddresses(p, ""); addrs != nil {
 		return toAnySlice(addrs), nil
 	}
 
@@ -179,12 +179,12 @@ func (s *mqlMongodbConf) bindIp(params any) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	def := mongodb.DefaultBindIp(version, mongodb.Bool(p, false, "net", "ipv6"))
-	if def == nil {
+	addrs := mongodb.BindAddresses(p, version)
+	if addrs == nil {
 		s.BindIp.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	return toAnySlice(def), nil
+	return toAnySlice(addrs), nil
 }
 
 // serverVersion reads the installed server's version from the mongodb
@@ -358,12 +358,46 @@ func (s *mqlMongodbConf) enableLocalhostAuthBypass(params any) (bool, error) {
 	return mongodb.Bool(mongoParams(params), true, "setParameter", "enableLocalhostAuthBypass"), nil
 }
 
+// authenticationMechanisms reports the mechanisms the server accepts. When
+// the option is unset that is the server default for the installed version,
+// not an empty list: a server with no setting accepts SCRAM and X.509. It is
+// null when the option is unset and the version cannot be read.
 func (s *mqlMongodbConf) authenticationMechanisms(params any) ([]any, error) {
-	return toAnySlice(mongodb.List(mongoParams(params), "setParameter", "authenticationMechanisms")), nil
+	p := mongoParams(params)
+	if mechs := mongodb.List(p, "setParameter", "authenticationMechanisms"); len(mechs) > 0 {
+		return toAnySlice(mechs), nil
+	}
+
+	version, err := s.serverVersion()
+	if err != nil {
+		return nil, err
+	}
+	mechs := mongodb.DefaultAuthenticationMechanisms(version, mongodb.TLSBool(p, false, "FIPSMode"))
+	if mechs == nil {
+		s.AuthenticationMechanisms.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return toAnySlice(mechs), nil
 }
 
+// scramIterationCount reports the SCRAM-SHA-1 iteration count, 10000 when
+// unset. It is null for a server too old to have SCRAM.
 func (s *mqlMongodbConf) scramIterationCount(params any) (int64, error) {
-	return mongodb.Int(mongoParams(params), 15000, "setParameter", "scramIterationCount"), nil
+	p := mongoParams(params)
+	if _, ok := mongodb.Lookup(p, "setParameter", "scramIterationCount"); ok {
+		return mongodb.Int(p, 10000, "setParameter", "scramIterationCount"), nil
+	}
+
+	version, err := s.serverVersion()
+	if err != nil {
+		return 0, err
+	}
+	n, ok := mongodb.DefaultScramIterationCount(version)
+	if !ok {
+		s.ScramIterationCount.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return n, nil
 }
 
 func (s *mqlMongodbConf) opensslCipherConfig(params any) (string, error) {
