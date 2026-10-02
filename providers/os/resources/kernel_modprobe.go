@@ -4,16 +4,20 @@
 package resources
 
 import (
-	"errors"
+	"os"
+	"path"
+	"sort"
 	"strings"
 
+	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
-	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 // modprobeRule captures the "module must not load" intent expressed by a
 // modprobe configuration file. It is the union of every directive observed
-// across every config path — i.e. if any file blacklists the module the
+// across the files modprobe reads: if any of them blacklists the module the
 // rule is blacklisted, and if any install rule short-circuits to a no-op
 // binary like /bin/true or /bin/false the rule has installBypass set.
 type modprobeRule struct {
@@ -21,15 +25,110 @@ type modprobeRule struct {
 	installBypass bool
 }
 
-// modprobeSearchPaths is the search order used by libkmod when resolving
-// modprobe.d configuration. The first path that contains a given file name
-// wins for that file name, but for our union-of-intent semantics we just
-// walk every path that exists. Order is documented in modprobe.d(5).
+// modprobeSearchPaths is the directory search order libkmod uses for
+// modprobe.d configuration (default_config_paths in libkmod.c). When the
+// same file name exists in more than one directory, the copy in the earlier
+// directory wins and the later ones are ignored, so an /etc/modprobe.d file
+// overrides a package-shipped file of the same name in /usr/lib or /lib.
+//
+// kmod 29 added /usr/local/lib/modprobe.d and kmod 30 added
+// /usr/lib/modprobe.d. Older kmod releases skip those directories, but on
+// those releases they don't exist or, on merged-/usr systems, alias
+// /lib/modprobe.d, so walking the full list matches every release.
 var modprobeSearchPaths = []string{
 	"/etc/modprobe.d",
 	"/run/modprobe.d",
+	"/usr/local/lib/modprobe.d",
 	"/usr/lib/modprobe.d",
 	"/lib/modprobe.d",
+}
+
+// isModprobeConfigName reports whether libkmod reads a directory entry with
+// this name: hidden files are skipped and only `*.conf` files count.
+func isModprobeConfigName(name string) bool {
+	return !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".conf")
+}
+
+// selectModprobeConfigFiles applies libkmod's file selection to the entries
+// found in each search directory. listings[i] holds the names of the
+// non-directory entries of dirs[i]. The first directory that holds a given
+// name wins, and the winners are returned as full paths ordered by file name
+// (strcmp order), which is the order modprobe applies them in.
+func selectModprobeConfigFiles(dirs []string, listings [][]string) []string {
+	winners := map[string]string{}
+	for i, dir := range dirs {
+		if i >= len(listings) {
+			break
+		}
+		for _, name := range listings[i] {
+			if !isModprobeConfigName(name) {
+				continue
+			}
+			if _, ok := winners[name]; ok {
+				continue
+			}
+			winners[name] = path.Join(dir, name)
+		}
+	}
+
+	names := make([]string, 0, len(winners))
+	for name := range winners {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	res := make([]string, len(names))
+	for i, name := range names {
+		res[i] = winners[name]
+	}
+	return res
+}
+
+// listModprobeConfigFiles returns the modprobe.d configuration files modprobe
+// reads, in the order it applies them. Each search directory is listed one
+// level deep (libkmod ignores subdirectories), symlinked files are followed,
+// and missing directories are skipped.
+func listModprobeConfigFiles(runtime *plugin.Runtime) ([]string, error) {
+	conn := runtime.Connection.(shared.Connection)
+	fs := conn.FileSystem()
+
+	listings := make([][]string, len(modprobeSearchPaths))
+	for i, dir := range modprobeSearchPaths {
+		raw, err := CreateResource(runtime, "file", map[string]*llx.RawData{
+			"path": llx.StringData(dir),
+		})
+		if err != nil {
+			return nil, err
+		}
+		exists := raw.(*mqlFile).GetExists()
+		if exists.Error != nil {
+			return nil, exists.Error
+		}
+		if !exists.Data {
+			continue
+		}
+
+		entries, err := afero.ReadDir(fs, dir)
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			if entry.Mode()&os.ModeSymlink != 0 {
+				// libkmod stats through the link: a link to a directory is
+				// skipped and a dangling link has nothing to read.
+				target, err := fs.Stat(path.Join(dir, entry.Name()))
+				if err != nil || target.IsDir() {
+					continue
+				}
+			}
+			listings[i] = append(listings[i], entry.Name())
+		}
+	}
+
+	return selectModprobeConfigFiles(modprobeSearchPaths, listings), nil
 }
 
 // installBypassBins are the executable paths whose presence as the command
@@ -123,11 +222,11 @@ func stripModprobeComment(line string) string {
 	return line
 }
 
-// loadModprobeRules walks modprobeSearchPaths for *.conf files, parses each,
-// and stores the merged per-module rule set on the kernel resource. Missing
-// directories are best-effort — they're a normal state on stripped-down
-// container images and stock minimal installs, and absent files just
-// contribute zero rules.
+// loadModprobeRules reads the modprobe.d files modprobe itself reads (see
+// listModprobeConfigFiles), parses each, and stores the merged per-module
+// rule set on the kernel resource. A file in /etc/modprobe.d shadows a file
+// of the same name in a later search directory, so its rules replace the
+// shadowed file's instead of adding to them.
 //
 // Uses sync.Once with an explicit error capture so all three accessors
 // (blacklisted, installBypass, disabled) share a single walk per query.
@@ -135,45 +234,36 @@ func (k *mqlKernel) loadModprobeRules() (map[string]modprobeRule, error) {
 	k.modprobeOnce.Do(func() {
 		rules := map[string]modprobeRule{}
 
-		for _, dir := range modprobeSearchPaths {
-			files, err := k.modprobeFilesIn(dir)
+		paths, err := listModprobeConfigFiles(k.MqlRuntime)
+		if err != nil {
+			if plugin.StructuredErrors() {
+				k.modprobeErr = err
+				return
+			}
+			// v13 behavior: an unreadable search path contributes no rules.
+			paths = nil
+		}
+
+		conn := k.MqlRuntime.Connection.(shared.Connection)
+		for _, p := range paths {
+			content, err := readFileContent(conn, p)
 			if err != nil {
-				// Treat any per-directory failure as "directory absent"
-				// for our purposes — modprobe itself silently ignores
-				// missing search paths.
+				if plugin.StructuredErrors() {
+					k.modprobeErr = err
+					return
+				}
 				continue
 			}
 
-			for _, f := range files {
-				mf, ok := f.(*mqlFile)
-				if !ok {
-					continue
+			for name, rule := range parseModprobeConfig(content) {
+				merged := rules[name]
+				if rule.blacklisted {
+					merged.blacklisted = true
 				}
-				path := mf.Path.Data
-				if !strings.HasSuffix(path, ".conf") {
-					continue
+				if rule.installBypass {
+					merged.installBypass = true
 				}
-
-				content := mf.GetContent()
-				if content.Error != nil {
-					if errors.Is(content.Error, resources.NotFoundError{}) {
-						continue
-					}
-					// Permission / IO errors on a single file shouldn't
-					// abort the whole walk — surface what we can.
-					continue
-				}
-
-				for name, rule := range parseModprobeConfig(content.Data) {
-					merged := rules[name]
-					if rule.blacklisted {
-						merged.blacklisted = true
-					}
-					if rule.installBypass {
-						merged.installBypass = true
-					}
-					rules[name] = merged
-				}
+				rules[name] = merged
 			}
 		}
 
@@ -181,39 +271,6 @@ func (k *mqlKernel) loadModprobeRules() (map[string]modprobeRule, error) {
 	})
 
 	return k.modprobeRules, k.modprobeErr
-}
-
-// modprobeFilesIn lists every regular file in dir using files.find. The
-// directory's presence is checked up front so missing search paths are
-// silently skipped rather than producing a noisy error from files.find.
-func (k *mqlKernel) modprobeFilesIn(dir string) ([]any, error) {
-	dirFile, err := CreateResource(k.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(dir),
-	})
-	if err != nil {
-		return nil, err
-	}
-	exists := dirFile.(*mqlFile).GetExists()
-	if exists.Error != nil {
-		return nil, exists.Error
-	}
-	if !exists.Data {
-		return nil, nil
-	}
-
-	files, err := CreateResource(k.MqlRuntime, "files.find", map[string]*llx.RawData{
-		"from": llx.StringData(dir),
-		"type": llx.StringData("file"),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	list := files.(*mqlFilesFind).GetList()
-	if list.Error != nil {
-		return nil, list.Error
-	}
-	return list.Data, nil
 }
 
 // moduleRule resolves the parent kernel resource, triggers a one-shot

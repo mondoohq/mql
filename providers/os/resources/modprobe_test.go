@@ -374,3 +374,93 @@ func TestParseModprobeParams_TabSeparated(t *testing.T) {
 
 	assert.Equal(t, []string{"key1=value1", "key2=value2"}, params)
 }
+
+// The options line from the Ubuntu sweep fixture. Every value in the map must
+// be a string: the field is map[string]string, and a bool for the bare
+// `verbose` flag made the whole options list fail to serialize.
+func TestParseModprobeOptionParams_BareFlagIsString(t *testing.T) {
+	params := parseModprobeOptionParams(`debug=1 name="hello world" verbose 'mode=a b'`)
+
+	assert.Equal(t, map[string]any{
+		"debug":   "1",
+		"name":    "hello world",
+		"verbose": "true",
+		"mode":    "a b",
+	}, params)
+	for k, v := range params {
+		_, ok := v.(string)
+		assert.Truef(t, ok, "param %q has non-string value %T", k, v)
+	}
+}
+
+func TestParseModprobeOptionParams_ListValue(t *testing.T) {
+	params := parseModprobeOptionParams("InterruptThrottleRate=3000,3000")
+	assert.Equal(t, map[string]any{"InterruptThrottleRate": "3000,3000"}, params)
+}
+
+func TestParseModprobeOptionParams_Empty(t *testing.T) {
+	assert.Empty(t, parseModprobeOptionParams(""))
+}
+
+func TestIsModprobeConfigName(t *testing.T) {
+	assert.True(t, isModprobeConfigName("blacklist.conf"))
+	assert.True(t, isModprobeConfigName("zz-linked.conf"))
+	assert.False(t, isModprobeConfigName("ignored.txt"))
+	assert.False(t, isModprobeConfigName(".hidden.conf"))
+	assert.False(t, isModprobeConfigName("blacklist.conf.dpkg-old"))
+	assert.False(t, isModprobeConfigName("legacy.alias"))
+}
+
+// Directory listings as found on an Ubuntu 24.04 sweep host plus a /run
+// override. modprobe -c on that host showed that /etc beats /run beats
+// /usr/local/lib beats /usr/lib and /lib for the same file name, and that
+// files are applied in name order across all directories.
+func TestSelectModprobeConfigFiles(t *testing.T) {
+	listings := [][]string{
+		// /etc/modprobe.d
+		{"blacklist.conf", "g01-ovr.conf", "ignored.txt", "sweep.conf", "zz-linked.conf"},
+		// /run/modprobe.d
+		{"sweep-lib.conf", "zz-run.conf"},
+		// /usr/local/lib/modprobe.d
+		{"sweep-lib.conf"},
+		// /usr/lib/modprobe.d
+		{"aliases.conf", "g01-ovr.conf", "sweep-lib.conf", "systemd.conf"},
+		// /lib/modprobe.d (same directory as /usr/lib on merged-/usr)
+		{"aliases.conf", "g01-ovr.conf", "sweep-lib.conf", "systemd.conf"},
+	}
+
+	got := selectModprobeConfigFiles(modprobeSearchPaths, listings)
+	assert.Equal(t, []string{
+		"/usr/lib/modprobe.d/aliases.conf",
+		"/etc/modprobe.d/blacklist.conf",
+		"/etc/modprobe.d/g01-ovr.conf",
+		"/run/modprobe.d/sweep-lib.conf",
+		"/etc/modprobe.d/sweep.conf",
+		"/usr/lib/modprobe.d/systemd.conf",
+		"/etc/modprobe.d/zz-linked.conf",
+		"/run/modprobe.d/zz-run.conf",
+	}, got)
+}
+
+// Ubuntu 16.04: kmod 22 has no /usr/lib/modprobe.d, the kernel package ships
+// its blacklist in /lib/modprobe.d.
+func TestSelectModprobeConfigFiles_LibOnly(t *testing.T) {
+	listings := [][]string{
+		{"sweep.conf"},
+		nil,
+		nil,
+		nil,
+		{"blacklist_linux-aws_4.4.0-1191-aws.conf", "sweep-lib.conf"},
+	}
+
+	got := selectModprobeConfigFiles(modprobeSearchPaths, listings)
+	assert.Equal(t, []string{
+		"/lib/modprobe.d/blacklist_linux-aws_4.4.0-1191-aws.conf",
+		"/lib/modprobe.d/sweep-lib.conf",
+		"/etc/modprobe.d/sweep.conf",
+	}, got)
+}
+
+func TestSelectModprobeConfigFiles_Empty(t *testing.T) {
+	assert.Empty(t, selectModprobeConfigFiles(modprobeSearchPaths, make([][]string, len(modprobeSearchPaths))))
+}
