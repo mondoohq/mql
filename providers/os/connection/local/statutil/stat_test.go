@@ -46,6 +46,34 @@ func TestLinuxStatCmd(t *testing.T) {
 	assert.Zero(t, mode&fs.ModeSetgid)
 }
 
+// The file type comes from the S_IFMT bits of the raw st_mode, so a wrong
+// constant reads a special file as a regular one.
+func TestLinuxStatCmdSpecialFiles(t *testing.T) {
+	filepath, _ := filepath.Abs("./testdata/linux.toml")
+	p, err := mock.New(0, &inventory.Asset{}, mock.WithPath(filepath))
+	require.NoError(t, err)
+
+	statHelper := New(p)
+
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"/srv/fifo", "prw-r--r--"},
+		{"/dev/null", "Dcrw-rw-rw-"},
+		{"/dev/loop0", "Drw-rw----"},
+		{"/run/systemd/notify", "Srwxrwxrwx"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.path, func(t *testing.T) {
+			fi, err := statHelper.Stat(tc.path)
+			require.NoError(t, err)
+			assert.False(t, fi.Mode().IsRegular())
+			assert.Equal(t, tc.want, fi.Mode().String())
+		})
+	}
+}
+
 func TestOpenbsdStatCmd(t *testing.T) {
 	filepath, _ := filepath.Abs("./testdata/openbsd.toml")
 	p, err := mock.New(0, &inventory.Asset{}, mock.WithPath(filepath))

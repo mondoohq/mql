@@ -1,0 +1,49 @@
+# Files that share the permission bits 0644 or 0666 but differ in type. The
+# stat modes are Go os.FileMode values: 420 is 0644, 33554852 is
+# os.ModeNamedPipe|0644, 69206454 is os.ModeDevice|os.ModeCharDevice|0666,
+# 67109296 is os.ModeDevice|0660, 16777727 is os.ModeSocket|0777.
+[commands."getent passwd"]
+stdout = """root:x:0:0:root:/root:/bin/bash
+"""
+
+[commands."getent group"]
+stdout = """root:x:0:
+"""
+
+[files."/srv/regular.txt"]
+path = "/srv/regular.txt"
+content = "regular\n"
+
+[files."/srv/regular.txt".stat]
+mode = 420
+
+[files."/srv/other.txt"]
+path = "/srv/other.txt"
+content = "other\n"
+
+[files."/srv/other.txt".stat]
+mode = 420
+
+[files."/srv/fifo"]
+path = "/srv/fifo"
+
+[files."/srv/fifo".stat]
+mode = 33554852
+
+[files."/dev/null"]
+path = "/dev/null"
+
+[files."/dev/null".stat]
+mode = 69206454
+
+[files."/dev/loop0"]
+path = "/dev/loop0"
+
+[files."/dev/loop0".stat]
+mode = 67109296
+
+[files."/run/systemd/notify"]
+path = "/run/systemd/notify"
+
+[files."/run/systemd/notify".stat]
+mode = 16777727
