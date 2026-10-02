@@ -295,6 +295,20 @@ func ParseServerLines(dirs []Directive) []Server {
 	return out
 }
 
+// ParsePeerLines extracts the peers of a `peers` section: both the
+// classic `peer <name> <addr>:<port>` lines and the `server <name>
+// [<addr>:<port>]` lines HAProxy 2.0+ also accepts, in source order.
+func ParsePeerLines(dirs []Directive) []Server {
+	var out []Server
+	for _, d := range dirs {
+		if d.Name != "peer" && d.Name != "server" {
+			continue
+		}
+		out = append(out, parseServerArgs(d.Args, d.Raw))
+	}
+	return out
+}
+
 // ParseDefaultServer returns the parsed `default-server` directive (the
 // last one wins, matching HAProxy semantics), or nil when absent.
 func ParseDefaultServer(dirs []Directive) *Server {

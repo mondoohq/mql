@@ -438,3 +438,36 @@ global
 	require.Len(t, cfg.Sections, 1)
 	require.GreaterOrEqual(t, len(cfg.Errors), 1)
 }
+
+func TestParsePeerLines_ClassicPeerAndServer(t *testing.T) {
+	// The classic `peer <name> <addr>:<port>` form is still accepted by
+	// HAProxy 1.6 through 3.x; `server` lines are the 2.0+ form.
+	src := `
+peers classicpeers
+	peer p1 127.0.0.1:10001
+	peer p2 192.0.2.11:10001
+
+peers modern
+	bind 127.0.0.1:10002
+	server local
+	server remote 192.0.2.12:10002
+`
+	cfg, err := Parse("test.cfg", strings.NewReader(src))
+	require.NoError(t, err)
+	require.Len(t, cfg.Sections, 2)
+
+	classic := ParsePeerLines(cfg.Sections[0].Directives)
+	require.Len(t, classic, 2)
+	assert.Equal(t, "p1", classic[0].Name)
+	assert.Equal(t, "127.0.0.1", classic[0].Address)
+	assert.Equal(t, int64(10001), classic[0].Port)
+	assert.Equal(t, "p2", classic[1].Name)
+	assert.Equal(t, "192.0.2.11", classic[1].Address)
+
+	modern := ParsePeerLines(cfg.Sections[1].Directives)
+	require.Len(t, modern, 2)
+	assert.Equal(t, "local", modern[0].Name)
+	assert.Equal(t, "", modern[0].Address)
+	assert.Equal(t, "remote", modern[1].Name)
+	assert.Equal(t, int64(10002), modern[1].Port)
+}

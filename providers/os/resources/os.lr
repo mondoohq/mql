@@ -4344,16 +4344,17 @@ haproxy {
 
 // HAProxy configuration
 //
-// Parsed haproxy.cfg, any `<configdir>/conf.d/*.cfg` fragments next to
-// it, and every file pulled in by `!include` / `!includeglob`
-// directives (HAProxy 2.4+). Exposes each section as a dedicated resource,
+// Parsed haproxy.cfg, every other file haproxy loads with `-f` (read from
+// the running haproxy process or the haproxy systemd service and its
+// environment files; a directory loads its `*.cfg` files), and every file
+// pulled in by `!include` / `!includeglob` directives (HAProxy 2.4+). Exposes each section as a dedicated resource,
 // plus a raw view over every section for types that are not modeled.
 // Pass `init(path: "...")` to point at a non-default config file.
 haproxy.config {
   init(path? string)
-  // Primary configuration file (defaults to /etc/haproxy/haproxy.cfg)
+  // Primary configuration file (the first file haproxy loads, defaults to /etc/haproxy/haproxy.cfg)
   file() file
-  // All configuration files visited (root + conf.d/*.cfg fragments + !included files)
+  // All configuration files visited (primary file, other `-f` files, and !included files)
   files(file) []file
   // Global section
   global(file) haproxy.config.global
@@ -4862,7 +4863,7 @@ private haproxy.config.peersSection @defaults("name") {
   name string
   // `bind` argument (raw; peers binds are simpler than frontend binds)
   bind string
-  // `server <name> <addr>:<port>` entries (same shape as backend servers)
+  // `peer <name> <addr>:<port>` and `server <name> <addr>:<port>` entries (same shape as backend servers)
   servers []haproxy.config.server
   // `table <name> ...` entries. Entries: {name, type, size, expire, store, raw}
   tables []dict

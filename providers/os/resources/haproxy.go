@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -130,6 +131,9 @@ func scanHaproxyBinary(fs *afero.Afero, path string) string {
 type mqlHaproxyConfigInternal struct {
 	lock sync.Mutex
 	cfg  *haproxy.Config
+
+	launchOnce    sync.Once
+	launchConfigs []string
 }
 
 // haproxyConfPaths maps platform names/families to their default config
@@ -187,6 +191,9 @@ func (s *mqlHaproxyConfig) id() (string, error) {
 func (s *mqlHaproxyConfig) file() (*mqlFile, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 	path := haproxyConfPath(conn)
+	if launch := s.loadedConfigFiles(); len(launch) > 0 {
+		path = launch[0]
+	}
 
 	f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
 		"path": llx.StringData(path),
@@ -272,15 +279,161 @@ func initHaproxyConfigGlobal(runtime *plugin.Runtime, args map[string]*llx.RawDa
 	return args, global.Data, nil
 }
 
-// parse runs the HAProxy parser against the configured file plus any
-// `<configdir>/conf.d/*.cfg` fragments that exist on the asset.
-//
-// Most distros that split config into fragments do so via additional
-// `-f` flags on the haproxy systemd unit pointed at conf.d/. We don't
-// see those flags; instead we replicate the de-facto convention by
-// auto-loading any `*.cfg` fragments next to the primary file. Each
-// fragment is parsed independently so its sections are appended in
-// sorted file order.
+// haproxyUnitDirs lists where systemd looks for haproxy.service, highest
+// precedence first. Drop-ins live in <dir>/haproxy.service.d/*.conf.
+var haproxyUnitDirs = []string{
+	"/etc/systemd/system",
+	"/run/systemd/system",
+	"/usr/lib/systemd/system",
+	"/lib/systemd/system",
+}
+
+const defaultHaproxyPidFile = "/run/haproxy.pid"
+
+// loadedConfigFiles returns the configuration files haproxy loads, in load
+// order, as given by its `-f` arguments (directories expanded to their
+// `*.cfg` files the way haproxy does). The arguments come from the running
+// haproxy process when there is one, otherwise from the haproxy systemd
+// service with its Environment= and EnvironmentFile= settings
+// (/etc/default/haproxy, /etc/sysconfig/haproxy). It returns nil when
+// neither is available.
+func (s *mqlHaproxyConfig) loadedConfigFiles() []string {
+	s.launchOnce.Do(func() {
+		conn := s.MqlRuntime.Connection.(shared.Connection)
+		afs := &afero.Afero{Fs: conn.FileSystem()}
+
+		unit := haproxyServiceLaunch(afs)
+		pidFile := unit.PidFile
+		if pidFile == "" {
+			pidFile = defaultHaproxyPidFile
+		}
+		configs := haproxyProcessConfigs(afs, pidFile)
+		if len(configs) == 0 {
+			configs = unit.Configs
+		}
+
+		var files []string
+		for _, p := range configs {
+			if !filepath.IsAbs(p) {
+				// systemd starts services in /
+				p = filepath.Join("/", p)
+			}
+			files = append(files, expandHaproxyConfigArg(afs, p)...)
+		}
+		s.launchConfigs = files
+	})
+	return s.launchConfigs
+}
+
+// haproxyServiceLaunch reads haproxy.service, its drop-ins and its
+// environment files and returns the arguments ExecStart= passes.
+func haproxyServiceLaunch(afs *afero.Afero) haproxy.LaunchArgs {
+	var unit string
+	for _, dir := range haproxyUnitDirs {
+		data, err := afs.ReadFile(filepath.Join(dir, "haproxy.service"))
+		if err == nil {
+			unit = string(data)
+			break
+		}
+	}
+	if unit == "" {
+		return haproxy.LaunchArgs{}
+	}
+
+	// Drop-ins with the same name shadow each other by directory
+	// precedence and apply in file name order.
+	dropIns := map[string]string{}
+	for i := len(haproxyUnitDirs) - 1; i >= 0; i-- {
+		dir := filepath.Join(haproxyUnitDirs[i], "haproxy.service.d")
+		entries, err := afs.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".conf") {
+				continue
+			}
+			if data, err := afs.ReadFile(filepath.Join(dir, e.Name())); err == nil {
+				dropIns[e.Name()] = string(data)
+			}
+		}
+	}
+	names := make([]string, 0, len(dropIns))
+	for name := range dropIns {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	contents := []string{unit}
+	for _, name := range names {
+		contents = append(contents, dropIns[name])
+	}
+
+	svc := haproxy.ParseSystemdService(contents...)
+	var envFiles []string
+	for _, p := range svc.EnvironmentFiles {
+		if data, err := afs.ReadFile(p); err == nil {
+			envFiles = append(envFiles, string(data))
+		}
+	}
+	return haproxy.LaunchFromService(svc, envFiles)
+}
+
+// haproxyProcessConfigs returns the `-f` arguments of the running haproxy
+// process recorded in pidFile, or nil when it isn't running or its command
+// line can't be read.
+func haproxyProcessConfigs(afs *afero.Afero, pidFile string) []string {
+	data, err := afs.ReadFile(pidFile)
+	if err != nil {
+		return nil
+	}
+	for _, pid := range strings.Fields(string(data)) {
+		if _, err := strconv.Atoi(pid); err != nil {
+			continue
+		}
+		raw, err := afs.ReadFile(filepath.Join("/proc", pid, "cmdline"))
+		if err != nil {
+			continue
+		}
+		argv := haproxy.SplitProcCmdline(raw)
+		// A stale pid file can point at an unrelated process.
+		if len(argv) == 0 || !strings.Contains(filepath.Base(argv[0]), "haproxy") {
+			continue
+		}
+		if configs := haproxy.ParseLaunchArgs(argv[1:]).Configs; len(configs) > 0 {
+			return configs
+		}
+	}
+	return nil
+}
+
+// expandHaproxyConfigArg turns one `-f` argument into files: a directory
+// loads its `*.cfg` files in lexical order, as haproxy does; anything else
+// is a file.
+func expandHaproxyConfigArg(afs *afero.Afero, p string) []string {
+	// Stat first: some connection filesystems (sudo over SSH) list a
+	// plain file as a directory holding itself.
+	if fi, err := afs.Stat(p); err != nil || !fi.IsDir() {
+		return []string{p}
+	}
+	entries, err := afs.ReadDir(p)
+	if err != nil {
+		return []string{p}
+	}
+	var files []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".cfg") {
+			continue
+		}
+		files = append(files, filepath.Join(p, e.Name()))
+	}
+	sort.Strings(files)
+	return files
+}
+
+// parse runs the HAProxy parser against the configured file and every
+// file pulled in through `!include` / `!includeglob`. When the file is the
+// first one haproxy itself loads (see loadedConfigFiles), the other files
+// passed with `-f` are parsed after it, in haproxy's load order.
 func (s *mqlHaproxyConfig) parse(file *mqlFile) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -305,42 +458,29 @@ func (s *mqlHaproxyConfig) parse(file *mqlFile) error {
 	// Always parse the primary file first so its `!include` directives
 	// can pull in their dependencies and the resulting Section.File
 	// values match the directives' source.
-	cfg, err := haproxy.ParseFiles(file.Path.Data, openFn, globFn)
+	primary := file.Path.Data
+	cfg, err := haproxy.ParseFiles(primary, openFn, globFn)
 	if err != nil {
 		s.cfg = &haproxy.Config{}
 		s.markParseErrors(err)
 		return err
 	}
 
-	// Discover conf.d/*.cfg next to the primary file. Many distros wire
-	// these up via systemd `-f` flags rather than `!include`, so the
-	// parser won't pick them up automatically.
-	confDir := filepath.Join(filepath.Dir(file.Path.Data), "conf.d")
-	if entries, derr := afero.ReadDir(afs, confDir); derr == nil {
-		// Deterministic order so resources are stable across runs.
-		var fragments []string
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			name := e.Name()
-			if !strings.HasSuffix(name, ".cfg") {
-				continue
-			}
-			fragments = append(fragments, filepath.Join(confDir, name))
+	var extra []string
+	if launch := s.loadedConfigFiles(); len(launch) > 0 && launch[0] == primary {
+		extra = launch[1:]
+	}
+	for _, p := range extra {
+		sub, perr := haproxy.ParseFiles(p, openFn, globFn)
+		if perr != nil {
+			// Don't abort on a single bad file: record it and continue
+			// so the rest of the config still surfaces.
+			cfg.Errors = append(cfg.Errors, haproxy.ParseError{File: p, Msg: perr.Error()})
+			continue
 		}
-		for _, p := range fragments {
-			sub, perr := haproxy.ParseFiles(p, openFn, globFn)
-			if perr != nil {
-				// Don't abort on a single bad fragment — record it and
-				// continue so the rest of the config still surfaces.
-				cfg.Errors = append(cfg.Errors, haproxy.ParseError{File: p, Msg: perr.Error()})
-				continue
-			}
-			cfg.Sections = append(cfg.Sections, sub.Sections...)
-			cfg.Files = append(cfg.Files, sub.Files...)
-			cfg.Errors = append(cfg.Errors, sub.Errors...)
-		}
+		cfg.Sections = append(cfg.Sections, sub.Sections...)
+		cfg.Files = append(cfg.Files, sub.Files...)
+		cfg.Errors = append(cfg.Errors, sub.Errors...)
 	}
 
 	s.cfg = cfg
@@ -890,7 +1030,7 @@ func (s *mqlHaproxyConfig) peers(file *mqlFile) ([]any, error) {
 			continue
 		}
 		id := fmt.Sprintf("%s#peers/%d/%s", s.__id, i, sec.Name)
-		servers, err := buildServerResources(s.MqlRuntime, id, haproxy.ParseServerLines(sec.Directives))
+		servers, err := buildServerResources(s.MqlRuntime, id, haproxy.ParsePeerLines(sec.Directives))
 		if err != nil {
 			return nil, err
 		}
