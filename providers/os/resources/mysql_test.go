@@ -6,6 +6,7 @@ package resources
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -167,6 +168,121 @@ func TestConf_IsEmptyWithClientLibrariesOnly(t *testing.T) {
 
 	mariadb := mariadbConf(t, "mysql_rhel7_mariadb_libs.toml")
 	mfile := mariadb.GetFile()
+	require.NoError(t, mfile.Error)
+	assert.Nil(t, mfile.Data)
+}
+
+// mycnfRuntimeWithBanner is mycnfRuntime with the server binary's --version
+// banner available, as on a host where commands can run.
+func mycnfRuntimeWithBanner(t *testing.T, fixture, command, banner string) *plugin.Runtime {
+	t.Helper()
+
+	fixturePath, err := filepath.Abs(filepath.Join("testdata", fixture))
+	require.NoError(t, err)
+
+	asset := &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:   "debian",
+			Family: []string{"debian", "linux", "unix"},
+		},
+	}
+	conn, err := mock.New(0, asset, mock.WithPath(fixturePath), mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			command: {Command: command, Stdout: banner + "\n"},
+		},
+	}))
+	require.NoError(t, err)
+
+	return &plugin.Runtime{
+		Connection: conn,
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}
+}
+
+// On Debian, installing libmariadb3 next to Oracle MySQL points the
+// /etc/mysql/my.cnf alternative at mariadb.cnf. mysqld then reads conf.d and
+// mariadb.conf.d and never reads mysql.conf.d, where the hardening lives.
+// mysql.conf used to fall through to /etc/mysql/mysql.cnf and report
+// bind_address 127.0.0.1 and skip_name_resolve for a server listening on every
+// interface with name resolution on.
+func TestMysqlConf_DebianMyCnfAlternativeOwnedByMariadbCommon(t *testing.T) {
+	runtime := mycnfRuntimeWithBanner(t, "mysql_debian12_mysql_libmariadb3.toml",
+		"mysqld --version", "/usr/sbin/mysqld  Ver 8.4.11 for Linux on x86_64 (MySQL Community Server - GPL)")
+
+	raw, err := CreateResource(runtime, "mysql.conf", nil)
+	require.NoError(t, err)
+	conf := raw.(*mqlMysqlConf)
+
+	file := conf.GetFile()
+	require.NoError(t, file.Error)
+	require.NotNil(t, file.Data)
+	assert.Equal(t, "/etc/mysql/my.cnf", file.Data.Path.Data)
+
+	opts := serverOptions(t, conf)
+	assert.NotContains(t, opts, "bind_address", "mysql.conf.d is not read through mariadb.cnf")
+	assert.NotContains(t, opts, "skip_name_resolve")
+
+	bind := conf.GetBindAddress()
+	require.NoError(t, bind.Error)
+	assert.Equal(t, []any{"*"}, bind.Data)
+
+	raw, err = CreateResource(runtime, "mariadb.conf", nil)
+	require.NoError(t, err)
+	mfile := raw.(*mqlMariadbConf).GetFile()
+	require.NoError(t, mfile.Error)
+	assert.Nil(t, mfile.Data, "the server is MySQL")
+}
+
+// Without the banner (no command execution) the option files cannot say which
+// server reads /etc/mysql/my.cnf. mysql.conf must then report nothing rather
+// than /etc/mysql/mysql.cnf, which the server does not read while my.cnf
+// exists.
+func TestMysqlConf_NeverFallsThroughToMysqlCnfWhileMyCnfExists(t *testing.T) {
+	conf := mysqlConf(t, "mysql_debian12_mysql_libmariadb3.toml")
+
+	file := conf.GetFile()
+	require.NoError(t, file.Error)
+	if file.Data != nil {
+		assert.NotEqual(t, "/etc/mysql/mysql.cnf", file.Data.Path.Data)
+	}
+	opts := serverOptions(t, conf)
+	assert.NotContains(t, opts, "bind_address")
+}
+
+func TestReadableCandidates(t *testing.T) {
+	present := func(paths ...string) func(string) bool {
+		return func(p string) bool { return slices.Contains(paths, p) }
+	}
+
+	assert.Equal(t,
+		[]string{"/etc/my.cnf", "/etc/mysql/my.cnf", "/usr/local/mysql/etc/my.cnf"},
+		readableCandidates(mysqlConfPaths[:4], present("/etc/mysql/my.cnf")),
+		"mysql.cnf is only read through my.cnf")
+	assert.Equal(t,
+		[]string{"/etc/my.cnf", "/etc/mysql/my.cnf", "/usr/local/etc/my.cnf"},
+		readableCandidates(mariadbConfPaths[:4], present("/etc/mysql/my.cnf")),
+		"mariadb.cnf is only read through my.cnf")
+	assert.Equal(t,
+		[]string{"/etc/my.cnf", "/etc/mysql/my.cnf", "/etc/mysql/mysql.cnf"},
+		readableCandidates(mysqlConfPaths[:3], present()),
+		"without the link the target stays a candidate")
+}
+
+// apt remove keeps a package's conffiles, so after removing MariaDB on Debian
+// /etc/mysql/my.cnf still reaches mariadb.cnf and 50-server.cnf is still
+// there. With no server binary left, neither resource may report that tree as
+// a running server's configuration.
+func TestConf_IsEmptyAfterServerRemoved(t *testing.T) {
+	mariadb := mariadbConf(t, "mysql_debian13_mariadb_removed.toml")
+	file := mariadb.GetFile()
+	require.NoError(t, file.Error)
+	assert.Nil(t, file.Data, "the MariaDB server is not installed")
+	opts := mariadb.GetServerOptions()
+	require.NoError(t, opts.Error)
+	assert.Empty(t, opts.Data)
+
+	mysql := mysqlConf(t, "mysql_debian13_mariadb_removed.toml")
+	mfile := mysql.GetFile()
 	require.NoError(t, mfile.Error)
 	assert.Nil(t, mfile.Data)
 }

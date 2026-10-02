@@ -1,0 +1,181 @@
+# Debian 12 running Oracle MySQL 8.4 from repo.mysql.com, after libmariadb3 was
+# installed. libmariadb3 pulls in mariadb-common, which registers
+# /etc/mysql/mariadb.cnf as the my.cnf alternative at priority 500, above
+# mysql-common's /etc/mysql/mysql.cnf at 300. /etc/mysql/my.cnf then reaches
+# mariadb.cnf, so mysqld reads conf.d and the (empty) mariadb.conf.d and never
+# reads mysql.conf.d. The mock has no symlinks, so /etc/mysql/my.cnf holds the
+# alternative's target. Oracle license headers are trimmed; the
+# mysql.conf.d/99-sweep.cnf fragment is the sweep host's, trimmed to the
+# options the tests read. Live: the server listened on *:3306 with
+# max_connections 151 and skip_name_resolve off.
+
+[files."/etc"]
+path = "/etc"
+[files."/etc".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/mysql"]
+path = "/etc/mysql"
+[files."/etc/mysql".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/mysql/conf.d"]
+path = "/etc/mysql/conf.d"
+[files."/etc/mysql/conf.d".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/mysql/mariadb.conf.d"]
+path = "/etc/mysql/mariadb.conf.d"
+[files."/etc/mysql/mariadb.conf.d".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/mysql/mysql.conf.d"]
+path = "/etc/mysql/mysql.conf.d"
+[files."/etc/mysql/mysql.conf.d".stat]
+isdir = true
+mode = 16877
+
+[files."/usr"]
+path = "/usr"
+[files."/usr".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/sbin"]
+path = "/usr/sbin"
+[files."/usr/sbin".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/mysql/my.cnf"]
+path = "/etc/mysql/my.cnf"
+content = '''
+# The MariaDB configuration file
+#
+# The MariaDB/MySQL tools read configuration files in the following order:
+# 0. "/etc/mysql/my.cnf" symlinks to this file, reason why all the rest is read.
+# 1. "/etc/mysql/mariadb.cnf" (this file) to set global defaults,
+# 2. "/etc/mysql/conf.d/*.cnf" to set global options.
+# 3. "/etc/mysql/mariadb.conf.d/*.cnf" to set MariaDB-only options.
+# 4. "~/.my.cnf" to set user-specific options.
+#
+# If the same option is defined multiple times, the last one will apply.
+#
+# One can use all long options that the program supports.
+# Run program with --help to get a list of available options and with
+# --print-defaults to see which it would actually understand and use.
+#
+# If you are new to MariaDB, check out https://mariadb.com/kb/en/basic-mariadb-articles/
+
+#
+# This group is read both by the client and the server
+# use it for options that affect everything
+#
+[client-server]
+# Port or socket location where to connect
+# port = 3306
+socket = /run/mysqld/mysqld.sock
+
+# Import all .cnf files from configuration directory
+!includedir /etc/mysql/conf.d/
+!includedir /etc/mysql/mariadb.conf.d/
+'''
+
+[files."/etc/mysql/mariadb.cnf"]
+path = "/etc/mysql/mariadb.cnf"
+content = '''
+# The MariaDB configuration file
+#
+# The MariaDB/MySQL tools read configuration files in the following order:
+# 0. "/etc/mysql/my.cnf" symlinks to this file, reason why all the rest is read.
+# 1. "/etc/mysql/mariadb.cnf" (this file) to set global defaults,
+# 2. "/etc/mysql/conf.d/*.cnf" to set global options.
+# 3. "/etc/mysql/mariadb.conf.d/*.cnf" to set MariaDB-only options.
+# 4. "~/.my.cnf" to set user-specific options.
+#
+# If the same option is defined multiple times, the last one will apply.
+#
+# One can use all long options that the program supports.
+# Run program with --help to get a list of available options and with
+# --print-defaults to see which it would actually understand and use.
+#
+# If you are new to MariaDB, check out https://mariadb.com/kb/en/basic-mariadb-articles/
+
+#
+# This group is read both by the client and the server
+# use it for options that affect everything
+#
+[client-server]
+# Port or socket location where to connect
+# port = 3306
+socket = /run/mysqld/mysqld.sock
+
+# Import all .cnf files from configuration directory
+!includedir /etc/mysql/conf.d/
+!includedir /etc/mysql/mariadb.conf.d/
+'''
+
+[files."/etc/mysql/mysql.cnf"]
+path = "/etc/mysql/mysql.cnf"
+content = '''
+#
+# The MySQL  Server configuration file.
+#
+# For explanations see
+# http://dev.mysql.com/doc/mysql/en/server-system-variables.html
+
+# * IMPORTANT: Additional settings that can override those from this file!
+#   The files must end with '.cnf', otherwise they'll be ignored.
+#
+!includedir /etc/mysql/conf.d/
+!includedir /etc/mysql/mysql.conf.d/
+'''
+
+[files."/etc/mysql/conf.d/mysql.cnf"]
+path = "/etc/mysql/conf.d/mysql.cnf"
+content = '''
+#
+# The MySQL  Client configuration file.
+#
+# For explanations see
+# http://dev.mysql.com/doc/mysql/en/server-system-variables.html
+
+[mysql]
+'''
+
+[files."/etc/mysql/mysql.conf.d/mysqld.cnf"]
+path = "/etc/mysql/mysql.conf.d/mysqld.cnf"
+content = '''
+#
+# The MySQL  Server configuration file.
+#
+# For explanations see
+# http://dev.mysql.com/doc/mysql/en/server-system-variables.html
+
+[mysqld]
+pid-file	= /var/run/mysqld/mysqld.pid
+socket		= /var/run/mysqld/mysqld.sock
+datadir		= /var/lib/mysql
+log-error	= /var/log/mysql/error.log
+'''
+
+[files."/etc/mysql/mysql.conf.d/99-sweep.cnf"]
+path = "/etc/mysql/mysql.conf.d/99-sweep.cnf"
+content = '''
+# sweep configuration
+[mysqld]
+bind-address = 127.0.0.1
+port = 3306
+skip-name-resolve
+max_connections = 120
+require_secure_transport = ON
+local-infile = 0
+'''
+
+[files."/usr/sbin/mysqld"]
+path = "/usr/sbin/mysqld"
+content = ''
