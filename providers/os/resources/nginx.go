@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -86,7 +87,7 @@ func (n *mqlNginx) modules() ([]any, error) {
 		return nil, err
 	}
 
-	configured, confPath := parseNginxConfigureModules(string(data))
+	configured, _ := parseNginxConfigureModules(string(data))
 
 	// a dynamic module only runs when the configuration loads it
 	var loaded []string
@@ -94,10 +95,7 @@ func (n *mqlNginx) modules() ([]any, error) {
 		if !m.dynamic {
 			continue
 		}
-		if confPath == "" {
-			confPath = nginxConfPath(conn)
-		}
-		loaded, err = n.loadedNginxModules(confPath)
+		loaded, err = n.loadedNginxModules(n.launchInfo().conf)
 		if err != nil {
 			return nil, err
 		}
@@ -246,6 +244,165 @@ var nginxConfPaths = map[string]string{
 
 const defaultNginxConf = "/etc/nginx/nginx.conf"
 
+// nginxPidFiles are the pid files to try after the one the configuration and
+// the build name: the location every Linux distribution package uses, and its
+// older spelling.
+var nginxPidFiles = []string{"/run/nginx.pid", "/var/run/nginx.pid"}
+
+type mqlNginxInternal struct {
+	launchOnce sync.Once
+	launch     nginxLaunch
+}
+
+// nginxLaunch is the configuration nginx runs with.
+type nginxLaunch struct {
+	// conf is the configuration file nginx loads.
+	conf string
+	// globals are the -g directives of the running master, which nginx reads
+	// as part of the main context of conf.
+	globals string
+}
+
+// launchInfo returns the configuration nginx runs with, worked out once.
+func (n *mqlNginx) launchInfo() nginxLaunch {
+	n.launchOnce.Do(func() {
+		conn := n.MqlRuntime.Connection.(shared.Connection)
+		n.launch = resolveNginxLaunch(&afero.Afero{Fs: conn.FileSystem()}, func(bin string) string {
+			return nginxBuildOutput(conn, bin)
+		}, nginxConfPath(conn))
+	})
+	return n.launch
+}
+
+// nginxBuildOutput returns the output of `<bin> -V`, or "" when it can't run.
+func nginxBuildOutput(conn shared.Connection, bin string) string {
+	cmd, err := conn.RunCommand(shellQuote(bin) + " -V 2>&1")
+	if err != nil || cmd.ExitStatus != 0 {
+		return ""
+	}
+	data, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// resolveNginxLaunch works out the configuration nginx runs with. A running
+// master's command line wins: its -c, or the conf path its binary was built
+// with, resolved against its -p prefix, plus its -g directives. Without a
+// running master it is the conf path of the nginx binary on the PATH, and
+// without that the platform default. buildOutput returns `<bin> -V` output.
+func resolveNginxLaunch(afs *afero.Afero, buildOutput func(bin string) string, platformDefault string) nginxLaunch {
+	build, built := nginx.ParseBuildInfo(buildOutput("nginx"))
+
+	conf := platformDefault
+	if built {
+		conf = nginx.ConfFile(nginx.LaunchArgs{}, build)
+	}
+
+	// The pid directive of the configuration names the pid file; without one
+	// it is the build's, and the distribution packages all use /run/nginx.pid.
+	var pidFiles []string
+	if p := nginxPidDirective(afs, conf); p != "" {
+		pidFiles = append(pidFiles, p)
+	}
+	if built {
+		pidFiles = append(pidFiles, nginx.FullPath(build.PidPath, nginx.LaunchArgs{}, build))
+	}
+	pidFiles = append(pidFiles, nginxPidFiles...)
+
+	la, running := nginxMasterArgs(afs, pidFiles)
+	if !running {
+		return nginxLaunch{conf: conf}
+	}
+
+	// The master may run another binary than the one on the PATH, built
+	// with other paths.
+	if path.IsAbs(la.Binary) {
+		if b, ok := nginx.ParseBuildInfo(buildOutput(la.Binary)); ok {
+			build, built = b, true
+		}
+	}
+	switch {
+	case built:
+		conf = nginx.ConfFile(la, build)
+	case la.Conf != "":
+		conf = nginx.FullPath(la.Conf, la, nginx.BuildInfo{Prefix: "/"})
+	}
+	return nginxLaunch{conf: conf, globals: la.Globals}
+}
+
+// nginxPidDirective returns the pid directive of the main context of the
+// configuration file at path, or "" when it has none or can't be read.
+// A relative pid path is left out, since its prefix is not known here.
+func nginxPidDirective(afs *afero.Afero, path string) string {
+	data, err := afs.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	directives, _ := nginx.Parse(string(data))
+	pid := ""
+	for _, d := range directives {
+		if d.Name == "pid" && !d.IsBlock() && len(d.Args) == 1 {
+			pid = d.Args[0]
+		}
+	}
+	if !filepath.IsAbs(pid) {
+		return ""
+	}
+	return pid
+}
+
+// nginxMasterArgs reads the command line of the nginx master whose pid is in
+// the first of pidFiles that names a running nginx. running is false when
+// none does.
+func nginxMasterArgs(afs *afero.Afero, pidFiles []string) (nginx.LaunchArgs, bool) {
+	seen := map[string]bool{}
+	for _, pidFile := range pidFiles {
+		if seen[pidFile] {
+			continue
+		}
+		seen[pidFile] = true
+		data, err := afs.ReadFile(pidFile)
+		if err != nil {
+			continue
+		}
+		pid := strings.TrimSpace(string(data))
+		if _, err := strconv.Atoi(pid); err != nil {
+			continue
+		}
+		raw, err := afs.ReadFile(filepath.Join("/proc", pid, "cmdline"))
+		if err != nil {
+			continue
+		}
+		if la, ok := nginx.ParseProcCmdline(raw); ok {
+			return la, true
+		}
+	}
+	return nginx.LaunchArgs{}, false
+}
+
+// nginxGlobalDirectives returns the -g directives nginx reads as part of the
+// main context of the configuration file at path: those of the running
+// master when path is the file it loads, otherwise none.
+func nginxGlobalDirectives(launch nginxLaunch, path string) []nginx.Directive {
+	if launch.globals == "" || launch.conf != path {
+		return nil
+	}
+	directives, _ := nginx.Parse(launch.globals)
+	return directives
+}
+
+// nginxResource returns the nginx resource, which knows the binary and the
+// command line nginx runs with.
+func (s *mqlNginxConf) nginxResource() (*mqlNginx, error) {
+	o, err := NewResource(s.MqlRuntime, "nginx", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	return o.(*mqlNginx), nil
+}
+
 func nginxConfPath(conn shared.Connection) string {
 	asset := conn.Asset()
 	if asset != nil && asset.Platform != nil {
@@ -290,8 +447,11 @@ func (s *mqlNginxConf) id() (string, error) {
 }
 
 func (s *mqlNginxConf) file() (*mqlFile, error) {
-	conn := s.MqlRuntime.Connection.(shared.Connection)
-	path := nginxConfPath(conn)
+	nx, err := s.nginxResource()
+	if err != nil {
+		return nil, err
+	}
+	path := nx.launchInfo().conf
 
 	f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
 		"path": llx.StringData(path),
@@ -397,55 +557,25 @@ func (s *mqlNginxConf) parse(file *mqlFile) error {
 		return err
 	}
 
-	mainParams := map[string]any{}
-	httpParams := map[string]any{}
-	streamParams := map[string]any{}
-	var servers []nginxServer
-	var upstreams []nginxUpstream
-	var streamServers []nginxServer
-	var streamUpstreams []nginxUpstream
-	var allListenAddrs []string
-
-	for _, d := range cfg.Directives {
-		switch d.Name {
-		case "http":
-			walkHTTPBlock(d.Block, httpParams, &servers, &upstreams, &allListenAddrs)
-		case "stream":
-			walkStreamBlock(d.Block, streamParams, &streamServers, &streamUpstreams)
-		case "events":
-			for _, ed := range d.Block {
-				if !ed.IsBlock() {
-					setNginxParam(mainParams, ed.Name, strings.Join(ed.Args, " "))
-				}
-			}
-		default:
-			if !d.IsBlock() {
-				setNginxParam(mainParams, d.Name, strings.Join(d.Args, " "))
-			}
-		}
-	}
-	s.loadModules = nginxLoadModules(cfg.Directives)
-
-	// Merge main + http params for the top-level params field.
-	mergedParams := make(map[string]any, len(mainParams)+len(httpParams))
-	for k, v := range mainParams {
-		mergedParams[k] = v
-	}
-	for k, v := range httpParams {
-		mergedParams[k] = v
+	directives := cfg.Directives
+	if nx, err := s.nginxResource(); err == nil {
+		directives = append(nginxGlobalDirectives(nx.launchInfo(), file.Path.Data), directives...)
 	}
 
-	s.Params = plugin.TValue[map[string]any]{Data: mergedParams, State: plugin.StateIsSet}
-	s.HttpParams = plugin.TValue[map[string]any]{Data: httpParams, State: plugin.StateIsSet}
-	s.StreamParams = plugin.TValue[map[string]any]{Data: streamParams, State: plugin.StateIsSet}
+	w := walkNginxConfig(directives, s.nginxVersion())
+	s.loadModules = nginxLoadModules(directives)
 
-	serverResources, err := nginxServers2Resources(servers, s.MqlRuntime, s.__id)
+	s.Params = plugin.TValue[map[string]any]{Data: w.params, State: plugin.StateIsSet}
+	s.HttpParams = plugin.TValue[map[string]any]{Data: w.httpParams, State: plugin.StateIsSet}
+	s.StreamParams = plugin.TValue[map[string]any]{Data: w.streamParams, State: plugin.StateIsSet}
+
+	serverResources, err := nginxServers2Resources(w.servers, s.MqlRuntime, s.__id)
 	if err != nil {
 		return err
 	}
 	s.Servers = plugin.TValue[[]any]{Data: serverResources, State: plugin.StateIsSet}
 
-	upstreamResources, err := nginxUpstreams2Resources(upstreams, s.MqlRuntime, s.__id)
+	upstreamResources, err := nginxUpstreams2Resources(w.upstreams, s.MqlRuntime, s.__id)
 	if err != nil {
 		return err
 	}
@@ -457,13 +587,13 @@ func (s *mqlNginxConf) parse(file *mqlFile) error {
 	// counterparts in the resource cache.
 	streamOwnerID := s.__id + "/stream"
 
-	streamServerResources, err := nginxServers2Resources(streamServers, s.MqlRuntime, streamOwnerID)
+	streamServerResources, err := nginxServers2Resources(w.streamServers, s.MqlRuntime, streamOwnerID)
 	if err != nil {
 		return err
 	}
 	s.StreamServers = plugin.TValue[[]any]{Data: streamServerResources, State: plugin.StateIsSet}
 
-	streamUpstreamResources, err := nginxUpstreams2Resources(streamUpstreams, s.MqlRuntime, streamOwnerID)
+	streamUpstreamResources, err := nginxUpstreams2Resources(w.streamUpstreams, s.MqlRuntime, streamOwnerID)
 	if err != nil {
 		return err
 	}
@@ -472,7 +602,7 @@ func (s *mqlNginxConf) parse(file *mqlFile) error {
 	// Deduplicate listen addresses in first-seen order.
 	seen := map[string]bool{}
 	var uniqueAddrs []any
-	for _, addr := range allListenAddrs {
+	for _, addr := range w.listenAddrs {
 		if !seen[addr] {
 			seen[addr] = true
 			uniqueAddrs = append(uniqueAddrs, addr)
@@ -494,6 +624,267 @@ func (s *mqlNginxConf) parse(file *mqlFile) error {
 	s.Files = plugin.TValue[[]any]{Data: fileResources, State: plugin.StateIsSet}
 
 	return nil
+}
+
+// nginxVersion returns the version of the nginx binary, or "" when it is not
+// known.
+func (s *mqlNginxConf) nginxVersion() string {
+	nx, err := s.nginxResource()
+	if err != nil {
+		return ""
+	}
+	v := nx.GetVersion()
+	if v.Error != nil || v.IsNull() {
+		return ""
+	}
+	return v.Data
+}
+
+// nginxWalk is the parsed configuration before it becomes resources.
+type nginxWalk struct {
+	params          map[string]any
+	httpParams      map[string]any
+	streamParams    map[string]any
+	servers         []nginxServer
+	upstreams       []nginxUpstream
+	streamServers   []nginxServer
+	streamUpstreams []nginxUpstream
+	listenAddrs     []string
+}
+
+// walkNginxConfig turns the top-level directives of a configuration (includes
+// expanded) into params, servers and upstreams. The typed fields of each
+// server and location report what nginx runs with: the directives the block
+// sets, those it inherits from the blocks around it, and nginx's defaults
+// (for ssl_protocols, the default of the given nginx version).
+func walkNginxConfig(directives []nginx.Directive, version string) nginxWalk {
+	mainParams := map[string]any{}
+	w := nginxWalk{
+		httpParams:   map[string]any{},
+		streamParams: map[string]any{},
+	}
+	var httpScope, streamScope nginxScope
+
+	for _, d := range directives {
+		switch d.Name {
+		case "http":
+			httpScope = nginxBlockScope(d.Block)
+			walkHTTPBlock(d.Block, w.httpParams, &w.servers, &w.upstreams, &w.listenAddrs)
+		case "stream":
+			streamScope = nginxBlockScope(d.Block)
+			walkStreamBlock(d.Block, w.streamParams, &w.streamServers, &w.streamUpstreams)
+		case "events":
+			for _, ed := range d.Block {
+				if !ed.IsBlock() {
+					setNginxParam(mainParams, ed.Name, strings.Join(ed.Args, " "))
+				}
+			}
+		default:
+			if !d.IsBlock() {
+				setNginxParam(mainParams, d.Name, strings.Join(d.Args, " "))
+			}
+		}
+	}
+
+	sslProtocols := nginxDefaultSSLProtocols(version)
+	for i := range w.servers {
+		resolveNginxServer(&w.servers[i], httpScope, sslProtocols, true)
+	}
+	for i := range w.streamServers {
+		resolveNginxServer(&w.streamServers[i], streamScope, sslProtocols, false)
+	}
+
+	// Merge main + http params for the top-level params field.
+	w.params = make(map[string]any, len(mainParams)+len(w.httpParams))
+	for k, v := range mainParams {
+		w.params[k] = v
+	}
+	for k, v := range w.httpParams {
+		w.params[k] = v
+	}
+	return w
+}
+
+// nginxInheritedDirectives are the directives a server{} block takes from the
+// http{} or stream{} block around it, and a location{} block from its
+// server{}, when it does not set them itself. add_header is inherited as a
+// whole, see nginxScope.child.
+var nginxInheritedDirectives = map[string]bool{
+	"ssl_protocols":             true,
+	"ssl_ciphers":               true,
+	"ssl_prefer_server_ciphers": true,
+	"ssl_session_tickets":       true,
+	"ssl_session_timeout":       true,
+	"ssl_certificate":           true,
+	"ssl_certificate_key":       true,
+	"server_tokens":             true,
+	"root":                      true,
+	"add_header_inherit":        true,
+}
+
+// nginxScope holds the directives of one block that nested blocks inherit.
+type nginxScope struct {
+	// values holds the last value of each of nginxInheritedDirectives the
+	// block sets.
+	values map[string]string
+	// addHeaders holds the block's add_header directives (name -> values),
+	// nil when it has none.
+	addHeaders map[string][]string
+}
+
+// nginxBlockScope collects the inheritable directives a block sets itself.
+func nginxBlockScope(directives []nginx.Directive) nginxScope {
+	sc := nginxScope{values: map[string]string{}}
+	for _, d := range directives {
+		if d.IsBlock() {
+			continue
+		}
+		if nginxInheritedDirectives[d.Name] {
+			sc.values[d.Name] = strings.Join(d.Args, " ")
+		}
+		if d.Name == "add_header" {
+			if sc.addHeaders == nil {
+				sc.addHeaders = map[string][]string{}
+			}
+			if len(d.Args) >= 2 {
+				sc.addHeaders[d.Args[0]] = append(sc.addHeaders[d.Args[0]], strings.Join(d.Args[1:], " "))
+			}
+		}
+	}
+	return sc
+}
+
+// child returns the effective scope of a block nested in parent that sets
+// the directives in own. A directive own sets replaces the parent's. The
+// add_header directives are inherited only when own has none, unless
+// add_header_inherit (nginx 1.29.3) says off (never inherit) or merge
+// (the parent's come first, then own's).
+func (parent nginxScope) child(own nginxScope) nginxScope {
+	eff := nginxScope{values: make(map[string]string, len(parent.values)+len(own.values))}
+	for k, v := range parent.values {
+		eff.values[k] = v
+	}
+	for k, v := range own.values {
+		eff.values[k] = v
+	}
+
+	switch eff.values["add_header_inherit"] {
+	case "off":
+		eff.addHeaders = own.addHeaders
+	case "merge":
+		if parent.addHeaders != nil || own.addHeaders != nil {
+			eff.addHeaders = map[string][]string{}
+		}
+		for k, v := range parent.addHeaders {
+			eff.addHeaders[k] = append(eff.addHeaders[k], v...)
+		}
+		for k, v := range own.addHeaders {
+			eff.addHeaders[k] = append(eff.addHeaders[k], v...)
+		}
+	default:
+		eff.addHeaders = own.addHeaders
+		if eff.addHeaders == nil {
+			eff.addHeaders = parent.addHeaders
+		}
+	}
+	return eff
+}
+
+// resolveNginxServer sets the typed fields of a server{} block and its
+// location{} blocks to what nginx runs with: the block's own directives,
+// then those of parent (the http{} or stream{} block), then nginx's
+// defaults. params keeps the directives written in the block. ssl stays
+// what the block itself says, since an ssl_certificate inherited from
+// http{} does not make a plain-HTTP listener serve TLS. http is false for
+// a stream server, which has no server_tokens, root or add_header.
+func resolveNginxServer(srv *nginxServer, parent nginxScope, defaultSSLProtocols string, http bool) {
+	eff := parent.child(srv.scope)
+	v := eff.values
+
+	srv.SSLProtocols = nginxValueOr(v, "ssl_protocols", defaultSSLProtocols)
+	srv.SSLCiphers = v["ssl_ciphers"]
+	srv.SSLCertificate = v["ssl_certificate"]
+	srv.SSLCertificateKey = v["ssl_certificate_key"]
+	srv.SSLPreferServerCiphers = strings.EqualFold(nginxValueOr(v, "ssl_prefer_server_ciphers", "off"), "on")
+	srv.SSLSessionTickets = nginxValueOr(v, "ssl_session_tickets", "on")
+	srv.SSLSessionTimeout = nginxValueOr(v, "ssl_session_timeout", "5m")
+	if !http {
+		return
+	}
+	srv.ServerTokens = nginxValueOr(v, "server_tokens", "on")
+	srv.Root = v["root"]
+	srv.AddHeaders = map[string][]string{}
+	for k, vals := range eff.addHeaders {
+		srv.AddHeaders[k] = append([]string(nil), vals...)
+	}
+	for i := range srv.Locations {
+		loc := &srv.Locations[i]
+		loc.Root = eff.child(loc.scope).values["root"]
+	}
+}
+
+func nginxValueOr(values map[string]string, name, def string) string {
+	if v, ok := values[name]; ok && v != "" {
+		return v
+	}
+	return def
+}
+
+// nginxDefaultSSLProtocols returns the protocols nginx enables when the
+// configuration sets no ssl_protocols (src/http/modules/ngx_http_ssl_module.c
+// and the stream counterpart). 1.9.1 disabled SSLv3, 1.23.4 enabled TLSv1.3,
+// and 1.27.3 disabled TLSv1 and TLSv1.1. When the version is not known this
+// returns every protocol a release from 1.9.1 on may enable, so a check that
+// an old protocol is off does not pass on a guess.
+func nginxDefaultSSLProtocols(version string) string {
+	const unknown = "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3"
+	v, ok := parseNginxVersion(version)
+	if !ok {
+		return unknown
+	}
+	switch {
+	case nginxVersionLess(v, [3]int{1, 9, 1}):
+		return "SSLv3 TLSv1 TLSv1.1 TLSv1.2"
+	case nginxVersionLess(v, [3]int{1, 23, 4}):
+		return "TLSv1 TLSv1.1 TLSv1.2"
+	case nginxVersionLess(v, [3]int{1, 27, 3}):
+		return "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3"
+	default:
+		return "TLSv1.2 TLSv1.3"
+	}
+}
+
+// parseNginxVersion reads "major.minor.patch" from the start of version.
+func parseNginxVersion(version string) ([3]int, bool) {
+	var v [3]int
+	parts := strings.SplitN(strings.TrimSpace(version), ".", 3)
+	if len(parts) != 3 {
+		return v, false
+	}
+	for i, p := range parts {
+		end := 0
+		for end < len(p) && p[end] >= '0' && p[end] <= '9' {
+			end++
+		}
+		if end == 0 {
+			return v, false
+		}
+		n, err := strconv.Atoi(p[:end])
+		if err != nil {
+			return v, false
+		}
+		v[i] = n
+	}
+	return v, true
+}
+
+func nginxVersionLess(a, b [3]int) bool {
+	for i := range a {
+		if a[i] != b[i] {
+			return a[i] < b[i]
+		}
+	}
+	return false
 }
 
 // Field methods — all delegate to parse().
@@ -545,13 +936,14 @@ func (s *mqlNginxConf) user(params map[string]any) (string, error) {
 	return "", nil
 }
 
+// workerProcesses reports 1, nginx's default, when worker_processes is unset.
 func (s *mqlNginxConf) workerProcesses(params map[string]any) (string, error) {
 	if v, ok := params["worker_processes"]; ok {
-		if str, ok := v.(string); ok {
+		if str, ok := v.(string); ok && str != "" {
 			return str, nil
 		}
 	}
-	return "", nil
+	return "1", nil
 }
 
 func (s *mqlNginxConf) errorLog(params map[string]any) (string, error) {
@@ -582,6 +974,8 @@ type nginxServer struct {
 	ServerTokens           string
 	Locations              []nginxLocation
 	Params                 map[string]any
+	// scope holds the inheritable directives the block sets itself.
+	scope nginxScope
 }
 
 // nginxListen is a parsed `listen` directive.
@@ -626,6 +1020,8 @@ type nginxLocation struct {
 	Return      string
 	FastcgiPass string
 	Params      map[string]any
+	// scope holds the inheritable directives the block sets itself.
+	scope nginxScope
 }
 
 // walkHTTPBlock processes the http{} block's directives.
@@ -734,6 +1130,7 @@ func parseNginxServerBlock(directives []nginx.Directive) nginxServer {
 	}
 
 	srv.Listen = strings.Join(listens, ",")
+	srv.scope = nginxBlockScope(directives)
 	return srv
 }
 
@@ -836,6 +1233,7 @@ func parseNginxLocationBlock(path string, directives []nginx.Directive) nginxLoc
 		}
 	}
 
+	loc.scope = nginxBlockScope(directives)
 	return loc
 }
 

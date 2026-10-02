@@ -2566,17 +2566,28 @@ nginx {
 nginx.conf {
   init(path? string)
   // Primary configuration file
+  //
+  // The file the running nginx master loads: its `-c` argument, or else the
+  // `--conf-path` its binary was built with, with a relative path resolved
+  // against the `-p` prefix. When nginx is not running, the `--conf-path` of
+  // the nginx binary, or else the platform default such as
+  // /etc/nginx/nginx.conf.
   file() file
   // All configuration files (main + included fragments)
   files(file) []file
   // Flat key-value directives from main + http context
   //
   // A directive that may repeat, such as `listen`, `include`, `load_module`,
-  // `error_log`, or `env`, keeps every value, comma-separated.
+  // `error_log`, or `env`, keeps every value, comma-separated. Directives
+  // the running nginx master was given with `-g` count as main context
+  // directives of the file it loads.
   params(file) map[string]string
   // User directive
   user(params) string
   // Worker processes setting
+  //
+  // 1 when the configuration does not set worker_processes, which is the
+  // nginx default.
   workerProcesses(params) string
   // Error log path
   //
@@ -2607,6 +2618,11 @@ nginx.conf {
 }
 
 // Nginx server block
+//
+// The TLS, root, response header, and server_tokens fields report the value
+// nginx runs the server with: set in the server block, else set in the
+// enclosing http or stream block, else the nginx default. params lists only
+// the directives written in the server block.
 private nginx.conf.server @defaults("serverName ssl") {
   // Server name(s)
   serverName string
@@ -2615,32 +2631,68 @@ private nginx.conf.server @defaults("serverName ssl") {
   // Listen directives broken out per declaration (port, ssl, http2, udp, defaultServer, proxyProtocol, address, raw)
   listens []dict
   // Document root
+  //
+  // From the server block, else the http block. Empty when neither sets
+  // root, in which case nginx serves the html directory under its prefix.
   root string
   // Whether SSL is configured (any listen line carries `ssl`, or ssl_certificate is set)
+  //
+  // Read from the server block's own listen and ssl_certificate directives.
   ssl bool
-  // ssl_protocols directive value (e.g., "TLSv1.2 TLSv1.3")
+  // TLS protocols the server accepts (e.g., "TLSv1.2 TLSv1.3")
+  //
+  // From the server block, else the http or stream block, else the nginx
+  // default for the installed version: "TLSv1.2 TLSv1.3" from 1.27.3,
+  // "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3" from 1.23.4, "TLSv1 TLSv1.1 TLSv1.2"
+  // from 1.9.1. When the nginx version is unknown, "TLSv1 TLSv1.1 TLSv1.2
+  // TLSv1.3".
   sslProtocols string
   // ssl_ciphers directive value
+  //
+  // From the server block, else the http or stream block. Empty when neither
+  // sets ssl_ciphers and nginx uses its built-in cipher list.
   sslCiphers string
   // Path to the server certificate (ssl_certificate)
+  //
+  // From the server block, else the http or stream block.
   sslCertificate string
   // Path to the server private key (ssl_certificate_key)
+  //
+  // From the server block, else the http or stream block.
   sslCertificateKey string
   // ssl_prefer_server_ciphers directive value (true when "on")
+  //
+  // From the server block, else the http or stream block. False when
+  // neither sets it, which is the nginx default.
   sslPreferServerCiphers bool
-  // ssl_session_tickets directive value ("on"/"off"; empty if unset)
+  // ssl_session_tickets directive value ("on" or "off")
+  //
+  // From the server block, else the http or stream block. "on" when neither
+  // sets it, which is the nginx default.
   sslSessionTickets string
   // ssl_session_timeout directive value (e.g., "1d")
+  //
+  // From the server block, else the http or stream block. "5m" when neither
+  // sets it, which is the nginx default.
   sslSessionTimeout string
   // X.509 certificates parsed from sslCertificate (empty if the file is unreadable)
   certificate() []network.certificate
   // Response headers from `add_header NAME VALUE` directives (header name -> values)
+  //
+  // The add_header directives of the server block. A server block without
+  // any add_header gets all of the http block's, as nginx does;
+  // `add_header_inherit off` or `merge` changes that the way nginx does.
   addHeaders map[string][]string
   // Location blocks
   locations []nginx.conf.location
   // server_tokens directive value (on/off/build)
+  //
+  // From the server block, else the http block. "on" when neither sets it,
+  // which is the nginx default. Empty for a stream server.
   serverTokens string
   // All directives within this server block
+  //
+  // As written in the server block, without the ones it inherits.
   params map[string]string
 }
 
@@ -2669,6 +2721,8 @@ private nginx.conf.location @defaults("path") {
   // Proxy pass target
   proxyPass string
   // Document root override
+  //
+  // From the location block, else its server block, else the http block.
   root string
   // try_files directive value
   tryFiles string

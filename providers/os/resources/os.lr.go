@@ -48791,7 +48791,7 @@ func (c *mqlBind9DnssecKey) GetPrivateFile() *plugin.TValue[*mqlFile] {
 type mqlNginx struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlNginxInternal it will be used here
+	mqlNginxInternal
 	Version plugin.TValue[string]
 	Modules plugin.TValue[[]any]
 }
