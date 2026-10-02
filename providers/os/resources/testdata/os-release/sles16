@@ -1,0 +1,17 @@
+# The NAME and PRETTY_NAME fields have been chosen to state compatibility between our products.
+# The use of "SLES" and "SUSE Linux Enterprise" rather than a more generic name is due to backward compatibility with existing OS detection code in applications of third party vendors.
+NAME="SLES"
+PRETTY_NAME="SUSE Linux Enterprise Server 16.0"
+VARIANT="Enterprise Server"
+VARIANT_ID="server"
+VERSION="16.0"
+VERSION_ID="16.0"
+ANSI_COLOR="0;32"
+ID="sles"
+ID_LIKE="suse opensuse"
+CPE_NAME="cpe:/o:suse:sles:16:16.0"
+SUSE_SUPPORT_PRODUCT="SUSE Linux Enterprise Server"
+SUSE_SUPPORT_PRODUCT_VERSION="16.0"
+HOME_URL="https://www.suse.com/products/server/"
+DOCUMENTATION_URL="https://documentation.suse.com/sles/16.0/"
+LOGO="distributor-logo"

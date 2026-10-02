@@ -7,8 +7,10 @@ import (
 	"bytes"
 	"regexp"
 	"strconv"
+	"strings"
 	"text/template"
 
+	"github.com/facebookincubator/nvdtools/wfn"
 	"go.mondoo.com/mql/utils/stringx"
 )
 
@@ -151,13 +153,19 @@ var platformCPES = []platformCPEEntry{
 		},
 	},
 	// suse
+	//
+	// Only used when os-release carries no CPE_NAME (see OsReleaseCPE). SUSE
+	// puts the service pack in the update field: 15.7 is 15:sp7, 15 is 15:*,
+	// and from 16 on the update field carries the full version (16:16.0).
 	{
 		Platform: "sles",
 		CPEBuilder: func(platform, version string, workstation bool) (string, error) {
+			v, update := slesVersionUpdate(version)
 			return cpeVersionPatternFunc(
-				"cpe:2.3:o:suse:suse_linux_enterprise_server:{{.Version}}:*:*:*:*:*:*:*",
+				"cpe:2.3:o:suse:suse_linux_enterprise_server:{{.Version}}:{{.Update}}:*:*:*:*:*:*",
 				cpePatternArgs{
-					Version: version,
+					Version: v,
+					Update:  update,
 				})
 		},
 	},
@@ -245,7 +253,44 @@ var platformCPES = []platformCPEEntry{
 type cpePatternArgs struct {
 	Product   string
 	Version   string
+	Update    string
 	SwEdition string
+}
+
+// slesVersionUpdate splits a SLES version into the version and update fields
+// SUSE uses in its own CPE_NAME: 15.7 is 15 and sp7, 15 is 15 and *, and from
+// SLES 16 on the update is the full version (16.0 is 16 and 16.0).
+func slesVersionUpdate(version string) (string, string) {
+	major, minor, hasMinor := strings.Cut(version, ".")
+	m, err := strconv.Atoi(major)
+	if err != nil {
+		return version, "*"
+	}
+	if m >= 16 {
+		return major, version
+	}
+	if !hasMinor || minor == "" || minor == "0" {
+		return major, "*"
+	}
+	if _, err := strconv.Atoi(minor); err != nil {
+		return version, "*"
+	}
+	return major, "sp" + minor
+}
+
+// OsReleaseCPE binds the CPE_NAME value of an os-release file (a CPE 2.2 URI
+// such as cpe:/o:suse:sles:15:sp7) to a CPE 2.3 formatted string. It reports
+// false when the value is empty or not a CPE.
+func OsReleaseCPE(cpeName string) (string, bool) {
+	cpeName = strings.TrimSpace(cpeName)
+	if cpeName == "" {
+		return "", false
+	}
+	attr, err := wfn.Parse(cpeName)
+	if err != nil {
+		return "", false
+	}
+	return attr.BindToFmtString(), true
 }
 
 func cpeVersionPatternFunc(pattern string, args cpePatternArgs) (string, error) {

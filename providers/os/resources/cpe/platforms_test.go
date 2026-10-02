@@ -89,6 +89,29 @@ func TestPlatformCPE(t *testing.T) {
 			version:  "22.04",
 			cpe:      "cpe:2.3:o:canonical:ubuntu_linux:22.04:*:*:*:lts:*:*:*",
 		},
+		// SUSE puts the service pack in the update field (os-release CPE_NAME
+		// cpe:/o:suse:sles:15:sp7); from SLES 16 on the update is the full
+		// version (cpe:/o:suse:sles:16:16.0).
+		{
+			platform: "sles",
+			version:  "15.7",
+			cpe:      "cpe:2.3:o:suse:suse_linux_enterprise_server:15:sp7:*:*:*:*:*:*",
+		},
+		{
+			platform: "sles",
+			version:  "12.5",
+			cpe:      "cpe:2.3:o:suse:suse_linux_enterprise_server:12:sp5:*:*:*:*:*:*",
+		},
+		{
+			platform: "sles",
+			version:  "15",
+			cpe:      "cpe:2.3:o:suse:suse_linux_enterprise_server:15:*:*:*:*:*:*:*",
+		},
+		{
+			platform: "sles",
+			version:  "16.0",
+			cpe:      "cpe:2.3:o:suse:suse_linux_enterprise_server:16:16.0:*:*:*:*:*:*",
+		},
 		{
 			platform: "amazonlinux",
 			version:  "2",
@@ -106,4 +129,15 @@ func TestPlatformCPE(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, test.cpe, cpe, "platform: %s, version: %s", test.platform, test.version)
 	}
+}
+
+func TestOsReleaseCPE(t *testing.T) {
+	got, ok := OsReleaseCPE("cpe:/o:suse:sles:15:sp7")
+	assert.True(t, ok)
+	assert.Equal(t, "cpe:2.3:o:suse:sles:15:sp7:*:*:*:*:*:*", got)
+
+	_, ok = OsReleaseCPE("")
+	assert.False(t, ok)
+	_, ok = OsReleaseCPE("not a cpe")
+	assert.False(t, ok)
 }
