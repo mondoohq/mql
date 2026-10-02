@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
@@ -75,12 +76,30 @@ func TestParsePostfixMainCf(t *testing.T) {
 		assert.Equal(t, "$unset_var", got["relayhost"])
 	})
 
-	t.Run("a blank line breaks continuation", func(t *testing.T) {
-		// the indented line follows a blank line, so it must NOT fold into
-		// mynetworks (a blank line terminates the logical line in Postfix)
-		content := "mynetworks = 127.0.0.0/8\n\n  [::1]/128\n"
+	t.Run("comment and blank lines do not break continuation", func(t *testing.T) {
+		// Postfix 3.8 (SLES 15 SP7): `postconf -c dir -n` on this file reports
+		// smtpd_client_restrictions = permit_mynetworks, reject and a=1  b.
+		content := "smtpd_client_restrictions =\n" +
+			"    permit_mynetworks,\n" +
+			"#   reject_unknown_client_hostname,\n" +
+			"    reject\n" +
+			"a = 1\n" +
+			"\n" +
+			"  b\n" +
+			"z = 3\n" +
+			"   # indented comment\n" +
+			"  w\n"
 		got := parsePostfixMainCf(content)
-		assert.Equal(t, "127.0.0.0/8", got["mynetworks"])
+		assert.Equal(t, map[string]any{
+			"smtpd_client_restrictions": "permit_mynetworks, reject",
+			"a":                         "1 b",
+			"z":                         "3 w",
+		}, got)
+	})
+
+	t.Run("indented text before the first parameter is discarded", func(t *testing.T) {
+		got := parsePostfixMainCf("  stray = 1\n  more\nmyhostname = mail.example.com\n")
+		assert.Equal(t, map[string]any{"myhostname": "mail.example.com"}, got)
 	})
 }
 
@@ -111,4 +130,22 @@ func TestParseMasterCf(t *testing.T) {
 
 	// the continuation line is appended to the submission command
 	assert.Equal(t, "smtpd -o syslog_name=postfix/submission", got[2].Command)
+}
+
+func TestParseMasterCfOptionsAfterComment(t *testing.T) {
+	// Postfix 3.8 `postconf -M smtps/inet` on this master.cf ends with
+	// -o smtpd_tls_security_level=none: the commented-out option does not end
+	// the smtps entry.
+	content := "smtps     inet  n       -       n       -       -       smtpd\n" +
+		"  -o smtpd_tls_wrappermode=yes\n" +
+		"#  -o smtpd_tls_security_level=encrypt\n" +
+		"  -o smtpd_tls_security_level=none\n" +
+		"\n" +
+		"  -o smtpd_sasl_auth_enable=no\n" +
+		"pickup    unix  n       -       y       60      1       pickup\n"
+
+	got := parseMasterCf(content)
+	require.Len(t, got, 2)
+	assert.Equal(t, "smtpd -o smtpd_tls_wrappermode=yes -o smtpd_tls_security_level=none -o smtpd_sasl_auth_enable=no", got[0].Command)
+	assert.Equal(t, "pickup", got[1].Command)
 }

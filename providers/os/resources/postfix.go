@@ -276,25 +276,27 @@ func parsePostfixMainCf(content string) map[string]any {
 }
 
 // foldContinuationLines joins lines that start with whitespace into the
-// preceding logical line, matching how Postfix reads main.cf and master.cf.
+// preceding logical line, matching how Postfix reads main.cf and master.cf
+// (readllines in src/util/readlline.c, unchanged since at least 2.10).
+// Comment lines (first non-blank character '#', indented or not) and blank
+// lines are skipped without ending the logical line, so an indented line after
+// them still continues it. Text that starts with whitespace before any logical
+// line is discarded, as Postfix does with a warning.
 func foldContinuationLines(content string) []string {
 	var logical []string
-	// a blank (empty or whitespace-only) line terminates a logical line, so an
-	// indented line after it starts fresh rather than continuing the previous
-	// value
-	brokenByBlank := true
 	for _, raw := range strings.Split(content, "\n") {
 		line := strings.TrimRight(raw, "\r")
-		if strings.TrimSpace(line) == "" {
-			brokenByBlank = true
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || trimmed[0] == '#' {
 			continue
 		}
-		if (line[0] == ' ' || line[0] == '\t') && len(logical) > 0 && !brokenByBlank {
-			logical[len(logical)-1] += " " + strings.TrimSpace(line)
+		if line[0] == ' ' || line[0] == '\t' {
+			if len(logical) > 0 {
+				logical[len(logical)-1] += " " + trimmed
+			}
 			continue
 		}
 		logical = append(logical, line)
-		brokenByBlank = false
 	}
 	return logical
 }
