@@ -58,8 +58,8 @@ func (a *mqlMicrosoftDevicemanagement) windowsUpdateRings() ([]any, error) {
 				"driversExcluded":                    llx.BoolDataPtr(ring.GetDriversExcluded()),
 				"prereleaseFeatures":                 llx.StringDataPtr(enumPtrString(ring.GetPrereleaseFeatures())),
 				"userPauseAccess":                    llx.StringDataPtr(enumPtrString(ring.GetUserPauseAccess())),
-				"createdDateTime":                    llx.TimeDataPtr(ring.GetCreatedDateTime()),
-				"lastModifiedDateTime":               llx.TimeDataPtr(ring.GetLastModifiedDateTime()),
+				"createdDateTime":                    graphTimeData(ring.GetCreatedDateTime()),
+				"lastModifiedDateTime":               graphTimeData(ring.GetLastModifiedDateTime()),
 			})
 		if err != nil {
 			return nil, err
@@ -99,10 +99,10 @@ func (a *mqlMicrosoftDevicemanagement) windowsFeatureUpdateProfiles() ([]any, er
 				"featureUpdateVersion":          llx.StringDataPtr(p.GetFeatureUpdateVersion()),
 				"deployableContentDisplayName":  llx.StringDataPtr(p.GetDeployableContentDisplayName()),
 				"installFeatureUpdatesOptional": llx.BoolDataPtr(p.GetInstallFeatureUpdatesOptional()),
-				"endOfSupportDate":              llx.TimeDataPtr(p.GetEndOfSupportDate()),
+				"endOfSupportDate":              graphTimeData(p.GetEndOfSupportDate()),
 				"roleScopeTagIds":               llx.ArrayData(llx.TArr2Raw(p.GetRoleScopeTagIds()), types.String),
-				"createdDateTime":               llx.TimeDataPtr(p.GetCreatedDateTime()),
-				"lastModifiedDateTime":          llx.TimeDataPtr(p.GetLastModifiedDateTime()),
+				"createdDateTime":               graphTimeData(p.GetCreatedDateTime()),
+				"lastModifiedDateTime":          graphTimeData(p.GetLastModifiedDateTime()),
 			})
 		if err != nil {
 			return nil, err
@@ -151,8 +151,8 @@ func (a *mqlMicrosoftDevicemanagement) windowsQualityUpdateProfiles() ([]any, er
 				"expeditedQualityUpdateRelease":  llx.StringDataPtr(expeditedRelease),
 				"expeditedDaysUntilForcedReboot": llx.IntDataPtr(expeditedReboot),
 				"roleScopeTagIds":                llx.ArrayData(llx.TArr2Raw(p.GetRoleScopeTagIds()), types.String),
-				"createdDateTime":                llx.TimeDataPtr(p.GetCreatedDateTime()),
-				"lastModifiedDateTime":           llx.TimeDataPtr(p.GetLastModifiedDateTime()),
+				"createdDateTime":                graphTimeData(p.GetCreatedDateTime()),
+				"lastModifiedDateTime":           graphTimeData(p.GetLastModifiedDateTime()),
 			})
 		if err != nil {
 			return nil, err

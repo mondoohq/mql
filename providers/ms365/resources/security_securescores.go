@@ -89,7 +89,7 @@ func newMqlMicrosoftSecureScore(runtime *plugin.Runtime, score models.SecureScor
 			"azureTenantId":            llx.StringDataPtr(score.GetAzureTenantId()),
 			"controlScores":            llx.ArrayData(controlScores, types.Any),
 			"controls":                 llx.ArrayData(controls, types.Resource("microsoft.security.securityscore.controlScore")),
-			"createdDateTime":          llx.TimeDataPtr(score.GetCreatedDateTime()),
+			"createdDateTime":          graphTimeData(score.GetCreatedDateTime()),
 			"currentScore":             llx.FloatData(convert.ToValue(score.GetCurrentScore())),
 			"enabledServices":          llx.ArrayData(enabledServices, types.String),
 			"licensedUserCount":        llx.IntDataDefault(score.GetLicensedUserCount(), 0),

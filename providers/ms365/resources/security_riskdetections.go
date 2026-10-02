@@ -83,9 +83,9 @@ func newMqlMicrosoftRiskDetection(runtime *plugin.Runtime, d models.RiskDetectio
 			"userDisplayName":     llx.StringDataPtr(d.GetUserDisplayName()),
 			"correlationId":       llx.StringDataPtr(d.GetCorrelationId()),
 			"additionalInfo":      llx.StringDataPtr(d.GetAdditionalInfo()),
-			"activityDateTime":    llx.TimeDataPtr(d.GetActivityDateTime()),
-			"detectedDateTime":    llx.TimeDataPtr(d.GetDetectedDateTime()),
-			"lastUpdatedDateTime": llx.TimeDataPtr(d.GetLastUpdatedDateTime()),
+			"activityDateTime":    graphTimeData(d.GetActivityDateTime()),
+			"detectedDateTime":    graphTimeData(d.GetDetectedDateTime()),
+			"lastUpdatedDateTime": graphTimeData(d.GetLastUpdatedDateTime()),
 		})
 	if err != nil {
 		return nil, err

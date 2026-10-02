@@ -54,8 +54,8 @@ func (a *mqlMicrosoftPolicies) authenticationStrengthPolicies() ([]any, error) {
 				"policyType":            llx.StringDataPtr(enumPtrString(p.GetPolicyType())),
 				"requirementsSatisfied": llx.StringDataPtr(enumPtrString(p.GetRequirementsSatisfied())),
 				"allowedCombinations":   llx.ArrayData(convert.SliceAnyToInterface(convertEnumCollectionToStrings(p.GetAllowedCombinations())), types.String),
-				"createdDateTime":       llx.TimeDataPtr(p.GetCreatedDateTime()),
-				"modifiedDateTime":      llx.TimeDataPtr(p.GetModifiedDateTime()),
+				"createdDateTime":       graphTimeData(p.GetCreatedDateTime()),
+				"modifiedDateTime":      graphTimeData(p.GetModifiedDateTime()),
 			})
 		if err != nil {
 			return nil, err

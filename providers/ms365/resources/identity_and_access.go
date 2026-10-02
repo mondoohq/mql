@@ -185,7 +185,7 @@ func newMqlRoleManagementPolicy(runtime *plugin.Runtime, u models.UnifiedRoleMan
 			"isOrganizationDefault": llx.BoolDataPtr(u.GetIsOrganizationDefault()),
 			"scopeId":               llx.StringDataPtr(u.GetScopeId()),
 			"scopeType":             llx.StringDataPtr(u.GetScopeType()),
-			"lastModifiedDateTime":  llx.TimeDataPtr(u.GetLastModifiedDateTime()),
+			"lastModifiedDateTime":  graphTimeData(u.GetLastModifiedDateTime()),
 			"lastModifiedBy":        llx.DictData(lastModifiedByDict),
 		})
 	if err != nil {
@@ -323,8 +323,8 @@ func newMqlRoleEligibilityScheduleInstance(runtime *plugin.Runtime, inst models.
 		"principalId":               llx.StringDataPtr(inst.GetPrincipalId()),
 		"directoryScopeId":          llx.StringDataPtr(inst.GetDirectoryScopeId()),
 		"appScopeId":                llx.StringDataPtr(inst.GetAppScopeId()),
-		"startDateTime":             llx.TimeDataPtr(inst.GetStartDateTime()),
-		"endDateTime":               llx.TimeDataPtr(inst.GetEndDateTime()),
+		"startDateTime":             graphTimeData(inst.GetStartDateTime()),
+		"endDateTime":               graphTimeData(inst.GetEndDateTime()),
 		"memberType":                llx.StringDataPtr(inst.GetMemberType()),
 		"roleEligibilityScheduleId": llx.StringDataPtr(inst.GetRoleEligibilityScheduleId()),
 	})

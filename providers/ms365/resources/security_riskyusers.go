@@ -88,7 +88,7 @@ func newMqlMicrosoftRiskyUser(runtime *plugin.Runtime, riskyUser models.RiskyUse
 			"riskDetail":    llx.StringDataPtr(detail),
 			"riskLevel":     llx.StringDataPtr(riskLevel),
 			"riskState":     llx.StringDataPtr(riskState),
-			"lastUpdatedAt": llx.TimeDataPtr(riskyUser.GetRiskLastUpdatedDateTime()),
+			"lastUpdatedAt": graphTimeData(riskyUser.GetRiskLastUpdatedDateTime()),
 			"isDeleted":     llx.BoolDataPtr(riskyUser.GetIsDeleted()),
 			"isProcessing":  llx.BoolDataPtr(riskyUser.GetIsProcessing()),
 		})

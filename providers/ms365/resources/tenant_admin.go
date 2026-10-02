@@ -313,8 +313,8 @@ func serviceHealthIssueArgs(issue models.ServiceHealthIssueable) map[string]*llx
 		"origin":               llx.StringDataPtr(enumStringPtr(issue.GetOrigin())),
 		"impactDescription":    llx.StringDataPtr(issue.GetImpactDescription()),
 		"isResolved":           llx.BoolDataPtr(issue.GetIsResolved()),
-		"startDateTime":        llx.TimeDataPtr(issue.GetStartDateTime()),
-		"endDateTime":          llx.TimeDataPtr(issue.GetEndDateTime()),
-		"lastModifiedDateTime": llx.TimeDataPtr(issue.GetLastModifiedDateTime()),
+		"startDateTime":        graphTimeData(issue.GetStartDateTime()),
+		"endDateTime":          graphTimeData(issue.GetEndDateTime()),
+		"lastModifiedDateTime": graphTimeData(issue.GetLastModifiedDateTime()),
 	}
 }

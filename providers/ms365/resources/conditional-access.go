@@ -84,8 +84,8 @@ func (a *mqlMicrosoftConditionalAccessNamedLocations) ipLocations() ([]any, erro
 						"id":               llx.StringDataPtr(ipLocation.GetId()),
 						"name":             llx.StringDataPtr(displayName),
 						"trusted":          llx.BoolData(trusted),
-						"createdDateTime":  llx.TimeDataPtr(ipLocation.GetCreatedDateTime()),
-						"modifiedDateTime": llx.TimeDataPtr(ipLocation.GetModifiedDateTime()),
+						"createdDateTime":  graphTimeData(ipLocation.GetCreatedDateTime()),
+						"modifiedDateTime": graphTimeData(ipLocation.GetModifiedDateTime()),
 					})
 				if err != nil {
 					return nil, err
@@ -237,8 +237,8 @@ func (a *mqlMicrosoftConditionalAccess) createPolicyResource(policy models.Condi
 			"id":               llx.StringDataPtr(id),
 			"templateId":       llx.StringDataPtr(policy.GetTemplateId()),
 			"displayName":      llx.StringDataPtr(policy.GetDisplayName()),
-			"createdDateTime":  llx.TimeDataPtr(policy.GetCreatedDateTime()),
-			"modifiedDateTime": llx.TimeDataPtr(policy.GetModifiedDateTime()),
+			"createdDateTime":  graphTimeData(policy.GetCreatedDateTime()),
+			"modifiedDateTime": graphTimeData(policy.GetModifiedDateTime()),
 			"state":            llx.StringDataPtr(enumPtrString(policy.GetState())),
 			"sessionControls":  llx.ResourceData(sessionControls, "microsoft.conditionalAccess.policy.sessionControls"),
 			"conditions":       llx.ResourceData(conditions, "microsoft.conditionalAccess.policy.conditions"),
@@ -410,8 +410,8 @@ func (a *mqlMicrosoftConditionalAccess) createGrantControlsResource(
 			"policyType":            llx.StringDataPtr(enumPtrString(authStrength.GetPolicyType())),
 			"requirementsSatisfied": llx.StringDataPtr(enumPtrString(authStrength.GetRequirementsSatisfied())),
 			"allowedCombinations":   llx.ArrayData(convert.SliceAnyToInterface(convertEnumCollectionToStrings(authStrength.GetAllowedCombinations())), types.String),
-			"createdDateTime":       llx.TimeDataPtr(authStrength.GetCreatedDateTime()),
-			"modifiedDateTime":      llx.TimeDataPtr(authStrength.GetModifiedDateTime()),
+			"createdDateTime":       graphTimeData(authStrength.GetCreatedDateTime()),
+			"modifiedDateTime":      graphTimeData(authStrength.GetModifiedDateTime()),
 		}
 
 		var err error
@@ -630,7 +630,7 @@ func newMqlAuthenticationMethodsPolicy(runtime *plugin.Runtime, policy models.Au
 		"id":                                 llx.StringDataPtr(policy.GetId()),
 		"displayName":                        llx.StringDataPtr(policy.GetDisplayName()),
 		"description":                        llx.StringDataPtr(policy.GetDescription()),
-		"lastModifiedDateTime":               llx.TimeDataPtr(policy.GetLastModifiedDateTime()),
+		"lastModifiedDateTime":               graphTimeData(policy.GetLastModifiedDateTime()),
 		"policyVersion":                      llx.StringDataPtr(policy.GetPolicyVersion()),
 		"authenticationMethodConfigurations": llx.ArrayData(llx.TArr2Raw(authMethodConfigs), types.Resource("microsoft.conditionalAccess.authenticationMethodConfiguration")),
 	})

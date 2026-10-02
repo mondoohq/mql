@@ -272,8 +272,8 @@ func accessPackageCatalogArgs(catalog models.AccessPackageCatalogable) map[strin
 		"catalogType":         catalogType,
 		"state":               state,
 		"isExternallyVisible": llx.BoolDataPtr(catalog.GetIsExternallyVisible()),
-		"createdDateTime":     llx.TimeDataPtr(catalog.GetCreatedDateTime()),
-		"modifiedDateTime":    llx.TimeDataPtr(catalog.GetModifiedDateTime()),
+		"createdDateTime":     graphTimeData(catalog.GetCreatedDateTime()),
+		"modifiedDateTime":    graphTimeData(catalog.GetModifiedDateTime()),
 	}
 }
 
@@ -329,8 +329,8 @@ func accessPackageArgs(pkg models.AccessPackageable) map[string]*llx.RawData {
 		"displayName":      llx.StringDataPtr(pkg.GetDisplayName()),
 		"description":      llx.StringDataPtr(pkg.GetDescription()),
 		"isHidden":         llx.BoolDataPtr(pkg.GetIsHidden()),
-		"createdDateTime":  llx.TimeDataPtr(pkg.GetCreatedDateTime()),
-		"modifiedDateTime": llx.TimeDataPtr(pkg.GetModifiedDateTime()),
+		"createdDateTime":  graphTimeData(pkg.GetCreatedDateTime()),
+		"modifiedDateTime": graphTimeData(pkg.GetModifiedDateTime()),
 	}
 }
 
@@ -444,7 +444,7 @@ func accessPackageAssignmentPolicyArgs(policy models.AccessPackageAssignmentPoli
 			expirationType = llx.StringData(t.String())
 		}
 		expirationDuration = llx.StringDataPtr(isoDurationPtr(exp.GetDuration()))
-		expirationEnd = llx.TimeDataPtr(exp.GetEndDateTime())
+		expirationEnd = graphTimeData(exp.GetEndDateTime())
 	}
 
 	requestorSettings, err := kiotaDictData(policy.GetRequestorSettings())
@@ -498,8 +498,8 @@ func accessPackageAssignmentPolicyArgs(policy models.AccessPackageAssignmentPoli
 		"isAccessReviewEnabled":            reviewEnabled,
 		"reviewSettings":                   reviewSettings,
 		"automaticRequestSettings":         automaticRequestSettings,
-		"createdDateTime":                  llx.TimeDataPtr(policy.GetCreatedDateTime()),
-		"modifiedDateTime":                 llx.TimeDataPtr(policy.GetModifiedDateTime()),
+		"createdDateTime":                  graphTimeData(policy.GetCreatedDateTime()),
+		"modifiedDateTime":                 graphTimeData(policy.GetModifiedDateTime()),
 	}, nil
 }
 

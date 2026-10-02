@@ -138,8 +138,8 @@ func deviceLocalCredentialArgs(info models.DeviceLocalCredentialInfoable) map[st
 		"__id":               llx.StringData("microsoft.deviceLocalCredential/" + *info.GetId()),
 		"id":                 llx.StringDataPtr(info.GetId()),
 		"deviceName":         llx.StringDataPtr(info.GetDeviceName()),
-		"lastBackupDateTime": llx.TimeDataPtr(info.GetLastBackupDateTime()),
-		"refreshDateTime":    llx.TimeDataPtr(info.GetRefreshDateTime()),
+		"lastBackupDateTime": graphTimeData(info.GetLastBackupDateTime()),
+		"refreshDateTime":    graphTimeData(info.GetRefreshDateTime()),
 	}
 }
 
@@ -201,7 +201,7 @@ func bitlockerRecoveryKeyArgs(key models.BitlockerRecoveryKeyable) map[string]*l
 	return map[string]*llx.RawData{
 		"__id":            llx.StringData("microsoft.bitlockerRecoveryKey/" + *key.GetId()),
 		"id":              llx.StringDataPtr(key.GetId()),
-		"createdDateTime": llx.TimeDataPtr(key.GetCreatedDateTime()),
+		"createdDateTime": graphTimeData(key.GetCreatedDateTime()),
 		"deviceId":        llx.StringDataPtr(key.GetDeviceId()),
 		"volumeType":      llx.StringDataPtr(volumeType),
 	}

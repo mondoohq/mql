@@ -190,7 +190,7 @@ func newAuthenticationMethodsPolicy(runtime *plugin.Runtime, policy models.Authe
 			"id":                                 llx.StringDataPtr(policy.GetId()),
 			"description":                        llx.StringDataPtr(policy.GetDescription()),
 			"displayName":                        llx.StringDataPtr(policy.GetDisplayName()),
-			"lastModifiedDateTime":               llx.TimeDataPtr(policy.GetLastModifiedDateTime()),
+			"lastModifiedDateTime":               graphTimeData(policy.GetLastModifiedDateTime()),
 			"policyVersion":                      llx.StringDataPtr(policy.GetPolicyVersion()),
 			"authenticationMethodConfigurations": llx.ArrayData(authMethodConfigs, types.Resource(string(ResourceMicrosoftAuthenticationMethodConfiguration))),
 		})

@@ -55,8 +55,8 @@ func newMqlAssignmentFilter(runtime *plugin.Runtime, f betamodels.DeviceAndAppMa
 			"rule":                           llx.StringDataPtr(f.GetRule()),
 			"assignmentFilterManagementType": llx.StringDataPtr(enumPtrString(f.GetAssignmentFilterManagementType())),
 			"roleScopeTags":                  llx.ArrayData(llx.TArr2Raw(f.GetRoleScopeTags()), types.String),
-			"createdDateTime":                llx.TimeDataPtr(f.GetCreatedDateTime()),
-			"lastModifiedDateTime":           llx.TimeDataPtr(f.GetLastModifiedDateTime()),
+			"createdDateTime":                graphTimeData(f.GetCreatedDateTime()),
+			"lastModifiedDateTime":           graphTimeData(f.GetLastModifiedDateTime()),
 		})
 }
 

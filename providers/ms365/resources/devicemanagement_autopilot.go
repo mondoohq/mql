@@ -73,8 +73,8 @@ func autopilotProfileArgs(profile betamodels.WindowsAutopilotDeploymentProfileab
 		"enableWhiteGlove":           llx.BoolDataPtr(firstNonNil(profile.GetPreprovisioningAllowed(), profile.GetEnableWhiteGlove())),
 		"outOfBoxExperienceSettings": llx.DictData(autopilotProfileOobe(profile)),
 		"assignedDeviceCount":        llx.IntData(assignedDeviceCount),
-		"createdDateTime":            llx.TimeDataPtr(profile.GetCreatedDateTime()),
-		"lastModifiedDateTime":       llx.TimeDataPtr(profile.GetLastModifiedDateTime()),
+		"createdDateTime":            graphTimeData(profile.GetCreatedDateTime()),
+		"lastModifiedDateTime":       graphTimeData(profile.GetLastModifiedDateTime()),
 	}
 }
 

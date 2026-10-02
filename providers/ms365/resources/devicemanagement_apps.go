@@ -171,8 +171,8 @@ func newMobileAppResource(runtime *plugin.Runtime, app models.MobileAppable) (an
 			"privacyInformationUrl": llx.StringDataPtr(app.GetPrivacyInformationUrl()),
 			"informationUrl":        llx.StringDataPtr(app.GetInformationUrl()),
 			"publishingState":       llx.StringData(publishingState),
-			"createdDateTime":       llx.TimeDataPtr(app.GetCreatedDateTime()),
-			"lastModifiedDateTime":  llx.TimeDataPtr(app.GetLastModifiedDateTime()),
+			"createdDateTime":       graphTimeData(app.GetCreatedDateTime()),
+			"lastModifiedDateTime":  graphTimeData(app.GetLastModifiedDateTime()),
 			"properties":            llx.DictData(props),
 		})
 }

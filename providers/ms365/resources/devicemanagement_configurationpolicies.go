@@ -70,8 +70,8 @@ func (a *mqlMicrosoftDevicemanagement) configurationPolicies() ([]any, error) {
 				"templateId":           llx.StringDataPtr(templateId),
 				"templateDisplayName":  llx.StringDataPtr(templateDisplayName),
 				"templateFamily":       llx.StringDataPtr(templateFamily),
-				"createdDateTime":      llx.TimeDataPtr(p.GetCreatedDateTime()),
-				"lastModifiedDateTime": llx.TimeDataPtr(p.GetLastModifiedDateTime()),
+				"createdDateTime":      graphTimeData(p.GetCreatedDateTime()),
+				"lastModifiedDateTime": graphTimeData(p.GetLastModifiedDateTime()),
 			})
 		if err != nil {
 			return nil, err

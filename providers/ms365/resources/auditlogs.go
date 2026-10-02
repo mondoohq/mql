@@ -334,7 +334,7 @@ func directoryAuditArgs(audit models.DirectoryAuditable) (args map[string]*llx.R
 	args = map[string]*llx.RawData{
 		"__id":                llx.StringDataPtr(audit.GetId()),
 		"id":                  llx.StringDataPtr(audit.GetId()),
-		"activityDateTime":    llx.TimeDataPtr(audit.GetActivityDateTime()),
+		"activityDateTime":    graphTimeData(audit.GetActivityDateTime()),
 		"activityDisplayName": llx.StringDataPtr(audit.GetActivityDisplayName()),
 		"category":            llx.StringDataPtr(audit.GetCategory()),
 		"correlationId":       llx.StringDataPtr(audit.GetCorrelationId()),
@@ -498,7 +498,7 @@ func provisioningEventArgs(ev models.ProvisioningObjectSummaryable) (map[string]
 	args := map[string]*llx.RawData{
 		"__id":                   llx.StringDataPtr(ev.GetId()),
 		"id":                     llx.StringDataPtr(ev.GetId()),
-		"activityDateTime":       llx.TimeDataPtr(ev.GetActivityDateTime()),
+		"activityDateTime":       graphTimeData(ev.GetActivityDateTime()),
 		"changeId":               llx.StringDataPtr(ev.GetChangeId()),
 		"cycleId":                llx.StringDataPtr(ev.GetCycleId()),
 		"jobId":                  llx.StringDataPtr(ev.GetJobId()),

@@ -98,11 +98,11 @@ func newMqlSecurityAlert(runtime *plugin.Runtime, alert securitymodels.Alertable
 		"systemTags":            llx.ArrayData(convert.SliceAnyToInterface(alert.GetSystemTags()), types.String),
 		"tenantId":              llx.StringDataPtr(alert.GetTenantId()),
 		"alertWebUrl":           llx.StringDataPtr(alert.GetAlertWebUrl()),
-		"createdDateTime":       llx.TimeDataPtr(alert.GetCreatedDateTime()),
-		"lastUpdateDateTime":    llx.TimeDataPtr(alert.GetLastUpdateDateTime()),
-		"firstActivityDateTime": llx.TimeDataPtr(alert.GetFirstActivityDateTime()),
-		"lastActivityDateTime":  llx.TimeDataPtr(alert.GetLastActivityDateTime()),
-		"resolvedDateTime":      llx.TimeDataPtr(alert.GetResolvedDateTime()),
+		"createdDateTime":       graphTimeData(alert.GetCreatedDateTime()),
+		"lastUpdateDateTime":    graphTimeData(alert.GetLastUpdateDateTime()),
+		"firstActivityDateTime": graphTimeData(alert.GetFirstActivityDateTime()),
+		"lastActivityDateTime":  graphTimeData(alert.GetLastActivityDateTime()),
+		"resolvedDateTime":      graphTimeData(alert.GetResolvedDateTime()),
 		"comments":              llx.ArrayData(newAlertComments(alert.GetComments()), types.Dict),
 	})
 	if err != nil {
@@ -177,8 +177,8 @@ func newMqlSecurityIncident(runtime *plugin.Runtime, incident securitymodels.Inc
 		"customTags":         llx.ArrayData(convert.SliceAnyToInterface(incident.GetCustomTags()), types.String),
 		"systemTags":         llx.ArrayData(convert.SliceAnyToInterface(incident.GetSystemTags()), types.String),
 		"incidentWebUrl":     llx.StringDataPtr(incident.GetIncidentWebUrl()),
-		"createdDateTime":    llx.TimeDataPtr(incident.GetCreatedDateTime()),
-		"lastUpdateDateTime": llx.TimeDataPtr(incident.GetLastUpdateDateTime()),
+		"createdDateTime":    graphTimeData(incident.GetCreatedDateTime()),
+		"lastUpdateDateTime": graphTimeData(incident.GetLastUpdateDateTime()),
 		"comments":           llx.ArrayData(newAlertComments(incident.GetComments()), types.Dict),
 	})
 	if err != nil {

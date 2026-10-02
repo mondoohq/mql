@@ -154,7 +154,7 @@ func newMicrosoftTenant(runtime *plugin.Runtime, org models.Organizationable) (*
 			"name":                                 llx.StringDataPtr(org.GetDisplayName()),
 			"verifiedDomains":                      llx.DictData(verifiedDomains),
 			"onPremisesSyncEnabled":                llx.BoolDataPtr(org.GetOnPremisesSyncEnabled()),
-			"createdAt":                            llx.TimeDataPtr(org.GetCreatedDateTime()),
+			"createdAt":                            graphTimeData(org.GetCreatedDateTime()),
 			"type":                                 llx.StringDataPtr(org.GetTenantType()),
 			"provisionedPlans":                     llx.DictData(provisionedPlans),
 			"technicalNotificationMails":           llx.ArrayData(convert.SliceAnyToInterface(org.GetTechnicalNotificationMails()), types.String),

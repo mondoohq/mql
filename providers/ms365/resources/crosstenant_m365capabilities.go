@@ -113,7 +113,7 @@ func newMqlM365Capability(runtime *plugin.Runtime, parentID string, capability m
 		map[string]*llx.RawData{
 			"__id":                   llx.StringData(capabilityID),
 			"name":                   llx.StringData(name),
-			"lastModifiedDateTime":   llx.TimeDataPtr(capability.GetLastModifiedDateTime()),
+			"lastModifiedDateTime":   graphTimeData(capability.GetLastModifiedDateTime()),
 			"inboundAccessAllowed":   llx.BoolData(inboundAllowed),
 			"includedResourceScopes": llx.ArrayData(included, scopeType),
 			"excludedResourceScopes": llx.ArrayData(excluded, scopeType),

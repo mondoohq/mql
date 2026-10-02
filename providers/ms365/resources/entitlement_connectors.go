@@ -101,9 +101,9 @@ func newMqlExternalOriginResourceConnector(runtime *plugin.Runtime, connector mo
 			"description":      llx.StringDataPtr(connector.GetDescription()),
 			"connectorType":    llx.StringData(connectorTypeString(connector.GetConnectorType())),
 			"createdBy":        llx.StringDataPtr(connector.GetCreatedBy()),
-			"createdDateTime":  llx.TimeDataPtr(connector.GetCreatedDateTime()),
+			"createdDateTime":  graphTimeData(connector.GetCreatedDateTime()),
 			"modifiedBy":       llx.StringDataPtr(connector.GetModifiedBy()),
-			"modifiedDateTime": llx.TimeDataPtr(connector.GetModifiedDateTime()),
+			"modifiedDateTime": graphTimeData(connector.GetModifiedDateTime()),
 			"connectionInfo":   connectionInfo,
 		})
 }

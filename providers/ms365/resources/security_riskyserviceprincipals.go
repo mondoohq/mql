@@ -91,7 +91,7 @@ func riskyServicePrincipalArgs(sp models.RiskyServicePrincipalable) map[string]*
 		"riskLevel":               llx.StringDataPtr(enumPtrString(sp.GetRiskLevel())),
 		"riskState":               llx.StringDataPtr(enumPtrString(sp.GetRiskState())),
 		"riskDetail":              llx.StringDataPtr(enumPtrString(sp.GetRiskDetail())),
-		"riskLastUpdatedDateTime": llx.TimeDataPtr(sp.GetRiskLastUpdatedDateTime()),
+		"riskLastUpdatedDateTime": graphTimeData(sp.GetRiskLastUpdatedDateTime()),
 	}
 }
 
@@ -180,9 +180,9 @@ func servicePrincipalRiskDetectionArgs(d models.ServicePrincipalRiskDetectionabl
 		"correlationId":               llx.StringDataPtr(d.GetCorrelationId()),
 		"requestId":                   llx.StringDataPtr(d.GetRequestId()),
 		"additionalInfo":              llx.StringDataPtr(d.GetAdditionalInfo()),
-		"activityDateTime":            llx.TimeDataPtr(d.GetActivityDateTime()),
-		"detectedDateTime":            llx.TimeDataPtr(d.GetDetectedDateTime()),
-		"lastUpdatedDateTime":         llx.TimeDataPtr(d.GetLastUpdatedDateTime()),
+		"activityDateTime":            graphTimeData(d.GetActivityDateTime()),
+		"detectedDateTime":            graphTimeData(d.GetDetectedDateTime()),
+		"lastUpdatedDateTime":         graphTimeData(d.GetLastUpdatedDateTime()),
 	}
 }
 

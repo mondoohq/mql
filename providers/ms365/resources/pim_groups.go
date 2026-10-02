@@ -263,8 +263,8 @@ func groupAssignmentInstanceArgs(inst models.PrivilegedAccessGroupAssignmentSche
 		"principalType":        llx.StringData(principalTypes[strVal(inst.GetPrincipalId())]),
 		"assignmentType":       llx.StringDataPtr(enumString(inst.GetAssignmentType())),
 		"memberType":           llx.StringDataPtr(enumString(inst.GetMemberType())),
-		"startDateTime":        llx.TimeDataPtr(inst.GetStartDateTime()),
-		"endDateTime":          llx.TimeDataPtr(inst.GetEndDateTime()),
+		"startDateTime":        graphTimeData(inst.GetStartDateTime()),
+		"endDateTime":          graphTimeData(inst.GetEndDateTime()),
 		"assignmentScheduleId": llx.StringDataPtr(inst.GetAssignmentScheduleId()),
 	}
 }
@@ -279,8 +279,8 @@ func groupEligibilityInstanceArgs(inst models.PrivilegedAccessGroupEligibilitySc
 		"principalId":           llx.StringDataPtr(inst.GetPrincipalId()),
 		"principalType":         llx.StringData(principalTypes[strVal(inst.GetPrincipalId())]),
 		"memberType":            llx.StringDataPtr(enumString(inst.GetMemberType())),
-		"startDateTime":         llx.TimeDataPtr(inst.GetStartDateTime()),
-		"endDateTime":           llx.TimeDataPtr(inst.GetEndDateTime()),
+		"startDateTime":         graphTimeData(inst.GetStartDateTime()),
+		"endDateTime":           graphTimeData(inst.GetEndDateTime()),
 		"eligibilityScheduleId": llx.StringDataPtr(inst.GetEligibilityScheduleId()),
 	}
 }

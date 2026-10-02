@@ -51,8 +51,8 @@ func (a *mqlMicrosoftDevicemanagement) managedAppConfigurations() ([]any, error)
 				"customSettings":       llx.MapData(customSettings, types.String),
 				"deployedAppCount":     llx.IntDataPtr(c.GetDeployedAppCount()),
 				"isAssigned":           llx.BoolDataPtr(c.GetIsAssigned()),
-				"createdDateTime":      llx.TimeDataPtr(c.GetCreatedDateTime()),
-				"lastModifiedDateTime": llx.TimeDataPtr(c.GetLastModifiedDateTime()),
+				"createdDateTime":      graphTimeData(c.GetCreatedDateTime()),
+				"lastModifiedDateTime": graphTimeData(c.GetLastModifiedDateTime()),
 			})
 		if err != nil {
 			return nil, err
@@ -91,8 +91,8 @@ func (a *mqlMicrosoftDevicemanagement) mobileAppConfigurations() ([]any, error) 
 				"description":          llx.StringDataPtr(c.GetDescription()),
 				"version":              llx.IntDataPtr(c.GetVersion()),
 				"targetedMobileApps":   llx.ArrayData(llx.TArr2Raw(c.GetTargetedMobileApps()), types.String),
-				"createdDateTime":      llx.TimeDataPtr(c.GetCreatedDateTime()),
-				"lastModifiedDateTime": llx.TimeDataPtr(c.GetLastModifiedDateTime()),
+				"createdDateTime":      graphTimeData(c.GetCreatedDateTime()),
+				"lastModifiedDateTime": graphTimeData(c.GetLastModifiedDateTime()),
 			})
 		if err != nil {
 			return nil, err

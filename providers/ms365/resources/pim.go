@@ -178,8 +178,8 @@ func roleAssignmentInstanceArgs(inst models.UnifiedRoleAssignmentScheduleInstanc
 		"appScopeId":               llx.StringDataPtr(inst.GetAppScopeId()),
 		"assignmentType":           llx.StringDataPtr(inst.GetAssignmentType()),
 		"memberType":               llx.StringDataPtr(inst.GetMemberType()),
-		"startDateTime":            llx.TimeDataPtr(inst.GetStartDateTime()),
-		"endDateTime":              llx.TimeDataPtr(inst.GetEndDateTime()),
+		"startDateTime":            graphTimeData(inst.GetStartDateTime()),
+		"endDateTime":              graphTimeData(inst.GetEndDateTime()),
 		"roleAssignmentOriginId":   llx.StringDataPtr(inst.GetRoleAssignmentOriginId()),
 		"roleAssignmentScheduleId": llx.StringDataPtr(inst.GetRoleAssignmentScheduleId()),
 	}

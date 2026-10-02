@@ -107,7 +107,7 @@ func newTermsOfUseAgreementArgs(agreement models.Agreementable) map[string]*llx.
 	expirationStart := llx.NilData
 	expirationFrequency := llx.NilData
 	if expiration := agreement.GetTermsExpiration(); expiration != nil {
-		expirationStart = llx.TimeDataPtr(expiration.GetStartDateTime())
+		expirationStart = graphTimeData(expiration.GetStartDateTime())
 		expirationFrequency = llx.StringDataPtr(isoDurationPtr(expiration.GetFrequency()))
 	}
 	return map[string]*llx.RawData{
@@ -267,9 +267,9 @@ func newLifecycleWorkflowArgs(workflow igmodels.Workflowable) (map[string]*llx.R
 		"isSchedulingEnabled":     llx.BoolDataPtr(workflow.GetIsSchedulingEnabled()),
 		"executionConditions":     executionConditions,
 		"version":                 llx.IntDataPtr(version),
-		"createdDateTime":         llx.TimeDataPtr(workflow.GetCreatedDateTime()),
-		"lastModifiedDateTime":    llx.TimeDataPtr(workflow.GetLastModifiedDateTime()),
-		"nextScheduleRunDateTime": llx.TimeDataPtr(workflow.GetNextScheduleRunDateTime()),
+		"createdDateTime":         graphTimeData(workflow.GetCreatedDateTime()),
+		"lastModifiedDateTime":    graphTimeData(workflow.GetLastModifiedDateTime()),
+		"nextScheduleRunDateTime": graphTimeData(workflow.GetNextScheduleRunDateTime()),
 	}, nil
 }
 

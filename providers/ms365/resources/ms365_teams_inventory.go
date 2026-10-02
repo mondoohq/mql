@@ -341,7 +341,7 @@ func (t *mqlMs365TeamsTeam) channels() ([]any, error) {
 				"membershipType":  llx.StringDataPtr(membershipType),
 				"email":           llx.StringDataPtr(ch.GetEmail()),
 				"webUrl":          llx.StringDataPtr(ch.GetWebUrl()),
-				"createdDateTime": llx.TimeDataPtr(ch.GetCreatedDateTime()),
+				"createdDateTime": graphTimeData(ch.GetCreatedDateTime()),
 				"isArchived":      llx.BoolDataPtr(ch.GetIsArchived()),
 			})
 		if err != nil {

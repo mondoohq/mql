@@ -129,7 +129,7 @@ func newDomainFederationConfigurationArgs(domainID string, configuration models.
 	certificateUpdateLastRun := llx.NilData
 	if status := configuration.GetSigningCertificateUpdateStatus(); status != nil {
 		certificateUpdateResult = convert.ToValue(status.GetCertificateUpdateResult())
-		certificateUpdateLastRun = llx.TimeDataPtr(status.GetLastRunDateTime())
+		certificateUpdateLastRun = graphTimeData(status.GetLastRunDateTime())
 	}
 
 	return map[string]*llx.RawData{

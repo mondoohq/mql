@@ -198,7 +198,7 @@ func newMqlMicrosoftApplication(runtime *plugin.Runtime, app models.Applicationa
 			"id":                                llx.StringDataPtr(app.GetId()),
 			"appId":                             llx.StringDataPtr(app.GetAppId()),
 			"applicationTemplateId":             llx.StringDataPtr(app.GetApplicationTemplateId()),
-			"createdAt":                         llx.TimeDataPtr(app.GetCreatedDateTime()),
+			"createdAt":                         graphTimeData(app.GetCreatedDateTime()),
 			"disabledByMicrosoftStatus":         llx.StringDataPtr(app.GetDisabledByMicrosoftStatus()),
 			"groupMembershipClaims":             llx.StringDataPtr(app.GetGroupMembershipClaims()),
 			"name":                              llx.StringDataPtr(app.GetDisplayName()),
@@ -487,9 +487,9 @@ func newMqlMicrosoftKeyCredential(runtime *plugin.Runtime, app models.KeyCredent
 			"usage":         llx.StringDataPtr(app.GetUsage()),
 			"thumbprint":    llx.StringData(base64.StdEncoding.EncodeToString(app.GetCustomKeyIdentifier())),
 			"type":          llx.StringDataPtr(app.GetTypeEscaped()),
-			"expires":       llx.TimeDataPtr(endDate),
+			"expires":       graphTimeData(endDate),
 			"expired":       llx.BoolData(expired),
-			"startDateTime": llx.TimeDataPtr(app.GetStartDateTime()),
+			"startDateTime": graphTimeData(app.GetStartDateTime()),
 		})
 	if err != nil {
 		return nil, err
@@ -511,9 +511,9 @@ func newMqlMicrosoftPasswordCredential(runtime *plugin.Runtime, app models.Passw
 			"keyId":         llx.StringData(app.GetKeyId().String()),
 			"description":   llx.StringDataPtr(app.GetDisplayName()),
 			"hint":          llx.StringDataPtr(app.GetHint()),
-			"expires":       llx.TimeDataPtr(endDate),
+			"expires":       graphTimeData(endDate),
 			"expired":       llx.BoolData(expired),
-			"startDateTime": llx.TimeDataPtr(app.GetStartDateTime()),
+			"startDateTime": graphTimeData(app.GetStartDateTime()),
 		})
 	if err != nil {
 		return nil, err

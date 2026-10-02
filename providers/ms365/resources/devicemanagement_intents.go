@@ -85,7 +85,7 @@ func newIntentResource(runtime *plugin.Runtime, intent betamodels.DeviceManageme
 			"templateId":           llx.StringData(templateId),
 			"templateDisplayName":  llx.StringData(templateNames[templateId]),
 			"isAssigned":           llx.BoolDataPtr(intent.GetIsAssigned()),
-			"lastModifiedDateTime": llx.TimeDataPtr(intent.GetLastModifiedDateTime()),
+			"lastModifiedDateTime": graphTimeData(intent.GetLastModifiedDateTime()),
 		})
 }
 

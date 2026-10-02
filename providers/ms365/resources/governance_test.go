@@ -153,6 +153,24 @@ func TestLifecycleWorkflowArgs(t *testing.T) {
 	assert.Equal(t, "(department eq 'Marketing')", scope["rule"])
 }
 
+// Graph reports a timestamp that was never set as 0001-01-01T00:00:00Z.
+func TestLifecycleWorkflowArgsYearOneTimestampIsNull(t *testing.T) {
+	args, err := newLifecycleWorkflowArgs(parseWorkflow(t, `{
+  "id": "w2",
+  "category": "joiner",
+  "createdDateTime": "2026-03-01T09:00:00Z",
+  "lastModifiedDateTime": "0001-01-01T00:00:00Z",
+  "nextScheduleRunDateTime": "0001-01-01T00:00:00Z"
+}`))
+	require.NoError(t, err)
+
+	assert.Nil(t, args["lastModifiedDateTime"].Value)
+	assert.Nil(t, args["nextScheduleRunDateTime"].Value)
+	created, ok := args["createdDateTime"].Value.(*time.Time)
+	require.True(t, ok)
+	assert.Equal(t, time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC), created.UTC())
+}
+
 func TestLifecycleWorkflowArgsWithoutConditions(t *testing.T) {
 	args, err := newLifecycleWorkflowArgs(parseWorkflow(t, `{"id": "w1", "category": "joiner"}`))
 	require.NoError(t, err)
