@@ -351,4 +351,18 @@ func TestIsFirewalldFailedState(t *testing.T) {
 	assert.False(t, isFirewalldFailedState("not running\n"))
 	assert.False(t, isFirewalldFailedState("Waiting on dbus connection...\nnot running\n"))
 	assert.False(t, isFirewalldFailedState(""))
+	// firewall-cmd colors its warnings when it writes to a terminal
+	assert.True(t, isFirewalldFailedState("\x1b[91mfailed\x1b[00m\n"))
+	// firewalld 0.4.4 (Debian 9) has no FAILED state
+	assert.False(t, isFirewalldFailedState("\x1b[91mnot running\x1b[00m\n"))
+}
+
+// firewalld 0.4.4 (Debian 9) whose ruleset failed to apply: --state prints
+// "not running" and exits 252, while --get-default-zone answers "public". A
+// stopped daemon makes --get-default-zone exit 252 as well.
+func TestFirewalldDefaultZoneAnswered(t *testing.T) {
+	assert.True(t, firewalldDefaultZoneAnswered(0, "public\n"))
+	assert.False(t, firewalldDefaultZoneAnswered(firewalldNotRunningExit, "\x1b[91mFirewallD is not running\x1b[00m\n"))
+	assert.False(t, firewalldDefaultZoneAnswered(firewalldNotRunningExit, "FirewallD is not running\n"))
+	assert.False(t, firewalldDefaultZoneAnswered(0, "\n"))
 }

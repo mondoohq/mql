@@ -121,6 +121,17 @@ func (f *mqlFirewalld) fetchStatus() error {
 		// ruleset. It still answers queries, so its default zone and zones
 		// are read as for a running firewall.
 		f.cacheFailed = isFirewalldFailedState(cmd.GetStderr().Data)
+		// firewalld 0.4 has no FAILED state: a daemon that could not apply
+		// its ruleset stays in INIT, and --state says "not running" (exit
+		// 252) although the daemon is up, answers queries and has loaded
+		// part of its rules. Ask the daemon itself before believing it.
+		if !f.cacheFailed && exitcode == firewalldNotRunningExit {
+			answers, err := f.daemonAnswers()
+			if err != nil {
+				return err
+			}
+			f.cacheFailed = answers
+		}
 		if f.cacheFailed {
 			state = "running"
 		}
@@ -173,10 +184,50 @@ func isFirewalldAuthzError(stderr string) bool {
 	return false
 }
 
+// firewalldNotRunningExit is firewall-cmd's NOT_RUNNING exit code.
+const firewalldNotRunningExit = 252
+
 // isFirewalldFailedState reports whether firewall-cmd --state answered
 // "failed", which it prints on stderr with exit code 251.
 func isFirewalldFailedState(stderr string) bool {
-	return strings.TrimSpace(stderr) == "failed"
+	return stripFirewalldColor(stderr) == "failed"
+}
+
+// daemonAnswers reports whether the firewalld daemon answers a query even
+// though firewall-cmd --state called it not running.
+func (f *mqlFirewalld) daemonAnswers() (bool, error) {
+	o, err := CreateResource(f.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData("firewall-cmd --get-default-zone"),
+	})
+	if err != nil {
+		return false, err
+	}
+	cmd := o.(*mqlCommand)
+	exit := cmd.GetExitcode()
+	if exit.Error != nil {
+		return false, exit.Error
+	}
+	stderr := cmd.GetStderr().Data
+	if exit.Data != 0 && isFirewalldAuthzError(stderr) {
+		return false, fmt.Errorf("cannot determine firewalld state: %s", strings.TrimSpace(stderr))
+	}
+	return firewalldDefaultZoneAnswered(exit.Data, cmd.GetStdout().Data), nil
+}
+
+// firewalldDefaultZoneAnswered reports whether firewall-cmd --get-default-zone
+// got an answer from the daemon. A stopped daemon makes it print "FirewallD is
+// not running" and exit 252.
+func firewalldDefaultZoneAnswered(exitcode int64, stdout string) bool {
+	return exitcode == 0 && stripFirewalldColor(stdout) != ""
+}
+
+// stripFirewalldColor trims the ANSI color codes firewall-cmd wraps its
+// warnings in when it writes to a terminal (an SSH session with a pty), and
+// surrounding space.
+func stripFirewalldColor(s string) string {
+	s = strings.ReplaceAll(s, "\x1b[91m", "")
+	s = strings.ReplaceAll(s, "\x1b[00m", "")
+	return strings.TrimSpace(s)
 }
 
 func (f *mqlFirewalld) status() (string, error) {
