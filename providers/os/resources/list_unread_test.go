@@ -52,7 +52,7 @@ func TestUnreadListIsNull(t *testing.T) {
 
 	t.Run("selinux.modules: semodule could not run", func(t *testing.T) {
 		rt := commandRuntime(t, map[string]*mock.Command{
-			"semodule -l": {ExitStatus: 127, Stderr: "semodule: command not found"},
+			semoduleListCmd: {ExitStatus: 127, Stderr: "semodule: command not found"},
 		})
 		v := mustResource(t, rt, "selinux").(*mqlSelinux).GetModules()
 		require.NoError(t, v.Error)
@@ -111,7 +111,7 @@ func TestMeasuredEmptyListStaysEmpty(t *testing.T) {
 
 	t.Run("selinux.modules: semodule ran and listed nothing", func(t *testing.T) {
 		rt := commandRuntime(t, map[string]*mock.Command{
-			"semodule -l": {Stdout: "\n"},
+			semoduleListCmd: {Stdout: "\n"},
 		})
 		v := mustResource(t, rt, "selinux").(*mqlSelinux).GetModules()
 		require.NoError(t, v.Error)
@@ -152,7 +152,7 @@ func TestReadListIsPopulated(t *testing.T) {
 
 	t.Run("selinux.modules", func(t *testing.T) {
 		rt := commandRuntime(t, map[string]*mock.Command{
-			"semodule -l": {Stdout: "100 zebra enabled\n200 apache disabled\n"},
+			semoduleListCmd: {Stdout: "100 zebra enabled\n200 apache disabled\n"},
 		})
 		v := mustResource(t, rt, "selinux").(*mqlSelinux).GetModules()
 		require.NoError(t, v.Error)
