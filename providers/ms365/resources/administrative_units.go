@@ -237,9 +237,14 @@ func (a *mqlMicrosoftAdministrativeUnit) scopedRoleMembers() ([]any, error) {
 	}
 
 	ctx := context.Background()
+	top := int32(999)
 	resp, err := graphClient.Directory().AdministrativeUnits().ByAdministrativeUnitId(a.Id.Data).
 		ScopedRoleMembers().
-		Get(ctx, nil)
+		Get(ctx, &directory.AdministrativeUnitsItemScopedRoleMembersRequestBuilderGetRequestConfiguration{
+			QueryParameters: &directory.AdministrativeUnitsItemScopedRoleMembersRequestBuilderGetQueryParameters{
+				Top: &top,
+			},
+		})
 	if err != nil {
 		return nil, transformError(err)
 	}
