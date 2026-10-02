@@ -8,6 +8,7 @@ import (
 	"go.mondoo.com/mql/types"
 	"sync"
 
+	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/identity"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"go.mondoo.com/mql/llx"
@@ -22,7 +23,14 @@ import (
 const (
 	permIdentityProviderReadAll = "IdentityProvider.Read.All"
 	permIdentityUserFlowReadAll = "IdentityUserFlow.Read.All"
+	permAPIConnectorsReadAll    = "APIConnectors.Read.All"
 )
+
+// apiConnectorConfigurationPermissions are the permissions the user flow read
+// with its API connectors expanded needs: reading the flow takes
+// IdentityUserFlow.Read.All, and Graph refuses the expanded connectors without
+// APIConnectors.Read.All.
+var apiConnectorConfigurationPermissions = []string{permIdentityUserFlowReadAll, permAPIConnectorsReadAll}
 
 // Values reported by the type, clientAuthenticationMethod and
 // authenticationType fields. oidcClientAuthMethodShared names the shared
@@ -277,21 +285,28 @@ func (a *mqlMicrosoftIdentityAndAccessB2xUserFlow) fetchApiConnectorConfiguratio
 			a.apiConnectorsErr = err
 			return
 		}
-		flow, err := graphClient.Identity().B2xUserFlows().ByB2xIdentityUserFlowId(a.Id.Data).Get(context.Background(),
-			&identity.B2xUserFlowsB2xIdentityUserFlowItemRequestBuilderGetRequestConfiguration{
-				QueryParameters: &identity.B2xUserFlowsB2xIdentityUserFlowItemRequestBuilderGetQueryParameters{
-					Expand: []string{"apiConnectorConfiguration/postFederationSignup", "apiConnectorConfiguration/postAttributeCollection"},
-				},
-			})
-		if err != nil {
-			a.apiConnectorsErr = classifyGraphError(err, permIdentityUserFlowReadAll)
-			return
-		}
-		if flow != nil {
-			a.apiConnectors = flow.GetApiConnectorConfiguration()
-		}
+		a.apiConnectors, a.apiConnectorsErr = getApiConnectorConfiguration(context.Background(), graphClient, a.Id.Data)
 	})
 	return a.apiConnectors, a.apiConnectorsErr
+}
+
+// getApiConnectorConfiguration reads a user flow with its API connectors
+// expanded and returns the flow's connector configuration, nil when Graph
+// returns no flow.
+func getApiConnectorConfiguration(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, flowID string) (models.UserFlowApiConnectorConfigurationable, error) {
+	flow, err := graphClient.Identity().B2xUserFlows().ByB2xIdentityUserFlowId(flowID).Get(ctx,
+		&identity.B2xUserFlowsB2xIdentityUserFlowItemRequestBuilderGetRequestConfiguration{
+			QueryParameters: &identity.B2xUserFlowsB2xIdentityUserFlowItemRequestBuilderGetQueryParameters{
+				Expand: []string{"apiConnectorConfiguration/postFederationSignup", "apiConnectorConfiguration/postAttributeCollection"},
+			},
+		})
+	if err != nil {
+		return nil, classifyGraphError(err, apiConnectorConfigurationPermissions...)
+	}
+	if flow == nil {
+		return nil, nil
+	}
+	return flow.GetApiConnectorConfiguration(), nil
 }
 
 func (a *mqlMicrosoftIdentityAndAccessB2xUserFlow) postFederationSignupApiConnector() (*mqlMicrosoftIdentityAndAccessApiConnector, error) {

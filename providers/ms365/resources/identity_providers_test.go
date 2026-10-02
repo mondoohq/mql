@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"context"
 	"errors"
 	"go.mondoo.com/mql/types"
 	"net/http"
@@ -296,4 +297,39 @@ func TestClassifyGraphError_NamesIdentityPermission(t *testing.T) {
 	// A transport failure is never a refusal.
 	transport := classifyGraphError(errors.New("connection reset"))
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(transport))
+}
+
+// Graph refuses the user flow read with the API connectors expanded when the
+// app lacks APIConnectors.Read.All, even though it holds
+// IdentityUserFlow.Read.All, so the refusal must name the connector
+// permission.
+func TestGetApiConnectorConfiguration_ForbiddenNamesAPIConnectorsPermission(t *testing.T) {
+	fake := newFakeGraph(t, map[string]fakeRoute{
+		"/identity/b2xUserFlows/B2X_1_signup": {
+			status: http.StatusForbidden,
+			body:   `{"error":{"code":"Authorization_RequestDenied","message":"The application does not have any of the required application permissions (APIConnectors.Read.All, APIConnectors.ReadWrite.All) to access the resource."}}`,
+		},
+	})
+
+	cfg, err := getApiConnectorConfiguration(context.Background(), fake.client(), "B2X_1_signup")
+	assert.Nil(t, cfg)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, llx.ErrForbidden))
+	var lerr *llx.Error
+	require.True(t, errors.As(err, &lerr))
+	assert.Contains(t, lerr.Permissions, "APIConnectors.Read.All")
+	assert.Contains(t, lerr.Permissions, "IdentityUserFlow.Read.All")
+}
+
+func TestGetApiConnectorConfiguration_ReadsExpandedConnectors(t *testing.T) {
+	fake := newFakeGraph(t, map[string]fakeRoute{
+		"/identity/b2xUserFlows/B2X_1_signup": {status: http.StatusOK, body: b2xUserFlowJSON},
+	})
+
+	cfg, err := getApiConnectorConfiguration(context.Background(), fake.client(), "B2X_1_signup")
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	require.NotNil(t, cfg.GetPostFederationSignup())
+	assert.Equal(t, "Approval", *cfg.GetPostFederationSignup().GetDisplayName())
+	assert.Nil(t, cfg.GetPostAttributeCollection())
 }
