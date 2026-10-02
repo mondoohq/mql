@@ -160,6 +160,10 @@ func (x *mqlUsers) list() ([]any, error) {
 	var res []any
 	for i := range users {
 		user := users[i]
+		enabled := llx.BoolData(user.Enabled)
+		if user.EnabledUnknown {
+			enabled = llx.NilData
+		}
 		nu, err := CreateResource(x.MqlRuntime, "user", map[string]*llx.RawData{
 			"name":    llx.StringData(user.Name),
 			"uid":     llx.IntData(user.Uid),
@@ -167,7 +171,7 @@ func (x *mqlUsers) list() ([]any, error) {
 			"sid":     llx.StringData(user.Sid),
 			"home":    llx.StringData(user.Home),
 			"shell":   llx.StringData(user.Shell),
-			"enabled": llx.BoolData(user.Enabled),
+			"enabled": enabled,
 		})
 		if err != nil {
 			return nil, err
