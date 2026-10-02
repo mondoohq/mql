@@ -5,8 +5,10 @@ package resources
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
@@ -222,4 +224,38 @@ func TestTomcatNotInstalledResolvesCleanly(t *testing.T) {
 	webapps := installation.GetWebapps()
 	require.NoError(t, webapps.Error)
 	assert.Empty(t, webapps.Data)
+}
+
+// SUSE's tomcat-webapps and tomcat-admin-webapps packages deploy ROOT,
+// manager, host-manager and examples into /srv/tomcat/webapps as symlinks into
+// /usr/share/tomcat/tomcat-webapps. ReadDir on the local filesystem returns the
+// links' own (lstat) modes, so the links must be followed to see they are
+// applications.
+func TestIsWebappDirFollowsSymlinks(t *testing.T) {
+	root := t.TempDir()
+	share := filepath.Join(root, "share")
+	appBase := filepath.Join(root, "webapps")
+	require.NoError(t, os.MkdirAll(filepath.Join(share, "manager"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(appBase, "local"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(share, "notes.txt"), []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(appBase, "app.war"), []byte("PK"), 0o644))
+	require.NoError(t, os.Symlink(filepath.Join(share, "manager"), filepath.Join(appBase, "manager")))
+	require.NoError(t, os.Symlink(filepath.Join(share, "notes.txt"), filepath.Join(appBase, "notes")))
+	require.NoError(t, os.Symlink(filepath.Join(share, "gone"), filepath.Join(appBase, "dangling")))
+
+	fs := afero.NewOsFs()
+	entries, err := afero.ReadDir(fs, appBase)
+	require.NoError(t, err)
+
+	got := map[string]bool{}
+	for _, entry := range entries {
+		got[entry.Name()] = isWebappDir(fs, filepath.Join(appBase, entry.Name()), entry)
+	}
+	assert.Equal(t, map[string]bool{
+		"local":    true,
+		"manager":  true,
+		"app.war":  false,
+		"notes":    false,
+		"dangling": false,
+	}, got)
 }

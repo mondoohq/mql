@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"os"
 	"path"
 	"strconv"
 	"sync"
@@ -567,10 +568,10 @@ func (t *mqlTomcat) webapps() ([]any, error) {
 			// Only exploded applications are enumerated. An undeployed WAR is
 			// an archive, and reading configuration out of archives is not
 			// something this resource does.
-			if !entry.IsDir() {
+			appPath := path.Join(appBaseDir, entry.Name())
+			if !isWebappDir(afs, appPath, entry) {
 				continue
 			}
-			appPath := path.Join(appBaseDir, entry.Name())
 			if _, ok := seen[appPath]; ok {
 				continue
 			}
@@ -591,6 +592,22 @@ func (t *mqlTomcat) webapps() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// isWebappDir reports whether an appBase entry is an application directory.
+// Tomcat deploys a symlink to a directory like the directory itself (SUSE's
+// webapps packages ship ROOT, manager and examples that way), but ReadDir on
+// the local filesystem describes the link, not its target, so a link is
+// followed with Stat.
+func isWebappDir(fs afero.Fs, appPath string, entry os.FileInfo) bool {
+	if entry.IsDir() {
+		return true
+	}
+	if entry.Mode()&os.ModeSymlink == 0 {
+		return false
+	}
+	target, err := fs.Stat(appPath)
+	return err == nil && target.IsDir()
 }
 
 func collectHosts(server *mqlTomcatServer) []*mqlTomcatHost {
