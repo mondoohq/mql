@@ -97,8 +97,12 @@ func (m *commandInstanceMetadata) Identify() (Identity, error) {
 // windowsMetadataScript reads the metadata document on Windows. Windows
 // PowerShell 5.1 aliases `curl` to Invoke-WebRequest, which rejects curl's
 // flags, so the Unix command cannot be reused. It retries like the Unix
-// command (three attempts, one-second connect timeout), returns the raw YAML
+// command (three attempts, a two-second timeout each), returns the raw YAML
 // document, and exits non-zero when the service does not answer.
+//
+// Invoke-WebRequest returns Content as a string only for a text content
+// type. For any other, or none, it is the raw bytes, and writing those would
+// print "System.Byte[]" and exit 0, so the bytes are decoded first.
 const windowsMetadataScript = `$ErrorActionPreference = 'Stop'
 # no proxy for the link-local metadata service (curl's --noproxy '*')
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
@@ -106,7 +110,9 @@ $uri = '` + metadataSvcURL + `'
 for ($i = 1; $i -le 3; $i++) {
   try {
     $r = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 2
-    [Console]::Out.Write($r.Content)
+    $content = $r.Content
+    if ($content -is [byte[]]) { $content = [Text.Encoding]::UTF8.GetString($content) }
+    [Console]::Out.Write($content)
     exit 0
   } catch {
     if ($i -eq 3) { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }
