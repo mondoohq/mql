@@ -285,6 +285,20 @@ func TestParseConf_IncludeIfExistsRefusalPropagates(t *testing.T) {
 	}
 }
 
+// A plain include of a missing file inside an include_if_exists target is
+// an error for the server, and must not be swallowed as if the optional
+// target itself were missing.
+func TestParseConf_MissingIncludeNestedInIncludeIfExists(t *testing.T) {
+	files := map[string]string{
+		"/main.conf":   "include_if_exists 'exists.conf'\n",
+		"/exists.conf": "include 'gone.conf'\n",
+	}
+	_, err := ParseConf("/main.conf", mapReader(files), nil)
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("err = %v, want the nested include's not-found error", err)
+	}
+}
+
 func TestSplitListParam(t *testing.T) {
 	tests := []struct {
 		in   string
@@ -598,6 +612,18 @@ func TestParseHbaFile_IncludeErrors(t *testing.T) {
 		_, err := ParseHbaFile("/pg_hba.conf", mapReader(files, "/extra.conf"), nil)
 		if !errors.Is(err, fs.ErrPermission) {
 			t.Fatalf("err = %v, want a permission error", err)
+		}
+	})
+	// Only the include_if_exists target itself may be missing. A plain
+	// include inside it that names a missing file is still an error.
+	t.Run("missing include nested in include_if_exists", func(t *testing.T) {
+		files := map[string]string{
+			"/pg_hba.conf": "include_if_exists exists.conf\n",
+			"/exists.conf": "include gone.conf\n",
+		}
+		_, err := ParseHbaFile("/pg_hba.conf", mapReader(files), nil)
+		if !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("err = %v, want the nested include's not-found error", err)
 		}
 	})
 	t.Run("include cycle terminates", func(t *testing.T) {

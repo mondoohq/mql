@@ -370,3 +370,26 @@ func TestPostgresqlHbaIdentNoFileIsNull(t *testing.T) {
 	assert.Nil(t, mappings)
 	assert.True(t, ident.Mappings.State&plugin.StateIsNull != 0, "mappings must be null, not []")
 }
+
+// An explicit path that points nowhere is the same absence as no file found:
+// null, not an error and not an empty list.
+func TestPostgresqlHbaIdentMissingExplicitPathIsNull(t *testing.T) {
+	missing := func() *mqlFile {
+		f := &mqlFile{}
+		f.Path = plugin.TValue[string]{Data: "/etc/postgresql/nope/pg_hba.conf", State: plugin.StateIsSet}
+		f.Exists = plugin.TValue[bool]{Data: false, State: plugin.StateIsSet}
+		return f
+	}
+
+	hba := &mqlPostgresqlHba{}
+	rules, err := hba.rules(missing())
+	require.NoError(t, err)
+	assert.Nil(t, rules)
+	assert.True(t, hba.Rules.State&plugin.StateIsNull != 0, "rules must be null")
+
+	ident := &mqlPostgresqlIdent{}
+	mappings, err := ident.mappings(missing())
+	require.NoError(t, err)
+	assert.Nil(t, mappings)
+	assert.True(t, ident.Mappings.State&plugin.StateIsNull != 0, "mappings must be null")
+}

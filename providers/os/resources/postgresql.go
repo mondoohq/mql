@@ -158,6 +158,19 @@ func findPostgresqlConfigFile(fs afero.Fs, name string) string {
 	return ""
 }
 
+// postgresqlFileFound reports whether file names a file that exists: false
+// when none was found on the host, or when an explicit path points nowhere.
+func postgresqlFileFound(file *mqlFile) (bool, error) {
+	if file == nil {
+		return false, nil
+	}
+	exists := file.GetExists()
+	if exists.Error != nil {
+		return false, exists.Error
+	}
+	return exists.Data, nil
+}
+
 // postgresqlFileReaders returns the reader and directory lister the parsers
 // use to follow include directives. Every file is read through a file
 // resource, recorded in files by path so callers can hand back the resources
@@ -599,9 +612,13 @@ func (s *mqlPostgresqlHba) file() (*mqlFile, error) {
 }
 
 func (s *mqlPostgresqlHba) rules(file *mqlFile) ([]any, error) {
-	if file == nil {
-		// No pg_hba.conf anywhere: there are no rules to report, which is not
-		// the same as a file that holds none. An empty list would let
+	found, err := postgresqlFileFound(file)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		// No pg_hba.conf: there are no rules to report, which is not the
+		// same as a file that holds none. An empty list would let
 		// `rules.none(authMethod == "trust")` pass on a host nothing was read
 		// from.
 		s.Rules.State = plugin.StateIsSet | plugin.StateIsNull
@@ -693,7 +710,11 @@ func (s *mqlPostgresqlIdent) file() (*mqlFile, error) {
 }
 
 func (s *mqlPostgresqlIdent) mappings(file *mqlFile) ([]any, error) {
-	if file == nil {
+	found, err := postgresqlFileFound(file)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
 		s.Mappings.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
