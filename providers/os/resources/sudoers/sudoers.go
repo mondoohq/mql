@@ -5,6 +5,7 @@ package sudoers
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -18,8 +19,10 @@ var (
 	// IncludedirRegex matches @includedir and #includedir directives (sudo 1.9.1+)
 	IncludedirRegex = regexp.MustCompile(`^[@#]includedir\s+(.+)$`)
 	// TagRegex matches sudo tags (NOPASSWD, SETENV, etc.)
-	TagRegex = regexp.MustCompile(`\b(NOPASSWD|PASSWD|NOEXEC|EXEC|SETENV|NOSETENV|LOG_INPUT|NOLOG_INPUT|LOG_OUTPUT|NOLOG_OUTPUT|MAIL|NOMAIL|FOLLOW|NOFOLLOW|INTERCEPT|NOINTERCEPT)\s*:\s*`)
+	TagRegex = regexp.MustCompile(`\b(` + tagNames + `)\s*:\s*`)
 )
+
+const tagNames = `NOPASSWD|PASSWD|NOEXEC|EXEC|SETENV|NOSETENV|LOG_INPUT|NOLOG_INPUT|LOG_OUTPUT|NOLOG_OUTPUT|MAIL|NOMAIL|FOLLOW|NOFOLLOW|INTERCEPT|NOINTERCEPT`
 
 // UserSpec represents a user specification entry in sudoers
 type UserSpec struct {
@@ -363,48 +366,19 @@ func parseLine(line string) *parsedLine {
 		entryType: "user_spec",
 	}
 
-	// First, extract runas specification from the line before splitting
-	// This is important because the host can be followed directly by =(...)
-	runasStart := strings.Index(line, "=(")
-	var remaining string
-	var beforeRunas string
-
-	if runasStart != -1 {
-		runasEnd := strings.Index(line[runasStart:], ")")
-		if runasEnd != -1 {
-			runasEnd += runasStart
-			runasSpec := line[runasStart+2 : runasEnd]
-
-			// Parse runas users and groups
-			if strings.Contains(runasSpec, ":") {
-				runasParts := strings.SplitN(runasSpec, ":", 2)
-				result.runasUsers = splitAndTrim(runasParts[0], ",")
-				result.runasGroups = splitAndTrim(runasParts[1], ",")
-			} else {
-				result.runasUsers = splitAndTrim(runasSpec, ",")
-			}
-
-			// Split line into parts: before runas, and after runas
-			beforeRunas = strings.TrimSpace(line[:runasStart])
-			remaining = strings.TrimSpace(line[runasEnd+1:])
-		}
-	} else {
-		// No runas specification. The first `=` separates the "user host"
-		// portion from the command spec, and whitespace around it is optional
-		// (e.g. `root ALL=ALL` or `bob ALL=/bin/ls`). Splitting on whitespace
-		// alone misreads (or drops) these specs, so split on `=` here and
-		// reuse the shared user/host logic below — analogous to how the runas
-		// branch splits around `=(...)`.
-		eq := strings.Index(line, "=")
-		if eq == -1 {
-			return nil
-		}
-		beforeRunas = strings.TrimSpace(line[:eq])
-		remaining = strings.TrimSpace(line[eq+1:])
+	// The first `=` separates the "user host" portion from the command
+	// specification. Whitespace around it is optional, so both
+	// `bob ALL=(root) /bin/ls` and `bob ALL = (root) /bin/ls` are valid; the
+	// user and host lists never contain an `=`.
+	eq := strings.Index(line, "=")
+	if eq == -1 {
+		return nil
 	}
+	userHost := strings.TrimSpace(line[:eq])
+	remaining := strings.TrimSpace(line[eq+1:])
 
-	// For lines with runas, split beforeRunas to get user and host
-	tokens := smartSplit(beforeRunas)
+	// Split the "user host" portion into the user and host lists
+	tokens := smartSplit(userHost)
 	if len(tokens) < 2 {
 		return nil
 	}
@@ -447,23 +421,109 @@ func parseLine(line string) *parsedLine {
 	return result
 }
 
-// extractTagsAndCommands extracts tags and commands from a sudoers line
+// tagPrefixRegex matches one tag at the start of a command spec.
+var tagPrefixRegex = regexp.MustCompile(`^(` + tagNames + `)\s*:\s*`)
+
+// extractTagsAndCommands parses the comma-separated Cmnd_Spec list after the
+// `=` of a user specification. Each item may start with its own runas spec
+// and tags, which apply to that command and the ones after it:
+//
+//	(ALL:ALL) NOPASSWD: /bin/date, PASSWD: /bin/hostname, (operator) /bin/ls
+//
+// The list is split on unquoted commas first, so a tag or runas spec in a
+// later item never swallows the commands before it. Runas users, groups and
+// tags from all items are collected in order of appearance, without
+// duplicates.
 func extractTagsAndCommands(result *parsedLine, remaining string) {
-	for {
-		match := TagRegex.FindStringIndex(remaining)
-		if match == nil {
-			break
+	for _, item := range splitCmndSpecs(remaining) {
+		for {
+			item = strings.TrimSpace(item)
+			if strings.HasPrefix(item, "(") {
+				end := strings.Index(item, ")")
+				if end == -1 {
+					break
+				}
+				users, groups := parseRunasSpec(item[1:end])
+				if result.runasUsers == nil {
+					result.runasUsers = users
+					result.runasGroups = groups
+				} else {
+					result.runasUsers = appendUnique(result.runasUsers, users...)
+					result.runasGroups = appendUnique(result.runasGroups, groups...)
+				}
+				item = item[end+1:]
+				continue
+			}
+			m := tagPrefixRegex.FindStringSubmatchIndex(item)
+			if m == nil {
+				break
+			}
+			result.tags = appendUnique(result.tags, item[m[2]:m[3]])
+			item = item[m[1]:]
 		}
-		tag := strings.TrimSpace(remaining[match[0]:match[1]])
-		tag = strings.TrimSuffix(tag, ":")
-		result.tags = append(result.tags, strings.TrimSpace(tag))
-		remaining = remaining[match[1]:]
+		if item != "" {
+			result.commands = append(result.commands, item)
+		}
+	}
+}
+
+// parseRunasSpec parses the inside of a `(users:groups)` runas spec. Without a
+// colon only users are given and groups stay nil.
+func parseRunasSpec(spec string) ([]string, []string) {
+	if users, groups, ok := strings.Cut(spec, ":"); ok {
+		return splitAndTrim(users, ","), splitAndTrim(groups, ",")
+	}
+	return splitAndTrim(spec, ","), nil
+}
+
+func appendUnique(list []string, items ...string) []string {
+	for _, item := range items {
+		if !slices.Contains(list, item) {
+			list = append(list, item)
+		}
+	}
+	return list
+}
+
+// splitCmndSpecs splits a Cmnd_Spec list on commas that are not quoted,
+// escaped, or inside a leading runas spec such as `(root, daemon)`.
+func splitCmndSpecs(s string) []string {
+	var items []string
+	var current strings.Builder
+	inQuote := false
+	inRunas := false
+	escaped := false
+
+	for _, ch := range s {
+		if escaped {
+			current.WriteRune(ch)
+			escaped = false
+			continue
+		}
+
+		switch {
+		case ch == '\\':
+			escaped = true
+		case ch == '"':
+			inQuote = !inQuote
+		case ch == '(' && !inQuote && strings.TrimSpace(current.String()) == "":
+			inRunas = true
+		case ch == ')' && inRunas:
+			inRunas = false
+		case ch == ',' && !inQuote && !inRunas:
+			if item := strings.TrimSpace(current.String()); item != "" {
+				items = append(items, item)
+			}
+			current.Reset()
+			continue
+		}
+		current.WriteRune(ch)
 	}
 
-	// Remaining part is the command specification
-	if remaining != "" {
-		result.commands = SplitCommands(remaining)
+	if item := strings.TrimSpace(current.String()); item != "" {
+		items = append(items, item)
 	}
+	return items
 }
 
 // smartSplit splits a string on runs of spaces or tabs but respects quoted
