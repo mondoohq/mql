@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"go.mondoo.com/mql/types"
 	"net/http"
 	"strings"
 	"testing"
@@ -172,6 +173,7 @@ func TestIdentityProviderArgs_SamlOrWsFed(t *testing.T) {
 	assert.Equal(t, "wsFed", rawString(t, args, "preferredAuthenticationProtocol"))
 	assert.Equal(t, "MIIDADCCAeigAwIBAgIQEX41y8r6", rawString(t, args, "signingCertificate"))
 	assert.Equal(t, []any{"contoso.com", "fabrikam.com"}, args["domains"].Value)
+	assertStringList(t, args["domains"])
 	assertIdpNull(t, args, "identityProviderType", "clientId")
 }
 
@@ -188,6 +190,15 @@ func TestIdentityProviderArgs_UnmodeledKindIsUnknown(t *testing.T) {
 	args := newIdentityProviderArgs(parseIdentityProvider(t, payload))
 	assert.Equal(t, "unknown", rawString(t, args, "type"))
 	assert.Equal(t, []any{}, args["domains"].Value)
+	assertStringList(t, args["domains"])
+}
+
+// assertStringList checks a []string field carries the string array type and
+// serializes. A malformed element type makes Result panic.
+func assertStringList(t *testing.T, data *llx.RawData) {
+	t.Helper()
+	assert.Equal(t, types.Array(types.String), data.Type)
+	assert.NotPanics(t, func() { data.Result() })
 }
 
 const b2xUserFlowJSON = `{

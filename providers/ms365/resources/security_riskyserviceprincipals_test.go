@@ -137,6 +137,7 @@ func TestServicePrincipalRiskDetectionArgs(t *testing.T) {
 		assert.Equal(t, v, rawString(t, args, k), k)
 	}
 	assert.Equal(t, []any{"9d9fea30-d8e3-481b-b57c-0ef569a989e5", "1a2b3c4d-0000-4000-8000-000000000001"}, args["keyIds"].Value)
+	assertStringList(t, args["keyIds"])
 
 	for k, want := range map[string]time.Time{
 		"activityDateTime":    time.Date(2021, 10, 26, 0, 0, 0, 0, time.UTC),
@@ -161,6 +162,7 @@ func TestServicePrincipalRiskDetectionArgsSparse(t *testing.T) {
 		assert.Nil(t, args[k].Value, k)
 	}
 	assert.Equal(t, []any{}, args["keyIds"].Value)
+	assertStringList(t, args["keyIds"])
 }
 
 func graphStatusErr(status int, code, msg string) *odataerrors.ODataError {

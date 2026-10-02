@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"go.mondoo.com/mql/types"
 	"sync"
 
 	"github.com/microsoftgraph/msgraph-sdk-go/identity"
@@ -121,7 +122,7 @@ func newIdentityProviderArgs(provider models.IdentityProviderBaseable) map[strin
 		"passiveSignInUri":                llx.NilData,
 		"preferredAuthenticationProtocol": llx.NilData,
 		"signingCertificate":              llx.NilData,
-		"domains":                         llx.ArrayData([]any{}, "string"),
+		"domains":                         llx.ArrayData([]any{}, types.String),
 	}
 
 	switch p := provider.(type) {
@@ -152,7 +153,7 @@ func newIdentityProviderArgs(provider models.IdentityProviderBaseable) map[strin
 		args["passiveSignInUri"] = llx.StringDataPtr(p.GetPassiveSignInUri())
 		args["preferredAuthenticationProtocol"] = identityEnumData(p.GetPreferredAuthenticationProtocol())
 		args["signingCertificate"] = llx.StringDataPtr(p.GetSigningCertificate())
-		args["domains"] = llx.ArrayData(externalDomainNames(p.GetDomains()), "string")
+		args["domains"] = llx.ArrayData(externalDomainNames(p.GetDomains()), types.String)
 	}
 	return args
 }

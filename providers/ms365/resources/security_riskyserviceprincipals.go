@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"go.mondoo.com/mql/types"
 	"net/http"
 	"strings"
 
@@ -174,7 +175,7 @@ func servicePrincipalRiskDetectionArgs(d models.ServicePrincipalRiskDetectionabl
 		"city":                        llx.StringDataPtr(city),
 		"state":                       llx.StringDataPtr(state),
 		"countryOrRegion":             llx.StringDataPtr(countryOrRegion),
-		"keyIds":                      llx.ArrayData(keyIds, "string"),
+		"keyIds":                      llx.ArrayData(keyIds, types.String),
 		"servicePrincipalDisplayName": llx.StringDataPtr(d.GetServicePrincipalDisplayName()),
 		"correlationId":               llx.StringDataPtr(d.GetCorrelationId()),
 		"requestId":                   llx.StringDataPtr(d.GetRequestId()),
