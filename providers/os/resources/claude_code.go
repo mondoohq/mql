@@ -649,6 +649,11 @@ func (r *mqlClaudeCodeSkill) purl() (string, error) {
 	return skillPURL(connectionAfs(r.MqlRuntime), r.Source.Data), nil
 }
 
+// The id methods of claude.code children are fallbacks the runtime uses only
+// when a child is created without an "__id". Every creation site passes one
+// built with aiChildID, scoped to the parent's configPath, which a child cannot
+// see from its own fields; these fallbacks are not reached in practice.
+
 func (r *mqlClaudeCodeProject) id() (string, error) {
 	return "claude.code.project/" + r.Path.Data, nil
 }

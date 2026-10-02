@@ -82,6 +82,9 @@ func (r *mqlGithubCopilot) mcpServers() ([]interface{}, error) {
 		}
 
 		for name, server := range config.Servers {
+			// Keyed by the file rather than configDir: mcp.json and
+			// intellij/mcp.json under one configDir are separate configurations
+			// that can name the same server.
 			res, err := NewResource(r.MqlRuntime, "github.copilot.mcpServer", map[string]*llx.RawData{
 				"__id":    llx.StringData(aiChildID("github.copilot.mcpServer", mcpPath, name)),
 				"name":    llx.StringData(name),
