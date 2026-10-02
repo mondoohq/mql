@@ -228,6 +228,30 @@ func (a *mqlMicrosoft) userById(id string) (*mqlMicrosoftUser, bool) {
 	return res, ok
 }
 
+// listedUser returns the user with the given id from the tenant's user list,
+// or nil when the list has no such user. The list is fetched once per
+// runtime and indexes every user it returns, so repeated lookups don't scan it.
+func (a *mqlMicrosoft) listedUser(id string) (*mqlMicrosoftUser, error) {
+	users := a.GetUsers()
+	if users.Error != nil {
+		return nil, users.Error
+	}
+	list := users.Data.GetList()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	if u, ok := a.userById(id); ok {
+		return u, nil
+	}
+	for _, entry := range list.Data {
+		if u, ok := entry.(*mqlMicrosoftUser); ok && u.Id.Data == id {
+			a.indexUser(u)
+			return u, nil
+		}
+	}
+	return nil, nil
+}
+
 // indexDevice adds a device to the internal indexes. The map is created lazily
 // under the write lock so concurrent indexing can't race on the nil check.
 func (a *mqlMicrosoft) indexDevice(device *mqlMicrosoftDevice) {

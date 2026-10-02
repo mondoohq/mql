@@ -1016,24 +1016,22 @@ func (r *mqlMs365Exchangeonline) reportSubmissionPolicies() ([]any, error) {
 func (m *mqlMs365ExchangeonlineExoMailbox) user() (*mqlMicrosoftUser, error) {
 	externalId := m.ExternalDirectoryObjectId.Data
 	if externalId == "" {
-		return nil, errors.New("no externalDirectoryObjectId provided, cannot find user for mailbox")
+		m.User.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	microsoft, err := m.MqlRuntime.CreateResource(m.MqlRuntime, "microsoft", map[string]*llx.RawData{})
 	if err != nil {
 		return nil, err
 	}
-	mqlMicrosoft := microsoft.(*mqlMicrosoft)
-	users := mqlMicrosoft.GetUsers()
-	if users.Error != nil {
-		return nil, users.Error
+	user, err := microsoft.(*mqlMicrosoft).listedUser(externalId)
+	if err != nil {
+		return nil, err
 	}
-	for _, u := range users.Data.List.Data {
-		mqlUser := u.(*mqlMicrosoftUser)
-		if mqlUser.Id.Data == externalId {
-			return mqlUser, nil
-		}
+	if user == nil {
+		m.User.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
-	return nil, errors.New("cannot find user for exchange mailbox")
+	return user, nil
 }
 
 func (r *mqlMs365Exchangeonline) mailboxesWithAudit() ([]any, error) {
