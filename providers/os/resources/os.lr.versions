@@ -3226,6 +3226,7 @@ parse.certificates.content 9.0.1
 parse.certificates.file 9.0.1
 parse.certificates.list 9.0.1
 parse.certificates.path 9.0.1
+parse.certificates.unparseable 14.14.1
 parse.ini 9.0.0
 parse.ini.content 9.0.0
 parse.ini.delimiter 9.0.0

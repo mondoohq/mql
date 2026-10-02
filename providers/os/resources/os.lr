@@ -827,10 +827,10 @@ os.rootCertificates {
   // Number of certificates in the trust-store files that could not be parsed
   //
   // Counts the certificate blocks skipped while decoding the trust-store
-  // files, for example a certificate carrying a negative serial number,
-  // which older bundles still ship. Those blocks are left out of the list
-  // rather than failing the whole store, so any value above zero means the
-  // list is an incomplete view of what the platform trusts.
+  // files, for example a truncated or malformed certificate. Those blocks
+  // are left out of the list rather than failing the whole store, so any
+  // value above zero means the list is an incomplete view of what the
+  // platform trusts.
   unparseable(content) int
 }
 
@@ -1109,6 +1109,13 @@ parse.certificates {
   file() file
   // Certificate file content
   content(file) string
+  // Number of certificate blocks in the file that could not be parsed
+  //
+  // Counts the certificate blocks skipped while decoding content, for
+  // example a truncated or malformed certificate. Those blocks are left
+  // out of the list rather than failing the whole file, so any value
+  // above zero means the list is an incomplete view of the file.
+  unparseable(content) int
 }
 
 // Parse OpenPGP keys from files

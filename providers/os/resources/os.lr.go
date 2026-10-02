@@ -3976,6 +3976,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"parse.certificates.content": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlParseCertificates).GetContent()).ToDataRes(types.String)
 	},
+	"parse.certificates.unparseable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlParseCertificates).GetUnparseable()).ToDataRes(types.Int)
+	},
 	"parse.certificates.list": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlParseCertificates).GetList()).ToDataRes(types.Array(types.Resource("certificate")))
 	},
@@ -19197,6 +19200,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"parse.certificates.content": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlParseCertificates).Content, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"parse.certificates.unparseable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlParseCertificates).Unparseable, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"parse.certificates.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -44142,10 +44149,11 @@ type mqlParseCertificates struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlParseCertificatesInternal it will be used here
-	Path    plugin.TValue[string]
-	File    plugin.TValue[*mqlFile]
-	Content plugin.TValue[string]
-	List    plugin.TValue[[]any]
+	Path        plugin.TValue[string]
+	File        plugin.TValue[*mqlFile]
+	Content     plugin.TValue[string]
+	Unparseable plugin.TValue[int64]
+	List        plugin.TValue[[]any]
 }
 
 // createParseCertificates creates a new instance of this resource
@@ -44213,6 +44221,17 @@ func (c *mqlParseCertificates) GetContent() *plugin.TValue[string] {
 		}
 
 		return c.content(vargFile.Data)
+	})
+}
+
+func (c *mqlParseCertificates) GetUnparseable() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Unparseable, func() (int64, error) {
+		vargContent := c.GetContent()
+		if vargContent.Error != nil {
+			return 0, vargContent.Error
+		}
+
+		return c.unparseable(vargContent.Data)
 	})
 }
 

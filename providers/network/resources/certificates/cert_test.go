@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"fmt"
+	"math/big"
 	"os"
 	"testing"
 
@@ -116,4 +117,20 @@ func TestHexPrint(t *testing.T) {
 	data := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
 	res := HexEncodeToHumanString(data)
 	assert.Equal(t, "00:01:02:03:04:05:06:07:08:09:0a:0b:0c", res)
+}
+
+func TestSerialToHumanString(t *testing.T) {
+	// EC-ACC, trusted by Debian 9 and 10, has this negative serial. OpenSSL
+	// prints it as serial=-11D4C2142BDE21EB579D53FB0C223BFF.
+	ecacc, ok := new(big.Int).SetString("-11D4C2142BDE21EB579D53FB0C223BFF", 16)
+	require.True(t, ok)
+	assert.Equal(t, "-11:d4:c2:14:2b:de:21:eb:57:9d:53:fb:0c:22:3b:ff", SerialToHumanString(ecacc))
+
+	positive, ok := new(big.Int).SetString("11D4C2142BDE21EB579D53FB0C223BFF", 16)
+	require.True(t, ok)
+	assert.Equal(t, "11:d4:c2:14:2b:de:21:eb:57:9d:53:fb:0c:22:3b:ff", SerialToHumanString(positive))
+
+	// A zero serial has no magnitude bytes; OpenSSL prints serial=00.
+	assert.Equal(t, "00", SerialToHumanString(big.NewInt(0)))
+	assert.Equal(t, "", SerialToHumanString(nil))
 }

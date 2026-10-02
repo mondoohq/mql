@@ -291,7 +291,7 @@ func (s *mqlCertificate) getGoCert() error {
 
 		cert := s.cert.Data
 		s.Fingerprints = plugin.TValue[map[string]any]{Data: certificates.Fingerprints(cert), State: plugin.StateIsSet}
-		s.Serial = plugin.TValue[string]{Data: certificates.HexEncodeToHumanString(cert.SerialNumber.Bytes()), State: plugin.StateIsSet}
+		s.Serial = plugin.TValue[string]{Data: certificates.SerialToHumanString(cert.SerialNumber), State: plugin.StateIsSet}
 		s.SubjectKeyID = plugin.TValue[string]{Data: certificates.HexEncodeToHumanString(cert.SubjectKeyId), State: plugin.StateIsSet}
 		s.AuthorityKeyID = plugin.TValue[string]{Data: certificates.HexEncodeToHumanString(cert.AuthorityKeyId), State: plugin.StateIsSet}
 		s.Version = plugin.TValue[int64]{Data: int64(cert.Version), State: plugin.StateIsSet}

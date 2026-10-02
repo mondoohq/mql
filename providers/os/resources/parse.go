@@ -478,6 +478,32 @@ func (p *mqlParseCertificates) list(content string, path string) ([]any, error) 
 	return list.Value.([]any), nil
 }
 
+// unparseable reports how many certificate blocks in the file the shared
+// certificates resource had to skip, so a policy can tell an incomplete list
+// from the full contents of the file.
+func (p *mqlParseCertificates) unparseable(content string) (int64, error) {
+	certificates, err := p.MqlRuntime.CreateSharedResource("certificates", map[string]*llx.RawData{
+		"pem": llx.StringData(content),
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	data, err := p.MqlRuntime.GetSharedData("certificates", certificates.MqlID(), "unparseable")
+	if err != nil {
+		return 0, err
+	}
+	if data.Error != nil {
+		return 0, data.Error
+	}
+
+	skipped, ok := data.Value.(int64)
+	if !ok {
+		return 0, fmt.Errorf("unexpected type %T for certificates.unparseable", data.Value)
+	}
+	return skipped, nil
+}
+
 func initParseOpenpgp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if _, ok := args["path"]; !ok {
 		if _, ok := args["content"]; !ok {
