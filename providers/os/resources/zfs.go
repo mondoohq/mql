@@ -110,9 +110,16 @@ func (z *mqlZfs) version() (string, error) {
 	if exit := cmd.GetExitcode(); exit.Error != nil {
 		return "", exit.Error
 	} else if exit.Data != 0 {
-		// Oracle Solaris has no `zfs version`. It names its ZFS release by
-		// the pool version instead.
 		if strings.Contains(cmd.Stderr.Data, "unrecognized command 'version'") {
+			// ZFS on Linux before 0.8 has no `zfs version`. The loaded
+			// kernel module reports its release.
+			if v, err := zfsKmodVersion(z.MqlRuntime); err != nil {
+				return "", err
+			} else if v != "" {
+				return v, nil
+			}
+			// Oracle Solaris has no `zfs version` either. It names its ZFS
+			// release by the pool version instead.
 			out, _, err := runZfsCommand(z.MqlRuntime, "zpool upgrade -v", "zfs version")
 			if err != nil {
 				return "", err
@@ -128,6 +135,36 @@ func (z *mqlZfs) version() (string, error) {
 		version = version[:i]
 	}
 	return version, nil
+}
+
+// zfsKmodVersion reads the release of the loaded ZFS on Linux kernel module
+// from /sys/module/zfs/version and returns it the way `zfs version` names the
+// module on its second line (zfs-kmod-0.6.5.6-0ubuntu28). It returns "" when
+// the file does not exist.
+func zfsKmodVersion(runtime *plugin.Runtime) (string, error) {
+	o, err := CreateResource(runtime, "file", map[string]*llx.RawData{
+		"path": llx.StringData("/sys/module/zfs/version"),
+	})
+	if err != nil {
+		return "", err
+	}
+	f := o.(*mqlFile)
+	exists := f.GetExists()
+	if exists.Error != nil {
+		return "", exists.Error
+	}
+	if !exists.Data {
+		return "", nil
+	}
+	content := f.GetContent()
+	if content.Error != nil {
+		return "", content.Error
+	}
+	v := strings.TrimSpace(content.Data)
+	if v == "" {
+		return "", nil
+	}
+	return "zfs-kmod-" + v, nil
 }
 
 func (z *mqlZfs) pools() ([]any, error) {
@@ -296,13 +333,21 @@ func (p *mqlZfsPool) vdevs() ([]any, error) {
 	var vdevs []zfs.Vdev
 	switch {
 	case err != nil && strings.Contains(err.Error(), "invalid option"):
-		// Oracle Solaris zpool status has neither -p, -s nor -P.
-		var text string
+		// ZFS on Linux before 0.8 has neither -p nor -s, but has -P. Oracle
+		// Solaris zpool status has neither -p, -s nor -P.
+		var text, fullText string
 		text, _, err = runZfsCommand(p.MqlRuntime, fmt.Sprintf("zpool status %q", p.Name.Data), "zfs pool vdevs")
 		if err != nil {
 			return nil, err
 		}
-		vdevs, err = zfs.ParseVdevsTextSolaris(text)
+		fullText, _, err = runZfsCommand(p.MqlRuntime, fmt.Sprintf("zpool status -P %q", p.Name.Data), "zfs pool vdevs")
+		if err != nil {
+			if !strings.Contains(err.Error(), "invalid option") {
+				return nil, err
+			}
+			fullText = ""
+		}
+		vdevs, err = zfs.ParseVdevsTextPlain(text, fullText)
 	case err != nil:
 		return nil, err
 	case out.isJSON():

@@ -6,6 +6,7 @@ package zfs
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -138,13 +139,13 @@ func poolsFromProperties(byName map[string]map[string]string) ([]Pool, error) {
 			return nil, fmt.Errorf("parsing pool %q free: %w", name, err)
 		}
 		if frag, ok := props["fragmentation"]; ok && frag != "-" && frag != "" {
-			n, err := strconv.ParseInt(strings.TrimSuffix(frag, "%"), 10, 64)
+			n, err := parsePercent(frag)
 			if err != nil {
 				return nil, fmt.Errorf("parsing pool %q fragmentation: %w", name, err)
 			}
 			pool.Fragmentation = &n
 		}
-		pool.PercentUsed, err = parseInt(props["capacity"])
+		pool.PercentUsed, err = parsePercent(props["capacity"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing pool %q capacity: %w", name, err)
 		}
@@ -464,6 +465,18 @@ func IsJSONUnsupported(stderr string) bool {
 	return strings.Contains(stderr, "invalid option 'j'")
 }
 
+// ParseVdevsTextPlain parses `zpool status '<pool>'` and
+// `zpool status -P '<pool>'` from releases whose zpool status has neither -p
+// nor -s: ZFS on Linux before 0.8, and Oracle Solaris. ZFS on Linux has -P and
+// lists disks by their /dev path there. Oracle Solaris has no -P, so
+// fullPathOutput is empty and disks resolve under /dev/dsk.
+func ParseVdevsTextPlain(statusOutput string, fullPathOutput string) ([]Vdev, error) {
+	if fullPathOutput == "" {
+		return ParseVdevsTextSolaris(statusOutput)
+	}
+	return ParseVdevsText(statusOutput, fullPathOutput)
+}
+
 // ParseVdevsTextSolaris parses the output of a plain `zpool status '<pool>'`
 // on Oracle Solaris, whose zpool status has neither -p, -s nor -P. It lists
 // disks by their bare device name (c0t5000CCA0D0E1F2A3d0), which Solaris
@@ -517,8 +530,8 @@ func ParseSolarisPoolVersion(output string) (string, bool) {
 // and spares sections are left out, since the JSON output reports those outside
 // the root vdev too.
 func ParseVdevsText(statusOutput string, fullPathOutput string) ([]Vdev, error) {
-	short := statusConfigLines(statusOutput)
-	full := statusConfigLines(fullPathOutput)
+	short, counters := statusConfigLines(statusOutput)
+	full, _ := statusConfigLines(fullPathOutput)
 	if len(short) == 0 {
 		return nil, nil
 	}
@@ -554,7 +567,7 @@ func ParseVdevsText(statusOutput string, fullPathOutput string) ([]Vdev, error) 
 			return nil, fmt.Errorf("parsing zpool status: vdev %q before the pool", fields[0])
 		}
 
-		v, err := statusVdev(fields, fullFields)
+		v, err := statusVdev(fields, fullFields, counters)
 		if err != nil {
 			return nil, err
 		}
@@ -598,9 +611,13 @@ func ParseVdevsText(statusOutput string, fullPathOutput string) ([]Vdev, error) 
 
 // statusConfigLines returns the vdev lines of the config section of
 // `zpool status`, from the line after the NAME header up to the first blank
-// line.
-func statusConfigLines(output string) []string {
+// line, and the number of error counter columns the header names: READ,
+// WRITE, CKSUM, and SLOW with -s. Releases without -s (ZFS on Linux before
+// 0.8, Oracle Solaris) have no SLOW column, so a note such as "was /dev/sdb"
+// follows CKSUM directly.
+func statusConfigLines(output string) ([]string, int) {
 	var lines []string
+	counters := 0
 	inConfig := false
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSuffix(line, "\r")
@@ -608,6 +625,7 @@ func statusConfigLines(output string) []string {
 			fields := strings.Fields(line)
 			if len(fields) >= 2 && fields[0] == "NAME" && fields[1] == "STATE" {
 				inConfig = true
+				counters = len(fields) - 2
 			}
 			continue
 		}
@@ -616,7 +634,7 @@ func statusConfigLines(output string) []string {
 		}
 		lines = append(lines, line)
 	}
-	return lines
+	return lines, counters
 }
 
 // statusFields returns the nesting depth of a zpool status config line and its
@@ -629,9 +647,10 @@ func statusFields(line string) (int, []string) {
 	return depth, strings.Fields(trimmed)
 }
 
-// statusVdev builds a vdev from a config line (NAME STATE READ WRITE CKSUM SLOW
-// [note]) and the same line printed with full paths.
-func statusVdev(fields []string, fullFields []string) (Vdev, error) {
+// statusVdev builds a vdev from a config line (NAME STATE READ WRITE CKSUM
+// [SLOW] [note]) with the given number of counter columns, and the same line
+// printed with full paths.
+func statusVdev(fields []string, fullFields []string, counters int) (Vdev, error) {
 	v := Vdev{Name: fields[0]}
 	if len(fullFields) > 0 {
 		v.Path = fullFields[0]
@@ -640,13 +659,13 @@ func statusVdev(fields []string, fullFields []string) (Vdev, error) {
 		v.State = fields[1]
 	}
 
-	counters := []*int64{&v.ReadErrors, &v.WriteErrors, &v.ChecksumErrors, &v.SlowIOs}
+	dsts := []*int64{&v.ReadErrors, &v.WriteErrors, &v.ChecksumErrors, &v.SlowIOs}
 	names := []string{"read errors", "write errors", "checksum errors", "slow I/Os"}
-	for i, dst := range counters {
-		if len(fields) <= 2+i {
+	for i, dst := range dsts {
+		if i >= counters || len(fields) <= 2+i {
 			break
 		}
-		n, err := parseInt(fields[2+i])
+		n, err := parseCount(fields[2+i])
 		if err != nil {
 			return v, fmt.Errorf("parsing vdev %q %s: %w", v.Name, names[i], err)
 		}
@@ -697,6 +716,33 @@ func parseInt(s string) (int64, error) {
 		return 0, nil
 	}
 	return strconv.ParseInt(s, 10, 64)
+}
+
+// parsePercent parses a ZFS percentage such as capacity or fragmentation.
+// With -p, OpenZFS 0.7 and later print a bare number ("37"); ZFS on Linux
+// 0.6.5 keeps the percent sign ("37%").
+func parsePercent(s string) (int64, error) {
+	return parseInt(strings.TrimSuffix(s, "%"))
+}
+
+// parseCount parses a vdev error counter from `zpool status`. With -p it is
+// always a plain integer. Releases without -p (ZFS on Linux before 0.8, Oracle
+// Solaris) print counters from 1000 on in their short form ("1.2K", "3M"),
+// which is read back to the nearest value, in powers of 1024 like zfs_nicenum.
+func parseCount(s string) (int64, error) {
+	n, err := parseInt(s)
+	if err == nil || len(s) < 2 {
+		return n, err
+	}
+	exp := strings.IndexByte("KMGTPE", s[len(s)-1])
+	if exp < 0 {
+		return 0, err
+	}
+	f, ferr := strconv.ParseFloat(s[:len(s)-1], 64)
+	if ferr != nil || f < 0 {
+		return 0, err
+	}
+	return int64(math.Round(f * math.Pow(1024, float64(exp+1)))), nil
 }
 
 // parseRatio parses a ZFS ratio like "1.50x" or "1.50" to float64. Oracle

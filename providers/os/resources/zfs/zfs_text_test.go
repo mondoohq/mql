@@ -272,9 +272,16 @@ func TestParseVdevsText_MismatchedOutputs(t *testing.T) {
 }
 
 func TestParseVdevsText_BadCounter(t *testing.T) {
-	status := "config:\n\n\tNAME STATE READ WRITE CKSUM\n\ttank ONLINE 0 0 0\n\t  ada1 ONLINE 1.2K 0 0\n"
+	status := "config:\n\n\tNAME STATE READ WRITE CKSUM\n\ttank ONLINE 0 0 0\n\t  ada1 ONLINE 1.2Q 0 0\n"
 	_, err := ParseVdevsText(status, status)
 	assert.Error(t, err)
+
+	// Without -p, counters from 1000 on are printed in their short form.
+	status = "config:\n\n\tNAME STATE READ WRITE CKSUM\n\ttank ONLINE 0 0 0\n\t  ada1 ONLINE 1.2K 0 0\n"
+	vdevs, err := ParseVdevsText(status, status)
+	require.NoError(t, err)
+	require.Len(t, vdevs, 1)
+	assert.Equal(t, int64(1229), vdevs[0].ReadErrors)
 }
 
 func TestGroupVdevType(t *testing.T) {

@@ -17641,8 +17641,10 @@ private mdadm.device @defaults("name state") {
 zfs @defaults("pools") {
   // ZFS version string
   //
-  // The OpenZFS release, for example `zfs-2.2.2-1`. Oracle Solaris names its
-  // ZFS release by the pool version instead, for example `53`.
+  // The OpenZFS release, for example `zfs-2.2.2-1`. ZFS on Linux before 0.8
+  // reports the release of its loaded kernel module, for example
+  // `zfs-kmod-0.6.5.6-0ubuntu28`. Oracle Solaris names its ZFS release by the
+  // pool version instead, for example `53`.
   version() string
   // ZFS storage pools
   pools() []zfs.pool
