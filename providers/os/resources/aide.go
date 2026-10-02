@@ -5,6 +5,8 @@ package resources
 
 import (
 	"errors"
+	"fmt"
+	"os"
 	"path"
 	"sort"
 	"strconv"
@@ -96,6 +98,15 @@ func (a *mqlAide) readConfig() (*aideConfig, []*mqlFile, error) {
 	// duplicate every rule it holds
 	visited := map[string]struct{}{}
 
+	// readErr keeps the first configuration file or include target that could
+	// not be read
+	var readErr error
+	fail := func(target string, err error) {
+		if readErr == nil {
+			readErr = aideConfigReadError(target, err)
+		}
+	}
+
 	read := func(filePath string) (aideIncludeFile, bool) {
 		if _, seen := visited[filePath]; seen {
 			return aideIncludeFile{}, false
@@ -111,6 +122,7 @@ func (a *mqlAide) readConfig() (*aideConfig, []*mqlFile, error) {
 		content, err := fileContentOrEmpty(file)
 		if err != nil {
 			log.Debug().Err(err).Str("file", filePath).Msg("aide> cannot read configuration file")
+			fail(filePath, err)
 			return aideIncludeFile{}, false
 		}
 
@@ -124,6 +136,9 @@ func (a *mqlAide) readConfig() (*aideConfig, []*mqlFile, error) {
 		isDir, err := afero.IsDir(fs, target)
 		if err != nil {
 			log.Debug().Err(err).Str("target", target).Msg("aide> cannot stat include target")
+			if !errors.Is(err, os.ErrNotExist) {
+				fail(target, err)
+			}
 			return res
 		}
 
@@ -137,6 +152,7 @@ func (a *mqlAide) readConfig() (*aideConfig, []*mqlFile, error) {
 		entries, err := afero.ReadDir(fs, target)
 		if err != nil {
 			log.Debug().Err(err).Str("target", target).Msg("aide> cannot list include directory")
+			fail(target, err)
 			return res
 		}
 
@@ -160,12 +176,39 @@ func (a *mqlAide) readConfig() (*aideConfig, []*mqlFile, error) {
 
 	rootFile, ok := read(root)
 	if !ok {
+		if readErr != nil {
+			return nil, nil, readErr
+		}
 		return cfg, files, nil
 	}
 
+	// the compound groups AIDE defines itself (R, L, ...) depend on its release;
+	// without it they stay unexpanded in rule attributes
+	if out, ok, err := a.versionOutput(); err != nil {
+		log.Debug().Err(err).Msg("aide> cannot read aide --version")
+	} else if ok {
+		cfg.Builtins = aideBuiltinGroups(out)
+	}
+
 	parseAideConfig(cfg, rootFile.Path, rootFile.Content, 0, resolve)
+	if readErr != nil {
+		return nil, nil, readErr
+	}
 
 	return cfg, files, nil
+}
+
+// aideConfigReadError decides what a configuration file or include target that
+// could not be read does to the load. Rules parsed without it describe less
+// coverage than AIDE checks, and a non-root scan of the RedHat family, where
+// aide.conf is 0600, would report AIDE installed with no rules at all. With
+// structured errors on, it fails the load (a refusal is forbidden); without,
+// the v13 behavior of skipping the file is kept (ADR 046 §9) and nil returned.
+func aideConfigReadError(target string, err error) error {
+	if err == nil || !plugin.StructuredErrors() {
+		return nil
+	}
+	return classifyFsError(fmt.Errorf("aide: cannot read %s: %w", target, err))
 }
 
 func (a *mqlAide) findConfigFile(fs afero.Fs) string {
@@ -217,26 +260,45 @@ func (a *mqlAide) version() (string, error) {
 		return "", nil
 	}
 
-	o, err := CreateResource(a.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("aide --version"),
-	})
+	out, ok, err := a.versionOutput()
 	if err != nil {
 		return "", err
 	}
-	cmd := o.(*mqlCommand)
-
-	// a backend that cannot run commands, such as an image scan, leaves the
-	// version unknown rather than wrong
-	exit := cmd.GetExitcode()
-	if exit.Error != nil {
-		log.Debug().Err(exit.Error).Msg("aide> cannot run aide")
+	if !ok {
 		a.Version.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 
+	version := parseAideVersion(out)
+	if version == "" {
+		a.Version.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+
+	return version, nil
+}
+
+// versionOutput returns what `aide --version` printed. ok is false when the
+// command could not run, which a backend that cannot run commands, such as an
+// image scan, reports; the version is then unknown rather than wrong.
+func (a *mqlAide) versionOutput() (string, bool, error) {
+	o, err := CreateResource(a.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData("aide --version"),
+	})
+	if err != nil {
+		return "", false, err
+	}
+	cmd := o.(*mqlCommand)
+
+	exit := cmd.GetExitcode()
+	if exit.Error != nil {
+		log.Debug().Err(exit.Error).Msg("aide> cannot run aide")
+		return "", false, nil
+	}
+
 	stdout := cmd.GetStdout()
 	if stdout.Error != nil {
-		return "", stdout.Error
+		return "", false, stdout.Error
 	}
 
 	// aide reports its version on stderr on some releases and exits non-zero on
@@ -247,14 +309,7 @@ func (a *mqlAide) version() (string, error) {
 			out = stderr.Data
 		}
 	}
-
-	version := parseAideVersion(out)
-	if version == "" {
-		a.Version.State = plugin.StateIsSet | plugin.StateIsNull
-		return "", nil
-	}
-
-	return version, nil
+	return out, true, nil
 }
 
 func (a *mqlAide) configFile() (*mqlFile, error) {

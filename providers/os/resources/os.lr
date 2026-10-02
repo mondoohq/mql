@@ -9979,10 +9979,12 @@ private aide.rule @defaults("path selection attributes") {
   // Attributes compared for entries matched by this rule
   //
   // Group names defined in the configuration are resolved down to the
-  // attributes they stand for, and a `-` term removes what it names. A token
-  // AIDE defines internally rather than in the configuration, such as `R` or
-  // `L`, is reported as written because its meaning depends on the AIDE
-  // release.
+  // attributes they stand for, and a `-` term removes what it names. The
+  // compound groups AIDE defines itself, such as `R` and `L`, are expanded the
+  // way the installed release defines them, as `aide --version` reports. When
+  // the release is unknown, for example in an image scan, such a group is
+  // reported as written and a removal that may apply to it is kept with its
+  // sign, so `R+sha512-m-c` reads `-c`, `-m`, `R`, `sha512`.
   attributes []string
   // Line number of the rule in its source file
   lineNumber int

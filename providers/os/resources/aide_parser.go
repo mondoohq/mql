@@ -6,6 +6,7 @@ package resources
 import (
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -43,6 +44,9 @@ type aideConfig struct {
 	Groups map[string]string
 	Params map[string]string
 	Rules  []aideSelectionRule
+	// Builtins are the compound groups the installed AIDE defines itself
+	// (R, L, >, H, X, E), or nil when its release is unknown.
+	Builtins map[string]string
 }
 
 // aideConfigOptions are the settings AIDE recognizes as configuration rather
@@ -50,38 +54,42 @@ type aideConfig struct {
 // here is treated as a group definition, which is how AIDE itself distinguishes
 // the two.
 var aideConfigOptions = map[string]struct{}{
-	"acl_no_symlink_follow":       {},
-	"config_version":              {},
-	"database":                    {},
-	"database_add_metadata":       {},
-	"database_attrs":              {},
-	"database_gzip":               {},
-	"database_in":                 {},
-	"database_new":                {},
-	"database_out":                {},
-	"grouped":                     {},
-	"gzip_dbout":                  {},
-	"log_level":                   {},
-	"num_workers":                 {},
-	"report_append":               {},
-	"report_base16":               {},
-	"report_detailed_init":        {},
-	"report_force_attrs":          {},
-	"report_grouped":              {},
-	"report_ignore_added_attrs":   {},
-	"report_ignore_changed_attrs": {},
-	"report_ignore_e2fsattrs":     {},
-	"report_ignore_removed_attrs": {},
-	"report_level":                {},
-	"report_quiet":                {},
-	"report_summarize_changes":    {},
-	"report_url":                  {},
-	"root_prefix":                 {},
-	"summarize_changes":           {},
-	"syslog_format":               {},
-	"verbose":                     {},
-	"warn_dead_symlinks":          {},
-	"warn_unrestricted_rules":     {},
+	"acl_no_symlink_follow":                {},
+	"config_check_warn_unrestricted_rules": {},
+	"config_version":                       {},
+	"database":                             {},
+	"database_add_metadata":                {},
+	"database_attrs":                       {},
+	"database_gzip":                        {},
+	"database_in":                          {},
+	"database_new":                         {},
+	"database_out":                         {},
+	"grouped":                              {},
+	"gzip_dbout":                           {},
+	"ignore_list":                          {},
+	"log_level":                            {},
+	"num_workers":                          {},
+	"report_append":                        {},
+	"report_base16":                        {},
+	"report_attributes":                    {},
+	"report_detailed_init":                 {},
+	"report_force_attrs":                   {},
+	"report_format":                        {},
+	"report_grouped":                       {},
+	"report_ignore_added_attrs":            {},
+	"report_ignore_changed_attrs":          {},
+	"report_ignore_e2fsattrs":              {},
+	"report_ignore_removed_attrs":          {},
+	"report_level":                         {},
+	"report_quiet":                         {},
+	"report_summarize_changes":             {},
+	"report_url":                           {},
+	"root_prefix":                          {},
+	"summarize_changes":                    {},
+	"syslog_format":                        {},
+	"verbose":                              {},
+	"warn_dead_symlinks":                   {},
+	"warn_unrestricted_rules":              {},
 }
 
 var (
@@ -323,11 +331,19 @@ func parseAideSelectionLine(cfg *aideConfig, line string, filePath string, lineN
 	}, true
 }
 
+// aideBuiltinGroupNames are the compound groups AIDE defines itself. Their
+// members depend on the release and on what the binary was compiled with.
+var aideBuiltinGroupNames = map[string]struct{}{
+	"R": {}, "L": {}, ">": {}, "H": {}, "X": {}, "E": {},
+}
+
 // resolveAideAttributes expands an attribute expression into the attributes it
 // stands for. Group names defined in the configuration are substituted
-// recursively; a token with no definition is kept as written, because AIDE
-// defines a handful internally and their meaning moves between releases. A '-'
-// term removes what it names from the result.
+// recursively, then the compound groups AIDE defines itself (cfg.Builtins). A
+// '-' term removes what it names from the result. When a built-in group cannot
+// be expanded because the AIDE release is unknown, it is kept as written and a
+// removal that may apply to it is kept as "-name", so `R+sha512-m-c` reads
+// [-c, -m, R, sha512] rather than losing the removals.
 func resolveAideAttributes(cfg *aideConfig, expression string) []string {
 	if strings.TrimSpace(expression) == "" {
 		return []string{}
@@ -336,13 +352,19 @@ func resolveAideAttributes(cfg *aideConfig, expression string) []string {
 	included := map[string]struct{}{}
 	excluded := map[string]struct{}{}
 
-	collectAideAttributes(cfg, expression, false, 0, included, excluded)
+	unexpanded := collectAideAttributes(cfg, expression, false, 0, included, excluded)
 
+	res := []string{}
 	for token := range excluded {
-		delete(included, token)
+		if _, ok := included[token]; ok {
+			delete(included, token)
+			continue
+		}
+		if unexpanded {
+			res = append(res, "-"+token)
+		}
 	}
 
-	res := make([]string, 0, len(included))
 	for token := range included {
 		res = append(res, token)
 	}
@@ -350,17 +372,29 @@ func resolveAideAttributes(cfg *aideConfig, expression string) []string {
 	return res
 }
 
-func collectAideAttributes(cfg *aideConfig, expression string, negated bool, depth int, included, excluded map[string]struct{}) {
+// collectAideAttributes adds the terms of expression to included or excluded.
+// It reports whether a built-in group was left unexpanded.
+func collectAideAttributes(cfg *aideConfig, expression string, negated bool, depth int, included, excluded map[string]struct{}) bool {
 	if depth > aideMaxGroupDepth {
-		return
+		return false
 	}
 
+	unexpanded := false
 	for _, token := range splitAideExpression(expression) {
 		remove := negated != token.remove
 
-		if definition, ok := cfg.Groups[token.name]; ok {
-			collectAideAttributes(cfg, definition, remove, depth+1, included, excluded)
+		definition, ok := cfg.Groups[token.name]
+		if !ok {
+			definition, ok = cfg.Builtins[token.name]
+		}
+		if ok {
+			if collectAideAttributes(cfg, definition, remove, depth+1, included, excluded) {
+				unexpanded = true
+			}
 			continue
+		}
+		if _, builtin := aideBuiltinGroupNames[token.name]; builtin && !remove {
+			unexpanded = true
 		}
 
 		if remove {
@@ -369,6 +403,112 @@ func collectAideAttributes(cfg *aideConfig, expression string, negated bool, dep
 		}
 		included[token.name] = struct{}{}
 	}
+	return unexpanded
+}
+
+// aideBuiltinGroups returns the compound groups the installed AIDE defines,
+// read from its `aide --version` output, or nil when the output does not tell.
+//
+// AIDE 0.17 and later list them under "Default compound groups:" (E, the empty
+// group, is not listed). 0.15 and 0.16 do not, and define them in code: R, L
+// and > from the base attributes plus acl, selinux, xattrs and e2fsattrs for
+// the features the binary was compiled with (its WITH_* options), R adding md5
+// when built with a hash library. 0.16 also names that feature set X.
+func aideBuiltinGroups(versionOutput string) map[string]string {
+	if groups := parseAideDefaultGroups(versionOutput); groups != nil {
+		groups["E"] = ""
+		return groups
+	}
+
+	major, minor, ok := aideReleaseNumbers(parseAideVersion(versionOutput))
+	if !ok || major != 0 || minor < 15 || minor > 16 {
+		return nil
+	}
+
+	options := map[string]bool{}
+	for _, line := range strings.Split(versionOutput, "\n") {
+		if option := strings.TrimSpace(line); strings.HasPrefix(option, "WITH_") {
+			options[option] = true
+		}
+	}
+
+	extra := []string{}
+	if options["WITH_POSIX_ACL"] || options["WITH_ACL"] {
+		extra = append(extra, "acl")
+	}
+	if options["WITH_SELINUX"] {
+		extra = append(extra, "selinux")
+	}
+	if options["WITH_XATTR"] {
+		extra = append(extra, "xattrs")
+	}
+	if options["WITH_E2FSATTRS"] {
+		extra = append(extra, "e2fsattrs")
+	}
+	hashes := []string{}
+	if options["WITH_MHASH"] || options["WITH_GCRYPT"] {
+		hashes = append(hashes, "md5")
+	}
+
+	join := func(parts ...[]string) string {
+		all := []string{}
+		for _, p := range parts {
+			all = append(all, p...)
+		}
+		return strings.Join(all, "+")
+	}
+	groups := map[string]string{
+		"R": join([]string{"p", "ftype", "i", "n", "u", "g", "s", "l", "m", "c"}, hashes, extra),
+		"L": join([]string{"p", "ftype", "i", "n", "u", "g", "l"}, extra),
+		">": join([]string{"p", "ftype", "i", "n", "u", "g", "S", "l"}, extra),
+		"E": "",
+	}
+	if minor == 16 {
+		groups["X"] = join(extra)
+	}
+	return groups
+}
+
+// parseAideDefaultGroups reads the "Default compound groups:" section of
+// `aide --version` output, lines like "R: l+p+u+g+s+c+m+i+n+sha3_256".
+func parseAideDefaultGroups(out string) map[string]string {
+	var groups map[string]string
+	for _, rawLine := range strings.Split(out, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if groups == nil {
+			if line == "Default compound groups:" {
+				groups = map[string]string{}
+			}
+			continue
+		}
+		name, value, found := strings.Cut(line, ":")
+		if !found || strings.ContainsAny(name, " \t") || name == "" {
+			break
+		}
+		groups[name] = strings.TrimSpace(value)
+	}
+	if len(groups) == 0 {
+		return nil
+	}
+	return groups
+}
+
+// aideReleaseNumbers splits a release such as "0.16" or "0.15.1" into its
+// major and minor numbers.
+func aideReleaseNumbers(version string) (int, int, bool) {
+	parts := strings.Split(version, ".")
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, false
+	}
+	minor, err := strconv.Atoi(strings.TrimRightFunc(parts[1], func(r rune) bool { return r < '0' || r > '9' }))
+	if err != nil {
+		return 0, 0, false
+	}
+	return major, minor, true
 }
 
 type aideExpressionToken struct {

@@ -4,10 +4,18 @@
 package resources
 
 import (
+	"errors"
+	"io/fs"
+	"os"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 )
 
 // parseAideString parses a single configuration with no includes.
@@ -57,13 +65,15 @@ func TestParseAideConfig(t *testing.T) {
 	assert.Equal(t, "/etc", cfg.Rules[0].Path)
 	assert.Equal(t, aideSelectionRecursive, cfg.Rules[0].Selection)
 	assert.Equal(t, "NORMAL", cfg.Rules[0].Expression)
-	// R has no definition in the configuration, so it stays as written
+	// R has no definition in the configuration and the AIDE release is not
+	// known, so it stays as written
 	assert.Equal(t, []string{"R", "sha512"}, cfg.Rules[0].Attributes)
 
 	assert.Equal(t, "/root", cfg.Rules[1].Path)
 	assert.Equal(t, aideSelectionEquals, cfg.Rules[1].Selection)
-	// STRONG resolves through NORMAL, and the "-md5" term removes what it names
-	assert.Equal(t, []string{"R", "sha512"}, cfg.Rules[1].Attributes)
+	// STRONG resolves through NORMAL; "-md5" may remove a member of R, so it
+	// is kept
+	assert.Equal(t, []string{"-md5", "R", "sha512"}, cfg.Rules[1].Attributes)
 
 	assert.Equal(t, "/etc/mtab", cfg.Rules[2].Path)
 	assert.Equal(t, aideSelectionNegative, cfg.Rules[2].Selection)
@@ -303,4 +313,120 @@ func TestSplitAideExpression(t *testing.T) {
 		{name: "md5", remove: true},
 		{name: "sha512", remove: false},
 	}, tokens)
+}
+
+func readAideTestdata(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile("testdata/aide/" + name)
+	require.NoError(t, err)
+	return string(data)
+}
+
+func TestAideBuiltinGroups(t *testing.T) {
+	// AIDE 0.19.2 on RHEL 9 lists its groups in --version
+	groups := aideBuiltinGroups(readAideTestdata(t, "version-0.19.2.txt"))
+	assert.Equal(t, map[string]string{
+		"R": "l+p+u+g+s+c+m+i+n+acl+selinux+xattrs+ftype+e2fsattrs+sha3_256",
+		"L": "l+p+u+g+i+n+acl+selinux+xattrs+ftype+e2fsattrs",
+		">": "l+p+u+g+s+i+n+acl+selinux+xattrs+ftype+e2fsattrs+growing",
+		"H": "sha256+sha512+stribog256+stribog512+sha512_256+sha3_256+sha3_512",
+		"X": "acl+selinux+xattrs+e2fsattrs",
+		"E": "",
+	}, groups)
+
+	// 0.15.1 (RHEL 7) and 0.16 (RHEL 8) do not list them. An `aide --init`
+	// with a rule of just R stored perm, ftype, inode, lcount, uid, gid, size,
+	// mtime, ctime, md5, acl, selinux, xattrs and e2fsattrs on both.
+	r := []string{"acl", "c", "e2fsattrs", "ftype", "g", "i", "l", "m", "md5", "n", "p", "s", "selinux", "u", "xattrs"}
+	l := []string{"acl", "e2fsattrs", "ftype", "g", "i", "l", "n", "p", "selinux", "u", "xattrs"}
+	for _, file := range []string{"version-0.15.1.txt", "version-0.16.txt"} {
+		cfg := newAideConfig()
+		cfg.Builtins = aideBuiltinGroups(readAideTestdata(t, file))
+		require.NotNil(t, cfg.Builtins, file)
+		assert.Equal(t, r, resolveAideAttributes(cfg, "R"), file)
+		assert.Equal(t, l, resolveAideAttributes(cfg, "L"), file)
+		assert.Empty(t, resolveAideAttributes(cfg, "E"), file)
+	}
+	// X is a group from 0.16 on
+	assert.NotContains(t, aideBuiltinGroups(readAideTestdata(t, "version-0.15.1.txt")), "X")
+	assert.Equal(t, "acl+selinux+xattrs+e2fsattrs", aideBuiltinGroups(readAideTestdata(t, "version-0.16.txt"))["X"])
+
+	// a 0.16 built without ACL, xattr or a hash library leaves those out
+	assert.Equal(t, "p+ftype+i+n+u+g+s+l+m+c+selinux",
+		aideBuiltinGroups("Aide 0.16\n\nCompiled with the following options:\n\nWITH_MMAP\nWITH_SELINUX\n")["R"])
+
+	assert.Nil(t, aideBuiltinGroups(""))
+	assert.Nil(t, aideBuiltinGroups("sh: aide: command not found"))
+	// a release without a group listing that is not 0.15 or 0.16 is not guessed
+	assert.Nil(t, aideBuiltinGroups("Aide 0.14.2\n"))
+}
+
+// The rules of RHEL 9's aide.conf resolve to the attributes AIDE 0.19.2 itself
+// reports for them (`aide --config-check -L rule`), including NORMAL, which
+// is R+sha512-m-c.
+func TestParseAideConfig_MatchesAideRuleTree(t *testing.T) {
+	cfg := newAideConfig()
+	cfg.Builtins = aideBuiltinGroups(readAideTestdata(t, "version-0.19.2.txt"))
+	parseAideConfig(cfg, "/etc/aide.conf", readAideTestdata(t, "rhel9-aide.conf"), 0, nil)
+
+	byLine := map[int][]string{}
+	for _, rule := range cfg.Rules {
+		byLine[rule.LineNumber] = rule.Attributes
+	}
+
+	// a negative rule carries no attributes: '!/etc/mtab (none)'
+	ruleLine := regexp.MustCompile(`'(\S+) \S+(?: ([^' ]*))?' \(/etc/aide\.conf:(\d+):`)
+	checked := 0
+	for _, line := range strings.Split(readAideTestdata(t, "rhel9-aide-config-check-rules.txt"), "\n") {
+		m := ruleLine.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		lineNumber, err := strconv.Atoi(m[3])
+		require.NoError(t, err)
+		want := []string{}
+		if m[2] != "" {
+			want = strings.Split(m[2], "+")
+		}
+		sort.Strings(want)
+		got, ok := byLine[lineNumber]
+		require.True(t, ok, "aide reports a rule on line %d (%s) the parser did not find", lineNumber, m[1])
+		assert.Equal(t, want, got, "line %d %s", lineNumber, m[1])
+		checked++
+	}
+	assert.Equal(t, len(cfg.Rules), checked, "every parsed rule is one AIDE reports")
+	assert.Greater(t, checked, 100)
+}
+
+func TestParseAideConfig_UnknownReleaseKeepsRemovals(t *testing.T) {
+	// without the release, R cannot be expanded; its removals stay visible
+	cfg := parseAideString("NORMAL = R+sha512-m-c\nCONTENT = sha512+ftype-ftype\n/etc NORMAL\n/opt CONTENT\n")
+	require.Len(t, cfg.Rules, 2)
+	assert.Equal(t, []string{"-c", "-m", "R", "sha512"}, cfg.Rules[0].Attributes)
+	// a removal of something the expression holds is applied, not kept
+	assert.Equal(t, []string{"sha512"}, cfg.Rules[1].Attributes)
+}
+
+func TestParseAideConfig_RecentOptionsAreParams(t *testing.T) {
+	cfg := parseAideString(readAideTestdata(t, "rhel9-aide.conf"))
+	assert.Equal(t, "plain", cfg.Params["report_format"])
+	assert.Equal(t, "false", cfg.Params["config_check_warn_unrestricted_rules"])
+	assert.NotContains(t, cfg.Groups, "report_format")
+	assert.NotContains(t, cfg.Groups, "config_check_warn_unrestricted_rules")
+	assert.Equal(t, "R+sha512-m-c", cfg.Groups["NORMAL"])
+}
+
+func TestAideConfigReadError(t *testing.T) {
+	denied := &fs.PathError{Op: "open", Path: "/etc/aide.conf", Err: os.ErrPermission}
+
+	withStructuredErrors(t, true)
+	err := aideConfigReadError("/etc/aide.conf", denied)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, llx.ErrForbidden), "a refused read is forbidden: %v", err)
+	assert.Contains(t, err.Error(), "/etc/aide.conf")
+	assert.NoError(t, aideConfigReadError("/etc/aide.conf", nil))
+
+	// v13: the unreadable file is skipped
+	withStructuredErrors(t, false)
+	assert.NoError(t, aideConfigReadError("/etc/aide.conf", denied))
 }
