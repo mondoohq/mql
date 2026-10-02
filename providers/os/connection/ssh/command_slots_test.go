@@ -24,6 +24,9 @@ func TestWindowsMaxCommands(t *testing.T) {
 	assert.Equal(t, 0, windowsMaxCommands(map[string]string{windowsMaxCommandsOption: "0"}))
 	assert.Equal(t, defaultWindowsMaxCommands, windowsMaxCommands(map[string]string{windowsMaxCommandsOption: "many"}))
 	assert.Equal(t, defaultWindowsMaxCommands, windowsMaxCommands(map[string]string{windowsMaxCommandsOption: "-1"}))
+	// a limit above the cap is capped, not taken as is
+	assert.Equal(t, maxWindowsMaxCommands, windowsMaxCommands(map[string]string{windowsMaxCommandsOption: "99999999999"}))
+	assert.Equal(t, maxWindowsMaxCommands, windowsMaxCommands(map[string]string{windowsMaxCommandsOption: "65"}))
 
 	t.Setenv(windowsMaxCommandsEnv, "3")
 	assert.Equal(t, 3, windowsMaxCommands(nil))
@@ -79,7 +82,9 @@ func runConcurrently(t *testing.T, c *Connection, commands ...string) {
 			go func() {
 				defer wg.Done()
 				_, err := c.RunCommand(cmd)
-				require.NoError(t, err)
+				// assert, not require: FailNow must not run outside the
+				// test's goroutine
+				assert.NoError(t, err)
 			}()
 		}
 	}

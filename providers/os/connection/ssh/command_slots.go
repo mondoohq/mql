@@ -18,8 +18,13 @@ const (
 	// script; a scan starts many at once and they starve each other.
 	defaultWindowsMaxCommands = 4
 
-	// windowsMaxCommandsEnv and windowsMaxCommandsOption set it: a number, and
-	// 0 for no limit.
+	// maxWindowsMaxCommands caps a configured limit. More concurrent
+	// PowerShell processes than this only starve each other on the target,
+	// and the limit sizes the slot channel.
+	maxWindowsMaxCommands = 64
+
+	// windowsMaxCommandsEnv and windowsMaxCommandsOption set it: a number up
+	// to maxWindowsMaxCommands, and 0 for no limit.
 	windowsMaxCommandsEnv    = "MONDOO_SSH_WINDOWS_MAX_COMMANDS"
 	windowsMaxCommandsOption = "ssh_windows_max_commands"
 )
@@ -37,6 +42,10 @@ func windowsMaxCommands(options map[string]string) int {
 		if err != nil || n < 0 {
 			log.Warn().Str("value", v).Msg("ssh> ignoring an invalid limit of concurrent Windows commands")
 			continue
+		}
+		if n > maxWindowsMaxCommands {
+			log.Warn().Int("value", n).Int("max", maxWindowsMaxCommands).Msg("ssh> capping the limit of concurrent Windows commands")
+			return maxWindowsMaxCommands
 		}
 		return n
 	}
