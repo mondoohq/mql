@@ -1572,8 +1572,8 @@ func resourceFilters(cfg *inventory.Config) (*ResourceFilters, error) {
 }
 
 func setImageFilters(cfg *inventory.Config) (FilterOpts, error) {
-	includeVals := splitFilterValues(cfg.Options[shared.OPTION_IMAGES])
-	excludeVals := splitFilterValues(cfg.Options[shared.OPTION_IMAGES_EXCLUDE])
+	includeVals := shared.SplitFilterValues(cfg.Options[shared.OPTION_IMAGES])
+	excludeVals := shared.SplitFilterValues(cfg.Options[shared.OPTION_IMAGES_EXCLUDE])
 	if len(includeVals) > 0 && len(excludeVals) > 0 {
 		return FilterOpts{}, fmt.Errorf("--images and --images-exclude are mutually exclusive")
 	}
@@ -1620,8 +1620,8 @@ func parseLabelSelectorOption(option, raw string) (labels.Selector, error) {
 
 func setNamespaceFilters(cfg *inventory.Config) (FilterOpts, error) {
 	return newFilterOpts(
-		splitFilterValues(cfg.Options[shared.OPTION_NAMESPACE]),
-		splitFilterValues(cfg.Options[shared.OPTION_NAMESPACE_EXCLUDE]),
+		shared.SplitFilterValues(cfg.Options[shared.OPTION_NAMESPACE]),
+		shared.SplitFilterValues(cfg.Options[shared.OPTION_NAMESPACE_EXCLUDE]),
 	)
 }
 
@@ -1639,23 +1639,17 @@ func newFilterOpts(include, exclude []string) (FilterOpts, error) {
 // one namespace, which indicates staged discovery should run the namespace stage.
 // Empty or multi-namespace filters fall through to cluster-stage discovery.
 func namespaceStageName(cfg *inventory.Config) (string, bool) {
-	namespaces := splitFilterValues(cfg.Options[shared.OPTION_NAMESPACE])
+	namespaces := shared.SplitFilterValues(cfg.Options[shared.OPTION_NAMESPACE])
 	if len(namespaces) != 1 {
 		return "", false
 	}
-	return namespaces[0], true
-}
-
-func splitFilterValues(value string) []string {
-	values := strings.Split(value, ",")
-	res := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value != "" {
-			res = append(res, value)
-		}
+	// The namespace stage fetches the namespace by name, so a glob is not a
+	// namespace it can look up. Those fall through to the cluster stage, which
+	// expands the pattern against the namespaces that exist.
+	if !shared.IsLiteralNamespace(namespaces[0]) {
+		return "", false
 	}
-	return res
+	return namespaces[0], true
 }
 
 func assetName(ns, name string) string {
