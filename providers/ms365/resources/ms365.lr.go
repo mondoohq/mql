@@ -496,7 +496,7 @@ func init() {
 			Create: createMicrosoftConditionalAccessNamedLocations,
 		},
 		"microsoft.conditionalAccess.policy": {
-			// to override args, implement: initMicrosoftConditionalAccessPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftConditionalAccessPolicy,
 			Create: createMicrosoftConditionalAccessPolicy,
 		},
 		"microsoft.conditionalAccess.policy.conditions": {
@@ -556,11 +556,11 @@ func init() {
 			Create: createMicrosoftConditionalAccessPolicySessionControls,
 		},
 		"microsoft.conditionalAccess.ipNamedLocation": {
-			// to override args, implement: initMicrosoftConditionalAccessIpNamedLocation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftConditionalAccessIpNamedLocation,
 			Create: createMicrosoftConditionalAccessIpNamedLocation,
 		},
 		"microsoft.conditionalAccess.countryNamedLocation": {
-			// to override args, implement: initMicrosoftConditionalAccessCountryNamedLocation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftConditionalAccessCountryNamedLocation,
 			Create: createMicrosoftConditionalAccessCountryNamedLocation,
 		},
 		"microsoft.user": {
@@ -680,7 +680,7 @@ func init() {
 			Create: createMicrosoftApplicationPermission,
 		},
 		"microsoft.oauth2PermissionGrant": {
-			// to override args, implement: initMicrosoftOauth2PermissionGrant(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftOauth2PermissionGrant,
 			Create: createMicrosoftOauth2PermissionGrant,
 		},
 		"microsoft.security": {
@@ -696,23 +696,23 @@ func init() {
 			Create: createMicrosoftSecuritySecurityscoreControlScore,
 		},
 		"microsoft.security.riskyUser": {
-			// to override args, implement: initMicrosoftSecurityRiskyUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftSecurityRiskyUser,
 			Create: createMicrosoftSecurityRiskyUser,
 		},
 		"microsoft.security.riskDetection": {
-			// to override args, implement: initMicrosoftSecurityRiskDetection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftSecurityRiskDetection,
 			Create: createMicrosoftSecurityRiskDetection,
 		},
 		"microsoft.security.riskyServicePrincipal": {
-			// to override args, implement: initMicrosoftSecurityRiskyServicePrincipal(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftSecurityRiskyServicePrincipal,
 			Create: createMicrosoftSecurityRiskyServicePrincipal,
 		},
 		"microsoft.security.servicePrincipalRiskDetection": {
-			// to override args, implement: initMicrosoftSecurityServicePrincipalRiskDetection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftSecurityServicePrincipalRiskDetection,
 			Create: createMicrosoftSecurityServicePrincipalRiskDetection,
 		},
 		"microsoft.security.alert": {
-			// to override args, implement: initMicrosoftSecurityAlert(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftSecurityAlert,
 			Create: createMicrosoftSecurityAlert,
 		},
 		"microsoft.security.incident": {
@@ -740,7 +740,7 @@ func init() {
 			Create: createMicrosoftSecurityInformationProtectionLabelPolicy,
 		},
 		"microsoft.security.informationProtection.sensitivityLabel": {
-			// to override args, implement: initMicrosoftSecurityInformationProtectionSensitivityLabel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftSecurityInformationProtectionSensitivityLabel,
 			Create: createMicrosoftSecurityInformationProtectionSensitivityLabel,
 		},
 		"microsoft.policies": {
@@ -784,23 +784,23 @@ func init() {
 			Create: createMicrosoftExternalIdentitiesPolicy,
 		},
 		"microsoft.policies.activityBasedTimeoutPolicy": {
-			// to override args, implement: initMicrosoftPoliciesActivityBasedTimeoutPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftPoliciesActivityBasedTimeoutPolicy,
 			Create: createMicrosoftPoliciesActivityBasedTimeoutPolicy,
 		},
 		"microsoft.policies.tokenLifetimePolicy": {
-			// to override args, implement: initMicrosoftPoliciesTokenLifetimePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftPoliciesTokenLifetimePolicy,
 			Create: createMicrosoftPoliciesTokenLifetimePolicy,
 		},
 		"microsoft.policies.claimsMappingPolicy": {
-			// to override args, implement: initMicrosoftPoliciesClaimsMappingPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftPoliciesClaimsMappingPolicy,
 			Create: createMicrosoftPoliciesClaimsMappingPolicy,
 		},
 		"microsoft.policies.tokenIssuancePolicy": {
-			// to override args, implement: initMicrosoftPoliciesTokenIssuancePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftPoliciesTokenIssuancePolicy,
 			Create: createMicrosoftPoliciesTokenIssuancePolicy,
 		},
 		"microsoft.policies.homeRealmDiscoveryPolicy": {
-			// to override args, implement: initMicrosoftPoliciesHomeRealmDiscoveryPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initMicrosoftPoliciesHomeRealmDiscoveryPolicy,
 			Create: createMicrosoftPoliciesHomeRealmDiscoveryPolicy,
 		},
 		"microsoft.policies.authenticationStrengthPolicy": {
