@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -55,11 +56,11 @@ func computeSelfLinkToResourceName(selfLink string) string {
 // to fullResourceName, including values inherited from the enclosing project,
 // folder, or organization.
 //
-// A resource the caller cannot read tags for, or one that has never been bound
-// to a tag, yields an empty list rather than an error. That matches the
-// behaviour of the older gcp.project.storageService.bucket.tags field, so the
-// two report the same thing on the same bucket.
-func effectiveTagsForResource(runtime *plugin.Runtime, fullResourceName string) ([]any, error) {
+// A resource that has never been bound to a tag yields an empty list. A refused
+// read is classified (Forbidden, naming permission, or NotApplicable when the
+// API is not enabled) when structured errors are on; with them off it reads as
+// an empty list, matching gcp.project.storageService.bucket.tags.
+func effectiveTagsForResource(runtime *plugin.Runtime, fullResourceName string, permission string) ([]any, error) {
 	if fullResourceName == "" {
 		return []any{}, nil
 	}
@@ -87,23 +88,32 @@ func effectiveTagsForResource(runtime *plugin.Runtime, fullResourceName string) 
 			return nil
 		})
 	if err != nil {
-		var gerr *googleapi.Error
-		if errors.As(err, &gerr) {
-			switch gerr.Code {
-			case 403:
-				log.Warn().Str("resource", fullResourceName).
-					Msg("not permitted to list effective tags, reporting none")
-				return []any{}, nil
-			case 404:
-				log.Debug().Str("resource", fullResourceName).
-					Msg("no effective tag bindings for resource")
-				return []any{}, nil
-			}
-		}
-		return nil, err
+		return effectiveTagsListError(err, fullResourceName, permission)
 	}
 
 	return effectiveTagsToMql(runtime, fullResourceName, tags)
+}
+
+// effectiveTagsListError is the return path of a failed effectiveTags.list
+// call. A refusal is classified when structured errors are on and reads as an
+// empty list otherwise. A 404 reads as no bindings. Anything else is returned
+// unchanged.
+func effectiveTagsListError(err error, fullResourceName string, permission string) ([]any, error) {
+	if rerr := classifyRefusal(err, permission); rerr != nil {
+		if !plugin.StructuredErrors() {
+			log.Warn().Err(err).Str("resource", fullResourceName).
+				Msg("not permitted to list effective tags, reporting none")
+			return []any{}, nil
+		}
+		return nil, rerr
+	}
+	var gerr *googleapi.Error
+	if errors.As(err, &gerr) && gerr.Code == http.StatusNotFound {
+		log.Debug().Str("resource", fullResourceName).
+			Msg("no effective tag bindings for resource")
+		return []any{}, nil
+	}
+	return nil, err
 }
 
 // stringFields reads the string fields an effective-tag resource name is built
@@ -130,7 +140,8 @@ func (g *mqlGcpProjectSqlServiceInstance) effectiveTags() ([]any, error) {
 		return []any{}, err
 	}
 	return effectiveTagsForResource(g.MqlRuntime,
-		fmt.Sprintf("//sqladmin.googleapis.com/projects/%s/instances/%s", p[0], p[1]))
+		fmt.Sprintf("//sqladmin.googleapis.com/projects/%s/instances/%s", p[0], p[1]),
+		"cloudsql.instances.listEffectiveTags")
 }
 
 func (g *mqlGcpProjectGkeServiceCluster) effectiveTags() ([]any, error) {
@@ -139,7 +150,8 @@ func (g *mqlGcpProjectGkeServiceCluster) effectiveTags() ([]any, error) {
 		return []any{}, err
 	}
 	return effectiveTagsForResource(g.MqlRuntime,
-		fmt.Sprintf("//container.googleapis.com/projects/%s/locations/%s/clusters/%s", p[0], p[1], p[2]))
+		fmt.Sprintf("//container.googleapis.com/projects/%s/locations/%s/clusters/%s", p[0], p[1], p[2]),
+		"container.clusters.listEffectiveTags")
 }
 
 func (g *mqlGcpProjectCloudRunServiceService) effectiveTags() ([]any, error) {
@@ -148,7 +160,8 @@ func (g *mqlGcpProjectCloudRunServiceService) effectiveTags() ([]any, error) {
 		return []any{}, err
 	}
 	return effectiveTagsForResource(g.MqlRuntime,
-		fmt.Sprintf("//run.googleapis.com/projects/%s/locations/%s/services/%s", p[0], p[1], p[2]))
+		fmt.Sprintf("//run.googleapis.com/projects/%s/locations/%s/services/%s", p[0], p[1], p[2]),
+		"run.services.listEffectiveTags")
 }
 
 func (g *mqlGcpProjectBigqueryServiceDataset) effectiveTags() ([]any, error) {
@@ -157,7 +170,8 @@ func (g *mqlGcpProjectBigqueryServiceDataset) effectiveTags() ([]any, error) {
 		return []any{}, err
 	}
 	return effectiveTagsForResource(g.MqlRuntime,
-		fmt.Sprintf("//bigquery.googleapis.com/projects/%s/datasets/%s", p[0], p[1]))
+		fmt.Sprintf("//bigquery.googleapis.com/projects/%s/datasets/%s", p[0], p[1]),
+		"bigquery.datasets.listEffectiveTags")
 }
 
 func (g *mqlGcpProjectBigqueryServiceTable) effectiveTags() ([]any, error) {
@@ -166,7 +180,8 @@ func (g *mqlGcpProjectBigqueryServiceTable) effectiveTags() ([]any, error) {
 		return []any{}, err
 	}
 	return effectiveTagsForResource(g.MqlRuntime,
-		fmt.Sprintf("//bigquery.googleapis.com/projects/%s/datasets/%s/tables/%s", p[0], p[1], p[2]))
+		fmt.Sprintf("//bigquery.googleapis.com/projects/%s/datasets/%s/tables/%s", p[0], p[1], p[2]),
+		"bigquery.tables.listEffectiveTags")
 }
 
 func (g *mqlGcpProjectSecretmanagerServiceSecret) effectiveTags() ([]any, error) {
@@ -175,7 +190,8 @@ func (g *mqlGcpProjectSecretmanagerServiceSecret) effectiveTags() ([]any, error)
 		return []any{}, err
 	}
 	return effectiveTagsForResource(g.MqlRuntime,
-		fmt.Sprintf("//secretmanager.googleapis.com/projects/%s/secrets/%s", p[0], p[1]))
+		fmt.Sprintf("//secretmanager.googleapis.com/projects/%s/secrets/%s", p[0], p[1]),
+		"secretmanager.secrets.listEffectiveTags")
 }
 
 // effectiveTags on a bucket uses the projects/_ wildcard, which is the
@@ -186,7 +202,8 @@ func (g *mqlGcpProjectStorageServiceBucket) effectiveTags() ([]any, error) {
 		return []any{}, err
 	}
 	return effectiveTagsForResource(g.MqlRuntime,
-		fmt.Sprintf("//storage.googleapis.com/projects/_/buckets/%s", p[0]))
+		fmt.Sprintf("//storage.googleapis.com/projects/_/buckets/%s", p[0]),
+		"storage.buckets.listEffectiveTags")
 }
 
 // effectiveTagCacheKey builds the cache key for one effective tag.

@@ -4,11 +4,16 @@
 package resources
 
 import (
+	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"google.golang.org/api/googleapi"
 )
 
 func TestComputeSelfLinkToResourceName(t *testing.T) {
@@ -141,4 +146,41 @@ func TestStringFields(t *testing.T) {
 		_, _, err := stringFields(&p, &n)
 		assert.Error(t, err, "a read failure must not be reported as a missing value")
 	})
+}
+
+func TestEffectiveTagsListErrorHonorsStructuredErrors(t *testing.T) {
+	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
+	const name = "//compute.googleapis.com/projects/p/zones/z/instances/i"
+	const perm = "compute.instances.listEffectiveTags"
+	denied := &googleapi.Error{Code: http.StatusForbidden, Message: "caller lacks permission"}
+	disabled := &googleapi.Error{Code: http.StatusForbidden, Message: "Cloud Resource Manager API has not been used in project 1 before or it is disabled"}
+
+	// v13 behavior: a refusal reads as an empty list.
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)}))
+	res, err := effectiveTagsListError(denied, name, perm)
+	require.NoError(t, err)
+	assert.Equal(t, []any{}, res)
+
+	// Structured errors: a denial is Forbidden and names the target's
+	// permission, a disabled API is NotApplicable.
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
+	res, err = effectiveTagsListError(denied, name, perm)
+	require.Error(t, err)
+	assert.Nil(t, res)
+	assert.ErrorIs(t, err, llx.ErrForbidden)
+	var lerr *llx.Error
+	require.ErrorAs(t, err, &lerr)
+	assert.Equal(t, []string{perm}, lerr.Permissions)
+
+	_, err = effectiveTagsListError(disabled, name, perm)
+	assert.ErrorIs(t, err, llx.ErrNotApplicable)
+
+	// A 404 reads as no bindings, and a transport failure stays unclassified.
+	res, err = effectiveTagsListError(&googleapi.Error{Code: http.StatusNotFound}, name, perm)
+	require.NoError(t, err)
+	assert.Equal(t, []any{}, res)
+
+	boom := errors.New("dial tcp: connection refused")
+	_, err = effectiveTagsListError(boom, name, perm)
+	assert.Same(t, boom, err)
 }
