@@ -6104,11 +6104,12 @@ journald.config {
   // Storage assignment in the [Journal] section across journald.conf and its
   // journald.conf.d drop-ins, read in the order journald applies them.
   // Values journald rejects (including other spellings such as `Persistent`)
-  // are skipped, as journald skips them. `auto` when no file sets Storage.
-  // systemd 259 and later can be built with a different default, so an
-  // unset Storage on those versions may store logs persistently while this
-  // field still reports `auto`. Null when the system has no systemd-journald
-  // binary (for example Alpine or a container image without systemd).
+  // are skipped, as journald skips them. When no file sets Storage, the
+  // default journald was built with, as documented by the commented-out
+  // `#Storage=` line in the main journald.conf (`persistent` on Ubuntu 26.04),
+  // or `auto` when the file does not document one. Null when the system has
+  // no systemd-journald binary (for example Alpine or a container image
+  // without systemd).
   storage(file) string
   // Whether journald compresses large journal entries
   //
@@ -6124,8 +6125,11 @@ journald.config {
   // The last valid ForwardToSyslog assignment in the [Journal] section
   // across journald.conf and its drop-ins, including vendor drop-ins such as
   // Debian's /usr/lib/systemd/journald.conf.d/syslog.conf. Accepts the
-  // boolean spellings journald accepts, in any case. `false` when no file
-  // sets ForwardToSyslog, the default since systemd 216. The
+  // boolean spellings journald accepts, in any case. When no file sets
+  // ForwardToSyslog, the default journald was built with, as documented by the
+  // commented-out `#ForwardToSyslog=` line in the main journald.conf (`yes` on
+  // Debian and on Ubuntu up to 22.04), or `false`, the upstream default since
+  // systemd 216, when the file does not document one. The
   // `systemd.journald.forward_to_syslog` kernel command line option, which
   // overrides the files at boot, is not considered. Null when the system has
   // no systemd-journald binary.

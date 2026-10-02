@@ -144,11 +144,60 @@ func (s *mqlJournaldConfig) resolveSettings(file *mqlFile) (*journaldSettings, e
 			return nil, fmt.Errorf("failed to parse journald config: %w", err)
 		}
 
+		if i == 0 {
+			// the main file documents the defaults this journald was built
+			// with; they apply before any assignment in any file
+			assignments = append(assignments, journaldCompiledDefaults(content)...)
+		}
 		assignments = append(assignments, journaldJournalAssignments(unit)...)
 	}
 
 	settings := resolveJournaldSettings(assignments)
 	return &settings, nil
+}
+
+// journaldCompiledDefaultKeys are the settings whose built-in default differs
+// between distributions and systemd releases. Debian and Ubuntu patched
+// journald to forward to syslog by default up to systemd 249 (Ubuntu 22.04),
+// and systemd 259 can be built to store the journal persistently by default
+// (Ubuntu 26.04).
+var journaldCompiledDefaultKeys = []string{"Storage", "Compress", "ForwardToSyslog"}
+
+// journaldCompiledDefaults reads the defaults journald was built with from the
+// commented-out assignments in the [Journal] section of the main
+// journald.conf. systemd generates that file at build time and says so in its
+// header ("Entries in this file show the compile time defaults"), so
+// "#ForwardToSyslog=yes" there is the distribution's default rather than an
+// example. The first commented assignment of a setting is the one used. A
+// file without them yields nothing, leaving systemd's upstream defaults.
+func journaldCompiledDefaults(content string) []parsers.UnitParam {
+	res := []parsers.UnitParam{}
+	seen := map[string]bool{}
+	inJournal := false
+
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			inJournal = line == "[Journal]"
+			continue
+		}
+		if !inJournal {
+			continue
+		}
+
+		commented, ok := strings.CutPrefix(line, "#")
+		if !ok {
+			continue
+		}
+		name, value, ok := strings.Cut(strings.TrimSpace(commented), "=")
+		if !ok || !slices.Contains(journaldCompiledDefaultKeys, name) || seen[name] {
+			continue
+		}
+		seen[name] = true
+		res = append(res, parsers.UnitParam{Name: name, Value: strings.TrimSpace(value)})
+	}
+
+	return res
 }
 
 func (s *mqlJournaldConfig) journaldInstalled() (bool, error) {
@@ -183,7 +232,7 @@ func journaldJournalAssignments(unit *parsers.Unit) []parsers.UnitParam {
 }
 
 // resolveJournaldSettings applies the [Journal] assignments in the order
-// journald reads them, starting from systemd's defaults. As in journald,
+// journald reads them, starting from systemd's upstream defaults. As in journald,
 // the last valid assignment wins and an invalid value is ignored, so it does
 // not undo an earlier valid one. Setting names are case-sensitive.
 func resolveJournaldSettings(assignments []parsers.UnitParam) journaldSettings {

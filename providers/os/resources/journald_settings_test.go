@@ -132,7 +132,7 @@ func TestJournaldConfigTypedSettingsFollowDropins(t *testing.T) {
 func TestJournaldConfigTypedSettingsMaskedVendorDropin(t *testing.T) {
 	runtime := journaldMockRuntime(t, map[string]*mock.MockFileData{
 		"/usr/lib/systemd/systemd-journald":            journaldBinary(),
-		"/etc/systemd/journald.conf":                   journaldConf("[Journal]\n#ForwardToSyslog=yes\n"),
+		"/etc/systemd/journald.conf":                   journaldConf("[Journal]\n#ForwardToSyslog=no\n"),
 		"/usr/lib/systemd/journald.conf.d":             journaldDir(),
 		"/usr/lib/systemd/journald.conf.d/syslog.conf": journaldConf("[Journal]\nForwardToSyslog=yes\n"),
 		"/etc/systemd/journald.conf.d":                 journaldDir(),
@@ -229,4 +229,124 @@ func requireJournaldSettings(t *testing.T, config *mqlJournaldConfig, storage st
 	require.NoError(t, gotForward.Error)
 	require.False(t, gotForward.IsNull())
 	require.Equal(t, forwardToSyslog, gotForward.Data)
+}
+
+// journald.conf as Ubuntu 16.04 (systemd 229) ships it. Ubuntu 18.04, 20.04 and
+// 22.04 document the same defaults.
+const ubuntu1604JournaldConf = `#  This file is part of systemd.
+#
+# Entries in this file show the compile time defaults.
+# You can change settings by editing this file.
+# Defaults can be restored by simply deleting this file.
+#
+# See journald.conf(5) for details.
+
+[Journal]
+#Storage=auto
+#Compress=yes
+#Seal=yes
+#SplitMode=uid
+#MaxFileSec=1month
+#ForwardToSyslog=yes
+#ForwardToKMsg=no
+#ForwardToConsole=no
+#ForwardToWall=yes
+#TTYPath=/dev/console
+`
+
+// journald.conf as Ubuntu 26.04 (systemd 259) ships it.
+const ubuntu2604JournaldConf = `#  This file is part of systemd.
+#
+# Entries in this file show the compile time defaults. Local configuration
+# should be created by either modifying this file (or a copy of it placed in
+# /etc/ if the original file is shipped in /usr/), or by creating "drop-ins" in
+# the /etc/systemd/journald.conf.d/ directory. The latter is generally
+# recommended. Defaults can be restored by simply deleting the main
+# configuration file and all drop-ins located in /etc/.
+#
+# Use 'systemd-analyze cat-config systemd/journald.conf' to display the full config.
+#
+# See journald.conf(5) for details.
+
+[Journal]
+#Storage=persistent
+#Compress=yes
+#Seal=yes
+#SplitMode=uid
+#ForwardToSyslog=no
+#ForwardToKMsg=no
+#ForwardToConsole=no
+#ForwardToWall=yes
+`
+
+const debianSyslogDropin = `# Undo upstream commit 46b131574fdd7d77 for now. For details see
+#  http://lists.freedesktop.org/archives/systemd-devel/2014-November/025550.html
+
+[Journal]
+ForwardToSyslog=yes
+`
+
+func TestJournaldCompiledDefaults(t *testing.T) {
+	require.Equal(t, []parsers.UnitParam{
+		{Name: "Storage", Value: "auto"},
+		{Name: "Compress", Value: "yes"},
+		{Name: "ForwardToSyslog", Value: "yes"},
+	}, journaldCompiledDefaults(ubuntu1604JournaldConf))
+
+	require.Equal(t, []parsers.UnitParam{
+		{Name: "Storage", Value: "persistent"},
+		{Name: "Compress", Value: "yes"},
+		{Name: "ForwardToSyslog", Value: "no"},
+	}, journaldCompiledDefaults(ubuntu2604JournaldConf))
+
+	// a commented setting outside [Journal] is not a journald default, and a
+	// file without commented settings documents none
+	require.Empty(t, journaldCompiledDefaults("[Upload]\n#ForwardToSyslog=yes\n"))
+	require.Empty(t, journaldCompiledDefaults("[Journal]\nStorage=volatile\n"))
+}
+
+// Debian and Ubuntu up to 22.04 build journald to forward to syslog unless told
+// otherwise, and there is no drop-in saying so. Reporting false there made a
+// check that logs reach a syslog daemon fail on a host where they did.
+func TestJournaldConfigTypedSettingsDebianCompiledDefault(t *testing.T) {
+	runtime := journaldMockRuntime(t, map[string]*mock.MockFileData{
+		"/lib/systemd/systemd-journald": journaldBinary(),
+		"/etc/systemd/journald.conf":    journaldConf(ubuntu1604JournaldConf),
+	})
+
+	raw, err := CreateResource(runtime, ResourceJournaldConfig, nil)
+	require.NoError(t, err)
+
+	requireJournaldSettings(t, raw.(*mqlJournaldConfig), "auto", true, true)
+}
+
+// An explicit assignment still overrides the compiled default.
+func TestJournaldConfigTypedSettingsAssignmentOverridesCompiledDefault(t *testing.T) {
+	runtime := journaldMockRuntime(t, map[string]*mock.MockFileData{
+		"/lib/systemd/systemd-journald":        journaldBinary(),
+		"/etc/systemd/journald.conf":           journaldConf(ubuntu1604JournaldConf),
+		"/etc/systemd/journald.conf.d":         journaldDir(),
+		"/etc/systemd/journald.conf.d/50.conf": journaldConf("[Journal]\nForwardToSyslog=no\nStorage=volatile\n"),
+	})
+
+	raw, err := CreateResource(runtime, ResourceJournaldConfig, nil)
+	require.NoError(t, err)
+
+	requireJournaldSettings(t, raw.(*mqlJournaldConfig), "volatile", true, false)
+}
+
+// Ubuntu 26.04 builds journald to store persistently, and forwards to syslog
+// through the vendor drop-in rather than the compiled default.
+func TestJournaldConfigTypedSettingsUbuntu2604(t *testing.T) {
+	runtime := journaldMockRuntime(t, map[string]*mock.MockFileData{
+		"/usr/lib/systemd/systemd-journald":            journaldBinary(),
+		"/etc/systemd/journald.conf":                   journaldConf(ubuntu2604JournaldConf),
+		"/usr/lib/systemd/journald.conf.d":             journaldDir(),
+		"/usr/lib/systemd/journald.conf.d/syslog.conf": journaldConf(debianSyslogDropin),
+	})
+
+	raw, err := CreateResource(runtime, ResourceJournaldConfig, nil)
+	require.NoError(t, err)
+
+	requireJournaldSettings(t, raw.(*mqlJournaldConfig), "persistent", true, true)
 }
