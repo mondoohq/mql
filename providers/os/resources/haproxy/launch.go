@@ -158,11 +158,15 @@ func wholeWordVar(word string) (string, bool) {
 	}
 	name := word[1:]
 	for _, r := range name {
-		if !(r == '_' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9') {
+		if !isEnvNameRune(r) {
 			return "", false
 		}
 	}
 	return name, true
+}
+
+func isEnvNameRune(r rune) bool {
+	return r == '_' || (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
 }
 
 func expandBraced(word string, env map[string]string) string {
