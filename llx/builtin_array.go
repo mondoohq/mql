@@ -1134,13 +1134,17 @@ func rawValuesEqual(a any, b any) bool {
 }
 
 // arrayElemEqualFunc returns the equality used by array helpers such as
-// containsAll and containsNone for the given element type.
+// containsAll and containsNone for the given element type. Element types that
+// types.Equal does not cover, but whose values compare by content (ip, dict,
+// nested arrays and maps), use rawValuesEqual. Resources stay unsupported.
 func arrayElemEqualFunc(ct types.Type) (func(any, any) bool, bool) {
-	if ct == types.IP {
+	if f, ok := types.Equal[ct]; ok {
+		return f, true
+	}
+	if ct == types.IP || ct == types.Dict || ct.IsArray() || ct.IsMap() {
 		return rawValuesEqual, true
 	}
-	f, ok := types.Equal[ct]
-	return f, ok
+	return nil, false
 }
 
 func tarrayCmpTarrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
