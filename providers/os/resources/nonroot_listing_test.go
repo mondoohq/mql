@@ -46,6 +46,9 @@ func newUnlistableFs(t *testing.T, files []string, denied ...string) *unlistable
 	return &unlistableFs{Fs: mem, denied: d}
 }
 
+// withStructuredErrors sets the process-wide StructuredErrors feature for the
+// rest of the test and resets it on cleanup. It is not safe for tests that
+// call t.Parallel().
 func withStructuredErrors(t *testing.T, on bool) {
 	t.Helper()
 	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
