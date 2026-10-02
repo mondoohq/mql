@@ -145,6 +145,8 @@ func (s *mqlFile) content(path string, exists bool) (string, error) {
 func (s *mqlFile) cacheStatFields(stat shared.FileInfoDetails) error {
 	mode := stat.Mode.UnixMode()
 	res, err := CreateResource(s.MqlRuntime, "file.permissions", map[string]*llx.RawData{
+		"__id":             llx.StringData(s.Path.Data),
+		"string":           llx.StringData(lsModeString(stat.Mode.FileMode, mode)),
 		"mode":             llx.IntData(int64(uint32(mode) & 0o7777)),
 		"user_readable":    llx.BoolData(stat.Mode.UserReadable()),
 		"user_writeable":   llx.BoolData(stat.Mode.UserWriteable()),
@@ -546,6 +548,54 @@ func (l *mqlFilePermissions) octal() (string, error) {
 // string, such as "0640" or "1777".
 func octalMode(mode int64) string {
 	return fmt.Sprintf("%04o", mode&0o7777)
+}
+
+// lsFileTypeChar returns the file type character that ls -l prints first.
+func lsFileTypeChar(m os.FileMode) byte {
+	switch {
+	case m&os.ModeSymlink != 0:
+		return 'l'
+	case m.IsDir():
+		return 'd'
+	case m&os.ModeNamedPipe != 0:
+		return 'p'
+	case m&os.ModeSocket != 0:
+		return 's'
+	case m&os.ModeCharDevice != 0:
+		return 'c'
+	case m&os.ModeDevice != 0:
+		return 'b'
+	}
+	return '-'
+}
+
+// lsModeString renders a file type and the Unix permission bits (including
+// setuid, setgid and sticky, as in 0o7777) the way ls -l prints them.
+func lsModeString(typ os.FileMode, bits uint32) string {
+	res := []byte("----------")
+	res[0] = lsFileTypeChar(typ)
+
+	rwx := func(i int, r, w, x, special uint32, set, unset byte) {
+		if bits&r != 0 {
+			res[i] = 'r'
+		}
+		if bits&w != 0 {
+			res[i+1] = 'w'
+		}
+		switch {
+		case bits&x != 0 && bits&special != 0:
+			res[i+2] = set
+		case bits&x != 0:
+			res[i+2] = 'x'
+		case bits&special != 0:
+			res[i+2] = unset
+		}
+	}
+	rwx(1, 0o400, 0o200, 0o100, 0o4000, 's', 'S')
+	rwx(4, 0o040, 0o020, 0o010, 0o2000, 's', 'S')
+	rwx(7, 0o004, 0o002, 0o001, 0o1000, 't', 'T')
+
+	return string(res)
 }
 
 func (r *mqlFileContext) id() (string, error) {
