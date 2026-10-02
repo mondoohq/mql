@@ -70,12 +70,15 @@ func (c *mqlOllamaConfig) resolve() (*ollama.Config, error) {
 
 	unit, hasUnit := systemd.ResolveUnitEnv(afs, ollama.UnitName)
 	if hasUnit {
-		// Type-level and prefix drop-ins only apply from systemd 239 on. The
-		// version is only asked for once a unit exists, so hosts without
-		// Ollama never run systemctl, and the unit is only re-read on the old
-		// releases where the answer differs.
-		if v := targetSystemdVersion(c.MqlRuntime); !systemd.ReadsTypeAndPrefixDropIns(v) {
-			unit, _ = systemd.ResolveUnitEnvForVersion(afs, ollama.UnitName, v)
+		// Which drop-in directories apply depends on the systemd release and
+		// its distribution backports. Where systemd runs, it says which
+		// drop-ins it applied. Otherwise (a mounted image, a container) the
+		// release installed on disk decides. systemd is only asked once a unit
+		// exists, so hosts without Ollama never run systemctl.
+		if dropIns, ok := systemdDropIns(c.MqlRuntime, ollama.UnitName); ok {
+			unit, _ = systemd.ResolveUnitEnvWithDropIns(afs, ollama.UnitName, dropIns)
+		} else if dirs := systemd.DropInDirsForVersion(systemd.InstalledVersion(afs), typeLevelDropInBackport(c.MqlRuntime)); dirs != systemd.AllDropInDirs {
+			unit, _ = systemd.ResolveUnitEnvWithDirs(afs, ollama.UnitName, dirs)
 		}
 		c.unit = unit
 	}
@@ -125,23 +128,39 @@ func (c *mqlOllamaConfig) resolve() (*ollama.Config, error) {
 	return c.cfg, nil
 }
 
-// targetSystemdVersion returns the target's systemd release from
-// `systemctl --version`, or 0 when it cannot be run (a mounted image, a target
-// without systemd).
-func targetSystemdVersion(runtime *plugin.Runtime) int {
+// systemdDropIns asks the target's systemd which drop-ins it applied to a
+// unit. It reports false when systemctl cannot run or systemd has not loaded
+// the unit.
+func systemdDropIns(runtime *plugin.Runtime, unitName string) ([]string, bool) {
 	conn, ok := runtime.Connection.(shared.Connection)
 	if !ok || !conn.Capabilities().Has(shared.Capability_RunCommand) {
-		return 0
+		return nil, false
 	}
-	cmd, err := conn.RunCommand("systemctl --version")
+	cmd, err := conn.RunCommand("systemctl show " + unitName + " -p LoadState -p DropInPaths")
 	if err != nil || cmd.ExitStatus != 0 {
-		return 0
+		return nil, false
 	}
 	out, err := io.ReadAll(cmd.Stdout)
 	if err != nil {
-		return 0
+		return nil, false
 	}
-	return systemd.ParseSystemctlVersion(string(out))
+	return systemd.ParseDropInPaths(string(out))
+}
+
+// typeLevelDropInBackport reports a distribution whose systemd 239 reads
+// type-level drop-ins: RHEL 8 and its rebuilds (Alma, Rocky, Oracle Linux,
+// CentOS Stream 8) backported them. Fedora is in the same family but took
+// them with upstream 246.
+func typeLevelDropInBackport(runtime *plugin.Runtime) bool {
+	conn, ok := runtime.Connection.(shared.Connection)
+	if !ok {
+		return false
+	}
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil {
+		return false
+	}
+	return asset.Platform.IsFamily("redhat") && asset.Platform.Name != "fedora"
 }
 
 // findBinary locates the server binary, preferring the path the unit itself

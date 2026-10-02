@@ -61,30 +61,37 @@ func (e *UnitEnv) Files() []string {
 }
 
 // ResolveUnitEnv resolves a unit's environment the way current systemd
-// releases (239 and later) read it. Use ResolveUnitEnvForVersion when the
-// target's systemd version is known.
+// releases read it, with every drop-in directory. Use ResolveUnitEnvWithDirs
+// when the target's systemd release is known, or ResolveUnitEnvWithDropIns when
+// systemd itself reported the drop-ins.
 func ResolveUnitEnv(afs *afero.Afero, unitName string) (*UnitEnv, bool) {
-	return ResolveUnitEnvForVersion(afs, unitName, 0)
+	return ResolveUnitEnvWithDirs(afs, unitName, AllDropInDirs)
 }
 
-// ResolveUnitEnvForVersion resolves the environment of a system unit (e.g. "ollama.service")
+// ResolveUnitEnvWithDirs resolves a unit's environment from the drop-in
+// directories dirs selects (see findDropIns).
+func ResolveUnitEnvWithDirs(afs *afero.Afero, unitName string, dirs DropInDirs) (*UnitEnv, bool) {
+	return resolveUnitEnv(afs, unitName, func() []string { return findDropIns(afs, unitName, dirs) })
+}
+
+// ResolveUnitEnvWithDropIns resolves a unit's environment from the drop-ins
+// systemd reported for it (`systemctl show -p DropInPaths`), in the order given.
+func ResolveUnitEnvWithDropIns(afs *afero.Afero, unitName string, dropIns []string) (*UnitEnv, bool) {
+	return resolveUnitEnv(afs, unitName, func() []string { return dropIns })
+}
+
+// resolveUnitEnv resolves the environment of a system unit (e.g. "ollama.service")
 // from the target's filesystem, following systemd's own precedence rules:
 //
 //   - the unit file is taken from the highest-precedence directory that has one,
-//   - drop-ins are applied after it, ordered lexicographically by file name
-//     across every drop-in directory (see findDropIns for which directories and
-//     which copy wins when two carry the same name),
+//   - drop-ins (from dropIns, in order) are applied after it,
 //   - an empty Environment= or EnvironmentFile= assignment resets what came before,
 //   - and EnvironmentFile= targets override Environment= regardless of the order
 //     the two appear in, as documented in systemd.exec(5).
 //
-// systemdVersion is the target's systemd version, 0 when unknown. Releases
-// before 239 read only the unit's own drop-in directories; unknown is treated
-// as a current release.
-//
 // It reports false when the unit is not installed. A unit with no environment
 // settings at all resolves to an empty, non-nil map.
-func ResolveUnitEnvForVersion(afs *afero.Afero, unitName string, systemdVersion int) (*UnitEnv, bool) {
+func resolveUnitEnv(afs *afero.Afero, unitName string, dropIns func() []string) (*UnitEnv, bool) {
 	env := &UnitEnv{Vars: map[string]string{}, Sources: map[string]string{}}
 
 	fragment, ok := findFragment(afs, unitName)
@@ -92,7 +99,7 @@ func ResolveUnitEnvForVersion(afs *afero.Afero, unitName string, systemdVersion 
 		return env, false
 	}
 	env.FragmentPath = fragment
-	env.DropInPaths = findDropIns(afs, unitName, systemdVersion)
+	env.DropInPaths = dropIns()
 
 	// Environment= assignments and the EnvironmentFile= list accumulate across
 	// the fragment and every drop-in before any file is read, because a later
@@ -185,17 +192,43 @@ func findFragment(afs *afero.Afero, unitName string) (string, bool) {
 	return "", false
 }
 
-// typeAndPrefixDropInsSince is the first systemd release that reads type-level
-// (service.d) and dash-prefix (foo-.service.d) drop-in directories. Verified
-// against systemd 219 (RHEL 7) and 232 (Debian 9), which ignore them, and 239
-// (RHEL 8), which reads them.
-const typeAndPrefixDropInsSince = 239
+// DropInDirs selects which drop-in directories systemd reads for a unit
+// besides the unit's own <unit>.d.
+type DropInDirs struct {
+	// Prefix covers the dash-truncated prefix directories (foo-.service.d for
+	// foo-bar.service), read since systemd 239.
+	Prefix bool
+	// TypeLevel covers the unit type's directory (service.d for every service),
+	// read since systemd 246.
+	TypeLevel bool
+}
 
-// ReadsTypeAndPrefixDropIns reports whether a systemd release applies
-// type-level and dash-prefix drop-in directories. An unknown version (0) is
-// treated as a current release.
-func ReadsTypeAndPrefixDropIns(systemdVersion int) bool {
-	return systemdVersion == 0 || systemdVersion >= typeAndPrefixDropInsSince
+// AllDropInDirs is how current systemd releases read drop-ins.
+var AllDropInDirs = DropInDirs{Prefix: true, TypeLevel: true}
+
+const (
+	// prefixDropInsSince: systemd 232 (Debian 9) ignores foo-.service.d,
+	// 241 (Debian 10) reads it.
+	prefixDropInsSince = 239
+	// typeLevelDropInsSince: systemd 241 (Debian 10) ignores service.d, 247
+	// (Debian 11) reads it.
+	typeLevelDropInsSince = 246
+)
+
+// DropInDirsForVersion returns the drop-in directories a systemd release
+// reads. An unknown version (0) reads like a current release.
+//
+// typeLevelBackport marks a distribution that backported type-level drop-ins
+// to an older release: RHEL 8 and its rebuilds ship systemd 239 with
+// service.d support.
+func DropInDirsForVersion(systemdVersion int, typeLevelBackport bool) DropInDirs {
+	if systemdVersion == 0 {
+		return AllDropInDirs
+	}
+	return DropInDirs{
+		Prefix:    systemdVersion >= prefixDropInsSince,
+		TypeLevel: systemdVersion >= typeLevelDropInsSince || (typeLevelBackport && systemdVersion >= prefixDropInsSince),
+	}
 }
 
 // findDropIns collects the *.conf drop-ins systemd applies to a unit, as
@@ -211,33 +244,32 @@ func ReadsTypeAndPrefixDropIns(systemdVersion int) bool {
 //
 // Files are applied in lexicographic order of their base name regardless of
 // which directory they live in; when several directories carry the same name,
-// the copy from the highest-precedence directory is the one applied. Before
-// systemd 239 only the unit's own directories exist.
-func findDropIns(afs *afero.Afero, unitName string, systemdVersion int) []string {
-	modern := ReadsTypeAndPrefixDropIns(systemdVersion)
-
+// the copy from the highest-precedence directory is the one applied. dirs
+// leaves out the prefix or type-level directories for releases that ignore
+// them.
+func findDropIns(afs *afero.Afero, unitName string, dirs DropInDirs) []string {
 	names := []string{unitName}
-	if modern {
+	if dirs.Prefix {
 		names = append(names, unitNamePrefixes(unitName)...)
 	}
 
-	var dirs []string
+	var searched []string
 	for i := len(UnitDirs) - 1; i >= 0; i-- {
 		for _, n := range names {
-			dirs = append(dirs, path.Join(UnitDirs[i], n+".d"))
+			searched = append(searched, path.Join(UnitDirs[i], n+".d"))
 		}
 	}
-	if modern {
+	if dirs.TypeLevel {
 		if dot := strings.LastIndex(unitName, "."); dot >= 0 && dot < len(unitName)-1 {
 			typeDir := unitName[dot+1:] + ".d"
 			for i := len(UnitDirs) - 1; i >= 0; i-- {
-				dirs = append(dirs, path.Join(UnitDirs[i], typeDir))
+				searched = append(searched, path.Join(UnitDirs[i], typeDir))
 			}
 		}
 	}
 
 	byName := map[string]string{}
-	for _, d := range dirs {
+	for _, d := range searched {
 		entries, err := afs.ReadDir(d)
 		if err != nil {
 			continue
@@ -246,7 +278,7 @@ func findDropIns(afs *afero.Afero, unitName string, systemdVersion int) []string
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".conf") {
 				continue
 			}
-			// dirs is in descending precedence, so the first copy of a name
+			// searched is in descending precedence, so the first copy of a name
 			// is the one systemd applies.
 			if _, taken := byName[e.Name()]; taken {
 				continue
@@ -294,20 +326,66 @@ func unitNamePrefixes(unitName string) []string {
 	}
 }
 
-// ParseSystemctlVersion reads the release number from the first line of
-// `systemctl --version` ("systemd 257 (257-9.el10_0.2)"). It returns 0 when the
-// output carries none.
-func ParseSystemctlVersion(out string) int {
-	line, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
-	fields := strings.Fields(line)
-	if len(fields) < 2 || fields[0] != "systemd" {
-		return 0
+// ParseDropInPaths reads the output of
+// `systemctl show <unit> -p LoadState -p DropInPaths`. It reports false unless
+// systemd loaded the unit, since only then is the list the one systemd applies.
+// systemd prints the properties in its own order, one KEY=value per line, and
+// the paths space-separated.
+func ParseDropInPaths(out string) ([]string, bool) {
+	var loaded, seen bool
+	var paths []string
+	for _, line := range strings.Split(out, "\n") {
+		k, v, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "LoadState":
+			loaded = v == "loaded"
+		case "DropInPaths":
+			seen = true
+			paths = strings.Fields(v)
+		}
 	}
-	v, err := strconv.Atoi(fields[1])
-	if err != nil {
-		return 0
+	if !loaded || !seen {
+		return nil, false
 	}
-	return v
+	return paths, true
+}
+
+// sharedLibraryGlobs locate systemd's private shared library, whose file name
+// carries the release (libsystemd-shared-241.so on Debian 10). Debian puts it
+// in /lib/systemd before the /usr merge and under the multiarch directory from
+// Debian 12 on.
+var sharedLibraryGlobs = []string{
+	"/usr/lib/systemd/libsystemd-shared-*.so",
+	"/lib/systemd/libsystemd-shared-*.so",
+	"/usr/lib64/systemd/libsystemd-shared-*.so",
+	"/usr/lib/*-linux-gnu*/systemd/libsystemd-shared-*.so",
+}
+
+// InstalledVersion reads the systemd release installed on a filesystem without
+// running anything, from the name of libsystemd-shared. It returns 0 when there
+// is none (no systemd, or a release before 231, which did not ship it).
+func InstalledVersion(afs *afero.Afero) int {
+	best := 0
+	for _, g := range sharedLibraryGlobs {
+		matches, err := afero.Glob(afs.Fs, g)
+		if err != nil {
+			continue
+		}
+		for _, m := range matches {
+			name := strings.TrimPrefix(path.Base(m), "libsystemd-shared-")
+			end := 0
+			for end < len(name) && name[end] >= '0' && name[end] <= '9' {
+				end++
+			}
+			if v, err := strconv.Atoi(name[:end]); err == nil && v > best {
+				best = v
+			}
+		}
+	}
+	return best
 }
 
 // expandEnvFilePattern resolves an EnvironmentFile= target, which systemd allows
