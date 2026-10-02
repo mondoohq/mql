@@ -47,18 +47,17 @@ func (a *mqlMicrosoftTenant) onPremisesSynchronization() (*mqlMicrosoftOnPremise
 // is how some cloud-only tenants say nothing is configured, so it reads null
 // rather than as an error.
 func (a *mqlMicrosoftTenant) onPremisesSynchronizationError(err error) error {
-	if isGraphNotFound(err) {
+	if isOnPremisesSyncNotConfigured(err) {
 		a.OnPremisesSynchronization.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil
 	}
-	return classifyOnPremisesSyncError(err)
+	return classifyGraphError(err, onPremDirectorySyncPermission)
 }
 
-func classifyOnPremisesSyncError(err error) error {
-	if isGraphForbidden(err) {
-		return llx.Forbidden(transformError(err), llx.WithPermissions(onPremDirectorySyncPermission))
-	}
-	return transformError(err)
+// isOnPremisesSyncNotConfigured reports whether Graph answered that the
+// tenant has no synchronization object.
+func isOnPremisesSyncNotConfigured(err error) bool {
+	return graphStatusCode(err) == 404 || isResourceNotFound(err)
 }
 
 // selectOnPremisesSync picks the synchronization object for the tenant. Graph

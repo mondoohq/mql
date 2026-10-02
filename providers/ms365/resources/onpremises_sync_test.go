@@ -174,23 +174,24 @@ func graphErrWithStatus(status int) error {
 	return fmt.Errorf("get: %w", e)
 }
 
-func TestClassifyOnPremisesSyncError(t *testing.T) {
-	err := classifyOnPremisesSyncError(graphErrWithStatus(403))
+func TestOnPremisesSyncError(t *testing.T) {
+	tenant := &mqlMicrosoftTenant{}
+
+	err := tenant.onPremisesSynchronizationError(graphErrWithStatus(403))
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
 	var lerr *llx.Error
 	require.True(t, errors.As(err, &lerr))
 	assert.Equal(t, []string{"OnPremDirectorySynchronization.Read.All"}, lerr.Permissions)
 
-	// a transport failure or a server error is not a refusal
-	assert.NotEqual(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(classifyOnPremisesSyncError(errors.New("connection reset"))))
-	assert.NotEqual(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(classifyOnPremisesSyncError(graphErrWithStatus(500))))
-}
+	// a transport failure or a server error is neither a refusal nor absence
+	err = tenant.onPremisesSynchronizationError(errors.New("connection reset"))
+	require.Error(t, err)
+	assert.NotEqual(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
+	err = tenant.onPremisesSynchronizationError(graphErrWithStatus(500))
+	require.Error(t, err)
+	assert.NotEqual(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
 
-func TestGraphStatusPredicates(t *testing.T) {
-	assert.True(t, isGraphNotFound(graphErrWithStatus(404)))
-	assert.False(t, isGraphNotFound(graphErrWithStatus(403)))
-	assert.False(t, isGraphNotFound(errors.New("404")))
-	assert.True(t, isGraphForbidden(graphErrWithStatus(403)))
-	assert.False(t, isGraphForbidden(graphErrWithStatus(401)))
-	assert.False(t, isGraphForbidden(nil))
+	// a cloud-only tenant answering 404 reads null, not an error
+	assert.NoError(t, tenant.onPremisesSynchronizationError(graphErrWithStatus(404)))
+	assert.True(t, tenant.OnPremisesSynchronization.IsNull())
 }
