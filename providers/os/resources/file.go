@@ -93,6 +93,8 @@ func (s *mqlFile) content(path string, exists bool) (string, error) {
 func (s *mqlFile) cacheStatFields(stat shared.FileInfoDetails) error {
 	mode := stat.Mode.UnixMode()
 	res, err := CreateResource(s.MqlRuntime, "file.permissions", map[string]*llx.RawData{
+		"__id":             llx.StringData(s.Path.Data),
+		"string":           llx.StringData(lsModeString(stat.Mode.FileMode, mode)),
 		"mode":             llx.IntData(int64(uint32(mode) & 0o7777)),
 		"user_readable":    llx.BoolData(stat.Mode.UserReadable()),
 		"user_writeable":   llx.BoolData(stat.Mode.UserWriteable()),
@@ -303,71 +305,92 @@ func (s *mqlFile) exists(path string) (bool, error) {
 	return exists, err
 }
 
+// id is the fallback for a file.permissions created without an explicit
+// __id. A file's permissions are keyed by the file's path (see
+// cacheStatFields), because two files with the same mode must not share one
+// cached instance.
 func (l *mqlFilePermissions) id() (string, error) {
-	res := []byte("----------")
-
-	if l.IsSymlink.Data {
-		res[0] = 'l'
-	} else if l.IsDirectory.Data {
-		res[0] = 'd'
-	}
-
-	if l.User_readable.Data {
-		res[1] = 'r'
-	}
-	if l.User_writeable.Data {
-		res[2] = 'w'
-	}
-	if l.User_executable.Data {
-		res[3] = 'x'
-		if l.Suid.Data {
-			res[3] = 's'
-		}
-	} else {
-		if l.Suid.Data {
-			res[3] = 'S'
-		}
-	}
-
-	if l.Group_readable.Data {
-		res[4] = 'r'
-	}
-	if l.Group_writeable.Data {
-		res[5] = 'w'
-	}
-	if l.Group_executable.Data {
-		res[6] = 'x'
-		if l.Sgid.Data {
-			res[6] = 's'
-		}
-	} else {
-		if l.Sgid.Data {
-			res[6] = 'S'
-		}
-	}
-
-	if l.Other_readable.Data {
-		res[7] = 'r'
-	}
-	if l.Other_writeable.Data {
-		res[8] = 'w'
-	}
-	if l.Other_executable.Data {
-		res[9] = 'x'
-		if l.Sticky.Data {
-			res[9] = 't'
-		}
-	} else {
-		if l.Sticky.Data {
-			res[9] = 'T'
-		}
-	}
-
-	return string(res), nil
+	return l.lsString(), nil
 }
 
 func (l *mqlFilePermissions) string() (string, error) {
-	return l.__id, nil
+	return l.lsString(), nil
+}
+
+// lsString renders the permission booleans in ls -l form. It only knows the
+// file types that have a field (directory, symlink); permissions created from
+// a stat carry the full string, including the type character.
+func (l *mqlFilePermissions) lsString() string {
+	var typ os.FileMode
+	if l.IsSymlink.Data {
+		typ = os.ModeSymlink
+	} else if l.IsDirectory.Data {
+		typ = os.ModeDir
+	}
+
+	var bits uint32
+	for _, b := range []struct {
+		set bool
+		bit uint32
+	}{
+		{l.User_readable.Data, 0o400}, {l.User_writeable.Data, 0o200}, {l.User_executable.Data, 0o100},
+		{l.Group_readable.Data, 0o040}, {l.Group_writeable.Data, 0o020}, {l.Group_executable.Data, 0o010},
+		{l.Other_readable.Data, 0o004}, {l.Other_writeable.Data, 0o002}, {l.Other_executable.Data, 0o001},
+		{l.Suid.Data, 0o4000}, {l.Sgid.Data, 0o2000}, {l.Sticky.Data, 0o1000},
+	} {
+		if b.set {
+			bits |= b.bit
+		}
+	}
+	return lsModeString(typ, bits)
+}
+
+// lsFileTypeChar returns the file type character that ls -l prints first.
+func lsFileTypeChar(m os.FileMode) byte {
+	switch {
+	case m&os.ModeSymlink != 0:
+		return 'l'
+	case m.IsDir():
+		return 'd'
+	case m&os.ModeNamedPipe != 0:
+		return 'p'
+	case m&os.ModeSocket != 0:
+		return 's'
+	case m&os.ModeCharDevice != 0:
+		return 'c'
+	case m&os.ModeDevice != 0:
+		return 'b'
+	}
+	return '-'
+}
+
+// lsModeString renders a file type and the Unix permission bits (including
+// setuid, setgid and sticky, as in 0o7777) the way ls -l prints them.
+func lsModeString(typ os.FileMode, bits uint32) string {
+	res := []byte("----------")
+	res[0] = lsFileTypeChar(typ)
+
+	rwx := func(i int, r, w, x, special uint32, set, unset byte) {
+		if bits&r != 0 {
+			res[i] = 'r'
+		}
+		if bits&w != 0 {
+			res[i+1] = 'w'
+		}
+		switch {
+		case bits&x != 0 && bits&special != 0:
+			res[i+2] = set
+		case bits&x != 0:
+			res[i+2] = 'x'
+		case bits&special != 0:
+			res[i+2] = unset
+		}
+	}
+	rwx(1, 0o400, 0o200, 0o100, 0o4000, 's', 'S')
+	rwx(4, 0o040, 0o020, 0o010, 0o2000, 's', 'S')
+	rwx(7, 0o004, 0o002, 0o001, 0o1000, 't', 'T')
+
+	return string(res)
 }
 
 func (r *mqlFileContext) id() (string, error) {
