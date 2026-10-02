@@ -496,7 +496,7 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 		"workdir":        llx.ArrayData(workdir, types.Resource(ResourceDockerFileWorkdir)),
 		"onbuild":        llx.ArrayData(onbuild, types.Resource(ResourceDockerFileOnbuild)),
 		"runsAsRoot":     llx.BoolData(userRaw == nil || isRootUser(userValue)),
-		"hasHealthcheck": llx.BoolData(healthcheckRaw != nil),
+		"hasHealthcheck": llx.BoolData(healthcheckRaw != nil && !isHealthcheckNone(healthcheckRaw)),
 		"final":          llx.BoolData(isFinal),
 	}
 
@@ -602,7 +602,7 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 
 	if healthcheckRaw != nil && healthcheckRaw.Health != nil {
 		h := healthcheckRaw.Health
-		isNone := len(h.Test) > 0 && h.Test[0] == "NONE"
+		isNone := isHealthcheckNone(healthcheckRaw)
 		test := make([]any, len(h.Test))
 		for i, t := range h.Test {
 			test[i] = t
@@ -974,6 +974,13 @@ func (p *mqlDockerFileUser) context() (*mqlFileContext, error) {
 
 func (p *mqlDockerFileHealthcheck) context() (*mqlFileContext, error) {
 	return nil, errors.New("context was not provided for docker.file.healthcheck")
+}
+
+// isHealthcheckNone reports whether a HEALTHCHECK instruction is the
+// `HEALTHCHECK NONE` form, which disables any check inherited from the base
+// image instead of defining one.
+func isHealthcheckNone(hc *instructions.HealthCheckCommand) bool {
+	return hc.Health != nil && len(hc.Health.Test) > 0 && hc.Health.Test[0] == "NONE"
 }
 
 func (p *mqlDockerFileShell) context() (*mqlFileContext, error) {

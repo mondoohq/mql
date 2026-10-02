@@ -7151,10 +7151,12 @@ private docker.file.stage @defaults("from.name") {
   // the base image is not considered, because it is not visible from the
   // Dockerfile alone.
   runsAsRoot bool
-  // Whether this stage declares a HEALTHCHECK
+  // Whether this stage defines a HEALTHCHECK
   //
-  // True for any `HEALTHCHECK` line, including `HEALTHCHECK NONE` (which
-  // explicitly disables an inherited check).
+  // True when the stage's last `HEALTHCHECK` instruction defines a check.
+  // False when there is none or when it is `HEALTHCHECK NONE`, which disables
+  // any check inherited from the base image. The `healthcheck` field still
+  // returns the `NONE` instruction, with `none` set.
   hasHealthcheck bool
   // Whether this stage is the final stage in the Dockerfile
   //

@@ -727,24 +727,52 @@ func TestParseDockerfile_SingleStageFinal(t *testing.T) {
 	require.Equal(t, stage, df.FinalStage.Data, "finalStage points at the single stage")
 }
 
-func TestParseDockerfile_HealthcheckNoneIsHealthcheck(t *testing.T) {
-	src := "FROM alpine\nHEALTHCHECK NONE\n"
-	r := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
-	file := &mqlFile{
-		Content:    plugin.TValue[string]{Data: src, State: plugin.StateIsSet},
-		Path:       plugin.TValue[string]{Data: "Dockerfile", State: plugin.StateIsSet},
-		MqlRuntime: r,
+func TestParseDockerfile_HealthcheckNone(t *testing.T) {
+	cases := []struct {
+		name           string
+		src            string
+		hasHealthcheck bool
+		none           bool
+	}{
+		{
+			name:           "HEALTHCHECK NONE disables the check",
+			src:            "FROM alpine\nRUN apk add --no-cache curl\nHEALTHCHECK NONE\nUSER root\nCMD [\"sh\"]\n",
+			hasHealthcheck: false,
+			none:           true,
+		},
+		{
+			name:           "a later NONE overrides an earlier CMD",
+			src:            "FROM alpine\nHEALTHCHECK CMD true\nHEALTHCHECK NONE\n",
+			hasHealthcheck: false,
+			none:           true,
+		},
+		{
+			name:           "a later CMD overrides an earlier NONE",
+			src:            "FROM alpine\nHEALTHCHECK NONE\nHEALTHCHECK CMD true\n",
+			hasHealthcheck: true,
+			none:           false,
+		},
 	}
-	df := mqlDockerFile{
-		File:       plugin.TValue[*mqlFile]{Data: file, State: plugin.StateIsSet},
-		MqlRuntime: r,
-	}
-	require.NoError(t, df.parse(file))
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+			file := &mqlFile{
+				Content:    plugin.TValue[string]{Data: c.src, State: plugin.StateIsSet},
+				Path:       plugin.TValue[string]{Data: "Dockerfile", State: plugin.StateIsSet},
+				MqlRuntime: r,
+			}
+			df := mqlDockerFile{
+				File:       plugin.TValue[*mqlFile]{Data: file, State: plugin.StateIsSet},
+				MqlRuntime: r,
+			}
+			require.NoError(t, df.parse(file))
 
-	stage := df.Stages.Data[0].(*mqlDockerFileStage)
-	require.True(t, stage.HasHealthcheck.Data, "HEALTHCHECK NONE still counts as declared")
-	require.NotNil(t, stage.Healthcheck.Data)
-	require.True(t, stage.Healthcheck.Data.None.Data, "and the inner healthcheck is the NONE form")
+			stage := df.Stages.Data[0].(*mqlDockerFileStage)
+			require.Equal(t, c.hasHealthcheck, stage.HasHealthcheck.Data)
+			require.NotNil(t, stage.Healthcheck.Data, "the instruction itself is still reported")
+			require.Equal(t, c.none, stage.Healthcheck.Data.None.Data)
+		})
+	}
 }
 
 func TestParseDockerfile_StageRunsAsRoot(t *testing.T) {
