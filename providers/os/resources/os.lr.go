@@ -7141,6 +7141,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"postgresql.hba.rules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPostgresqlHba).GetRules()).ToDataRes(types.Array(types.Resource("postgresql.hba.rule")))
 	},
+	"postgresql.hba.rule.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPostgresqlHbaRule).GetFile()).ToDataRes(types.Resource("file"))
+	},
 	"postgresql.hba.rule.lineNumber": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPostgresqlHbaRule).GetLineNumber()).ToDataRes(types.Int)
 	},
@@ -7167,6 +7170,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"postgresql.ident.mappings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPostgresqlIdent).GetMappings()).ToDataRes(types.Array(types.Resource("postgresql.ident.mapping")))
+	},
+	"postgresql.ident.mapping.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPostgresqlIdentMapping).GetFile()).ToDataRes(types.Resource("file"))
 	},
 	"postgresql.ident.mapping.lineNumber": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPostgresqlIdentMapping).GetLineNumber()).ToDataRes(types.Int)
@@ -23907,6 +23913,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlPostgresqlHbaRule).__id, ok = v.Value.(string)
 		return
 	},
+	"postgresql.hba.rule.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPostgresqlHbaRule).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
 	"postgresql.hba.rule.lineNumber": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPostgresqlHbaRule).LineNumber, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
@@ -23949,6 +23959,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"postgresql.ident.mapping.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPostgresqlIdentMapping).__id, ok = v.Value.(string)
+		return
+	},
+	"postgresql.ident.mapping.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPostgresqlIdentMapping).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
 		return
 	},
 	"postgresql.ident.mapping.lineNumber": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -56648,6 +56662,7 @@ type mqlPostgresqlHbaRule struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlPostgresqlHbaRuleInternal it will be used here
+	File       plugin.TValue[*mqlFile]
 	LineNumber plugin.TValue[int64]
 	Type       plugin.TValue[string]
 	Database   plugin.TValue[string]
@@ -56692,6 +56707,10 @@ func (c *mqlPostgresqlHbaRule) MqlName() string {
 
 func (c *mqlPostgresqlHbaRule) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlPostgresqlHbaRule) GetFile() *plugin.TValue[*mqlFile] {
+	return &c.File
 }
 
 func (c *mqlPostgresqlHbaRule) GetLineNumber() *plugin.TValue[int64] {
@@ -56810,6 +56829,7 @@ type mqlPostgresqlIdentMapping struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlPostgresqlIdentMappingInternal it will be used here
+	File           plugin.TValue[*mqlFile]
 	LineNumber     plugin.TValue[int64]
 	MapName        plugin.TValue[string]
 	SystemUsername plugin.TValue[string]
@@ -56851,6 +56871,10 @@ func (c *mqlPostgresqlIdentMapping) MqlName() string {
 
 func (c *mqlPostgresqlIdentMapping) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlPostgresqlIdentMapping) GetFile() *plugin.TValue[*mqlFile] {
+	return &c.File
 }
 
 func (c *mqlPostgresqlIdentMapping) GetLineNumber() *plugin.TValue[int64] {

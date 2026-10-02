@@ -4922,7 +4922,11 @@ postgresql.conf {
   logDestination(params) string
   // logging_collector directive (true when "on")
   loggingCollector(params) bool
-  // log_connections directive (true when "on")
+  // Whether log_connections logs connection attempts
+  //
+  // True when the directive is a true boolean, or on PostgreSQL 18 and later
+  // when it is `all` or a list covering receipt, authentication, and
+  // authorization (what `on` stands for).
   logConnections(params) bool
   // log_disconnections directive (true when "on")
   logDisconnections(params) bool
@@ -4937,9 +4941,12 @@ postgresql.conf {
 // Host-based authentication rules as written on disk. Each non-blank,
 // non-comment line becomes a `postgresql.hba.rule` entry with the file's
 // order preserved (rule matching is first-rule-wins in PostgreSQL, so
-// order is significant). Audit the entries to flag insecure `authMethod`
-// values (`trust`, `password`) or overly broad client `address` ranges.
-// By default the file is located by probing the well-known paths for
+// order is significant). The `include`, `include_if_exists`, and
+// `include_dir` directives (PostgreSQL 16 and later) are resolved, so the
+// rules of an included file appear in place of the directive. Audit the
+// entries to flag insecure `authMethod` values (`trust`, `password`) or
+// overly broad client `address` ranges. `rules` is null when no pg_hba.conf
+// was found. By default the file is located by probing the well-known paths for
 // Debian/Ubuntu and RPM installations; pass an explicit path with
 // `postgresql.hba(path: "/path/to/pg_hba.conf")`.
 postgresql.hba {
@@ -4956,6 +4963,8 @@ postgresql.hba {
 // `authMethod` field flags insecure entries (`trust`, `password`) and
 // `address` flags overly broad client ranges (for example `0.0.0.0/0`).
 private postgresql.hba.rule @defaults("type database user address authMethod") {
+  // File the rule is read from (pg_hba.conf or a file it includes)
+  file file
   // Line number in the source file
   lineNumber int
   // Connection type (local, host, hostssl, hostnossl, hostgssenc, hostnogssenc)
@@ -4977,9 +4986,12 @@ private postgresql.hba.rule @defaults("type database user address authMethod") {
 // User-name mapping rules as written on disk. Mappings translate an
 // external authenticated identity (Kerberos principal, SSL CN, OS
 // username) into a PostgreSQL role for the `ident`, `peer`, `gss`, and
-// `cert` authentication methods. By default the file is located by
-// probing the well-known paths for Debian/Ubuntu and RPM installations;
-// pass an explicit path with `postgresql.ident(path: "/path/to/pg_ident.conf")`.
+// `cert` authentication methods. The `include`, `include_if_exists`, and
+// `include_dir` directives (PostgreSQL 16 and later) are resolved.
+// `mappings` is null when no pg_ident.conf was found. By default the file
+// is located by probing the well-known paths for Debian/Ubuntu and RPM
+// installations; pass an explicit path with
+// `postgresql.ident(path: "/path/to/pg_ident.conf")`.
 postgresql.ident {
   init(path? string)
   // File backing this pg_ident.conf
@@ -4994,6 +5006,8 @@ postgresql.ident {
 // (system) identity to the PostgreSQL role it is allowed to connect as
 // under the map named by `mapName`.
 private postgresql.ident.mapping @defaults("mapName systemUsername pgUsername") {
+  // File the mapping is read from (pg_ident.conf or a file it includes)
+  file file
   // Line number in the source file
   lineNumber int
   // Map name referenced by `map=NAME` in pg_hba.conf

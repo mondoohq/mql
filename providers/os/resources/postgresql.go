@@ -5,6 +5,8 @@ package resources
 
 import (
 	"errors"
+	"fmt"
+	"io/fs"
 	"path"
 	"path/filepath"
 	"sort"
@@ -52,28 +54,48 @@ func postgresqlConfigSearchPaths(fs afero.Fs, name string) []string {
 }
 
 // versionedPostgresqlPaths expands <root>/*/<cluster>/<name> and returns the
-// matches ordered by major version, highest first, so a host running several
+// matches ordered by version, highest first, so a host running several
 // clusters side by side resolves to the newest the way the old descending
 // enumeration did. The sort is numeric: lexically "9" sorts above "17", and
 // /etc/postgresql/9/main still exists on long-lived hosts.
 //
-// A directory whose name is not an integer (someone's /etc/postgresql/backup)
-// is skipped rather than treated as major 0. A filesystem that cannot be
-// globbed contributes no candidates, which is what the hardcoded list did when
-// a path simply was not there.
+// Before PostgreSQL 10 the major version had two parts, and packages named the
+// directory after both (/etc/postgresql/9.5/main on Ubuntu 16.04,
+// /var/lib/pgsql/9.6/data from the PGDG RPMs). A directory whose name is not a
+// version (someone's /etc/postgresql/backup) is skipped rather than treated as
+// major 0. A filesystem that cannot be globbed contributes no candidates,
+// which is what the hardcoded list did when a path simply was not there.
 func versionedPostgresqlPaths(fs afero.Fs, root, cluster, name string) []string {
-	// <root>/<major>/<cluster>/<name>
+	// <root>/<version>/<cluster>/<name>
 	return postgresqlPathsByMajor(fs, root+"/*/"+cluster+"/"+name, func(match string) (int, bool) {
-		major, err := strconv.Atoi(path.Base(path.Dir(path.Dir(match))))
-		return major, err == nil
+		return postgresqlVersionRank(path.Base(path.Dir(path.Dir(match))))
 	})
+}
+
+// postgresqlVersionRank turns a version directory name ("18", "9.6") into a
+// sortable rank, major*100+minor, so 9.6 ranks above 9.5 and below 10. It
+// reports false for anything else.
+func postgresqlVersionRank(dir string) (int, bool) {
+	majorStr, minorStr, dotted := strings.Cut(dir, ".")
+	major, err := strconv.Atoi(majorStr)
+	if err != nil || major <= 0 {
+		return 0, false
+	}
+	minor := 0
+	if dotted {
+		minor, err = strconv.Atoi(minorStr)
+		if err != nil || minor < 0 || minor > 99 {
+			return 0, false
+		}
+	}
+	return major*100 + minor, true
 }
 
 // freebsdPostgresqlPaths expands the data directories the FreeBSD
 // postgresql<MAJOR>-server packages create: the rc.d script initializes
 // ~postgres/data<MAJOR> (/var/db/postgres/data17 for postgresql17-server on
 // FreeBSD 14.5). Before PostgreSQL 10 the suffix carried major and minor
-// (data96 for 9.6), which is ranked as major 9.
+// (data96 for 9.6), which is ranked as 9.6.
 func freebsdPostgresqlPaths(fs afero.Fs, name string) []string {
 	return postgresqlPathsByMajor(fs, "/var/db/postgres/data*/"+name, func(match string) (int, bool) {
 		suffix := strings.TrimPrefix(path.Base(path.Dir(match)), "data")
@@ -82,14 +104,14 @@ func freebsdPostgresqlPaths(fs afero.Fs, name string) []string {
 			return 0, false
 		}
 		if major >= 90 && major <= 99 {
-			major /= 10
+			return (major/10)*100 + major%10, true
 		}
-		return major, true
+		return major * 100, true
 	})
 }
 
 // postgresqlPathsByMajor expands pattern and returns the matches ordered by the
-// major version majorOf reads from each, highest first. Matches majorOf
+// version rank majorOf reads from each, highest first. Matches majorOf
 // rejects are dropped.
 func postgresqlPathsByMajor(fs afero.Fs, pattern string, majorOf func(match string) (int, bool)) []string {
 	if fs == nil {
@@ -134,6 +156,67 @@ func findPostgresqlConfigFile(fs afero.Fs, name string) string {
 		}
 	}
 	return ""
+}
+
+// postgresqlFileReaders returns the reader and directory lister the parsers
+// use to follow include directives. Every file is read through a file
+// resource, recorded in files by path so callers can hand back the resources
+// that contributed. A missing file or directory is reported as
+// fs.ErrNotExist so include_if_exists and include_dir can skip it, while a
+// refusal (a fragment only the postgres user may read) stays an error.
+func postgresqlFileReaders(runtime *plugin.Runtime, files map[string]*mqlFile) (postgresql.FileReader, postgresql.DirLister) {
+	conn := runtime.Connection.(shared.Connection)
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+
+	reader := func(p string) (string, error) {
+		f, ok := files[p]
+		if !ok {
+			raw, err := CreateResource(runtime, "file", map[string]*llx.RawData{
+				"path": llx.StringData(p),
+			})
+			if err != nil {
+				return "", err
+			}
+			f = raw.(*mqlFile)
+		}
+		exists := f.GetExists()
+		if exists.Error != nil {
+			return "", exists.Error
+		}
+		if !exists.Data {
+			return "", fmt.Errorf("%s: %w", p, fs.ErrNotExist)
+		}
+		content := f.GetContent()
+		if content.Error != nil {
+			return "", content.Error
+		}
+		files[p] = f
+		return content.Data, nil
+	}
+
+	lister := func(dir string) ([]string, error) {
+		ok, err := afs.DirExists(dir)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("%s: %w", dir, fs.ErrNotExist)
+		}
+		entries, err := afs.ReadDir(dir)
+		if err != nil {
+			return nil, err
+		}
+		paths := make([]string, 0, len(entries))
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			paths = append(paths, filepath.Join(dir, e.Name()))
+		}
+		return paths, nil
+	}
+
+	return reader, lister
 }
 
 type mqlPostgresqlConfInternal struct {
@@ -215,44 +298,8 @@ func (s *mqlPostgresqlConf) parse(file *mqlFile) error {
 		return nil
 	}
 
-	conn := s.MqlRuntime.Connection.(shared.Connection)
-	afs := &afero.Afero{Fs: conn.FileSystem()}
-
 	filesIdx := map[string]*mqlFile{file.Path.Data: file}
-
-	fileReader := func(path string) (string, error) {
-		f, ok := filesIdx[path]
-		if !ok {
-			raw, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-				"path": llx.StringData(path),
-			})
-			if err != nil {
-				return "", err
-			}
-			f = raw.(*mqlFile)
-			filesIdx[path] = f
-		}
-		content := f.GetContent()
-		if content.Error != nil {
-			return "", content.Error
-		}
-		return content.Data, nil
-	}
-
-	dirLister := func(dir string) ([]string, error) {
-		entries, err := afs.ReadDir(dir)
-		if err != nil {
-			return nil, err
-		}
-		paths := make([]string, 0, len(entries))
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			paths = append(paths, filepath.Join(dir, e.Name()))
-		}
-		return paths, nil
-	}
+	fileReader, dirLister := postgresqlFileReaders(s.MqlRuntime, filesIdx)
 
 	cfg, err := postgresql.ParseConf(file.Path.Data, fileReader, dirLister)
 	if err != nil {
@@ -269,9 +316,13 @@ func (s *mqlPostgresqlConf) parse(file *mqlFile) error {
 	}
 	s.Params = plugin.TValue[map[string]any]{Data: params, State: plugin.StateIsSet}
 
-	files := make([]any, 0, len(filesIdx))
-	for _, f := range filesIdx {
-		files = append(files, f)
+	// cfg.Files lists only the files that were read, in load order, so a
+	// missing include_if_exists target is not reported as a config file.
+	files := make([]any, 0, len(cfg.Files))
+	for _, p := range cfg.Files {
+		if f, ok := filesIdx[p]; ok {
+			files = append(files, f)
+		}
 	}
 	s.Files = plugin.TValue[[]any]{Data: files, State: plugin.StateIsSet}
 
@@ -463,7 +514,7 @@ func (s *mqlPostgresqlConf) logConnections(params map[string]any) (bool, error) 
 		return false, nil
 	}
 
-	return postgresql.IsTruthy(paramString(params, "log_connections")), nil
+	return postgresql.LogConnectionsEnabled(paramString(params, "log_connections")), nil
 }
 
 func (s *mqlPostgresqlConf) logDisconnections(params map[string]any) (bool, error) {
@@ -549,13 +600,19 @@ func (s *mqlPostgresqlHba) file() (*mqlFile, error) {
 
 func (s *mqlPostgresqlHba) rules(file *mqlFile) ([]any, error) {
 	if file == nil {
-		return []any{}, nil
+		// No pg_hba.conf anywhere: there are no rules to report, which is not
+		// the same as a file that holds none. An empty list would let
+		// `rules.none(authMethod == "trust")` pass on a host nothing was read
+		// from.
+		s.Rules.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
-	content := file.GetContent()
-	if content.Error != nil {
-		return nil, content.Error
+	files := map[string]*mqlFile{file.Path.Data: file}
+	fileReader, dirLister := postgresqlFileReaders(s.MqlRuntime, files)
+	rules, err := postgresql.ParseHbaFile(file.Path.Data, fileReader, dirLister)
+	if err != nil {
+		return nil, err
 	}
-	rules := postgresql.ParseHba(content.Data)
 
 	out := make([]any, 0, len(rules))
 	for _, rule := range rules {
@@ -564,7 +621,8 @@ func (s *mqlPostgresqlHba) rules(file *mqlFile) ([]any, error) {
 			opts[k] = v
 		}
 		res, err := CreateResource(s.MqlRuntime, "postgresql.hba.rule", map[string]*llx.RawData{
-			"__id":       llx.StringData(file.Path.Data + ":" + strconv.Itoa(rule.LineNumber)),
+			"__id":       llx.StringData(rule.File + ":" + strconv.Itoa(rule.LineNumber)),
+			"file":       llx.ResourceData(files[rule.File], "file"),
 			"lineNumber": llx.IntData(int64(rule.LineNumber)),
 			"type":       llx.StringData(rule.Type),
 			"database":   llx.StringData(rule.Database),
@@ -636,18 +694,21 @@ func (s *mqlPostgresqlIdent) file() (*mqlFile, error) {
 
 func (s *mqlPostgresqlIdent) mappings(file *mqlFile) ([]any, error) {
 	if file == nil {
-		return []any{}, nil
+		s.Mappings.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
-	content := file.GetContent()
-	if content.Error != nil {
-		return nil, content.Error
+	files := map[string]*mqlFile{file.Path.Data: file}
+	fileReader, dirLister := postgresqlFileReaders(s.MqlRuntime, files)
+	mappings, err := postgresql.ParseIdentFile(file.Path.Data, fileReader, dirLister)
+	if err != nil {
+		return nil, err
 	}
-	mappings := postgresql.ParseIdent(content.Data)
 
 	out := make([]any, 0, len(mappings))
 	for _, m := range mappings {
 		res, err := CreateResource(s.MqlRuntime, "postgresql.ident.mapping", map[string]*llx.RawData{
-			"__id":           llx.StringData(file.Path.Data + ":" + strconv.Itoa(m.LineNumber)),
+			"__id":           llx.StringData(m.File + ":" + strconv.Itoa(m.LineNumber)),
+			"file":           llx.ResourceData(files[m.File], "file"),
 			"lineNumber":     llx.IntData(int64(m.LineNumber)),
 			"mapName":        llx.StringData(m.MapName),
 			"systemUsername": llx.StringData(m.SystemUsername),
