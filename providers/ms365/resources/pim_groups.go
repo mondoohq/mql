@@ -5,12 +5,15 @@ package resources
 
 import (
 	"context"
+	"net/http"
+	"sync"
 
 	abstractions "github.com/microsoft/kiota-abstractions-go"
 	"github.com/microsoft/kiota-abstractions-go/serialization"
 	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/identitygovernance"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/ms365/connection"
@@ -77,13 +80,28 @@ func tenantGroupIDs(runtime *plugin.Runtime) ([]string, error) {
 	return ids, nil
 }
 
+// pimGroupChunkSize is how many groups one $batch call asks for. Graph caps a
+// $batch payload at 20 sub-requests.
+const pimGroupChunkSize = 19
+
+// pimGroupConcurrency bounds how many $batch calls run at once, so a tenant
+// with thousands of groups is not read one chunk at a time without tripping
+// Graph throttling either.
+const pimGroupConcurrency = 4
+
 // listPerGroup lists PIM for Groups schedule instances one group at a time.
-// Graph refuses an unfiltered list of these collections (MissingParameters:
-// GroupId or PrincipalId), so each group is asked for separately, sent through
-// $batch to keep the round trips down. A $batch sub-response keeps only the
-// status of a failure, so a failed group is asked again directly to recover
-// the error Graph gave, which is what tells a missing license from a missing
-// permission.
+// Graph requires these collections to be filtered with groupId eq or
+// principalId eq (an unfiltered list fails with MissingParameters), so each
+// group is asked for separately, sent through $batch to keep the round trips
+// down, with a few $batch calls in flight at once. A $batch sub-response keeps
+// only the status of a failure, so a failed group is asked again directly to
+// recover the error Graph gave, which is what tells a missing license from a
+// missing permission.
+//
+// A failure that belongs to one group (it was deleted during the scan, or PIM
+// cannot manage it) skips that group and keeps the others. A failure that
+// holds for the whole tenant (401, a permission or license refusal,
+// throttling, an unavailable service) fails the field.
 func listPerGroup[C serialization.Parsable, I any](
 	ctx context.Context,
 	graphClient *msgraphsdkgo.GraphServiceClient,
@@ -102,32 +120,110 @@ func listPerGroup[C serialization.Parsable, I any](
 		}
 		reqs = append(reqs, batchItemRequest{key: id, reqInfo: info})
 	}
-	batch, err := batchGet[C](ctx, adapter, reqs, factory)
-	if err != nil {
-		return nil, classifyPimError(err, permission)
+
+	type chunkResult struct {
+		items   []I
+		read    int
+		skipped []error
+		err     error
 	}
+	chunks := chunkBatchRequests(reqs, pimGroupChunkSize)
+	results := make([]chunkResult, len(chunks))
+	sem := make(chan struct{}, pimGroupConcurrency)
+	var wg sync.WaitGroup
+	for i, chunk := range chunks {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, chunk []batchItemRequest) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			out := &results[i]
+			batch, err := batchGet[C](ctx, adapter, chunk, factory)
+			if err != nil {
+				out.err = classifyPimError(err, permission)
+				return
+			}
+			for _, r := range chunk {
+				id := r.key
+				var page any
+				if _, failed := batch.errs[id]; failed {
+					page, err = direct(id)
+					if err != nil {
+						if isGroupLocalPimError(err) {
+							log.Debug().Err(err).Str("group", id).Msg("ms365> skipping group in PIM for Groups list")
+							out.skipped = append(out.skipped, err)
+							continue
+						}
+						out.err = classifyPimError(err, permission)
+						return
+					}
+				} else if coll, ok := batch.results[id]; ok {
+					page = coll
+				} else {
+					out.read++
+					continue
+				}
+				// a $batch sub-response carries only the first page
+				items, err := iterate[I](ctx, page, adapter, factory)
+				if err != nil {
+					out.err = classifyPimError(err, permission)
+					return
+				}
+				out.read++
+				out.items = append(out.items, items...)
+			}
+		}(i, chunk)
+	}
+	wg.Wait()
 
 	res := []I{}
-	for _, id := range groupIDs {
-		var page any
-		if _, failed := batch.errs[id]; failed {
-			page, err = direct(id)
-			if err != nil {
-				return nil, classifyPimError(err, permission)
-			}
-		} else if coll, ok := batch.results[id]; ok {
-			page = coll
-		} else {
-			continue
+	read := 0
+	var skipped []error
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
 		}
-		// a $batch sub-response carries only the first page
-		items, err := iterate[I](ctx, page, adapter, factory)
-		if err != nil {
-			return nil, classifyPimError(err, permission)
-		}
-		res = append(res, items...)
+		read += r.read
+		skipped = append(skipped, r.skipped...)
+		res = append(res, r.items...)
+	}
+	// When every group failed, the failure is not about one group: the
+	// request itself is wrong for this tenant. Report it instead of an empty
+	// list that reads as "no PIM for Groups assignments".
+	if read == 0 && len(skipped) > 0 {
+		return nil, classifyPimError(skipped[0], permission)
+	}
+	if len(skipped) > 0 {
+		log.Warn().Int("skipped", len(skipped)).Int("groups", len(groupIDs)).Msg("ms365> some groups could not be read for PIM for Groups and were skipped")
 	}
 	return res, nil
+}
+
+// chunkBatchRequests splits reqs into consecutive chunks of at most size
+// requests, keeping their order.
+func chunkBatchRequests(reqs []batchItemRequest, size int) [][]batchItemRequest {
+	var chunks [][]batchItemRequest
+	for start := 0; start < len(reqs); start += size {
+		end := min(start+size, len(reqs))
+		chunks = append(chunks, reqs[start:end])
+	}
+	return chunks
+}
+
+// isGroupLocalPimError reports whether a failed PIM for Groups request is
+// about the one group it named rather than the tenant: a 404 (the group was
+// deleted during the scan) or a 400 other than the license refusal (PIM cannot
+// manage that group). A 401, 403, 429, 5xx, a license refusal, or a transport
+// failure with no status holds for every group, so it is not group-local.
+func isGroupLocalPimError(err error) bool {
+	if isPremiumLicenseRequired(err) {
+		return false
+	}
+	switch graphStatusCode(err) {
+	case http.StatusNotFound, http.StatusBadRequest:
+		return true
+	}
+	return false
 }
 
 func newGroupAssignmentScheduleInstances(ctx context.Context, runtime *plugin.Runtime, graphClient *msgraphsdkgo.GraphServiceClient, instances []models.PrivilegedAccessGroupAssignmentScheduleInstanceable) ([]any, error) {

@@ -8,11 +8,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -195,6 +198,11 @@ type pimGroupGraph struct {
 	t      *testing.T
 	srv    *httptest.Server
 	routes map[string]fakeRoute
+	// onBatch, when set, runs at the start of every $batch call; the func it
+	// returns runs when that call has been answered
+	onBatch func() func()
+
+	mu     sync.Mutex
 	direct []string
 }
 
@@ -231,6 +239,9 @@ func (g *pimGroupGraph) lookup(rawURL string) (int, json.RawMessage) {
 func (g *pimGroupGraph) serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if strings.HasSuffix(r.URL.Path, "/$batch") {
+		if g.onBatch != nil {
+			defer g.onBatch()()
+		}
 		var req struct {
 			Requests []struct {
 				ID  string `json:"id"`
@@ -262,7 +273,9 @@ func (g *pimGroupGraph) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	// record the direct per-group retries; follow-up pages carry no filter
 	if r.URL.Query().Get("$filter") != "" {
+		g.mu.Lock()
 		g.direct = append(g.direct, r.URL.String())
+		g.mu.Unlock()
 	}
 	status, b := g.lookup(r.URL.String())
 	w.WriteHeader(status)
@@ -342,6 +355,123 @@ func TestListPerGroup_FailureIsClassifiedFromDirectRetry(t *testing.T) {
 		require.True(t, errors.As(err, &e))
 		assert.Equal(t, []string{permPrivilegedAssignmentGroup}, e.Permissions)
 	})
+}
+
+// A group deleted during the scan (404), or one PIM cannot manage (400), is
+// skipped; the other groups' instances are still returned.
+func TestListPerGroup_GroupLocalFailureIsSkipped(t *testing.T) {
+	for name, route := range map[string]fakeRoute{
+		"not found":   {status: 404, body: `{"error":{"code":"Request_ResourceNotFound","message":"Resource 'g-2' does not exist."}}`},
+		"bad request": {status: 400, body: `{"error":{"code":"BadRequest","message":"The group is not onboarded to PIM."}}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			g := newPimGroupGraph(t, map[string]fakeRoute{
+				"groupId eq 'g-1'": {status: 200, body: `{"value": [{"id": "g-1_member_u-1", "groupId": "g-1"}]}`},
+				"groupId eq 'g-2'": route,
+				"groupId eq 'g-3'": {status: 200, body: `{"value": [{"id": "g-3_owner_u-2", "groupId": "g-3"}]}`},
+			})
+			got, err := listGroupAssignmentsFrom(g, []string{"g-1", "g-2", "g-3"})
+			require.NoError(t, err)
+			ids := []string{}
+			for _, inst := range got {
+				ids = append(ids, *inst.GetId())
+			}
+			assert.Equal(t, []string{"g-1_member_u-1", "g-3_owner_u-2"}, ids)
+			require.Len(t, g.direct, 1)
+			assert.Contains(t, g.direct[0], "g-2")
+		})
+	}
+}
+
+// When every group fails, the failure is not about one group, so the field
+// reports it instead of an empty list.
+func TestListPerGroup_EveryGroupFailingIsAnError(t *testing.T) {
+	g := newPimGroupGraph(t, map[string]fakeRoute{
+		"groupId eq 'g-1'": {status: 400, body: `{"error":{"code":"MissingParameters","message":"GroupId or PrincipalId"}}`},
+		"groupId eq 'g-2'": {status: 400, body: `{"error":{"code":"MissingParameters","message":"GroupId or PrincipalId"}}`},
+	})
+	_, err := listGroupAssignmentsFrom(g, []string{"g-1", "g-2"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "MissingParameters")
+}
+
+// A permission refusal on one group holds for the tenant, so it fails the
+// field even when other groups were read.
+func TestListPerGroup_ForbiddenAmongGoodGroupsFailsTheField(t *testing.T) {
+	g := newPimGroupGraph(t, map[string]fakeRoute{
+		"groupId eq 'g-1'": {status: 200, body: `{"value": [{"id": "g-1_member_u-1", "groupId": "g-1"}]}`},
+		"groupId eq 'g-2'": {status: 403, body: `{"error":{"code":"Authorization_RequestDenied","message":"Insufficient privileges"}}`},
+	})
+	_, err := listGroupAssignmentsFrom(g, []string{"g-1", "g-2"})
+	require.Error(t, err)
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
+}
+
+// Groups are read in several $batch calls at once, and the instances still
+// come back in group order.
+func TestListPerGroup_ChunksRunConcurrentlyInOrder(t *testing.T) {
+	routes := map[string]fakeRoute{}
+	groupIDs := []string{}
+	want := []string{}
+	for i := 0; i < pimGroupChunkSize*pimGroupConcurrency+5; i++ {
+		id := fmt.Sprintf("g-%03d", i)
+		groupIDs = append(groupIDs, id)
+		want = append(want, id+"_member_u")
+		routes["groupId eq '"+id+"'"] = fakeRoute{status: 200, body: `{"value": [{"id": "` + id + `_member_u", "groupId": "` + id + `"}]}`}
+	}
+	g := newPimGroupGraph(t, routes)
+
+	// hold every $batch call until two are in flight; sequential chunks never
+	// get there and time out
+	var inFlight atomic.Int32
+	overlap := make(chan struct{})
+	var once sync.Once
+	g.onBatch = func() func() {
+		if inFlight.Add(1) >= 2 {
+			once.Do(func() { close(overlap) })
+		}
+		select {
+		case <-overlap:
+		case <-time.After(2 * time.Second):
+		}
+		return func() { inFlight.Add(-1) }
+	}
+
+	got, err := listGroupAssignmentsFrom(g, groupIDs)
+	require.NoError(t, err)
+	select {
+	case <-overlap:
+	default:
+		t.Fatal("no two $batch calls were in flight at once")
+	}
+	ids := []string{}
+	for _, inst := range got {
+		ids = append(ids, *inst.GetId())
+	}
+	assert.Equal(t, want, ids)
+}
+
+func TestChunkBatchRequests(t *testing.T) {
+	reqs := make([]batchItemRequest, 5)
+	for i := range reqs {
+		reqs[i].key = fmt.Sprint(i)
+	}
+	chunks := chunkBatchRequests(reqs, 2)
+	require.Len(t, chunks, 3)
+	assert.Equal(t, "4", chunks[2][0].key)
+	assert.Len(t, chunks[2], 1)
+	assert.Empty(t, chunkBatchRequests(nil, 2))
+}
+
+func TestIsGroupLocalPimError(t *testing.T) {
+	assert.True(t, isGroupLocalPimError(odataErrWithStatus("Request_ResourceNotFound", 404)))
+	assert.True(t, isGroupLocalPimError(odataErrWithStatus("BadRequest", 400)))
+	assert.False(t, isGroupLocalPimError(odataErrWithStatus("AadPremiumLicenseRequired", 400)))
+	assert.False(t, isGroupLocalPimError(odataErrWithStatus("Authorization_RequestDenied", 403)))
+	assert.False(t, isGroupLocalPimError(odataErrWithStatus("InvalidAuthenticationToken", 401)))
+	assert.False(t, isGroupLocalPimError(odataErrWithStatus("TooManyRequests", 429)))
+	assert.False(t, isGroupLocalPimError(odataErrWithStatus("ServiceUnavailable", 503)))
+	assert.False(t, isGroupLocalPimError(errors.New("connection reset")))
 }
 
 func TestUniqueNonEmpty(t *testing.T) {
