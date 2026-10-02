@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -145,17 +146,167 @@ func postgresqlPathsByMajor(fs afero.Fs, pattern string, majorOf func(match stri
 	return out
 }
 
-// findPostgresqlConfigFile returns the first search path that exists, or "" if
+// findPostgresqlConfigFile returns the first candidate that exists, or "" if
 // PostgreSQL keeps its config somewhere we do not know about (or is not
-// installed at all).
-func findPostgresqlConfigFile(fs afero.Fs, name string) string {
+// installed at all). The preferred paths, which come from what the host says
+// about its clusters (postgresqlInstances), are probed before the well-known
+// search paths.
+//
+// A candidate that cannot be checked because a parent directory refuses the
+// scanning user (RHEL's /var/lib/pgsql is 0700 postgres) is an error: the
+// file may well be there, and reading the host as one without PostgreSQL
+// would make every postgresql.* check pass or skip. v13 skipped such a
+// candidate, and keeps doing so until structured errors are the default.
+func findPostgresqlConfigFile(fs afero.Fs, name string, preferred ...string) (string, error) {
 	afs := &afero.Afero{Fs: fs}
-	for _, p := range postgresqlConfigSearchPaths(fs, name) {
-		if ok, _ := afs.Exists(p); ok {
-			return p
+	candidates := append(append([]string{}, preferred...), postgresqlConfigSearchPaths(fs, name)...)
+	seen := make(map[string]bool, len(candidates))
+	for _, p := range candidates {
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		ok, err := afs.Exists(p)
+		if err != nil {
+			if errors.Is(err, os.ErrPermission) && plugin.StructuredErrors() {
+				return "", llx.Forbidden(err)
+			}
+			continue
+		}
+		if ok {
+			return p, nil
 		}
 	}
-	return ""
+	return "", nil
+}
+
+// postgresqlInstances returns the clusters the host runs or is set up to
+// start: running postmasters first, then systemd units. Either source may be
+// unavailable (a container image has no processes, a host without systemd
+// has no units) and then contributes nothing.
+func postgresqlInstances(runtime *plugin.Runtime) (running, units []postgresql.Instance) {
+	return runningPostmasters(runtime), postgresqlUnits(runtime)
+}
+
+// postgresqlPidsCmd lists the processes named postgres or postmaster: the
+// postmaster and its backends, whose comm stays "postgres". pgrep exits 1
+// when nothing matches.
+const postgresqlPidsCmd = "pgrep -x 'postgres|postmaster'"
+
+// runningPostmasters reads the command line of every running postmaster from
+// /proc. Where commands run, pgrep narrows the processes to read; otherwise
+// every /proc entry is read. A process whose command line cannot be read is
+// skipped: it may be gone by now, and postmasters do not hide their command
+// line.
+func runningPostmasters(runtime *plugin.Runtime) []postgresql.Instance {
+	conn := runtime.Connection.(shared.Connection)
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+
+	var pids []string
+	listed := false
+	if conn.Capabilities().Has(shared.Capability_RunCommand) {
+		o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+			"command": llx.StringData(postgresqlPidsCmd),
+		})
+		if err == nil {
+			cmd := o.(*mqlCommand)
+			switch cmd.GetExitcode().Data {
+			case 0:
+				pids = strings.Fields(cmd.GetStdout().Data)
+				listed = true
+			case 1:
+				return nil
+			}
+		}
+	}
+	if !listed {
+		entries, err := afs.ReadDir("/proc")
+		if err != nil {
+			return nil
+		}
+		for _, e := range entries {
+			pids = append(pids, e.Name())
+		}
+	}
+
+	var out []postgresql.Instance
+	for _, pid := range pids {
+		if _, err := strconv.Atoi(pid); err != nil {
+			continue
+		}
+		raw, err := afs.ReadFile("/proc/" + pid + "/cmdline")
+		if err != nil || len(raw) == 0 {
+			continue
+		}
+		argv := strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")
+		if inst, ok := postgresql.ParsePostmasterArgs(argv); ok {
+			out = append(out, inst)
+		}
+	}
+	return out
+}
+
+// postgresqlUnitsCmd shows the environment and ExecStart of every installed
+// postgresql unit. The names come from the unit files: a unit pattern given
+// to systemctl show only matches loaded units, and systemd unloads a stopped
+// unit nothing depends on (PGDG's postgresql-17.service once stopped).
+// Templates (Debian's postgresql@.service) carry no data directory and are
+// skipped. Without any unit the command exits 1 rather than showing the
+// manager's own properties.
+const postgresqlUnitsCmd = `u=$(systemctl list-unit-files --no-legend 'postgresql*.service' 2>/dev/null | awk '$1 !~ /@\.service$/ {print $1}'); [ -n "$u" ] && systemctl show -p Id -p Environment -p ExecStart $u`
+
+// postgresqlUnits returns the clusters the postgresql systemd units start.
+// A host without systemctl, or one where it fails, has no units to report.
+func postgresqlUnits(runtime *plugin.Runtime) []postgresql.Instance {
+	conn := runtime.Connection.(shared.Connection)
+	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return nil
+	}
+	out, ok, err := runShellCmd(runtime, postgresqlUnitsCmd)
+	if err != nil || !ok {
+		return nil
+	}
+	var insts []postgresql.Instance
+	for _, u := range postgresql.ParseSystemctlShow(out) {
+		if inst, ok := postgresql.UnitInstance(u); ok {
+			insts = append(insts, inst)
+		}
+	}
+	return insts
+}
+
+// postgresqlPreferredConfigs orders the config files of the given clusters
+// for findPostgresqlConfigFile: running postmasters first, then the clusters
+// of systemd units. Within each group, files at well-known paths keep the
+// order the search paths give them, so a host running several Debian
+// clusters, or with both the distro and the PGDG unit installed, still
+// resolves to the one it always did. Files elsewhere (a relocated data
+// directory) follow in discovery order.
+func postgresqlPreferredConfigs(fs afero.Fs, running, units []postgresql.Instance) []string {
+	rank := map[string]int{}
+	for i, p := range postgresqlConfigSearchPaths(fs, "postgresql.conf") {
+		if _, ok := rank[p]; !ok {
+			rank[p] = i
+		}
+	}
+	ordered := func(insts []postgresql.Instance) []string {
+		paths := []string{}
+		for _, inst := range insts {
+			if p := inst.ConfigFile(); p != "" {
+				paths = append(paths, p)
+			}
+		}
+		sort.SliceStable(paths, func(i, j int) bool {
+			ri, iok := rank[paths[i]]
+			rj, jok := rank[paths[j]]
+			if iok != jok {
+				return iok
+			}
+			return iok && ri < rj
+		})
+		return paths
+	}
+	return append(ordered(running), ordered(units)...)
 }
 
 // postgresqlFileFound reports whether file names a file that exists: false
@@ -240,6 +391,29 @@ type mqlPostgresqlConfInternal struct {
 	// set extra state bits (StateIsNull) that the previous equality guard
 	// failed to recognise as "already parsed", causing infinite re-parses.
 	parsed bool
+
+	instancesOnce sync.Once
+	running       []postgresql.Instance
+	units         []postgresql.Instance
+}
+
+// instances returns what the host says about its clusters, read once per
+// resource.
+func (s *mqlPostgresqlConf) instances() (running, units []postgresql.Instance) {
+	s.instancesOnce.Do(func() {
+		s.running, s.units = postgresqlInstances(s.MqlRuntime)
+	})
+	return s.running, s.units
+}
+
+// instance returns the cluster that loads this postgresql.conf, or nil when
+// the host says nothing about it.
+func (s *mqlPostgresqlConf) instance() *postgresql.Instance {
+	if s.MqlRuntime == nil || s.File.Data == nil {
+		return nil
+	}
+	running, units := s.instances()
+	return postgresql.InstanceFor(s.File.Data.Path.Data, running, units)
 }
 
 func initPostgresqlConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -273,8 +447,14 @@ func (s *mqlPostgresqlConf) id() (string, error) {
 
 func (s *mqlPostgresqlConf) file() (*mqlFile, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
+	fs := conn.FileSystem()
 
-	if p := findPostgresqlConfigFile(conn.FileSystem(), "postgresql.conf"); p != "" {
+	running, units := s.instances()
+	p, err := findPostgresqlConfigFile(fs, "postgresql.conf", postgresqlPreferredConfigs(fs, running, units)...)
+	if err != nil {
+		return nil, err
+	}
+	if p != "" {
 		f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
 			"path": llx.StringData(p),
 		})
@@ -306,7 +486,16 @@ func (s *mqlPostgresqlConf) parse(file *mqlFile) error {
 		s.setConfEmpty()
 		return nil
 	}
-	if exists := file.GetExists(); exists.Error != nil || !exists.Data {
+	exists := file.GetExists()
+	if exists.Error != nil && plugin.StructuredErrors() {
+		err := exists.Error
+		if errors.Is(err, os.ErrPermission) {
+			err = llx.Forbidden(err)
+		}
+		s.setConfError(err)
+		return err
+	}
+	if exists.Error != nil || !exists.Data {
 		s.setConfEmpty()
 		return nil
 	}
@@ -402,15 +591,7 @@ func (s *mqlPostgresqlConf) port(params map[string]any) (int64, error) {
 		return 0, nil
 	}
 
-	v := paramString(params, "port")
-	if v == "" {
-		return 5432, nil
-	}
-	n, err := strconv.ParseInt(v, 10, 64)
-	if err != nil {
-		return 5432, nil
-	}
-	return n, nil
+	return postgresql.EffectivePort(paramString(params, "port"), s.instance()), nil
 }
 
 func (s *mqlPostgresqlConf) sslEnabled(params map[string]any) (bool, error) {
@@ -562,6 +743,41 @@ func (s *mqlPostgresqlConf) sharedPreloadLibraries(params map[string]any) ([]any
 	return out, nil
 }
 
+// postgresqlAuxFile returns the path of the pg_hba.conf or pg_ident.conf the
+// server loads. When a postgresql.conf is found, that is its hba_file or
+// ident_file setting, or the file of that name in the data directory: the
+// server never probes for these files, so a pg_hba.conf at a well-known path
+// that hba_file points away from is not in effect. Without a postgresql.conf
+// the well-known paths are probed for name. It returns "" when nothing was
+// found.
+func postgresqlAuxFile(runtime *plugin.Runtime, param, name string) (string, error) {
+	raw, err := NewResource(runtime, "postgresql.conf", map[string]*llx.RawData{})
+	if err != nil {
+		return "", err
+	}
+	conf := raw.(*mqlPostgresqlConf)
+	confFile := conf.GetFile()
+	if confFile.Error != nil {
+		return "", confFile.Error
+	}
+	if confFile.Data != nil {
+		params := conf.GetParams()
+		if params.Error != nil {
+			return "", params.Error
+		}
+		values := make(map[string]string, len(params.Data))
+		for k, v := range params.Data {
+			if str, ok := v.(string); ok {
+				values[k] = str
+			}
+		}
+		return postgresql.AuxFilePath(confFile.Data.Path.Data, values, param, name), nil
+	}
+
+	conn := runtime.Connection.(shared.Connection)
+	return findPostgresqlConfigFile(conn.FileSystem(), name)
+}
+
 // ---------------------------------------------------------------------------
 // postgresql.hba
 // ---------------------------------------------------------------------------
@@ -596,9 +812,11 @@ func (s *mqlPostgresqlHba) id() (string, error) {
 }
 
 func (s *mqlPostgresqlHba) file() (*mqlFile, error) {
-	conn := s.MqlRuntime.Connection.(shared.Connection)
-
-	if p := findPostgresqlConfigFile(conn.FileSystem(), "pg_hba.conf"); p != "" {
+	p, err := postgresqlAuxFile(s.MqlRuntime, "hba_file", "pg_hba.conf")
+	if err != nil {
+		return nil, err
+	}
+	if p != "" {
 		f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
 			"path": llx.StringData(p),
 		})
@@ -694,9 +912,11 @@ func (s *mqlPostgresqlIdent) id() (string, error) {
 }
 
 func (s *mqlPostgresqlIdent) file() (*mqlFile, error) {
-	conn := s.MqlRuntime.Connection.(shared.Connection)
-
-	if p := findPostgresqlConfigFile(conn.FileSystem(), "pg_ident.conf"); p != "" {
+	p, err := postgresqlAuxFile(s.MqlRuntime, "ident_file", "pg_ident.conf")
+	if err != nil {
+		return nil, err
+	}
+	if p != "" {
 		f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
 			"path": llx.StringData(p),
 		})

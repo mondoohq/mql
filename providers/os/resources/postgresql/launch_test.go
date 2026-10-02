@@ -1,0 +1,191 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package postgresql
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// Postmaster command lines as /proc/<pid>/cmdline shows them on the sweep
+// hosts: RHEL 7 (started by pg_ctl with -o "-p ${PGPORT}"), RHEL 9 and
+// AlmaLinux 10 with the PGDG 17 packages. Debian's pg_ctlcluster passes
+// config_file because the configuration lives under /etc/postgresql.
+func TestParsePostmasterArgs(t *testing.T) {
+	inst, ok := ParsePostmasterArgs([]string{"/usr/bin/postgres", "-D", "/var/lib/pgsql/data", "-p", "5432"})
+	require.True(t, ok)
+	assert.Equal(t, "/var/lib/pgsql/data", inst.DataDir)
+	assert.Equal(t, "5432", inst.Settings["port"])
+	assert.Equal(t, "/var/lib/pgsql/data/postgresql.conf", inst.ConfigFile())
+
+	inst, ok = ParsePostmasterArgs([]string{"/usr/bin/postmaster", "-D", "/var/lib/pgsql/data"})
+	require.True(t, ok)
+	assert.Equal(t, "/var/lib/pgsql/data/postgresql.conf", inst.ConfigFile())
+	assert.Empty(t, inst.Settings["port"])
+
+	// PGDG's unit passes PGDATA with a trailing slash.
+	inst, ok = ParsePostmasterArgs([]string{"/usr/pgsql-17/bin/postgres", "-D", "/var/lib/pgsql/17/data/"})
+	require.True(t, ok)
+	assert.Equal(t, "/var/lib/pgsql/17/data/postgresql.conf", inst.ConfigFile())
+
+	inst, ok = ParsePostmasterArgs([]string{
+		"/usr/lib/postgresql/16/bin/postgres", "-D", "/var/lib/postgresql/16/main",
+		"-c", "config_file=/etc/postgresql/16/main/postgresql.conf",
+	})
+	require.True(t, ok)
+	assert.Equal(t, "/etc/postgresql/16/main/postgresql.conf", inst.ConfigFile())
+
+	// Attached values, long options and an option argument that looks like
+	// a flag.
+	inst, ok = ParsePostmasterArgs([]string{"postgres", "-D/srv/pg", "-p5433", "--hba-file=/etc/pg/hba.conf", "-c", "Port=5434", "-k", "-p"})
+	require.True(t, ok)
+	assert.Equal(t, "/srv/pg", inst.DataDir)
+	assert.Equal(t, "5434", inst.Settings["port"], "the last port setting wins")
+	assert.Equal(t, "/etc/pg/hba.conf", inst.Settings["hba_file"])
+}
+
+// Backends rewrite argv[0]; only the postmaster names the binary.
+func TestParsePostmasterArgsSkipsOtherProcesses(t *testing.T) {
+	for _, argv := range [][]string{
+		{"postgres: checkpointer "},
+		{"postgres: logger "},
+		{"/usr/bin/pg_ctl", "start", "-D", "/var/lib/pgsql/data"},
+		{"/usr/bin/psql", "-p", "5432"},
+		{},
+	} {
+		_, ok := ParsePostmasterArgs(argv)
+		assert.False(t, ok, "%q", argv)
+	}
+}
+
+// `systemctl show -p Id -p Environment -p ExecStart 'postgresql*.service'`
+// on RHEL 7 and on AlmaLinux 10 with PGDG 17, plus a Debian pg_ctlcluster
+// unit that names no data directory.
+const systemctlShowRhel7 = `ExecStart={ path=/usr/bin/pg_ctl ; argv[]=/usr/bin/pg_ctl start -D ${PGDATA} -s -o -p ${PGPORT} -w -t 300 ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
+Environment=PGPORT=5432 PGDATA=/var/lib/pgsql/data
+Id=postgresql.service
+`
+
+const systemctlShowPgdg = `ExecStart={ path=/usr/pgsql-17/bin/postgres ; argv[]=/usr/pgsql-17/bin/postgres -D ${PGDATA} ; ignore_errors=no ; start_time=[Fri 2026-10-02 10:08:27 UTC] ; stop_time=[n/a] ; pid=140056 ; code=(null) ; status=0/0 }
+Environment=PGDATA=/var/lib/pgsql/17/data/ PG_OOM_ADJUST_FILE=/proc/self/oom_score_adj PG_OOM_ADJUST_VALUE=0
+Id=postgresql-17.service
+
+ExecStart={ path=/usr/bin/pg_ctlcluster ; argv[]=/usr/bin/pg_ctlcluster --skip-systemctl-redirect 16-main start ; ignore_errors=yes ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
+Environment=
+Id=postgresql@16-main.service
+`
+
+func TestParseSystemctlShow(t *testing.T) {
+	units := ParseSystemctlShow(systemctlShowRhel7)
+	require.Len(t, units, 1)
+	assert.Equal(t, "postgresql.service", units[0].ID)
+	assert.Equal(t, map[string]string{"PGPORT": "5432", "PGDATA": "/var/lib/pgsql/data"}, units[0].Environment)
+	assert.Equal(t, []string{"/usr/bin/pg_ctl", "start", "-D", "${PGDATA}", "-s", "-o", "-p", "${PGPORT}", "-w", "-t", "300"}, units[0].ExecStart)
+
+	units = ParseSystemctlShow(systemctlShowPgdg)
+	require.Len(t, units, 2)
+	assert.Equal(t, "postgresql-17.service", units[0].ID)
+	assert.Equal(t, "/var/lib/pgsql/17/data/", units[0].Environment["PGDATA"])
+	assert.Equal(t, "postgresql@16-main.service", units[1].ID)
+	assert.Empty(t, units[1].Environment)
+
+	units = ParseSystemctlShow(`Environment="PGDATA=/srv/pg data" PGPORT=5433` + "\nId=postgresql.service\n")
+	require.Len(t, units, 1)
+	assert.Equal(t, "/srv/pg data", units[0].Environment["PGDATA"])
+	assert.Equal(t, "5433", units[0].Environment["PGPORT"])
+}
+
+func TestUnitInstance(t *testing.T) {
+	// RHEL 7: the unit forces the port on the command line.
+	inst, ok := UnitInstance(ParseSystemctlShow(systemctlShowRhel7)[0])
+	require.True(t, ok)
+	assert.Equal(t, "/var/lib/pgsql/data", inst.DataDir)
+	assert.Equal(t, "5432", inst.Settings["port"])
+	assert.Equal(t, "5432", inst.Env["PGPORT"])
+
+	units := ParseSystemctlShow(systemctlShowPgdg)
+	inst, ok = UnitInstance(units[0])
+	require.True(t, ok)
+	assert.Equal(t, "/var/lib/pgsql/17/data/postgresql.conf", inst.ConfigFile())
+	assert.Empty(t, inst.Settings["port"], "the PGDG unit does not pass a port")
+
+	_, ok = UnitInstance(units[1])
+	assert.False(t, ok, "a pg_ctlcluster unit names no data directory")
+
+	// pg_ctl's own -p is the path of the postgres binary, not a port.
+	inst, ok = UnitInstance(Unit{
+		Environment: map[string]string{"PGDATA": "/srv/pg"},
+		ExecStart:   []string{"/usr/bin/pg_ctl", "start", "-D", "${PGDATA}", "-p", "/usr/bin/postgres"},
+	})
+	require.True(t, ok)
+	assert.Empty(t, inst.Settings["port"])
+
+	// A drop-in that relocates PGDATA and passes the port with -c.
+	inst, ok = UnitInstance(Unit{
+		Environment: map[string]string{"PGDATA": "/srv/pgdata", "PGPORT": "5433"},
+		ExecStart:   []string{"/usr/bin/postmaster", "-D", "$PGDATA", "-c", "port=6000"},
+	})
+	require.True(t, ok)
+	assert.Equal(t, "/srv/pgdata/postgresql.conf", inst.ConfigFile())
+	assert.Equal(t, "6000", inst.Settings["port"])
+}
+
+// PostgreSQL's precedence: command line, then postgresql.conf, then PGPORT,
+// then 5432.
+func TestEffectivePort(t *testing.T) {
+	rhel7 := &Instance{Settings: map[string]string{"port": "5432"}, Env: map[string]string{"PGPORT": "5432"}}
+	assert.Equal(t, int64(5432), EffectivePort("5433", rhel7), "-p overrides the file")
+
+	envOnly := &Instance{Settings: map[string]string{}, Env: map[string]string{"PGPORT": "5440"}}
+	assert.Equal(t, int64(5433), EffectivePort("5433", envOnly), "the file overrides PGPORT")
+	assert.Equal(t, int64(5440), EffectivePort("", envOnly), "PGPORT applies when the file is silent")
+
+	assert.Equal(t, int64(5433), EffectivePort("5433", nil))
+	assert.Equal(t, int64(5432), EffectivePort("", nil))
+	assert.Equal(t, int64(5432), EffectivePort("not-a-port", nil))
+}
+
+func TestInstanceFor(t *testing.T) {
+	running := []Instance{
+		{DataDir: "/var/lib/pgsql/data", Settings: map[string]string{"port": "5432"}},
+	}
+	units := []Instance{
+		{DataDir: "/var/lib/pgsql/17/data", Settings: map[string]string{}, Env: map[string]string{"PGPORT": "5440"}},
+		{DataDir: "/var/lib/pgsql/data", Settings: map[string]string{"port": "5999"}, Env: map[string]string{"PGPORT": "5999"}},
+	}
+
+	inst := InstanceFor("/var/lib/pgsql/data/postgresql.conf", running, units)
+	require.NotNil(t, inst)
+	assert.Equal(t, "5432", inst.Settings["port"], "the running command line wins over the unit's")
+	assert.Equal(t, "5999", inst.Env["PGPORT"], "the environment comes from the unit")
+
+	inst = InstanceFor("/var/lib/pgsql/17/data/postgresql.conf", running, units)
+	require.NotNil(t, inst)
+	assert.Equal(t, "5440", inst.Env["PGPORT"])
+
+	assert.Nil(t, InstanceFor("/etc/postgresql/16/main/postgresql.conf", running, units))
+}
+
+func TestAuxFilePath(t *testing.T) {
+	const rhelConf = "/var/lib/pgsql/data/postgresql.conf"
+	assert.Equal(t, "/var/lib/pgsql/data/pg_hba.conf",
+		AuxFilePath(rhelConf, map[string]string{}, "hba_file", "pg_hba.conf"))
+	assert.Equal(t, "/etc/pgsql/sweep_hba.conf",
+		AuxFilePath(rhelConf, map[string]string{"hba_file": "/etc/pgsql/sweep_hba.conf"}, "hba_file", "pg_hba.conf"))
+	assert.Equal(t, "/var/lib/pgsql/data/auth/ident.conf",
+		AuxFilePath(rhelConf, map[string]string{"ident_file": "auth/ident.conf"}, "ident_file", "pg_ident.conf"))
+
+	// Debian keeps postgresql.conf under /etc and the data elsewhere.
+	const debConf = "/etc/postgresql/16/main/postgresql.conf"
+	assert.Equal(t, "/etc/postgresql/16/main/pg_hba.conf",
+		AuxFilePath(debConf, map[string]string{
+			"data_directory": "/var/lib/postgresql/16/main",
+			"hba_file":       "/etc/postgresql/16/main/pg_hba.conf",
+		}, "hba_file", "pg_hba.conf"))
+	assert.Equal(t, "/var/lib/postgresql/16/main/pg_ident.conf",
+		AuxFilePath(debConf, map[string]string{"data_directory": "/var/lib/postgresql/16/main"}, "ident_file", "pg_ident.conf"),
+		"without ident_file the server reads the data directory's pg_ident.conf")
+}

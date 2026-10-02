@@ -4,12 +4,18 @@
 package resources
 
 import (
+	"os"
+	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/resources/postgresql"
 )
 
 // confNotFound builds the state file() leaves behind when no postgresql.conf
@@ -130,6 +136,14 @@ func TestPostgresqlConfPresentWithValues(t *testing.T) {
 	assert.True(t, ssl)
 }
 
+// findPg runs findPostgresqlConfigFile on a filesystem that cannot refuse.
+func findPg(t *testing.T, fs afero.Fs, name string) string {
+	t.Helper()
+	p, err := findPostgresqlConfigFile(fs, name)
+	require.NoError(t, err)
+	return p
+}
+
 // pgFs builds an in-memory filesystem holding exactly the given config files.
 func pgFs(t *testing.T, paths ...string) afero.Fs {
 	t.Helper()
@@ -148,13 +162,13 @@ func TestPostgresqlFindsCurrentMajor(t *testing.T) {
 	t.Run("debian layout", func(t *testing.T) {
 		fs := pgFs(t, "/etc/postgresql/18/main/postgresql.conf")
 		assert.Equal(t, "/etc/postgresql/18/main/postgresql.conf",
-			findPostgresqlConfigFile(fs, "postgresql.conf"))
+			findPg(t, fs, "postgresql.conf"))
 	})
 
 	t.Run("rhel layout", func(t *testing.T) {
 		fs := pgFs(t, "/var/lib/pgsql/18/data/postgresql.conf")
 		assert.Equal(t, "/var/lib/pgsql/18/data/postgresql.conf",
-			findPostgresqlConfigFile(fs, "postgresql.conf"))
+			findPg(t, fs, "postgresql.conf"))
 	})
 
 	t.Run("hba and ident use the same search", func(t *testing.T) {
@@ -163,9 +177,9 @@ func TestPostgresqlFindsCurrentMajor(t *testing.T) {
 			"/etc/postgresql/18/main/pg_ident.conf",
 		)
 		assert.Equal(t, "/etc/postgresql/18/main/pg_hba.conf",
-			findPostgresqlConfigFile(fs, "pg_hba.conf"))
+			findPg(t, fs, "pg_hba.conf"))
 		assert.Equal(t, "/etc/postgresql/18/main/pg_ident.conf",
-			findPostgresqlConfigFile(fs, "pg_ident.conf"))
+			findPg(t, fs, "pg_ident.conf"))
 	})
 }
 
@@ -178,7 +192,7 @@ func TestPostgresqlFreeBSDLayout(t *testing.T) {
 		"/var/db/postgres/data17/pg_ident.conf",
 	)
 	for _, name := range []string{"postgresql.conf", "pg_hba.conf", "pg_ident.conf"} {
-		assert.Equal(t, "/var/db/postgres/data17/"+name, findPostgresqlConfigFile(fs, name))
+		assert.Equal(t, "/var/db/postgres/data17/"+name, findPg(t, fs, name))
 	}
 
 	t.Run("the newest cluster wins, 9.x suffixes rank as major 9", func(t *testing.T) {
@@ -188,19 +202,19 @@ func TestPostgresqlFreeBSDLayout(t *testing.T) {
 			"/var/db/postgres/data18/postgresql.conf",
 		)
 		assert.Equal(t, "/var/db/postgres/data18/postgresql.conf",
-			findPostgresqlConfigFile(fs, "postgresql.conf"))
+			findPg(t, fs, "postgresql.conf"))
 
 		fs = pgFs(t,
 			"/var/db/postgres/data96/postgresql.conf",
 			"/var/db/postgres/data10/postgresql.conf",
 		)
 		assert.Equal(t, "/var/db/postgres/data10/postgresql.conf",
-			findPostgresqlConfigFile(fs, "postgresql.conf"))
+			findPg(t, fs, "postgresql.conf"))
 	})
 
 	t.Run("a directory without a version is not a candidate", func(t *testing.T) {
 		fs := pgFs(t, "/var/db/postgres/data_old/postgresql.conf")
-		assert.Equal(t, "", findPostgresqlConfigFile(fs, "postgresql.conf"))
+		assert.Equal(t, "", findPg(t, fs, "postgresql.conf"))
 	})
 }
 
@@ -212,7 +226,7 @@ func TestPostgresqlPrefersHighestMajor(t *testing.T) {
 		"/etc/postgresql/18/main/postgresql.conf",
 	)
 	assert.Equal(t, "/etc/postgresql/18/main/postgresql.conf",
-		findPostgresqlConfigFile(fs, "postgresql.conf"))
+		findPg(t, fs, "postgresql.conf"))
 }
 
 // Glob results arrive in lexicographic order, where "9" sorts above "17".
@@ -224,14 +238,14 @@ func TestPostgresqlMajorSortIsNumericNotLexical(t *testing.T) {
 		"/etc/postgresql/17/main/postgresql.conf",
 	)
 	assert.Equal(t, "/etc/postgresql/17/main/postgresql.conf",
-		findPostgresqlConfigFile(fs, "postgresql.conf"))
+		findPg(t, fs, "postgresql.conf"))
 
 	fs = pgFs(t,
 		"/var/lib/pgsql/9/data/postgresql.conf",
 		"/var/lib/pgsql/13/data/postgresql.conf",
 	)
 	assert.Equal(t, "/var/lib/pgsql/13/data/postgresql.conf",
-		findPostgresqlConfigFile(fs, "postgresql.conf"))
+		findPg(t, fs, "postgresql.conf"))
 }
 
 // An operator's backup copy under /etc/postgresql has no integer major.
@@ -243,12 +257,12 @@ func TestPostgresqlNonNumericDirectoryIsSkipped(t *testing.T) {
 			"/etc/postgresql/16/main/postgresql.conf",
 		)
 		assert.Equal(t, "/etc/postgresql/16/main/postgresql.conf",
-			findPostgresqlConfigFile(fs, "postgresql.conf"))
+			findPg(t, fs, "postgresql.conf"))
 	})
 
 	t.Run("never offered as a candidate", func(t *testing.T) {
 		fs := pgFs(t, "/etc/postgresql/backup/main/postgresql.conf")
-		assert.Equal(t, "", findPostgresqlConfigFile(fs, "postgresql.conf"))
+		assert.Equal(t, "", findPg(t, fs, "postgresql.conf"))
 		assert.NotContains(t, postgresqlConfigSearchPaths(fs, "postgresql.conf"),
 			"/etc/postgresql/backup/main/postgresql.conf")
 	})
@@ -264,7 +278,7 @@ func TestPostgresqlVersionlessPathsStillResolve(t *testing.T) {
 		"/usr/local/pgsql/data/postgresql.conf",
 	} {
 		t.Run(p, func(t *testing.T) {
-			assert.Equal(t, p, findPostgresqlConfigFile(pgFs(t, p), "postgresql.conf"))
+			assert.Equal(t, p, findPg(t, pgFs(t, p), "postgresql.conf"))
 		})
 	}
 }
@@ -306,12 +320,12 @@ func TestPostgresqlNilFilesystemDoesNotPanic(t *testing.T) {
 func TestPostgresqlFindsPre10Layout(t *testing.T) {
 	for _, name := range []string{"postgresql.conf", "pg_hba.conf", "pg_ident.conf"} {
 		fs := pgFs(t, "/etc/postgresql/9.5/main/"+name)
-		assert.Equal(t, "/etc/postgresql/9.5/main/"+name, findPostgresqlConfigFile(fs, name))
+		assert.Equal(t, "/etc/postgresql/9.5/main/"+name, findPg(t, fs, name))
 	}
 
 	fs := pgFs(t, "/var/lib/pgsql/9.6/data/postgresql.conf")
 	assert.Equal(t, "/var/lib/pgsql/9.6/data/postgresql.conf",
-		findPostgresqlConfigFile(fs, "postgresql.conf"))
+		findPg(t, fs, "postgresql.conf"))
 }
 
 // Side-by-side clusters across the 9.x/10 boundary: 9.6 is newer than 9.5,
@@ -322,14 +336,14 @@ func TestPostgresqlPre10VersionOrdering(t *testing.T) {
 		"/etc/postgresql/9.6/main/postgresql.conf",
 	)
 	assert.Equal(t, "/etc/postgresql/9.6/main/postgresql.conf",
-		findPostgresqlConfigFile(fs, "postgresql.conf"))
+		findPg(t, fs, "postgresql.conf"))
 
 	fs = pgFs(t,
 		"/etc/postgresql/9.6/main/postgresql.conf",
 		"/etc/postgresql/10/main/postgresql.conf",
 	)
 	assert.Equal(t, "/etc/postgresql/10/main/postgresql.conf",
-		findPostgresqlConfigFile(fs, "postgresql.conf"))
+		findPg(t, fs, "postgresql.conf"))
 }
 
 func TestPostgresqlVersionRank(t *testing.T) {
@@ -392,4 +406,102 @@ func TestPostgresqlHbaIdentMissingExplicitPathIsNull(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, mappings)
 	assert.True(t, ident.Mappings.State&plugin.StateIsNull != 0, "mappings must be null")
+}
+
+// refusingFs answers EACCES for every path under denied, the way stat does
+// for the scanning user when a parent directory is 0700 postgres (RHEL's
+// /var/lib/pgsql).
+type refusingFs struct {
+	afero.Fs
+	denied string
+}
+
+func (r refusingFs) Stat(name string) (os.FileInfo, error) {
+	if strings.HasPrefix(name, r.denied+"/") {
+		return nil, &os.PathError{Op: "stat", Path: name, Err: syscall.EACCES}
+	}
+	return r.Fs.Stat(name)
+}
+
+func withStructuredErrors(t *testing.T) {
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
+	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
+}
+
+// A non-root scan of a RHEL host cannot stat anything under /var/lib/pgsql.
+// That is a refusal, not a host without PostgreSQL: reading it as absent made
+// every postgresql.* field null and pg_hba rules empty. Fails if the walk
+// skips a refused candidate under structured errors.
+func TestPostgresqlRefusedCandidateIsAnError(t *testing.T) {
+	fs := refusingFs{Fs: pgFs(t, "/var/lib/pgsql/data/postgresql.conf"), denied: "/var/lib/pgsql"}
+
+	p, err := findPostgresqlConfigFile(fs, "postgresql.conf")
+	require.NoError(t, err, "v13 skips a refused candidate")
+	assert.Equal(t, "", p)
+
+	withStructuredErrors(t)
+	_, err = findPostgresqlConfigFile(fs, "postgresql.conf")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, llx.ErrForbidden)
+	assert.ErrorIs(t, err, os.ErrPermission)
+}
+
+// A file found before the refused candidate still wins, so a Debian host
+// whose config is world-readable under /etc never hits the refusal.
+func TestPostgresqlRefusalOnlyWhenReached(t *testing.T) {
+	withStructuredErrors(t)
+	fs := refusingFs{Fs: pgFs(t, "/etc/postgresql/16/main/postgresql.conf"), denied: "/var/lib/postgresql"}
+	p, err := findPostgresqlConfigFile(fs, "postgresql.conf", "/var/lib/postgresql/16/main/postgresql.conf")
+	require.Error(t, err, "a preferred candidate is probed first")
+	assert.Equal(t, "", p)
+
+	p, err = findPostgresqlConfigFile(fs, "postgresql.conf")
+	require.NoError(t, err)
+	assert.Equal(t, "/etc/postgresql/16/main/postgresql.conf", p)
+}
+
+// A data directory relocated with a systemd drop-in (Environment=PGDATA=...)
+// is probed before the well-known paths, so a stale default cluster does not
+// win. Fails if preferred candidates are appended instead of prepended.
+func TestPostgresqlPreferredCandidateWins(t *testing.T) {
+	fs := pgFs(t, "/var/lib/pgsql/data/postgresql.conf", "/srv/pgdata/postgresql.conf")
+	p, err := findPostgresqlConfigFile(fs, "postgresql.conf", "/srv/pgdata/postgresql.conf")
+	require.NoError(t, err)
+	assert.Equal(t, "/srv/pgdata/postgresql.conf", p)
+
+	// A preferred candidate that is not there falls through.
+	p, err = findPostgresqlConfigFile(fs, "postgresql.conf", "/srv/gone/postgresql.conf")
+	require.NoError(t, err)
+	assert.Equal(t, "/var/lib/pgsql/data/postgresql.conf", p)
+}
+
+// Running postmasters come first, then systemd units, each in the order the
+// well-known search paths give them. Fails if the ranking is dropped (the
+// PGDG unit would then win over the distro default on a host with both).
+func TestPostgresqlPreferredConfigsOrder(t *testing.T) {
+	fs := pgFs(t,
+		"/etc/postgresql/14/main/postgresql.conf",
+		"/etc/postgresql/16/main/postgresql.conf",
+		"/var/lib/pgsql/17/data/postgresql.conf",
+	)
+	running := []postgresql.Instance{
+		{DataDir: "/srv/other"},
+		{DataDir: "/var/lib/postgresql/14/main", Settings: map[string]string{"config_file": "/etc/postgresql/14/main/postgresql.conf"}},
+		{DataDir: "/var/lib/postgresql/16/main", Settings: map[string]string{"config_file": "/etc/postgresql/16/main/postgresql.conf"}},
+	}
+	// systemctl lists unit files by name, so PGDG's postgresql-17.service
+	// comes before the distro's postgresql.service.
+	units := []postgresql.Instance{
+		{DataDir: "/srv/pgdata"},
+		{DataDir: "/var/lib/pgsql/17/data"},
+		{DataDir: "/var/lib/pgsql/data"},
+	}
+	assert.Equal(t, []string{
+		"/etc/postgresql/16/main/postgresql.conf",
+		"/etc/postgresql/14/main/postgresql.conf",
+		"/srv/other/postgresql.conf",
+		"/var/lib/pgsql/data/postgresql.conf",
+		"/var/lib/pgsql/17/data/postgresql.conf",
+		"/srv/pgdata/postgresql.conf",
+	}, postgresqlPreferredConfigs(fs, running, units))
 }
