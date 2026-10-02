@@ -664,7 +664,40 @@ var dnssecKeyDirs = []string{
 	"/var/cache/bind",
 	"/etc/named/keys",
 	"/var/named",
+	"/var/lib/named",
 	"/etc/bind",
+}
+
+// bind9DnssecKeyDirs returns the directories the configuration tells named to
+// keep DNSSEC keys in: the key-directory of the options block, of each view
+// and of each zone (a zone's setting overrides its view's, which overrides
+// options), and the working directory, which is where keys go when no
+// key-directory applies. A relative key-directory is relative to the working
+// directory. Duplicates and empty entries are left to the caller.
+func bind9DnssecKeyDirs(stmts []bind9.Statement) []string {
+	var opts []bind9.Statement
+	if o := bind9.First(stmts, "options"); o != nil {
+		opts = o.Block
+	}
+	workDir := strings.Trim(bind9.Value(opts, "directory"), `"`)
+	resolve := func(dir string) string {
+		dir = strings.Trim(dir, `"`)
+		if dir == "" || filepath.IsAbs(dir) || workDir == "" {
+			return dir
+		}
+		return filepath.Join(workDir, dir)
+	}
+
+	dirs := []string{resolve(bind9.Value(opts, "key-directory")), workDir}
+	for _, view := range bind9.Find(stmts, "view") {
+		if view.IsBlock() {
+			dirs = append(dirs, resolve(bind9.Value(view.Block, "key-directory")))
+		}
+	}
+	bind9EachZone(stmts, func(_ string, zone bind9.Statement) {
+		dirs = append(dirs, resolve(bind9.Value(zone.Block, "key-directory")))
+	})
+	return dirs
 }
 
 func (b *mqlBind9) dnssecKeys() ([]any, error) {
@@ -677,18 +710,7 @@ func (b *mqlBind9) dnssecKeys() ([]any, error) {
 
 	// The configuration's own answer wins over the well-known locations: a
 	// server told to keep its keys somewhere is keeping them there.
-	opts, err := b.optionsBlock()
-	if err != nil {
-		return nil, err
-	}
-	var dirs []string
-	if d := bind9.Value(opts, "key-directory"); d != "" {
-		dirs = append(dirs, strings.Trim(d, `"`))
-	}
-	if d := bind9.Value(opts, "directory"); d != "" {
-		dirs = append(dirs, strings.Trim(d, `"`))
-	}
-	dirs = append(dirs, dnssecKeyDirs...)
+	dirs := append(bind9DnssecKeyDirs(b.cfg.Statements), dnssecKeyDirs...)
 
 	seen := map[string]bool{}
 	out := []any{}

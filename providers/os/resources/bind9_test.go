@@ -192,6 +192,17 @@ ExecStartPre=/bin/bash -c 'if [ ! "$DISABLE_ZONE_CHECKING" == "yes" ]; then /usr
 ExecStart=/usr/sbin/named -u named -c ${NAMEDCONF} $OPTIONS
 `
 
+// [Service] section of named.service in the SLES 15 SP7 / 16.0 and openSUSE
+// Leap 15.6 / 16.0 bind package.
+const suseNamedService = `[Service]
+Type=forking
+KillMode=control-group
+EnvironmentFile=/etc/sysconfig/named
+ExecStartPre=+/usr/lib/bind/named.prep
+ExecStart=/usr/sbin/named -u named $NAMED_ARGS
+ExecReload=/usr/bin/kill -HUP $MAINPID
+`
+
 func TestBind9LaunchConfig(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -265,6 +276,32 @@ func TestBind9LaunchConfig(t *testing.T) {
 			want: "/etc/named-alt.conf",
 		},
 		{
+			name: "suse: NAMED_ARGS from /etc/sysconfig/named",
+			files: map[string]string{
+				"/usr/lib/systemd/system/named.service": suseNamedService,
+				"/etc/sysconfig/named":                  "NAMED_INITIALIZE_SCRIPTS=\"\"\nNAMED_ARGS=\"-c /etc/named-alt.conf\"\nRNDC_KEYSIZE=512\n",
+			},
+			want: "/etc/named-alt.conf",
+		},
+		{
+			name: "suse: running named started with NAMED_ARGS",
+			files: map[string]string{
+				"/usr/lib/systemd/system/named.service": suseNamedService,
+				"/etc/sysconfig/named":                  "NAMED_ARGS=\"\"\n",
+				"/run/named/named.pid":                  "30303\n",
+				"/proc/30303/cmdline":                   "/usr/sbin/named\x00-u\x00named\x00-c\x00/etc/named-alt.conf\x00",
+			},
+			want: "/etc/named-alt.conf",
+		},
+		{
+			name: "suse: empty NAMED_ARGS reads the default",
+			files: map[string]string{
+				"/usr/lib/systemd/system/named.service": suseNamedService,
+				"/etc/sysconfig/named":                  "NAMED_ARGS=\"\"\n",
+			},
+			want: "",
+		},
+		{
 			name: "relative -c resolves against /",
 			files: map[string]string{
 				"/run/named/named.pid": "7\n",
@@ -307,4 +344,35 @@ func TestBind9VersionAbsentVersusEmpty(t *testing.T) {
 	v, ok := bind9.Params(opts)["version"]
 	assert.True(t, ok)
 	assert.Equal(t, "", v)
+}
+
+// A zone can keep its keys in its own key-directory. On SLES 15 SP7 the
+// RSASHA256 key of p.example.test lived only in /var/lib/named/keys, so
+// bind9.dnssecKeys.all(algorithm >= 13) passed without ever seeing it.
+func TestBind9DnssecKeyDirs(t *testing.T) {
+	stmts, err := bind9.Parse(`
+options {
+	directory "/var/lib/named";
+	key-directory "okeys";
+};
+zone "p.example.test" {
+	type primary;
+	file "/var/lib/named/master/db.p.example.test";
+	key-directory "/var/lib/named/keys";
+};
+zone "example.test" { type master; file "master/db.example.test"; };
+view "internal" {
+	key-directory "/srv/view-keys";
+	zone "v.example.test" { type primary; file "v.db"; key-directory "vkeys"; };
+};
+`)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"/var/lib/named/okeys",
+		"/var/lib/named",
+		"/srv/view-keys",
+		"/var/lib/named/keys",
+		"",
+		"/var/lib/named/vkeys",
+	}, bind9DnssecKeyDirs(stmts))
 }
