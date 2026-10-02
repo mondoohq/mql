@@ -173,21 +173,33 @@ func addLuaRockTrees(afs *afero.Afero, pkgs []*languages.Package, filePaths []st
 // directory itself (/usr/local/lib/luarocks/rocks-5.1), the directory holding
 // the rocks directories (/usr/local/lib/luarocks), or a rock tree (/usr/local,
 // ~/.luarocks).
+//
+// The forms that name their rocks directories are tried before reading
+// searchPath as a rocks directory: that reads every directory two levels
+// down, which for a rock tree such as /usr means all of /usr/lib64 and
+// /usr/share, a stat per entry, and minutes over SSH with --sudo.
 func collectLuaPackages(afs *afero.Afero, searchPath string) ([]*languages.Package, []string) {
 	isDir, err := afs.IsDir(searchPath)
 	if err != nil || !isDir {
 		return nil, nil
 	}
 
-	if pkgs, fps := luarocks.ParseRocksDir(afs, searchPath); len(pkgs) > 0 {
-		return pkgs, fps
+	if isRocksDirName(path.Base(searchPath)) {
+		if pkgs, fps := luarocks.ParseRocksDir(afs, searchPath); len(pkgs) > 0 {
+			return pkgs, fps
+		}
 	}
 
 	if pkgs, fps := collectRocksDirsIn(afs, searchPath); len(pkgs) > 0 {
 		return pkgs, fps
 	}
 
-	return collectLuaRockTree(afs, searchPath)
+	if pkgs, fps := collectLuaRockTree(afs, searchPath); len(pkgs) > 0 {
+		return pkgs, fps
+	}
+
+	// a rocks directory under another name
+	return luarocks.ParseRocksDir(afs, searchPath)
 }
 
 // collectLuaRockTree reads every rocks directory of the rock tree rooted at

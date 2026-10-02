@@ -167,3 +167,49 @@ func TestCollectLuaPackagesRHELPathForms(t *testing.T) {
 	pkgs, _ = collectLuaPackages(afs, "/usr/share/lua/5.4")
 	assert.Empty(t, pkgs)
 }
+
+// readDirCounter records every directory opened through it.
+type readDirCounter struct {
+	afero.Fs
+	opened map[string]int
+}
+
+func (c *readDirCounter) Open(name string) (afero.File, error) {
+	c.opened[name]++
+	return c.Fs.Open(name)
+}
+
+// A rock tree such as /usr must be read through its lib/luarocks directory,
+// not walked two levels deep as if it were a rocks directory: on SLES that
+// walk read all of /usr/lib64 and /usr/share and took 11 minutes over SSH
+// with --sudo. Fails if collectLuaPackages tries ParseRocksDir on the tree
+// before the rock tree layout.
+func TestCollectLuaPackagesRockTreeSkipsUnrelatedDirectories(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	// SLES 15 SP7: system rocks for Lua 5.3 and 5.1 under /usr/lib/luarocks
+	for _, p := range []string{
+		"/usr/lib/luarocks/rocks-5.3/argparse/0.7.1-1/rock_manifest",
+		"/usr/lib/luarocks/rocks-5.3/inspect/3.1.1-0/rock_manifest",
+		"/usr/lib/luarocks/rocks-5.1/say/1.4.1-3/rock_manifest",
+		"/usr/lib64/python3.6/site-packages/yaml/__init__.py",
+		"/usr/share/doc/packages/lua53/README",
+	} {
+		require.NoError(t, afero.WriteFile(mem, p, nil, 0o644))
+	}
+	counter := &readDirCounter{Fs: mem, opened: map[string]int{}}
+	afs := &afero.Afero{Fs: counter}
+
+	pkgs, _ := collectLuaPackages(afs, "/usr")
+	assert.Equal(t, []string{"argparse@0.7.1-1", "inspect@3.1.1-0", "say@1.4.1-3"}, names(pkgs))
+	for _, dir := range []string{"/usr/lib64", "/usr/share", "/usr/lib64/python3.6"} {
+		assert.Zero(t, counter.opened[dir], dir)
+	}
+
+	// rocks directories, under LuaRocks' names and under a name of their own,
+	// are still read
+	pkgs, _ = collectLuaPackages(&afero.Afero{Fs: mem}, "/usr/lib/luarocks/rocks-5.3")
+	assert.Equal(t, []string{"argparse@0.7.1-1", "inspect@3.1.1-0"}, names(pkgs))
+	require.NoError(t, afero.WriteFile(mem, "/opt/myrocks/serpent/0.30-2/rock_manifest", nil, 0o644))
+	pkgs, _ = collectLuaPackages(&afero.Afero{Fs: mem}, "/opt/myrocks")
+	assert.Equal(t, []string{"serpent@0.30-2"}, names(pkgs))
+}
