@@ -2676,6 +2676,23 @@ func TestParseJson(t *testing.T) {
 	})
 }
 
+// parse.openpgp declares init(path string) but has no path field, so a path
+// argument left in the args fails with "cannot set 'path' ... field not found".
+func TestParseOpenpgpPath(t *testing.T) {
+	x.TestSimple(t, []testutils.SimpleTest{
+		{
+			Code:        `parse.openpgp("/expires.asc").content.contains("BEGIN PGP PUBLIC KEY BLOCK")`,
+			ResultIndex: 0,
+			Expectation: true,
+		},
+		{
+			Code:        `parse.openpgp("/expires.asc").content.length`,
+			ResultIndex: 0,
+			Expectation: int64(3151),
+		},
+	})
+}
+
 func TestParseIniMissingFile(t *testing.T) {
 	x.TestSimple(t, []testutils.SimpleTest{
 		{

@@ -479,31 +479,13 @@ func (p *mqlParseCertificates) list(content string, path string) ([]any, error) 
 }
 
 func initParseOpenpgp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	// resolve path to file
-	if x, ok := args["path"]; ok {
-		f, err := CreateResource(runtime, "file", map[string]*llx.RawData{
-			"path": x,
-		})
-		if err != nil {
-			return nil, nil, err
+	if _, ok := args["path"]; !ok {
+		if _, ok := args["content"]; !ok {
+			return nil, nil, errors.New("missing 'path' or 'content' for parse.openpgp initialization")
 		}
-		args["file"] = llx.ResourceData(f, "file")
-
-	} else if x, ok := args["content"]; ok {
-		content := x.Value.(string)
-		virtualPath := "in-memory://" + checksums.New.Add(content).String()
-		f, err := CreateResource(runtime, "file", map[string]*llx.RawData{
-			"path":    llx.StringData(virtualPath),
-			"content": llx.StringData(content),
-			"exists":  llx.BoolTrue,
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-		args["file"] = llx.ResourceData(f, "file")
-
-	} else {
-		return nil, nil, errors.New("missing 'path' or 'content' for parse.openpgp initialization")
+	}
+	if err := fileFromPathOrContent(runtime, args); err != nil {
+		return nil, nil, err
 	}
 
 	return args, nil, nil
