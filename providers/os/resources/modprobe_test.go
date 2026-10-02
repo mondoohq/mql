@@ -536,3 +536,31 @@ func TestSelectModprobeConfigFiles_Kmod25SkipsUsrLocal(t *testing.T) {
 		"/etc/modprobe.d/zz-linked.conf",
 	}, got)
 }
+
+// SLES 15 SP7 / Leap 15.6 sweep hosts (kmod 29, /lib a real directory), a
+// subset of /lib/modprobe.d plus the fixtures. modprobe --showconfig applies
+// both g01-local (/usr/local/lib) and g01-usrlib (/usr/lib), and the
+// /etc/modprobe.d/g01-ovr.conf shadows its /usr/lib namesake.
+func TestSelectModprobeConfigFiles_Suse15ReadsUsrLib(t *testing.T) {
+	onDisk := map[string][]string{
+		"/etc/modprobe.d":           {"50-nvme.conf", "g01-blacklist.conf", "g01-ovr.conf", "README"},
+		"/usr/local/lib/modprobe.d": {"g01-local.conf"},
+		"/usr/lib/modprobe.d":       {"g01-ovr.conf", "g01-usrlib.conf"},
+		"/lib/modprobe.d":           {"10-unsupported-modules.conf", "60-blacklist_fs-cramfs.conf", "README", "systemd.conf"},
+	}
+	dirs := modprobeSearchPathsFor(29, false, true)
+	listings := make([][]string, len(dirs))
+	for i, dir := range dirs {
+		listings[i] = onDisk[dir]
+	}
+	assert.Equal(t, []string{
+		"/lib/modprobe.d/10-unsupported-modules.conf",
+		"/etc/modprobe.d/50-nvme.conf",
+		"/lib/modprobe.d/60-blacklist_fs-cramfs.conf",
+		"/etc/modprobe.d/g01-blacklist.conf",
+		"/usr/local/lib/modprobe.d/g01-local.conf",
+		"/etc/modprobe.d/g01-ovr.conf",
+		"/usr/lib/modprobe.d/g01-usrlib.conf",
+		"/lib/modprobe.d/systemd.conf",
+	}, selectModprobeConfigFiles(dirs, listings))
+}
