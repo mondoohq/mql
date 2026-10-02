@@ -97,3 +97,35 @@ func transformError(err error) error {
 	}
 	return err
 }
+
+// graphStatusCode returns the HTTP status Graph answered an ODataError with,
+// from either the v1 or the beta SDK, or 0 when err is not an ODataError.
+func graphStatusCode(err error) int {
+	if err == nil {
+		return 0
+	}
+
+	var betaOdataErr *betaodataerrors.ODataError
+	if errors.As(err, &betaOdataErr) && betaOdataErr != nil {
+		return betaOdataErr.ResponseStatusCode
+	}
+
+	var oDataErr *odataerrors.ODataError
+	if errors.As(err, &oDataErr) && oDataErr != nil {
+		return oDataErr.ResponseStatusCode
+	}
+
+	return 0
+}
+
+// isGraphForbidden reports whether Graph refused the request for lack of a
+// permission or role.
+func isGraphForbidden(err error) bool {
+	return graphStatusCode(err) == 403 || graphErrorCode(err) == "Authorization_RequestDenied"
+}
+
+// isGraphNotFound reports whether Graph answered that the requested object
+// does not exist.
+func isGraphNotFound(err error) bool {
+	return graphStatusCode(err) == 404 || isResourceNotFound(err)
+}

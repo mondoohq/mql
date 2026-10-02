@@ -319,6 +319,12 @@ microsoft.tenant @defaults("name") {
   settings() microsoft.tenantSettings
   // Company-wide settings for Microsoft Forms
   formsSettings() microsoft.tenantFormsSettings
+  // On-premises directory synchronization settings
+  //
+  // Microsoft Entra Connect and Cloud Sync configuration and feature switches
+  // for a hybrid tenant. Null on a cloud-only tenant, which has no on-premises
+  // directory synchronization configured.
+  onPremisesSynchronization() microsoft.onPremisesSynchronization
   // Privacy profile data with contact email and statement URL
   privacyProfile dict
   // List of technical notification mails
@@ -396,6 +402,121 @@ private microsoft.tenantFormsSettings @defaults("isExternalSendFormEnabled isBin
   isBingImageSearchEnabled bool
   // Controls whether phishing protection is run on forms created by users
   isInOrgFormsPhishingScanEnabled bool
+}
+
+// On-premises directory synchronization settings
+//
+// Configuration and feature switches of on-premises directory
+// synchronization (Microsoft Entra Connect or Cloud Sync) for a hybrid
+// tenant: accidental deletion prevention, the synchronization interval,
+// the state of the last export, writeback containers, and every feature
+// flag that controls how on-premises objects match, overwrite, and write
+// back to cloud objects. Use it to confirm that hard-match takeover of
+// cloud objects is blocked, soft matching is disabled, accidental deletion
+// prevention is on, and password writeback matches policy, for example
+// `microsoft.tenant.onPremisesSynchronization.blockCloudObjectTakeoverThroughHardMatchEnabled == true`.
+private microsoft.onPremisesSynchronization @defaults("id passwordSyncEnabled blockSoftMatchEnabled") {
+  // Tenant ID the synchronization settings belong to
+  id string
+  // Accidental deletion prevention mode
+  //
+  // One of `disabled`, `enabledForCount`, or `enabledForPercentage`. When
+  // enabled, an export that deletes more objects than
+  // `accidentalDeletionAlertThreshold` is held back.
+  accidentalDeletionPreventionType string
+  // Accidental deletion threshold
+  //
+  // Number of objects, or percentage of objects, depending on
+  // `accidentalDeletionPreventionType`, above which a synchronization
+  // export that deletes objects is held back.
+  accidentalDeletionAlertThreshold int
+  // Anchor attribute that links on-premises objects to cloud objects
+  anchorAttribute string
+  // Service principal of the synchronization client application
+  //
+  // Service principal of the on-premises directory synchronization client
+  // application configured for the tenant. Null when the tenant holds no
+  // service principal for that application.
+  servicePrincipal() microsoft.serviceprincipal
+  // Version of the synchronization client
+  synchronizationClientVersion string
+  // Synchronization interval
+  //
+  // Interval the synchronization client honors between cycles, as an ISO 8601
+  // duration, for example `PT30M`.
+  synchronizationInterval string
+  // Synchronization interval requested by the customer
+  //
+  // Interval the customer asked the synchronization client to wait between
+  // cycles, as an ISO 8601 duration, for example `PT30M`.
+  customerRequestedSynchronizationInterval string
+  // Name of the machine that ran the last export
+  exportClientMachineName string
+  // Service account the synchronization client uses to connect to the directory
+  exportServiceAccount string
+  // Objects pending addition in the last export
+  exportPendingObjectsAddition int
+  // Objects pending deletion in the last export
+  exportPendingObjectsDeletion int
+  // Objects pending update in the last export
+  exportPendingObjectsUpdate int
+  // Links successfully provisioned in the last export
+  exportSuccessfulLinksProvisioningCount int
+  // Objects successfully provisioned in the last export
+  exportSuccessfulObjectsProvisioningCount int
+  // Total objects in the connector space
+  exportTotalConnectorSpaceObjects int
+  // Distinguished name of the on-premises container for Microsoft 365 group writeback
+  unifiedGroupWritebackContainer string
+  // Distinguished name of the on-premises container for user writeback
+  userWritebackContainer string
+  // Whether synchronization clients can update the on-premises object identifier of synchronized objects
+  allowOnPremUpdateOfOnPremisesObjectIdentifierEnabled bool
+  // Whether a hard match cannot take over a cloud-only object
+  //
+  // When true, an on-premises object whose source anchor matches a cloud
+  // object that was never synchronized does not take it over. Blocks
+  // takeover of cloud administrator accounts from on-premises.
+  blockCloudObjectTakeoverThroughHardMatchEnabled bool
+  // Whether soft matching of on-premises objects to cloud objects by SMTP address is blocked
+  blockSoftMatchEnabled bool
+  // Whether on-premises Mobile and OtherMobile values persist over the mobile phone values set in Microsoft Entra ID
+  bypassDirSyncOverridesEnabled bool
+  // Whether the cloud password policy applies to users whose password is synchronized from on-premises
+  cloudPasswordPolicyForPasswordSyncedUsersEnabled bool
+  // Whether user credential updates run concurrently
+  concurrentCredentialUpdateEnabled bool
+  // Whether user creation runs concurrently
+  concurrentOrgIdProvisioningEnabled bool
+  // Whether devices are written back to the on-premises directory
+  deviceWritebackEnabled bool
+  // Whether directory extension attributes are synchronized from on-premises
+  directoryExtensionsEnabled bool
+  // Whether conflicting proxy addresses are migrated for a tenant migrated from Forefront Online Protection for Exchange
+  fopeConflictResolutionEnabled bool
+  // Whether object-level group writeback is enabled for additional group types
+  groupWriteBackEnabled bool
+  // Whether password hash synchronization is enabled
+  passwordSyncEnabled bool
+  // Whether password resets in the cloud are written back to the on-premises directory
+  //
+  // Microsoft documents this flag as not in use, so it may not reflect the
+  // password writeback setting of the synchronization client.
+  passwordWritebackEnabled bool
+  // Whether objects with a conflicting proxy address are quarantined instead of synchronized
+  quarantineUponProxyAddressesConflictEnabled bool
+  // Whether objects with a conflicting user principal name are quarantined instead of synchronized
+  quarantineUponUpnConflictEnabled bool
+  // Whether soft matching by user principal name is enabled
+  softMatchOnUpnEnabled bool
+  // Whether user principal name changes are synchronized for licensed managed users
+  synchronizeUpnForManagedUsersEnabled bool
+  // Whether Microsoft 365 groups are written back to the on-premises directory
+  unifiedGroupWritebackEnabled bool
+  // Whether a forced password change at next sign-in is honored when credentials are synchronized
+  userForcePasswordChangeOnLogonEnabled bool
+  // Whether users are written back to the on-premises directory
+  userWritebackEnabled bool
 }
 
 // Microsoft Entra ID Users

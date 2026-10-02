@@ -31,6 +31,7 @@ const (
 	ResourceMicrosoftTenantRealmInfo                                                                     string = "microsoft.tenant.realmInfo"
 	ResourceMicrosoftTenantSettings                                                                      string = "microsoft.tenantSettings"
 	ResourceMicrosoftTenantFormsSettings                                                                 string = "microsoft.tenantFormsSettings"
+	ResourceMicrosoftOnPremisesSynchronization                                                           string = "microsoft.onPremisesSynchronization"
 	ResourceMicrosoftUsers                                                                               string = "microsoft.users"
 	ResourceMicrosoftIdentityAndAccess                                                                   string = "microsoft.identityAndAccess"
 	ResourceMicrosoftIdentityAndAccessExternalOriginResourceConnector                                    string = "microsoft.identityAndAccess.externalOriginResourceConnector"
@@ -279,6 +280,10 @@ func init() {
 		"microsoft.tenantFormsSettings": {
 			// to override args, implement: initMicrosoftTenantFormsSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftTenantFormsSettings,
+		},
+		"microsoft.onPremisesSynchronization": {
+			// to override args, implement: initMicrosoftOnPremisesSynchronization(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftOnPremisesSynchronization,
 		},
 		"microsoft.users": {
 			Init:   initMicrosoftUsers,
@@ -1287,6 +1292,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.tenant.formsSettings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftTenant).GetFormsSettings()).ToDataRes(types.Resource("microsoft.tenantFormsSettings"))
 	},
+	"microsoft.tenant.onPremisesSynchronization": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenant).GetOnPremisesSynchronization()).ToDataRes(types.Resource("microsoft.onPremisesSynchronization"))
+	},
 	"microsoft.tenant.privacyProfile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftTenant).GetPrivacyProfile()).ToDataRes(types.Dict)
 	},
@@ -1364,6 +1372,120 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.tenantFormsSettings.isInOrgFormsPhishingScanEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftTenantFormsSettings).GetIsInOrgFormsPhishingScanEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.onPremisesSynchronization.accidentalDeletionPreventionType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetAccidentalDeletionPreventionType()).ToDataRes(types.String)
+	},
+	"microsoft.onPremisesSynchronization.accidentalDeletionAlertThreshold": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetAccidentalDeletionAlertThreshold()).ToDataRes(types.Int)
+	},
+	"microsoft.onPremisesSynchronization.anchorAttribute": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetAnchorAttribute()).ToDataRes(types.String)
+	},
+	"microsoft.onPremisesSynchronization.servicePrincipal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
+	"microsoft.onPremisesSynchronization.synchronizationClientVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetSynchronizationClientVersion()).ToDataRes(types.String)
+	},
+	"microsoft.onPremisesSynchronization.synchronizationInterval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetSynchronizationInterval()).ToDataRes(types.String)
+	},
+	"microsoft.onPremisesSynchronization.customerRequestedSynchronizationInterval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetCustomerRequestedSynchronizationInterval()).ToDataRes(types.String)
+	},
+	"microsoft.onPremisesSynchronization.exportClientMachineName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetExportClientMachineName()).ToDataRes(types.String)
+	},
+	"microsoft.onPremisesSynchronization.exportServiceAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetExportServiceAccount()).ToDataRes(types.String)
+	},
+	"microsoft.onPremisesSynchronization.exportPendingObjectsAddition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetExportPendingObjectsAddition()).ToDataRes(types.Int)
+	},
+	"microsoft.onPremisesSynchronization.exportPendingObjectsDeletion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetExportPendingObjectsDeletion()).ToDataRes(types.Int)
+	},
+	"microsoft.onPremisesSynchronization.exportPendingObjectsUpdate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetExportPendingObjectsUpdate()).ToDataRes(types.Int)
+	},
+	"microsoft.onPremisesSynchronization.exportSuccessfulLinksProvisioningCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetExportSuccessfulLinksProvisioningCount()).ToDataRes(types.Int)
+	},
+	"microsoft.onPremisesSynchronization.exportSuccessfulObjectsProvisioningCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetExportSuccessfulObjectsProvisioningCount()).ToDataRes(types.Int)
+	},
+	"microsoft.onPremisesSynchronization.exportTotalConnectorSpaceObjects": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetExportTotalConnectorSpaceObjects()).ToDataRes(types.Int)
+	},
+	"microsoft.onPremisesSynchronization.unifiedGroupWritebackContainer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetUnifiedGroupWritebackContainer()).ToDataRes(types.String)
+	},
+	"microsoft.onPremisesSynchronization.userWritebackContainer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetUserWritebackContainer()).ToDataRes(types.String)
+	},
+	"microsoft.onPremisesSynchronization.allowOnPremUpdateOfOnPremisesObjectIdentifierEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetAllowOnPremUpdateOfOnPremisesObjectIdentifierEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.blockCloudObjectTakeoverThroughHardMatchEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetBlockCloudObjectTakeoverThroughHardMatchEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.blockSoftMatchEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetBlockSoftMatchEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.bypassDirSyncOverridesEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetBypassDirSyncOverridesEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.cloudPasswordPolicyForPasswordSyncedUsersEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetCloudPasswordPolicyForPasswordSyncedUsersEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.concurrentCredentialUpdateEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetConcurrentCredentialUpdateEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.concurrentOrgIdProvisioningEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetConcurrentOrgIdProvisioningEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.deviceWritebackEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetDeviceWritebackEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.directoryExtensionsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetDirectoryExtensionsEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.fopeConflictResolutionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetFopeConflictResolutionEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.groupWriteBackEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetGroupWriteBackEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.passwordSyncEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetPasswordSyncEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.passwordWritebackEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetPasswordWritebackEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.quarantineUponProxyAddressesConflictEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetQuarantineUponProxyAddressesConflictEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.quarantineUponUpnConflictEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetQuarantineUponUpnConflictEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.softMatchOnUpnEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetSoftMatchOnUpnEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.synchronizeUpnForManagedUsersEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetSynchronizeUpnForManagedUsersEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.unifiedGroupWritebackEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetUnifiedGroupWritebackEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.userForcePasswordChangeOnLogonEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetUserForcePasswordChangeOnLogonEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.onPremisesSynchronization.userWritebackEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetUserWritebackEnabled()).ToDataRes(types.Bool)
 	},
 	"microsoft.users.filter": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUsers).GetFilter()).ToDataRes(types.String)
@@ -6445,6 +6567,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftTenant).FormsSettings, ok = plugin.RawToTValue[*mqlMicrosoftTenantFormsSettings](v.Value, v.Error)
 		return
 	},
+	"microsoft.tenant.onPremisesSynchronization": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenant).OnPremisesSynchronization, ok = plugin.RawToTValue[*mqlMicrosoftOnPremisesSynchronization](v.Value, v.Error)
+		return
+	},
 	"microsoft.tenant.privacyProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftTenant).PrivacyProfile, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
@@ -6563,6 +6689,162 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.tenantFormsSettings.isInOrgFormsPhishingScanEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftTenantFormsSettings).IsInOrgFormsPhishingScanEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.onPremisesSynchronization.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.accidentalDeletionPreventionType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).AccidentalDeletionPreventionType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.accidentalDeletionAlertThreshold": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).AccidentalDeletionAlertThreshold, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.anchorAttribute": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).AnchorAttribute, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.servicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).ServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.synchronizationClientVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).SynchronizationClientVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.synchronizationInterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).SynchronizationInterval, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.customerRequestedSynchronizationInterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).CustomerRequestedSynchronizationInterval, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.exportClientMachineName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).ExportClientMachineName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.exportServiceAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).ExportServiceAccount, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.exportPendingObjectsAddition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).ExportPendingObjectsAddition, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.exportPendingObjectsDeletion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).ExportPendingObjectsDeletion, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.exportPendingObjectsUpdate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).ExportPendingObjectsUpdate, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.exportSuccessfulLinksProvisioningCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).ExportSuccessfulLinksProvisioningCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.exportSuccessfulObjectsProvisioningCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).ExportSuccessfulObjectsProvisioningCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.exportTotalConnectorSpaceObjects": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).ExportTotalConnectorSpaceObjects, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.unifiedGroupWritebackContainer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).UnifiedGroupWritebackContainer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.userWritebackContainer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).UserWritebackContainer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.allowOnPremUpdateOfOnPremisesObjectIdentifierEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).AllowOnPremUpdateOfOnPremisesObjectIdentifierEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.blockCloudObjectTakeoverThroughHardMatchEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).BlockCloudObjectTakeoverThroughHardMatchEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.blockSoftMatchEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).BlockSoftMatchEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.bypassDirSyncOverridesEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).BypassDirSyncOverridesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.cloudPasswordPolicyForPasswordSyncedUsersEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).CloudPasswordPolicyForPasswordSyncedUsersEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.concurrentCredentialUpdateEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).ConcurrentCredentialUpdateEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.concurrentOrgIdProvisioningEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).ConcurrentOrgIdProvisioningEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.deviceWritebackEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).DeviceWritebackEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.directoryExtensionsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).DirectoryExtensionsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.fopeConflictResolutionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).FopeConflictResolutionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.groupWriteBackEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).GroupWriteBackEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.passwordSyncEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).PasswordSyncEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.passwordWritebackEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).PasswordWritebackEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.quarantineUponProxyAddressesConflictEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).QuarantineUponProxyAddressesConflictEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.quarantineUponUpnConflictEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).QuarantineUponUpnConflictEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.softMatchOnUpnEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).SoftMatchOnUpnEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.synchronizeUpnForManagedUsersEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).SynchronizeUpnForManagedUsersEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.unifiedGroupWritebackEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).UnifiedGroupWritebackEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.userForcePasswordChangeOnLogonEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).UserForcePasswordChangeOnLogonEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.onPremisesSynchronization.userWritebackEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftOnPremisesSynchronization).UserWritebackEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"microsoft.users.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -14593,6 +14875,7 @@ type mqlMicrosoftTenant struct {
 	PaidLicenses                         plugin.TValue[int64]
 	Settings                             plugin.TValue[*mqlMicrosoftTenantSettings]
 	FormsSettings                        plugin.TValue[*mqlMicrosoftTenantFormsSettings]
+	OnPremisesSynchronization            plugin.TValue[*mqlMicrosoftOnPremisesSynchronization]
 	PrivacyProfile                       plugin.TValue[any]
 	TechnicalNotificationMails           plugin.TValue[[]any]
 	PreferredLanguage                    plugin.TValue[string]
@@ -14719,6 +15002,22 @@ func (c *mqlMicrosoftTenant) GetFormsSettings() *plugin.TValue[*mqlMicrosoftTena
 		}
 
 		return c.formsSettings()
+	})
+}
+
+func (c *mqlMicrosoftTenant) GetOnPremisesSynchronization() *plugin.TValue[*mqlMicrosoftOnPremisesSynchronization] {
+	return plugin.GetOrCompute[*mqlMicrosoftOnPremisesSynchronization](&c.OnPremisesSynchronization, func() (*mqlMicrosoftOnPremisesSynchronization, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.tenant", c.__id, "onPremisesSynchronization")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftOnPremisesSynchronization), nil
+			}
+		}
+
+		return c.onPremisesSynchronization()
 	})
 }
 
@@ -15022,6 +15321,252 @@ func (c *mqlMicrosoftTenantFormsSettings) GetIsBingImageSearchEnabled() *plugin.
 
 func (c *mqlMicrosoftTenantFormsSettings) GetIsInOrgFormsPhishingScanEnabled() *plugin.TValue[bool] {
 	return &c.IsInOrgFormsPhishingScanEnabled
+}
+
+// mqlMicrosoftOnPremisesSynchronization for the microsoft.onPremisesSynchronization resource
+type mqlMicrosoftOnPremisesSynchronization struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftOnPremisesSynchronizationInternal
+	Id                                                   plugin.TValue[string]
+	AccidentalDeletionPreventionType                     plugin.TValue[string]
+	AccidentalDeletionAlertThreshold                     plugin.TValue[int64]
+	AnchorAttribute                                      plugin.TValue[string]
+	ServicePrincipal                                     plugin.TValue[*mqlMicrosoftServiceprincipal]
+	SynchronizationClientVersion                         plugin.TValue[string]
+	SynchronizationInterval                              plugin.TValue[string]
+	CustomerRequestedSynchronizationInterval             plugin.TValue[string]
+	ExportClientMachineName                              plugin.TValue[string]
+	ExportServiceAccount                                 plugin.TValue[string]
+	ExportPendingObjectsAddition                         plugin.TValue[int64]
+	ExportPendingObjectsDeletion                         plugin.TValue[int64]
+	ExportPendingObjectsUpdate                           plugin.TValue[int64]
+	ExportSuccessfulLinksProvisioningCount               plugin.TValue[int64]
+	ExportSuccessfulObjectsProvisioningCount             plugin.TValue[int64]
+	ExportTotalConnectorSpaceObjects                     plugin.TValue[int64]
+	UnifiedGroupWritebackContainer                       plugin.TValue[string]
+	UserWritebackContainer                               plugin.TValue[string]
+	AllowOnPremUpdateOfOnPremisesObjectIdentifierEnabled plugin.TValue[bool]
+	BlockCloudObjectTakeoverThroughHardMatchEnabled      plugin.TValue[bool]
+	BlockSoftMatchEnabled                                plugin.TValue[bool]
+	BypassDirSyncOverridesEnabled                        plugin.TValue[bool]
+	CloudPasswordPolicyForPasswordSyncedUsersEnabled     plugin.TValue[bool]
+	ConcurrentCredentialUpdateEnabled                    plugin.TValue[bool]
+	ConcurrentOrgIdProvisioningEnabled                   plugin.TValue[bool]
+	DeviceWritebackEnabled                               plugin.TValue[bool]
+	DirectoryExtensionsEnabled                           plugin.TValue[bool]
+	FopeConflictResolutionEnabled                        plugin.TValue[bool]
+	GroupWriteBackEnabled                                plugin.TValue[bool]
+	PasswordSyncEnabled                                  plugin.TValue[bool]
+	PasswordWritebackEnabled                             plugin.TValue[bool]
+	QuarantineUponProxyAddressesConflictEnabled          plugin.TValue[bool]
+	QuarantineUponUpnConflictEnabled                     plugin.TValue[bool]
+	SoftMatchOnUpnEnabled                                plugin.TValue[bool]
+	SynchronizeUpnForManagedUsersEnabled                 plugin.TValue[bool]
+	UnifiedGroupWritebackEnabled                         plugin.TValue[bool]
+	UserForcePasswordChangeOnLogonEnabled                plugin.TValue[bool]
+	UserWritebackEnabled                                 plugin.TValue[bool]
+}
+
+// createMicrosoftOnPremisesSynchronization creates a new instance of this resource
+func createMicrosoftOnPremisesSynchronization(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftOnPremisesSynchronization{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.onPremisesSynchronization", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) MqlName() string {
+	return "microsoft.onPremisesSynchronization"
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetAccidentalDeletionPreventionType() *plugin.TValue[string] {
+	return &c.AccidentalDeletionPreventionType
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetAccidentalDeletionAlertThreshold() *plugin.TValue[int64] {
+	return &c.AccidentalDeletionAlertThreshold
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetAnchorAttribute() *plugin.TValue[string] {
+	return &c.AnchorAttribute
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetServicePrincipal() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.ServicePrincipal, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.onPremisesSynchronization", c.__id, "servicePrincipal")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.servicePrincipal()
+	})
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetSynchronizationClientVersion() *plugin.TValue[string] {
+	return &c.SynchronizationClientVersion
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetSynchronizationInterval() *plugin.TValue[string] {
+	return &c.SynchronizationInterval
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetCustomerRequestedSynchronizationInterval() *plugin.TValue[string] {
+	return &c.CustomerRequestedSynchronizationInterval
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetExportClientMachineName() *plugin.TValue[string] {
+	return &c.ExportClientMachineName
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetExportServiceAccount() *plugin.TValue[string] {
+	return &c.ExportServiceAccount
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetExportPendingObjectsAddition() *plugin.TValue[int64] {
+	return &c.ExportPendingObjectsAddition
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetExportPendingObjectsDeletion() *plugin.TValue[int64] {
+	return &c.ExportPendingObjectsDeletion
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetExportPendingObjectsUpdate() *plugin.TValue[int64] {
+	return &c.ExportPendingObjectsUpdate
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetExportSuccessfulLinksProvisioningCount() *plugin.TValue[int64] {
+	return &c.ExportSuccessfulLinksProvisioningCount
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetExportSuccessfulObjectsProvisioningCount() *plugin.TValue[int64] {
+	return &c.ExportSuccessfulObjectsProvisioningCount
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetExportTotalConnectorSpaceObjects() *plugin.TValue[int64] {
+	return &c.ExportTotalConnectorSpaceObjects
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetUnifiedGroupWritebackContainer() *plugin.TValue[string] {
+	return &c.UnifiedGroupWritebackContainer
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetUserWritebackContainer() *plugin.TValue[string] {
+	return &c.UserWritebackContainer
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetAllowOnPremUpdateOfOnPremisesObjectIdentifierEnabled() *plugin.TValue[bool] {
+	return &c.AllowOnPremUpdateOfOnPremisesObjectIdentifierEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetBlockCloudObjectTakeoverThroughHardMatchEnabled() *plugin.TValue[bool] {
+	return &c.BlockCloudObjectTakeoverThroughHardMatchEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetBlockSoftMatchEnabled() *plugin.TValue[bool] {
+	return &c.BlockSoftMatchEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetBypassDirSyncOverridesEnabled() *plugin.TValue[bool] {
+	return &c.BypassDirSyncOverridesEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetCloudPasswordPolicyForPasswordSyncedUsersEnabled() *plugin.TValue[bool] {
+	return &c.CloudPasswordPolicyForPasswordSyncedUsersEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetConcurrentCredentialUpdateEnabled() *plugin.TValue[bool] {
+	return &c.ConcurrentCredentialUpdateEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetConcurrentOrgIdProvisioningEnabled() *plugin.TValue[bool] {
+	return &c.ConcurrentOrgIdProvisioningEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetDeviceWritebackEnabled() *plugin.TValue[bool] {
+	return &c.DeviceWritebackEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetDirectoryExtensionsEnabled() *plugin.TValue[bool] {
+	return &c.DirectoryExtensionsEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetFopeConflictResolutionEnabled() *plugin.TValue[bool] {
+	return &c.FopeConflictResolutionEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetGroupWriteBackEnabled() *plugin.TValue[bool] {
+	return &c.GroupWriteBackEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetPasswordSyncEnabled() *plugin.TValue[bool] {
+	return &c.PasswordSyncEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetPasswordWritebackEnabled() *plugin.TValue[bool] {
+	return &c.PasswordWritebackEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetQuarantineUponProxyAddressesConflictEnabled() *plugin.TValue[bool] {
+	return &c.QuarantineUponProxyAddressesConflictEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetQuarantineUponUpnConflictEnabled() *plugin.TValue[bool] {
+	return &c.QuarantineUponUpnConflictEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetSoftMatchOnUpnEnabled() *plugin.TValue[bool] {
+	return &c.SoftMatchOnUpnEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetSynchronizeUpnForManagedUsersEnabled() *plugin.TValue[bool] {
+	return &c.SynchronizeUpnForManagedUsersEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetUnifiedGroupWritebackEnabled() *plugin.TValue[bool] {
+	return &c.UnifiedGroupWritebackEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetUserForcePasswordChangeOnLogonEnabled() *plugin.TValue[bool] {
+	return &c.UserForcePasswordChangeOnLogonEnabled
+}
+
+func (c *mqlMicrosoftOnPremisesSynchronization) GetUserWritebackEnabled() *plugin.TValue[bool] {
+	return &c.UserWritebackEnabled
 }
 
 // mqlMicrosoftUsers for the microsoft.users resource
