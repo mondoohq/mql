@@ -2342,6 +2342,7 @@ ms365.teams.teamsMessagingPolicyConfig.allowUserDeleteChat 13.2.2
 ms365.teams.teamsMessagingPolicyConfig.allowUserDeleteMessage 13.2.2
 ms365.teams.teamsMessagingPolicyConfig.readReceiptsEnabledType 13.2.2
 ms365.teams.tenantFederationConfig 9.2.9
+ms365.teams.tenantFederationConfig.allowAllKnownDomains 14.0.2
 ms365.teams.tenantFederationConfig.allowFederatedUsers 9.2.9
 ms365.teams.tenantFederationConfig.allowPublicUsers 9.2.9
 ms365.teams.tenantFederationConfig.allowTeamsConsumer 9.2.9

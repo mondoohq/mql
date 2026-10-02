@@ -7076,11 +7076,22 @@ private ms365.teams.tenantFederationConfig {
   // Blocked domains
   blockedDomains []string
   // Allowed domains
+  //
+  // Domains users can communicate with when the tenant restricts external access
+  // to an allow list. Empty when allowAllKnownDomains is true or when no domain is allowed.
   allowedDomains []string
+  // Whether external access is open to all domains not blocked
+  //
+  // True when the allowed domains setting is AllowAllKnownDomains (the default), so users can
+  // communicate with every external domain except those in blockedDomains.
+  allowAllKnownDomains bool
   // Whether federated users are allowed
   allowFederatedUsers bool
   // Whether public users are allowed
-  allowPublicUsers bool
+  //
+  // Deprecated, please use allowTeamsConsumer. Microsoft Teams no longer returns this setting,
+  // so it is null on current tenants.
+  allowPublicUsers @maturity("deprecated") bool
   // Whether to allow external Teams consumers
   allowTeamsConsumer bool
   // Whether to allow inbound communication with external Teams consumers
@@ -7119,7 +7130,10 @@ private ms365.teams.teamsMeetingPolicyConfig {
   // Whether external participants can give or request control of the meeting
   allowExternalParticipantGiveRequestControl bool
   // Whether users can report security concerns
-  allowSecurityEndUserReporting bool
+  //
+  // Deprecated, please use ms365.teams.teamsMessagingPolicyConfig.allowSecurityEndUserReporting.
+  // The meeting policy has no such setting, so this is always null.
+  allowSecurityEndUserReporting @maturity("deprecated") @replaced_by("ms365.teams.teamsMessagingPolicyConfig.allowSecurityEndUserReporting") bool
   // Whether cloud recording is allowed for calls
   allowCloudRecordingForCalls bool
   // Whether cloud recording is allowed for meetings
@@ -7130,7 +7144,9 @@ private ms365.teams.teamsMeetingPolicyConfig {
   allowTranscription bool
   // Whether internal participants can give or request control of the meeting
   allowParticipantGiveRequestControl bool
-  // Whether dial-in callers are forced to use the conferencing toll number
+  // Whether calls are routed through the PSTN instead of bypassing tolls
+  //
+  // Read from the global Teams calling policy.
   preventTollBypass bool
 }
 

@@ -42,26 +42,31 @@ $CsTeamsMessagingPolicy = (Get-CsTeamsMessagingPolicy -Identity Global)
 # Fetch the calling policy to get the cloud recording setting
 $callingPolicy = (Get-CsTeamsCallingPolicy -Identity Global)
 $CsTeamsMeetingPolicy | Add-Member -NotePropertyName "AllowCloudRecordingForCalls" -NotePropertyValue $callingPolicy.AllowCloudRecordingForCalls
+# PreventTollBypass is a calling policy setting, not a meeting policy one
+$CsTeamsMeetingPolicy | Add-Member -NotePropertyName "PreventTollBypass" -NotePropertyValue $callingPolicy.PreventTollBypass -Force
 
-$allowedList = New-Object System.Collections.Generic.List[string]
-if ($null -ne $CsTenantFederationConfiguration.AllowedDomains) {
-  foreach ($item in $CsTenantFederationConfiguration.AllowedDomains) {
-    $itemAsString = $item.ToString()
-    $domainValue = ($itemAsString -split '=')[1]
-    $allowedList.Add($domainValue)
+# AllowedDomains is either an AllowAllKnownDomains object (ToString
+# "AllowAllKnownDomains") or an AllowList whose AllowedDomain entries carry a
+# Domain property. BlockedDomains holds DomainPattern entries. Emit the raw
+# tokens; the provider normalizes them.
+function Get-FederationDomainTokens($value) {
+  $tokens = New-Object System.Collections.Generic.List[string]
+  foreach ($item in $value) {
+    if ($null -eq $item) { continue }
+    if ($null -ne $item.PSObject.Properties['AllowedDomain']) {
+      foreach ($d in $item.AllowedDomain) {
+        if ($null -ne $d.PSObject.Properties['Domain']) { $tokens.Add([string]$d.Domain) } else { $tokens.Add($d.ToString()) }
+      }
+    } elseif ($null -ne $item.PSObject.Properties['Domain']) {
+      $tokens.Add([string]$item.Domain)
+    } else {
+      $tokens.Add($item.ToString())
+    }
   }
+  return ,$tokens
 }
-$CsTenantFederationConfiguration.AllowedDomains = $allowedList
-
-$blockedList = New-Object System.Collections.Generic.List[string]
-if ($null -ne $CsTenantFederationConfiguration.BlockedDomains) {
-  foreach ($item in $CsTenantFederationConfiguration.BlockedDomains) {
-    $itemAsString = $item.ToString()
-    $domainValue = ($itemAsString -split '=')[1]
-    $blockedList.Add($domainValue)
-  }
-}
-$CsTenantFederationConfiguration.BlockedDomains = $blockedList
+$CsTenantFederationConfiguration.AllowedDomains = Get-FederationDomainTokens $CsTenantFederationConfiguration.AllowedDomains
+$CsTenantFederationConfiguration.BlockedDomains = Get-FederationDomainTokens $CsTenantFederationConfiguration.BlockedDomains
 
 $msteams = New-Object PSObject
 Add-Member -InputObject $msteams -MemberType NoteProperty -Name CsTeamsClientConfiguration -Value $CsTeamsClientConfiguration
@@ -81,17 +86,51 @@ type MsTeamsReport struct {
 }
 
 type CsTenantFederationConfiguration struct {
-	Identity                                    string   `json:"Identity"`
-	AllowFederatedUsers                         bool     `json:"AllowFederatedUsers"`
-	AllowPublicUsers                            bool     `json:"AllowPublicUsers"`
-	AllowTeamsConsumer                          bool     `json:"AllowTeamsConsumer"`
-	AllowTeamsConsumerInbound                   bool     `json:"AllowTeamsConsumerInbound"`
-	TreatDiscoveredPartnersAsUnverified         bool     `json:"TreatDiscoveredPartnersAsUnverified"`
-	SharedSipAddressSpace                       bool     `json:"SharedSipAddressSpace"`
-	RestrictTeamsConsumerToExternalUserProfiles bool     `json:"RestrictTeamsConsumerToExternalUserProfiles"`
-	ExternalAccessWithTrialTenants              string   `json:"ExternalAccessWithTrialTenants"`
-	AllowedDomains                              []string `json:"AllowedDomains"`
-	BlockedDomains                              []string `json:"BlockedDomains"`
+	Identity                                    string    `json:"Identity"`
+	AllowFederatedUsers                         bool      `json:"AllowFederatedUsers"`
+	AllowPublicUsers                            *bool     `json:"AllowPublicUsers"`
+	AllowTeamsConsumer                          bool      `json:"AllowTeamsConsumer"`
+	AllowTeamsConsumerInbound                   bool      `json:"AllowTeamsConsumerInbound"`
+	TreatDiscoveredPartnersAsUnverified         bool      `json:"TreatDiscoveredPartnersAsUnverified"`
+	SharedSipAddressSpace                       bool      `json:"SharedSipAddressSpace"`
+	RestrictTeamsConsumerToExternalUserProfiles bool      `json:"RestrictTeamsConsumerToExternalUserProfiles"`
+	ExternalAccessWithTrialTenants              string    `json:"ExternalAccessWithTrialTenants"`
+	AllowedDomains                              []*string `json:"AllowedDomains"`
+	BlockedDomains                              []*string `json:"BlockedDomains"`
+}
+
+// allowAllKnownDomainsToken is how Get-CsTenantFederationConfiguration renders
+// AllowedDomains when the tenant federates with every domain not blocked.
+const allowAllKnownDomainsToken = "AllowAllKnownDomains"
+
+// normalizeFederationDomains turns the AllowedDomains or BlockedDomains tokens
+// emitted by the Teams script into bare domain names. A token is a bare domain,
+// a "Domain=contoso.com" pattern, a comma-joined list of such patterns (the
+// AllowList string form), or AllowAllKnownDomains. Null and empty tokens are
+// dropped. The bool reports whether AllowAllKnownDomains was present.
+func normalizeFederationDomains(tokens []*string) ([]string, bool) {
+	domains := []string{}
+	allowAll := false
+	for _, tok := range tokens {
+		if tok == nil {
+			continue
+		}
+		for _, part := range strings.Split(*tok, ",") {
+			part = strings.TrimSpace(part)
+			if strings.EqualFold(part, allowAllKnownDomainsToken) {
+				allowAll = true
+				continue
+			}
+			if k, v, ok := strings.Cut(part, "="); ok && strings.EqualFold(strings.TrimSpace(k), "Domain") {
+				part = strings.TrimSpace(v)
+			}
+			if part == "" {
+				continue
+			}
+			domains = append(domains, part)
+		}
+	}
+	return domains, allowAll
 }
 
 type CsTeamsMeetingPolicy struct {
@@ -103,13 +142,13 @@ type CsTeamsMeetingPolicy struct {
 	MeetingChatEnabledType                     string `json:"MeetingChatEnabledType"`
 	DesignatedPresenterRoleMode                string `json:"DesignatedPresenterRoleMode"`
 	AllowExternalParticipantGiveRequestControl bool   `json:"AllowExternalParticipantGiveRequestControl"`
-	AllowSecurityEndUserReporting              bool   `json:"AllowSecurityEndUserReporting"`
+	AllowSecurityEndUserReporting              *bool  `json:"AllowSecurityEndUserReporting"`
 	AllowCloudRecordingForCalls                bool   `json:"AllowCloudRecordingForCalls"`
 	AllowCloudRecording                        bool   `json:"AllowCloudRecording"`
 	AllowRecordingStorageOutsideRegion         bool   `json:"AllowRecordingStorageOutsideRegion"`
 	AllowTranscription                         bool   `json:"AllowTranscription"`
 	AllowParticipantGiveRequestControl         bool   `json:"AllowParticipantGiveRequestControl"`
-	PreventTollBypass                          bool   `json:"PreventTollBypass"`
+	PreventTollBypass                          *bool  `json:"PreventTollBypass"`
 }
 
 type CsTeamsClientConfig struct {
@@ -260,13 +299,16 @@ func (r *mqlMs365Teams) gatherTeamsReport() error {
 
 	if report.CsTenantFederationConfiguration != nil {
 		tenantConfig := report.CsTenantFederationConfiguration
+		allowedDomains, allowAllKnownDomains := normalizeFederationDomains(tenantConfig.AllowedDomains)
+		blockedDomains, _ := normalizeFederationDomains(tenantConfig.BlockedDomains)
 		mqlTenantConfig, mqlTenantConfigErr := CreateResource(r.MqlRuntime, "ms365.teams.tenantFederationConfig",
 			map[string]*llx.RawData{
 				"identity":                                    llx.StringData(tenantConfig.Identity),
-				"blockedDomains":                              llx.ArrayData(convert.SliceAnyToInterface(tenantConfig.BlockedDomains), types.String),
-				"allowedDomains":                              llx.ArrayData(convert.SliceAnyToInterface(tenantConfig.AllowedDomains), types.String),
+				"blockedDomains":                              llx.ArrayData(convert.SliceAnyToInterface(blockedDomains), types.String),
+				"allowedDomains":                              llx.ArrayData(convert.SliceAnyToInterface(allowedDomains), types.String),
+				"allowAllKnownDomains":                        llx.BoolData(allowAllKnownDomains),
 				"allowFederatedUsers":                         llx.BoolData(tenantConfig.AllowFederatedUsers),
-				"allowPublicUsers":                            llx.BoolData(tenantConfig.AllowPublicUsers),
+				"allowPublicUsers":                            llx.BoolDataPtr(tenantConfig.AllowPublicUsers),
 				"allowTeamsConsumer":                          llx.BoolData(tenantConfig.AllowTeamsConsumer),
 				"allowTeamsConsumerInbound":                   llx.BoolData(tenantConfig.AllowTeamsConsumerInbound),
 				"treatDiscoveredPartnersAsUnverified":         llx.BoolData(tenantConfig.TreatDiscoveredPartnersAsUnverified),
@@ -295,13 +337,13 @@ func (r *mqlMs365Teams) gatherTeamsReport() error {
 				"meetingChatEnabledType":                     llx.StringData(teamsPolicy.MeetingChatEnabledType),
 				"designatedPresenterRoleMode":                llx.StringData(teamsPolicy.DesignatedPresenterRoleMode),
 				"allowExternalParticipantGiveRequestControl": llx.BoolData(teamsPolicy.AllowExternalParticipantGiveRequestControl),
-				"allowSecurityEndUserReporting":              llx.BoolData(teamsPolicy.AllowSecurityEndUserReporting),
+				"allowSecurityEndUserReporting":              llx.BoolDataPtr(teamsPolicy.AllowSecurityEndUserReporting),
 				"allowCloudRecordingForCalls":                llx.BoolData(teamsPolicy.AllowCloudRecordingForCalls),
 				"allowCloudRecording":                        llx.BoolData(teamsPolicy.AllowCloudRecording),
 				"allowRecordingStorageOutsideRegion":         llx.BoolData(teamsPolicy.AllowRecordingStorageOutsideRegion),
 				"allowTranscription":                         llx.BoolData(teamsPolicy.AllowTranscription),
 				"allowParticipantGiveRequestControl":         llx.BoolData(teamsPolicy.AllowParticipantGiveRequestControl),
-				"preventTollBypass":                          llx.BoolData(teamsPolicy.PreventTollBypass),
+				"preventTollBypass":                          llx.BoolDataPtr(teamsPolicy.PreventTollBypass),
 			})
 		if mqlTeamsPolicyErr != nil {
 			r.CsTeamsMeetingPolicy = plugin.TValue[*mqlMs365TeamsTeamsMeetingPolicyConfig]{State: plugin.StateIsSet, Error: mqlTeamsPolicyErr}
