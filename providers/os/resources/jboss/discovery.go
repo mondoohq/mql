@@ -133,6 +133,15 @@ func runsStartupScript(cmd string, script string) bool {
 	return false
 }
 
+// SameHome reports whether two JBOSS_HOME values name the same directory. An
+// empty value names none.
+func SameHome(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return path.Clean(a) == path.Clean(b)
+}
+
 // HomeFromCommand extracts -Djboss.home.dir= from a running server's command
 // line.
 func HomeFromCommand(cmd string) string {
@@ -262,7 +271,11 @@ func HomeFromEnvFile(content string) string {
 
 // PathsFromSystemd scans the systemd unit directories for a unit that starts
 // JBoss and reads JBOSS_HOME and the launch mode out of it.
-func PathsFromSystemd(fs afero.Fs) (string, string) {
+//
+// With a non-empty want, only a unit whose JBOSS_HOME is that installation
+// counts. A host can carry several installations, and the launch mode of a
+// unit that runs one of them says nothing about the others.
+func PathsFromSystemd(fs afero.Fs, want string) (string, string) {
 	afs := &afero.Afero{Fs: fs}
 
 	for _, dir := range SystemdUnitDirs {
@@ -299,6 +312,9 @@ func PathsFromSystemd(fs afero.Fs) (string, string) {
 				home = HomeFromEnvFile(string(envContent))
 			}
 
+			if want != "" && !SameHome(home, want) {
+				continue
+			}
 			if home != "" || launchType != "" {
 				return home, launchType
 			}

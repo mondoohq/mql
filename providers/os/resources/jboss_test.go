@@ -357,3 +357,61 @@ func TestJbossSecurityManager(t *testing.T) {
 		assert.Equal(t, "/opt/eap/bin/server.policy", installation.GetSecurityPolicy().Data)
 	})
 }
+
+// The WildFly server the Debian sweep hosts run, as ps reports it (the JVM
+// module flags trimmed).
+const jbossSweepWildflyCommand = `java -D[Standalone] @/opt/wildfly-41.0.1.Final/bin/jdk.serialFilter -Xms64m -Xmx512m -Djava.net.preferIPv4Stack=true -Djboss.socket.binding.port-offset=100 -Dorg.jboss.boot.log.file=/opt/wildfly-41.0.1.Final/standalone/log/server.log -Dlogging.configuration=file:/opt/wildfly-41.0.1.Final/standalone/configuration/logging.properties -jar /opt/wildfly-41.0.1.Final/jboss-modules.jar -mp /opt/wildfly-41.0.1.Final/modules org.jboss.as.standalone -Djboss.home.dir=/opt/wildfly-41.0.1.Final -Djboss.server.base.dir=/opt/wildfly-41.0.1.Final/standalone -c standalone-full.xml -b 127.0.0.1 -bmanagement 127.0.0.1`
+
+func TestObserveProcessesOnlyForTheRequestedHome(t *testing.T) {
+	procs := []jbossProcess{{command: jbossSweepWildflyCommand, home: "/opt/wildfly-41.0.1.Final"}}
+
+	// Discovery without a home takes the running server.
+	observed := observeProcesses(procs, "")
+	assert.Equal(t, "/opt/wildfly-41.0.1.Final", observed.home)
+	assert.Equal(t, "standalone", observed.launchType)
+	assert.Equal(t, "standalone-full.xml", observed.serverConfig)
+
+	// The same server, asked for by its home.
+	observed = observeProcesses(procs, "/opt/wildfly-41.0.1.Final/")
+	assert.Equal(t, "standalone", observed.launchType)
+	assert.Equal(t, "standalone-full.xml", observed.serverConfig)
+
+	// Another installation on the same host borrows nothing from it.
+	assert.Equal(t, observedInstall{}, observeProcesses(procs, "/opt/sweep-domain"))
+
+	// A process whose home could not be read cannot be attributed to one.
+	assert.Equal(t, observedInstall{}, observeProcesses([]jbossProcess{{command: jbossSweepWildflyCommand}}, "/opt/wildfly-41.0.1.Final"))
+}
+
+// jboss(home:) names an installation. A unit that runs a different one must
+// not lend it its launch mode, and a home with nothing behind it has none.
+func TestJbossExplicitHomeIgnoresOtherInstallations(t *testing.T) {
+	const domainHome = "/opt/sweep-domain"
+	files := map[string]*mock.MockFileData{
+		"/etc/systemd/system":                           jbossDir(),
+		"/etc/systemd/system/wildfly.service":           jbossFile("[Service]\nEnvironment=JBOSS_HOME=/opt/wildfly-41.0.1.Final\nExecStart=/opt/wildfly-41.0.1.Final/bin/standalone.sh -c standalone.xml -b 127.0.0.1\n"),
+		domainHome:                                      jbossDir(),
+		domainHome + "/domain":                          jbossDir(),
+		domainHome + "/domain/configuration":            jbossDir(),
+		domainHome + "/domain/configuration/domain.xml": jbossFile(`<domain xmlns="urn:jboss:domain:20.0"><profiles><profile name="full"/></profiles></domain>`),
+		domainHome + "/domain/configuration/host.xml":   jbossFile(`<host name="primary" xmlns="urn:jboss:domain:20.0"/>`),
+	}
+
+	raw, err := CreateResource(jbossMockRuntime(t, files), "jboss", map[string]*llx.RawData{"home": llx.StringData(domainHome)})
+	require.NoError(t, err)
+	installation := raw.(*mqlJboss)
+	assert.Equal(t, "domain", installation.GetLaunchType().Data)
+	assert.Equal(t, "domain.xml", installation.GetConfigFile().Data)
+	config := installation.GetConfig()
+	require.NoError(t, config.Error)
+	require.NotNil(t, config.Data)
+	assert.Equal(t, "domain", config.Data.GetMode().Data)
+
+	raw, err = CreateResource(jbossMockRuntime(t, files), "jboss", map[string]*llx.RawData{"home": llx.StringData("/nonexistent-jb")})
+	require.NoError(t, err)
+	missing := raw.(*mqlJboss)
+	launchType := missing.GetLaunchType()
+	requireResolvedNullScalar(t, launchType.State, launchType.Error, "jboss.launchType")
+	configFile := missing.GetConfigFile()
+	requireResolvedNullScalar(t, configFile.State, configFile.Error, "jboss.configFile")
+}

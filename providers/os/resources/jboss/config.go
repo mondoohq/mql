@@ -274,7 +274,28 @@ type RealmAuthentication struct {
 	JAAS       *struct {
 		Name string `xml:"name,attr"`
 	} `xml:"jaas"`
-	Users []NamedRef `xml:"users>user"`
+	Users []InlineUser `xml:"users>user"`
+}
+
+// InlineUser is a <user> declared inside a realm's <authentication><users>.
+// The schema names it with a username attribute; name is read as well for
+// configurations written against it by hand.
+type InlineUser struct {
+	Username string `xml:"username,attr"`
+	Name     string `xml:"name,attr"`
+}
+
+// InlineUsernames returns the name of each inline user, in document order.
+func InlineUsernames(users []InlineUser) []string {
+	res := make([]string, 0, len(users))
+	for i := range users {
+		name := users[i].Username
+		if name == "" {
+			name = users[i].Name
+		}
+		res = append(res, name)
+	}
+	return res
 }
 
 func (a *RealmAuthentication) LocalAttrs() map[string]string {

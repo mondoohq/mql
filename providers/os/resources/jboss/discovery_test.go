@@ -109,7 +109,7 @@ Environment=JBOSS_HOME=/opt/wildfly "JAVA_OPTS=-Xmx1g -Dx=\"y\""
 ExecStart=/opt/wildfly/bin/standalone.sh -c standalone-full.xml
 `,
 		})
-		home, launchType := jboss.PathsFromSystemd(fs)
+		home, launchType := jboss.PathsFromSystemd(fs, "")
 		assert.Equal(t, "/opt/wildfly", home)
 		assert.Equal(t, "standalone", launchType)
 	})
@@ -123,7 +123,7 @@ ExecStart=/bin/sh -c 'exec $JBOSS_HOME/bin/domain.sh'
 `,
 			"/etc/default/jboss-eap": "JBOSS_HOME=\"/opt/jboss-eap-7.4\"\n",
 		})
-		home, launchType := jboss.PathsFromSystemd(fs)
+		home, launchType := jboss.PathsFromSystemd(fs, "")
 		assert.Equal(t, "/opt/jboss-eap-7.4", home)
 		assert.Equal(t, "domain", launchType)
 	})
@@ -139,16 +139,41 @@ Environment=JBOSS_HOME=/opt/wildfly/instances/%i
 ExecStart=/opt/wildfly/bin/standalone.sh
 `,
 		})
-		home, launchType := jboss.PathsFromSystemd(fs)
+		home, launchType := jboss.PathsFromSystemd(fs, "")
 		assert.Empty(t, home)
 		assert.Empty(t, launchType)
+	})
+
+	t.Run("only the unit of the requested home", func(t *testing.T) {
+		// The Debian sweep hosts run WildFly from a unit while a domain-only
+		// installation sits next to it with no unit of its own.
+		fs := newFs(t, map[string]string{
+			"/etc/systemd/system/wildfly.service": `
+[Service]
+User=wildfly
+Environment=JBOSS_HOME=/opt/wildfly-41.0.1.Final
+ExecStart=/opt/wildfly-41.0.1.Final/bin/standalone.sh -c standalone.xml -b 127.0.0.1 -bmanagement 127.0.0.1
+`,
+			"/etc/systemd/system/eap-domain.service": `
+[Service]
+Environment=JBOSS_HOME=/opt/eap-domain
+ExecStart=/opt/eap-domain/bin/domain.sh
+`,
+		})
+		home, launchType := jboss.PathsFromSystemd(fs, "/opt/eap-domain/")
+		assert.Equal(t, "/opt/eap-domain", home)
+		assert.Equal(t, "domain", launchType)
+
+		home, launchType = jboss.PathsFromSystemd(fs, "/opt/sweep-domain")
+		assert.Empty(t, home)
+		assert.Empty(t, launchType, "another installation's unit says nothing about this one")
 	})
 
 	t.Run("ignores an unrelated unit", func(t *testing.T) {
 		fs := newFs(t, map[string]string{
 			"/etc/systemd/system/nginx.service": "[Service]\nExecStart=/usr/sbin/nginx\n",
 		})
-		home, _ := jboss.PathsFromSystemd(fs)
+		home, _ := jboss.PathsFromSystemd(fs, "")
 		assert.Empty(t, home)
 	})
 }

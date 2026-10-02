@@ -148,7 +148,11 @@ func (j *mqlJboss) install() jbossInstall {
 		home = j.Home.Data
 	}
 
-	observed := j.discover()
+	// Everything observed from a running server or a unit file describes the
+	// installation it was observed for. With an explicit home, only
+	// observations of that same installation apply; another installation's
+	// launch mode and -c configuration say nothing about this one.
+	observed := j.discover(home)
 	if home == "" {
 		home = observed.home
 	}
@@ -157,7 +161,7 @@ func (j *mqlJboss) install() jbossInstall {
 	if launchType == "" {
 		launchType = jboss.LaunchTypeFromDisk(j.fs(), home)
 	}
-	if launchType == "" && home != "" {
+	if launchType == "" && home != "" && jbossHomeExists(j.fs(), home) {
 		// Nothing was running, no unit file said so, and the installation
 		// carries both trees. A JBoss installation runs standalone unless it
 		// is deliberately started with domain.sh, so that is the assumption —
@@ -173,7 +177,7 @@ func (j *mqlJboss) install() jbossInstall {
 	if launchType == "domain" {
 		configName = observed.domainConfig
 	}
-	if configName == "" {
+	if configName == "" && launchType != "" {
 		configName = "standalone.xml"
 		if launchType == "domain" {
 			configName = "domain.xml"
@@ -213,22 +217,27 @@ func (j *mqlJboss) fs() afero.Fs {
 // scanned as a container image or a snapshot has no running JVM, and every
 // field of this resource is readable without one — so the process steps
 // contribute when they can and are skipped when they cannot.
-func (j *mqlJboss) discover() observedInstall {
+func (j *mqlJboss) discover(want string) observedInstall {
 	fs := j.fs()
 	afs := &afero.Afero{Fs: fs}
 
 	// 1. The command line and environment of a running JBoss process.
-	res := j.pathsFromProcesses(afs)
+	res := observeProcesses(j.jbossProcesses(afs), want)
 
 	// 2. A systemd unit that runs JBoss, plus any EnvironmentFile it names.
 	if res.home == "" || res.launchType == "" {
-		unitHome, unitLaunch := jboss.PathsFromSystemd(fs)
+		unitHome, unitLaunch := jboss.PathsFromSystemd(fs, want)
 		if res.home == "" {
 			res.home = unitHome
 		}
 		if res.launchType == "" {
 			res.launchType = unitLaunch
 		}
+	}
+
+	// An explicit home is already known; the remaining steps only look for one.
+	if want != "" {
+		return res
 	}
 
 	// 3. The distribution's own environment files.
@@ -245,6 +254,13 @@ func (j *mqlJboss) discover() observedInstall {
 	return res
 }
 
+// jbossHomeExists reports whether an explicitly named home is there at all, so
+// that a path with nothing behind it gets no assumed launch mode.
+func jbossHomeExists(fs afero.Fs, home string) bool {
+	_, err := fs.Stat(home)
+	return err == nil
+}
+
 // observedInstall is what the discovery could actually observe, before any
 // fallback is applied.
 type observedInstall struct {
@@ -255,22 +271,28 @@ type observedInstall struct {
 	hostConfig   string
 }
 
-func (j *mqlJboss) pathsFromProcesses(afs *afero.Afero) observedInstall {
-	res := observedInstall{}
+// jbossProcess is one running JBoss process: its command line and the
+// JBOSS_HOME it runs from, when that could be read.
+type jbossProcess struct {
+	command string
+	home    string
+}
 
+func (j *mqlJboss) jbossProcesses(afs *afero.Afero) []jbossProcess {
 	raw, err := CreateResource(j.MqlRuntime, "processes", map[string]*llx.RawData{})
 	if err != nil {
-		return res
+		return nil
 	}
 	procs, ok := raw.(*mqlProcesses)
 	if !ok {
-		return res
+		return nil
 	}
 	list := procs.GetList()
 	if list.Error != nil {
-		return res
+		return nil
 	}
 
+	res := []jbossProcess{}
 	for i := range list.Data {
 		proc, ok := list.Data[i].(*mqlProcess)
 		if !ok {
@@ -281,27 +303,43 @@ func (j *mqlJboss) pathsFromProcesses(afs *afero.Afero) observedInstall {
 			continue
 		}
 
-		if res.home == "" {
-			res.home = jboss.HomeFromCommand(cmd.Data)
-		}
-		if res.home == "" {
+		home := jboss.HomeFromCommand(cmd.Data)
+		if home == "" {
 			// The process environment is authoritative where it is readable.
 			if pid := proc.GetPid(); pid.Error == nil {
 				environ, err := afs.ReadFile(path.Join("/proc", strconv.FormatInt(pid.Data, 10), "environ"))
 				if err == nil {
-					res.home = jboss.HomeFromEnviron(string(environ))
+					home = jboss.HomeFromEnviron(string(environ))
 				}
 			}
+		}
+		res = append(res, jbossProcess{command: cmd.Data, home: home})
+	}
+	return res
+}
+
+// observeProcesses folds the running JBoss processes into one observation.
+// With a non-empty want, only processes of that installation count.
+func observeProcesses(procs []jbossProcess, want string) observedInstall {
+	res := observedInstall{}
+
+	for _, proc := range procs {
+		if want != "" && !jboss.SameHome(proc.home, want) {
+			continue
+		}
+
+		if res.home == "" {
+			res.home = proc.home
 		}
 
 		// A managed domain runs several JBoss processes at once and the
 		// managed servers themselves look standalone, so a domain answer from
 		// any one of them outranks a standalone answer from another.
-		if lt := jboss.LaunchTypeFromCommand(cmd.Data); lt != "" && (res.launchType == "" || lt == "domain") {
+		if lt := jboss.LaunchTypeFromCommand(proc.command); lt != "" && (res.launchType == "" || lt == "domain") {
 			res.launchType = lt
 		}
 
-		server, domain, host := jboss.ConfigFromCommand(cmd.Data)
+		server, domain, host := jboss.ConfigFromCommand(proc.command)
 		if res.serverConfig == "" {
 			res.serverConfig = server
 		}
@@ -328,11 +366,12 @@ func (j *mqlJboss) home() (string, error) {
 }
 
 func (j *mqlJboss) configFile() (string, error) {
-	if j.install().home == "" {
+	install := j.install()
+	if install.home == "" || install.configName == "" {
 		j.ConfigFile = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
 		return "", nil
 	}
-	return j.install().configName, nil
+	return install.configName, nil
 }
 
 func (j *mqlJboss) launchType() (string, error) {
@@ -1126,7 +1165,7 @@ func newJbossRealmAuthentication(runtime *plugin.Runtime, auth *jboss.RealmAuthe
 		"ldap":                 ldapOrNull(ldap),
 		"truststore":           keystoreOrNull(truststore),
 		"jaasName":             llx.StringData(jaasName),
-		"inlineUsers":          llx.ArrayData(toAnySlice(jboss.Names(auth.Users)), types.String),
+		"inlineUsers":          llx.ArrayData(toAnySlice(jboss.InlineUsernames(auth.Users)), types.String),
 	})
 	if err != nil {
 		return nil, err

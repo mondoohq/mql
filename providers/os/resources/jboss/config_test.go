@@ -543,3 +543,29 @@ func subsystem(t *testing.T, doc *jboss.Document, name string) *jboss.Subsystem 
 	t.Fatalf("subsystem %q not found", name)
 	return nil
 }
+
+// Inline realm users carry their name in a username attribute. The realm below
+// is the one the Debian sweep hosts carry in standalone-sweep.xml.
+func TestRealmInlineUsers(t *testing.T) {
+	doc, err := jboss.ParseDocument([]byte(`<server xmlns="urn:jboss:domain:20.0">
+  <management>
+    <security-realms>
+      <security-realm name="SweepRealm">
+        <authentication>
+          <users><user username="inlineadmin"><password>pw</password></user><user username="inlineops"><password>pw2</password></user></users>
+          <ldap connection="ldap_conn" base-dn="ou=people,dc=example,dc=test"><advanced-filter filter="(&amp;(uid={0})(objectClass=person))"/></ldap>
+        </authentication>
+      </security-realm>
+    </security-realms>
+  </management>
+</server>`))
+	require.NoError(t, err)
+	require.Len(t, doc.Management.SecurityRealms, 1)
+
+	auth := doc.Management.SecurityRealms[0].Authentication
+	require.NotNil(t, auth)
+	assert.Equal(t, []string{"inlineadmin", "inlineops"}, jboss.InlineUsernames(auth.Users))
+
+	// A name attribute is read when username is absent.
+	assert.Equal(t, []string{"legacy"}, jboss.InlineUsernames([]jboss.InlineUser{{Name: "legacy"}}))
+}
