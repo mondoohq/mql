@@ -15,6 +15,10 @@ import (
 	"go.mondoo.com/mql/types"
 )
 
+// policyReadAll is the Graph application permission every policy read in this
+// file needs.
+const policyReadAll = "Policy.Read.All"
+
 // authenticationStrengthPolicies lists the tenant's built-in and custom
 // authentication strengths.
 // https://learn.microsoft.com/en-us/graph/api/authenticationstrengthroot-list-policies
@@ -29,11 +33,11 @@ func (a *mqlMicrosoftPolicies) authenticationStrengthPolicies() ([]any, error) {
 	ctx := context.Background()
 	resp, err := graphClient.Policies().AuthenticationStrengthPolicies().Get(ctx, nil)
 	if err != nil {
-		return nil, transformError(err)
+		return nil, classifyGraphError(err, policyReadAll)
 	}
 	strengths, err := iterate[models.AuthenticationStrengthPolicyable](ctx, resp, graphClient.GetAdapter(), models.CreateAuthenticationStrengthPolicyCollectionResponseFromDiscriminatorValue)
 	if err != nil {
-		return nil, err
+		return nil, classifyGraphError(err, policyReadAll)
 	}
 
 	res := []any{}
@@ -74,11 +78,11 @@ func (a *mqlMicrosoftPoliciesAuthenticationStrengthPolicy) combinationConfigurat
 	policyId := a.Id.Data
 	resp, err := graphClient.Policies().AuthenticationStrengthPolicies().ByAuthenticationStrengthPolicyId(policyId).CombinationConfigurations().Get(ctx, nil)
 	if err != nil {
-		return nil, transformError(err)
+		return nil, classifyGraphError(err, policyReadAll)
 	}
 	configs, err := iterate[models.AuthenticationCombinationConfigurationable](ctx, resp, graphClient.GetAdapter(), models.CreateAuthenticationCombinationConfigurationCollectionResponseFromDiscriminatorValue)
 	if err != nil {
-		return nil, err
+		return nil, classifyGraphError(err, policyReadAll)
 	}
 
 	res := []any{}
@@ -235,7 +239,7 @@ func (a *mqlMicrosoftPolicies) authenticationFlowsPolicy() (*mqlMicrosoftAuthent
 
 	policy, err := graphClient.Policies().AuthenticationFlowsPolicy().Get(context.Background(), nil)
 	if err != nil {
-		return nil, transformError(err)
+		return nil, classifyGraphError(err, policyReadAll)
 	}
 	if policy == nil || policy.GetId() == nil {
 		a.AuthenticationFlowsPolicy.State = plugin.StateIsSet | plugin.StateIsNull
@@ -274,11 +278,11 @@ func (a *mqlMicrosoftPolicies) featureRolloutPolicies() ([]any, error) {
 	ctx := context.Background()
 	resp, err := graphClient.Policies().FeatureRolloutPolicies().Get(ctx, nil)
 	if err != nil {
-		return nil, transformError(err)
+		return nil, classifyGraphError(err, policyReadAll)
 	}
 	rollouts, err := iterate[models.FeatureRolloutPolicyable](ctx, resp, graphClient.GetAdapter(), models.CreateFeatureRolloutPolicyCollectionResponseFromDiscriminatorValue)
 	if err != nil {
-		return nil, err
+		return nil, classifyGraphError(err, policyReadAll)
 	}
 
 	res := []any{}
@@ -316,11 +320,11 @@ func (a *mqlMicrosoftPoliciesFeatureRolloutPolicy) groups() ([]any, error) {
 	ctx := context.Background()
 	resp, err := graphClient.Policies().FeatureRolloutPolicies().ByFeatureRolloutPolicyId(a.Id.Data).AppliesTo().Get(ctx, nil)
 	if err != nil {
-		return nil, transformError(err)
+		return nil, classifyGraphError(err, policyReadAll)
 	}
 	objects, err := iterate[models.DirectoryObjectable](ctx, resp, graphClient.GetAdapter(), models.CreateDirectoryObjectCollectionResponseFromDiscriminatorValue)
 	if err != nil {
-		return nil, err
+		return nil, classifyGraphError(err, policyReadAll)
 	}
 
 	return resolveDirectoryRefs(a.MqlRuntime, ResourceMicrosoftGroup, convert.SliceAnyToInterface(directoryObjectGroupIds(objects)))

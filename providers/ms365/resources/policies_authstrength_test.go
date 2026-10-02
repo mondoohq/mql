@@ -4,12 +4,15 @@
 package resources
 
 import (
+	"errors"
 	"testing"
 
 	kjson "github.com/microsoft/kiota-serialization-json-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
+	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 )
 
 // combinationConfigurationsJSON is a combinationConfigurations collection
@@ -100,4 +103,25 @@ func TestDirectoryObjectGroupIds(t *testing.T) {
 	assert.Equal(t, []string{"1f9a2b3c-0000-4000-8000-000000000020"}, directoryObjectGroupIds(objects))
 	assert.Empty(t, directoryObjectGroupIds(nil))
 	assert.NotNil(t, directoryObjectGroupIds(nil))
+}
+
+func TestPolicyReadsClassifyRefusal(t *testing.T) {
+	denied := odataErrWithCode("Authorization_RequestDenied")
+	denied.ResponseStatusCode = 403
+	// iterate wraps a page failure through transformError before it reaches
+	// the classifier, so the refusal must still be found behind the wrapper
+	for _, err := range []error{denied, transformError(denied)} {
+		got := classifyGraphError(err, policyReadAll)
+		require.True(t, errors.Is(got, llx.ErrForbidden), "a 403 is a refusal")
+		var lerr *llx.Error
+		require.True(t, errors.As(got, &lerr))
+		assert.Equal(t, []string{"Policy.Read.All"}, lerr.Permissions)
+	}
+
+	throttled := odataerrors.NewODataError()
+	throttled.ResponseStatusCode = 503
+	got := classifyGraphError(throttled, policyReadAll)
+	assert.False(t, errors.Is(got, llx.ErrForbidden), "a 503 is not a refusal")
+
+	assert.NoError(t, classifyGraphError(nil, policyReadAll))
 }
