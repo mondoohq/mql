@@ -39,7 +39,8 @@ type mqlClaudeCodeInternal struct {
 // the parent's backup state at creation time, so project.models() need not
 // reload it.
 type mqlClaudeCodeProjectInternal struct {
-	modelUsage map[string]claudeModelUsage
+	modelUsage    map[string]claudeModelUsage
+	usageIDPrefix string
 }
 
 func (r *mqlClaudeCode) id() (string, error) {
@@ -167,7 +168,7 @@ func (r *mqlClaudeCode) plugins() ([]interface{}, error) {
 				enabled = settings.EnabledPlugins[name]
 			}
 
-			pluginID := "claude.code.plugin/" + name + "/" + entry.Scope
+			pluginID := aiChildID("claude.code.plugin", r.configDir(), name, entry.Scope)
 			res, err := NewResource(r.MqlRuntime, "claude.code.plugin", map[string]*llx.RawData{
 				"__id":         llx.StringData(pluginID),
 				"name":         llx.StringData(name),
@@ -214,7 +215,7 @@ func (r *mqlClaudeCode) projects() ([]interface{}, error) {
 		hasMemory := dirHasFilesAfero(afs, memoryDir)
 
 		res, err := NewResource(r.MqlRuntime, "claude.code.project", map[string]*llx.RawData{
-			"__id":      llx.StringData("claude.code.project/" + projectPath),
+			"__id":      llx.StringData(aiChildID("claude.code.project", r.configDir(), projectPath)),
 			"path":      llx.StringData(projectPath),
 			"hasMemory": llx.BoolData(hasMemory),
 		})
@@ -222,6 +223,7 @@ func (r *mqlClaudeCode) projects() ([]interface{}, error) {
 			return nil, err
 		}
 		res.(*mqlClaudeCodeProject).modelUsage = state.Projects[projectPath].LastModelUsage
+		res.(*mqlClaudeCodeProject).usageIDPrefix = r.configDir() + "/" + projectPath + "/"
 		result = append(result, res)
 	}
 	return result, nil
@@ -290,7 +292,7 @@ func (r *mqlClaudeCode) mcpServers() ([]interface{}, error) {
 		}
 
 		res, err := NewResource(r.MqlRuntime, "claude.code.mcpServer", map[string]*llx.RawData{
-			"__id":        llx.StringData(claudeMcpServerID(scoped.project, name)),
+			"__id":        llx.StringData(claudeMcpServerID(r.configDir(), scoped.project, name)),
 			"name":        llx.StringData(name),
 			"project":     llx.StringData(scoped.project),
 			"type":        llx.StringData(deriveMcpTransport(srv.Type, srv.Command, srv.URL)),
@@ -345,11 +347,11 @@ func (r *mqlClaudeCode) models() ([]interface{}, error) {
 			totals[name] = agg
 		}
 	}
-	return claudeModelUsageResources(r.MqlRuntime, "", totals)
+	return claudeModelUsageResources(r.MqlRuntime, r.configDir()+"/", totals)
 }
 
 func (p *mqlClaudeCodeProject) models() ([]interface{}, error) {
-	return claudeModelUsageResources(p.MqlRuntime, p.Path.Data+"/", p.modelUsage)
+	return claudeModelUsageResources(p.MqlRuntime, p.usageIDPrefix, p.modelUsage)
 }
 
 // Helper types and functions
@@ -410,7 +412,8 @@ func (u *claudeModelUsage) add(o claudeModelUsage) {
 
 // claudeModelUsageResources turns a per-model usage map into claude.code.modelUsage
 // resources, sorted by model name. idPrefix disambiguates the cache key between
-// the host-wide aggregate ("") and a per-project breakdown ("<projectPath>/").
+// instances and between the instance-wide aggregate ("<configPath>/") and a
+// per-project breakdown ("<configPath>/<projectPath>/").
 func claudeModelUsageResources(runtime *plugin.Runtime, idPrefix string, usage map[string]claudeModelUsage) ([]interface{}, error) {
 	names := make([]string, 0, len(usage))
 	for name := range usage {
@@ -532,11 +535,8 @@ func withAuthCacheOnlyServers(servers []claudeScopedMcpServer, authNames []strin
 // claudeMcpServerID is the resource id of a Claude Code MCP server. A user-scope
 // server keeps the historical "claude.code.mcpServer/<name>" id; a project-scoped
 // one includes the project path, so the same name in two projects stays distinct.
-func claudeMcpServerID(project, name string) string {
-	if project == "" {
-		return "claude.code.mcpServer/" + name
-	}
-	return "claude.code.mcpServer/" + project + "/" + name
+func claudeMcpServerID(configDir, project, name string) string {
+	return aiChildID("claude.code.mcpServer", configDir, project, name)
 }
 
 // projectDirMap returns a map from original project path to encoded directory name.
@@ -654,7 +654,7 @@ func (r *mqlClaudeCodeProject) id() (string, error) {
 }
 
 func (r *mqlClaudeCodeMcpServer) id() (string, error) {
-	return claudeMcpServerID(r.Project.Data, r.Name.Data), nil
+	return claudeMcpServerID("", r.Project.Data, r.Name.Data), nil
 }
 
 func (r *mqlClaudeCodeRepo) id() (string, error) {

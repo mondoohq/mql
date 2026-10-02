@@ -124,6 +124,16 @@ func contentSHA256(s string) string {
 	return hex.EncodeToString(h[:])
 }
 
+// aiChildID builds the cache id of a child resource of an AI tool instance.
+// Several instances of a tool (one per user's configPath) can appear in one
+// query, and their children often share names (an MCP server called
+// "filesystem", a rule called "style"). The resource cache returns the first
+// instance for a repeated id, so an id without the parent's configPath would
+// report one user's values for another user's child.
+func aiChildID(kind, configPath string, keys ...string) string {
+	return kind + "/" + configPath + "/" + strings.Join(keys, "/")
+}
+
 // Skill parsing types and functions shared by claude.code and openai.codex.
 
 type skillInfo struct {

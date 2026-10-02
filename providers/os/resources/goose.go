@@ -82,7 +82,7 @@ func (r *mqlGoose) extensions() ([]interface{}, error) {
 	var result []interface{}
 	for name, ext := range config.Extensions {
 		res, err := NewResource(r.MqlRuntime, "goose.extension", map[string]*llx.RawData{
-			"__id":        llx.StringData("goose.extension/" + name),
+			"__id":        llx.StringData(aiChildID("goose.extension", r.ConfigPath.Data, name)),
 			"name":        llx.StringData(name),
 			"enabled":     llx.BoolData(ext.Enabled),
 			"type":        llx.StringData(ext.Type),
