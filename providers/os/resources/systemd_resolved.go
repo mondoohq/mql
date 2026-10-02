@@ -46,22 +46,33 @@ func (r *mqlSystemdResolved) resolveGlobal() (*resolvedGlobal, error) {
 	if r.fetched {
 		return r.cachedGlobal, nil
 	}
-	// resolvectl arrived in systemd 239. Ubuntu 18.04 (systemd 237) has the
-	// same report as `systemd-resolve --status`; systemd 229 (Ubuntu 16.04)
-	// has neither, and its settings come from the configuration alone.
-	stdout, ok, err := runSystemctl(r.MqlRuntime, "resolvectl status --no-pager")
+	// Both status commands ask org.freedesktop.resolve1 over D-Bus, which
+	// starts systemd-resolved, and its DNS listener, on a host where it is
+	// installed but not running (stock Debian 9 to 11). So only a running
+	// resolved is asked; otherwise the settings come from the configuration.
+	running, err := isSystemdUnitActive(r.MqlRuntime, "systemd-resolved")
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
-		stdout, ok, err = runSystemctl(r.MqlRuntime, "systemd-resolve --status --no-pager")
+	g := &resolvedGlobal{}
+	if running {
+		// resolvectl arrived in systemd 239. Ubuntu 18.04 (systemd 237) has
+		// the same report as `systemd-resolve --status`; systemd 229 (Ubuntu
+		// 16.04) has neither, and its settings come from the configuration
+		// alone.
+		stdout, ok, err := runSystemctl(r.MqlRuntime, "resolvectl status --no-pager")
 		if err != nil {
 			return nil, err
 		}
-	}
-	g := &resolvedGlobal{}
-	if ok {
-		parseResolvectlGlobal(stdout, g)
+		if !ok {
+			stdout, ok, err = runSystemctl(r.MqlRuntime, "systemd-resolve --status --no-pager")
+			if err != nil {
+				return nil, err
+			}
+		}
+		if ok {
+			parseResolvectlGlobal(stdout, g)
+		}
 	}
 
 	// The status report never carries the cache setting, and older releases
@@ -388,6 +399,16 @@ type mqlSystemdResolvedInternal struct {
 //	      DNSSEC setting: no
 //	         DNS Servers: 172.17.0.2
 //	                      169.254.169.253
+//
+// systemd 252 (Debian 12) leaves the colon out of the Global server and domain
+// labels:
+//
+//	Global
+//	          Protocols: -LLMNR -mDNS DNSOverTLS=opportunistic DNSSEC=no/unsupported
+//	   resolv.conf mode: uplink
+//	         DNS Servers 192.0.2.53
+//	Fallback DNS Servers 192.0.2.54 2001:db8::54
+//	          DNS Domain g04.example ~corp.example
 func parseResolvectlGlobal(stdout string, g *resolvedGlobal) {
 	// Default cache to true — systemd-resolved caches by default. resolvectl
 	// status does not reliably report the cache setting, so the authoritative
@@ -418,6 +439,15 @@ func parseResolvectlGlobal(stdout string, g *resolvedGlobal) {
 		}
 
 		indent := len(raw) - len(strings.TrimLeft(raw, " \t"))
+		if key, value, ok := cutResolvectlColonlessKey(trimmed); ok {
+			currentKey = key
+			valueColumn = indent + len(trimmed) - len(value)
+			if _, seen := fields[currentKey]; !seen {
+				order = append(order, currentKey)
+			}
+			fields[currentKey] = append(fields[currentKey], strings.Fields(value)...)
+			continue
+		}
 		idx := strings.Index(trimmed, ":")
 		// a continuation line starts at the value column; checking the
 		// indentation rather than looking for a colon keeps an IPv6 address
@@ -470,6 +500,26 @@ func parseResolvectlGlobal(stdout string, g *resolvedGlobal) {
 			g.dnssec = resolvedDnssecMode(value)
 		}
 	}
+}
+
+// resolvectlColonlessKeys are the Global labels systemd 252 prints without a
+// colon ("DNS Servers 192.0.2.53"); its link sections and every other release
+// print them with one.
+var resolvectlColonlessKeys = []string{"Current DNS Server", "Fallback DNS Servers", "DNS Servers", "DNS Domain"}
+
+// cutResolvectlColonlessKey splits a systemd 252 Global line such as
+// "DNS Servers 192.0.2.53" into its label and value. The value starts after
+// the spaces that follow the label, so an IPv6 address in it is not mistaken
+// for a key separator.
+func cutResolvectlColonlessKey(line string) (string, string, bool) {
+	for _, key := range resolvectlColonlessKeys {
+		rest, ok := strings.CutPrefix(line, key+" ")
+		if !ok {
+			continue
+		}
+		return key, strings.TrimLeft(rest, " "), true
+	}
+	return "", "", false
 }
 
 // resolvedDnssecMode reduces a DNSSEC report such as "no/unsupported" or

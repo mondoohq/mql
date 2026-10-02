@@ -335,8 +335,9 @@ func resolvedFile(content string) *mock.MockFileData {
 // from resolved.conf and its drop-ins.
 func TestSystemdResolved_Systemd237(t *testing.T) {
 	runtime := resolvedMockRuntime(t, map[string]*mock.Command{
-		"resolvectl status --no-pager":        {Stderr: "bash: resolvectl: command not found", ExitStatus: 127},
-		"systemd-resolve --status --no-pager": {Stdout: ubuntu1804ResolveStatus},
+		"systemctl is-active -- systemd-resolved": {},
+		"resolvectl status --no-pager":            {Stderr: "bash: resolvectl: command not found", ExitStatus: 127},
+		"systemd-resolve --status --no-pager":     {Stdout: ubuntu1804ResolveStatus},
 	}, map[string]*mock.MockFileData{
 		"/etc/systemd/resolved.conf":                resolvedFile(ubuntu1804ResolvedConf),
 		"/etc/systemd/resolved.conf.d":              {StatData: mock.FileInfo{Mode: os.ModeDir | 0o755, IsDir: true}},
@@ -363,7 +364,8 @@ func TestSystemdResolved_Systemd237(t *testing.T) {
 // local 50-*.conf, so it is the value in effect.
 func TestSystemdResolved_VendorDropinOrder(t *testing.T) {
 	runtime := resolvedMockRuntime(t, map[string]*mock.Command{
-		"resolvectl status --no-pager": {Stdout: ubuntu2204ResolvectlStatus},
+		"systemctl is-active -- systemd-resolved": {},
+		"resolvectl status --no-pager":            {Stdout: ubuntu2204ResolvectlStatus},
 	}, map[string]*mock.MockFileData{
 		"/etc/systemd/resolved.conf":                              resolvedFile("[Resolve]\n#Cache=yes\n"),
 		"/etc/systemd/resolved.conf.d":                            {StatData: mock.FileInfo{Mode: os.ModeDir | 0o755, IsDir: true}},
@@ -377,4 +379,73 @@ func TestSystemdResolved_VendorDropinOrder(t *testing.T) {
 	r := raw.(*mqlSystemdResolved)
 	assert.True(t, r.GetCache().Data)
 	assert.Equal(t, "no", r.GetDnssec().Data)
+}
+
+// `resolvectl status --no-pager` on Debian 12 (systemd 252) with DNS= and
+// Domains= set in a resolved.conf drop-in
+const debian12ResolvectlStatus = `Global
+       Protocols: -LLMNR -mDNS DNSOverTLS=opportunistic DNSSEC=no/unsupported
+resolv.conf mode: uplink
+      DNS Servers 192.0.2.53
+       DNS Domain g04.example
+
+Link 2 (ens5)
+Current Scopes: DNS
+     Protocols: +DefaultRoute +LLMNR -mDNS DNSOverTLS=opportunistic
+                DNSSEC=no/unsupported
+   DNS Servers: 172.17.0.2
+`
+
+// The same host with FallbackDNS= and a routing-only domain added, which
+// widens the label column
+const debian12ResolvectlStatusFallback = `Global
+          Protocols: -LLMNR -mDNS DNSOverTLS=opportunistic DNSSEC=no/unsupported
+   resolv.conf mode: uplink
+         DNS Servers 192.0.2.53
+Fallback DNS Servers 192.0.2.54 2001:db8::54
+          DNS Domain g04.example ~corp.example
+`
+
+func TestParseResolvectlGlobal_Systemd252(t *testing.T) {
+	g := &resolvedGlobal{}
+	parseResolvectlGlobal(debian12ResolvectlStatus, g)
+
+	assert.Equal(t, []string{"192.0.2.53"}, g.dns)
+	assert.Equal(t, []string{"g04.example"}, g.domains)
+	assert.Equal(t, "uplink", g.resolvConfMode)
+	assert.Equal(t, "no", g.llmnr)
+	assert.Equal(t, "opportunistic", g.dnsOverTls)
+	assert.Equal(t, "no", g.dnssec)
+	// the link's server is not a global one
+	assert.Empty(t, g.currentDnsServer)
+
+	g = &resolvedGlobal{}
+	parseResolvectlGlobal(debian12ResolvectlStatusFallback, g)
+	assert.Equal(t, []string{"192.0.2.53"}, g.dns)
+	assert.Equal(t, []string{"192.0.2.54", "2001:db8::54"}, g.fallbackDns)
+	assert.Equal(t, []string{"g04.example", "~corp.example"}, g.domains)
+	assert.Equal(t, "uplink", g.resolvConfMode)
+}
+
+// A resolved that is installed but not running is never asked for its
+// status: asking starts it over D-Bus. Its settings come from the
+// configuration instead.
+func TestSystemdResolved_NotRunningIsNotQueried(t *testing.T) {
+	runtime := resolvedMockRuntime(t, map[string]*mock.Command{
+		"systemctl is-active -- systemd-resolved": {ExitStatus: 3},
+		// what a started resolved would answer
+		"resolvectl status --no-pager": {Stdout: debian12ResolvectlStatus},
+	}, map[string]*mock.MockFileData{
+		"/etc/systemd/resolved.conf": resolvedFile("[Resolve]\nDNS=198.51.100.53\n"),
+	})
+
+	raw, err := CreateResource(runtime, "systemd.resolved", nil)
+	require.NoError(t, err)
+	r := raw.(*mqlSystemdResolved)
+
+	assert.False(t, r.GetActive().Data)
+	dns := r.GetDns()
+	require.NoError(t, dns.Error)
+	assert.Equal(t, []any{"198.51.100.53"}, dns.Data)
+	assert.Empty(t, r.GetResolvConfMode().Data)
 }
