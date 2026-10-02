@@ -6490,8 +6490,9 @@ systemd.units {
 // servers (`dns`) and `fallbackDns`, search `domains`, DNSSEC and
 // DNS-over-TLS modes, LLMNR and multicast-DNS settings, the
 // resolv.conf mode, and whether caching is enabled. Backed by
-// `resolvectl status` for the Global scope. Useful for asserting that
-// DNSSEC or DNS-over-TLS is enforced.
+// `resolvectl status` (`systemd-resolve --status` before systemd 239) for the
+// Global scope, with what that report leaves out read from resolved.conf and
+// its drop-ins. Useful for asserting that DNSSEC or DNS-over-TLS is enforced.
 systemd.resolved @defaults("active dns") {
   // Whether the systemd-resolved daemon is currently active
   active() bool
@@ -6509,8 +6510,8 @@ systemd.resolved @defaults("active dns") {
   domains() []string
   // DNSSEC mode
   //
-  // One of `yes`, `no`, or `allow-downgrade`. May appear as `no/unsupported`
-  // when the upstream resolver does not support DNSSEC.
+  // One of `yes`, `no`, or `allow-downgrade`: the mode the host requests,
+  // whether or not the current upstream server supports DNSSEC.
   dnssec() string
   // DNS-over-TLS mode (e.g., `yes`, `no`, `opportunistic`)
   dnsOverTls() string
@@ -6521,6 +6522,9 @@ systemd.resolved @defaults("active dns") {
   // /etc/resolv.conf management mode (e.g., `stub`, `static`, `uplink`, `foreign`)
   resolvConfMode() string
   // Whether the resolver cache is enabled
+  //
+  // The last Cache assignment across resolved.conf and its drop-ins. True for
+  // `no-negative`, which still caches successful answers.
   cache() bool
 }
 

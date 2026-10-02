@@ -4,36 +4,16 @@
 package resources
 
 import (
-	"strings"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/utils/syncx"
 )
-
-func TestParseResolvedConfCache(t *testing.T) {
-	tests := []struct {
-		name     string
-		content  string
-		fallback bool
-		want     bool
-	}{
-		{"cache disabled", "[Resolve]\nCache=no\n", true, false},
-		{"cache enabled", "[Resolve]\nCache=yes\n", false, true},
-		{"no-negative still caches", "[Resolve]\nCache=no-negative\n", false, true},
-		{"case-insensitive key and value", "[Resolve]\n  cache = NO \n", true, false},
-		{"commented out keeps fallback", "[Resolve]\n#Cache=no\n", true, true},
-		{"absent keeps fallback", "[Resolve]\nDNSSEC=yes\n", true, true},
-		{"last assignment wins", "[Resolve]\nCache=yes\nCache=no\n", true, false},
-		{"cache outside resolve section ignored", "[DHCPv4]\nCache=no\n", true, true},
-		{"cache after leaving resolve section ignored", "[Resolve]\nDNSSEC=yes\n[Network]\nCache=no\n", true, true},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := parseResolvedConfCache(strings.NewReader(tc.content), tc.fallback)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
 
 func TestParseResolvectlGlobal_Basic(t *testing.T) {
 	input := `Global
@@ -55,7 +35,7 @@ Current DNS Server: 192.168.1.1
 	assert.Equal(t, "1.1.1.1", g.currentDnsServer)
 	assert.Equal(t, []string{"corp.example.com", "~example.com"}, g.domains)
 	assert.Equal(t, "stub", g.resolvConfMode)
-	assert.Equal(t, "no/unsupported", g.dnssec)
+	assert.Equal(t, "no", g.dnssec, "the mode, without whether the server supports it")
 	assert.Equal(t, "no", g.llmnr)
 	assert.Equal(t, "no", g.multicastDns)
 	assert.Equal(t, "no", g.dnsOverTls)
@@ -158,4 +138,243 @@ func TestParseResolvectlGlobal_StopsAtBlankLine(t *testing.T) {
 	g := &resolvedGlobal{}
 	parseResolvectlGlobal(input, g)
 	assert.Equal(t, []string{"1.2.3.4"}, g.dns)
+}
+
+// Ubuntu 20.04 (systemd 245): protocol settings on their own lines, and one
+// server or domain per line.
+const ubuntu2004ResolvectlStatus = `Global
+       LLMNR setting: no                  
+MulticastDNS setting: no                  
+  DNSOverTLS setting: opportunistic       
+      DNSSEC setting: no                  
+    DNSSEC supported: no                  
+  Current DNS Server: 172.17.0.2          
+         DNS Servers: 172.17.0.2          
+                      169.254.169.253     
+Fallback DNS Servers: 192.0.2.53          
+                      198.51.100.53       
+          DNS Domain: g04.example.test    
+                      corp.example.test   
+          DNSSEC NTA: 10.in-addr.arpa     
+                      16.172.in-addr.arpa 
+                      test                
+
+Link 2 (ens5)
+      Current Scopes: DNS
+DefaultRoute setting: yes
+       LLMNR setting: yes
+         DNS Servers: 172.17.0.2
+`
+
+// Ubuntu 18.04 (systemd 237), from systemd-resolve --status: the Global block
+// carries no protocol settings at all.
+const ubuntu1804ResolveStatus = `Global
+         DNS Servers: 172.17.0.2
+                      169.254.169.253
+          DNS Domain: g04.example.test
+                      corp.example.test
+          DNSSEC NTA: 10.in-addr.arpa
+                      test
+
+Link 2 (ens5)
+      Current Scopes: DNS
+       LLMNR setting: yes
+MulticastDNS setting: no
+      DNSSEC setting: no
+    DNSSEC supported: no
+`
+
+// Ubuntu 22.04 (systemd 249): the Protocols line wraps onto the next line.
+const ubuntu2204ResolvectlStatus = `Global
+           Protocols: -LLMNR -mDNS DNSOverTLS=opportunistic
+                      DNSSEC=no/unsupported
+    resolv.conf mode: stub
+  Current DNS Server: 172.17.0.2
+         DNS Servers: 172.17.0.2 169.254.169.253
+Fallback DNS Servers: 192.0.2.53 198.51.100.53
+          DNS Domain: corp.example.test g04.example.test
+
+Link 2 (ens5)
+    Current Scopes: DNS
+         Protocols: +DefaultRoute +LLMNR -mDNS DNSOverTLS=opportunistic
+                    DNSSEC=no/unsupported
+Current DNS Server: 172.17.0.2
+`
+
+func TestParseResolvectlGlobal_Systemd245(t *testing.T) {
+	g := &resolvedGlobal{}
+	parseResolvectlGlobal(ubuntu2004ResolvectlStatus, g)
+
+	assert.Equal(t, []string{"172.17.0.2", "169.254.169.253"}, g.dns)
+	assert.Equal(t, []string{"192.0.2.53", "198.51.100.53"}, g.fallbackDns)
+	assert.Equal(t, []string{"g04.example.test", "corp.example.test"}, g.domains)
+	assert.Equal(t, "172.17.0.2", g.currentDnsServer)
+	assert.Equal(t, "no", g.llmnr)
+	assert.Equal(t, "no", g.multicastDns)
+	assert.Equal(t, "opportunistic", g.dnsOverTls)
+	assert.Equal(t, "no", g.dnssec)
+}
+
+func TestParseResolvectlGlobal_Systemd237(t *testing.T) {
+	g := &resolvedGlobal{}
+	parseResolvectlGlobal(ubuntu1804ResolveStatus, g)
+
+	assert.Equal(t, []string{"172.17.0.2", "169.254.169.253"}, g.dns)
+	assert.Equal(t, []string{"g04.example.test", "corp.example.test"}, g.domains)
+	// the link's settings are not the global ones
+	assert.Empty(t, g.llmnr)
+	assert.Empty(t, g.dnssec)
+	assert.Nil(t, g.fallbackDns)
+}
+
+func TestParseResolvectlGlobal_WrappedProtocols(t *testing.T) {
+	g := &resolvedGlobal{}
+	parseResolvectlGlobal(ubuntu2204ResolvectlStatus, g)
+
+	assert.Equal(t, "no", g.llmnr)
+	assert.Equal(t, "no", g.multicastDns)
+	assert.Equal(t, "opportunistic", g.dnsOverTls)
+	assert.Equal(t, "no", g.dnssec)
+	assert.Equal(t, "stub", g.resolvConfMode)
+	assert.Equal(t, []string{"172.17.0.2", "169.254.169.253"}, g.dns)
+}
+
+// An IPv6 server on a continuation line holds colons but is not a key.
+func TestParseResolvectlGlobal_IPv6Continuation(t *testing.T) {
+	input := `Global
+         DNS Servers: 192.0.2.1
+                      2001:db8::53
+          DNS Domain: example.test
+`
+	g := &resolvedGlobal{}
+	parseResolvectlGlobal(input, g)
+	assert.Equal(t, []string{"192.0.2.1", "2001:db8::53"}, g.dns)
+	assert.Equal(t, []string{"example.test"}, g.domains)
+}
+
+func TestResolvedDnssecMode(t *testing.T) {
+	assert.Equal(t, "no", resolvedDnssecMode("no/unsupported"))
+	assert.Equal(t, "yes", resolvedDnssecMode("yes/supported"))
+	assert.Equal(t, "allow-downgrade", resolvedDnssecMode("allow-downgrade"))
+}
+
+// resolved.conf as Ubuntu 18.04 ships it.
+const ubuntu1804ResolvedConf = `#  This file is part of systemd.
+#
+# Entries in this file show the compile time defaults.
+# You can change settings by editing this file.
+# Defaults can be restored by simply deleting this file.
+#
+# See resolved.conf(5) for details
+
+[Resolve]
+#DNS=
+#FallbackDNS=
+#Domains=
+#LLMNR=no
+#MulticastDNS=no
+#DNSSEC=no
+#Cache=yes
+#DNSStubListener=yes
+`
+
+func TestResolvedConf(t *testing.T) {
+	conf := newResolvedConf()
+	conf.applyCompiledDefaults(ubuntu1804ResolvedConf)
+	conf.apply(ubuntu1804ResolvedConf)
+	conf.apply("[Resolve]\nDNS=192.0.2.1\nDNS=192.0.2.2\nCache=no\nDNSSEC=allow-downgrade\n")
+	conf.apply("[Resolve]\nCache=no-negative\n[Other]\nCache=no\n")
+
+	assert.Equal(t, "192.0.2.1 192.0.2.2", conf.values["DNS"])
+	assert.Equal(t, "no-negative", conf.values["Cache"])
+	assert.Equal(t, "allow-downgrade", conf.values["DNSSEC"])
+	assert.Equal(t, "no", conf.values["LLMNR"])
+	assert.Equal(t, "", conf.values["FallbackDNS"])
+
+	// an empty assignment clears a list
+	conf.apply("[Resolve]\nDNS=\nDNS=198.51.100.1\n")
+	assert.Equal(t, "198.51.100.1", conf.values["DNS"])
+}
+
+// The first FallbackDNS= assignment replaces the compiled-in list rather than
+// adding to it.
+func TestResolvedConf_FallbackReplacesCompiledDefault(t *testing.T) {
+	conf := newResolvedConf()
+	conf.applyCompiledDefaults("[Resolve]\n#FallbackDNS=8.8.8.8 8.8.4.4\n#LLMNR=yes\n")
+	assert.Equal(t, "8.8.8.8 8.8.4.4", conf.values["FallbackDNS"])
+
+	conf.apply("[Resolve]\nFallbackDNS=192.0.2.53\n")
+	assert.Equal(t, "192.0.2.53", conf.values["FallbackDNS"])
+}
+
+func TestParseResolvedCache(t *testing.T) {
+	assert.False(t, parseResolvedCache("no", true))
+	assert.True(t, parseResolvedCache("yes", false))
+	assert.True(t, parseResolvedCache("no-negative", false))
+	assert.True(t, parseResolvedCache("bogus", true))
+}
+
+func resolvedMockRuntime(t *testing.T, cmds map[string]*mock.Command, files map[string]*mock.MockFileData) *plugin.Runtime {
+	t.Helper()
+	for path, file := range files {
+		file.Path = path
+	}
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "ubuntu", Family: []string{"debian", "linux", "unix", "os"}, Version: "18.04"},
+	}, mock.WithData(&mock.TomlData{Commands: cmds, Files: files}))
+	require.NoError(t, err)
+	return &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+}
+
+func resolvedFile(content string) *mock.MockFileData {
+	return &mock.MockFileData{StatData: mock.FileInfo{Mode: 0o644}, Content: content}
+}
+
+// Ubuntu 18.04 has no resolvectl. Before, every field came back empty there;
+// the report now comes from systemd-resolve --status, and what it leaves out
+// from resolved.conf and its drop-ins.
+func TestSystemdResolved_Systemd237(t *testing.T) {
+	runtime := resolvedMockRuntime(t, map[string]*mock.Command{
+		"resolvectl status --no-pager":        {Stderr: "bash: resolvectl: command not found", ExitStatus: 127},
+		"systemd-resolve --status --no-pager": {Stdout: ubuntu1804ResolveStatus},
+	}, map[string]*mock.MockFileData{
+		"/etc/systemd/resolved.conf":                resolvedFile(ubuntu1804ResolvedConf),
+		"/etc/systemd/resolved.conf.d":              {StatData: mock.FileInfo{Mode: os.ModeDir | 0o755, IsDir: true}},
+		"/etc/systemd/resolved.conf.d/50-test.conf": resolvedFile("[Resolve]\nFallbackDNS=192.0.2.53 198.51.100.53\nDNSSEC=allow-downgrade\nCache=no\n"),
+	})
+
+	raw, err := CreateResource(runtime, "systemd.resolved", nil)
+	require.NoError(t, err)
+	r := raw.(*mqlSystemdResolved)
+
+	dns := r.GetDns()
+	require.NoError(t, dns.Error)
+	assert.Equal(t, []any{"172.17.0.2", "169.254.169.253"}, dns.Data)
+	fallback := r.GetFallbackDns()
+	require.NoError(t, fallback.Error)
+	assert.Equal(t, []any{"192.0.2.53", "198.51.100.53"}, fallback.Data)
+	assert.Equal(t, "allow-downgrade", r.GetDnssec().Data)
+	assert.Equal(t, "no", r.GetLlmnr().Data)
+	// Cache=no in a drop-in, which reading resolved.conf alone missed
+	assert.False(t, r.GetCache().Data)
+}
+
+// Ubuntu 26.04 ships Cache=no-negative as a vendor drop-in that sorts after a
+// local 50-*.conf, so it is the value in effect.
+func TestSystemdResolved_VendorDropinOrder(t *testing.T) {
+	runtime := resolvedMockRuntime(t, map[string]*mock.Command{
+		"resolvectl status --no-pager": {Stdout: ubuntu2204ResolvectlStatus},
+	}, map[string]*mock.MockFileData{
+		"/etc/systemd/resolved.conf":                              resolvedFile("[Resolve]\n#Cache=yes\n"),
+		"/etc/systemd/resolved.conf.d":                            {StatData: mock.FileInfo{Mode: os.ModeDir | 0o755, IsDir: true}},
+		"/etc/systemd/resolved.conf.d/50-local.conf":              resolvedFile("[Resolve]\nCache=no\n"),
+		"/usr/lib/systemd/resolved.conf.d":                        {StatData: mock.FileInfo{Mode: os.ModeDir | 0o755, IsDir: true}},
+		"/usr/lib/systemd/resolved.conf.d/cache-no-negative.conf": resolvedFile("[Resolve]\nCache=no-negative\n"),
+	})
+
+	raw, err := CreateResource(runtime, "systemd.resolved", nil)
+	require.NoError(t, err)
+	r := raw.(*mqlSystemdResolved)
+	assert.True(t, r.GetCache().Data)
+	assert.Equal(t, "no", r.GetDnssec().Data)
 }
