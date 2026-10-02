@@ -5,6 +5,7 @@ package packagelockjson
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -128,9 +129,13 @@ func TestPackageJsonLockExtractorWithDependencies(t *testing.T) {
 	}, root)
 
 	list := info.Transitive()
-	assert.Equal(t, 1299, len(list))
+	// 1299 top-level entries plus 767 versions nested under the package that
+	// needs them (lockfileVersion 1 cannot hoist two versions to the root)
+	assert.Equal(t, 2066, len(list))
+	// istanbul-lib-instrument nests its own @babel/generator
+	assert.NotNil(t, findVersion(list, "@babel/generator", "7.0.0-beta.51"))
 
-	p := list.Find("@babel/generator")
+	p := findVersion(list, "@babel/generator", "7.0.0")
 	assert.Equal(t, &languages.Package{
 		Name:         "@babel/generator",
 		Version:      "7.0.0",
@@ -140,7 +145,7 @@ func TestPackageJsonLockExtractorWithDependencies(t *testing.T) {
 		Hashes:       []languages.PackageHash{{Alg: "SHA-512", Value: "fc1336beea64a5b657ab6da5d402ceecca972591f693c6ca56ff18fa9001167cd6773b4307f64bbde3f902ddb5bcbcf973662d484ea9ee3d85644b2a69f333e5"}},
 	}, p)
 
-	p = list.Find("@lerna/changed")
+	p = findVersion(list, "@lerna/changed", "3.3.2")
 	assert.Equal(t, &languages.Package{
 		Name:         "@lerna/changed",
 		Version:      "3.3.2",
@@ -192,4 +197,75 @@ func TestPackageLockLicense(t *testing.T) {
 		require.NotNil(t, p, name)
 		assert.Equal(t, want[name], p.License, "direct %s", name)
 	}
+}
+
+func findVersion(list languages.Packages, name, version string) *languages.Package {
+	for _, p := range list {
+		if p.Name == name && p.Version == version {
+			return p
+		}
+	}
+	return nil
+}
+
+// The fixtures are real npm output for one project: mkdirp@0.5.1 needs
+// minimist@0.0.8 while the project pins minimist@0.0.10 at the root, so npm
+// nests the older version under mkdirp. Both versions must be reported.
+func TestPackageLockNestedVersions(t *testing.T) {
+	for _, fixture := range []string{"testdata/nested-v1-lock.json", "testdata/nested-v3-lock.json"} {
+		t.Run(fixture, func(t *testing.T) {
+			f, err := os.Open(fixture)
+			require.NoError(t, err)
+			defer f.Close()
+
+			info, err := (&Extractor{}).Parse(f, "/srv/app/package-lock.json")
+			require.NoError(t, err)
+			list := info.Transitive()
+			require.NotNil(t, findVersion(list, "minimist", "0.0.10"))
+			require.NotNil(t, findVersion(list, "minimist", "0.0.8"), "nested minimist under mkdirp")
+			require.NotNil(t, findVersion(list, "ms", "2.1.1"), "nested ms under send")
+			require.NotNil(t, findVersion(list, "ms", "2.0.0"))
+		})
+	}
+}
+
+// lockfileVersion 1 has no root entry listing the project's dependencies, so
+// Direct() needs the package.json names. Without them it has nothing to go on.
+func TestPackageLockV1Direct(t *testing.T) {
+	f, err := os.Open("testdata/nested-v1-lock.json")
+	require.NoError(t, err)
+	defer f.Close()
+
+	info, err := (&Extractor{
+		DeclaredDependencies: []string{"lodash", "minimist", "mkdirp", "@types/node", "express", "not-installed"},
+	}).Parse(f, "/srv/app/package-lock.json")
+	require.NoError(t, err)
+
+	direct := info.Direct()
+	names := map[string]string{}
+	for _, p := range direct {
+		names[p.Name] = p.Version
+	}
+	assert.Equal(t, map[string]string{
+		"lodash":      "4.17.20",
+		"minimist":    "0.0.10", // the root entry, not the copy nested under mkdirp
+		"mkdirp":      "0.5.1",
+		"@types/node": "20.11.5",
+		"express":     "4.17.1",
+	}, names)
+
+	f2, err := os.Open("testdata/nested-v1-lock.json")
+	require.NoError(t, err)
+	defer f2.Close()
+	info, err = (&Extractor{}).Parse(f2, "/srv/app/package-lock.json")
+	require.NoError(t, err)
+	assert.Empty(t, info.Direct())
+}
+
+// npm 6 writes `"resolved": false` for packages bundled inside another one.
+func TestPackageLockResolvedFalse(t *testing.T) {
+	info, err := (&Extractor{}).Parse(strings.NewReader(`{"lockfileVersion":1,"dependencies":{
+		"fsevents":{"version":"1.2.4","dependencies":{"abbrev":{"version":"1.1.1","resolved":false}}}}}`), "")
+	require.NoError(t, err)
+	require.NotNil(t, findVersion(info.Transitive(), "abbrev", "1.1.1"))
 }
