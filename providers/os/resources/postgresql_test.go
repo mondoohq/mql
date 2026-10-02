@@ -423,7 +423,7 @@ func (r refusingFs) Stat(name string) (os.FileInfo, error) {
 	return r.Fs.Stat(name)
 }
 
-func withStructuredErrors(t *testing.T) {
+func pgStructuredErrors(t *testing.T) {
 	plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
 	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
 }
@@ -439,7 +439,7 @@ func TestPostgresqlRefusedCandidateIsAnError(t *testing.T) {
 	require.NoError(t, err, "v13 skips a refused candidate")
 	assert.Equal(t, "", p)
 
-	withStructuredErrors(t)
+	pgStructuredErrors(t)
 	_, err = findPostgresqlConfigFile(fs, "postgresql.conf")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, llx.ErrForbidden)
@@ -449,7 +449,7 @@ func TestPostgresqlRefusedCandidateIsAnError(t *testing.T) {
 // A file found before the refused candidate still wins, so a Debian host
 // whose config is world-readable under /etc never hits the refusal.
 func TestPostgresqlRefusalOnlyWhenReached(t *testing.T) {
-	withStructuredErrors(t)
+	pgStructuredErrors(t)
 	fs := refusingFs{Fs: pgFs(t, "/etc/postgresql/16/main/postgresql.conf"), denied: "/var/lib/postgresql"}
 	p, err := findPostgresqlConfigFile(fs, "postgresql.conf", "/var/lib/postgresql/16/main/postgresql.conf")
 	require.Error(t, err, "a preferred candidate is probed first")
