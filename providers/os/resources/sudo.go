@@ -91,8 +91,10 @@ func lookupSudoViaCommand(conn shared.Connection) string {
 }
 
 // lookupViaCommand asks the remote shell to resolve a binary on $PATH.
+// `command` is a shell builtin, which sudo cannot run ("sudo: command:
+// command not found"), so the lookup runs in its own shell.
 func lookupViaCommand(conn shared.Connection, name string) string {
-	cmd, err := conn.RunCommand("command -v " + shared.ShellEscape(name))
+	cmd, err := conn.RunCommand(lookupViaCommandLine(name))
 	if err != nil || cmd.ExitStatus != 0 || cmd.Stdout == nil {
 		return ""
 	}
@@ -101,6 +103,10 @@ func lookupViaCommand(conn shared.Connection, name string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func lookupViaCommandLine(name string) string {
+	return "sh -c " + shared.ShellEscape("command -v "+shared.ShellEscape(name))
 }
 
 // resolveVisudoPath locates the visudo binary on the asset. Filesystem

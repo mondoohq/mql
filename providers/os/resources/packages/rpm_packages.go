@@ -277,6 +277,9 @@ func (rpm *RpmPkgManager) Format() string {
 	return RpmPkgFormat
 }
 
+// rpmProbeCommand tells a host that can run rpm from one that cannot.
+const rpmProbeCommand = "rpm --version"
+
 // determine if we running against a static image, where we cannot execute the rpm command
 // once executed, it caches its result to prevent the execution of the checks many times
 func (rpm *RpmPkgManager) isStaticAnalysis() bool {
@@ -286,8 +289,12 @@ func (rpm *RpmPkgManager) isStaticAnalysis() bool {
 
 	rpm.static = false
 
-	// check if the rpm command exists, e.g it is not available on tar backend
-	c, err := rpm.conn.RunCommand("command -v rpm")
+	// check if the rpm command runs, e.g it is not available on tar backend.
+	// The probe runs rpm itself. `command -v rpm` runs the shell builtin
+	// `command`, which sudo cannot run ("sudo: command: command not found"),
+	// so every scan with --sudo fell back to the static rpmdb read, which has
+	// no update check: every package read as up to date.
+	c, err := rpm.conn.RunCommand(rpmProbeCommand)
 	if err != nil || c.ExitStatus != 0 {
 		log.Debug().Msg("mql[packages]> fallback to static rpm package manager")
 		rpm.static = true

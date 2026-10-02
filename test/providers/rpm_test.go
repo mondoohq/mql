@@ -143,7 +143,7 @@ func assertRpmPackages(t *testing.T, conn string, list []pkgInfo) {
 //
 // Both connections resolve to the *static* rpmdb path: rpm scans over the
 // docker transport do not reliably use the runtime `rpm -qa --queryformat`
-// path, because the exit code of `command -v rpm` is unreliable over docker,
+// path, because the exit code of the `rpm --version` probe is unreliable over docker,
 // so isStaticAnalysis() prefers the static read. This test therefore does NOT
 // guard the queryformat field separator — that bug (#7818, reverted in #7963)
 // lives on the runtime path and is covered deterministically by

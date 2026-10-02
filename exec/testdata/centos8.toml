@@ -7,9 +7,9 @@ stdout = "x86_64"
 [commands."uname -r"]
 stdout = "4.18.0-348.7.1.el8_5.x86_64"
 
-[commands."command -v rpm"]
-  command = "command -v rpm"
-  stdout = "/usr/bin/rpm\n"
+[commands."rpm --version"]
+  command = "rpm --version"
+  stdout = "RPM version 4.14.3\n"
   stderr = ""
   exit_status = 0
 

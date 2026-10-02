@@ -46,8 +46,8 @@ func (c *rpmUpdateHostConn) RunCommand(command string) (*shared.Command, error) 
 		}
 	}
 	switch {
-	case command == "command -v rpm":
-		return out("/usr/bin/rpm\n", 0), nil
+	case command == "rpm --version":
+		return out("RPM version 4.16.1.3\n", 0), nil
 	case strings.HasPrefix(command, "rpm -qa"):
 		return out(rpmUpdateHostList, 0), nil
 	case strings.Contains(command, "check-update"):

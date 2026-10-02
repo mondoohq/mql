@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -183,4 +184,31 @@ func TestInstalled_FalseWhenInitPathInjectionAttempt(t *testing.T) {
 	got, err := s.installed()
 	require.NoError(t, err)
 	assert.False(t, got, "literal lookup of malicious path must fail when no such file exists")
+}
+
+// sudoBuiltinConn answers commands the way a host does when every command
+// line is run as `sudo <line>`: sudo executes the first word as a program,
+// so the shell builtin `command` is not found, while `sh -c` runs it.
+type sudoBuiltinConn struct {
+	shared.Connection
+	answers map[string]string
+}
+
+func (c *sudoBuiltinConn) RunCommand(command string) (*shared.Command, error) {
+	res := &shared.Command{Command: command, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+	if out, ok := c.answers[command]; ok {
+		res.Stdout = bytes.NewBufferString(out)
+		return res, nil
+	}
+	res.Stderr = bytes.NewBufferString("sudo: " + strings.Fields(command)[0] + ": command not found\n")
+	res.ExitStatus = 1
+	return res, nil
+}
+
+func TestLookupViaCommandUnderSudo(t *testing.T) {
+	conn := &sudoBuiltinConn{answers: map[string]string{
+		"sh -c 'command -v visudo'": "/usr/local/sbin/visudo\n",
+	}}
+	assert.Equal(t, "/usr/local/sbin/visudo", lookupViaCommand(conn, "visudo"))
+	assert.Equal(t, "", lookupViaCommand(conn, "sudo"), "not on PATH")
 }
