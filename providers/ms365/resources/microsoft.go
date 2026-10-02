@@ -230,7 +230,9 @@ func (a *mqlMicrosoft) userById(id string) (*mqlMicrosoftUser, bool) {
 
 // listedUser returns the user with the given id from the tenant's user list,
 // or nil when the list has no such user. The list is fetched once per
-// runtime and indexes every user it returns, so repeated lookups don't scan it.
+// runtime, and microsoft.users.list indexes every user it returns, so the
+// lookup is a map read. The scan only runs for a list value that did not come
+// from microsoft.users.list (a recording), and indexes the match.
 func (a *mqlMicrosoft) listedUser(id string) (*mqlMicrosoftUser, error) {
 	users := a.GetUsers()
 	if users.Error != nil {
