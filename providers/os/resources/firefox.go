@@ -30,6 +30,10 @@ var firefoxBrowserConfigs = map[string][]firefoxBrowserConfig{
 		{name: "Firefox", relPath: ".mozilla/firefox"},
 		{name: "Firefox Developer Edition", relPath: ".mozilla/firefox-dev"},
 		{name: "Firefox Nightly", relPath: ".mozilla/firefox-nightly"},
+		// Firefox packaged as a snap (the default on Ubuntu 22.04 and later) or
+		// a flatpak keeps its profiles inside the package's private home.
+		{name: "Firefox", relPath: "snap/firefox/common/.mozilla/firefox"},
+		{name: "Firefox", relPath: ".var/app/org.mozilla.firefox/.mozilla/firefox"},
 		// Firefox-based browsers
 		{name: "LibreWolf", relPath: ".librewolf"},
 		{name: "Waterfox", relPath: ".waterfox"},

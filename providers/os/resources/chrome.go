@@ -37,6 +37,11 @@ var browserConfigs = map[string][]browserConfig{
 		{name: "Google Chrome Beta", relPath: ".config/google-chrome-beta"},
 		{name: "Google Chrome Dev", relPath: ".config/google-chrome-unstable"},
 		{name: "Chromium", relPath: ".config/chromium"},
+		// Snap and flatpak packages keep the browser's data directory inside
+		// the package's private home.
+		{name: "Chromium", relPath: "snap/chromium/common/chromium"},
+		{name: "Chromium", relPath: ".var/app/org.chromium.Chromium/config/chromium"},
+		{name: "Google Chrome", relPath: ".var/app/com.google.Chrome/config/google-chrome"},
 		{name: "Microsoft Edge", relPath: ".config/microsoft-edge"},
 		{name: "Microsoft Edge Beta", relPath: ".config/microsoft-edge-beta"},
 		{name: "Microsoft Edge Dev", relPath: ".config/microsoft-edge-dev"},
