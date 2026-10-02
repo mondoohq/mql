@@ -55,6 +55,13 @@ type mqlKernelInternal struct {
 	// kmodVersion. 0 means it could not be determined.
 	kmodOnce    sync.Once
 	kmodRelease int
+
+	// sysctl cache. The live parameters and the parsed sysctl configuration
+	// are read once per query by loadSysctls and shared by kernel.sysctls
+	// and every kernel.parameter.
+	sysctlOnce  sync.Once
+	sysctlState *kernelSysctls
+	sysctlErr   error
 }
 
 type KernelVersion struct {

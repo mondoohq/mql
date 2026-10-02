@@ -217,6 +217,8 @@ const (
 	ResourceSystemdBoot                                   string = "systemd.boot"
 	ResourceSystemdBootEntry                              string = "systemd.boot.entry"
 	ResourceKernel                                        string = "kernel"
+	ResourceKernelParameter                               string = "kernel.parameter"
+	ResourceKernelParameterSetting                        string = "kernel.parameter.setting"
 	ResourceKernelModule                                  string = "kernel.module"
 	ResourceKernelCmdline                                 string = "kernel.cmdline"
 	ResourceKernelTaint                                   string = "kernel.taint"
@@ -1478,6 +1480,14 @@ func init() {
 		"kernel": {
 			Init:   initKernel,
 			Create: createKernel,
+		},
+		"kernel.parameter": {
+			Init:   initKernelParameter,
+			Create: createKernelParameter,
+		},
+		"kernel.parameter.setting": {
+			// to override args, implement: initKernelParameterSetting(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createKernelParameterSetting,
 		},
 		"kernel.module": {
 			Init:   initKernelModule,
@@ -8566,6 +8576,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"kernel.parameters": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKernel).GetParameters()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"kernel.sysctls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernel).GetSysctls()).ToDataRes(types.Array(types.Resource("kernel.parameter")))
+	},
 	"kernel.modules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKernel).GetModules()).ToDataRes(types.Array(types.Resource("kernel.module")))
 	},
@@ -8586,6 +8599,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"kernel.livepatch": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKernel).GetLivepatch()).ToDataRes(types.Resource("kernel.livepatch"))
+	},
+	"kernel.parameter.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelParameter).GetName()).ToDataRes(types.String)
+	},
+	"kernel.parameter.active": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelParameter).GetActive()).ToDataRes(types.Bool)
+	},
+	"kernel.parameter.value": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelParameter).GetValue()).ToDataRes(types.String)
+	},
+	"kernel.parameter.configured": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelParameter).GetConfigured()).ToDataRes(types.String)
+	},
+	"kernel.parameter.settings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelParameter).GetSettings()).ToDataRes(types.Array(types.Resource("kernel.parameter.setting")))
+	},
+	"kernel.parameter.setting.key": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelParameterSetting).GetKey()).ToDataRes(types.String)
+	},
+	"kernel.parameter.setting.value": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelParameterSetting).GetValue()).ToDataRes(types.String)
+	},
+	"kernel.parameter.setting.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelParameterSetting).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"kernel.parameter.setting.line": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelParameterSetting).GetLine()).ToDataRes(types.Int)
+	},
+	"kernel.parameter.setting.effective": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelParameterSetting).GetEffective()).ToDataRes(types.Bool)
+	},
+	"kernel.parameter.setting.ignoreErrors": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelParameterSetting).GetIgnoreErrors()).ToDataRes(types.Bool)
 	},
 	"kernel.module.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKernelModule).GetName()).ToDataRes(types.String)
@@ -25974,6 +26020,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlKernel).Parameters, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"kernel.sysctls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernel).Sysctls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"kernel.modules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlKernel).Modules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -26000,6 +26050,58 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"kernel.livepatch": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlKernel).Livepatch, ok = plugin.RawToTValue[*mqlKernelLivepatch](v.Value, v.Error)
+		return
+	},
+	"kernel.parameter.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelParameter).__id, ok = v.Value.(string)
+		return
+	},
+	"kernel.parameter.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelParameter).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kernel.parameter.active": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelParameter).Active, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kernel.parameter.value": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelParameter).Value, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kernel.parameter.configured": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelParameter).Configured, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kernel.parameter.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelParameter).Settings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kernel.parameter.setting.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelParameterSetting).__id, ok = v.Value.(string)
+		return
+	},
+	"kernel.parameter.setting.key": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelParameterSetting).Key, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kernel.parameter.setting.value": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelParameterSetting).Value, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kernel.parameter.setting.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelParameterSetting).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"kernel.parameter.setting.line": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelParameterSetting).Line, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"kernel.parameter.setting.effective": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelParameterSetting).Effective, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kernel.parameter.setting.ignoreErrors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelParameterSetting).IgnoreErrors, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"kernel.module.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -63035,6 +63137,7 @@ type mqlKernel struct {
 	mqlKernelInternal
 	Info       plugin.TValue[any]
 	Parameters plugin.TValue[map[string]any]
+	Sysctls    plugin.TValue[[]any]
 	Modules    plugin.TValue[[]any]
 	Installed  plugin.TValue[[]any]
 	Cmdline    plugin.TValue[*mqlKernelCmdline]
@@ -63085,6 +63188,22 @@ func (c *mqlKernel) GetInfo() *plugin.TValue[any] {
 func (c *mqlKernel) GetParameters() *plugin.TValue[map[string]any] {
 	return plugin.GetOrCompute[map[string]any](&c.Parameters, func() (map[string]any, error) {
 		return c.parameters()
+	})
+}
+
+func (c *mqlKernel) GetSysctls() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Sysctls, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("kernel", c.__id, "sysctls")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sysctls()
 	})
 }
 
@@ -63188,6 +63307,151 @@ func (c *mqlKernel) GetLivepatch() *plugin.TValue[*mqlKernelLivepatch] {
 
 		return c.livepatch()
 	})
+}
+
+// mqlKernelParameter for the kernel.parameter resource
+type mqlKernelParameter struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlKernelParameterInternal it will be used here
+	Name       plugin.TValue[string]
+	Active     plugin.TValue[bool]
+	Value      plugin.TValue[string]
+	Configured plugin.TValue[string]
+	Settings   plugin.TValue[[]any]
+}
+
+// createKernelParameter creates a new instance of this resource
+func createKernelParameter(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlKernelParameter{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("kernel.parameter", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlKernelParameter) MqlName() string {
+	return "kernel.parameter"
+}
+
+func (c *mqlKernelParameter) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlKernelParameter) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlKernelParameter) GetActive() *plugin.TValue[bool] {
+	return &c.Active
+}
+
+func (c *mqlKernelParameter) GetValue() *plugin.TValue[string] {
+	return &c.Value
+}
+
+func (c *mqlKernelParameter) GetConfigured() *plugin.TValue[string] {
+	return &c.Configured
+}
+
+func (c *mqlKernelParameter) GetSettings() *plugin.TValue[[]any] {
+	return &c.Settings
+}
+
+// mqlKernelParameterSetting for the kernel.parameter.setting resource
+type mqlKernelParameterSetting struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlKernelParameterSettingInternal
+	Key          plugin.TValue[string]
+	Value        plugin.TValue[string]
+	File         plugin.TValue[*mqlFile]
+	Line         plugin.TValue[int64]
+	Effective    plugin.TValue[bool]
+	IgnoreErrors plugin.TValue[bool]
+}
+
+// createKernelParameterSetting creates a new instance of this resource
+func createKernelParameterSetting(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlKernelParameterSetting{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("kernel.parameter.setting", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlKernelParameterSetting) MqlName() string {
+	return "kernel.parameter.setting"
+}
+
+func (c *mqlKernelParameterSetting) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlKernelParameterSetting) GetKey() *plugin.TValue[string] {
+	return &c.Key
+}
+
+func (c *mqlKernelParameterSetting) GetValue() *plugin.TValue[string] {
+	return &c.Value
+}
+
+func (c *mqlKernelParameterSetting) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("kernel.parameter.setting", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.file()
+	})
+}
+
+func (c *mqlKernelParameterSetting) GetLine() *plugin.TValue[int64] {
+	return &c.Line
+}
+
+func (c *mqlKernelParameterSetting) GetEffective() *plugin.TValue[bool] {
+	return &c.Effective
+}
+
+func (c *mqlKernelParameterSetting) GetIgnoreErrors() *plugin.TValue[bool] {
+	return &c.IgnoreErrors
 }
 
 // mqlKernelModule for the kernel.module resource

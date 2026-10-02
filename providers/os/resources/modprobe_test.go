@@ -402,13 +402,13 @@ func TestParseModprobeOptionParams_Empty(t *testing.T) {
 	assert.Empty(t, parseModprobeOptionParams(""))
 }
 
-func TestIsModprobeConfigName(t *testing.T) {
-	assert.True(t, isModprobeConfigName("blacklist.conf"))
-	assert.True(t, isModprobeConfigName("zz-linked.conf"))
-	assert.False(t, isModprobeConfigName("ignored.txt"))
-	assert.False(t, isModprobeConfigName(".hidden.conf"))
-	assert.False(t, isModprobeConfigName("blacklist.conf.dpkg-old"))
-	assert.False(t, isModprobeConfigName("legacy.alias"))
+func TestIsConfDFileName(t *testing.T) {
+	assert.True(t, isConfDFileName("blacklist.conf"))
+	assert.True(t, isConfDFileName("zz-linked.conf"))
+	assert.False(t, isConfDFileName("ignored.txt"))
+	assert.False(t, isConfDFileName(".hidden.conf"))
+	assert.False(t, isConfDFileName("blacklist.conf.dpkg-old"))
+	assert.False(t, isConfDFileName("legacy.alias"))
 }
 
 // Directory listings as found on an Ubuntu 24.04 sweep host plus a /run
@@ -429,7 +429,7 @@ func TestSelectModprobeConfigFiles(t *testing.T) {
 		{"aliases.conf", "g01-ovr.conf", "sweep-lib.conf", "systemd.conf"},
 	}
 
-	got := selectModprobeConfigFiles(modprobeSearchPaths, listings)
+	got := selectConfDFiles(modprobeSearchPaths, listings)
 	assert.Equal(t, []string{
 		"/usr/lib/modprobe.d/aliases.conf",
 		"/etc/modprobe.d/blacklist.conf",
@@ -453,7 +453,7 @@ func TestSelectModprobeConfigFiles_LibOnly(t *testing.T) {
 		{"blacklist_linux-aws_4.4.0-1191-aws.conf", "sweep-lib.conf"},
 	}
 
-	got := selectModprobeConfigFiles(modprobeSearchPaths, listings)
+	got := selectConfDFiles(modprobeSearchPaths, listings)
 	assert.Equal(t, []string{
 		"/lib/modprobe.d/blacklist_linux-aws_4.4.0-1191-aws.conf",
 		"/lib/modprobe.d/sweep-lib.conf",
@@ -462,7 +462,7 @@ func TestSelectModprobeConfigFiles_LibOnly(t *testing.T) {
 }
 
 func TestSelectModprobeConfigFiles_Empty(t *testing.T) {
-	assert.Empty(t, selectModprobeConfigFiles(modprobeSearchPaths, make([][]string, len(modprobeSearchPaths))))
+	assert.Empty(t, selectConfDFiles(modprobeSearchPaths, make([][]string, len(modprobeSearchPaths))))
 }
 
 // First lines of `kmod --version` on the sweep hosts: RHEL 7 (kmod 20),
@@ -520,7 +520,7 @@ func TestSelectModprobeConfigFiles_Kmod25SkipsUsrLocal(t *testing.T) {
 	for i, dir := range dirs {
 		listings[i] = onDisk[dir]
 	}
-	got := selectModprobeConfigFiles(dirs, listings)
+	got := selectConfDFiles(dirs, listings)
 	assert.NotContains(t, got, "/usr/local/lib/modprobe.d/sweep-local.conf")
 	assert.Equal(t, []string{
 		"/usr/lib/modprobe.d/blacklist-amdgpu.conf",
@@ -562,5 +562,5 @@ func TestSelectModprobeConfigFiles_Suse15ReadsUsrLib(t *testing.T) {
 		"/etc/modprobe.d/g01-ovr.conf",
 		"/usr/lib/modprobe.d/g01-usrlib.conf",
 		"/lib/modprobe.d/systemd.conf",
-	}, selectModprobeConfigFiles(dirs, listings))
+	}, selectConfDFiles(dirs, listings))
 }

@@ -6959,15 +6959,25 @@ private systemd.boot.entry @defaults("title kind") {
 // Running kernel and its modules
 //
 // Running kernel and its configuration surface. Exposes kernel version
-// info, sysctl `parameters`, `modules`, installed kernel versions, ASLR
-// state (`aslr`, Linux and FreeBSD), and, on Linux, hardening state
-// (`cmdline`, `taint`, `lockdown`) and the live patches applied in memory
-// (`livepatch`).
+// info, sysctl `parameters` and `sysctls`, `modules`, installed kernel
+// versions, ASLR state (`aslr`, Linux and FreeBSD), and, on Linux, hardening
+// state (`cmdline`, `taint`, `lockdown`) and the live patches applied in
+// memory (`livepatch`).
 kernel @defaults("info") {
   // Active kernel information (version, path, device, arguments)
   info() dict
   // Kernel parameters map (sysctl key-value pairs)
+  //
+  // Live values only. Use `sysctls` or `kernel.parameter` for the value
+  // the configuration files set as well.
   parameters() map[string]string
+  // Every kernel parameter that is live, configured, or both
+  //
+  // A parameter set in a configuration file but not exposed by the running
+  // kernel, such as one of an unloaded module, is listed with `active`
+  // false. A glob assignment is expanded against the live parameters; one
+  // that matches none is listed under its pattern.
+  sysctls() []kernel.parameter
   // List of kernel modules
   modules() []kernel.module
   // Installed kernel versions
@@ -6982,6 +6992,72 @@ kernel @defaults("info") {
   aslr() kernel.aslr
   // Live patches applied to the running kernel (Linux only)
   livepatch() kernel.livepatch
+}
+
+// Kernel parameter (sysctl), live and configured
+//
+// One kernel parameter with the value the running kernel uses (`value`) and
+// the value the configuration files will apply at the next boot
+// (`configured`), kept apart so a check can require both. Initialize by name
+// (e.g., `kernel.parameter("fs.protected_hardlinks")`) or iterate
+// `kernel.sysctls`. Names use the dotted form `sysctl -a` prints; a name
+// written with slashes is accepted too.
+//
+// Configuration is read from the sysctl.d directories (/etc, /run,
+// /usr/local/lib, /usr/lib, /lib) with the precedence systemd-sysctl applies
+// at boot: a file hides a same-named file in a lower-priority directory, the
+// files are applied in file name order, and the last assignment wins. An
+// explicit assignment beats a glob, and `-name` excludes a parameter from
+// globs. Without systemd-sysctl, /etc/sysctl.conf is applied after the
+// sysctl.d files, as `sysctl --system` does. On BSD and macOS it is
+// /etc/sysctl.conf (and /etc/sysctl.conf.local on FreeBSD).
+kernel.parameter @defaults("name value configured") {
+  init(name string)
+
+  // Parameter name, such as `net.ipv4.ip_forward`
+  name string
+  // Whether the running kernel exposes this parameter
+  //
+  // False for a configured parameter the kernel does not have, such as one
+  // of an unloaded module, a disabled feature or an absent interface. Null
+  // when no running kernel can be read, such as in an image scan.
+  active bool
+  // Value the running kernel uses
+  //
+  // Whitespace runs are collapsed to one space, so a value with several
+  // parts compares equal to the same value in a configuration file. Null
+  // when the parameter is not active.
+  value string
+  // Value the configuration files set
+  //
+  // The value of the assignment that takes effect. Null when no
+  // configuration file sets the parameter, or when every glob that matches
+  // it is excluded.
+  configured string
+  // Every assignment that names this parameter, in the order applied
+  //
+  // Includes assignments that do not take effect, such as an earlier one
+  // overridden by a later file or a glob overridden by an explicit
+  // assignment. Exactly one has `effective` set when `configured` is set.
+  settings []kernel.parameter.setting
+}
+
+// Kernel parameter assignment
+//
+// One `name = value` line in a sysctl configuration file.
+private kernel.parameter.setting @defaults("key value file.path line") {
+  // Key as written, without a leading `-`; may be a glob
+  key string
+  // Assigned value
+  value string
+  // Configuration file containing the assignment
+  file() file
+  // Line number in the file
+  line int
+  // Whether this assignment sets the parameter's configured value
+  effective bool
+  // Whether a leading `-` tells the tool to ignore a failure to apply it
+  ignoreErrors bool
 }
 
 // System kernel module information

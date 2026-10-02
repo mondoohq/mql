@@ -153,25 +153,27 @@ func isUsrMerged(fs afero.Fs) bool {
 	return false
 }
 
-// isModprobeConfigName reports whether libkmod reads a directory entry with
-// this name: hidden files are skipped and only `*.conf` files count.
-func isModprobeConfigName(name string) bool {
+// isConfDFileName reports whether a directory entry with this name is read
+// from a *.d configuration directory: hidden files are skipped and only
+// `*.conf` files count. libkmod (modprobe.d) and systemd and procps (sysctl.d)
+// apply the same rule.
+func isConfDFileName(name string) bool {
 	return !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".conf")
 }
 
-// selectModprobeConfigFiles applies libkmod's file selection to the entries
-// found in each search directory. listings[i] holds the names of the
-// non-directory entries of dirs[i]. The first directory that holds a given
-// name wins, and the winners are returned as full paths ordered by file name
-// (strcmp order), which is the order modprobe applies them in.
-func selectModprobeConfigFiles(dirs []string, listings [][]string) []string {
+// selectConfDFiles applies the file selection libkmod, systemd and procps
+// share to the entries found in each search directory. listings[i] holds the
+// names of the non-directory entries of dirs[i]. The first directory that
+// holds a given name wins, and the winners are returned as full paths ordered
+// by file name (strcmp order), which is the order the files are applied in.
+func selectConfDFiles(dirs []string, listings [][]string) []string {
 	winners := map[string]string{}
 	for i, dir := range dirs {
 		if i >= len(listings) {
 			break
 		}
 		for _, name := range listings[i] {
-			if !isModprobeConfigName(name) {
+			if !isConfDFileName(name) {
 				continue
 			}
 			if _, ok := winners[name]; ok {
@@ -195,16 +197,22 @@ func selectModprobeConfigFiles(dirs []string, listings [][]string) []string {
 }
 
 // listModprobeConfigFiles returns the modprobe.d configuration files modprobe
-// reads, in the order it applies them. Each search directory is listed one
-// level deep (libkmod ignores subdirectories), symlinked files are followed,
-// and missing directories are skipped. A directory that exists but can't be
-// checked or listed doesn't stop the walk: the files from the other
-// directories are still returned, together with the joined errors.
+// reads, in the order it applies them. See listConfDFiles.
 func listModprobeConfigFiles(runtime *plugin.Runtime) ([]string, error) {
 	conn := runtime.Connection.(shared.Connection)
-	fs := conn.FileSystem()
+	return listConfDFiles(runtime, activeModprobeSearchPaths(runtime, conn.FileSystem()))
+}
 
-	dirs := activeModprobeSearchPaths(runtime, fs)
+// listConfDFiles returns the configuration files read from the *.d search
+// directories dirs, highest priority first, in the order they are applied.
+// Each directory is listed one level deep (subdirectories are ignored),
+// symlinked files are followed, and missing directories are skipped. A
+// directory that exists but can't be checked or listed doesn't stop the walk:
+// the files from the other directories are still returned, together with the
+// joined errors.
+func listConfDFiles(runtime *plugin.Runtime, dirs []string) ([]string, error) {
+	conn := runtime.Connection.(shared.Connection)
+	fs := conn.FileSystem()
 
 	var errs []error
 	listings := make([][]string, len(dirs))
@@ -234,8 +242,8 @@ func listModprobeConfigFiles(runtime *plugin.Runtime) ([]string, error) {
 				continue
 			}
 			if entry.Mode()&os.ModeSymlink != 0 {
-				// libkmod stats through the link: a link to a directory is
-				// skipped and a dangling link has nothing to read.
+				// libkmod and systemd stat through the link: a link to a
+				// directory is skipped and a dangling link has nothing to read.
 				target, err := fs.Stat(path.Join(dir, entry.Name()))
 				if err != nil || target.IsDir() {
 					continue
@@ -245,7 +253,7 @@ func listModprobeConfigFiles(runtime *plugin.Runtime) ([]string, error) {
 		}
 	}
 
-	return selectModprobeConfigFiles(dirs, listings), errors.Join(errs...)
+	return selectConfDFiles(dirs, listings), errors.Join(errs...)
 }
 
 // installBypassBins are the executable paths whose presence as the command
