@@ -228,14 +228,7 @@ func (c *mqlChrome) fetchAll() ([]any, []any, error) {
 			for _, profileName := range profiles {
 				profileDir := filepath.Join(browserDir, profileName)
 
-				// Try Secure Preferences first (modern Chrome stores extension data here),
-				// then fall back to Preferences
-				prefsPath := filepath.Join(profileDir, "Secure Preferences")
-				if exists, _ := afs.Exists(prefsPath); !exists {
-					prefsPath = filepath.Join(profileDir, "Preferences")
-				}
-
-				exts, scripts := c.parseProfileExtensions(afs, prefsPath, profileDir, profileName, browserCfg.name, uid, seen)
+				exts, scripts := c.parseProfileExtensions(afs, profileDir, profileName, browserCfg.name, uid, seen)
 				extensions = append(extensions, exts...)
 				allContentScripts = append(allContentScripts, scripts...)
 			}
@@ -255,31 +248,64 @@ func (c *mqlChrome) fetchAll() ([]any, []any, error) {
 	return extensions, allContentScripts, nil
 }
 
-// parseProfileExtensions parses extensions from a single Chrome profile's Preferences file
+// loadChromeExtensionSettings reads extensions.settings from a profile's
+// Preferences and Secure Preferences files and merges them. Where the entries
+// live depends on the platform: Chrome on Windows and macOS keeps them in
+// Secure Preferences, while Chrome on Linux keeps them in Preferences and
+// writes a Secure Preferences file that holds only MACs. An entry from Secure
+// Preferences wins over the same extension in Preferences when it carries a
+// manifest. ok is false when neither file could be read and parsed.
+func loadChromeExtensionSettings(afs *afero.Afero, profileDir string) (map[string]chromePrefsExtension, bool) {
+	merged := map[string]chromePrefsExtension{}
+	ok := false
+	for _, file := range []string{"Preferences", "Secure Preferences"} {
+		prefsPath := filepath.Join(profileDir, file)
+		data, err := afs.ReadFile(prefsPath)
+		if err != nil {
+			log.Debug().Err(err).Str("path", prefsPath).Msg("could not read Chrome preferences file")
+			continue
+		}
+		var prefs chromePreferences
+		if err := json.Unmarshal(data, &prefs); err != nil {
+			log.Debug().Err(err).Str("path", prefsPath).Msg("could not parse Chrome preferences file")
+			continue
+		}
+		ok = true
+		for extID, entry := range prefs.Extensions.Settings {
+			if prev, exists := merged[extID]; exists && prev.Manifest.hasIdentity() && !entry.Manifest.hasIdentity() {
+				continue
+			}
+			merged[extID] = entry
+		}
+	}
+	return merged, ok
+}
+
+// hasIdentity reports whether the manifest copy names a real extension.
+func (m chromePrefsManifest) hasIdentity() bool {
+	return m.Name != "" || m.Version != ""
+}
+
+// parseProfileExtensions parses extensions from a single Chrome profile's
+// Preferences and Secure Preferences files
 func (c *mqlChrome) parseProfileExtensions(
 	afs *afero.Afero,
-	prefsPath, profileDir, profileName, browserName string,
+	profileDir, profileName, browserName string,
 	uid int64,
 	seen map[string]bool,
 ) ([]any, []any) {
-	data, err := afs.ReadFile(prefsPath)
-	if err != nil {
-		log.Debug().Err(err).Str("path", prefsPath).Msg("could not read Preferences file, trying manifest.json fallback")
-		return c.fallbackManifestScan(afs, profileDir, profileName, browserName, uid, seen)
-	}
-
-	var prefs chromePreferences
-	if err := json.Unmarshal(data, &prefs); err != nil {
-		log.Debug().Err(err).Str("path", prefsPath).Msg("could not parse Preferences file, trying manifest.json fallback")
+	settings, ok := loadChromeExtensionSettings(afs, profileDir)
+	if !ok {
+		log.Debug().Str("profile", profileDir).Msg("no readable Chrome preferences file, trying manifest.json fallback")
 		return c.fallbackManifestScan(afs, profileDir, profileName, browserName, uid, seen)
 	}
 
 	var extensions []any
 	var contentScripts []any
 
-	for extID, entry := range prefs.Extensions.Settings {
+	for extID, entry := range settings {
 		// Skip entries without a manifest (not real extensions)
-		if entry.Manifest.Name == "" && entry.Manifest.Version == "" {
+		if !entry.Manifest.hasIdentity() {
 			continue
 		}
 
@@ -559,11 +585,27 @@ func discoverChromeProfiles(afs *afero.Afero, browserDir string) []string {
 // entryPath is empty, in which case manifestHash and referenced may be inaccurate
 // since manifest.json lives one level deeper at Extensions/<extID>/<version>/.
 func resolveExtensionDir(profileDir, entryPath, extID string) string {
+	if isAbsoluteExtensionPath(entryPath) {
+		// Component and unpacked extensions record the absolute directory they
+		// load from (e.g. /opt/google/chrome/resources/pdf).
+		return entryPath
+	}
 	if entryPath != "" {
 		// The path in Preferences is relative to the Extensions directory
 		return filepath.Join(profileDir, "Extensions", entryPath)
 	}
 	return filepath.Join(profileDir, "Extensions", extID)
+}
+
+// isAbsoluteExtensionPath reports whether an extension path from Preferences is
+// absolute on the target, which may be a different OS than the provider host:
+// a Unix path, a Windows drive path, or a UNC path.
+func isAbsoluteExtensionPath(p string) bool {
+	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\\`) {
+		return true
+	}
+	return len(p) >= 3 && p[1] == ':' && (p[2] == '\\' || p[2] == '/') &&
+		((p[0] >= 'a' && p[0] <= 'z') || (p[0] >= 'A' && p[0] <= 'Z'))
 }
 
 // chromeTimeToGoTime converts a Chrome epoch time string to a Go time.Time

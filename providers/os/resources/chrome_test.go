@@ -366,3 +366,64 @@ func TestResolveChromei18n(t *testing.T) {
 	result = resolveChromei18n(afs, extDir, "en", "Regular Name")
 	assert.Equal(t, "", result)
 }
+
+// The two files below mirror a Google Chrome profile on Ubuntu 24.04: on
+// Linux the extension entries live in Preferences, and Secure Preferences
+// holds only the protection MAC.
+const (
+	linuxChromePreferences = `{"extensions":{"settings":{
+"eimadpbcbfnmbkopoojfekhnkhdbieeh":{"from_webstore":true,"first_install_time":"13435385453500940","disable_reasons":[],"path":"eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.133_0","location":7,
+ "manifest":{"name":"Dark Reader","version":"4.9.133","manifest_version":3,"permissions":["alarms","fontSettings","scripting","storage"],"host_permissions":["*://*/*"]}},
+"mhjfbmdgcfjbbpaeojofohoefgiehjai":{"from_webstore":false,"first_install_time":"13435385452102160","disable_reasons":[],"path":"/opt/google/chrome/resources/pdf","location":5,
+ "manifest":{"name":"Chrome PDF Viewer","version":"1","manifest_version":2}}}}}`
+	linuxChromeSecurePreferences = `{"protection":{"super_mac":"33F663353631B144EA660B5F809D89BA41CAF954EE5776BE5004BB589CA96BE1"}}`
+)
+
+func TestLoadChromeExtensionSettingsLinuxLayout(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	profile := "/home/ubuntu/.config/google-chrome/Default"
+	require.NoError(t, afs.WriteFile(profile+"/Preferences", []byte(linuxChromePreferences), 0o600))
+	require.NoError(t, afs.WriteFile(profile+"/Secure Preferences", []byte(linuxChromeSecurePreferences), 0o600))
+
+	settings, ok := loadChromeExtensionSettings(afs, profile)
+	require.True(t, ok)
+	require.Contains(t, settings, "eimadpbcbfnmbkopoojfekhnkhdbieeh")
+	assert.Equal(t, "Dark Reader", settings["eimadpbcbfnmbkopoojfekhnkhdbieeh"].Manifest.Name)
+	assert.Len(t, settings, 2)
+}
+
+func TestLoadChromeExtensionSettingsSecureWins(t *testing.T) {
+	// Windows/macOS layout: Secure Preferences carries the authoritative entry,
+	// Preferences may hold a stale or partial copy of the same extension.
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	profile := "/p/Default"
+	require.NoError(t, afs.WriteFile(profile+"/Preferences", []byte(`{"extensions":{"settings":{
+"a":{"path":"a/1.0_0","manifest":{"name":"Old","version":"1.0"}},
+"b":{"path":"b/2.0_0","manifest":{"name":"Only in Preferences","version":"2.0"}}}}}`), 0o600))
+	require.NoError(t, afs.WriteFile(profile+"/Secure Preferences", []byte(`{"extensions":{"settings":{
+"a":{"path":"a/1.1_0","manifest":{"name":"New","version":"1.1"}},
+"b":{"active_permissions":{}}}}}`), 0o600))
+
+	settings, ok := loadChromeExtensionSettings(afs, profile)
+	require.True(t, ok)
+	assert.Equal(t, "New", settings["a"].Manifest.Name)
+	// A Secure Preferences entry without a manifest must not erase the
+	// Preferences entry that has one.
+	assert.Equal(t, "Only in Preferences", settings["b"].Manifest.Name)
+}
+
+func TestLoadChromeExtensionSettingsNoFiles(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	_, ok := loadChromeExtensionSettings(afs, "/p/Default")
+	assert.False(t, ok)
+}
+
+func TestResolveExtensionDirAbsolutePaths(t *testing.T) {
+	profile := "/home/ubuntu/.config/google-chrome/Default"
+	assert.Equal(t, "/opt/google/chrome/resources/pdf",
+		resolveExtensionDir(profile, "/opt/google/chrome/resources/pdf", "mhjfbmdgcfjbbpaeojofohoefgiehjai"))
+	assert.Equal(t, `C:\Users\alice\unpacked-ext`,
+		resolveExtensionDir(profile, `C:\Users\alice\unpacked-ext`, "x"))
+	assert.Equal(t, profile+"/Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.133_0",
+		resolveExtensionDir(profile, "eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.133_0", "eimadpbcbfnmbkopoojfekhnkhdbieeh"))
+}
