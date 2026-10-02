@@ -336,6 +336,14 @@ microsoft.tenant @defaults("name") {
   // for a hybrid tenant. Null on a cloud-only tenant, which has no on-premises
   // directory synchronization configured.
   onPremisesSynchronization() microsoft.onPremisesSynchronization
+  // Company-wide settings for Microsoft 365 usage reports
+  reportSettings() microsoft.tenantReportSettings
+  // Company-wide settings for people, profile cards, pronouns, and item insights
+  peopleSettings() microsoft.tenantPeopleSettings
+  // Current health of each Microsoft 365 service the tenant subscribes to
+  serviceHealth() []microsoft.serviceHealth
+  // Service health issues (incidents and advisories) reported for the tenant
+  serviceHealthIssues() []microsoft.serviceHealthIssue
   // Privacy profile data with contact email and statement URL
   privacyProfile dict
   // List of technical notification mails
@@ -528,6 +536,125 @@ private microsoft.onPremisesSynchronization @defaults("id passwordSyncEnabled bl
   userForcePasswordChangeOnLogonEnabled bool
   // Whether users are written back to the on-premises directory
   userWritebackEnabled bool
+}
+
+// Company-wide settings for Microsoft 365 usage reports
+private microsoft.tenantReportSettings @defaults("displayConcealedNames") {
+  // Whether usage reports conceal user, group, and site names
+  //
+  // When true, the Microsoft 365 admin center usage reports and the Graph
+  // reports API replace user display names, email addresses, group names, and
+  // site URLs with anonymized identifiers. When false, the reports show the
+  // real names, which exposes per-person activity to every report reader.
+  displayConcealedNames bool
+}
+
+// Company-wide settings for people, profile cards, pronouns, and item insights
+private microsoft.tenantPeopleSettings {
+  // Additional directory attributes shown on users' profile cards
+  profileCardProperties() []microsoft.tenantPeopleSettings.profileCardProperty
+  // Whether users can add pronouns to their profile
+  pronounsEnabledInOrganization() bool
+  // Whether item insights are enabled for the organization
+  //
+  // Item insights let Microsoft 365 derive relationships between users and
+  // documents (trending, used, shared) and surface them in Delve, profile
+  // cards, and search. Members of `itemInsightsDisabledForGroup` are excluded
+  // even when this is true.
+  itemInsightsEnabledInOrganization() bool
+  // Group whose members have item insights turned off
+  itemInsightsDisabledForGroup() microsoft.group
+}
+
+// Directory attribute shown on users' profile cards
+private microsoft.tenantPeopleSettings.profileCardProperty @defaults("directoryPropertyName") {
+  // Directory attribute shown on the profile card
+  //
+  // The name of a user attribute, such as `Alias`, `Fax`, `StreetAddress`, or
+  // one of the extension attributes `customAttribute1` through
+  // `customAttribute15`.
+  directoryPropertyName string
+  // Display labels for the attribute on the profile card
+  //
+  // Each entry has keys `displayName` (the default label) and `localizations`
+  // (a list of entries with keys `languageTag`, such as `de`, and
+  // `displayName`, the label shown for that language).
+  annotations []dict
+}
+
+// Microsoft 365 service health overview
+//
+// Current health of a single Microsoft 365 service the tenant subscribes to,
+// as shown on the Service health page of the Microsoft 365 admin center. The
+// `id` field identifies the service (for example `Exchange`), `service` holds
+// its display name (for example `Exchange Online`), `status` holds its current
+// state, and `issues` lists the incidents and advisories reported against it,
+// for example `microsoft.tenant.serviceHealth.where(status != "serviceOperational")`.
+private microsoft.serviceHealth @defaults("service status") {
+  // Service identifier, such as `Exchange` or `SharePoint`
+  id string
+  // Service display name, such as `Exchange Online`
+  service string
+  // Current service status
+  //
+  // One of `serviceOperational`, `investigating`, `restoringService`,
+  // `verifyingService`, `serviceRestored`, `postIncidentReviewPublished`,
+  // `serviceDegradation`, `serviceInterruption`, `extendedRecovery`,
+  // `falsePositive`, `investigationSuspended`, `resolved`,
+  // `mitigatedExternal`, `mitigated`, `resolvedExternal`, `confirmed`, or
+  // `reported`.
+  status string
+  // Incidents and advisories reported against this service
+  issues []microsoft.serviceHealthIssue
+}
+
+// Microsoft 365 service health issue
+//
+// An incident or advisory Microsoft has reported against a Microsoft 365
+// service, as shown on the Service health page of the Microsoft 365 admin
+// center. Exposes the issue `id` (for example `EX123456`), `title`, affected
+// `service`, `feature` and `featureGroup`, the current `status`, whether it is
+// an `incident` or an `advisory` (`classification`), the user-facing
+// `impactDescription`, whether it `isResolved`, and when it started, ended,
+// and last changed. For example,
+// `microsoft.tenant.serviceHealthIssues.where(classification == "incident" && !isResolved)`.
+private microsoft.serviceHealthIssue @defaults("id title status") {
+  // Issue identifier, such as `EX123456`
+  id string
+  // Issue title
+  title string
+  // Display name of the affected service, such as `Exchange Online`
+  service string
+  // Affected feature, such as `E-Mail and calendar access`
+  feature string
+  // Feature group of the affected feature, such as `Networking`
+  featureGroup string
+  // Current issue status
+  //
+  // One of `serviceOperational`, `investigating`, `restoringService`,
+  // `verifyingService`, `serviceRestored`, `postIncidentReviewPublished`,
+  // `serviceDegradation`, `serviceInterruption`, `extendedRecovery`,
+  // `falsePositive`, `investigationSuspended`, `resolved`,
+  // `mitigatedExternal`, `mitigated`, `resolvedExternal`, `confirmed`, or
+  // `reported`.
+  status string
+  // Issue classification, either `incident` or `advisory`
+  classification string
+  // Origin of the issue
+  //
+  // One of `microsoft` (a Microsoft service fault), `thirdParty` (a third-party
+  // service), or `customer` (customer-side configuration or environment).
+  origin string
+  // Description of the impact on users
+  impactDescription string
+  // Whether the issue is resolved
+  isResolved bool
+  // When the issue started
+  startDateTime time
+  // When the issue ended
+  endDateTime time
+  // When the issue was last updated
+  lastModifiedDateTime time
 }
 
 // Microsoft Entra ID Users

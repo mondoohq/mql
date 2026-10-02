@@ -32,6 +32,11 @@ const (
 	ResourceMicrosoftTenantSettings                                                                      string = "microsoft.tenantSettings"
 	ResourceMicrosoftTenantFormsSettings                                                                 string = "microsoft.tenantFormsSettings"
 	ResourceMicrosoftOnPremisesSynchronization                                                           string = "microsoft.onPremisesSynchronization"
+	ResourceMicrosoftTenantReportSettings                                                                string = "microsoft.tenantReportSettings"
+	ResourceMicrosoftTenantPeopleSettings                                                                string = "microsoft.tenantPeopleSettings"
+	ResourceMicrosoftTenantPeopleSettingsProfileCardProperty                                             string = "microsoft.tenantPeopleSettings.profileCardProperty"
+	ResourceMicrosoftServiceHealth                                                                       string = "microsoft.serviceHealth"
+	ResourceMicrosoftServiceHealthIssue                                                                  string = "microsoft.serviceHealthIssue"
 	ResourceMicrosoftUsers                                                                               string = "microsoft.users"
 	ResourceMicrosoftIdentityAndAccess                                                                   string = "microsoft.identityAndAccess"
 	ResourceMicrosoftIdentityAndAccessIdentityProvider                                                   string = "microsoft.identityAndAccess.identityProvider"
@@ -305,6 +310,26 @@ func init() {
 		"microsoft.onPremisesSynchronization": {
 			// to override args, implement: initMicrosoftOnPremisesSynchronization(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftOnPremisesSynchronization,
+		},
+		"microsoft.tenantReportSettings": {
+			// to override args, implement: initMicrosoftTenantReportSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftTenantReportSettings,
+		},
+		"microsoft.tenantPeopleSettings": {
+			// to override args, implement: initMicrosoftTenantPeopleSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftTenantPeopleSettings,
+		},
+		"microsoft.tenantPeopleSettings.profileCardProperty": {
+			// to override args, implement: initMicrosoftTenantPeopleSettingsProfileCardProperty(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftTenantPeopleSettingsProfileCardProperty,
+		},
+		"microsoft.serviceHealth": {
+			// to override args, implement: initMicrosoftServiceHealth(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftServiceHealth,
+		},
+		"microsoft.serviceHealthIssue": {
+			// to override args, implement: initMicrosoftServiceHealthIssue(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftServiceHealthIssue,
 		},
 		"microsoft.users": {
 			Init:   initMicrosoftUsers,
@@ -1409,6 +1434,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.tenant.onPremisesSynchronization": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftTenant).GetOnPremisesSynchronization()).ToDataRes(types.Resource("microsoft.onPremisesSynchronization"))
 	},
+	"microsoft.tenant.reportSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenant).GetReportSettings()).ToDataRes(types.Resource("microsoft.tenantReportSettings"))
+	},
+	"microsoft.tenant.peopleSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenant).GetPeopleSettings()).ToDataRes(types.Resource("microsoft.tenantPeopleSettings"))
+	},
+	"microsoft.tenant.serviceHealth": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenant).GetServiceHealth()).ToDataRes(types.Array(types.Resource("microsoft.serviceHealth")))
+	},
+	"microsoft.tenant.serviceHealthIssues": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenant).GetServiceHealthIssues()).ToDataRes(types.Array(types.Resource("microsoft.serviceHealthIssue")))
+	},
 	"microsoft.tenant.privacyProfile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftTenant).GetPrivacyProfile()).ToDataRes(types.Dict)
 	},
@@ -1600,6 +1637,78 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.onPremisesSynchronization.userWritebackEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftOnPremisesSynchronization).GetUserWritebackEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.tenantReportSettings.displayConcealedNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantReportSettings).GetDisplayConcealedNames()).ToDataRes(types.Bool)
+	},
+	"microsoft.tenantPeopleSettings.profileCardProperties": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantPeopleSettings).GetProfileCardProperties()).ToDataRes(types.Array(types.Resource("microsoft.tenantPeopleSettings.profileCardProperty")))
+	},
+	"microsoft.tenantPeopleSettings.pronounsEnabledInOrganization": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantPeopleSettings).GetPronounsEnabledInOrganization()).ToDataRes(types.Bool)
+	},
+	"microsoft.tenantPeopleSettings.itemInsightsEnabledInOrganization": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantPeopleSettings).GetItemInsightsEnabledInOrganization()).ToDataRes(types.Bool)
+	},
+	"microsoft.tenantPeopleSettings.itemInsightsDisabledForGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantPeopleSettings).GetItemInsightsDisabledForGroup()).ToDataRes(types.Resource("microsoft.group"))
+	},
+	"microsoft.tenantPeopleSettings.profileCardProperty.directoryPropertyName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantPeopleSettingsProfileCardProperty).GetDirectoryPropertyName()).ToDataRes(types.String)
+	},
+	"microsoft.tenantPeopleSettings.profileCardProperty.annotations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantPeopleSettingsProfileCardProperty).GetAnnotations()).ToDataRes(types.Array(types.Dict))
+	},
+	"microsoft.serviceHealth.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealth).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.serviceHealth.service": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealth).GetService()).ToDataRes(types.String)
+	},
+	"microsoft.serviceHealth.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealth).GetStatus()).ToDataRes(types.String)
+	},
+	"microsoft.serviceHealth.issues": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealth).GetIssues()).ToDataRes(types.Array(types.Resource("microsoft.serviceHealthIssue")))
+	},
+	"microsoft.serviceHealthIssue.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealthIssue).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.serviceHealthIssue.title": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealthIssue).GetTitle()).ToDataRes(types.String)
+	},
+	"microsoft.serviceHealthIssue.service": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealthIssue).GetService()).ToDataRes(types.String)
+	},
+	"microsoft.serviceHealthIssue.feature": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealthIssue).GetFeature()).ToDataRes(types.String)
+	},
+	"microsoft.serviceHealthIssue.featureGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealthIssue).GetFeatureGroup()).ToDataRes(types.String)
+	},
+	"microsoft.serviceHealthIssue.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealthIssue).GetStatus()).ToDataRes(types.String)
+	},
+	"microsoft.serviceHealthIssue.classification": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealthIssue).GetClassification()).ToDataRes(types.String)
+	},
+	"microsoft.serviceHealthIssue.origin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealthIssue).GetOrigin()).ToDataRes(types.String)
+	},
+	"microsoft.serviceHealthIssue.impactDescription": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealthIssue).GetImpactDescription()).ToDataRes(types.String)
+	},
+	"microsoft.serviceHealthIssue.isResolved": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealthIssue).GetIsResolved()).ToDataRes(types.Bool)
+	},
+	"microsoft.serviceHealthIssue.startDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealthIssue).GetStartDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.serviceHealthIssue.endDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealthIssue).GetEndDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.serviceHealthIssue.lastModifiedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceHealthIssue).GetLastModifiedDateTime()).ToDataRes(types.Time)
 	},
 	"microsoft.users.filter": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUsers).GetFilter()).ToDataRes(types.String)
@@ -7372,6 +7481,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftTenant).OnPremisesSynchronization, ok = plugin.RawToTValue[*mqlMicrosoftOnPremisesSynchronization](v.Value, v.Error)
 		return
 	},
+	"microsoft.tenant.reportSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenant).ReportSettings, ok = plugin.RawToTValue[*mqlMicrosoftTenantReportSettings](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenant.peopleSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenant).PeopleSettings, ok = plugin.RawToTValue[*mqlMicrosoftTenantPeopleSettings](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenant.serviceHealth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenant).ServiceHealth, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenant.serviceHealthIssues": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenant).ServiceHealthIssues, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.tenant.privacyProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftTenant).PrivacyProfile, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
@@ -7646,6 +7771,122 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.onPremisesSynchronization.userWritebackEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftOnPremisesSynchronization).UserWritebackEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenantReportSettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantReportSettings).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.tenantReportSettings.displayConcealedNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantReportSettings).DisplayConcealedNames, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenantPeopleSettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantPeopleSettings).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.tenantPeopleSettings.profileCardProperties": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantPeopleSettings).ProfileCardProperties, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenantPeopleSettings.pronounsEnabledInOrganization": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantPeopleSettings).PronounsEnabledInOrganization, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenantPeopleSettings.itemInsightsEnabledInOrganization": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantPeopleSettings).ItemInsightsEnabledInOrganization, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenantPeopleSettings.itemInsightsDisabledForGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantPeopleSettings).ItemInsightsDisabledForGroup, ok = plugin.RawToTValue[*mqlMicrosoftGroup](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenantPeopleSettings.profileCardProperty.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantPeopleSettingsProfileCardProperty).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.tenantPeopleSettings.profileCardProperty.directoryPropertyName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantPeopleSettingsProfileCardProperty).DirectoryPropertyName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenantPeopleSettings.profileCardProperty.annotations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantPeopleSettingsProfileCardProperty).Annotations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealth.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealth).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.serviceHealth.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealth).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealth.service": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealth).Service, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealth.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealth).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealth.issues": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealth).Issues, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealthIssue.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.serviceHealthIssue.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealthIssue.title": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).Title, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealthIssue.service": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).Service, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealthIssue.feature": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).Feature, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealthIssue.featureGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).FeatureGroup, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealthIssue.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealthIssue.classification": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).Classification, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealthIssue.origin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).Origin, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealthIssue.impactDescription": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).ImpactDescription, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealthIssue.isResolved": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).IsResolved, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealthIssue.startDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).StartDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealthIssue.endDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).EndDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceHealthIssue.lastModifiedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceHealthIssue).LastModifiedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"microsoft.users.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -16712,6 +16953,10 @@ type mqlMicrosoftTenant struct {
 	Settings                             plugin.TValue[*mqlMicrosoftTenantSettings]
 	FormsSettings                        plugin.TValue[*mqlMicrosoftTenantFormsSettings]
 	OnPremisesSynchronization            plugin.TValue[*mqlMicrosoftOnPremisesSynchronization]
+	ReportSettings                       plugin.TValue[*mqlMicrosoftTenantReportSettings]
+	PeopleSettings                       plugin.TValue[*mqlMicrosoftTenantPeopleSettings]
+	ServiceHealth                        plugin.TValue[[]any]
+	ServiceHealthIssues                  plugin.TValue[[]any]
 	PrivacyProfile                       plugin.TValue[any]
 	TechnicalNotificationMails           plugin.TValue[[]any]
 	PreferredLanguage                    plugin.TValue[string]
@@ -16854,6 +17099,70 @@ func (c *mqlMicrosoftTenant) GetOnPremisesSynchronization() *plugin.TValue[*mqlM
 		}
 
 		return c.onPremisesSynchronization()
+	})
+}
+
+func (c *mqlMicrosoftTenant) GetReportSettings() *plugin.TValue[*mqlMicrosoftTenantReportSettings] {
+	return plugin.GetOrCompute[*mqlMicrosoftTenantReportSettings](&c.ReportSettings, func() (*mqlMicrosoftTenantReportSettings, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.tenant", c.__id, "reportSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftTenantReportSettings), nil
+			}
+		}
+
+		return c.reportSettings()
+	})
+}
+
+func (c *mqlMicrosoftTenant) GetPeopleSettings() *plugin.TValue[*mqlMicrosoftTenantPeopleSettings] {
+	return plugin.GetOrCompute[*mqlMicrosoftTenantPeopleSettings](&c.PeopleSettings, func() (*mqlMicrosoftTenantPeopleSettings, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.tenant", c.__id, "peopleSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftTenantPeopleSettings), nil
+			}
+		}
+
+		return c.peopleSettings()
+	})
+}
+
+func (c *mqlMicrosoftTenant) GetServiceHealth() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ServiceHealth, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.tenant", c.__id, "serviceHealth")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.serviceHealth()
+	})
+}
+
+func (c *mqlMicrosoftTenant) GetServiceHealthIssues() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ServiceHealthIssues, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.tenant", c.__id, "serviceHealthIssues")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.serviceHealthIssues()
 	})
 }
 
@@ -17403,6 +17712,349 @@ func (c *mqlMicrosoftOnPremisesSynchronization) GetUserForcePasswordChangeOnLogo
 
 func (c *mqlMicrosoftOnPremisesSynchronization) GetUserWritebackEnabled() *plugin.TValue[bool] {
 	return &c.UserWritebackEnabled
+}
+
+// mqlMicrosoftTenantReportSettings for the microsoft.tenantReportSettings resource
+type mqlMicrosoftTenantReportSettings struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftTenantReportSettingsInternal it will be used here
+	DisplayConcealedNames plugin.TValue[bool]
+}
+
+// createMicrosoftTenantReportSettings creates a new instance of this resource
+func createMicrosoftTenantReportSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftTenantReportSettings{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.tenantReportSettings", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftTenantReportSettings) MqlName() string {
+	return "microsoft.tenantReportSettings"
+}
+
+func (c *mqlMicrosoftTenantReportSettings) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftTenantReportSettings) GetDisplayConcealedNames() *plugin.TValue[bool] {
+	return &c.DisplayConcealedNames
+}
+
+// mqlMicrosoftTenantPeopleSettings for the microsoft.tenantPeopleSettings resource
+type mqlMicrosoftTenantPeopleSettings struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftTenantPeopleSettingsInternal
+	ProfileCardProperties             plugin.TValue[[]any]
+	PronounsEnabledInOrganization     plugin.TValue[bool]
+	ItemInsightsEnabledInOrganization plugin.TValue[bool]
+	ItemInsightsDisabledForGroup      plugin.TValue[*mqlMicrosoftGroup]
+}
+
+// createMicrosoftTenantPeopleSettings creates a new instance of this resource
+func createMicrosoftTenantPeopleSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftTenantPeopleSettings{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.tenantPeopleSettings", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftTenantPeopleSettings) MqlName() string {
+	return "microsoft.tenantPeopleSettings"
+}
+
+func (c *mqlMicrosoftTenantPeopleSettings) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftTenantPeopleSettings) GetProfileCardProperties() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ProfileCardProperties, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.tenantPeopleSettings", c.__id, "profileCardProperties")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.profileCardProperties()
+	})
+}
+
+func (c *mqlMicrosoftTenantPeopleSettings) GetPronounsEnabledInOrganization() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.PronounsEnabledInOrganization, func() (bool, error) {
+		return c.pronounsEnabledInOrganization()
+	})
+}
+
+func (c *mqlMicrosoftTenantPeopleSettings) GetItemInsightsEnabledInOrganization() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ItemInsightsEnabledInOrganization, func() (bool, error) {
+		return c.itemInsightsEnabledInOrganization()
+	})
+}
+
+func (c *mqlMicrosoftTenantPeopleSettings) GetItemInsightsDisabledForGroup() *plugin.TValue[*mqlMicrosoftGroup] {
+	return plugin.GetOrCompute[*mqlMicrosoftGroup](&c.ItemInsightsDisabledForGroup, func() (*mqlMicrosoftGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.tenantPeopleSettings", c.__id, "itemInsightsDisabledForGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftGroup), nil
+			}
+		}
+
+		return c.itemInsightsDisabledForGroup()
+	})
+}
+
+// mqlMicrosoftTenantPeopleSettingsProfileCardProperty for the microsoft.tenantPeopleSettings.profileCardProperty resource
+type mqlMicrosoftTenantPeopleSettingsProfileCardProperty struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftTenantPeopleSettingsProfileCardPropertyInternal it will be used here
+	DirectoryPropertyName plugin.TValue[string]
+	Annotations           plugin.TValue[[]any]
+}
+
+// createMicrosoftTenantPeopleSettingsProfileCardProperty creates a new instance of this resource
+func createMicrosoftTenantPeopleSettingsProfileCardProperty(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftTenantPeopleSettingsProfileCardProperty{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.tenantPeopleSettings.profileCardProperty", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftTenantPeopleSettingsProfileCardProperty) MqlName() string {
+	return "microsoft.tenantPeopleSettings.profileCardProperty"
+}
+
+func (c *mqlMicrosoftTenantPeopleSettingsProfileCardProperty) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftTenantPeopleSettingsProfileCardProperty) GetDirectoryPropertyName() *plugin.TValue[string] {
+	return &c.DirectoryPropertyName
+}
+
+func (c *mqlMicrosoftTenantPeopleSettingsProfileCardProperty) GetAnnotations() *plugin.TValue[[]any] {
+	return &c.Annotations
+}
+
+// mqlMicrosoftServiceHealth for the microsoft.serviceHealth resource
+type mqlMicrosoftServiceHealth struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftServiceHealthInternal it will be used here
+	Id      plugin.TValue[string]
+	Service plugin.TValue[string]
+	Status  plugin.TValue[string]
+	Issues  plugin.TValue[[]any]
+}
+
+// createMicrosoftServiceHealth creates a new instance of this resource
+func createMicrosoftServiceHealth(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftServiceHealth{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.serviceHealth", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftServiceHealth) MqlName() string {
+	return "microsoft.serviceHealth"
+}
+
+func (c *mqlMicrosoftServiceHealth) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftServiceHealth) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftServiceHealth) GetService() *plugin.TValue[string] {
+	return &c.Service
+}
+
+func (c *mqlMicrosoftServiceHealth) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlMicrosoftServiceHealth) GetIssues() *plugin.TValue[[]any] {
+	return &c.Issues
+}
+
+// mqlMicrosoftServiceHealthIssue for the microsoft.serviceHealthIssue resource
+type mqlMicrosoftServiceHealthIssue struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftServiceHealthIssueInternal it will be used here
+	Id                   plugin.TValue[string]
+	Title                plugin.TValue[string]
+	Service              plugin.TValue[string]
+	Feature              plugin.TValue[string]
+	FeatureGroup         plugin.TValue[string]
+	Status               plugin.TValue[string]
+	Classification       plugin.TValue[string]
+	Origin               plugin.TValue[string]
+	ImpactDescription    plugin.TValue[string]
+	IsResolved           plugin.TValue[bool]
+	StartDateTime        plugin.TValue[*time.Time]
+	EndDateTime          plugin.TValue[*time.Time]
+	LastModifiedDateTime plugin.TValue[*time.Time]
+}
+
+// createMicrosoftServiceHealthIssue creates a new instance of this resource
+func createMicrosoftServiceHealthIssue(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftServiceHealthIssue{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.serviceHealthIssue", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) MqlName() string {
+	return "microsoft.serviceHealthIssue"
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) GetTitle() *plugin.TValue[string] {
+	return &c.Title
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) GetService() *plugin.TValue[string] {
+	return &c.Service
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) GetFeature() *plugin.TValue[string] {
+	return &c.Feature
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) GetFeatureGroup() *plugin.TValue[string] {
+	return &c.FeatureGroup
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) GetClassification() *plugin.TValue[string] {
+	return &c.Classification
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) GetOrigin() *plugin.TValue[string] {
+	return &c.Origin
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) GetImpactDescription() *plugin.TValue[string] {
+	return &c.ImpactDescription
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) GetIsResolved() *plugin.TValue[bool] {
+	return &c.IsResolved
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) GetStartDateTime() *plugin.TValue[*time.Time] {
+	return &c.StartDateTime
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) GetEndDateTime() *plugin.TValue[*time.Time] {
+	return &c.EndDateTime
+}
+
+func (c *mqlMicrosoftServiceHealthIssue) GetLastModifiedDateTime() *plugin.TValue[*time.Time] {
+	return &c.LastModifiedDateTime
 }
 
 // mqlMicrosoftUsers for the microsoft.users resource
