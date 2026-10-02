@@ -150,50 +150,22 @@ func collectNpmPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []str
 			return nil
 		}
 
-		// when node_modules exist we check the directory for dependencies (only applies if lockfile is missing)
-		nodeModulesPath := filepath.Join(walkPath, "node_modules")
-		_, err := afs.Stat(nodeModulesPath)
-		if err == nil {
-			log.Debug().Str("path", walkPath).Msg("found npm package")
-			files, err := afs.ReadDir(nodeModulesPath)
-			if err != nil {
-				return nil
-			}
-			for _, nodePkg := range files {
-				p := nodePkg.Name()
-
-				// we ignore the files
-				if !nodePkg.IsDir() {
-					continue
-				}
-
-				// check that the directory starts with @, which is used for npm scopes
-				// see https://docs.npmjs.com/about-scopes
-				if strings.HasPrefix(nodePkg.Name(), "@") {
-					scopePath := filepath.Join(nodeModulesPath, nodePkg.Name())
-					d, err := afs.Open(scopePath)
-					if err != nil {
-						continue
-					}
-					scopedPkgs, err := d.Readdirnames(-1)
-					if err != nil {
-						continue
-					}
-					for _, scopedPkg := range scopedPkgs {
-						isDir, err := afs.IsDir(filepath.Join(scopePath, scopedPkg))
-						if !isDir || err != nil {
-							continue
-						}
-						handler(filepath.Join(scopePath, scopedPkg))
-					}
-				} else {
-					log.Debug().Str("path", p).Msg("checking for package-lock.json or package.json file")
-					handler(filepath.Join(nodeModulesPath, p))
-				}
-			}
+		// a project with a package.json was read above, node_modules included
+		if exists, _ := afs.Exists(filepath.Join(walkPath, "package.json")); exists {
 			return nil
 		}
 
+		// a directory that only holds node_modules, like a global prefix
+		// (/usr/local/lib): report what is installed there, nested packages
+		// included, with the versions on disk
+		if !hasNodeModules(fs, walkPath) {
+			return nil
+		}
+		log.Debug().Str("path", walkPath).Msg("found npm node_modules")
+		nodeModulesPath := filepath.Join(walkPath, "node_modules")
+		installed := installedNodeModules(fs, nodeModulesPath)
+		directPackageList = append(directPackageList, topLevelNodeModules(nodeModulesPath, installed)...)
+		transitivePackageList = append(transitivePackageList, installed...)
 		return nil
 	})
 	if err != nil {
@@ -315,6 +287,11 @@ func collectNpmPackages(runtime *plugin.Runtime, fs afero.Fs, path string) (lang
 		} else if strings.HasSuffix(searchPath, "deno.lock") {
 			extractor = &denolock.Extractor{}
 		} else if strings.HasSuffix(searchPath, "package.json") {
+			// without a lockfile, node_modules holds the versions that are
+			// installed; the package.json only has the ranges it accepts
+			if hasNodeModules(fs, filepath.Dir(searchPath)) {
+				return collectInstalledNpmPackages(fs, searchPath, []byte(content.Data))
+			}
 			extractor = &packagejson.Extractor{}
 		}
 
