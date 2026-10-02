@@ -113,6 +113,8 @@ func TestManagerWindows(t *testing.T) {
 	grp = findGroup(groupList, "S-1-5-32-555")
 	assert.Equal(t, "Remote Desktop Users", grp.Name)
 	assert.Equal(t, []string{}, grp.Members)
+	// read and empty, not unreadable
+	assert.False(t, grp.MembersUnknown)
 
 	assert.Equal(t, 25, len(groupList))
 }
