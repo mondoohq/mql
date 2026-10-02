@@ -72,8 +72,63 @@ func TestNpmPackage_unique(t *testing.T) {
 
 	// To get the correct data, we need distinct IDs
 	require.NotEqual(t, pkg2.MqlID(), pkg3.MqlID())
-	require.Equal(t, "yosay/usr/local/lib/node_modules/yo/package.json", pkg2.MqlID())
-	require.Equal(t, "yosay/usr/local/lib/node_modules/generator-code/package.json", pkg3.MqlID())
+	require.Equal(t, "yosay@^2.0.2/usr/local/lib/node_modules/yo/package.json", pkg2.MqlID())
+	require.Equal(t, "yosay@^3.0.0/usr/local/lib/node_modules/generator-code/package.json", pkg3.MqlID())
+}
+
+// One lockfile installs minimist twice: 0.0.10 at the root and 0.0.8 nested
+// under mkdirp. Every entry carries the lockfile as its evidence path, so an id
+// of name+path gave both the same cache key and the nested version vanished
+// from npm.packages.list. Real npm output for lockfileVersion 1 and 3.
+func TestNpmPackagesNestedVersions(t *testing.T) {
+	lockDir := filepath.Join("languages", "javascript", "packagelockjson", "testdata")
+	manifest, err := os.ReadFile(filepath.Join(lockDir, "nested-v1-package.json"))
+	require.NoError(t, err)
+
+	for _, lock := range []string{"nested-v1-lock.json", "nested-v3-lock.json"} {
+		t.Run(lock, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join(lockDir, lock))
+			require.NoError(t, err)
+			mockFS := afero.NewMemMapFs()
+			require.NoError(t, afero.WriteFile(mockFS, "/srv/app/package-lock.json", data, 0o644))
+			require.NoError(t, afero.WriteFile(mockFS, "/srv/app/package.json", manifest, 0o644))
+			conn, err := fs.NewFileSystemConnectionWithFs(0, &inventory.Config{}, &inventory.Asset{}, "", nil, mockFS)
+			require.NoError(t, err)
+			r := &plugin.Runtime{
+				Resources:  &syncx.Map[plugin.Resource]{},
+				Connection: conn,
+				Callback:   &providerCallbacks{},
+			}
+			raw, err := CreateResource(r, "npm.packages", map[string]*llx.RawData{
+				"path": llx.StringData("/srv/app"),
+			})
+			require.NoError(t, err)
+			pkgs := raw.(*mqlNpmPackages)
+			require.NoError(t, pkgs.gatherData())
+
+			minimist := []string{}
+			for _, p := range pkgs.List.Data {
+				if p.(*mqlNpmPackage).Name.Data == "minimist" {
+					minimist = append(minimist, p.(*mqlNpmPackage).Version.Data)
+				}
+			}
+			require.ElementsMatch(t, []string{"0.0.8", "0.0.10"}, minimist)
+
+			direct := map[string]string{}
+			for _, p := range pkgs.DirectDependencies.Data {
+				direct[p.(*mqlNpmPackage).Name.Data] = p.(*mqlNpmPackage).Version.Data
+			}
+			require.Equal(t, "4.17.20", direct["lodash"])
+			require.Equal(t, "0.0.10", direct["minimist"])
+		})
+	}
+}
+
+func TestParseNpmDeclaredDependencies(t *testing.T) {
+	require.Equal(t, []string{"@types/node", "lodash"},
+		parseNpmDeclaredDependencies([]byte(`{"dependencies":{"lodash":"4.17.20","@types/node":"20.11.5"},"devDependencies":{"left-pad":"1.3.0"}}`)))
+	require.Empty(t, parseNpmDeclaredDependencies([]byte(`{"name":"x"}`)))
+	require.Nil(t, parseNpmDeclaredDependencies([]byte(`not json`)))
 }
 
 // Mock callbacks for testing
