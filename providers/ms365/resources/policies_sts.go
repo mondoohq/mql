@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
@@ -456,7 +457,7 @@ func (a *mqlMicrosoftServiceprincipal) tokenLifetimePolicies() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if containsString(spIDs, a.Id.Data) {
+		if slices.Contains(spIDs, a.Id.Data) {
 			res = append(res, policy)
 		}
 	}
@@ -479,7 +480,7 @@ func (a *mqlMicrosoftServiceprincipal) claimsMappingPolicies() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if containsString(spIDs, a.Id.Data) {
+		if slices.Contains(spIDs, a.Id.Data) {
 			res = append(res, policy)
 		}
 	}
@@ -502,18 +503,9 @@ func (a *mqlMicrosoftServiceprincipal) homeRealmDiscoveryPolicies() ([]any, erro
 		if err != nil {
 			return nil, err
 		}
-		if containsString(spIDs, a.Id.Data) {
+		if slices.Contains(spIDs, a.Id.Data) {
 			res = append(res, policy)
 		}
 	}
 	return res, nil
-}
-
-func containsString(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
