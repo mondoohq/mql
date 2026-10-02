@@ -273,10 +273,14 @@ func TestClassifyGraphError_NamesIdentityPermission(t *testing.T) {
 	require.True(t, errors.As(forbidden, &lerr))
 	assert.Contains(t, lerr.Permissions, permIdentityProviderReadAll)
 
-	// A server error is not a refusal and stays unclassified.
+	// A server error is not a refusal: the service is unavailable.
 	other := classifyGraphError(newIdpODataError(http.StatusInternalServerError))
 	assert.False(t, errors.Is(other, llx.ErrForbidden))
-	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(other))
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNAVAILABLE, llx.KindOf(other))
+
+	// A missing object is not a refusal either and stays unclassified.
+	notFound := classifyGraphError(newIdpODataError(http.StatusNotFound))
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(notFound))
 
 	// A transport failure is never a refusal.
 	transport := classifyGraphError(errors.New("connection reset"))
