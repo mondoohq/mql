@@ -177,7 +177,7 @@ func TestScanPluginDirFollowsSymlinkedPluginDirectories(t *testing.T) {
 // next to an index.php with no header that is not a plugin.
 func TestScanPluginDirSingleFilePlugins(t *testing.T) {
 	afs := &afero.Afero{Fs: afero.NewOsFs()}
-	plugins, err := ScanPluginDir(afs, "./testdata-single-file")
+	plugins, err := ScanPluginDir(afs, "./testdata/single-file/wp-content/plugins")
 	require.NoError(t, err)
 	bySlug := pluginsBySlug(t, plugins)
 	require.Len(t, bySlug, 3)
@@ -188,7 +188,7 @@ func TestScanPluginDirSingleFilePlugins(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "1.7.2", hello.Version)
 	assert.Equal(t, "Hello Dolly", hello.DisplayName)
-	assert.Equal(t, "testdata-single-file/hello.php", hello.FilePath)
+	assert.Equal(t, "testdata/single-file/wp-content/plugins/hello.php", hello.FilePath)
 	assert.Equal(t, "", hello.ReadmePath)
 
 	// without a Text Domain the file name is the slug
