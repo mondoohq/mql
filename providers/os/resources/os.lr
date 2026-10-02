@@ -5036,12 +5036,13 @@ mysql {
 // Options stay grouped as the server reads them. `sections` holds every
 // option group, `serverOptions` merges the groups mysqld itself reads
 // (`[mysqld]`, `[server]`, and the version-suffixed group for the installed
-// server version, such as `[mysqld-8.0]` on 8.0), and `clientOptions` merges `[client]`, `[mysql]`, and
-// `[client-server]`, where a readable `password` exposes credentials to
-// every account that can read the file. Convenience views cover networking,
-// TLS, authentication and password policy, filesystem privileges, logging,
-// binary logging and replication, and encryption at rest. `userFiles`
-// reports the per-user option files under home directories.
+// server version, such as `[mysqld-8.0]` on 8.0), and `clientOptions`
+// merges `[client]`, `[mysql]`, and `[client-server]`, where a readable
+// `password` exposes credentials to every account that can read the file.
+// Convenience views cover networking, TLS, authentication and password
+// policy, filesystem privileges, logging, binary logging and replication,
+// and encryption at rest. `userFiles` reports the per-user option files
+// under home directories.
 //
 // By default the file is located by probing the well-known paths for
 // Debian/Ubuntu and RPM installations, and returns nothing when the host
