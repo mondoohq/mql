@@ -333,10 +333,10 @@ func resolveNginxLaunch(afs *afero.Afero, buildOutput func(bin string) string, p
 }
 
 // nginxPidDirective returns the pid directive of the main context of the
-// configuration file at path, or "" when it has none or can't be read.
+// configuration file at confPath, or "" when it has none or can't be read.
 // A relative pid path is left out, since its prefix is not known here.
-func nginxPidDirective(afs *afero.Afero, path string) string {
-	data, err := afs.ReadFile(path)
+func nginxPidDirective(afs *afero.Afero, confPath string) string {
+	data, err := afs.ReadFile(confPath)
 	if err != nil {
 		return ""
 	}
@@ -347,7 +347,7 @@ func nginxPidDirective(afs *afero.Afero, path string) string {
 			pid = d.Args[0]
 		}
 	}
-	if !filepath.IsAbs(pid) {
+	if !path.IsAbs(pid) {
 		return ""
 	}
 	return pid
@@ -371,7 +371,7 @@ func nginxMasterArgs(afs *afero.Afero, pidFiles []string) (nginx.LaunchArgs, boo
 		if _, err := strconv.Atoi(pid); err != nil {
 			continue
 		}
-		raw, err := afs.ReadFile(filepath.Join("/proc", pid, "cmdline"))
+		raw, err := afs.ReadFile(path.Join("/proc", pid, "cmdline"))
 		if err != nil {
 			continue
 		}
@@ -383,10 +383,10 @@ func nginxMasterArgs(afs *afero.Afero, pidFiles []string) (nginx.LaunchArgs, boo
 }
 
 // nginxGlobalDirectives returns the -g directives nginx reads as part of the
-// main context of the configuration file at path: those of the running
-// master when path is the file it loads, otherwise none.
-func nginxGlobalDirectives(launch nginxLaunch, path string) []nginx.Directive {
-	if launch.globals == "" || launch.conf != path {
+// main context of the configuration file at confPath: those of the running
+// master when confPath is the file it loads, otherwise none.
+func nginxGlobalDirectives(launch nginxLaunch, confPath string) []nginx.Directive {
+	if launch.globals == "" || launch.conf != confPath {
 		return nil
 	}
 	directives, _ := nginx.Parse(launch.globals)
