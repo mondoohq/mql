@@ -1759,9 +1759,12 @@ inetd {}
 // launch on demand. Each active entry pairs a service with its socket
 // type, protocol, wait mode, run-as user, and server program. The
 // configuration is assembled from /etc/inetd.conf together with any
-// drop-in files under /etc/inetd.d. A missing configuration yields no
-// entries, so audits such as serviceNames.none("ftp") hold trivially on
-// systems that don't run inetd.
+// drop-in files under /etc/inetd.d. An xinetd configuration, such as
+// inetd.config("/etc/xinetd.conf"), is read with the files it includes, and
+// its entries are the service blocks xinetd runs: blocks with disable = yes,
+// or disabled by the enabled and disabled lists of the defaults block, are
+// left out. A missing configuration yields no entries, so audits such as
+// serviceNames.none("ftp") hold trivially on systems that don't run inetd.
 inetd.config {
   init(path? string)
   // Primary inetd configuration file

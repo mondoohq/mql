@@ -1,0 +1,13 @@
+# default: off
+# description: A daytime server. This is the tcp version.
+
+service daytime
+{
+	type		= INTERNAL
+	id		= daytime-stream
+	socket_type	= stream
+	protocol	= tcp
+	user		= root
+	wait		= no
+	disable = no
+}                                                                               

@@ -1,0 +1,13 @@
+# default: off
+# description: A discard server. This is the tcp version.
+
+service discard
+{
+	type		= INTERNAL
+	id		= discard-stream
+	socket_type	= stream
+	protocol	= tcp
+	user		= root
+	wait		= no
+	disable		= yes
+}                                                                               

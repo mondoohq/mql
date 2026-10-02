@@ -1,0 +1,14 @@
+# default: off
+# description: A discard server. This is the udp version.
+
+service discard
+{
+	type		= INTERNAL UNLISTED
+	id		= discard-dgram
+	socket_type	= dgram
+	protocol	= udp
+	user		= root
+	wait		= yes
+	disable		= yes
+	port		= 9
+}                                                                               

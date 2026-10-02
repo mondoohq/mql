@@ -1,0 +1,13 @@
+# default: off
+# description: A chargen server. This is the tcp version.
+
+service chargen
+{
+	type		= INTERNAL
+	id		= chargen-stream
+	socket_type	= stream
+	protocol	= tcp
+	user		= root
+	wait		= no
+	disable		= yes
+}                                                                               
