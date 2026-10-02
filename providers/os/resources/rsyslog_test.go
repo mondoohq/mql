@@ -225,6 +225,40 @@ func TestRsyslogConf_DotDFragmentIncludesAreFollowed(t *testing.T) {
 		"the fragment's own $IncludeConfig must be followed")
 	assert.NotContains(t, paths, "/etc/rsyslog.nested/notes.txt",
 		"the include glob still applies to the nested directory")
+	assert.NotContains(t, paths, "/etc/rsyslog.d/50-frag.conf.rpmnew",
+		"auto-discovery reads only *.conf fragments")
+}
+
+// A config that includes its fragments explicitly is read the way rsyslog
+// reads it: the backups and package leftovers in rsyslog.d stay out, and so do
+// their settings. Before, auto-discovery added every file in rsyslog.d on top
+// of the include, and params took FileCreateMode from 30-site.conf.rpmsave.
+func TestRsyslogConf_ExplicitIncludeSkipsAutoDiscovery(t *testing.T) {
+	fixturePath, err := filepath.Abs("testdata/rsyslog_include_backups.toml")
+	require.NoError(t, err)
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "redhat", Version: "9.7", Family: []string{"redhat", "linux", "unix", "os"}},
+	}, mock.WithPath(fixturePath))
+	require.NoError(t, err)
+	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+
+	raw, err := CreateResource(runtime, "rsyslog.conf", map[string]*llx.RawData{
+		"path": llx.StringData("/etc/rsyslog.conf"),
+	})
+	require.NoError(t, err)
+	conf := raw.(*mqlRsyslogConf)
+
+	files := conf.GetFiles()
+	require.NoError(t, files.Error)
+	paths := []string{}
+	for _, f := range files.Data {
+		paths = append(paths, f.(*mqlFile).Path.Data)
+	}
+	assert.ElementsMatch(t, []string{"/etc/rsyslog.conf", "/etc/rsyslog.d/30-site.conf"}, paths)
+
+	params := conf.GetParams()
+	require.NoError(t, params.Error)
+	assert.Equal(t, "0644", params.Data["FileCreateMode"])
 }
 
 func TestRsyslogConfPath(t *testing.T) {

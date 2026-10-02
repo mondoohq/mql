@@ -6,11 +6,14 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/crontab"
@@ -73,8 +76,9 @@ func (c *mqlCrontab) entries() ([]any, error) {
 	}
 
 	// Parse system cron.d directory
+	flavor := cronFlavorOf(conn.Asset())
 	for _, dir := range systemCronDirs {
-		entries, files, err := c.parseCronDir(afs, dir, true)
+		entries, files, err := c.parseCronDir(afs, dir, true, flavor)
 		if err != nil {
 			continue
 		}
@@ -84,7 +88,11 @@ func (c *mqlCrontab) entries() ([]any, error) {
 
 	// Parse user crontabs. The filename is the user, so the entries carry
 	// that name as their default user.
-	for _, uc := range collectUserCrontabFiles(afs, userCrontabDirs) {
+	userFiles, err := collectUserCrontabFiles(afs, userCrontabDirs)
+	if err != nil {
+		return nil, err
+	}
+	for _, uc := range userFiles {
 		entries, fileRes, err := c.parseCrontabFile(afs, uc.path, false, uc.user)
 		if err != nil {
 			continue
@@ -158,8 +166,73 @@ func (c *mqlCrontab) parseCrontabFile(afs *afero.Afero, path string, hasUserFiel
 	return resources, fileRes, nil
 }
 
+// cronFlavor is the cron implementation whose rules decide which files in
+// /etc/cron.d it runs.
+type cronFlavor int
+
+const (
+	// cronFlavorDefault skips dotfiles and common backup and package-manager
+	// leftovers, for platforms whose cron is not one of the two below.
+	cronFlavorDefault cronFlavor = iota
+	// cronFlavorDebian is Debian's cron, which runs a cron.d file only when
+	// its name follows the run-parts convention.
+	cronFlavorDebian
+	// cronFlavorCronie is cronie (RHEL, Fedora, SUSE), which runs every file
+	// except a few it names.
+	cronFlavorCronie
+)
+
+func cronFlavorOf(asset *inventory.Asset) cronFlavor {
+	if asset == nil || asset.Platform == nil {
+		return cronFlavorDefault
+	}
+	switch {
+	case asset.Platform.IsFamily("debian"):
+		return cronFlavorDebian
+	case asset.Platform.IsFamily("redhat"), asset.Platform.IsFamily("suse"):
+		return cronFlavorCronie
+	default:
+		return cronFlavorDefault
+	}
+}
+
+// reDebianCronDName is the run-parts naming Debian's cron requires of a
+// cron.d file; any other name (with a dot, a tilde, ...) is ignored.
+var reDebianCronDName = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// cronDFileIsSkipped reports whether the cron daemon ignores the cron.d file
+// with this name.
+//
+// The rules differ by implementation, and applying the wrong one hides a job
+// that runs. cronie (not_a_crontab in its database.c) skips only names that
+// start with '.' or '#', end in '~', or end in .rpmsave, .rpmorig or .rpmnew:
+// it runs x.bak, x.dpkg-old, x.swp and x.dotted. Debian's cron runs only
+// names made of letters, digits, '_' and '-'.
+func cronDFileIsSkipped(name string, flavor cronFlavor) bool {
+	switch flavor {
+	case cronFlavorDebian:
+		return !reDebianCronDName.MatchString(name)
+	case cronFlavorCronie:
+		return strings.HasPrefix(name, ".") ||
+			strings.HasPrefix(name, "#") ||
+			strings.HasSuffix(name, "~") ||
+			strings.HasSuffix(name, ".rpmsave") ||
+			strings.HasSuffix(name, ".rpmorig") ||
+			strings.HasSuffix(name, ".rpmnew")
+	default:
+		return strings.HasPrefix(name, ".") ||
+			strings.HasSuffix(name, "~") ||
+			strings.HasSuffix(name, ".bak") ||
+			strings.HasSuffix(name, ".dpkg-old") ||
+			strings.HasSuffix(name, ".dpkg-new") ||
+			strings.HasSuffix(name, ".dpkg-dist") ||
+			strings.HasSuffix(name, ".rpmsave") ||
+			strings.HasSuffix(name, ".rpmnew")
+	}
+}
+
 // parseCronDir parses all files in a cron directory (like /etc/cron.d)
-func (c *mqlCrontab) parseCronDir(afs *afero.Afero, dir string, hasUserField bool) ([]any, []any, error) {
+func (c *mqlCrontab) parseCronDir(afs *afero.Afero, dir string, hasUserField bool, flavor cronFlavor) ([]any, []any, error) {
 	files, err := afs.ReadDir(dir)
 	if err != nil {
 		return nil, nil, err
@@ -172,16 +245,8 @@ func (c *mqlCrontab) parseCronDir(afs *afero.Afero, dir string, hasUserField boo
 		if file.IsDir() {
 			continue
 		}
-		// Skip files starting with . or ending with common backup suffixes
 		name := file.Name()
-		if strings.HasPrefix(name, ".") ||
-			strings.HasSuffix(name, "~") ||
-			strings.HasSuffix(name, ".bak") ||
-			strings.HasSuffix(name, ".dpkg-old") ||
-			strings.HasSuffix(name, ".dpkg-new") ||
-			strings.HasSuffix(name, ".dpkg-dist") ||
-			strings.HasSuffix(name, ".rpmsave") ||
-			strings.HasSuffix(name, ".rpmnew") {
+		if cronDFileIsSkipped(name, flavor) {
 			continue
 		}
 
@@ -213,12 +278,20 @@ type userCrontabFile struct {
 // Only regular files are user crontabs. Subdirectories are skipped, which is
 // what keeps SUSE's /var/spool/cron/tabs from being reported as a user named
 // "tabs" when the RHEL path /var/spool/cron above it is walked.
-func collectUserCrontabFiles(afs *afero.Afero, dirs []string) []userCrontabFile {
+//
+// A spool directory that exists but cannot be listed (RHEL's /var/spool/cron
+// is 0700, so any scan that is not root) is an error: skipping it reported the
+// host's user crontabs as none.
+func collectUserCrontabFiles(afs *afero.Afero, dirs []string) ([]userCrontabFile, error) {
 	var out []userCrontabFile
 
 	for _, dir := range dirs {
 		files, err := afs.ReadDir(dir)
 		if err != nil {
+			// v13 skipped a spool directory it could not list
+			if errors.Is(err, os.ErrPermission) && plugin.StructuredErrors() {
+				return nil, llx.Forbidden(fmt.Errorf("cannot list user crontabs in %s: %w", dir, err))
+			}
 			continue
 		}
 
@@ -242,7 +315,7 @@ func collectUserCrontabFiles(afs *afero.Afero, dirs []string) []userCrontabFile 
 		}
 	}
 
-	return out
+	return out, nil
 }
 
 func (e *mqlCrontabEntry) id() (string, error) {

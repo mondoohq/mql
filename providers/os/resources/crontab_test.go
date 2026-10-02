@@ -4,12 +4,14 @@
 package resources
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
@@ -40,7 +42,8 @@ func TestCollectUserCrontabFilesSUSE(t *testing.T) {
 	require.NoError(t, afs.WriteFile("/var/spool/cron/tabs/root",
 		[]byte("0 5 * * * /usr/sbin/aide --check\n"), 0o600))
 
-	got := collectUserCrontabFiles(afs, userCrontabDirs)
+	got, err := collectUserCrontabFiles(afs, userCrontabDirs)
+	require.NoError(t, err)
 
 	assert.Equal(t, []userCrontabFile{
 		{user: "root", path: "/var/spool/cron/tabs/root"},
@@ -62,7 +65,8 @@ func TestCollectUserCrontabFiles(t *testing.T) {
 		require.NoError(t, afs.WriteFile(path, []byte("@daily /bin/true\n"), 0o600))
 	}
 
-	got := collectUserCrontabFiles(afs, userCrontabDirs)
+	got, err := collectUserCrontabFiles(afs, userCrontabDirs)
+	require.NoError(t, err)
 
 	// Directory order, then file name order within a directory.
 	assert.Equal(t, []userCrontabFile{
@@ -126,5 +130,71 @@ func TestCrontabFreeBSD(t *testing.T) {
 // nothing rather than erroring the whole crontab.entries walk.
 func TestCollectUserCrontabFilesMissingDirs(t *testing.T) {
 	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
-	assert.Empty(t, collectUserCrontabFiles(afs, userCrontabDirs))
+	got, err := collectUserCrontabFiles(afs, userCrontabDirs)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+// Which /etc/cron.d names each cron runs. The cronie cases were checked
+// against crond on RHEL 7, RHEL 9 and Fedora 44: every file got a
+// `* * * * *` job touching a marker, and the markers that appeared are the
+// "runs" rows. Before, the Debian-style skip list was applied everywhere, so
+// a job in /etc/cron.d/x.bak that cronie runs every minute was not reported.
+func TestCronDFileIsSkipped(t *testing.T) {
+	tests := []struct {
+		name   string
+		cronie bool // skipped by cronie
+		debian bool // skipped by Debian cron
+	}{
+		{"0hourly", false, false},
+		{"g04p_ok", false, false},
+		{"php-sessionclean", false, false},
+		{"g04p.bak", false, true},
+		{"g04p.dpkg-old", false, true},
+		{"g04p.swp", false, true},
+		{"g04p.dotted", false, true},
+		{".g04phidden", true, true},
+		{"g04p~", true, true},
+		{"#g04p", true, true},
+		{"g04p.rpmsave", true, true},
+		{"g04p.rpmnew", true, true},
+		{"g04p.rpmorig", true, true},
+	}
+	for _, tt := range tests {
+		assert.Equalf(t, tt.cronie, cronDFileIsSkipped(tt.name, cronFlavorCronie), "cronie %q", tt.name)
+		assert.Equalf(t, tt.debian, cronDFileIsSkipped(tt.name, cronFlavorDebian), "debian %q", tt.name)
+	}
+
+	// platforms with neither keep the previous list
+	assert.True(t, cronDFileIsSkipped("x.bak", cronFlavorDefault))
+	assert.False(t, cronDFileIsSkipped("x.conf", cronFlavorDefault))
+}
+
+func TestCronFlavorOf(t *testing.T) {
+	platform := func(family ...string) *inventory.Asset {
+		return &inventory.Asset{Platform: &inventory.Platform{Family: family}}
+	}
+	assert.Equal(t, cronFlavorCronie, cronFlavorOf(platform("redhat", "linux", "unix", "os")))
+	assert.Equal(t, cronFlavorCronie, cronFlavorOf(platform("suse", "linux", "unix", "os")))
+	assert.Equal(t, cronFlavorDebian, cronFlavorOf(platform("debian", "linux", "unix", "os")))
+	assert.Equal(t, cronFlavorDefault, cronFlavorOf(platform("bsd", "unix", "os")))
+	assert.Equal(t, cronFlavorDefault, cronFlavorOf(nil))
+}
+
+// A non-root scan on RHEL cannot list /var/spool/cron (0700). With structured
+// errors that is a refusal, not a host without user crontabs; without them it
+// keeps the v13 skip.
+func TestCollectUserCrontabFilesUnlistableSpool(t *testing.T) {
+	fs := newUnlistableFs(t, []string{"/var/spool/cron/root"}, "/var/spool/cron")
+	afs := &afero.Afero{Fs: fs}
+
+	withStructuredErrors(t, true)
+	_, err := collectUserCrontabFiles(afs, userCrontabDirs)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, llx.ErrForbidden))
+
+	withStructuredErrors(t, false)
+	got, err := collectUserCrontabFiles(afs, userCrontabDirs)
+	require.NoError(t, err)
+	assert.Empty(t, got)
 }
