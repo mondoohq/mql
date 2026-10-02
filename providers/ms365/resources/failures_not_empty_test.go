@@ -151,16 +151,23 @@ func newTestGraphClient(t *testing.T, routes map[string]graphRoute) (*msgraphsdk
 			key += " " + string(body)
 		}
 		seen = append(seen, key)
-		for k, route := range routes {
-			if strings.HasPrefix(key, k) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(route.status)
-				_, _ = w.Write([]byte(route.body))
-				return
+		// Longest prefix wins: one route key can be a prefix of another
+		// ("GET /x" and "GET /x expand"), and map iteration order is random.
+		match := ""
+		for k := range routes {
+			if strings.HasPrefix(key, k) && len(k) > len(match) {
+				match = k
 			}
 		}
-		t.Errorf("unexpected request %q", key)
-		w.WriteHeader(http.StatusInternalServerError)
+		if match == "" {
+			t.Errorf("unexpected request %q", key)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		route := routes[match]
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(route.status)
+		_, _ = w.Write([]byte(route.body))
 	}))
 	t.Cleanup(srv.Close)
 

@@ -28,6 +28,9 @@
       "pattern": "^https:\\/\\/docs\\.aws\\.amazon\\.com\\/"
     },
     {
+      "pattern": "^https:\\/\\/developers\\.zoom\\.us\\/"
+    },
+    {
       "pattern": "^https:\\/\\/(docs\\.)?cloud\\.google\\.com\\/.*substitute-variable-values"
     }
   ]
