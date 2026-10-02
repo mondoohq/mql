@@ -264,40 +264,54 @@ func odataErrWithStatus(status int, code, message string) *odataerrors.ODataErro
 	return err
 }
 
-func TestClassifyGraphError(t *testing.T) {
+// lifecycleWorkflowsUnlicensed is the refusal Graph answered lifecycle
+// workflows with on a tenant without an Entra ID Governance license.
+func lifecycleWorkflowsUnlicensed() *odataerrors.ODataError {
+	return odataErrWithStatus(http.StatusForbidden, "Access denied",
+		"Insufficient license to complete this operation. User workflows require an Entra ID Governance license.")
+}
+
+// insufficientPrivileges is the refusal Graph answered custom security
+// attribute definitions with when the app lacks the permission.
+func insufficientPrivileges() *odataerrors.ODataError {
+	return odataErrWithStatus(http.StatusForbidden, "Authorization_RequestDenied",
+		"Insufficient privileges to complete the operation.")
+}
+
+func TestClassifyLifecycleWorkflowsError(t *testing.T) {
+	t.Run("missing license is not applicable", func(t *testing.T) {
+		err := classifyLifecycleWorkflowsError(lifecycleWorkflowsUnlicensed())
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE, llx.KindOf(err))
+		assert.Contains(t, err.Error(), "Entra ID Governance license")
+	})
+
 	t.Run("missing permission is forbidden and names it", func(t *testing.T) {
-		err := classifyGraphError(transformError(odataErrWithStatus(http.StatusForbidden,
-			"Authorization_RequestDenied", "Insufficient privileges to complete the operation.")),
-			permCustomSecAttributeDefinitionReadAll)
+		err := classifyLifecycleWorkflowsError(insufficientPrivileges())
 		assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
 		var lerr *llx.Error
 		require.True(t, errors.As(err, &lerr))
-		assert.Equal(t, []string{permCustomSecAttributeDefinitionReadAll}, lerr.Permissions)
+		assert.Equal(t, []string{permLifecycleWorkflowsReadAll}, lerr.Permissions)
 	})
 
-	// The code and message Graph answered lifecycle workflows with on a tenant
-	// without an Entra ID Governance license.
-	t.Run("missing license is not applicable", func(t *testing.T) {
-		err := classifyGraphError(transformError(odataErrWithStatus(http.StatusForbidden,
-			"Access denied", "Insufficient license to complete this operation. User workflows require an Entra ID Governance license.")),
-			permLifecycleWorkflowsReadAll)
-		assert.Equal(t, llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE, llx.KindOf(err))
+	t.Run("a license word outside a 403 is not a refusal", func(t *testing.T) {
+		err := classifyLifecycleWorkflowsError(odataErrWithStatus(http.StatusInternalServerError, "UnknownError", "license service unreachable"))
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(err))
 	})
 
-	t.Run("401 is unauthenticated", func(t *testing.T) {
-		err := classifyGraphError(odataErrWithStatus(http.StatusUnauthorized, "InvalidAuthenticationToken", "expired"))
-		assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNAUTHENTICATED, llx.KindOf(err))
+	t.Run("transport failures stay unclassified", func(t *testing.T) {
+		err := classifyLifecycleWorkflowsError(errors.New("dial tcp: connection refused"))
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(err))
 	})
+}
 
-	t.Run("other failures stay unclassified", func(t *testing.T) {
-		for _, err := range []error{
-			errors.New("dial tcp: connection refused"),
-			odataErrWithStatus(http.StatusInternalServerError, "UnknownError", "license server unreachable"),
-		} {
-			got := classifyGraphError(err, permAgreementReadAll)
-			assert.Equal(t, err, got)
-		}
-	})
+func TestClassifyGraphErrorForbidden(t *testing.T) {
+	err := classifyGraphError(insufficientPrivileges(), permCustomSecAttributeDefinitionReadAll)
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
+	var lerr *llx.Error
+	require.True(t, errors.As(err, &lerr))
+	assert.Equal(t, []string{permCustomSecAttributeDefinitionReadAll}, lerr.Permissions)
 
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED,
+		llx.KindOf(classifyGraphError(odataErrWithStatus(http.StatusNotFound, "Request_ResourceNotFound", "gone"))))
 	assert.NoError(t, classifyGraphError(nil))
 }

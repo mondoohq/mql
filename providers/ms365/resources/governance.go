@@ -6,12 +6,17 @@ package resources
 import (
 	"cmp"
 	"context"
+	"net/http"
 	"slices"
+	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/microsoft/kiota-abstractions-go/serialization"
+	betaodataerrors "github.com/microsoftgraph/msgraph-beta-sdk-go/models/odataerrors"
 	"github.com/microsoftgraph/msgraph-sdk-go/identitygovernance"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	igmodels "github.com/microsoftgraph/msgraph-sdk-go/models/identitygovernance"
+	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
@@ -26,6 +31,47 @@ const (
 	permLifecycleWorkflowsReadAll           = "LifecycleWorkflows.Read.All"
 	permCustomSecAttributeDefinitionReadAll = "CustomSecAttributeDefinition.Read.All"
 )
+
+// graphErrorMessage returns the message Microsoft Graph attached to a failed
+// request, or "" when there is none.
+func graphErrorMessage(err error) string {
+	var betaOdataErr *betaodataerrors.ODataError
+	if errors.As(err, &betaOdataErr) && betaOdataErr != nil {
+		if payload := betaOdataErr.GetErrorEscaped(); payload != nil && payload.GetMessage() != nil {
+			return *payload.GetMessage()
+		}
+	}
+	var oDataErr *odataerrors.ODataError
+	if errors.As(err, &oDataErr) && oDataErr != nil {
+		if payload := oDataErr.GetErrorEscaped(); payload != nil && payload.GetMessage() != nil {
+			return *payload.GetMessage()
+		}
+	}
+	return ""
+}
+
+// isGraphLicenseRefusal reports whether Graph refused a request because the
+// tenant lacks the license the feature needs, rather than because the caller
+// lacks a permission. Graph answers both with 403, so the message decides:
+// lifecycle workflows answer "Insufficient license to complete this
+// operation. User workflows require an Entra ID Governance license."
+func isGraphLicenseRefusal(err error) bool {
+	if graphStatusCode(err) != http.StatusForbidden {
+		return false
+	}
+	m := strings.ToLower(graphErrorMessage(err))
+	return strings.Contains(m, "license") || strings.Contains(m, "licence")
+}
+
+// classifyLifecycleWorkflowsError classifies a failed lifecycle workflows
+// read. A tenant without an Entra ID Governance license is NotApplicable;
+// anything else goes through classifyGraphError.
+func classifyLifecycleWorkflowsError(err error) error {
+	if isGraphLicenseRefusal(err) {
+		return llx.NotApplicable(transformError(err))
+	}
+	return classifyGraphError(err, permLifecycleWorkflowsReadAll)
+}
 
 // optionalISODuration renders an ISO 8601 duration, keeping an absent value nil
 // rather than rendering the zero duration.
@@ -63,7 +109,7 @@ func (a *mqlMicrosoftIdentityAndAccess) termsOfUseAgreements() ([]any, error) {
 	ctx := context.Background()
 	resp, err := graphClient.IdentityGovernance().TermsOfUse().Agreements().Get(ctx, nil)
 	if err != nil {
-		return nil, classifyGraphError(transformError(err), permAgreementReadAll)
+		return nil, classifyGraphError(err, permAgreementReadAll)
 	}
 	if resp == nil {
 		return []any{}, nil
@@ -197,14 +243,14 @@ func (a *mqlMicrosoftIdentityAndAccess) lifecycleWorkflows() ([]any, error) {
 	ctx := context.Background()
 	resp, err := graphClient.IdentityGovernance().LifecycleWorkflows().Workflows().Get(ctx, nil)
 	if err != nil {
-		return nil, classifyGraphError(transformError(err), permLifecycleWorkflowsReadAll)
+		return nil, classifyLifecycleWorkflowsError(err)
 	}
 	if resp == nil {
 		return []any{}, nil
 	}
 	workflows, err := iterate[igmodels.Workflowable](ctx, resp, graphClient.GetAdapter(), igmodels.CreateWorkflowCollectionResponseFromDiscriminatorValue)
 	if err != nil {
-		return nil, classifyGraphError(err, permLifecycleWorkflowsReadAll)
+		return nil, classifyLifecycleWorkflowsError(err)
 	}
 
 	res := []any{}
@@ -269,14 +315,14 @@ func (w *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) tasks() ([]any, error) 
 	ctx := context.Background()
 	resp, err := graphClient.IdentityGovernance().LifecycleWorkflows().Workflows().ByWorkflowId(w.Id.Data).Tasks().Get(ctx, nil)
 	if err != nil {
-		return nil, classifyGraphError(transformError(err), permLifecycleWorkflowsReadAll)
+		return nil, classifyLifecycleWorkflowsError(err)
 	}
 	if resp == nil {
 		return []any{}, nil
 	}
 	tasks, err := iterate[igmodels.Taskable](ctx, resp, graphClient.GetAdapter(), igmodels.CreateTaskCollectionResponseFromDiscriminatorValue)
 	if err != nil {
-		return nil, classifyGraphError(err, permLifecycleWorkflowsReadAll)
+		return nil, classifyLifecycleWorkflowsError(err)
 	}
 
 	sortTasksByExecutionSequence(tasks)
@@ -345,7 +391,7 @@ func (w *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) createdBy() (*mqlMicros
 			},
 		})
 	if err != nil && !isResourceNotFound(err) {
-		return nil, classifyGraphError(transformError(err), permLifecycleWorkflowsReadAll)
+		return nil, classifyLifecycleWorkflowsError(err)
 	}
 	return w.resolveUser(&w.CreatedBy, user)
 }
@@ -363,7 +409,7 @@ func (w *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) lastModifiedBy() (*mqlM
 			},
 		})
 	if err != nil && !isResourceNotFound(err) {
-		return nil, classifyGraphError(transformError(err), permLifecycleWorkflowsReadAll)
+		return nil, classifyLifecycleWorkflowsError(err)
 	}
 	return w.resolveUser(&w.LastModifiedBy, user)
 }
@@ -404,7 +450,7 @@ func (a *mqlMicrosoftIdentityAndAccess) customSecurityAttributeDefinitions() ([]
 	ctx := context.Background()
 	resp, err := graphClient.Directory().CustomSecurityAttributeDefinitions().Get(ctx, nil)
 	if err != nil {
-		return nil, classifyGraphError(transformError(err), permCustomSecAttributeDefinitionReadAll)
+		return nil, classifyGraphError(err, permCustomSecAttributeDefinitionReadAll)
 	}
 	if resp == nil {
 		return []any{}, nil
@@ -480,7 +526,7 @@ func (d *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition) allowed
 	ctx := context.Background()
 	resp, err := graphClient.Directory().CustomSecurityAttributeDefinitions().ByCustomSecurityAttributeDefinitionId(d.Id.Data).AllowedValues().Get(ctx, nil)
 	if err != nil {
-		return nil, classifyGraphError(transformError(err), permCustomSecAttributeDefinitionReadAll)
+		return nil, classifyGraphError(err, permCustomSecAttributeDefinitionReadAll)
 	}
 	if resp == nil {
 		return []any{}, nil
@@ -518,7 +564,7 @@ func (a *mqlMicrosoftIdentityAndAccess) attributeSets() ([]any, error) {
 	ctx := context.Background()
 	resp, err := graphClient.Directory().AttributeSets().Get(ctx, nil)
 	if err != nil {
-		return nil, classifyGraphError(transformError(err), permCustomSecAttributeDefinitionReadAll)
+		return nil, classifyGraphError(err, permCustomSecAttributeDefinitionReadAll)
 	}
 	if resp == nil {
 		return []any{}, nil
