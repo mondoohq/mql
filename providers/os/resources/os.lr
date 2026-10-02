@@ -5562,7 +5562,11 @@ mongodb {
 // configuration before the server has been restarted, for example to detect
 // drift between the file and a running server. The file is a nested YAML
 // document and has no include mechanism, so a parse reads exactly one file
-// and `params` holds the whole tree as written.
+// and `params` holds the whole tree as written. A file in the legacy
+// `name = value` format the server also reads (`bind_ip`, `auth`,
+// `sslMode`), as shipped in /etc/mongodb.conf by older Debian and Ubuntu
+// packages, is translated into the same tree, and options with no YAML
+// counterpart stay at the top level under their legacy names.
 //
 // Convenience fields flatten the branches that carry security posture:
 // network binding, TLS material, authentication and authorization, the
@@ -5589,10 +5593,13 @@ mongodb.conf {
   port(params) int
   // net.bindIp option split into individual addresses
   //
-  // Reports 127.0.0.1 when the option is unset, which is the server default
-  // since 3.6. Both spellings the server reads are accepted: a
-  // comma-delimited string and a YAML sequence. Read bindIpAll alongside it,
-  // which binds every interface regardless of what this option lists.
+  // When the option is unset this reports the server default for the
+  // installed version: 127.0.0.1 from 3.6 on, and 0.0.0.0 (plus :: with
+  // ipv6) before 3.6, when the server listened on every interface. It is
+  // null when the option is unset and the server version cannot be read.
+  // Both spellings the server reads are accepted: a comma-delimited string
+  // and a YAML sequence. Read bindIpAll alongside it, which binds every
+  // interface regardless of what this option lists.
   bindIp(params) []string
   // net.bindIpAll option, which binds every interface regardless of bindIp
   bindIpAll(params) bool

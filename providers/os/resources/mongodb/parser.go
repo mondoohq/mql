@@ -8,7 +8,8 @@
 // (local, SSH, container snapshot, ...).
 //
 // Unlike the option files of MySQL and PostgreSQL, mongod.conf is a nested
-// YAML document and has no include mechanism, so a parse reads exactly one
+// YAML document (or, on old distribution packages, a flat legacy file that is
+// translated into the same tree) and has no include mechanism, so a parse reads exactly one
 // file and the result is a tree rather than a flat key/value map. Lookups
 // therefore address a value by its key path ("net", "tls", "mode"). Reading
 // that tree is shared with the other YAML-shaped server configs and lives in
@@ -18,8 +19,11 @@ package mongodb
 
 import (
 	"regexp"
+	"strconv"
+	"strings"
 
 	"go.mondoo.com/mql/providers/os/resources/yamlconf"
+	"gopkg.in/yaml.v3"
 )
 
 // Conf is the result of parsing a mongod.conf.
@@ -37,12 +41,38 @@ type Conf struct {
 // An empty file is not an error: mongod accepts one and runs entirely on its
 // built-in defaults, so it parses to an empty tree and every accessor reports
 // the default it would have used.
+//
+// A file in the legacy `name = value` format (see parseLegacy) is translated
+// into the same tree.
 func ParseConf(content string) (*Conf, error) {
+	if isLegacyConf(content) {
+		params, err := parseLegacy(content)
+		if err != nil {
+			return nil, err
+		}
+		return &Conf{Params: params}, nil
+	}
 	params, err := yamlconf.Parse(content, "mongod.conf")
 	if err != nil {
 		return nil, err
 	}
 	return &Conf{Params: params}, nil
+}
+
+// isLegacyConf reports whether mongod would read content in the legacy
+// format, which it does when the YAML parser reads the whole file as one
+// scalar. A YAML mapping, an empty file, and a file YAML cannot parse at all
+// are not legacy files.
+func isLegacyConf(content string) bool {
+	var root any
+	if err := yaml.Unmarshal([]byte(content), &root); err != nil {
+		return false
+	}
+	switch root.(type) {
+	case nil, map[string]any, []any:
+		return false
+	}
+	return true
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +203,45 @@ func TLSMode(params map[string]any) string {
 // ---------------------------------------------------------------------------
 // version
 // ---------------------------------------------------------------------------
+
+// DefaultBindIp returns the addresses mongod listens on when net.bindIp is
+// not set, for the given server version.
+//
+// MongoDB 3.6 made localhost the default. Before that a server with no
+// bindIp listened on every interface (0.0.0.0, plus :: with net.ipv6), so
+// reporting 127.0.0.1 for a 2.6 or 3.4 server would describe an exposed
+// server as a local-only one. It returns nil when the version is empty or
+// unreadable, since the answer depends on it.
+func DefaultBindIp(version string, ipv6 bool) []string {
+	major, minor, ok := majorMinor(version)
+	if !ok {
+		return nil
+	}
+	if major > 3 || (major == 3 && minor >= 6) {
+		return []string{"127.0.0.1"}
+	}
+	if ipv6 {
+		return []string{"0.0.0.0", "::"}
+	}
+	return []string{"0.0.0.0"}
+}
+
+// majorMinor reads the first two components of a version such as "3.6.3".
+func majorMinor(version string) (int, int, bool) {
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 2 {
+		return 0, 0, false
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, false
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, false
+	}
+	return major, minor, true
+}
 
 // reVersion matches the banner `mongod --version` opens with, for example
 // "db version v7.0.14".

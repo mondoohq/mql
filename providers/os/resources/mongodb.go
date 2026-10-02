@@ -164,15 +164,41 @@ func (s *mqlMongodbConf) port(params any) (int64, error) {
 
 // bindIp resolves the addresses the server listens on.
 //
-// The server binds localhost alone when the option is absent, which has been
-// the default since 3.6, so an empty result would report a server that does
-// listen as listening on nothing.
+// When the option is absent the server picks the addresses itself, and which
+// ones depends on its version (see mongodb.DefaultBindIp). Without a version
+// there is no way to tell a localhost-only server from one listening on every
+// interface, so the field is null rather than a guess.
 func (s *mqlMongodbConf) bindIp(params any) ([]any, error) {
-	addrs := mongodb.List(mongoParams(params), "net", "bindIp")
-	if len(addrs) == 0 {
-		return []any{"127.0.0.1"}, nil
+	p := mongoParams(params)
+	addrs := mongodb.List(p, "net", "bindIp")
+	if len(addrs) > 0 {
+		return toAnySlice(addrs), nil
 	}
-	return toAnySlice(addrs), nil
+
+	version, err := s.serverVersion()
+	if err != nil {
+		return nil, err
+	}
+	def := mongodb.DefaultBindIp(version, mongodb.Bool(p, false, "net", "ipv6"))
+	if def == nil {
+		s.BindIp.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return toAnySlice(def), nil
+}
+
+// serverVersion reads the installed server's version from the mongodb
+// resource, empty when it could not be determined.
+func (s *mqlMongodbConf) serverVersion() (string, error) {
+	raw, err := CreateResource(s.MqlRuntime, "mongodb", map[string]*llx.RawData{})
+	if err != nil {
+		return "", err
+	}
+	version := raw.(*mqlMongodb).GetVersion()
+	if version.Error != nil {
+		return "", version.Error
+	}
+	return version.Data, nil
 }
 
 func (s *mqlMongodbConf) bindIpAll(params any) (bool, error) {
