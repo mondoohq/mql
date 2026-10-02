@@ -226,21 +226,22 @@ func resolveRiskServicePrincipal(runtime *plugin.Runtime, id string, field *plug
 // permission the call needs. Anything else, including transport failures, is
 // returned unclassified.
 func classifyWorkloadIdentityProtectionError(err error, permission string) error {
-	if err == nil {
-		return nil
-	}
-	var oDataErr *odataerrors.ODataError
-	if !errors.As(err, &oDataErr) || oDataErr == nil || oDataErr.ResponseStatusCode != http.StatusForbidden {
-		return transformError(err)
-	}
-	msg := ""
-	if payload := oDataErr.GetErrorEscaped(); payload != nil && payload.GetMessage() != nil {
-		msg = *payload.GetMessage()
-	}
-	if isNotLicensedMessage(msg) {
+	if graphStatusCode(err) == http.StatusForbidden && isNotLicensedMessage(graphErrorMessage(err)) {
 		return llx.NotApplicable(transformError(err))
 	}
-	return llx.Forbidden(transformError(err), llx.WithPermissions(permission))
+	return classifyGraphError(err, permission)
+}
+
+// graphErrorMessage returns the message carried by a v1 Graph ODataError, or
+// "" when there is none.
+func graphErrorMessage(err error) string {
+	var oDataErr *odataerrors.ODataError
+	if errors.As(err, &oDataErr) && oDataErr != nil {
+		if payload := oDataErr.GetErrorEscaped(); payload != nil && payload.GetMessage() != nil {
+			return *payload.GetMessage()
+		}
+	}
+	return ""
 }
 
 // isNotLicensedMessage reports whether a Graph error message says the tenant
