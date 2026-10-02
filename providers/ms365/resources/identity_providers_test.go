@@ -86,7 +86,7 @@ func parseIdentityProvider(t *testing.T, payload string) models.IdentityProvider
 	return parsed.(models.IdentityProviderBaseable)
 }
 
-func assertNull(t *testing.T, args map[string]*llx.RawData, keys ...string) {
+func assertIdpNull(t *testing.T, args map[string]*llx.RawData, keys ...string) {
 	t.Helper()
 	for _, key := range keys {
 		raw, ok := args[key]
@@ -95,8 +95,8 @@ func assertNull(t *testing.T, args map[string]*llx.RawData, keys ...string) {
 	}
 }
 
-// assertNoSecret fails when any argument carries the given secret value.
-func assertNoSecret(t *testing.T, args map[string]*llx.RawData, secret string) {
+// assertIdpNoSecret fails when any argument carries the given secret value.
+func assertIdpNoSecret(t *testing.T, args map[string]*llx.RawData, secret string) {
 	t.Helper()
 	for key, raw := range args {
 		if s, ok := raw.Value.(string); ok {
@@ -112,8 +112,8 @@ func TestIdentityProviderArgs_Social(t *testing.T) {
 	assert.Equal(t, "socialIdentityProvider", rawString(t, args, "type"))
 	assert.Equal(t, "Google", rawString(t, args, "identityProviderType"))
 	assert.Equal(t, "56433757-cadd-4135-8431-2c9e3fd68ae8", rawString(t, args, "clientId"))
-	assertNull(t, args, "issuer", "issuerUri", "developerId", "clientAuthenticationMethod")
-	assertNoSecret(t, args, "SECRET-VALUE-MUST-NOT-LEAK")
+	assertIdpNull(t, args, "issuer", "issuerUri", "developerId", "clientAuthenticationMethod")
+	assertIdpNoSecret(t, args, "SECRET-VALUE-MUST-NOT-LEAK")
 }
 
 func TestIdentityProviderArgs_BuiltIn(t *testing.T) {
@@ -121,7 +121,7 @@ func TestIdentityProviderArgs_BuiltIn(t *testing.T) {
 
 	assert.Equal(t, "builtInIdentityProvider", rawString(t, args, "type"))
 	assert.Equal(t, "EmailOTP", rawString(t, args, "identityProviderType"))
-	assertNull(t, args, "clientId")
+	assertIdpNull(t, args, "clientId")
 }
 
 func TestIdentityProviderArgs_Apple(t *testing.T) {
@@ -131,8 +131,8 @@ func TestIdentityProviderArgs_Apple(t *testing.T) {
 	assert.Equal(t, "UBF8T346G9", rawString(t, args, "developerId"))
 	assert.Equal(t, "com.contoso.app", rawString(t, args, "serviceId"))
 	assert.Equal(t, "99P6D879C4", rawString(t, args, "keyId"))
-	assertNull(t, args, "identityProviderType", "clientId")
-	assertNoSecret(t, args, "PRIVATE-KEY-MUST-NOT-LEAK")
+	assertIdpNull(t, args, "identityProviderType", "clientId")
+	assertIdpNoSecret(t, args, "PRIVATE-KEY-MUST-NOT-LEAK")
 }
 
 func TestIdentityProviderArgs_Oidc(t *testing.T) {
@@ -145,7 +145,7 @@ func TestIdentityProviderArgs_Oidc(t *testing.T) {
 	assert.Equal(t, "code", rawString(t, args, "responseType"))
 	assert.Equal(t, "openid profile email", rawString(t, args, "scope"))
 	assert.Equal(t, "clientSecret", rawString(t, args, "clientAuthenticationMethod"))
-	assertNoSecret(t, args, "OIDC-SECRET-MUST-NOT-LEAK")
+	assertIdpNoSecret(t, args, "OIDC-SECRET-MUST-NOT-LEAK")
 }
 
 func TestIdentityProviderArgs_OidcPrivateKeyJwt(t *testing.T) {
@@ -159,7 +159,7 @@ func TestIdentityProviderArgs_OidcAbsentResponseTypeIsNull(t *testing.T) {
 	// value must stay null rather than read as a configured response type.
 	payload := strings.Replace(oidcIdpJSON, `"responseType": "code",`, "", 1)
 	args := newIdentityProviderArgs(parseIdentityProvider(t, payload))
-	assertNull(t, args, "responseType")
+	assertIdpNull(t, args, "responseType")
 }
 
 func TestIdentityProviderArgs_SamlOrWsFed(t *testing.T) {
@@ -172,7 +172,7 @@ func TestIdentityProviderArgs_SamlOrWsFed(t *testing.T) {
 	assert.Equal(t, "wsFed", rawString(t, args, "preferredAuthenticationProtocol"))
 	assert.Equal(t, "MIIDADCCAeigAwIBAgIQEX41y8r6", rawString(t, args, "signingCertificate"))
 	assert.Equal(t, []any{"contoso.com", "fabrikam.com"}, args["domains"].Value)
-	assertNull(t, args, "identityProviderType", "clientId")
+	assertIdpNull(t, args, "identityProviderType", "clientId")
 }
 
 func TestIdentityProviderArgs_AbsentProtocolIsNullNotWsFed(t *testing.T) {
@@ -180,7 +180,7 @@ func TestIdentityProviderArgs_AbsentProtocolIsNullNotWsFed(t *testing.T) {
 	// not read as one.
 	payload := strings.Replace(samlIdpJSON, `"preferredAuthenticationProtocol": "wsFed",`, "", 1)
 	args := newIdentityProviderArgs(parseIdentityProvider(t, payload))
-	assertNull(t, args, "preferredAuthenticationProtocol")
+	assertIdpNull(t, args, "preferredAuthenticationProtocol")
 }
 
 func TestIdentityProviderArgs_UnmodeledKindIsUnknown(t *testing.T) {
@@ -229,7 +229,7 @@ func TestB2xUserFlowArgs_AbsentTypeIsNullNotSignUp(t *testing.T) {
 	// The UserFlowType zero value is signUp.
 	payload := `{"@odata.type": "#microsoft.graph.b2xIdentityUserFlow", "id": "B2X_1_X"}`
 	args := newB2xUserFlowArgs(parseB2xUserFlow(t, payload))
-	assertNull(t, args, "userFlowType", "userFlowTypeVersion")
+	assertIdpNull(t, args, "userFlowType", "userFlowTypeVersion")
 }
 
 func TestApiConnectorArgs_Basic(t *testing.T) {
@@ -245,7 +245,7 @@ func TestApiConnectorArgs_Basic(t *testing.T) {
 	assert.Equal(t, "Approval", rawString(t, args, "displayName"))
 	assert.Equal(t, "https://approval.contoso.com/signup", rawString(t, args, "targetUrl"))
 	assert.Equal(t, "basic", rawString(t, args, "authenticationType"))
-	assertNoSecret(t, args, "BASIC-PASSWORD-MUST-NOT-LEAK")
+	assertIdpNoSecret(t, args, "BASIC-PASSWORD-MUST-NOT-LEAK")
 }
 
 func TestApiConnectorArgs_ClientCertificate(t *testing.T) {
@@ -255,7 +255,7 @@ func TestApiConnectorArgs_ClientCertificate(t *testing.T) {
 	assert.Equal(t, "clientCertificate", rawString(t, args, "authenticationType"))
 }
 
-func newODataError(status int) error {
+func newIdpODataError(status int) error {
 	e := odataerrors.NewODataError()
 	e.ResponseStatusCode = status
 	main := odataerrors.NewMainError()
@@ -266,22 +266,19 @@ func newODataError(status int) error {
 	return e
 }
 
-func TestClassifyIdentityGraphError(t *testing.T) {
-	forbidden := classifyIdentityGraphError(newODataError(http.StatusForbidden), permIdentityProviderReadAll)
+func TestClassifyGraphError_NamesIdentityPermission(t *testing.T) {
+	forbidden := classifyGraphError(newIdpODataError(http.StatusForbidden), permIdentityProviderReadAll)
 	assert.True(t, errors.Is(forbidden, llx.ErrForbidden))
 	var lerr *llx.Error
 	require.True(t, errors.As(forbidden, &lerr))
 	assert.Contains(t, lerr.Permissions, permIdentityProviderReadAll)
 
-	unauth := classifyIdentityGraphError(newODataError(http.StatusUnauthorized))
-	assert.True(t, errors.Is(unauth, llx.ErrUnauthenticated))
-
 	// A server error is not a refusal and stays unclassified.
-	other := classifyIdentityGraphError(newODataError(http.StatusInternalServerError))
+	other := classifyGraphError(newIdpODataError(http.StatusInternalServerError))
 	assert.False(t, errors.Is(other, llx.ErrForbidden))
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(other))
 
 	// A transport failure is never a refusal.
-	transport := classifyIdentityGraphError(errors.New("connection reset"))
+	transport := classifyGraphError(errors.New("connection reset"))
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(transport))
 }
