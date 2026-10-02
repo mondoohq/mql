@@ -299,3 +299,55 @@ func TestParsePolkitVersion(t *testing.T) {
 		})
 	}
 }
+
+// An excerpt of the generated /etc/polkit-1/rules.d/90-default-privs.rules on
+// SLES 16 and openSUSE Leap 16: results come from a lookup table of strings
+const suseDefaultPrivsRules = `/**********************************************\
+*              DO NOT EDIT                     *
+\**********************************************/
+
+polkit.addRule(function(action, subject) {
+	// set to true for debugging
+	var debug = false;
+        rules = { 
+		'com.endlessm.ParentalControls.AccountInfo.ChangeAny':
+			[ 'auth_admin_keep', 'auth_admin_keep', 'auth_admin_keep' ],
+		'com.endlessm.ParentalControls.AccountInfo.ReadAny':
+			[ 'yes', 'yes', 'yes' ],
+		'com.feralinteractive.GameMode.cpu-helper':
+			[ 'no', 'no', 'no' ],
+		'zypp.gui.pkexec.run':
+			[ 'auth_admin', 'auth_admin', 'auth_admin_keep' ],
+        };
+        var i = 0;
+        if (rules[action.id]) {
+		if (debug)
+			polkit.log(action.id + " => " + rules[action.id][i]);
+                return rules[action.id][i];
+        } else {
+		if (debug)
+			polkit.log(action.id + " => no override found");
+	}
+});
+`
+
+func TestPolkitRuleFactsFrom_StringResults(t *testing.T) {
+	facts := polkitRuleFactsFrom(suseDefaultPrivsRules)
+
+	assert.Equal(t, []string{"AUTH_ADMIN", "AUTH_ADMIN_KEEP", "NO", "YES"}, facts.Results)
+	assert.Contains(t, facts.ActionIDs, "zypp.gui.pkexec.run")
+}
+
+func TestPolkitRuleFactsFrom_StringResultMatchesExactly(t *testing.T) {
+	// polkit matches result strings case-sensitively, and a word inside a
+	// longer string or in a comment is not a result
+	facts := polkitRuleFactsFrom(`polkit.addRule(function(action, subject) {
+    // return "yes";
+    polkit.log("yes, handled");
+    if (action.id == "org.example.YES") { return "YES"; }
+    return "not_handled";
+});
+`)
+
+	assert.Empty(t, facts.Results)
+}

@@ -89,6 +89,13 @@ var (
 	polkitAdminRuleRegex = regexp.MustCompile(`\baddAdminRule\s*\(`)
 	polkitResultRegex    = regexp.MustCompile(`\bResult\.([A-Z][A-Z_]*)\b`)
 
+	// polkitResultStrings are the values of polkit.Result's constants, which a
+	// rule may return directly. NOT_HANDLED is null, not a string, and polkit
+	// matches these case-sensitively.
+	polkitResultStrings = map[string]struct{}{
+		"no": {}, "yes": {}, "auth_self": {}, "auth_self_keep": {}, "auth_admin": {}, "auth_admin_keep": {},
+	}
+
 	// polkitActionIDRegex matches a reverse-DNS action identifier, optionally
 	// ending in a trailing dot or star so the prefixes used with startsWith and
 	// with a regular expression are recognized too.
@@ -264,6 +271,14 @@ func polkitRuleFactsFrom(body string) polkitRuleFacts {
 	results := map[string]struct{}{}
 	for _, match := range polkitResultRegex.FindAllStringSubmatch(code, -1) {
 		results[match[1]] = struct{}{}
+	}
+	// A rule may return the string a Result constant stands for. SUSE's
+	// generated 90-default-privs.rules returns entries of a lookup table such
+	// as [ 'auth_admin', 'auth_admin', 'yes' ] and never names Result.
+	for _, literal := range literals {
+		if _, ok := polkitResultStrings[literal]; ok {
+			results[strings.ToUpper(literal)] = struct{}{}
+		}
 	}
 
 	return polkitRuleFacts{
