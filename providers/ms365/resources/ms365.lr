@@ -3175,6 +3175,23 @@ microsoft.policies {
   externalIdentitiesPolicy() microsoft.externalIdentitiesPolicy
   // Default configuration of cross-tenant access policy
   crossTenantAccessPolicy() microsoft.crossTenantAccessPolicyDefault
+  // Partner-specific cross-tenant access configurations
+  //
+  // One entry per external Microsoft Entra tenant that has its own
+  // cross-tenant access settings, overriding the default configuration for
+  // that tenant. Each entry reports B2B collaboration and B2B direct connect
+  // access, inbound trust, automatic user consent, tenant restrictions, and
+  // whether users from the partner may be synchronized into this tenant.
+  // Select a partner by its tenantId, for example
+  // `microsoft.policies.crossTenantAccessPolicyPartners.where(tenantId == "<tenant id>")`.
+  crossTenantAccessPolicyPartners() []microsoft.crossTenantAccessPolicyPartner
+  // Microsoft clouds that cross-tenant collaboration may reach
+  //
+  // Additional Microsoft clouds, beyond the commercial cloud, that the
+  // organization collaborates with, for example microsoftonline.us or
+  // partner.microsoftonline.cn. Empty when collaboration is limited to the
+  // commercial cloud.
+  crossTenantAllowedCloudEndpoints() []string
   // Tenant-wide default app management policy
   defaultAppManagementPolicy() microsoft.defaultAppManagementPolicy
   // Device registration and join settings for the tenant
@@ -3863,6 +3880,73 @@ private microsoft.crossTenantAccessPolicyDefault.invitationRedemptionIdentityPro
   fallbackIdentityProvider string
   // Specifies the precedence order for identity providers.
   primaryIdentityProviderPrecedenceOrder []string
+}
+
+// Cross-tenant access policy partner configuration
+//
+// Cross-tenant access settings for one external Microsoft Entra tenant,
+// overriding the default configuration for users and applications of that
+// tenant. The tenantId field selects the partner. A setting that reads null
+// is not configured for this partner, so the default configuration applies
+// to it. Audit this to find partners granted broader B2B collaboration or
+// B2B direct connect access than the default, partners whose MFA or device
+// claims are trusted, partners with automatic user consent, and partners
+// allowed to synchronize users into this tenant (userSyncInboundAllowed).
+private microsoft.crossTenantAccessPolicyPartner @defaults("tenantId isServiceProvider isInMultiTenantOrganization") {
+  // Tenant ID of the partner Microsoft Entra organization
+  tenantId string
+  // Whether the partner is a cloud service provider for this organization
+  isServiceProvider bool
+  // Whether the partner is part of a multitenant organization with this tenant
+  isInMultiTenantOrganization bool
+  // Automatic user consent settings for the partner
+  //
+  // Whether users are consented automatically for inbound and outbound
+  // access with this partner. Null when not configured for the partner.
+  automaticUserConsentSettings microsoft.crossTenantAccessPolicyDefault.automaticUserConsentSettings
+  // Inbound B2B collaboration settings for the partner
+  //
+  // Which users, groups, and applications of the partner tenant may access
+  // this organization through B2B collaboration. Null when the default
+  // configuration applies.
+  b2bCollaborationInbound microsoft.crossTenantAccessPolicyDefault.b2bSetting
+  // Outbound B2B collaboration settings for the partner
+  //
+  // Which users and groups of this organization may access the partner
+  // tenant, and which of its applications, through B2B collaboration. Null
+  // when the default configuration applies.
+  b2bCollaborationOutbound microsoft.crossTenantAccessPolicyDefault.b2bSetting
+  // Inbound B2B direct connect settings for the partner
+  //
+  // Which users, groups, and applications of the partner tenant may access
+  // this organization through B2B direct connect. Null when the default
+  // configuration applies.
+  b2bDirectConnectInbound microsoft.crossTenantAccessPolicyDefault.b2bSetting
+  // Outbound B2B direct connect settings for the partner
+  //
+  // Which users and groups of this organization may access the partner
+  // tenant through B2B direct connect. Null when the default configuration
+  // applies.
+  b2bDirectConnectOutbound microsoft.crossTenantAccessPolicyDefault.b2bSetting
+  // Inbound trust settings for the partner
+  //
+  // Whether MFA, compliant device, and hybrid Microsoft Entra joined device
+  // claims from the partner tenant are accepted. Null when the default
+  // configuration applies.
+  inboundTrust microsoft.crossTenantAccessPolicyDefault.inboundTrust
+  // Tenant restrictions settings for the partner
+  //
+  // Which users, groups, and applications of the partner tenant may be used
+  // from devices and networks governed by this organization's tenant
+  // restrictions. Null when the default configuration applies.
+  tenantRestrictions microsoft.crossTenantAccessPolicyDefault.b2bSetting
+  // Whether users from the partner may be synchronized into this tenant
+  //
+  // True when the partner's identity synchronization policy allows users of
+  // the partner tenant to be provisioned into this tenant. False when the
+  // policy disallows it or no identity synchronization policy exists for the
+  // partner.
+  userSyncInboundAllowed() bool
 }
 
 // Microsoft Entra ID Role Definitions

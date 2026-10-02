@@ -273,6 +273,18 @@ microsoft.crossTenantAccessPolicyDefault.m365Capability.resourceScope.resourceId
 microsoft.crossTenantAccessPolicyDefault.m365Capability.resourceScope.resourceType 13.12.1
 microsoft.crossTenantAccessPolicyDefault.m365Capability.resourceScope.user 13.12.1
 microsoft.crossTenantAccessPolicyDefault.tenantRestrictions 11.1.99
+microsoft.crossTenantAccessPolicyPartner 14.0.2
+microsoft.crossTenantAccessPolicyPartner.automaticUserConsentSettings 14.0.2
+microsoft.crossTenantAccessPolicyPartner.b2bCollaborationInbound 14.0.2
+microsoft.crossTenantAccessPolicyPartner.b2bCollaborationOutbound 14.0.2
+microsoft.crossTenantAccessPolicyPartner.b2bDirectConnectInbound 14.0.2
+microsoft.crossTenantAccessPolicyPartner.b2bDirectConnectOutbound 14.0.2
+microsoft.crossTenantAccessPolicyPartner.inboundTrust 14.0.2
+microsoft.crossTenantAccessPolicyPartner.isInMultiTenantOrganization 14.0.2
+microsoft.crossTenantAccessPolicyPartner.isServiceProvider 14.0.2
+microsoft.crossTenantAccessPolicyPartner.tenantId 14.0.2
+microsoft.crossTenantAccessPolicyPartner.tenantRestrictions 14.0.2
+microsoft.crossTenantAccessPolicyPartner.userSyncInboundAllowed 14.0.2
 microsoft.defaultAppManagementPolicy 13.5.1
 microsoft.defaultAppManagementPolicy.appManagementConfiguration 13.5.1
 microsoft.defaultAppManagementPolicy.appManagementConfiguration.keyCredentials 13.5.1
@@ -1093,6 +1105,8 @@ microsoft.policies.authenticationMethodsPolicy 11.1.39
 microsoft.policies.authorizationPolicy 9.0.0
 microsoft.policies.consentPolicySettings 9.0.0
 microsoft.policies.crossTenantAccessPolicy 9.0.0
+microsoft.policies.crossTenantAccessPolicyPartners 14.0.2
+microsoft.policies.crossTenantAllowedCloudEndpoints 14.0.2
 microsoft.policies.defaultAppManagementPolicy 13.5.1
 microsoft.policies.deviceRegistrationPolicy 13.12.1
 microsoft.policies.externalIdentitiesPolicy 11.1.43

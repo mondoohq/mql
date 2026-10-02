@@ -661,17 +661,11 @@ func (a *mqlMicrosoftCrossTenantAccessPolicyDefault) getCrossTenantAccessPolicy(
 	a.policy = policy
 
 	if policy.GetAutomaticUserConsentSettings() != nil {
-		consentSettings := policy.GetAutomaticUserConsentSettings()
-		consentResource, err := CreateResource(a.MqlRuntime, ResourceMicrosoftCrossTenantAccessPolicyDefaultAutomaticUserConsentSettings,
-			map[string]*llx.RawData{
-				"__id":            llx.StringData(a.__id + "-automaticUserConsentSettings"),
-				"inboundAllowed":  llx.BoolDataPtr(consentSettings.GetInboundAllowed()),
-				"outboundAllowed": llx.BoolDataPtr(consentSettings.GetOutboundAllowed()),
-			})
+		consentResource, err := newAutomaticUserConsentSettings(a.MqlRuntime, policy.GetAutomaticUserConsentSettings(), a.__id+"-automaticUserConsentSettings")
 		if err != nil {
 			return errHandler(err)
 		}
-		a.cachedAutomaticUserConsentSettings = consentResource.(*mqlMicrosoftCrossTenantAccessPolicyDefaultAutomaticUserConsentSettings)
+		a.cachedAutomaticUserConsentSettings = consentResource
 	}
 
 	if policy.GetB2bCollaborationInbound() != nil {
@@ -730,18 +724,11 @@ func (a *mqlMicrosoftCrossTenantAccessPolicyDefault) getCrossTenantAccessPolicy(
 	}
 
 	if policy.GetInboundTrust() != nil {
-		inboundTrustValue := policy.GetInboundTrust()
-		inboundTrustResource, err := CreateResource(a.MqlRuntime, ResourceMicrosoftCrossTenantAccessPolicyDefaultInboundTrust,
-			map[string]*llx.RawData{
-				"__id":                                llx.StringData(a.__id + "-inboundTrust"),
-				"isMfaAccepted":                       llx.BoolDataPtr(inboundTrustValue.GetIsMfaAccepted()),
-				"isCompliantDeviceAccepted":           llx.BoolDataPtr(inboundTrustValue.GetIsCompliantDeviceAccepted()),
-				"isHybridAzureADJoinedDeviceAccepted": llx.BoolDataPtr(inboundTrustValue.GetIsHybridAzureADJoinedDeviceAccepted()),
-			})
+		inboundTrustResource, err := newInboundTrust(a.MqlRuntime, policy.GetInboundTrust(), a.__id+"-inboundTrust")
 		if err != nil {
 			return errHandler(err)
 		}
-		a.cachedInboundTrust = inboundTrustResource.(*mqlMicrosoftCrossTenantAccessPolicyDefaultInboundTrust)
+		a.cachedInboundTrust = inboundTrustResource
 	}
 
 	if policy.GetTenantRestrictions() != nil {
@@ -960,6 +947,33 @@ func newAppManagementConfiguration(runtime *plugin.Runtime, config models.AppMan
 	}
 
 	return resource.(*mqlMicrosoftDefaultAppManagementPolicyAppManagementConfiguration), nil
+}
+
+func newAutomaticUserConsentSettings(runtime *plugin.Runtime, settings models.InboundOutboundPolicyConfigurationable, id string) (*mqlMicrosoftCrossTenantAccessPolicyDefaultAutomaticUserConsentSettings, error) {
+	resource, err := CreateResource(runtime, ResourceMicrosoftCrossTenantAccessPolicyDefaultAutomaticUserConsentSettings,
+		map[string]*llx.RawData{
+			"__id":            llx.StringData(id),
+			"inboundAllowed":  llx.BoolDataPtr(settings.GetInboundAllowed()),
+			"outboundAllowed": llx.BoolDataPtr(settings.GetOutboundAllowed()),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return resource.(*mqlMicrosoftCrossTenantAccessPolicyDefaultAutomaticUserConsentSettings), nil
+}
+
+func newInboundTrust(runtime *plugin.Runtime, trust models.CrossTenantAccessPolicyInboundTrustable, id string) (*mqlMicrosoftCrossTenantAccessPolicyDefaultInboundTrust, error) {
+	resource, err := CreateResource(runtime, ResourceMicrosoftCrossTenantAccessPolicyDefaultInboundTrust,
+		map[string]*llx.RawData{
+			"__id":                                llx.StringData(id),
+			"isMfaAccepted":                       llx.BoolDataPtr(trust.GetIsMfaAccepted()),
+			"isCompliantDeviceAccepted":           llx.BoolDataPtr(trust.GetIsCompliantDeviceAccepted()),
+			"isHybridAzureADJoinedDeviceAccepted": llx.BoolDataPtr(trust.GetIsHybridAzureADJoinedDeviceAccepted()),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return resource.(*mqlMicrosoftCrossTenantAccessPolicyDefaultInboundTrust), nil
 }
 
 func newB2BSetting(runtime *plugin.Runtime, setting models.CrossTenantAccessPolicyB2BSettingable, settingId string) (*mqlMicrosoftCrossTenantAccessPolicyDefaultB2bSetting, error) {
