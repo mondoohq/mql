@@ -241,6 +241,7 @@ PROVIDERS := \
 	ipmi \
 	iru \
 	jamf \
+	jenkins \
 	jumpcloud \
 	k8s \
 	keycloak \
