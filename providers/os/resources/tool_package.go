@@ -456,6 +456,26 @@ func setStrOrNull(t *plugin.TValue[string], val string) {
 	}
 }
 
+// toolVersionCommand returns the command line that asks binaryName for its
+// version. On Unix targets the binary is called by its absolute path (see
+// packages.FindBinary), because the scan's PATH can miss it: sudo's secure_path
+// on RHEL-family hosts leaves out /usr/local/bin, where npm -g and the Ollama
+// installer put their binaries, so a root scan read no version where a user
+// scan read one. Windows targets, and binaries found nowhere, keep the bare name.
+func toolVersionCommand(runtime *plugin.Runtime, binaryName string) string {
+	if conn, ok := runtime.Connection.(shared.Connection); ok && !isWindowsAsset(conn) {
+		if path := packages.FindBinary(conn, binaryName); path != "" {
+			return versionCommand(path)
+		}
+	}
+	return versionCommand(binaryName)
+}
+
+// versionCommand is the `--version` command line for a binary name or path.
+func versionCommand(binary string) string {
+	return shellQuote(binary) + " --version"
+}
+
 // inferCodexVersion runs `codex --version` through the command resource. Codex
 // writes no authoritative version file (its version.json only records the latest
 // release seen during an update check, which goes stale and is not the installed
@@ -464,7 +484,7 @@ func setStrOrNull(t *plugin.TValue[string], val string) {
 // the binary is absent or the output carries no recognizable version.
 func inferCodexVersion(runtime *plugin.Runtime, configPath string) (string, error) {
 	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("codex --version"),
+		"command": llx.StringData(toolVersionCommand(runtime, "codex")),
 	})
 	if err != nil {
 		return "", nil
@@ -491,7 +511,7 @@ func inferCodexVersion(runtime *plugin.Runtime, configPath string) (string, erro
 // absent or the output carries no recognizable version.
 func inferClaudeVersion(runtime *plugin.Runtime, configPath string) (string, error) {
 	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("claude --version"),
+		"command": llx.StringData(toolVersionCommand(runtime, "claude")),
 	})
 	if err != nil {
 		return "", nil
@@ -753,8 +773,13 @@ func (r *mqlAider) runtime() (*mqlExtensionRuntime, error) {
 // binary into /usr/local/bin without registering it anywhere). Best-effort:
 // unknown when the binary is absent or the output carries no version.
 func inferOllamaVersion(runtime *plugin.Runtime, configPath string) (string, error) {
+	return probeOllamaVersion(runtime, toolVersionCommand(runtime, "ollama"))
+}
+
+// probeOllamaVersion runs an `ollama --version` command line and parses it.
+func probeOllamaVersion(runtime *plugin.Runtime, command string) (string, error) {
 	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("ollama --version"),
+		"command": llx.StringData(command),
 	})
 	if err != nil {
 		return "", nil

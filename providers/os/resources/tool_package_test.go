@@ -206,3 +206,10 @@ func TestVSCodeHostCandidates(t *testing.T) {
 		assert.Contains(t, vscodeHostCandidates, name)
 	}
 }
+
+func TestVersionCommand(t *testing.T) {
+	assert.Equal(t, "/usr/local/bin/ollama --version", versionCommand("/usr/local/bin/ollama"))
+	assert.Equal(t, "claude --version", versionCommand("claude"))
+	// a path the shell would split is quoted
+	assert.Equal(t, "'/opt/ollama app/bin/ollama' --version", versionCommand("/opt/ollama app/bin/ollama"))
+}

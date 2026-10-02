@@ -303,7 +303,15 @@ func (c *mqlOllamaConfig) compute_package() (*mqlPackage, error) {
 	if _, err := c.resolve(); err != nil {
 		return nil, err
 	}
-	return resolveToolPackage(c.MqlRuntime, c.ollamaDir, toolPackageSpecs["ollama"])
+	spec := toolPackageSpecs["ollama"]
+	if bin := c.serverBinary; bin != "" {
+		// The binary the unit runs, or the one found at a well-known path, is
+		// the one to ask: the scan's PATH may not reach it.
+		spec.inferVersion = func(runtime *plugin.Runtime, _ string) (string, error) {
+			return probeOllamaVersion(runtime, versionCommand(bin))
+		}
+	}
+	return resolveToolPackage(c.MqlRuntime, c.ollamaDir, spec)
 }
 
 func (c *mqlOllamaConfig) version() (string, error) {

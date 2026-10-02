@@ -117,3 +117,34 @@ func TestSafeBinaryName(t *testing.T) {
 		assert.False(t, safeBinaryName.MatchString(bad), bad)
 	}
 }
+
+func TestLocateBinary(t *testing.T) {
+	onDisk := func(paths ...string) func(string) bool {
+		set := map[string]bool{}
+		for _, p := range paths {
+			set[p] = true
+		}
+		return func(p string) bool { return set[p] }
+	}
+	notOnPath := func(string) string { return "" }
+
+	// sudo on RHEL-family hosts runs with secure_path=/sbin:/bin:/usr/sbin:/usr/bin,
+	// so `command -v claude` finds nothing for an npm -g install in /usr/local/bin.
+	assert.Equal(t, "/usr/local/bin/claude",
+		locateBinary("claude", notOnPath, onDisk("/usr/local/bin/claude")))
+	assert.Equal(t, "/usr/local/bin/ollama",
+		locateBinary("ollama", notOnPath, onDisk("/usr/local/bin/ollama", "/usr/bin/ollama")))
+
+	// the scan's PATH wins when it resolves the binary
+	onPath := func(name string) string { return "/home/alice/.local/bin/" + name }
+	assert.Equal(t, "/home/alice/.local/bin/claude",
+		locateBinary("claude", onPath, onDisk("/usr/local/bin/claude")))
+
+	// a builtin or alias (no leading slash) is not a binary
+	alias := func(string) string { return "claude" }
+	assert.Equal(t, "/usr/bin/claude", locateBinary("claude", alias, onDisk("/usr/bin/claude")))
+
+	// absent everywhere, and names that are not plain binary names
+	assert.Equal(t, "", locateBinary("codex", notOnPath, onDisk()))
+	assert.Equal(t, "", locateBinary("../codex", notOnPath, func(string) bool { return true }))
+}
