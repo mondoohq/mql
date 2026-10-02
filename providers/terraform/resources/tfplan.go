@@ -5,7 +5,9 @@ package resources
 
 import (
 	"encoding/json"
+	"sync"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
@@ -31,10 +33,18 @@ func initTerraformPlan(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	// TODO: This only creates compatibility with v8. Please revisit this section
 	// after https://github.com/mondoohq/mql/issues/1943 is clarified.
 	if plan == nil {
+		// Every static field has to be filled in, not just some. MQL's
+		// three-valued logic makes `terraform.plan { !errored && applyable }`
+		// evaluate to TRUE over two nulls, so leaving applyable/errored unset
+		// let a "the plan is clean" assertion pass on an asset with no plan at
+		// all.
 		return map[string]*llx.RawData{
 			"formatVersion":    llx.StringData(""),
 			"terraformVersion": llx.StringData(""),
 			"resourceChanges":  llx.ArrayData([]any{}, types.Resource("terraform.plan.resourceChange")),
+			"applyable":        llx.BoolData(false),
+			"errored":          llx.BoolData(false),
+			"variables":        llx.ArrayData([]any{}, types.Resource("terraform.plan.variable")),
 		}, nil, nil
 	}
 
@@ -44,7 +54,7 @@ func initTerraformPlan(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	args["errored"] = llx.BoolData(plan.Errored)
 	args["variables"] = llx.ArrayData(
 		variablesToArrayInterface(runtime, plan.Variables),
-		types.Resource("terraform.plan.variables"),
+		types.Resource("terraform.plan.variable"),
 	)
 
 	return args, nil, nil
@@ -119,6 +129,7 @@ func (t *mqlTerraformPlan) resourceChanges() ([]any, error) {
 		}
 
 		lumiChange, err := CreateResource(t.MqlRuntime, "terraform.plan.proposedChange", map[string]*llx.RawData{
+			"__id":            llx.StringData(proposedChangeID(rc.Address, rc.Deposed)),
 			"address":         llx.StringData(rc.Address),
 			"actions":         llx.ArrayData(convert.SliceAnyToInterface[string](rc.Change.Actions), types.String),
 			"before":          llx.MapData(before, types.Any),
@@ -131,6 +142,8 @@ func (t *mqlTerraformPlan) resourceChanges() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		pc := lumiChange.(*mqlTerraformPlanProposedChange)
+		pc.stampOnce.Do(func() { pc.deposed = rc.Deposed })
 
 		r, err := CreateResource(t.MqlRuntime, "terraform.plan.resourceChange", map[string]*llx.RawData{
 			"address":         llx.StringData(rc.Address),
@@ -153,14 +166,39 @@ func (t *mqlTerraformPlan) resourceChanges() ([]any, error) {
 	return list, nil
 }
 
+// Terraform emits a separate resource_changes entry for a deposed object with
+// the SAME address, distinguished only by the `deposed` key. Without it in the
+// id both entries hash to one cache key, so the deposed change is invisible
+// while resourceChanges.length still counts two.
 func (t *mqlTerraformPlanResourceChange) id() (string, error) {
-	id := t.Address
-	return "terraform.plan.resourceChange/address/" + id.Data, nil
+	id := "terraform.plan.resourceChange/address/" + t.Address.Data
+	if t.Deposed.Data != "" {
+		id += "/deposed/" + t.Deposed.Data
+	}
+	return id, nil
 }
 
 func (t *mqlTerraformPlanProposedChange) id() (string, error) {
-	id := t.Address
-	return "terraform.plan.proposedChange/address/" + id.Data, nil
+	id := "terraform.plan.proposedChange/address/" + t.Address.Data
+	if t.deposed != "" {
+		id += "/deposed/" + t.deposed
+	}
+	return id, nil
+}
+
+// mqlTerraformPlanProposedChangeInternal carries the deposed key of the
+// resource change this proposal belongs to. The proposal is not addressable on
+// its own, so it needs the same disambiguation its parent does.
+type mqlTerraformPlanProposedChangeInternal struct {
+	// stampOnce guards the write below: CreateResource returns the cached
+	// instance when the __id matches, so this runs on a possibly-shared struct.
+	// Sharing is only safe because proposedChangeID encodes the deposed key, so
+	// two entries that collide on the cache key necessarily carry the same
+	// value. stampOnce is therefore a data-race guard, not a tiebreaker: drop
+	// the deposed key from the id and the first writer would win over a
+	// genuinely different one.
+	stampOnce sync.Once
+	deposed   string
 }
 
 func (t *mqlTerraformPlanConfiguration) id() (string, error) {
@@ -250,16 +288,25 @@ func (t *mqlTerraformPlanConfiguration) resources() ([]any, error) {
 func variablesToArrayInterface(runtime *plugin.Runtime, variables connection.Variables) []any {
 	var list []any
 	for k, v := range variables {
+		// Variable.Value is a json.RawMessage with omitempty, so a variable
+		// serialized as {} arrives as nil and json.Unmarshal(nil, ...) fails.
+		// Skipping it dropped the variable from the list entirely, so an audit
+		// asserting "every declared variable has a value" could not see the one
+		// that does not. Emit it with a null value instead.
 		var value any
-		err := json.Unmarshal(v.Value, &value)
-		if err != nil {
-			continue
+		if len(v.Value) > 0 {
+			if err := json.Unmarshal(v.Value, &value); err != nil {
+				log.Warn().Str("variable", k).Err(err).Msg("cannot decode terraform plan variable value")
+				value = nil
+			}
 		}
+
 		variable, err := CreateResource(runtime, "terraform.plan.variable", map[string]*llx.RawData{
 			"name":  llx.StringData(k),
-			"value": llx.AnyData(value),
+			"value": llx.DictData(value),
 		})
 		if err != nil {
+			log.Error().Str("variable", k).Err(err).Msg("cannot create terraform plan variable")
 			continue
 		}
 
@@ -267,4 +314,15 @@ func variablesToArrayInterface(runtime *plugin.Runtime, variables connection.Var
 	}
 
 	return list
+}
+
+// proposedChangeID mirrors mqlTerraformPlanProposedChange.id(). The creator
+// passes it explicitly because the deposed key lives on the parent resource
+// change, not on the proposal's own fields.
+func proposedChangeID(address, deposed string) string {
+	id := "terraform.plan.proposedChange/address/" + address
+	if deposed != "" {
+		id += "/deposed/" + deposed
+	}
+	return id
 }
