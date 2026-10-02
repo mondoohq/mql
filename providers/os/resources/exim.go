@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"strings"
@@ -79,25 +80,13 @@ func (e *mqlExim) configPath() (string, error) {
 // eximConfigureFile returns the configuration file Exim itself reports via
 // `exim -bP configure_file`, or "" when the binary is unavailable.
 func (e *mqlExim) eximConfigureFile() string {
-	o, err := CreateResource(e.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("exim -bP configure_file"),
-	})
-	if err != nil {
-		return ""
-	}
-	cmd := o.(*mqlCommand)
-
-	exit := cmd.GetExitcode()
-	if exit.Error != nil || exit.Data != 0 {
-		return ""
-	}
-	stdout := cmd.GetStdout()
-	if stdout.Error != nil {
+	stdout, exit, err := e.runExim("-bP configure_file")
+	if err != nil || exit != 0 {
 		return ""
 	}
 
 	// configure_file reports the single config file in use; take the first line
-	path := strings.TrimSpace(stdout.Data)
+	path := strings.TrimSpace(stdout)
 	if idx := strings.IndexByte(path, '\n'); idx >= 0 {
 		path = strings.TrimSpace(path[:idx])
 	}
@@ -121,7 +110,90 @@ func (e *mqlExim) params() (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseEximConfig(content), nil
+	return parseEximConfig(content, e.builtinMacros())
+}
+
+// eximBinaries are the names tried, in order, to run Exim. The absolute
+// paths cover a non-root login whose PATH has no sbin directory (RHEL 7),
+// and Debian installs the binary as exim4.
+var eximBinaries = []string{"exim", "/usr/sbin/exim", "exim4", "/usr/sbin/exim4"}
+
+// runExim runs Exim with args and returns its stdout and exit code. A binary
+// the shell can't find (exit 127) moves on to the next name.
+func (e *mqlExim) runExim(args string) (string, int64, error) {
+	var exit int64 = 127
+	for _, bin := range eximBinaries {
+		o, err := CreateResource(e.MqlRuntime, "command", map[string]*llx.RawData{
+			"command": llx.StringData(bin + " " + args),
+		})
+		if err != nil {
+			return "", 0, err
+		}
+		cmd := o.(*mqlCommand)
+		code := cmd.GetExitcode()
+		if code.Error != nil {
+			return "", 0, code.Error
+		}
+		exit = code.Data
+		if exit == 127 {
+			continue
+		}
+		stdout := cmd.GetStdout()
+		if stdout.Error != nil {
+			return "", 0, stdout.Error
+		}
+		return stdout.Data, exit, nil
+	}
+	return "", exit, nil
+}
+
+// builtinMacros returns the lookup parseEximConfig uses for Exim's built-in
+// macros. The binary is only run the first time a config conditional tests
+// one, so a config without such conditionals never runs it.
+func (e *mqlExim) builtinMacros() eximBuiltinLookup {
+	var macros *eximBuiltinMacros
+	var loadErr error
+	return func(name string) (bool, error) {
+		if macros == nil && loadErr == nil {
+			macros, loadErr = e.loadBuiltinMacros()
+		}
+		if loadErr != nil {
+			return false, loadErr
+		}
+		return macros.defined(name)
+	}
+}
+
+// loadBuiltinMacros reads the built-in macro set from `exim -bP macros`,
+// which Exim only answers for an admin user. Otherwise it derives the
+// feature macros from the `Support for:` line of `exim -bV`, which any user
+// may run.
+func (e *mqlExim) loadBuiltinMacros() (*eximBuiltinMacros, error) {
+	stdout, exit, err := e.runExim("-bP macros")
+	if err != nil {
+		return nil, err
+	}
+	if exit == 0 {
+		if m := parseEximMacrosOutput(stdout); m != nil {
+			return m, nil
+		}
+	}
+
+	stdout, exit, err = e.runExim("-bV")
+	if err != nil {
+		return nil, err
+	}
+	if exit == 127 {
+		return nil, errors.New("exim: the config tests Exim's built-in macros, but no exim binary was found to read them from")
+	}
+	if exit != 0 {
+		return nil, fmt.Errorf("exim: the config tests Exim's built-in macros, but `exim -bV` exited with %d", exit)
+	}
+	m := parseEximVersionOutput(stdout)
+	if m == nil {
+		return nil, errors.New("exim: the config tests Exim's built-in macros, but `exim -bV` printed no `Support for:` line")
+	}
+	return m, nil
 }
 
 func (e *mqlExim) localInterfaces() ([]any, error) {
@@ -200,7 +272,11 @@ func (e *mqlExim) readFile(path string) (string, error) {
 // `local_interfaces = MAIN_LOCAL_INTERFACES` reports the macro's value. Keys
 // that are not simple assignments (named lists like `domainlist x = …`, ACL
 // conditions) are skipped.
-func parseEximConfig(content string) map[string]any {
+//
+// Conditionals on Exim's built-in macros (`.ifdef _HAVE_OPENSSL`) are
+// answered by builtins. It is only called for a conditional whose branch
+// matters, and its error fails the parse rather than guessing a branch.
+func parseEximConfig(content string, builtins eximBuiltinLookup) (map[string]any, error) {
 	params := map[string]any{}
 	macros := map[string]string{}
 	cond := eximConditionals{}
@@ -213,8 +289,20 @@ func parseEximConfig(content string) map[string]any {
 
 		if strings.HasPrefix(trimmed, ".") {
 			directive, arg, _ := strings.Cut(trimmed, " ")
-			_, defined := macros[strings.TrimSpace(arg)]
-			cond.apply(directive, defined)
+			name := strings.TrimSpace(arg)
+			err := cond.apply(directive, func() (bool, error) {
+				if strings.HasPrefix(name, "_") {
+					if builtins == nil {
+						return false, fmt.Errorf("exim: cannot evaluate %s %s without Exim's built-in macros", directive, name)
+					}
+					return builtins(name)
+				}
+				_, ok := macros[name]
+				return ok, nil
+			})
+			if err != nil {
+				return nil, err
+			}
 			// other directives (.include, .include_if_exists) are not followed
 			continue
 		}
@@ -252,7 +340,7 @@ func parseEximConfig(content string) map[string]any {
 		value = substituteEximMacros(strings.TrimSpace(value), macros)
 		params[key] = unquoteEximValue(value)
 	}
-	return params
+	return params, nil
 }
 
 // eximConditionals tracks nested .ifdef/.ifndef blocks.
@@ -272,15 +360,42 @@ func (c *eximConditionals) active() bool {
 	return true
 }
 
-func (c *eximConditionals) apply(directive string, defined bool) {
+// parentsActive reports whether every enclosing block of the innermost one
+// takes its current branch.
+func (c *eximConditionals) parentsActive() bool {
+	for _, t := range c.taken[:len(c.taken)-1] {
+		if !t {
+			return false
+		}
+	}
+	return true
+}
+
+// apply evaluates a conditional directive. defined is only called when the
+// answer decides which lines are read; inside a skipped branch it is not.
+func (c *eximConditionals) apply(directive string, defined func() (bool, error)) error {
 	switch directive {
 	case ".ifdef", ".ifndef":
-		ok := defined == (directive == ".ifdef")
+		ok := false
+		if c.active() {
+			d, err := defined()
+			if err != nil {
+				return err
+			}
+			ok = d == (directive == ".ifdef")
+		}
 		c.taken = append(c.taken, ok)
 		c.done = append(c.done, ok)
 	case ".elifdef", ".elifndef":
 		if n := len(c.taken); n > 0 {
-			ok := !c.done[n-1] && defined == (directive == ".elifdef")
+			ok := false
+			if !c.done[n-1] && c.parentsActive() {
+				d, err := defined()
+				if err != nil {
+					return err
+				}
+				ok = d == (directive == ".elifdef")
+			}
 			c.taken[n-1] = ok
 			c.done[n-1] = c.done[n-1] || ok
 		}
@@ -295,6 +410,7 @@ func (c *eximConditionals) apply(directive string, defined bool) {
 			c.done = c.done[:n-1]
 		}
 	}
+	return nil
 }
 
 // isEximMacroName reports whether name is a macro name: it starts with an
@@ -402,13 +518,160 @@ func parseEximListValue(value string) []any {
 	return splitEximList(value, sep)
 }
 
-// splitEximList splits value on sep and trims each token, dropping empties.
+// splitEximList splits an Exim list on sep, trims each item and drops empty
+// ones. A doubled separator is a literal separator character inside an item,
+// so the ':'-separated `127.0.0.1 : ::::1` holds 127.0.0.1 and ::1.
 func splitEximList(value, sep string) []any {
 	res := []any{}
-	for _, tok := range strings.Split(value, sep) {
-		if tok = strings.TrimSpace(tok); tok != "" {
+	if sep == "" {
+		return res
+	}
+	var item strings.Builder
+	flush := func() {
+		if tok := strings.TrimSpace(item.String()); tok != "" {
 			res = append(res, tok)
 		}
+		item.Reset()
 	}
+	for i := 0; i < len(value); {
+		if strings.HasPrefix(value[i:], sep) {
+			if strings.HasPrefix(value[i+len(sep):], sep) {
+				item.WriteString(sep)
+				i += 2 * len(sep)
+				continue
+			}
+			flush()
+			i += len(sep)
+			continue
+		}
+		item.WriteByte(value[i])
+		i++
+	}
+	flush()
 	return res
+}
+
+// eximBuiltinLookup reports whether a built-in macro (a name starting with
+// an underscore, such as _HAVE_OPENSSL) is defined by the Exim binary.
+type eximBuiltinLookup func(name string) (bool, error)
+
+// eximBuiltinMacros is the built-in macro set of an Exim binary.
+type eximBuiltinMacros struct {
+	names map[string]struct{}
+	// known limits the names the set can answer for; nil means every name.
+	// The `exim -bV` feature list only covers the feature macros.
+	known map[string]struct{}
+}
+
+func (m *eximBuiltinMacros) defined(name string) (bool, error) {
+	if m.known != nil {
+		if _, ok := m.known[name]; !ok {
+			return false, fmt.Errorf("exim: cannot tell whether the built-in macro %s is defined: `exim -bP macros` needs an Exim admin user, and `exim -bV` does not report it", name)
+		}
+	}
+	_, ok := m.names[name]
+	return ok, nil
+}
+
+// parseEximMacrosOutput reads the built-in macros from `exim -bP macros`
+// output, one `NAME=value` per line. Macros defined in the config are
+// listed too and are skipped, since the config parser defines its own. It
+// returns nil when the output holds no built-in macro.
+func parseEximMacrosOutput(out string) *eximBuiltinMacros {
+	names := map[string]struct{}{}
+	for _, line := range strings.Split(out, "\n") {
+		name, _, _ := strings.Cut(strings.TrimSpace(line), "=")
+		name = strings.TrimSpace(name)
+		if len(name) > 1 && name[0] == '_' && isEximMacroName("A"+name[1:]) {
+			names[name] = struct{}{}
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	return &eximBuiltinMacros{names: names}
+}
+
+// eximFeatureMacros maps each `Support for:` entry of `exim -bV` to the
+// feature macros Exim defines for it, taken from show_whats_supported() in
+// exim.c and features() in macro_predef.c of Exim 4.92 to 4.99. An entry
+// mapping to no macro still counts: Exim 4.96 and 4.97 print
+// Experimental_ESMTP_Limits but define no _HAVE_ESMTP_LIMITS.
+var eximFeatureMacros = map[string][]string{
+	"Content_Scanning":          {"_HAVE_CONTENT_SCANNING"},
+	"crypteq":                   {"_HAVE_CRYPTEQ"},
+	"Expand_dlfunc":             {"_HAVE_DLFUNC"},
+	"iconv()":                   {"_HAVE_ICONV"},
+	"IPv6":                      {"_HAVE_IPV6"},
+	"PAM":                       {"_HAVE_PAM"},
+	"Perl":                      {"_HAVE_PERL"},
+	"GnuTLS":                    {"_HAVE_TLS", "_HAVE_GNUTLS"},
+	"OpenSSL":                   {"_HAVE_TLS", "_HAVE_OPENSSL"},
+	"move_frozen_messages":      {"_HAVE_MOVE_FROZEN_MESSAGES"},
+	"radius":                    {"_HAVE_RADIUS"},
+	"TLS_resume":                {"_HAVE_TLS_RESUME"},
+	"Experimental_TLS_resume":   {"_HAVE_TLS_RESUME"},
+	"translate_ip_address":      {"_HAVE_TRANSLATE_IP_ADDRESS"},
+	"TCPwrappers":               {"_HAVE_TCPWRAPPERS"},
+	"use_setclassresources":     {"_HAVE_SETCLASSRESOURCES"},
+	"DANE":                      {"_HAVE_DANE"},
+	"DKIM":                      {"_HAVE_DKIM"},
+	"DMARC":                     {"_HAVE_DMARC"},
+	"Experimental_DMARC":        {"_HAVE_DMARC"},
+	"DNSSEC":                    {"_HAVE_DNSSEC"},
+	"DSCP":                      {"_HAVE_DSCP"},
+	"ESMTP_Limits":              {"_HAVE_ESMTP_LIMITS"},
+	"Experimental_ESMTP_Limits": {},
+	"ESMTP_Wellknown":           {"_HAVE_WELLKNOWN"},
+	"Event":                     {"_HAVE_EVENT"},
+	"I18N":                      {"_HAVE_I18N"},
+	"OCSP":                      {"_HAVE_OCSP"},
+	"PIPECONNECT":               {"_HAVE_PIPE_CONNECT"},
+	"PIPE_CONNECT":              {"_HAVE_PIPE_CONNECT"},
+	"Experimental_PIPE_CONNECT": {"_HAVE_PIPE_CONNECT"},
+	"PRDR":                      {"_HAVE_PRDR"},
+	"PROXY":                     {"_HAVE_PROXY"},
+	"SOCKS":                     {"_HAVE_SOCKS"},
+	"SPF":                       {"_HAVE_SPF"},
+	"SRS":                       {"_HAVE_SRS", "_HAVE_NATIVE_SRS"},
+	"TCP_Fast_Open":             {"_HAVE_TCP_FASTOPEN"},
+	"Experimental_ARC":          {"_HAVE_ARC"},
+	"Experimental_Brightmail":   {"_HAVE_BRIGHTMAIL"},
+	"Experimental_DCC":          {"_HAVE_DCC"},
+	"Experimental_DSN_info":     {"_HAVE_DSN_INFO"},
+	"Experimental_REQUIRETLS":   {"_HAVE_REQTLS"},
+	"Experimental_XCLIENT":      {"_HAVE_XCLIENT"},
+	// Exim 4.94 prints this for both the external and the native SRS
+	// support, and only the native one defines _HAVE_NATIVE_SRS
+	"Experimental_SRS": {"_HAVE_SRS"},
+}
+
+// parseEximVersionOutput derives the feature macros from the `Support for:`
+// line of `exim -bV`. Only the feature macros can be answered this way; the
+// set is limited to them so a test of any other built-in macro is reported
+// as unknown rather than as undefined. It returns nil when the output has no
+// `Support for:` line.
+func parseEximVersionOutput(out string) *eximBuiltinMacros {
+	for _, line := range strings.Split(out, "\n") {
+		features, ok := strings.CutPrefix(strings.TrimSpace(line), "Support for:")
+		if !ok {
+			continue
+		}
+		m := &eximBuiltinMacros{names: map[string]struct{}{}, known: map[string]struct{}{}}
+		for _, macros := range eximFeatureMacros {
+			for _, name := range macros {
+				m.known[name] = struct{}{}
+			}
+		}
+		for _, feature := range strings.Fields(features) {
+			for _, name := range eximFeatureMacros[feature] {
+				m.names[name] = struct{}{}
+			}
+			if feature == "Experimental_SRS" {
+				delete(m.known, "_HAVE_NATIVE_SRS")
+			}
+		}
+		return m
+	}
+	return nil
 }

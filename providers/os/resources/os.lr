@@ -8988,6 +8988,10 @@ exim {
   // hand-written config exists, otherwise `/etc/exim4/update-exim4.conf.conf`.
   configPath() string
   // Parsed macros and main-section options
+  //
+  // `.ifdef` and `.ifndef` blocks are evaluated like Exim does, including
+  // tests of Exim's built-in feature macros such as `_HAVE_OPENSSL`, which
+  // are read from the installed `exim` binary.
   params() map[string]string
   // Local interfaces parsed and normalized into a list
   //
