@@ -103,6 +103,22 @@ func TestHostnameLinuxGetentIPv4(t *testing.T) {
 	assert.Equal(t, "myhost.example.com", hn)
 }
 
+// SUSE's stock /etc/hosts names the IPv6 loopback "ipv6-localhost" and
+// "ipv6-loopback", where Debian writes "ip6-". Taking either for the hostname
+// gave every SUSE host the same name and the same hostname platform ID.
+func TestHostnameSLESIPv6LoopbackAliases(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/hostname_sles.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+	require.Equal(t, "sles", platform.Name)
+
+	hn, ok := hostname.Hostname(conn, platform)
+	require.True(t, ok)
+
+	assert.Equal(t, "ip-172-17-2-134", hn)
+}
+
 func TestHostnameLinuxGetentIPv6(t *testing.T) {
 	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/hostname_getent_hosts_ipv6.toml"))
 	require.NoError(t, err)

@@ -69,6 +69,7 @@ func TestIsLocalhostVariant(t *testing.T) {
 		"localhost4", "localhost4.localdomain4",
 		"localhost6", "localhost6.localdomain6",
 		"ip6-localhost", "ip6-loopback",
+		"ipv6-localhost", "ipv6-loopback", "IPV6-LOCALHOST",
 	}
 	for _, host := range localhosts {
 		t.Run(host, func(t *testing.T) {
@@ -80,6 +81,8 @@ func TestIsLocalhostVariant(t *testing.T) {
 		"myhost", "myhost.example.com",
 		"ip-10-0-42-17.us-west-2.compute.internal",
 		"localhostess", "notlocalhost",
+		// Not loopback names: SUSE maps these to fe00::0 and ff02::1.
+		"ipv6-localnet", "ipv6-allnodes",
 	}
 	for _, host := range realHosts {
 		t.Run(host, func(t *testing.T) {
@@ -125,6 +128,11 @@ func TestParseEtcHosts(t *testing.T) {
 		{
 			"fully commented line",
 			"# 127.0.1.1 myhost\n127.0.0.1 localhost\n",
+			"",
+		},
+		{
+			"suse loopback aliases",
+			"127.0.0.1\tlocalhost\n::1             localhost ipv6-localhost ipv6-loopback\nfe00::0         ipv6-localnet\n",
 			"",
 		},
 		{"only localhost aliases", "127.0.0.1 localhost localhost.localdomain\n::1 ip6-localhost ip6-loopback\n", ""},

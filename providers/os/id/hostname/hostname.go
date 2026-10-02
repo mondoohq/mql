@@ -283,10 +283,13 @@ func firstNonLocalhost(hosts []string) string {
 // "localhost". The protocol-suffixed forms matter: RHEL-family systems and
 // Bottlerocket both map 127.0.0.1 to "localhost localhost.localdomain localhost4
 // localhost4.localdomain4", so a lookup that only knew the unsuffixed names
-// answered "localhost4" where it should have kept looking.
+// answered "localhost4" where it should have kept looking. The IPv6 loopback
+// names differ by distribution: Debian writes "ip6-localhost ip6-loopback",
+// SUSE writes "ipv6-localhost ipv6-loopback".
 func isLocalhostVariant(host string) bool {
 	lh := strings.ToLower(host)
-	if lh == "ip6-localhost" || lh == "ip6-loopback" {
+	switch lh {
+	case "ip6-localhost", "ip6-loopback", "ipv6-localhost", "ipv6-loopback":
 		return true
 	}
 
