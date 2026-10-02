@@ -118,6 +118,8 @@ func Communities(content string) (ro []string, rw []string) {
 		read, write := false, false
 		for _, g := range groups[m.secName] {
 			for _, a := range access[g] {
+				// The com2sec context is the context of the request, so a
+				// prefix access line matches when it starts with a.context.
 				if a.context != m.context && (!a.prefix || !strings.HasPrefix(m.context, a.context)) {
 					continue
 				}
