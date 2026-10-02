@@ -70,6 +70,18 @@ var grubLegacyCfgPaths = []string{
 // command lines here and leave grub.cfg with no kernel lines at all.
 const blsEntriesDir = "/boot/loader/entries"
 
+// Every directory the entries are kept in. GRUB's blscfg reads loader/entries
+// on the filesystem it booted from, and boot/loader/entries there when that
+// holds none, so the Red Hat family's entries sit under /boot. SUSE's
+// sdbootutil, which installs systemd-boot and grub2-bls on SUSE Linux
+// Enterprise 16 and openSUSE Leap 16, writes them to $BOOT, the EFI system
+// partition, which is mounted at /efi or /boot/efi.
+var blsEntriesDirs = []string{
+	blsEntriesDir,
+	"/efi/loader/entries",
+	"/boot/efi/loader/entries",
+}
+
 // The GRUB environment block, which holds the value of $kernelopts on the
 // releases whose entries reference it. On some distributions the path under
 // /boot/grub2 is a symlink to a copy on the EFI system partition.
@@ -155,11 +167,21 @@ func findBootConfig(fs afero.Fs) string {
 // distribution that boots via EFI commonly installs a grub.cfg on the EFI
 // system partition that only chains to the configuration under /boot, and that
 // stub declares no entries, so it is used only when nothing else is readable.
+//
+// A candidate that exists but cannot be read, which is what a non-root scan
+// meets where grub.cfg is 0600 (SUSE) or /boot/grub2 is 0700 (the Red Hat
+// family), wins over a stub: the stub only says the real configuration is
+// elsewhere, and reading it as the configuration would report a host whose
+// boot menu is password protected as one without a password.
 func findGrubCfg(fs afero.Fs, candidates []string) string {
 	fallback := ""
+	denied := ""
 	for _, path := range candidates {
 		content, err := afero.ReadFile(fs, path)
 		if err != nil {
+			if denied == "" && isReadRefused(err) {
+				denied = path
+			}
 			continue
 		}
 		if fallback == "" {
@@ -168,6 +190,9 @@ func findGrubCfg(fs afero.Fs, candidates []string) string {
 		if !isGrubCfgStub(content) {
 			return path
 		}
+	}
+	if denied != "" {
+		return denied
 	}
 	return fallback
 }
@@ -230,33 +255,32 @@ func (g *mqlGrubConfig) fetchGrubCfg() error {
 		return errors.New("filesystem not available")
 	}
 
-	cfgPath := g.GetGrubPath().Data
+	return g.loadGrubCfg(fs, g.GetGrubPath().Data)
+}
+
+// loadGrubCfg reads the boot menu at cfgPath, and the entry files it hands
+// over to, into the cache.
+func (g *mqlGrubConfig) loadGrubCfg(fs afero.Fs, cfgPath string) error {
 	if cfgPath == "" {
-		// Without a grub.cfg the entry files can still be read directly. The
-		// Boot Loader Specification is not GRUB's alone, so entries here say
-		// nothing about which bootloader reads them, and systemd-boot keeps
-		// its entries in the same directory. cachedGrubFound therefore stays
-		// false and passwordProtected stays null: reporting false would say
-		// GRUB is installed and unprotected on a host that may not run GRUB
-		// at all.
-		entries, err := LoadGrubEntries(fs, "", nil)
-		g.cachedEntriesRefused = forbiddenOnly(err)
-		g.cachedGrubRefused = grubConfigRefused(fs)
-		g.cachedEntries = entries
-		g.cachedEntriesOK = len(entries) > 0
-		g.fetched = true
+		g.loadWithoutGrubCfg(fs, grubConfigRefused(fs))
 		return nil
 	}
 
-	f, err := fs.Open(cfgPath)
+	content, err := afero.ReadFile(fs, cfgPath)
 	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	content, err := io.ReadAll(f)
-	if err != nil {
-		return err
+		if !isReadRefused(err) {
+			return err
+		}
+		refused := grubCfgReadRefused(cfgPath, err)
+		if !isKnownBootConfig(cfgPath) {
+			// A path the query names is answered with the refusal, as v13
+			// answered it with the error.
+			return refused
+		}
+		// init found the boot menu but may not read it. It is reported the
+		// way v13 reported a boot menu it could not find.
+		g.loadWithoutGrubCfg(fs, refused)
+		return nil
 	}
 
 	entries, err := LoadGrubEntries(fs, cfgPath, content)
@@ -296,6 +320,23 @@ func (g *mqlGrubConfig) fetchGrubCfg() error {
 	g.cachedGrubFound = true
 	g.fetched = true
 	return nil
+}
+
+// loadWithoutGrubCfg reads what can be read when there is no grub.cfg to read,
+// or the one that exists refused to be read. The entry files can still be read
+// directly. The Boot Loader Specification is not GRUB's alone, so entries here
+// say nothing about which bootloader reads them, and systemd-boot keeps its
+// entries in the same directories. cachedGrubFound therefore stays false and
+// passwordProtected stays null: reporting false would say GRUB is installed and
+// unprotected on a host that may not run GRUB at all, or whose configuration
+// sets a password that could not be read.
+func (g *mqlGrubConfig) loadWithoutGrubCfg(fs afero.Fs, grubRefused error) {
+	entries, err := LoadGrubEntries(fs, "", nil)
+	g.cachedEntriesRefused = forbiddenOnly(err)
+	g.cachedGrubRefused = grubRefused
+	g.cachedEntries = entries
+	g.cachedEntriesOK = len(entries) > 0
+	g.fetched = true
 }
 
 func (g *mqlGrubConfig) entries() ([]any, error) {
@@ -421,8 +462,9 @@ var (
 	reAnyLegacyTitle = regexp.MustCompile(`(?m)^\s*title\s+\S`)
 
 	// A stub grub.cfg chains to the real configuration instead of declaring
-	// any entries of its own.
-	reConfigfile   = regexp.MustCompile(`(?m)^\s*configfile\s`)
+	// any entries of its own. Most distributions chain with configfile; SUSE's
+	// stub on the EFI system partition reads the real one with source.
+	reConfigfile   = regexp.MustCompile(`(?m)^\s*(?:configfile|source)\s`)
 	reAnyMenuEntry = regexp.MustCompile(`(?m)^\s*(?:menuentry|submenu)\s+['"]`)
 	reAnyLinux     = regexp.MustCompile(`(?m)^\s*(?:linux|linux16|linuxefi)\s`)
 )
@@ -580,7 +622,7 @@ func LoadGrubEntries(fs afero.Fs, cfgPath string, content []byte) ([]BootEntry, 
 	// A grub.cfg that calls blscfg hands the menu over to the entry files, so
 	// whatever menu entries it declares itself do not boot.
 	if cfgPath == "" || reBlscfg.Match(content) {
-		return readBLSEntries(fs, blsEntriesDir, vars)
+		return readBLSEntryDirs(fs, blsEntriesDirsFor(cfgPath), vars)
 	}
 
 	var entries []BootEntry
@@ -595,6 +637,45 @@ func LoadGrubEntries(fs afero.Fs, cfgPath string, content []byte) ([]BootEntry, 
 	}
 	finalizeEntries(entries, cfgPath, vars)
 	return entries, nil
+}
+
+// blsEntriesDirsFor returns the directories to read entries from, the one on
+// the filesystem that holds cfgPath first, since that is where blscfg looks.
+func blsEntriesDirsFor(cfgPath string) []string {
+	first := ""
+	for _, dir := range blsEntriesDirs {
+		mount := strings.TrimSuffix(dir, "/loader/entries")
+		if strings.HasPrefix(cfgPath, mount+"/") && len(dir) > len(first) {
+			first = dir
+		}
+	}
+	if first == "" {
+		return blsEntriesDirs
+	}
+	dirs := []string{first}
+	for _, dir := range blsEntriesDirs {
+		if dir != first {
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
+}
+
+// readBLSEntryDirs returns the entries of the first directory that holds any.
+// A refusal is returned only when no directory yielded an entry, as the
+// refused one may be where the entries are.
+func readBLSEntryDirs(fs afero.Fs, dirs []string, vars map[string]string) ([]BootEntry, error) {
+	var refused error
+	for _, dir := range dirs {
+		entries, err := readBLSEntries(fs, dir, vars)
+		if len(entries) > 0 {
+			return entries, err
+		}
+		if refused == nil {
+			refused = err
+		}
+	}
+	return nil, refused
 }
 
 // menuEntryClasses returns the --class values declared on a menuentry line.

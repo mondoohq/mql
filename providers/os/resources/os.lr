@@ -8463,7 +8463,9 @@ grub.config @defaults("defaultsPath grubPath") {
   //
   // Read from the Boot Loader Specification files under /boot/loader/entries
   // when grub.cfg delegates to them, which is what Red Hat Enterprise Linux 8
-  // and later, CentOS Stream, Rocky Linux, and Amazon Linux 2023 do, from the
+  // and later, CentOS Stream, Rocky Linux, and Amazon Linux 2023 do, or under
+  // loader/entries on the EFI system partition, where SUSE Linux Enterprise 16
+  // and openSUSE Leap 16 keep them, from the
   // menu entries in grub.cfg otherwise, and from the title blocks of the menu
   // file on a GRUB legacy host. Null when no source yields an
   // entry, since a host whose boot entries cannot be read has none to report
@@ -8487,7 +8489,8 @@ grub.config @defaults("defaultsPath grubPath") {
 // GRUB boot entry
 //
 // Single boot entry, from a menu entry in grub.cfg, a Boot Loader
-// Specification file under /boot/loader/entries, or a title block in the menu
+// Specification file under /boot/loader/entries or the EFI system partition's
+// loader/entries, or a title block in the menu
 // file of a GRUB legacy host. `parameters` and `flags`
 // hold the kernel command line split into key-value directives and bare
 // tokens, so a check can assert on a parameter such as audit without matching

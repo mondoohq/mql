@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -335,12 +336,28 @@ func grubConfigRefused(fs afero.Fs) error {
 				f.Close()
 				continue
 			}
-			if errors.Is(err, os.ErrPermission) {
-				return llx.Forbidden(fmt.Errorf("cannot read the GRUB configuration %s: %w", p, err))
+			if isReadRefused(err) {
+				return grubCfgReadRefused(p, err)
 			}
 		}
 	}
 	return nil
+}
+
+// grubCfgReadRefused is the error for a boot menu at p that refused to be read.
+func grubCfgReadRefused(p string, err error) error {
+	return llx.Forbidden(fmt.Errorf("cannot read the GRUB configuration %s: %w", p, err))
+}
+
+// isReadRefused reports whether err is a refusal because of permissions.
+func isReadRefused(err error) bool {
+	return errors.Is(err, os.ErrPermission)
+}
+
+// isKnownBootConfig reports whether p is one of the locations init searches
+// for a boot menu.
+func isKnownBootConfig(p string) bool {
+	return slices.Contains(grubCfgPaths, p) || slices.Contains(grubLegacyCfgPaths, p)
 }
 
 // forbiddenOnly returns err when it is a refusal and nil otherwise.

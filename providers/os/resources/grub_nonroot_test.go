@@ -139,8 +139,13 @@ func rhel9NonRootFs(t *testing.T) afero.Fs {
 func TestNonRootGrubIsRefusedNotAbsent(t *testing.T) {
 	fs := rhel9NonRootFs(t)
 
-	// What init sees: no readable boot menu.
-	assert.Equal(t, "", findBootConfig(fs))
+	// What init sees: a boot menu it may not read.
+	assert.Equal(t, "/boot/grub2/grub.cfg", findBootConfig(fs))
+	g := &mqlGrubConfig{}
+	require.NoError(t, g.loadGrubCfg(fs, "/boot/grub2/grub.cfg"))
+	assert.False(t, g.cachedGrubFound)
+	assert.ErrorIs(t, g.cachedGrubRefused, llx.ErrForbidden)
+	assert.ErrorIs(t, g.cachedEntriesRefused, llx.ErrForbidden)
 
 	err := grubConfigRefused(fs)
 	assert.ErrorIs(t, err, llx.ErrForbidden)
@@ -208,4 +213,105 @@ func TestGrubConfigAccessorsReportRefusal(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, g.PasswordProtected.State)
 	})
+}
+
+// suseNonRootFs is a SUSE host as a non-root scan sees it: /boot/grub2/grub.cfg
+// is 0600, while the stub on the EFI system partition (vfat, fmask 0022) is
+// readable by everyone.
+func suseNonRootFs(name string) afero.Fs {
+	return &bootDirDeniedFs{Fs: fixtureFS(name), dirs: []string{"/boot/grub2/grub.cfg"}}
+}
+
+var suseFixtures = []string{"sles15sp7", "opensuse-leap16"}
+
+// SUSE's stub on the EFI system partition reads the real configuration with
+// source rather than configfile.
+func TestSuseEspGrubCfgIsAStub(t *testing.T) {
+	for _, name := range suseFixtures {
+		t.Run(name, func(t *testing.T) {
+			content, err := afero.ReadFile(fixtureFS(name), "/boot/efi/EFI/BOOT/grub.cfg")
+			require.NoError(t, err)
+			assert.True(t, isGrubCfgStub(content))
+
+			real, err := afero.ReadFile(fixtureFS(name), "/boot/grub2/grub.cfg")
+			require.NoError(t, err)
+			assert.False(t, isGrubCfgStub(real))
+		})
+	}
+}
+
+func TestSuseNonRootGrubCfgIsRefusedNotTheStub(t *testing.T) {
+	for _, name := range suseFixtures {
+		t.Run(name, func(t *testing.T) {
+			fs := suseNonRootFs(name)
+			// The configuration that exists but refuses to be read, not the
+			// stub beside it.
+			assert.Equal(t, "/boot/grub2/grub.cfg", findBootConfig(fs))
+			// Root reads the same file.
+			assert.Equal(t, "/boot/grub2/grub.cfg", findBootConfig(fixtureFS(name)))
+
+			g := &mqlGrubConfig{}
+			require.NoError(t, g.loadGrubCfg(fs, "/boot/grub2/grub.cfg"))
+			assert.False(t, g.cachedGrubFound)
+			assert.ErrorIs(t, g.cachedGrubRefused, llx.ErrForbidden)
+
+			withStructuredErrors(t, true)
+			_, err := g.passwordProtected()
+			assert.ErrorIs(t, err, llx.ErrForbidden)
+			_, err = g.entries()
+			assert.ErrorIs(t, err, llx.ErrForbidden)
+		})
+	}
+
+	// A path the query names that refuses to be read is an error either way.
+	g := &mqlGrubConfig{}
+	fs := &bootDirDeniedFs{Fs: fixtureFS("sles15sp7"), dirs: []string{"/srv/grub.cfg"}}
+	assert.ErrorIs(t, g.loadGrubCfg(fs, "/srv/grub.cfg"), llx.ErrForbidden)
+}
+
+// sdbootutilEntry is the entry sdbootutil writes on openSUSE Leap 16, with the
+// command line the host booted.
+const sdbootutilEntry = `title openSUSE Leap 16.0
+version 1@6.12.0-160000.35-default
+sort-key opensuse-leap
+options root=LABEL=ROOT console=ttyS0 net.ifnames=0 security=selinux selinux=1 audit=1
+linux /opensuse-leap/6.12.0-160000.35-default/linux-0123456789abcdef
+initrd /opensuse-leap/6.12.0-160000.35-default/initrd-0123456789abcdef
+`
+
+func TestBLSEntriesOnTheEsp(t *testing.T) {
+	for _, esp := range []string{"/boot/efi", "/efi"} {
+		t.Run(esp, func(t *testing.T) {
+			fs := afero.NewMemMapFs()
+			writeEntryFile(t, fs, esp+"/loader/entries/opensuse-leap-6.12.0-160000.35-default-1.conf", sdbootutilEntry)
+
+			// No grub.cfg: grub2-bls carries its configuration inside its binary.
+			entries, err := LoadGrubEntries(fs, "", nil)
+			require.NoError(t, err)
+			require.Len(t, entries, 1)
+			assert.Equal(t, "1", entries[0].Parameters["audit"])
+			assert.True(t, entries[0].Bootable)
+
+			// A grub.cfg that hands over to blscfg.
+			entries, err = LoadGrubEntries(fs, esp+"/EFI/opensuse/grub.cfg", []byte("blscfg\n"))
+			require.NoError(t, err)
+			require.Len(t, entries, 1)
+		})
+	}
+}
+
+func TestBLSEntriesFromTheGrubCfgFilesystemFirst(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	writeEntryFile(t, fs, "/boot/loader/entries/rhel.conf", rhel9BLSEntry)
+	writeEntryFile(t, fs, "/boot/efi/loader/entries/opensuse.conf", sdbootutilEntry)
+
+	entries, err := LoadGrubEntries(fs, "/boot/efi/EFI/opensuse/grub.cfg", []byte("blscfg\n"))
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "openSUSE Leap 16.0", entries[0].Title)
+
+	entries, err = LoadGrubEntries(fs, "/boot/grub2/grub.cfg", []byte("blscfg\n"))
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "/boot/loader/entries/rhel.conf", entries[0].Source)
 }
