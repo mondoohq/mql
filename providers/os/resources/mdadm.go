@@ -43,6 +43,9 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 		return nil, err
 	}
 	if run.exitcode != 0 {
+		if plugin.StructuredErrors() && commandRefused(run.stderr) {
+			return nil, llx.Forbidden(fmt.Errorf("mdadm --detail --scan could not read the RAID arrays (you must be root): %s", strings.TrimSpace(run.stderr)))
+		}
 		// mdadm is absent or refused to answer. That is not the same as a host
 		// with no RAID arrays: an empty list is vacuously true for
 		// `mdadm.arrays.none(...)` and `mdadm.arrays.all(...)`, so a scan that
@@ -60,6 +63,9 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 	}
 
 	results := make([]any, 0, len(arrayNames))
+	// refused holds the first `mdadm --detail` that was denied, reported when
+	// no array could be read at all.
+	var refused error
 	for _, name := range arrayNames {
 		if !validMdDevicePath.MatchString(name) {
 			continue
@@ -76,6 +82,9 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 			return nil, err
 		}
 		if detailRun.exitcode != 0 {
+			if refused == nil && commandRefused(detailRun.stderr) {
+				refused = llx.Forbidden(fmt.Errorf("mdadm --detail %s could not read the array (you must be root): %s", name, strings.TrimSpace(detailRun.stderr)))
+			}
 			continue
 		}
 
@@ -106,6 +115,9 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 		// The scan named arrays but `mdadm --detail` answered for none of them.
 		// Reporting that as "no arrays" would hide the very arrays the scan
 		// just found.
+		if plugin.StructuredErrors() && refused != nil {
+			return nil, refused
+		}
 		m.Arrays.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}

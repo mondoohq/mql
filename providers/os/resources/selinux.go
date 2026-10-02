@@ -448,6 +448,9 @@ func (s *mqlSelinux) modules() ([]any, error) {
 		return nil, err
 	}
 	if run.exitcode != 0 {
+		if plugin.StructuredErrors() && commandRefused(run.stderr) {
+			return nil, llx.Forbidden(fmt.Errorf("semodule could not read the SELinux module store (you must be root): %s", strings.TrimSpace(run.stderr)))
+		}
 		// semodule is absent or refused to answer, so the loaded modules are
 		// unknown. Only an exit code of 0 licenses an empty list.
 		s.Modules.State = plugin.StateIsSet | plugin.StateIsNull
