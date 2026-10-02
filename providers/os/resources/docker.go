@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
@@ -18,6 +19,43 @@ import (
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/types"
 )
+
+// Older daemons (API < 1.40 or so, e.g. docker.io on Ubuntu 16.04 and 18.04)
+// report a dangling image with these placeholders instead of empty lists. They
+// are not references anyone can pull, so the image has no tags or digests.
+const (
+	dockerNoneTag    = "<none>:<none>"
+	dockerNoneDigest = "<none>@<none>"
+)
+
+// dockerImageRefs converts an image's tags or digests, dropping the
+// placeholder an older daemon reports for a dangling image.
+func dockerImageRefs(refs []string, placeholder string) []any {
+	res := []any{}
+	for _, ref := range refs {
+		if ref == placeholder {
+			continue
+		}
+		res = append(res, ref)
+	}
+	return res
+}
+
+type dockerContainerLister interface {
+	ContainerList(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error)
+}
+
+// listAllDockerContainers lists every container the daemon knows, not just the
+// running ones. The Docker API's default (and `docker ps`) leaves out created,
+// exited and dead containers, which would let a check over the host's
+// containers pass while a stopped one is still there.
+func listAllDockerContainers(ctx context.Context, cl dockerContainerLister) ([]container.Summary, error) {
+	res, err := cl.ContainerList(ctx, client.ContainerListOptions{All: true})
+	if err != nil {
+		return nil, err
+	}
+	return res.Items, nil
+}
 
 func (p *mqlDocker) images() ([]any, error) {
 	cl, err := dockerClient(p.MqlRuntime)
@@ -38,15 +76,13 @@ func (p *mqlDocker) images() ([]any, error) {
 			labels[key] = dImg.Labels[key]
 		}
 
-		tags := []any{}
-		for i := range dImg.RepoTags {
-			tags = append(tags, dImg.RepoTags[i])
-		}
+		tags := dockerImageRefs(dImg.RepoTags, dockerNoneTag)
+		digests := dockerImageRefs(dImg.RepoDigests, dockerNoneDigest)
 
 		r, err := CreateResource(p.MqlRuntime, "docker.image", map[string]*llx.RawData{
 			"id":          llx.StringData(dImg.ID),
 			"size":        llx.IntData(dImg.Size),
-			"repoDigests": llx.ArrayData(llx.TArr2Raw(dImg.RepoDigests), types.String),
+			"repoDigests": llx.ArrayData(digests, types.String),
 			"labels":      llx.MapData(labels, types.String),
 			"tags":        llx.ArrayData(tags, types.String),
 		})
@@ -66,13 +102,12 @@ func (p *mqlDocker) containers() ([]any, error) {
 		return nil, err
 	}
 
-	containerListRes, err := cl.ContainerList(context.Background(), client.ContainerListOptions{})
+	dContainers, err := listAllDockerContainers(context.Background(), cl)
 	if err != nil {
 		return nil, err
 	}
-	dContainers := containerListRes.Items
 
-	container := make([]any, len(dContainers))
+	containers := make([]any, len(dContainers))
 
 	for i, dContainer := range dContainers {
 		labels := make(map[string]any)
@@ -109,10 +144,10 @@ func (p *mqlDocker) containers() ([]any, error) {
 			return nil, err
 		}
 
-		container[i] = o.(*mqlDockerContainer)
+		containers[i] = o.(*mqlDockerContainer)
 	}
 
-	return container, nil
+	return containers, nil
 }
 
 // running is the anchor for the container as its own asset (ADR 031).
