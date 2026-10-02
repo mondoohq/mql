@@ -525,3 +525,71 @@ func TestCollectPythonPackages_UnreadableEntryDoesNotAbortDirectory(t *testing.T
 	assert.NoError(t, err,
 		"one unreadable entry must be skipped, not fail the entire site-packages directory")
 }
+
+// pip 9 (Debian 9) and pip 18 (Debian 10) write INSTALLER but no REQUESTED, so
+// every package of a venv read as a dependency and python.toplevel was empty.
+// The layout is the Debian 9 sweep host's /opt/g03venv.
+func TestMarkTopLevelWithoutRequested(t *testing.T) {
+	const siteDir = "/opt/g03venv/lib/python3.5/site-packages"
+	fs := afero.NewMemMapFs()
+	afs := &afero.Afero{Fs: fs}
+	pkgs := []python.PackageDetails{
+		{Name: "certifi"}, {Name: "chardet"}, {Name: "idna"}, {Name: "pip"},
+		{Name: "requests", Dependencies: []string{"chardet", "idna", "urllib3", "certifi"}},
+		{Name: "six"}, {Name: "urllib3"},
+		// a requirement spelled differently than the installed name
+		{Name: "zope.interface"}, {Name: "uses-zope", Dependencies: []string{"Zope_Interface"}},
+	}
+	installers := make([]string, len(pkgs))
+	for i, p := range pkgs {
+		installers[i] = siteDir + "/" + p.Name + ".dist-info/INSTALLER"
+		require.NoError(t, afs.WriteFile(installers[i], []byte("pip\n"), 0o644))
+	}
+
+	markTopLevelWithoutRequested(afs, pkgs, installers)
+	top := []string{}
+	for _, p := range pkgs {
+		if p.IsLeaf {
+			top = append(top, p.Name)
+		}
+	}
+	assert.Equal(t, []string{"pip", "requests", "six", "uses-zope"}, top)
+}
+
+// The fallback only applies where pip installed packages and no package has
+// REQUESTED: Debian's own dist-packages ("debian" INSTALLER) and directories
+// written by a pip that records REQUESTED keep their answer.
+func TestCollectPythonPackages_TopLevelFallbackScope(t *testing.T) {
+	const siteDir = "/usr/lib/python3.11/site-packages"
+	write := func(fs afero.Fs, name, installer string, requested bool) {
+		dir := siteDir + "/" + name + ".dist-info"
+		require.NoError(t, fs.MkdirAll(dir, 0o755))
+		require.NoError(t, afero.WriteFile(fs, dir+"/INSTALLER", []byte(installer+"\n"), 0o644))
+		if requested {
+			require.NoError(t, afero.WriteFile(fs, dir+"/REQUESTED", nil, 0o644))
+		}
+	}
+	leaves := func(fs afero.Fs) map[string]bool {
+		results, err := collectPythonPackages(nil, fs, siteDir)
+		require.NoError(t, err)
+		res := map[string]bool{}
+		for _, r := range results {
+			res[r.Name] = r.IsLeaf
+		}
+		return res
+	}
+
+	old := afero.NewMemMapFs()
+	write(old, "six-1.16.0", "pip", false)
+	write(old, "toml-0.10.2", "pip", false)
+	assert.Equal(t, map[string]bool{"six": true, "toml": true}, leaves(old))
+
+	modern := afero.NewMemMapFs()
+	write(modern, "six-1.16.0", "pip", true)
+	write(modern, "toml-0.10.2", "pip", false)
+	assert.Equal(t, map[string]bool{"six": true, "toml": false}, leaves(modern))
+
+	distro := afero.NewMemMapFs()
+	write(distro, "six-1.16.0", "debian", false)
+	assert.Equal(t, map[string]bool{"six": false}, leaves(distro))
+}
