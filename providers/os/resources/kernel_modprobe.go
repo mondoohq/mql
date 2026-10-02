@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"errors"
 	"os"
 	"path"
 	"sort"
@@ -87,11 +88,14 @@ func selectModprobeConfigFiles(dirs []string, listings [][]string) []string {
 // listModprobeConfigFiles returns the modprobe.d configuration files modprobe
 // reads, in the order it applies them. Each search directory is listed one
 // level deep (libkmod ignores subdirectories), symlinked files are followed,
-// and missing directories are skipped.
+// and missing directories are skipped. A directory that exists but can't be
+// checked or listed doesn't stop the walk: the files from the other
+// directories are still returned, together with the joined errors.
 func listModprobeConfigFiles(runtime *plugin.Runtime) ([]string, error) {
 	conn := runtime.Connection.(shared.Connection)
 	fs := conn.FileSystem()
 
+	var errs []error
 	listings := make([][]string, len(modprobeSearchPaths))
 	for i, dir := range modprobeSearchPaths {
 		raw, err := CreateResource(runtime, "file", map[string]*llx.RawData{
@@ -102,7 +106,8 @@ func listModprobeConfigFiles(runtime *plugin.Runtime) ([]string, error) {
 		}
 		exists := raw.(*mqlFile).GetExists()
 		if exists.Error != nil {
-			return nil, exists.Error
+			errs = append(errs, exists.Error)
+			continue
 		}
 		if !exists.Data {
 			continue
@@ -110,7 +115,8 @@ func listModprobeConfigFiles(runtime *plugin.Runtime) ([]string, error) {
 
 		entries, err := afero.ReadDir(fs, dir)
 		if err != nil {
-			return nil, err
+			errs = append(errs, err)
+			continue
 		}
 		for _, entry := range entries {
 			if entry.IsDir() {
@@ -128,7 +134,7 @@ func listModprobeConfigFiles(runtime *plugin.Runtime) ([]string, error) {
 		}
 	}
 
-	return selectModprobeConfigFiles(modprobeSearchPaths, listings), nil
+	return selectModprobeConfigFiles(modprobeSearchPaths, listings), errors.Join(errs...)
 }
 
 // installBypassBins are the executable paths whose presence as the command
@@ -235,14 +241,12 @@ func (k *mqlKernel) loadModprobeRules() (map[string]modprobeRule, error) {
 		rules := map[string]modprobeRule{}
 
 		paths, err := listModprobeConfigFiles(k.MqlRuntime)
-		if err != nil {
-			if plugin.StructuredErrors() {
-				k.modprobeErr = err
-				return
-			}
-			// v13 behavior: an unreadable search path contributes no rules.
-			paths = nil
+		if err != nil && plugin.StructuredErrors() {
+			k.modprobeErr = err
+			return
 		}
+		// v13 behavior: an unreadable search directory contributes no rules,
+		// the readable ones still count.
 
 		conn := k.MqlRuntime.Connection.(shared.Connection)
 		for _, p := range paths {
