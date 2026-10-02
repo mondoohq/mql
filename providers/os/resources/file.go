@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path"
+	"sort"
 
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
@@ -25,6 +26,46 @@ func newFile(runtime *plugin.Runtime, path string) (*mqlFile, error) {
 	}
 	file := f.(*mqlFile)
 	return file, nil
+}
+
+// classifyFsError marks a filesystem refusal (EACCES/EPERM) as forbidden and
+// returns any other error unchanged.
+func classifyFsError(err error) error {
+	if err != nil && errors.Is(err, os.ErrPermission) {
+		return llx.Forbidden(err)
+	}
+	return err
+}
+
+// globDir returns the paths of the entries in dir whose names match pattern,
+// sorted. A directory that does not exist has no matches. Unlike afero.Glob,
+// which drops directory read errors, a directory that exists but cannot be
+// listed is an error, so an unreadable directory never reads as an empty one.
+// With dirsOnly set, only subdirectories match.
+func globDir(fs afero.Fs, dir string, pattern string, dirsOnly bool) ([]string, error) {
+	entries, err := afero.ReadDir(fs, dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, classifyFsError(err)
+	}
+
+	matches := []string{}
+	for _, entry := range entries {
+		if dirsOnly && !entry.IsDir() {
+			continue
+		}
+		ok, err := path.Match(pattern, entry.Name())
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			matches = append(matches, path.Join(dir, entry.Name()))
+		}
+	}
+	sort.Strings(matches)
+	return matches, nil
 }
 
 func fileContentOrEmpty(file *mqlFile) (string, error) {

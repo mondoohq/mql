@@ -198,20 +198,64 @@ func (p *mqlPolkit) actions() ([]any, error) {
 	return res, nil
 }
 
+// polkitRuleFiles lists the *.rules files of every rules directory, one sorted
+// slice per directory in precedence order.
+func polkitRuleFiles(fs afero.Fs) ([][]string, error) {
+	dirFiles := make([][]string, 0, len(polkitRuleDirs))
+	for _, dir := range polkitRuleDirs {
+		matches, err := globDir(fs, dir, "*.rules", false)
+		if err != nil {
+			// v13 skipped a rules directory it could not list
+			if !plugin.StructuredErrors() {
+				log.Debug().Err(err).Str("dir", dir).Msg("polkit> cannot list rules directory")
+				continue
+			}
+			return nil, err
+		}
+		dirFiles = append(dirFiles, matches)
+	}
+	return dirFiles, nil
+}
+
+// polkitPklaFiles lists the .pkla files in the numbered subdirectories of
+// every local-authority root, sorted.
+func polkitPklaFiles(fs afero.Fs) ([]string, error) {
+	paths := []string{}
+	for _, root := range polkitLocalAuthorityDirs {
+		subdirs, err := globDir(fs, root, "*", true)
+		if err != nil {
+			// v13 skipped a local-authority tree it could not list
+			if !plugin.StructuredErrors() {
+				log.Debug().Err(err).Str("dir", root).Msg("polkit> cannot list local authority directory")
+				continue
+			}
+			return nil, err
+		}
+		for _, dir := range subdirs {
+			matches, err := globDir(fs, dir, "*.pkla", false)
+			if err != nil {
+				if !plugin.StructuredErrors() {
+					log.Debug().Err(err).Str("dir", dir).Msg("polkit> cannot list local authority directory")
+					continue
+				}
+				return nil, err
+			}
+			paths = append(paths, matches...)
+		}
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
 func (p *mqlPolkit) rules() ([]any, error) {
 	fs, err := p.fs()
 	if err != nil {
 		return nil, err
 	}
 
-	dirFiles := make([][]string, 0, len(polkitRuleDirs))
-	for _, dir := range polkitRuleDirs {
-		matches, err := afero.Glob(fs, path.Join(dir, "*.rules"))
-		if err != nil {
-			return nil, err
-		}
-		sort.Strings(matches)
-		dirFiles = append(dirFiles, matches)
+	dirFiles, err := polkitRuleFiles(fs)
+	if err != nil {
+		return nil, err
 	}
 
 	res := []any{}
@@ -251,15 +295,10 @@ func (p *mqlPolkit) localAuthorityRules() ([]any, error) {
 		return nil, err
 	}
 
-	paths := []string{}
-	for _, dir := range polkitLocalAuthorityDirs {
-		matches, err := afero.Glob(fs, path.Join(dir, "*", "*.pkla"))
-		if err != nil {
-			return nil, err
-		}
-		paths = append(paths, matches...)
+	paths, err := polkitPklaFiles(fs)
+	if err != nil {
+		return nil, err
 	}
-	sort.Strings(paths)
 
 	res := []any{}
 	for _, pklaPath := range paths {

@@ -289,35 +289,13 @@ func (u *mqlUser) sshkeys() ([]any, error) {
 	// check if use ssh directory exists
 	exists, err := afutil.Exists(userSshPath)
 	if err != nil {
-		return nil, err
+		return nil, classifyFsError(err)
 	}
 	if !exists {
 		return res, nil
 	}
 
-	filter := []string{"config"}
-
-	// walk dir and search for all private keys
-	potentialPrivateKeyFiles := []string{}
-	err = afutil.Walk(userSshPath, func(path string, f os.FileInfo, err error) error {
-		if f == nil || f.IsDir() {
-			return nil
-		}
-
-		// eg. matches google_compute_known_hosts and known_hosts
-		if strings.HasSuffix(f.Name(), ".pub") || strings.HasSuffix(f.Name(), "known_hosts") {
-			return nil
-		}
-
-		for i := range filter {
-			if f.Name() == filter[i] {
-				return nil
-			}
-		}
-
-		potentialPrivateKeyFiles = append(potentialPrivateKeyFiles, path)
-		return nil
-	})
+	potentialPrivateKeyFiles, err := sshKeyCandidates(conn.FileSystem(), userSshPath)
 	if err != nil {
 		return nil, err
 	}
@@ -352,4 +330,43 @@ func (u *mqlUser) sshkeys() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// sshKeyCandidates walks dir and returns every file that may hold a private
+// key: everything except public keys, known_hosts files and ssh config.
+func sshKeyCandidates(fs afero.Fs, dir string) ([]string, error) {
+	filter := []string{"config"}
+
+	potentialPrivateKeyFiles := []string{}
+	err := afero.Walk(fs, dir, func(path string, f os.FileInfo, err error) error {
+		if err != nil {
+			// v13 skipped what it could not list, so an unreadable ~/.ssh
+			// looked like one holding no keys
+			if !plugin.StructuredErrors() {
+				return nil
+			}
+			return classifyFsError(err)
+		}
+		if f == nil || f.IsDir() {
+			return nil
+		}
+
+		// eg. matches google_compute_known_hosts and known_hosts
+		if strings.HasSuffix(f.Name(), ".pub") || strings.HasSuffix(f.Name(), "known_hosts") {
+			return nil
+		}
+
+		for i := range filter {
+			if f.Name() == filter[i] {
+				return nil
+			}
+		}
+
+		potentialPrivateKeyFiles = append(potentialPrivateKeyFiles, path)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return potentialPrivateKeyFiles, nil
 }
