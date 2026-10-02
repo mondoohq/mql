@@ -9672,7 +9672,7 @@ selinux @defaults("mode") {
   policyType() string
   // Loaded SELinux booleans
   booleans() []selinux.boolean
-  // Installed SELinux policy modules
+  // Installed SELinux policy modules, including disabled ones
   modules() []selinux.module
 }
 
@@ -9690,15 +9690,17 @@ private selinux.boolean @defaults("name value") {
 
 // SELinux policy module
 //
-// One installed SELinux policy module from `semodule -l`, with its status
-// (enabled or disabled) and priority (higher priority overrides lower for
-// the same module name).
+// One installed SELinux policy module from `semodule --list-modules=full`,
+// with its status (enabled or disabled) and priority (higher priority
+// overrides lower for the same module name).
 private selinux.module @defaults("name status") {
   // Module name
   name string
   // Module status (e.g., enabled, disabled)
   status string
   // Module priority
+  //
+  // Null when semodule predates `--list-modules=full` and does not report it.
   priority int
 }
 

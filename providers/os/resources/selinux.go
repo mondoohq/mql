@@ -294,65 +294,70 @@ func readSelinuxBooleansFromFS(fs afero.Fs) []SELinuxBool {
 		if err != nil {
 			continue
 		}
-		val := strings.TrimSpace(string(data))
 		bools = append(bools, SELinuxBool{
 			Name:  entry.Name(),
-			Value: val == "1",
+			Value: selinuxBooleanFileValue(data),
 		})
 	}
 	return bools
 }
 
-// SELinuxModule represents a parsed semodule entry.
-type SELinuxModule struct {
-	Name     string
-	Status   string
-	Priority int
+// selinuxBooleanFileValue reads a /sys/fs/selinux/booleans/<name> file, which
+// holds the current and the pending value ("1 1", "0 0", or "0 1" while a
+// change is pending). The first is what the kernel enforces.
+func selinuxBooleanFileValue(data []byte) bool {
+	current, _, _ := strings.Cut(strings.TrimSpace(string(data)), " ")
+	return current == "1"
 }
 
-// ParseSemodule parses the output of "semodule -l" (format: "name" or "priority name status").
+// SELinuxModule represents a parsed semodule entry.
+type SELinuxModule struct {
+	Name   string
+	Status string
+	// Priority is nil when the listing does not show it (semodule -l).
+	Priority *int
+}
+
+// semoduleListCmd lists every module with its priority and whether it is
+// disabled. semodule -l omits disabled modules and priorities since
+// policycoreutils 2.4 (RHEL 7 prints the module version instead), so it is
+// only the fallback for a semodule that predates --list-modules=full.
+const semoduleListCmd = "semodule --list-modules=full 2>/dev/null || semodule -l"
+
+// ParseSemodule parses semodule module listings:
+//
+//	400 sweeppol          pp
+//	100 zosremote         pp  disabled
+//
+// from `semodule --list-modules=full` (priority, name, language, and
+// "disabled" for a disabled module), and from `semodule -l` either the bare
+// name, or the name and version followed by "Disabled" on older releases.
 func ParseSemodule(output string) []SELinuxModule {
 	var modules []SELinuxModule
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) == 0 {
 			continue
 		}
 
-		fields := strings.Fields(line)
-		switch len(fields) {
-		case 1:
-			// Simple format: just module name (older semodule versions)
-			modules = append(modules, SELinuxModule{
-				Name:   fields[0],
-				Status: "enabled",
-			})
-		case 2:
-			// "priority name" or "name status"
-			if priority, err := strconv.Atoi(fields[0]); err == nil {
-				modules = append(modules, SELinuxModule{
-					Name:     fields[1],
-					Priority: priority,
-					Status:   "enabled",
-				})
-			} else {
-				modules = append(modules, SELinuxModule{
-					Name:   fields[0],
-					Status: fields[1],
-				})
-			}
-		default:
-			// "priority name status" or more fields
-			if len(fields) >= 3 {
-				priority, _ := strconv.Atoi(fields[0])
-				modules = append(modules, SELinuxModule{
-					Name:     fields[1],
-					Priority: priority,
-					Status:   fields[2],
-				})
+		var m SELinuxModule
+		rest := fields[1:]
+		if priority, err := strconv.Atoi(fields[0]); err == nil && len(fields) >= 2 {
+			m.Priority = &priority
+			m.Name = fields[1]
+			rest = fields[2:]
+		} else {
+			m.Name = fields[0]
+		}
+
+		m.Status = "enabled"
+		for _, f := range rest {
+			if strings.EqualFold(f, "disabled") {
+				m.Status = "disabled"
 			}
 		}
+		modules = append(modules, m)
 	}
 	return modules
 }
@@ -364,7 +369,7 @@ func (s *mqlSelinux) modules() ([]any, error) {
 	}
 
 	o, err := CreateResource(s.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("semodule -l"),
+		"command": llx.StringData(semoduleListCmd),
 	})
 	if err != nil {
 		return nil, err
@@ -380,7 +385,7 @@ func (s *mqlSelinux) modules() ([]any, error) {
 		r, err := CreateResource(s.MqlRuntime, "selinux.module", map[string]*llx.RawData{
 			"name":     llx.StringData(m.Name),
 			"status":   llx.StringData(m.Status),
-			"priority": llx.IntData(int64(m.Priority)),
+			"priority": llx.IntDataPtr(m.Priority),
 		})
 		if err != nil {
 			return nil, err
