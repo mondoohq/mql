@@ -17,6 +17,7 @@ import (
 
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -193,7 +194,9 @@ func (g *mqlGrubConfig) params() (map[string]any, error) {
 		return nil, errors.New("filesystem not available")
 	}
 
-	params, err := loadGrubDefaults(fs, defaultsPath)
+	asset := conn.Asset()
+	readDropIns := asset != nil && grubMkconfigReadsDropIns(asset.Platform)
+	params, err := loadGrubDefaults(fs, defaultsPath, readDropIns)
 	if err != nil {
 		return nil, err
 	}
@@ -364,22 +367,36 @@ func (e *mqlGrubConfigEntry) id() (string, error) {
 	return e.MqlID(), nil
 }
 
+// grubMkconfigReadsDropIns reports whether the platform's grub-mkconfig
+// sources /etc/default/grub.d/*.cfg after /etc/default/grub. Only Debian's
+// does, through a patch Ubuntu and the other derivatives carry. Upstream GRUB,
+// and the grub2-mkconfig of SUSE, Fedora, the Red Hat family and Amazon Linux,
+// source /etc/default/grub alone, so a drop-in there never reaches the
+// configuration those hosts boot with.
+func grubMkconfigReadsDropIns(platform *inventory.Platform) bool {
+	return platform.IsFamily("debian")
+}
+
 // loadGrubDefaults returns the settings grub-mkconfig sees: it sources the
-// defaults file (/etc/default/grub) and then every *.cfg file in the
-// matching .d directory (/etc/default/grub.d) in name order, so a drop-in
-// overrides the defaults file and a later drop-in overrides an earlier one.
-// Ubuntu cloud images set GRUB_CMDLINE_LINUX_DEFAULT in such a drop-in.
-func loadGrubDefaults(fs afero.Fs, defaultsPath string) (map[string]string, error) {
+// defaults file (/etc/default/grub) and then, when dropIns is set, every
+// *.cfg file in the matching .d directory (/etc/default/grub.d) in name
+// order, so a drop-in overrides the defaults file and a later drop-in
+// overrides an earlier one. Ubuntu cloud images set
+// GRUB_CMDLINE_LINUX_DEFAULT in such a drop-in.
+func loadGrubDefaults(fs afero.Fs, defaultsPath string, dropIns bool) (map[string]string, error) {
 	params, err := readGrubDefaultsFile(fs, defaultsPath)
 	if err != nil {
 		return nil, err
 	}
+	if !dropIns {
+		return params, nil
+	}
 
-	dropIns, err := grubDefaultsDropIns(fs, defaultsPath+".d")
+	files, err := grubDefaultsDropIns(fs, defaultsPath+".d")
 	if err != nil {
 		return nil, err
 	}
-	for _, name := range dropIns {
+	for _, name := range files {
 		vars, err := readGrubDefaultsFile(fs, name)
 		if err != nil {
 			return nil, err

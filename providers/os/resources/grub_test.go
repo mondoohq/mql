@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
 func TestParseGrubDefaults(t *testing.T) {
@@ -129,7 +130,7 @@ GRUB_HIDDEN_TIMEOUT=0.1
 func TestLoadGrubDefaultsDropIns(t *testing.T) {
 	fs := ubuntuCloudGrubDefaultsFs(t)
 
-	params, err := loadGrubDefaults(fs, "/etc/default/grub")
+	params, err := loadGrubDefaults(fs, "/etc/default/grub", true)
 	require.NoError(t, err)
 
 	assert.Equal(t, "console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295", params["GRUB_CMDLINE_LINUX_DEFAULT"])
@@ -150,7 +151,7 @@ func TestLoadGrubDefaultsDropInOrder(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/10-early.cfg", []byte("GRUB_TERMINAL=serial\n"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/99-local.cfg.dpkg-old", []byte("GRUB_TIMEOUT=30\n"), 0o644))
 
-	params, err := loadGrubDefaults(fs, "/etc/default/grub")
+	params, err := loadGrubDefaults(fs, "/etc/default/grub", true)
 	require.NoError(t, err)
 
 	assert.Equal(t, "3", params["GRUB_TIMEOUT"])
@@ -161,12 +162,52 @@ func TestLoadGrubDefaultsWithoutDropInDir(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub", []byte("GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash\"\n"), 0o644))
 
-	params, err := loadGrubDefaults(fs, "/etc/default/grub")
+	params, err := loadGrubDefaults(fs, "/etc/default/grub", true)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"GRUB_CMDLINE_LINUX_DEFAULT": "quiet splash"}, params)
 
-	_, err = loadGrubDefaults(fs, "/etc/default/missing")
+	_, err = loadGrubDefaults(fs, "/etc/default/missing", true)
 	assert.Error(t, err)
+}
+
+// SUSE's grub2-mkconfig sources /etc/default/grub alone, so a drop-in that
+// would add audit=1 never reaches grub.cfg there. The defaults line is the one
+// openSUSE Leap 16.0 ships on EC2.
+func TestLoadGrubDefaultsIgnoresDropInsWhereMkconfigDoes(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub", []byte(
+		"GRUB_CMDLINE_LINUX_DEFAULT=\"console=ttyS0 net.ifnames=0 iommu.passthrough=1 8250.nr_uarts=4 dis_ucode_ldr multipath=off nvme_core.admin_timeout=4294967295 nvme_core.io_timeout=4294967295 security=selinux selinux=1\"\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/50-audit.cfg", []byte(
+		"GRUB_CMDLINE_LINUX_DEFAULT=\"$GRUB_CMDLINE_LINUX_DEFAULT audit=1\"\n"), 0o644))
+
+	params, err := loadGrubDefaults(fs, "/etc/default/grub", false)
+	require.NoError(t, err)
+	assert.Equal(t, "console=ttyS0 net.ifnames=0 iommu.passthrough=1 8250.nr_uarts=4 dis_ucode_ldr multipath=off nvme_core.admin_timeout=4294967295 nvme_core.io_timeout=4294967295 security=selinux selinux=1", params["GRUB_CMDLINE_LINUX_DEFAULT"])
+}
+
+func TestGrubMkconfigReadsDropIns(t *testing.T) {
+	tests := []struct {
+		platform *inventory.Platform
+		want     bool
+	}{
+		{&inventory.Platform{Name: "ubuntu", Family: []string{"debian", "linux", "unix", "os"}}, true},
+		{&inventory.Platform{Name: "debian", Family: []string{"debian", "linux", "unix", "os"}}, true},
+		{&inventory.Platform{Name: "sles", Family: []string{"suse", "linux", "unix", "os"}}, false},
+		{&inventory.Platform{Name: "opensuse-leap", Family: []string{"suse", "linux", "unix", "os"}}, false},
+		{&inventory.Platform{Name: "rhel", Family: []string{"redhat", "linux", "unix", "os"}}, false},
+		{&inventory.Platform{Name: "fedora", Family: []string{"redhat", "linux", "unix", "os"}}, false},
+		{&inventory.Platform{Name: "amazonlinux", Family: []string{"linux", "unix", "os"}}, false},
+		{nil, false},
+	}
+	for _, tt := range tests {
+		name := "nil"
+		if tt.platform != nil {
+			name = tt.platform.Name
+		}
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.want, grubMkconfigReadsDropIns(tt.platform))
+		})
+	}
 }
 
 func TestParseGrubCfgEntries(t *testing.T) {
