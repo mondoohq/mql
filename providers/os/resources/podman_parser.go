@@ -80,7 +80,8 @@ type podmanImageEntry struct {
 
 // podmanImageInspectEntry is the part of one "podman image inspect" record that
 // "podman images" leaves out. Podman 5 and older list no platform at all, and
-// podman 3 lists repo digests without the repository they belong to.
+// podman 3 lists repo digests without the repository they belong to. Inspect
+// spells the architecture key "Architecture", where the podman 6 list says "Arch".
 type podmanImageInspectEntry struct {
 	ID           string   `json:"Id"`
 	RepoDigests  []string `json:"RepoDigests"`
