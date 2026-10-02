@@ -77,7 +77,7 @@ func parseAptConfigDump(out string) map[string]string {
 // disable are false, case-insensitive, and a number is true unless 0. An
 // absent or unrecognized value is the option's default.
 func aptBoolParam(params map[string]any, key string, def bool) bool {
-	v, ok := params[key].(string)
+	v, ok := aptParam(params, key)
 	if !ok {
 		return def
 	}
@@ -92,6 +92,23 @@ func aptBoolParam(params map[string]any, key string, def bool) bool {
 		return n != 0
 	}
 	return def
+}
+
+// aptParam looks an option up the way APT does, ignoring case. apt-config dump
+// prints a key in the case it was first set in, so an option no built-in
+// default creates (Acquire::Check-Date) shows up as `Acquire::check-date` when
+// a configuration file spells it that way.
+func aptParam(params map[string]any, key string) (string, bool) {
+	if v, ok := params[key].(string); ok {
+		return v, true
+	}
+	for k, raw := range params {
+		if strings.EqualFold(k, key) {
+			v, ok := raw.(string)
+			return v, ok
+		}
+	}
+	return "", false
 }
 
 func (a *mqlAptConfig) allowInsecureRepositories(params map[string]any) (bool, error) {

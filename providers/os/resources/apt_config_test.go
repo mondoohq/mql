@@ -104,3 +104,31 @@ func TestAptBoolParam(t *testing.T) {
 	assert.False(t, aptBoolParam(map[string]any{"k": "maybe"}, "k", false), "unrecognized: the default")
 	assert.True(t, aptBoolParam(map[string]any{"k": "maybe"}, "k", true), "unrecognized: the default")
 }
+
+// APT option names are case-insensitive, and apt-config dump prints a key in
+// the case it was first set in. These lines are from Ubuntu 24.04 with an
+// apt.conf.d file written in lower and upper case: Acquire::Check-Date has no
+// built-in default, so the dump keeps the file's `check-date`, and
+// `apt-config shell V Acquire::Check-Date/b` answers false. checkDate used to
+// miss the key and report APT's default, true.
+func TestAptConfigKeysIgnoreCase(t *testing.T) {
+	a := &mqlAptConfig{}
+	params := map[string]any{}
+	for k, v := range parseAptConfigDump(`APT::Install-Recommends "false";
+APT::Install-Suggests "yes";
+Acquire::AllowInsecureRepositories "true";
+Acquire::AllowWeakRepositories "on";
+Acquire::AllowDowngradeToInsecureRepositories "true";
+Acquire::check-date "no";
+`) {
+		params[k] = v
+	}
+
+	v, _ := a.checkDate(params)
+	assert.False(t, v)
+	v, _ = a.allowWeakRepositories(params)
+	assert.True(t, v)
+
+	assert.True(t, aptBoolParam(map[string]any{"acquire::allowinsecurerepositories": "true"}, "Acquire::AllowInsecureRepositories", false))
+	assert.False(t, aptBoolParam(map[string]any{"APT::INSTALL-RECOMMENDS": "0"}, "APT::Install-Recommends", true))
+}

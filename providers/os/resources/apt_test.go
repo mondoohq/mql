@@ -4,10 +4,14 @@
 package resources
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func TestParseAptOneLine(t *testing.T) {
@@ -141,4 +145,60 @@ func TestIsAptSourceFile(t *testing.T) {
 			assert.False(t, isAptSourceFile(p), "apt ignores this file")
 		})
 	}
+}
+
+// The stock Ubuntu 16.04 to 22.04 sources.list repeats `deb <mirror> <suite>`
+// once per component group. Every line used to share one __id, so
+// CreateResource returned the first line's resource for the later ones and
+// universe and multiverse vanished from apt.repos. `apt-get indextargets` on
+// the same host lists main, restricted, universe and multiverse for focal.
+func TestAptReposRepeatedSuiteKeepEveryLine(t *testing.T) {
+	b, err := os.ReadFile("testdata/apt-sources/ubuntu-2004-sources.list")
+	require.NoError(t, err)
+	parsed := parseAptOneLine(string(b))
+	require.Len(t, parsed, 22, "10 enabled and 12 commented-out deb lines")
+
+	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+	apt := &mqlApt{MqlRuntime: runtime}
+	file := &mqlFile{MqlRuntime: runtime, Path: plugin.TValue[string]{Data: aptSourcesList, State: plugin.StateIsSet}}
+
+	components := map[string][]string{}
+	for i := range parsed {
+		parsed[i].SourceFile = aptSourcesList
+		r, err := apt.newRepo(file, i, parsed[i])
+		require.NoError(t, err)
+		if !r.Enabled.Data || r.Type.Data != "deb" {
+			continue
+		}
+		key := r.Url.Data + " " + r.Distribution.Data
+		for _, c := range r.Components.Data {
+			components[key] = append(components[key], c.(string))
+		}
+	}
+
+	assert.ElementsMatch(t, []string{"main", "restricted", "universe", "multiverse"},
+		components["http://archive.ubuntu.com/ubuntu/ focal"])
+	assert.ElementsMatch(t, []string{"main", "restricted", "universe", "multiverse"},
+		components["http://security.ubuntu.com/ubuntu focal-security"])
+}
+
+// apt drops everything from a '#' to the end of a line. The trailing comment
+// used to come back as components "#", "trailing" and "comment".
+func TestParseAptOneLineTrailingComment(t *testing.T) {
+	repos := parseAptOneLine(strings.Join([]string{
+		"deb [ trusted=yes arch=amd64,i386 ] file:/srv/g03repo2 ./ # trailing comment",
+		"deb http://archive.ubuntu.com/ubuntu noble main universe #no space",
+		"# deb http://archive.ubuntu.com/ubuntu noble multiverse # disabled with comment",
+	}, "\n"))
+	require.Len(t, repos, 3)
+
+	assert.Equal(t, "file:/srv/g03repo2", repos[0].URL)
+	assert.Equal(t, "./", repos[0].Distribution)
+	assert.Empty(t, repos[0].Components)
+	assert.True(t, repos[0].Trusted)
+
+	assert.Equal(t, []string{"main", "universe"}, repos[1].Components)
+
+	assert.False(t, repos[2].Enabled)
+	assert.Equal(t, []string{"multiverse"}, repos[2].Components)
 }

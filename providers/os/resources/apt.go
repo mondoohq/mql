@@ -57,7 +57,7 @@ func (a *mqlApt) repos() ([]any, error) {
 
 		for i := range parsed {
 			parsed[i].SourceFile = f.Path.Data
-			mqlRepo, err := a.newRepo(f, parsed[i])
+			mqlRepo, err := a.newRepo(f, i, parsed[i])
 			if err != nil {
 				return nil, err
 			}
@@ -123,8 +123,17 @@ func isAptSourceFile(path string) bool {
 	return strings.HasSuffix(path, ".list") || strings.HasSuffix(path, ".sources")
 }
 
-func (a *mqlApt) newRepo(file *mqlFile, repo aptRepo) (*mqlAptRepo, error) {
-	id := fmt.Sprintf("%s\x00%s %s %s", repo.SourceFile, repo.Type, repo.URL, repo.Distribution)
+// aptRepoID identifies the idx-th entry parsed from a source file. Type, URL
+// and suite alone do not: the stock Ubuntu sources.list repeats
+// `deb <mirror> focal` once per component group, and with a shared __id
+// CreateResource handed every later line the first line's resource, so the
+// universe and multiverse components vanished.
+func aptRepoID(idx int, repo aptRepo) string {
+	return fmt.Sprintf("%s\x00%d\x00%s %s %s", repo.SourceFile, idx, repo.Type, repo.URL, repo.Distribution)
+}
+
+func (a *mqlApt) newRepo(file *mqlFile, idx int, repo aptRepo) (*mqlAptRepo, error) {
+	id := aptRepoID(idx, repo)
 
 	components := make([]any, len(repo.Components))
 	for i := range repo.Components {
@@ -164,6 +173,11 @@ func parseAptOneLine(content string) []aptRepo {
 		if strings.HasPrefix(line, "#") {
 			enabled = false
 			line = strings.TrimSpace(strings.TrimLeft(line, "#"))
+		}
+		// apt ignores everything from a '#' to the end of the line, so a
+		// trailing comment is not a list of components
+		if i := strings.IndexByte(line, '#'); i >= 0 {
+			line = strings.TrimSpace(line[:i])
 		}
 		if line == "" {
 			continue
