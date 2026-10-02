@@ -83,9 +83,9 @@ func ParseUserSpecs(filePath string, content string) []UserSpec {
 			continuedLine = ""
 		}
 
-		// Skip empty lines and comments
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
+		// Skip empty lines and comments, including one after an entry
+		line = StripComment(line)
+		if line == "" {
 			continue
 		}
 
@@ -143,9 +143,9 @@ func ParseDefaults(filePath string, content string) []Default {
 			continuedLine = ""
 		}
 
-		// Skip empty lines and comments
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
+		// Skip empty lines and comments, including one after an entry
+		line = StripComment(line)
+		if line == "" {
 			continue
 		}
 
@@ -201,9 +201,9 @@ func ParseAliases(filePath string, content string) []Alias {
 			continuedLine = ""
 		}
 
-		// Skip empty lines and comments
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
+		// Skip empty lines and comments, including one after an entry
+		line = StripComment(line)
+		if line == "" {
 			continue
 		}
 
@@ -326,8 +326,9 @@ type parsedLine struct {
 
 // parseLine parses a single line from a sudoers file
 func parseLine(line string) *parsedLine {
-	// Filter out comments
-	if strings.HasPrefix(line, "#") {
+	// Filter out comments; #1000 is a numeric uid, not a comment
+	line = StripComment(line)
+	if line == "" {
 		return nil
 	}
 
