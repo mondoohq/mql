@@ -27,3 +27,42 @@ func TestParseLinuxKernelArguments(t *testing.T) {
 	assert.Equal(t, "", args.Device)
 	assert.Equal(t, map[string]string{"console": "ttyS1", "earlyprintk": "serial", "mitigations": "off", "no_stf_barrier": "", "noibpb": "", "noibrs": "", "nospec_store_bypass_disable": "", "page_poison": "1", "panic": "1", "vsyscall": "emulate"}, args.Arguments)
 }
+
+// /proc/cmdline from the sweep hosts. Fedora Cloud 44 puts root= after other
+// parameters and has rootflags=subvol=root.
+func TestParseLinuxKernelArguments_Fedora(t *testing.T) {
+	output := "BOOT_IMAGE=(hd0,gpt3)/boot/vmlinuz-7.2.8-200.fc44.x86_64 no_timer_check console=tty1 console=ttyS0,115200n8 systemd.firstboot=off root=UUID=b92ff89a-a848-4a55-8968-cc0fb8e60105 rootflags=subvol=root\n"
+	args, err := ParseLinuxKernelArguments(strings.NewReader(output))
+	require.NoError(t, err)
+	assert.Equal(t, "(hd0,gpt3)/boot/vmlinuz-7.2.8-200.fc44.x86_64", args.Path)
+	assert.Equal(t, "UUID=b92ff89a-a848-4a55-8968-cc0fb8e60105", args.Device)
+	assert.Equal(t, map[string]string{
+		"no_timer_check":    "",
+		"console":           "ttyS0,115200n8",
+		"systemd.firstboot": "off",
+		"rootflags":         "subvol=root",
+	}, args.Arguments)
+}
+
+func TestParseLinuxKernelArguments_EqualsInValue(t *testing.T) {
+	// Alma 9 sweep host: crashkernel ranges, root right after BOOT_IMAGE
+	output := "BOOT_IMAGE=(hd0,gpt3)/vmlinuz-5.14.0-687.42.1.el9_8.x86_64 root=UUID=42970503-2aa0-4b22-a35f-aad29481a24a console=tty0 console=ttyS0,115200n8 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 crashkernel=1G-2G:192M,2G-64G:256M,64G-:512M\n"
+	args, err := ParseLinuxKernelArguments(strings.NewReader(output))
+	require.NoError(t, err)
+	assert.Equal(t, "UUID=42970503-2aa0-4b22-a35f-aad29481a24a", args.Device)
+	assert.Equal(t, "1G-2G:192M,2G-64G:256M,64G-:512M", args.Arguments["crashkernel"])
+	assert.Equal(t, "nouveau", args.Arguments["rd.blacklist"])
+	assert.NotContains(t, args.Arguments, "root")
+
+	// a value that carries '=' itself, and grub's quoting of a value with spaces
+	output = "root=LABEL=rootfs ro dyndbg=\"file drivers/usb/* +p\" \"acpi_osi=Windows 2020\"\n"
+	args, err = ParseLinuxKernelArguments(strings.NewReader(output))
+	require.NoError(t, err)
+	assert.Equal(t, "", args.Path)
+	assert.Equal(t, "LABEL=rootfs", args.Device)
+	assert.Equal(t, map[string]string{
+		"ro":       "",
+		"dyndbg":   "file drivers/usb/* +p",
+		"acpi_osi": "Windows 2020",
+	}, args.Arguments)
+}

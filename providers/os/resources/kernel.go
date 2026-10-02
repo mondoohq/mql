@@ -348,7 +348,11 @@ func oracleKernelVersion(pkg kernelPackage, runningKernelVersion string) (Kernel
 // redhatKernelVersion reads an rpm kernel package.
 //
 // kernel version is "3.10.0-1160.11.1.el7.x86_64", carried by packages
-// named "kernel":
+// named "kernel". Since RHEL 8 and Fedora 22 "kernel" is a metapackage and
+// the kernel image itself is in "kernel-core"; Fedora Cloud and other
+// minimal images install kernel-core without the metapackage, so both
+// count. Where both are installed they list each kernel twice, see
+// dropKernelCoreShadowedByKernel.
 //
 //	[{
 //		name: "kernel"
@@ -361,7 +365,7 @@ func oracleKernelVersion(pkg kernelPackage, runningKernelVersion string) (Kernel
 //		version: "3.10.0-1127.19.1.el7"
 //	}]
 func redhatKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool) {
-	if pkg.Name != "kernel" {
+	if pkg.Name != "kernel" && pkg.Name != "kernel-core" {
 		return KernelVersion{}, false
 	}
 
@@ -733,7 +737,28 @@ func (k *mqlKernel) installed() ([]any, error) {
 		res = append(res, kernelVersion)
 	}
 
-	return convert.JsonToDictSlice(res)
+	return convert.JsonToDictSlice(dropKernelCoreShadowedByKernel(res))
+}
+
+// dropKernelCoreShadowedByKernel removes a kernel-core entry when a "kernel"
+// metapackage of the same version is listed too, so a RHEL 8+ or Fedora
+// host that has both lists each kernel once, under "kernel" as before. A
+// kernel-core without its metapackage (Fedora Cloud) is kept.
+func dropKernelCoreShadowedByKernel(kernels []KernelVersion) []KernelVersion {
+	meta := map[string]bool{}
+	for _, k := range kernels {
+		if k.Name == "kernel" {
+			meta[k.Version] = true
+		}
+	}
+	res := make([]KernelVersion, 0, len(kernels))
+	for _, k := range kernels {
+		if k.Name == "kernel-core" && meta[k.Version] {
+			continue
+		}
+		res = append(res, k)
+	}
+	return res
 }
 
 // platformLabel names a platform for an error message, falling back to the

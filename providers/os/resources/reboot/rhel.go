@@ -23,19 +23,57 @@ func (s *RpmNewestKernel) Name() string {
 	return "RPM Latest Kernel"
 }
 
+// rpmNeedsRestartingCmd asks needs-restarting (yum-utils on RHEL 7, dnf-utils
+// / yum-utils on dnf hosts) whether the system needs a reboot. It answers yes
+// for a newer kernel and also for core libraries and services updated since
+// boot (glibc, systemd, openssl, linux-firmware, ...). LC_ALL=C keeps the
+// verdict sentence untranslated.
+const rpmNeedsRestartingCmd = "LC_ALL=C needs-restarting -r"
+
+// rpmQueryKernelCmd lists the packages that provide "kernel": the kernel
+// package on RHEL 7, kernel and kernel-core since RHEL 8, and only
+// kernel-core on minimal Fedora images that don't install the metapackage.
+const rpmQueryKernelCmd = "rpm -q --whatprovides kernel --queryformat '%{NAME} %{EPOCHNUM}:%{VERSION}-%{RELEASE} %{ARCH}__%{VENDOR}__%{SUMMARY}__%{LICENSE}__%{INSTALLTIME}\n'"
+
+// parseNeedsRestarting reads the verdict of `needs-restarting -r`. It exits 1
+// and says "Reboot is required" when a reboot is needed, and exits 0 and says
+// "Reboot should not be necessary" when not. Anything else (not installed, a
+// dnf error, which also exits 1) is no verdict: ok is false.
+func parseNeedsRestarting(exitStatus int, stdout string) (required bool, ok bool) {
+	switch {
+	case exitStatus == 1 && strings.Contains(stdout, "Reboot is required"):
+		return true, true
+	case exitStatus == 0 && strings.Contains(stdout, "Reboot should not be necessary"):
+		return false, true
+	default:
+		return false, false
+	}
+}
+
 func (s *RpmNewestKernel) RebootPending() (bool, error) {
 	// if it is a static asset, no reboot is pending
 	if !s.conn.Capabilities().Has(shared.Capability_RunCommand) {
 		return false, nil
 	}
 
+	// needs-restarting knows more than the kernel comparison below (core
+	// library updates), so a reboot it asks for counts. Its "no" doesn't
+	// overrule a newer installed kernel: it only looks at packages updated
+	// after boot.
+	if cmd, err := s.conn.RunCommand(rpmNeedsRestartingCmd); err == nil {
+		out, _ := io.ReadAll(cmd.Stdout)
+		if required, ok := parseNeedsRestarting(cmd.ExitStatus, string(out)); ok && required {
+			return true, nil
+		}
+	}
+
 	// get installed kernel version
-	installedKernelCmd, err := s.conn.RunCommand("rpm -q kernel --queryformat '%{NAME} %{EPOCHNUM}:%{VERSION}-%{RELEASE} %{ARCH}__%{VENDOR}__%{SUMMARY}__%{LICENSE}__%{INSTALLTIME}\n'")
+	installedKernelCmd, err := s.conn.RunCommand(rpmQueryKernelCmd)
 	if err != nil {
 		return false, err
 	}
 
-	// `rpm -q` exits non-zero and prints "package kernel is not installed" on
+	// `rpm -q` exits non-zero and prints "no package provides kernel" on
 	// stdout when there is no kernel package, which is the normal case in a
 	// container. Feeding that sentence to the package parser made it report a
 	// dropped package line, so every container scan warned that packages were

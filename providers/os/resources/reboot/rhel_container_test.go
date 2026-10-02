@@ -32,10 +32,10 @@ func captureLog(t *testing.T) *bytes.Buffer {
 	return buf
 }
 
-const rpmQueryKernel = "rpm -q kernel --queryformat '%{NAME} %{EPOCHNUM}:%{VERSION}-%{RELEASE} %{ARCH}__%{VENDOR}__%{SUMMARY}__%{LICENSE}__%{INSTALLTIME}\n'"
+const rpmQueryKernel = rpmQueryKernelCmd
 
-// A container has no kernel package, so `rpm -q kernel` exits 1 and prints
-// "package kernel is not installed" on stdout. That sentence used to reach the
+// A container has no kernel package, so `rpm -q --whatprovides kernel` exits 1
+// and prints "no package provides kernel" on stdout. That sentence used to reach the
 // rpm package parser, which counted it as a package line it could not parse and
 // warned that packages were missing from the inventory -- on every scan of
 // every rpm-based container, with nothing actually missing.
@@ -49,7 +49,7 @@ func TestRhelRebootWithoutKernelPackage(t *testing.T) {
 	}, mock.WithData(&mock.TomlData{
 		Commands: map[string]*mock.Command{
 			rpmQueryKernel: {
-				Stdout:     "package kernel is not installed\n",
+				Stdout:     "no package provides kernel\n",
 				ExitStatus: 1,
 			},
 			"uname -r": {Stdout: "6.12.0-55.el9.aarch64\n"},

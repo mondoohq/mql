@@ -996,6 +996,22 @@ func TestKernelFilters(t *testing.T) {
 			want:          KernelVersion{Name: "kernel", Version: "1:6.1.170-210.320.amzn2023", Running: true},
 		},
 
+		{
+			name:          "redhat: kernel-core without the kernel metapackage (Fedora Cloud 44)",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-core", Version: "7.2.8-200.fc44", Arch: "x86_64"},
+			runningKernel: "7.2.8-200.fc44.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-core", Version: "7.2.8-200.fc44", Running: true},
+		},
+		{
+			name:          "redhat: kernel-modules-core is not a kernel",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-modules-core", Version: "7.2.8-200.fc44", Arch: "x86_64"},
+			runningKernel: "7.2.8-200.fc44.x86_64",
+			wantOK:        false,
+		},
+
 		// --- oraclelinux (regression) ---
 		{
 			name:          "oraclelinux: the UEK kernel is recognised",
@@ -1556,4 +1572,30 @@ func TestKernelLoadedModuleNormalizesName(t *testing.T) {
 
 	_, ok := k.loadedModule("cramfs")
 	assert.False(t, ok)
+}
+
+// rpm -qa 'kernel*' on the RHEL 8 sweep host after a kernel upgrade lists
+// kernel and kernel-core for both builds; Fedora Cloud 44 only has
+// kernel-core.
+func TestDropKernelCoreShadowedByKernel(t *testing.T) {
+	rhel8 := []KernelVersion{
+		{Name: "kernel", Version: "4.18.0-553.158.1.el8_10", Running: true},
+		{Name: "kernel", Version: "4.18.0-553.170.1.el8_10"},
+		{Name: "kernel-core", Version: "4.18.0-553.158.1.el8_10", Running: true},
+		{Name: "kernel-core", Version: "4.18.0-553.170.1.el8_10"},
+	}
+	assert.Equal(t, []KernelVersion{
+		{Name: "kernel", Version: "4.18.0-553.158.1.el8_10", Running: true},
+		{Name: "kernel", Version: "4.18.0-553.170.1.el8_10"},
+	}, dropKernelCoreShadowedByKernel(rhel8))
+
+	fedora := []KernelVersion{
+		{Name: "kernel-core", Version: "7.2.8-200.fc44", Running: true},
+		{Name: "kernel-core", Version: "7.2.8-999.200.fc44"},
+	}
+	assert.Equal(t, fedora, dropKernelCoreShadowedByKernel(fedora))
+
+	got := dropKernelCoreShadowedByKernel(nil)
+	assert.NotNil(t, got)
+	assert.Empty(t, got)
 }
