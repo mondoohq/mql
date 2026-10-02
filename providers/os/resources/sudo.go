@@ -5,6 +5,8 @@ package resources
 
 import (
 	"io"
+	pathpkg "path"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,7 +68,13 @@ type mqlSudoInternal struct {
 	parseEr error
 }
 
+// id keeps sudo("<path>") apart from the auto-detected sudo and from other
+// paths. Every instance shared the id "sudo", so a query that read both
+// `sudo` and `sudo("/usr/bin/sudo-rs")` got the first one's values for both.
 func (s *mqlSudo) id() (string, error) {
+	if s.Path.State&plugin.StateIsSet != 0 && s.Path.Data != "" {
+		return "sudo/" + s.Path.Data, nil
+	}
 	return "sudo", nil
 }
 
@@ -137,6 +145,35 @@ func resolveVisudoPath(conn shared.Connection) string {
 		}
 	}
 	return ""
+}
+
+// visudoForSudo returns the visudo that belongs to the sudo binary at
+// sudoPath, or "" when there is none. Each implementation ships its own
+// validator under the matching name: sudo with visudo, sudo-rs with
+// visudo-rs. The validator sits next to the binary or in the sbin sibling of
+// its bin directory (/usr/bin/sudo, /usr/sbin/visudo). sudo-rs rejects
+// settings the C sudo accepts, such as logfile or requiretty, so checking a
+// sudo-rs configuration with the C visudo reports it valid when sudo-rs
+// refuses it.
+func visudoForSudo(afs *afero.Afero, sudoPath string) string {
+	dir := pathpkg.Dir(sudoPath)
+	name := "vi" + pathpkg.Base(sudoPath)
+	candidates := []string{pathpkg.Join(dir, name)}
+	if pathpkg.Base(dir) == "bin" {
+		candidates = append(candidates, pathpkg.Join(pathpkg.Dir(dir), "sbin", name))
+	}
+	for _, p := range candidates {
+		if ok, err := afs.Exists(p); err == nil && ok {
+			return p
+		}
+	}
+	return ""
+}
+
+// isCommonSudoPath reports whether p is one of the conventional sudo
+// install locations, where any visudo found on the system belongs to it.
+func isCommonSudoPath(p string) bool {
+	return slices.Contains(sudoCommonPaths, p)
 }
 
 // installed reports whether a sudo binary is present on disk at `path`.
@@ -318,9 +355,10 @@ func (s *mqlSudo) sudoers() (*mqlSudoers, error) {
 	return res.(*mqlSudoers), nil
 }
 
-// validate runs `visudo -c` and reports parse errors. Returns null when
-// sudoers files can't be read (typical for unprivileged sessions —
-// /etc/sudoers is mode 0440 root:root) or when visudo cannot be located.
+// validate runs the visudo of this sudo implementation with -c and reports
+// parse errors. Returns null when sudo is not installed, when sudoers files
+// can't be read (typical for unprivileged sessions — /etc/sudoers is mode
+// 0440 root:root), or when the matching visudo cannot be located.
 func (s *mqlSudo) validate() (*mqlSudoValidation, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
@@ -328,7 +366,20 @@ func (s *mqlSudo) validate() (*mqlSudoValidation, error) {
 		return nil, nil
 	}
 
-	visudo := resolveVisudoPath(conn)
+	installed := s.GetInstalled()
+	if installed.Error != nil {
+		return nil, installed.Error
+	}
+	if !installed.Data {
+		s.Validate = plugin.TValue[*mqlSudoValidation]{State: plugin.StateIsSet | plugin.StateIsNull}
+		return nil, nil
+	}
+	sudoPath := s.GetPath().Data
+
+	visudo := visudoForSudo(&afero.Afero{Fs: conn.FileSystem()}, sudoPath)
+	if visudo == "" && isCommonSudoPath(sudoPath) {
+		visudo = resolveVisudoPath(conn)
+	}
 	if visudo == "" {
 		s.Validate = plugin.TValue[*mqlSudoValidation]{State: plugin.StateIsSet | plugin.StateIsNull}
 		return nil, nil
@@ -396,7 +447,14 @@ func (s *mqlSudo) validate() (*mqlSudoValidation, error) {
 	}
 
 	valid := cmd.ExitStatus == 0 && len(parseErrors) == 0
+	validationID := "sudo.validation/" + visudo + "/invalid"
+	if valid {
+		validationID = "sudo.validation/" + visudo + "/valid"
+	}
 	res, err := CreateResource(s.MqlRuntime, "sudo.validation", map[string]*llx.RawData{
+		// one result per validator: sudo and sudo-rs report different
+		// errors for the same files
+		"__id":   llx.StringData(validationID),
 		"valid":  llx.BoolData(valid),
 		"errors": llx.ArrayData(errsResources, types.Resource("sudo.validation.error")),
 	})
