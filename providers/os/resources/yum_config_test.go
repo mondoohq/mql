@@ -135,3 +135,56 @@ func TestYumConfigDefaults(t *testing.T) {
 	dnf4 = yumConfigFor(t, map[string]string{"/usr/bin/dnf": "", "/etc/dnf/dnf.conf": "[main]\npkg_gpgcheck=1\nclean_requirements_on_remove=False\n"}, nil)
 	assert.Equal(t, yumConfigBools{}, dnf4)
 }
+
+// On a host without yum or dnf (Debian) yum.config reported an empty params
+// map and every option false, which reads as a host with signature checks
+// disabled. With no configuration file and no package manager whose defaults
+// apply, the fields are null.
+func TestYumConfigWithoutYum(t *testing.T) {
+	newConfig := func(files map[string]string, args map[string]*llx.RawData) *mqlYumConfig {
+		rt := newYumRuntime(t, files, nil)
+		if args == nil {
+			args = map[string]*llx.RawData{}
+		}
+		o, err := NewResource(rt, "yum.config", args)
+		require.NoError(t, err)
+		return o.(*mqlYumConfig)
+	}
+	assertNull := func(c *mqlYumConfig) {
+		t.Helper()
+		content := c.GetContent()
+		require.NoError(t, content.Error)
+		assert.True(t, content.IsNull(), "content")
+		params := c.GetParams()
+		require.NoError(t, params.Error)
+		assert.True(t, params.IsNull(), "params")
+		for name, get := range map[string]func() *plugin.TValue[bool]{
+			"gpgcheck": c.GetGpgcheck, "localPkgGpgcheck": c.GetLocalPkgGpgcheck,
+			"repoGpgcheck": c.GetRepoGpgcheck, "cleanRequirementsOnRemove": c.GetCleanRequirementsOnRemove,
+		} {
+			v := get()
+			require.NoError(t, v.Error)
+			assert.True(t, v.IsNull(), name)
+		}
+	}
+
+	t.Run("no yum, no configuration", func(t *testing.T) {
+		assertNull(newConfig(map[string]string{"/usr/bin/apt-get": ""}, nil))
+	})
+
+	t.Run("a named file that does not exist", func(t *testing.T) {
+		assertNull(newConfig(fedora44Files, map[string]*llx.RawData{"path": llx.StringData("/tmp/missing.conf")}))
+	})
+
+	// dnf's compiled-in defaults apply without a configuration file
+	t.Run("dnf without a configuration file", func(t *testing.T) {
+		c := newConfig(map[string]string{"/usr/bin/dnf": ""}, nil)
+		params := c.GetParams()
+		require.NoError(t, params.Error)
+		assert.False(t, params.IsNull())
+		clean := c.GetCleanRequirementsOnRemove()
+		require.NoError(t, clean.Error)
+		assert.False(t, clean.IsNull())
+		assert.True(t, clean.Data)
+	})
+}

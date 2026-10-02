@@ -83,12 +83,62 @@ func (y *mqlYumConfig) file() (*mqlFile, error) {
 	return f.(*mqlFile), nil
 }
 
+// yumManagerBinaries are the package managers that read the global
+// configuration. With one of them installed and no configuration file, its
+// built-in defaults apply.
+var yumManagerBinaries = []string{"/usr/bin/yum", "/usr/bin/dnf", dnf5Binary, "/usr/bin/microdnf"}
+
+// noYumConfig reports that there is no yum or dnf configuration to read: the
+// file does not exist, and either it was named with yum.config(path: ...) or
+// no yum or dnf is installed whose defaults would apply. The fields are null
+// then. An empty configuration would read as "signature checks disabled" on
+// a host that has no yum at all, such as Debian.
+func (y *mqlYumConfig) noYumConfig() (bool, error) {
+	file := y.GetFile()
+	if file.Error != nil {
+		return false, file.Error
+	}
+	if file.Data == nil {
+		return true, nil
+	}
+	exists := file.Data.GetExists()
+	if exists.Error != nil {
+		return false, exists.Error
+	}
+	if exists.Data {
+		return false, nil
+	}
+	if !slices.Contains(yumConfigPaths, file.Data.Path.Data) {
+		return true, nil
+	}
+	conn := y.MqlRuntime.Connection.(shared.Connection)
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	for _, bin := range yumManagerBinaries {
+		if ok, _ := afs.Exists(bin); ok {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func (y *mqlYumConfig) content(file *mqlFile) (string, error) {
+	if none, err := y.noYumConfig(); err != nil {
+		return "", err
+	} else if none {
+		y.Content.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
 	return fileContentOrEmpty(file)
 }
 
 // params returns every directive in the [main] section as a string map.
 func (y *mqlYumConfig) params(content string) (map[string]any, error) {
+	if none, err := y.noYumConfig(); err != nil {
+		return nil, err
+	} else if none {
+		y.Params.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
 	ini := parsers.ParseIni(content, "=")
 
 	res := map[string]any{}
@@ -224,8 +274,16 @@ var yumOptionDefaults = map[yumManager]map[string]bool{
 // effectiveBool returns a boolean option the way the package manager resolves
 // it: its default, overridden on dnf 5 by the drop-in directories, overridden
 // by the configuration file. On dnf 5 gpgcheck is another name for
-// pkg_gpgcheck, and whichever of the two is set last wins.
-func (y *mqlYumConfig) effectiveBool(key string) (bool, error) {
+// pkg_gpgcheck, and whichever of the two is set last wins. field is null when
+// there is no configuration, see noYumConfig.
+func (y *mqlYumConfig) effectiveBool(field *plugin.TValue[bool], key string) (bool, error) {
+	if none, err := y.noYumConfig(); err != nil {
+		return false, err
+	} else if none {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+
 	conn := y.MqlRuntime.Connection.(shared.Connection)
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 	manager := detectYumManager(afs)
@@ -273,17 +331,17 @@ func (y *mqlYumConfig) effectiveBool(key string) (bool, error) {
 }
 
 func (y *mqlYumConfig) gpgcheck(params map[string]any) (bool, error) {
-	return y.effectiveBool("gpgcheck")
+	return y.effectiveBool(&y.Gpgcheck, "gpgcheck")
 }
 
 func (y *mqlYumConfig) localPkgGpgcheck(params map[string]any) (bool, error) {
-	return y.effectiveBool("localpkg_gpgcheck")
+	return y.effectiveBool(&y.LocalPkgGpgcheck, "localpkg_gpgcheck")
 }
 
 func (y *mqlYumConfig) repoGpgcheck(params map[string]any) (bool, error) {
-	return y.effectiveBool("repo_gpgcheck")
+	return y.effectiveBool(&y.RepoGpgcheck, "repo_gpgcheck")
 }
 
 func (y *mqlYumConfig) cleanRequirementsOnRemove(params map[string]any) (bool, error) {
-	return y.effectiveBool("clean_requirements_on_remove")
+	return y.effectiveBool(&y.CleanRequirementsOnRemove, "clean_requirements_on_remove")
 }

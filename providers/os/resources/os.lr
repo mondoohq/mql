@@ -10343,7 +10343,9 @@ yum.repo {
 // file sets it. `params` exposes every `[main]` directive of the file as a
 // raw string map for settings without a dedicated accessor. Select an
 // alternate file with `yum.config(path: "...")`; drop-in files do not apply
-// to it.
+// to it. Where the file does not exist and no yum or dnf is installed, or a
+// file named with `path` does not exist, `content`, `params` and the bool
+// fields are null.
 yum.config {
   init(path string)
   // File backing the [main] configuration section
