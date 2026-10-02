@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"github.com/rs/zerolog/log"
 	"software.sslmate.com/src/go-pkcs12"
 )
 
@@ -301,6 +302,28 @@ func ParsePKCS12(data []byte, password string) (*Keystore, error) {
 	for _, candidate := range passwords {
 		entries, err := readPKCS12(data, candidate)
 		if err == nil {
+			// The password is now known to be right. Walking the SafeBags
+			// recovers what the entry points above drop: every alias, and
+			// which certificates keytool marked as trusted. A store this walk
+			// cannot read (an encryption scheme it does not implement) keeps
+			// what the entry points returned.
+			//
+			// The two can differ in count: the walk reports every X.509
+			// certificate bag, including a store's extra chain certificates
+			// that DecodeChain folds into one list. That is logged rather
+			// than hidden, so a divergence nobody expected is visible.
+			bagEntries, bagErr := readPKCS12Bags(data, candidate)
+			switch {
+			case bagErr != nil:
+				log.Debug().Err(bagErr).Msg("java> could not walk the PKCS#12 bags, keeping the entries without aliases")
+			case len(bagEntries) == 0:
+				log.Debug().Int("entries", len(entries)).Msg("java> the PKCS#12 bag walk found no certificates, keeping the entries without aliases")
+			default:
+				if len(bagEntries) != len(entries) {
+					log.Debug().Int("bags", len(bagEntries)).Int("entries", len(entries)).Msg("java> the PKCS#12 bag walk and go-pkcs12 disagree on the entry count")
+				}
+				entries = bagEntries
+			}
 			return &Keystore{Format: FormatPKCS12, Entries: entries}, nil
 		}
 		lastErr = err
@@ -322,10 +345,12 @@ func ParsePKCS12(data []byte, password string) (*Keystore, error) {
 // readPKCS12 reads the certificates of a store with the one entry point that
 // fits its shape. No single one covers the three shapes that occur in practice:
 //
-//   - ToPEM carries friendlyName and localKeyId, which is the only way to
-//     recover an alias and to tell a trust anchor from a certificate that
-//     belongs to a private key's chain. It refuses any bag attribute it does
-//     not know, including the one keytool writes on a trusted certificate.
+//   - ToPEM carries friendlyName and localKeyId, the only go-pkcs12 entry
+//     point that can recover an alias and tell a trust anchor from a
+//     certificate that belongs to a private key's chain. It refuses any bag
+//     attribute it does not know, including the one keytool writes on a
+//     trusted certificate, which is why ParsePKCS12 walks the bags itself
+//     (readPKCS12Bags) once one of these has accepted the password.
 //   - DecodeTrustStore reads a store of trust anchors, the shape ToPEM refuses.
 //     It reports no aliases.
 //   - DecodeChain reads a keystore whose bags carry attributes ToPEM rejects.
