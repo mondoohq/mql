@@ -1,0 +1,40 @@
+@@if defined BIND_CHROOT_DIR
+ /@@{BIND_CHROOT_DIR}/dev/log$ f RotLog
+ /@@{BIND_CHROOT_DIR}/dev$ d VarDir
+@@if not defined BIND_WORKING_DIR
+@@define BIND_WORKING_DIR @@{BIND_CHROOT_DIR}/var/cache/bind
+@@endif
+@@if not defined BIND_RUN_DIR
+@@define BIND_RUN_DIR @@{BIND_CHROOT_DIR}/@{RUN}/named
+@@endif
+@@endif
+
+@@if not defined BIND_WORKING_DIR
+@@define BIND_WORKING_DIR var/cache/bind
+@@endif
+@@if not defined BIND_RUN_DIR
+@@define BIND_RUN_DIR @@{RUN}/named
+@@endif
+ /@@{RUN}/named$ d RecreatedDir
+ /@@{BIND_RUN_DIR}$ d RecreatedDir
+ /@@{BIND_RUN_DIR}/(session\\.key|named\\.pid)$ f VarFile
+ /@@{BIND_WORKING_DIR}$ d VarDir
+# remove before forky
+# /@@{BIND_WORKING_DIR}/[-[:alnum:].]+$ f VarFile
+ /@@{BIND_WORKING_DIR}/managed-keys\\.bind$ f VarFile
+!/@@{BIND_WORKING_DIR}/managed-keys\\.bind\\.jnl$ f
+ /@@{RUN}/systemd/propagate/named\\.service$ d RecreatedDir
+
+# the bind packages in trixie do not suggest any structure for
+# zone directories.
+
+ZoneDir = VarDir
+ZoneFile = VarFile
+
+@@if defined BIND_ZONE_DIRS
+ /@@{BIND_CHROOT_DIR}@@{BIND_ZONE_DIR_PREFIX}@@{BIND_ZONE_DIRS}$ d ZoneDir
+@@endif
+@@if defined BIND_ZONE_FILES
+# the regexp for BIND_ZONE_FILES must contain the respective directory!
+ /@@{BIND_CHROOT_DIR}@@{BIND_ZONE_DIR_PREFIX}@@{BIND_ZONE_FILES}$ f ZoneFile
+@@endif

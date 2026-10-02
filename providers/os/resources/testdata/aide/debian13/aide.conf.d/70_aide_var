@@ -1,0 +1,2 @@
+/var/(backups|log)$ d VarDir
+/var/tmp$ d VarDir-n

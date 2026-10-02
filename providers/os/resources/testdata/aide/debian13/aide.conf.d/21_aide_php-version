@@ -1,0 +1,4 @@
+# you can override PHPVERSION from an earlier snippet if
+@@if not defined PHPVERSION
+@@define PHPVERSION 8\\.4
+@@endif

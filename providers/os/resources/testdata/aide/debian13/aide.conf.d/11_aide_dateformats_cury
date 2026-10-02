@@ -1,0 +1,24 @@
+
+# CURY matches years 2025 up to 2032
+@@if not defined DATE_YYYY_CURY
+@@define DATE_YYYY_CURY                (202[5-9]|203[012])
+@@endif
+@@define DATE_YYYY_MM_DD_CURY     @@{DATE_YYYY_CURY}-@@{DATE_MM_DD}
+@@define DATE_YYYYMMDD_CURY       @@{DATE_YYYY_CURY}@@{DATE_MMDD}
+@@define DATE_DDMMYYYY_CURY       @@{DATE_DDMM}@@{DATE_YYYY_CURY}
+@@define DATE_MMDDYYYY_CURY       @@{DATE_MMDD}@@{DATE_YYYY_CURY}
+@@define DATETIME_ISO8601_CURY    @@{DATE_YYYY_CURY}-@@{DATE_MM_DD}T@@{TIME_0_23}:@@{TIME_0_59}:@@{TIME_0_59}(Z|[+-]@@{TIME_0_23}:@@{TIME_0_59})
+@@define DATETIME_COMPACT_CURY    @@{DATE_YYYY_CURY}@@{DATE_MMDD}T@@{TIME_0_23}@@{TIME_0_59}@@{TIME_0_59}
+@@define DATETIME_SPACE_CURY      @@{DATE_YYYY_CURY}-@@{DATE_MM_DD}[[:space:]]@@{TIME_0_23}:@@{TIME_0_59}(:@@{TIME_0_59})?
+
+# UNIX_TS_CURY matches from 2025-06-16T22:13:20 to 2027-05-18T03:59:59 (1750000000–2019999999)
+# if you still use this after 2031, feel free to adapt those values
+@@if not defined UNIX_TS_CURY
+@@define UNIX_TS_CURY             (175\d{7}|17[6-9]\d{7}|18\d{8}|19\d{8}|200\d{7}|201\d{7})
+@@endif
+
+# UNIX_TS_2015_2033 matches from 2015-04-26T05:33:20 to 2033-05-18T03:59:59 (1430000000–2019999999)
+# if you still use this after 2033, feel free to adapt those values
+@@if not defined UNIX_TS_2015_2033
+@@define UNIX_TS_2015_2033        (143\d{7}|14[4-9]\d{6}|1[5-9]\d{8}|200\d{7}|201\d{7})
+@@endif

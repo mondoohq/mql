@@ -10810,6 +10810,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aide.rule.selection": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAideRule).GetSelection()).ToDataRes(types.String)
 	},
+	"aide.rule.restriction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAideRule).GetRestriction()).ToDataRes(types.String)
+	},
 	"aide.rule.expression": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAideRule).GetExpression()).ToDataRes(types.String)
 	},
@@ -29389,6 +29392,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aide.rule.selection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAideRule).Selection, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aide.rule.restriction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAideRule).Restriction, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aide.rule.expression": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -73336,12 +73343,13 @@ type mqlAideRule struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAideRuleInternal it will be used here
-	Path       plugin.TValue[string]
-	Selection  plugin.TValue[string]
-	Expression plugin.TValue[string]
-	Attributes plugin.TValue[[]any]
-	LineNumber plugin.TValue[int64]
-	File       plugin.TValue[*mqlFile]
+	Path        plugin.TValue[string]
+	Selection   plugin.TValue[string]
+	Restriction plugin.TValue[string]
+	Expression  plugin.TValue[string]
+	Attributes  plugin.TValue[[]any]
+	LineNumber  plugin.TValue[int64]
+	File        plugin.TValue[*mqlFile]
 }
 
 // createAideRule creates a new instance of this resource
@@ -73382,6 +73390,10 @@ func (c *mqlAideRule) GetPath() *plugin.TValue[string] {
 
 func (c *mqlAideRule) GetSelection() *plugin.TValue[string] {
 	return &c.Selection
+}
+
+func (c *mqlAideRule) GetRestriction() *plugin.TValue[string] {
+	return &c.Restriction
 }
 
 func (c *mqlAideRule) GetExpression() *plugin.TValue[string] {

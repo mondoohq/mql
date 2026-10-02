@@ -1,0 +1,52 @@
+!/@@{RUN}/initctl$ p
+ /@@{RUNSYSD}$ d VarDir
+!/@@{RUNSYSD}/fsck\\.progress$ s
+!/@@{RUNSYSD}/cgroups-agent$ s
+!/@@{RUNSYSD}(/(machines|resolve|seats|sessions|shutdown|system|transient|users|ask-password|generator(\\.late)?))?$ d
+!/@@{RUNSYSD}/ask-password-block$ d
+!/@@{RUNSYSD}/ask-password-block/[[:digit:]]+:[[:digit:]]+$ p
+!/@@{RUNSYSD}/generator(\\.late)?/[^/]+\\.(requires|wants)$ d
+!/@@{RUNSYSD}/generator(\\.late)?(/[^/]+\\.(requires|wants))?/[-\\\\_[:alnum:]@.]+\\.(swap|service|socket|mount|sh|timer)$ l
+!/@@{RUNSYSD}/generator(\\.late)?(/[^/]+\\.(requires|wants))?/[-\\\\_[:alnum:]@.]+\\.(swap|service|mount|sh|timer)$ f
+!/@@{RUNSYSD}/inaccessible$ d
+!/@@{RUNSYSD}/inaccessible/blk$ b
+!/@@{RUNSYSD}/inaccessible/chr$ c
+!/@@{RUNSYSD}/inaccessible/dir$ d
+!/@@{RUNSYSD}/inaccessible/fifo$ p
+!/@@{RUNSYSD}/inaccessible/reg$ f
+!/@@{RUNSYSD}/inaccessible/sock$ s
+!/@@{RUNSYSD}/incoming$ d
+!/@@{RUNSYSD}/inhibit$ d
+ /@@{RUNSYSD}/inhibit/[12]$ f VarFile
+ /@@{RUNSYSD}/inhibit/[12]\\.ref$ p VarFile
+!/@@{RUNSYSD}/io\\.systemd\\.(Credentials|DynamicUser|Hostname|Import|ManagedOOM|sysext)$ s
+ /@@{RUNSYSD}/mount-rootfs$ d RecreatedDir
+!/@@{RUNSYSD}/netif/io\\.systemd\\.(Network)$ s
+!/@@{RUNSYSD}/(notify|private)$ s
+!/@@{RUNSYSD}/propagate(/systemd-(logind|networkd|resolved|timesyncd|udevd)\\.service)?$ d
+!/@@{RUNSYSD}/propagate/\\.os-release-stage$ d
+!/@@{RUNSYSD}/propagate/\\.os-release-stage/os-release$ f
+!/@@{RUNSYSD}/resolve/resolv\\.conf$ f
+!/@@{RUNSYSD}/seats/seat0$ f
+!/@@{RUNSYSD}/sessions/c?[[:digit:]]+$ f
+!/@@{RUNSYSD}/sessions/c?[[:digit:]]+\\.ref$ p
+!/@@{RUNSYSD}/show-status$ f
+!/@@{RUNSYSD}/systemd-units-load$ f
+!/@@{RUNSYSD}/transient/session-c[0-9]+\\.scope$ f
+!/@@{RUNSYSD}/transient/user-[0-9]+\\.slice$ f
+ /@@{RUNSYSD}/unit-(private-tmp|root)$ d RecreatedDir
+ /@@{RUNSYSD}/units$ d RecreatedDir
+!/@@{RUNSYSD}/units/invocation:(session-c?[0-9]+\\.scope|[-\\\\@:[:alnum:]]+\\.service|([-_.[:alnum:]]+|\\\\x2d)+\\.(mount|swap))$ l
+!/@@{RUNSYSD}/units/invocation:dbus\\.socket$ l
+ /@@{RUNSYSD}/userdb$ d RecreatedDir
+!/@@{RUNSYSD}/userdb/io\\.systemd\\.DynamicUser$ s
+ /@@{RUN}/tmpfiles\\.d/kmod\\.conf$ f VarFile
+ /@@{RUN}/credentials(/(systemd-(journald|networkd|resolved|sys(ctl|users)|tmpfiles-setup(-dev(-early)?)?|udev-load-credentials)|(serial-)?getty@ttyS?[[:digit:]])\\.service)?$ d VarDir-i
+!/@@{RUNUSER}/@@{LOCALUIDS}/systemd/units/invocation:dbus\\.socket$ l
+# remove this, and have serivce individual rules
+!/(var/)?tmp/systemd-private-@@{XBOOTID}-[-[:alnum:]]+\\.service-[[:alnum:]]{6}$ d
+!/(var/)?tmp/systemd-private-@@{XBOOTID}-[-[:alnum:]]+\\.service-[[:alnum:]]{6}/tmp$ d
+!/var/lib/systemd/random-seed$ f
+
+# add here rules for @@{RUNSYSD}/generator/dev/disk-by*
+# those must depend on the partitioning scheme used

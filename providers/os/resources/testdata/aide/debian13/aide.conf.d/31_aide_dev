@@ -1,0 +1,37 @@
+# this is a preliminary paranoid rule from a local installation.
+# Feel free to submit patches that may make the rule suitable
+# for your installation
+
+@@define UDEV_MAJMIN @@{DN_MAJOR}:@@{DN_MINOR}
+ /dev(/(block|char|mapper|shm))?$ d RecreatedDir
+ /dev/@@{LVM_VGS}$ d RecreatedDir
+ /dev/nvram$ c InodeData-i
+!/dev/(block|char)/@@{UDEV_MAJMIN}$ l
+!/dev/bsg/[[:digit:]]:0:0:0$ c
+ /dev/bus/usb/00[1234]$ d RecreatedDir
+!/dev/bus/usb/00[1234]/0[01][[:digit:]]$ c
+!/dev/disk/by-diskseq/[[:digit:]]{1,2}(-part[[:digit:]])?$ l
+ /dev/disk/by-id$ d RecreatedDir
+!/dev/disk/by-id/((ata|dm-name)[-[:alnum:]_]+)(-part[1234])?$ l
+!/dev/disk/by-id/((wwn)-0x[[:xdigit:]]{16})(-part[1234])?$ l
+!/dev/disk/by-id/((usb-Generic)[-[:alnum:]_]+)-0:[0123]?$ l
+!/dev/disk/by-id/(lvm-pv-uuid-@@{LVM_PV_UUIDS})$ l
+!/dev/disk/by-label/[-[:lower:][:digit:]_]+$ l
+!/dev/disk/by-partlabel/[-[:alnum:]\\\\]+$ l
+!/dev/disk/by-(part)?uuid/@@{STRICTUUID}$ l
+!/dev/disk/by-path/pci-@@{PCI_ADDRESS}-ata-[[:digit:]](\.0)?(-part[1234])?$ l
+!/dev/disk/by-path/pci-@@{PCI_ADDRESS}-usb-@@{USB_ADDRESS}-(port0|scsi-(0:){3}[0123])$ l
+!/dev/dm-[[:digit:]]{3}$ b
+!/dev/input/by-path/platform-i8042-serio-[01]-(event-)?mouse$ l
+!/dev/loop[[:digit:]]$ b
+!/dev/mapper/[-[:alnum:]_]+$ l
+!/dev/ram[[:digit:]]$ b
+!/dev/serial/by-id/usb-@@{USB_ADDRESS}-port0$ l
+!/dev/serial/by-path/platform-1c1[4c]000\\.usb-usb-@@{USB_ADDRESS}-port0$ l
+!/dev/disk/by-uuid/[[:xdigit:]]{4}-[[:xdigit:]]{4}$ l
+!/dev/shm/spice\\.[[:digit:]]+$ f
+!/dev/tap[[:digit:]]{1,2}$ c
+!/dev/vcs[au]?7$ c
+!/dev/watchdog0?$ c
+
+@@undef UDEV_MAJMIN

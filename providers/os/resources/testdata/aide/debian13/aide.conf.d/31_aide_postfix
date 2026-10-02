@@ -1,0 +1,40 @@
+@@if not defined POSTFIX_QUEUE_DIRECTORY
+@@define POSTFIX_QUEUE_DIRECTORY var/spool/postfix
+@@endif
+@@if not defined POSTFIX_DATA_DIRECTORY
+@@define POSTFIX_DATA_DIRECTORY var/lib/postfix
+@@endif
+@@if not defined POSTFIX_SPOOL_DIRECTORY
+@@define POSTFIX_SPOOL_DIRECTORY var/mail
+@@endif
+
+/@@{POSTFIX_DATA_DIRECTORY}/(master\\.lock|prng_exch|smtpd?_scache\\.db)$ f VarFile
+
+/@@{POSTFIX_QUEUE_DIRECTORY}/dev$ d VarDir
+/@@{POSTFIX_QUEUE_DIRECTORY}/dev/u?random$ c VarFile
+
+/@@{POSTFIX_QUEUE_DIRECTORY}/etc(/ssl(/certs)?)?$ d VarDir
+/@@{POSTFIX_QUEUE_DIRECTORY}/etc/(hosts|localtime|nsswitch\\.conf|resolv\\.conf|services)$ f VarFile
+/@@{POSTFIX_QUEUE_DIRECTORY}/etc/ssl/certs/ca-certificates\\.crt$ f VarTime
+
+/@@{POSTFIX_QUEUE_DIRECTORY}/lib(/@@{DEB_HOST_GNU_TYPE})?$ d VarDir
+/@@{POSTFIX_QUEUE_DIRECTORY}/lib/@@{DEB_HOST_GNU_TYPE}/lib[_a-z0-9.-]+\\.so(\\.[0-9])?$ f VarInode
+
+/@@{POSTFIX_QUEUE_DIRECTORY}/usr(/lib(/zoneinfo)?)?$ d VarDir
+/@@{POSTFIX_QUEUE_DIRECTORY}/usr/lib/zoneinfo/localtime$ f VarFile
+
+/@@{POSTFIX_QUEUE_DIRECTORY}/pid/master\\.pid$ f VarFile
+/@@{POSTFIX_QUEUE_DIRECTORY}/pid/(inet|unix)\\.\\.*$ f VarFile
+
+/@@{POSTFIX_QUEUE_DIRECTORY}/private$ d VarDir
+/@@{POSTFIX_QUEUE_DIRECTORY}/private/(anvil|bounce|bsmtp|defer|discard|error|ifmail|lmtp|local|mail(drop|man)|proxymap|relay|retry|rewrite|scache|scalemail-backend|smtp(-amavis)?|tlsmgr|trace|uucp|verify|virtual)$ f VarFile
+
+/@@{POSTFIX_QUEUE_DIRECTORY}/public$ d VarDir
+/@@{POSTFIX_QUEUE_DIRECTORY}/public/(cleanup|flush|pickup|qmgr|showq)$ f VarFile
+
+/@@{POSTFIX_QUEUE_DIRECTORY}/(active|corrupt|defer(red)?|hold|saved|bounce|flush|incoming|maildrop|trace)$ d VarDir
+/@@{POSTFIX_QUEUE_DIRECTORY}/defer(red)?/[A-F0-9]$ d VarDir
+
+!/@@{POSTFIX_QUEUE_DIRECTORY}/(active|corrupt|hold|saved|bounce|flush|incoming|maildrop|trace)/[A-F0-9]{10}$ f
+!/@@{POSTFIX_QUEUE_DIRECTORY}/defer(red)?/[A-F0-9]/[A-F0-9]{10}$ f
+

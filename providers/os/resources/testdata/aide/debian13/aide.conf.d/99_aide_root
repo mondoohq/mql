@@ -1,0 +1,3 @@
+# this is the catch-all rule that includes everything that is not restricted by earlier rules
+# this rule is deliberately unrestricted
+/ 0 Full

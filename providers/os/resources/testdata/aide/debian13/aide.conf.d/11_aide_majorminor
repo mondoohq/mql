@@ -1,0 +1,3 @@
+@@define DN_MAJOR @@{BITS_12_D}
+@@define DN_MINOR @@{BITS_20_D}
+

@@ -1,0 +1,17 @@
+# Please note: always remove leading and trailing slashes in path macros
+# var/run -> run
+@@if not defined RUN
+@@define RUN run
+@@endif
+# var/lock -> run/lock
+@@if not defined RUNLOCK
+@@define RUNLOCK @@{RUN}/lock
+@@endif
+@@if not defined RUNSYSD
+@@define RUNSYSD @@{RUN}/systemd
+@@endif
+
+@@if not defined RUNUSER
+@@define RUNUSER @@{RUN}/user
+@@endif
+

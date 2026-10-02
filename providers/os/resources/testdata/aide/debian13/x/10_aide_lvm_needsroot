@@ -1,0 +1,23 @@
+@@if defined DM_UUIDS_W_P
+@@undef DM_UUIDS_W_P
+@@endif
+@@if defined DM_UUIDS_WO_P
+@@undef DM_UUIDS_WO_P
+@@endif
+@@define DM_UUIDS_W_P (CRYPT-LUKS2-40be3e60ab954dd8b4fee32805f53532-g05crypt|LVM-cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCr4sFK4gl1qVAIEguV8bh5PhmDQg9khQN|LVM-cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCr4sFK4gl1qVAIEguV8bh5PhmDQg9khQN-real|LVM-cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCF0oDARRqAOf8GPeZtEUov2apwmNrhsd2|LVM-cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCF0oDARRqAOf8GPeZtEUov2apwmNrhsd2-cow|LVM-cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCdXYslWAEcufff0WtWQ7klkfPxxLbKXxU|LVM-cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCYW7Hpf1FSVFf9swHNbdeVS2jsMbUs3im-pool|LVM-cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCYW7Hpf1FSVFf9swHNbdeVS2jsMbUs3im-tpool|LVM-cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCjHMiqsvJg0FP1iADgitJpcMmQ94Zzdti-tdata|LVM-cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCoudTJtA25KO16AOwzDyJWww4LecosDUd-tmeta)
+@@define DM_UUIDS_WO_P (CRYPT-LUKS2-40be3e60ab954dd8b4fee32805f53532-g05crypt|cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCr4sFK4gl1qVAIEguV8bh5PhmDQg9khQN|cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCr4sFK4gl1qVAIEguV8bh5PhmDQg9khQN-real|cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCF0oDARRqAOf8GPeZtEUov2apwmNrhsd2|cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCF0oDARRqAOf8GPeZtEUov2apwmNrhsd2-cow|cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCdXYslWAEcufff0WtWQ7klkfPxxLbKXxU|cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCYW7Hpf1FSVFf9swHNbdeVS2jsMbUs3im-pool|cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCYW7Hpf1FSVFf9swHNbdeVS2jsMbUs3im-tpool|cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCjHMiqsvJg0FP1iADgitJpcMmQ94Zzdti-tdata|cWO03j0e6Z4eeFCCNXQOgIYpxUFSEUgCoudTJtA25KO16AOwzDyJWww4LecosDUd-tmeta)
+@@if defined DM_NAMES
+@@undef DM_NAMES
+@@endif
+@@define DM_NAMES (g05crypt|vg--data-lv--lin|vg--data-lv--lin-real|vg--data-snap1|vg--data-snap1-cow|vg--data-thinvol|vg--data-tpool|vg--data-tpool-tpool|vg--data-tpool_tdata|vg--data-tpool_tmeta)
+@@define DM_NAMES_WO_D (g05crypt|vg\\\\x2f-data-lv--lin|vg\\\\x2f-data-lv--lin-real|vg\\\\x2f-data-snap1|vg\\\\x2f-data-snap1-cow|vg\\\\x2f-data-thinvol|vg\\\\x2f-data-tpool|vg\\\\x2f-data-tpool-tpool|vg\\\\x2f-data-tpool_tdata|vg\\\\x2f-data-tpool_tmeta)
+@@if defined LVM_PV_UUIDS
+@@undef LVM_PV_UUIDS
+@@endif
+@@if defined LVM_PV_UUIDS_NODASH
+@@undef LVM_PV_UUIDS_NODASH
+@@endif
+@@define LVM_PV_UUIDS (1Muk3g-fEDp-XPek-EuLr-EDWF-MAlD-NKcnkc|o43wDu-ZVVr-k8il-5T7L-EW8h-Hgko-EYul8A|rM5KsO-R1mE-Rkji-5Z9e-0lYn-aleo-00Bglx)
+@@define LVM_PV_UUIDS_NODASH (1Muk3gfEDpXPekEuLrEDWFMAlDNKcnkc|o43wDuZVVrk8il5T7LEW8hHgkoEYul8A|rM5KsOR1mERkji5Z9e0lYnaleo00Bglx)
+@@define LVM_VGS (vg-data)
+@@define LVM_LVS (lv-lin|snap1|thinvol|tpool)

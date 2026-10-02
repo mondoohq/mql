@@ -1,0 +1,77 @@
+# the variables used in this rule are predefined and cached by
+# a dedicated service unit that runs (as root) before the dailyaidecheck
+# is started. The cache is read by an early rule. These definitions
+# here are the fallback just in case caching didnt work
+
+# we don't define the variables since we want a report when caching
+# doesn't work
+#@@if not defined DM_UUIDS_W_P
+#@@define DM_UUIDS_W_P (LVM-[[:alnum:]]{64})
+#@@endif
+#@@if not defined DM_UUIDS_WO_P
+#@@define DM_UUIDS_WO_P ([[:alnum:]]{64})
+#@@endif
+#@@if not defined LVM_PV_UUIDS
+#@@define LVM_PV_UUIDS ([[:alnum:]]{6}(-[[:alnum:]]{4}){5}-[[:alnum:]]{6})
+#@@endif
+#@@if not defined LVM_PV_UUIDS_NODASH
+#@@define LVM_PV_UUIDS_NODASH ([[:alnum:]]{32})
+#@@endif
+#@@if not defined LVM_VGS
+#@@define LVM_VGS ([[:alnum:]-]+)
+#@@endif
+#@@if not defined LVM_LVS
+#@@define LVM_LVS ([[:alnum:]-]+)
+#@@endif
+
+ /@@{RUNLOCK}/lvm$ d RecreatedDir
+ /@@{RUN}/lvm(/((lvs|pvs)_online|pvs_lookup))?$ d RecreatedDir
+!/@@{RUN}/lvm/(new)?hints$ f
+!/@@{RUN}/lvm/lvm(etad|polld)\\.socket$ s
+ /@@{RUN}/lvmetad\\.pid$ f PidFile
+ /@@{RUN}/lvm/vgs_online$ d RecreatedDir
+
+@@if defined LVM_VGS
+ /@@{RUN}/lvm/vgs_online/@@{LVM_VGS}$ f VarFile
+@@endif
+@@if defined LVM_VGS_EXTRA
+ /@@{RUN}/lvm/vgs_online/@@{LVM_VGS_EXTRA}$ f VarFile
+@@if defined LVM_LVS_EXTRA
+!/dev/@@{LVM_VGS_EXTRA}/@@{LVM_LVS_EXTRA}$ l
+@@endif
+@@endif
+
+@@if defined LVM_PV_UUIDS_NODASH
+ /@@{RUN}/lvm/pvs_online/@@{LVM_PV_UUIDS_NODASH}$ f VarFile
+@@endif
+@@if defined LVM_PV_UUIDS_NODASH_EXTRA
+ /@@{RUN}/lvm/pvs_online/@@{LVM_PV_UUIDS_NODASH_EXTRA}$ f VarFile
+@@endif
+
+@@if defined LVM_VGS
+@@if defined LVM_LVS
+!/dev/@@{LVM_VGS}/@@{LVM_LVS}$ l
+!/dev/mapper/@@{LVM_VGS}-@@{LVM_LVS}$ l
+@@endif
+@@endif
+
+@@if defined DM_UUIDS_W_P
+!/dev/disk/by-id/(dm-uuid-@@{DM_UUIDS_W_P})$ l
+!/@@{RUN}/udev/links/(\\\\x2f)?disk\\\\x2fby-id\\\\x2fdm-uuid-@@{DM_UUIDS_W_P}$ d
+!/@@{RUN}/udev/links/(\\\\x2f)?disk\\\\x2fby-id\\\\x2fdm-uuid-@@{DM_UUIDS_W_P}/b25[34]:[[:digit:]]{1,2}$ f
+!/@@{RUN}/udev/links/(\\\\x2f)?disk\\\\x2fby-id\\\\x2fdm-uuid-@@{DM_UUIDS_W_P}/b25[34]:[[:digit:]]{1,2}$ l
+@@endif
+
+@@if defined DM_NAMES
+!/@@{RUN}/udev/links/mapper\\\\x2f@@{DM_NAMES}$ d
+!/@@{RUN}/udev/links/mapper\\\\x2f@@{DM_NAMES}/b25[34]:[[:digit:]]{1,2}$ l
+!/@@{RUN}/udev/links/@@{DM_NAMES_WO_D}$ d
+!/@@{RUN}/udev/links/@@{DM_NAMES_WO_D}/b25[34]:[[:digit:]]{1,2}$ l
+@@endif
+
+@@if defined LVM_PV_UUIDS
+!/@@{RUN}/udev/links/(\\\\x2f)?disk\\\\x2fby-id\\\\x2flvm-pv-uuid-@@{LVM_PV_UUIDS}$ d
+!/@@{RUN}/udev/links/(\\\\x2f)?disk\\\\x2fby-id\\\\x2flvm-pv-uuid-@@{LVM_PV_UUIDS}/b([89]|25[34]):([0123]|19|127)$ f
+!/@@{RUN}/udev/links/(\\\\x2f)?disk\\\\x2fby-id\\\\x2flvm-pv-uuid-@@{LVM_PV_UUIDS}/b([89]|25[34]):([0123]|19|127)$ l
+@@endif
+

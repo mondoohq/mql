@@ -9962,18 +9962,36 @@ aide @defaults("installed version") {
 // AIDE selection rule
 //
 // Single selection line from the AIDE configuration: the `path` it applies to,
-// the `attributes` compared for matching entries, and the `selection` kind
-// deciding whether the line adds or removes coverage. Macro references in the
-// path are substituted, so `path` is the location AIDE actually acts on.
+// the `attributes` compared for matching entries, the `selection` kind
+// deciding whether the line adds or removes coverage, and the file types it is
+// limited to as `restriction`. Macro references in the path are substituted
+// and the configuration's escapes (`\\.` for `\.`) removed, so `path` is the
+// expression AIDE actually matches. Lines inside an `@@if` block whose
+// condition is false are not rules. A condition that cannot be evaluated, such
+// as `@@if hostname` in an image scan, has both of its branches reported.
+// Executable files reached through `@@x_include` are run, as AIDE runs them,
+// and their output read; on a connection that cannot run commands, such as an
+// image scan, the rules they print are missing.
 private aide.rule @defaults("path selection attributes") {
   // Path or path pattern the rule applies to
   path string
   // How the line affects coverage
   //
   // One of `recursive` for a plain line, `equals` for a line prefixed with `=`
-  // matching the entry itself without descending into it, or `negative` for a
-  // line prefixed with `!` removing the path from the check entirely.
+  // matching the entry itself without descending into it, `negative` for a
+  // line prefixed with `!` excluding matching entries while still descending
+  // into a matching directory, or `nonRecursiveNegative` for a line prefixed
+  // with `-` (AIDE 0.19 and later) excluding a matching directory together with
+  // everything below it. An audit for excluded paths needs to match both
+  // negative kinds.
   selection string
+  // File types or file system the rule is limited to
+  //
+  // The restriction written between the path and the attributes, for example
+  // `f` for regular files, `d,f` for directories and regular files, or
+  // `d=vfat` for a directory on a vfat file system. Empty when the rule applies
+  // to every entry, which `0` also states explicitly.
+  restriction string
   // Attribute expression exactly as written on the line (e.g. `R+sha512`)
   expression string
   // Attributes compared for entries matched by this rule

@@ -1,0 +1,6 @@
+# this is the catch-all rule that includes everything that is not
+# restricted by earlier rules and on a FAT file system. FAT does not
+# have inode numbers, and the kernel synthesizes them on mount and
+# thus they can change
+# this rule is deliberately unrestricted
+/ =vfat Full-i

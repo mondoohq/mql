@@ -1,0 +1,2 @@
+@@define LOCALUIDS (1|2|3|4|5|6|7|8|9|10|13|33|34|38|39|42|100|101|102|103|104|105|986|988|989|990|996|997|998|1000)
+@@define LOCALUSERS (Debian-exim|_aide|_apt|_rpc|admin|backup|bin|daemon|dhcpcd|games|irc|list|lp|mail|man|messagebus|news|polkitd|proxy|root|sshd|statd|sync|sys|systemd-network|systemd-resolve|systemd-timesync|tcpdump|uucp|uuidd|www-data)

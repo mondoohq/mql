@@ -1,0 +1,3 @@
+@@if not defined SYSTEMD_JOURNAL
+@@define SYSTEMD_JOURNAL var/log/journal
+@@endif

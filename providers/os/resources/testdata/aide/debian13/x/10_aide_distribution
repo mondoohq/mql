@@ -1,0 +1,15 @@
+@@if not defined DEBIANVERSION
+@@define DEBIANVERSION Debian/13_7
+@@endif
+@@if not defined ID
+@@define ID Debian
+@@endif
+@@if not defined DESCRIPTION
+@@define DESCRIPTION Debian_GNU/Linux_13__trixie_
+@@endif
+@@if not defined RELEASE
+@@define RELEASE 13
+@@endif
+@@if not defined CODENAME
+@@define CODENAME trixie
+@@endif

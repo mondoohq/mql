@@ -1,0 +1,12 @@
+@@if not defined FQDN
+@@define FQDN deb13-host
+@@endif
+@@if not defined HOSTNAME
+@@define HOSTNAME deb13-host
+@@endif
+@@if not defined ARCH
+@@define ARCH amd64
+@@endif
+@@if not defined AMD64_FIRMWARE_BIOS
+@@define AMD64_FIRMWARE_BIOS 1
+@@endif
