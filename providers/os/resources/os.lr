@@ -8884,10 +8884,17 @@ private postfix.service @defaults("service type command") {
 exim {
   init(path? string)
   // Path to the active Exim configuration file
+  //
+  // On Debian-family systems this is `/etc/exim4/exim4.conf` when that
+  // hand-written config exists, otherwise `/etc/exim4/update-exim4.conf.conf`.
   configPath() string
   // Parsed macros and main-section options
   params() map[string]string
   // Local interfaces parsed and normalized into a list
+  //
+  // An unset or empty setting means Exim listens on every interface, reported
+  // as Exim's own default `::0` and `0.0.0.0`. Macro references such as
+  // `MAIN_LOCAL_INTERFACES` are resolved. Empty when no Exim configuration exists.
   localInterfaces() []string
 }
 
