@@ -13,6 +13,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/id/hostname"
 	"go.mondoo.com/mql/providers/os/resources/sudoers"
 	"go.mondoo.com/mql/types"
 )
@@ -156,23 +157,39 @@ func (s *mqlSudoers) collectSudoersFiles(conn shared.Connection, path string, vi
 		return
 	}
 
-	// Parse include directives
+	// Parse include directives. Relative paths resolve against this file's
+	// directory and %h expands to the short host name, as sudo does.
 	lines := strings.Split(content.Data, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 
 		// Check for @include or #include
 		if matches := sudoers.IncludeRegex.FindStringSubmatch(line); matches != nil {
-			includePath := strings.TrimSpace(matches[1])
+			includePath := sudoers.ResolveIncludePath(path, matches[1], s.shortHostname)
 			s.collectSudoersFiles(conn, includePath, visited, allFiles, errs)
 		}
 
 		// Check for @includedir or #includedir
 		if matches := sudoers.IncludedirRegex.FindStringSubmatch(line); matches != nil {
-			includeDir := strings.TrimSpace(matches[1])
+			includeDir := sudoers.ResolveIncludePath(path, matches[1], s.shortHostname)
 			s.collectSudoersDir(conn, includeDir, visited, allFiles, errs)
 		}
 	}
+}
+
+// shortHostname returns the host name sudo substitutes for %h in include
+// paths, or "" when it cannot be determined.
+func (s *mqlSudoers) shortHostname() string {
+	conn := s.MqlRuntime.Connection.(shared.Connection)
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil {
+		return ""
+	}
+	host, ok := hostname.Hostname(conn, asset.Platform)
+	if !ok {
+		return ""
+	}
+	return sudoers.ShortHostname(host)
 }
 
 // collectSudoersDir collects all sudoers files from a directory
@@ -196,10 +213,12 @@ func (s *mqlSudoers) collectSudoersDir(conn shared.Connection, dirPath string, v
 		return
 	}
 
-	// Get all files from the directory
+	// Get the files directly inside the directory; sudo does not descend
+	// into subdirectories of an includedir.
 	files, err := CreateResource(s.MqlRuntime, "files.find", map[string]*llx.RawData{
-		"from": llx.StringData(dirPath),
-		"type": llx.StringData("file"),
+		"from":  llx.StringData(dirPath),
+		"type":  llx.StringData("file"),
+		"depth": llx.IntData(1),
 	})
 	if err != nil {
 		*errs = append(*errs, fmt.Errorf("failed to list files in %s: %w", dirPath, err))
@@ -227,8 +246,9 @@ func (s *mqlSudoers) collectSudoersDir(conn shared.Connection, dirPath string, v
 			continue
 		}
 
-		// Skip files with . or ~ in the name (sudoers convention)
-		if strings.Contains(basename.Data, ".") || strings.Contains(basename.Data, "~") {
+		// Skip names sudo ignores (a '.' or trailing '~') and anything
+		// outside the directory itself
+		if !sudoers.IsIncludedirEntry(dirPath, file.Path.Data, basename.Data) {
 			continue
 		}
 
