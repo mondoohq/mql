@@ -37,6 +37,8 @@ var defaultNpmPaths = []string{
 	"/usr/local/lib",
 	"/opt/homebrew/lib",
 	"/usr/lib",
+	// Fedora and RHEL 10 nodejs streams, e.g. nodejs24-npm
+	"/usr/lib/node_modules_*",
 	"/home/*/.npm-global/lib",
 	// Windows
 	"C:\\Users\\*\\AppData\\Roaming\\npm",
@@ -137,6 +139,19 @@ func collectNpmPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []str
 			transitivePackageList = append(transitivePackageList, transitive...)
 		}
 	}
+
+	// a versioned node_modules directory holds the packages directly
+	walkPaths := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if !isVersionedNodeModulesPath(p) {
+			walkPaths = append(walkPaths, p)
+			continue
+		}
+		for _, dir := range versionedNodeModulesPackageDirs(fs, p) {
+			handler(dir)
+		}
+	}
+	paths = walkPaths
 
 	log.Debug().Msg("searching for npm packages in default locations")
 	err := fsutil.WalkGlob(fs, paths, func(fs afero.Fs, walkPath string) error {
