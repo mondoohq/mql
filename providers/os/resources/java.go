@@ -23,8 +23,9 @@ import (
 )
 
 // defaultJavaPaths are searched for pom.xml, gradle.lockfile, and JAR files.
-// Only top-level files in these directories are scanned; use java.packages(path: "/specific/dir")
-// for recursive or targeted scanning.
+// Only top-level files in these directories are scanned, except in
+// defaultJavaArchiveTrees; use java.packages(path: "/specific/dir") for
+// targeted scanning.
 var defaultJavaPaths = []string{
 	// Common deployment locations
 	"/app",
@@ -35,6 +36,24 @@ var defaultJavaPaths = []string{
 	"/usr/src/app",
 	"/home/*/app",
 }
+
+// defaultJavaArchiveTrees are default paths whose subdirectories are searched
+// for JAR files as well, down to javaArchiveSearchDepth. SUSE, Fedora and RHEL
+// install packaged jars in the JPackage layout, one subdirectory per package
+// (/usr/share/java/log4j/log4j-core.jar). The other default paths are
+// application directories, often holding node_modules or vendor trees with
+// thousands of entries, which cost a round trip each over SSH.
+var defaultJavaArchiveTrees = []string{
+	"/usr/share/java",
+}
+
+// javaArchiveSearchDepth is how many levels of subdirectories below a search
+// directory are scanned for archives. One covers the JPackage layout SUSE,
+// Fedora and RHEL install packaged jars in (/usr/share/java/log4j/log4j-core.jar)
+// and keeps the walk to one listing per subdirectory: only the entries of the
+// search directory itself are stat'ed, and over SSH with --sudo every stat is
+// a command of its own.
+const javaArchiveSearchDepth = 1
 
 func initJavaPackages(_ *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if x, ok := args["path"]; ok {
@@ -88,39 +107,7 @@ func (r *mqlJavaPackages) gatherData() error {
 		transitiveDeps = t
 		filePaths = f
 	} else {
-		// Search default locations
-		for _, searchPath := range defaultJavaPaths {
-			// Look for pom.xml
-			matches, err := afero.Glob(fs, filepath.Join(searchPath, "pom.xml"))
-			if err == nil {
-				for _, match := range matches {
-					_, d, t, f := collectJavaPackages(afs, match)
-					directDeps = append(directDeps, d...)
-					transitiveDeps = append(transitiveDeps, t...)
-					filePaths = append(filePaths, f...)
-				}
-			}
-
-			// Look for gradle.lockfile
-			matches, err = afero.Glob(fs, filepath.Join(searchPath, "gradle.lockfile"))
-			if err == nil {
-				for _, match := range matches {
-					_, _, t, f := collectJavaPackages(afs, match)
-					transitiveDeps = append(transitiveDeps, t...)
-					filePaths = append(filePaths, f...)
-				}
-			}
-
-			// Look for JAR files
-			matches, err = afero.Glob(fs, filepath.Join(searchPath, "*.jar"))
-			if err == nil {
-				for _, match := range matches {
-					_, _, t, f := collectJavaPackages(afs, match)
-					transitiveDeps = append(transitiveDeps, t...)
-					filePaths = append(filePaths, f...)
-				}
-			}
-		}
+		directDeps, transitiveDeps, filePaths = collectJavaDefaults(afs, defaultJavaPaths)
 	}
 
 	// Sort packages
@@ -171,6 +158,98 @@ func (r *mqlJavaPackages) gatherData() error {
 
 	r.fetched = true
 	return nil
+}
+
+// collectJavaDefaults searches the default locations: pom.xml,
+// gradle.lockfile and JAR files in each directory, and JAR files in the
+// subdirectories of defaultJavaArchiveTrees.
+func collectJavaDefaults(afs *afero.Afero, searchPaths []string) ([]*languages.Package, []*languages.Package, []string) {
+	var directDeps []*languages.Package
+	var transitiveDeps []*languages.Package
+	var filePaths []string
+
+	for _, searchPath := range searchPaths {
+		// Look for pom.xml
+		matches, err := afero.Glob(afs.Fs, filepath.Join(searchPath, "pom.xml"))
+		if err == nil {
+			for _, match := range matches {
+				_, d, t, f := collectJavaPackages(afs, match)
+				directDeps = append(directDeps, d...)
+				transitiveDeps = append(transitiveDeps, t...)
+				filePaths = append(filePaths, f...)
+			}
+		}
+
+		// Look for gradle.lockfile
+		matches, err = afero.Glob(afs.Fs, filepath.Join(searchPath, "gradle.lockfile"))
+		if err == nil {
+			for _, match := range matches {
+				_, _, t, f := collectJavaPackages(afs, match)
+				transitiveDeps = append(transitiveDeps, t...)
+				filePaths = append(filePaths, f...)
+			}
+		}
+
+		// Look for JAR files
+		dirs, err := afero.Glob(afs.Fs, searchPath)
+		if err != nil {
+			continue
+		}
+		depth := 0
+		if slices.Contains(defaultJavaArchiveTrees, searchPath) {
+			depth = javaArchiveSearchDepth
+		}
+		isJar := func(name string) bool { return strings.HasSuffix(name, ".jar") }
+		for _, dir := range dirs {
+			for _, match := range findJavaArchives(afs, dir, depth, isJar) {
+				_, _, t, f := collectJavaPackages(afs, match)
+				transitiveDeps = append(transitiveDeps, t...)
+				filePaths = append(filePaths, f...)
+			}
+		}
+	}
+
+	return directDeps, transitiveDeps, filePaths
+}
+
+// findJavaArchives lists the files in dir whose names match, then those in
+// its subdirectories down to depth levels, in name order.
+//
+// Names are read without a stat per entry, and only an entry that does not
+// match and could still be descended into is stat'ed: over SSH with --sudo
+// every stat is a command of its own, and directories such as
+// /usr/local/lib/python3.x/site-packages hold hundreds of entries.
+func findJavaArchives(afs *afero.Afero, dir string, depth int, match func(name string) bool) []string {
+	f, err := afs.Open(dir)
+	if err != nil {
+		return nil
+	}
+	names, err := f.Readdirnames(-1)
+	f.Close()
+	if err != nil {
+		return nil
+	}
+	slices.Sort(names)
+
+	var res []string
+	var subdirs []string
+	for _, name := range names {
+		p := filepath.Join(dir, name)
+		if match(name) {
+			res = append(res, p)
+			continue
+		}
+		if depth == 0 {
+			continue
+		}
+		if isDir, err := afs.IsDir(p); err == nil && isDir {
+			subdirs = append(subdirs, p)
+		}
+	}
+	for _, sub := range subdirs {
+		res = append(res, findJavaArchives(afs, sub, depth-1, match)...)
+	}
+	return res
 }
 
 // collectJavaPackages parses Java package metadata from a given path.
@@ -224,18 +303,11 @@ func collectJavaFromDir(afs *afero.Afero, dir string) (*languages.Package, []*la
 		files = append(files, f...)
 	}
 
-	// Scan JAR files in the directory
-	entries, err := afs.ReadDir(dir)
-	if err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() || !jarscanner.IsArchive(entry.Name()) {
-				continue
-			}
-			jarPath := filepath.Join(dir, entry.Name())
-			_, _, t, f := collectFromArchive(afs, jarPath)
-			transitive = append(transitive, t...)
-			files = append(files, f...)
-		}
+	// Scan JAR files in the directory and its subdirectories
+	for _, jarPath := range findJavaArchives(afs, dir, javaArchiveSearchDepth, jarscanner.IsArchive) {
+		_, _, t, f := collectFromArchive(afs, jarPath)
+		transitive = append(transitive, t...)
+		files = append(files, f...)
 	}
 
 	return root, direct, transitive, files
