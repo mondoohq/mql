@@ -5,13 +5,18 @@ package resources
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"io"
+	"os"
 	"path"
 	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/spf13/afero"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 )
 
 // reShellVar matches an unexpanded shell variable reference, such as
@@ -41,9 +46,12 @@ type BootEntry struct {
 	IsSubmenu bool
 
 	// Parameters holds the key-value tokens of the kernel command line, last
-	// occurrence winning as the kernel reads them. Flags holds the bare ones.
-	Parameters map[string]string
-	Flags      []string
+	// occurrence winning as the kernel reads them. ParameterValues holds every
+	// value of each key in command-line order, for a parameter such as console
+	// that the kernel reads once per occurrence. Flags holds the bare ones.
+	Parameters      map[string]string
+	ParameterValues map[string][]string
+	Flags           []string
 
 	// Source is the file the entry was read from.
 	Source string
@@ -105,10 +113,18 @@ func ParseBLSEntry(r io.Reader) (BootEntry, error) {
 }
 
 // readBLSEntries reads every entry file in dir, resolving the bootloader
-// variables the entries reference.
+// variables the entries reference. A directory that does not exist holds no
+// entries. One that cannot be listed, or an entry file that cannot be opened,
+// because of its permissions is a refusal, returned as a forbidden error
+// beside whatever entries were read: the Red Hat family keeps
+// /boot/loader/entries at 0700, so a non-root scan cannot tell a host without
+// entries from one whose entries it may not read.
 func readBLSEntries(fs afero.Fs, dir string, vars map[string]string) ([]BootEntry, error) {
 	files, err := afero.ReadDir(fs, dir)
 	if err != nil {
+		if errors.Is(err, os.ErrPermission) {
+			return nil, llx.Forbidden(fmt.Errorf("cannot list the boot entries in %s: %w", dir, err))
+		}
 		return nil, nil
 	}
 
@@ -121,11 +137,15 @@ func readBLSEntries(fs afero.Fs, dir string, vars map[string]string) ([]BootEntr
 	}
 	sort.Strings(names)
 
+	var refused error
 	entries := make([]BootEntry, 0, len(names))
 	for _, name := range names {
 		p := path.Join(dir, name)
 		f, err := fs.Open(p)
 		if err != nil {
+			if refused == nil && errors.Is(err, os.ErrPermission) {
+				refused = llx.Forbidden(fmt.Errorf("cannot read the boot entry %s: %w", p, err))
+			}
 			continue
 		}
 		entry, err := ParseBLSEntry(f)
@@ -138,7 +158,7 @@ func readBLSEntries(fs afero.Fs, dir string, vars map[string]string) ([]BootEntr
 	}
 
 	finalizeEntries(entries, "", vars)
-	return entries, nil
+	return entries, refused
 }
 
 // expandVars resolves the variables the bootloader would expand. A variable
@@ -155,6 +175,49 @@ func expandVars(s string, vars map[string]string) string {
 		}
 		return match
 	})
+}
+
+// ParseCmdlineValues returns every value of each key-value parameter on a
+// kernel command line, in the order they appear. The kernel reads some
+// parameters once per occurrence: every console= names a console, and the Red
+// Hat family's cloud images boot with console=tty0 console=ttyS0,115200n8.
+// Unresolved variables are skipped, as in ParseCmdline.
+func ParseCmdlineValues(cmdline string) map[string][]string {
+	values := map[string][]string{}
+	for _, token := range strings.Fields(cmdline) {
+		if strings.HasPrefix(token, "$") {
+			continue
+		}
+		if key, value, found := strings.Cut(token, "="); found {
+			values[key] = append(values[key], value)
+		}
+	}
+	return values
+}
+
+// expandInitrd resolves the variables on an initrd line the way GRUB does
+// when it boots the entry: a variable with no value expands to nothing. The
+// Red Hat family's entries end the line with $tuned_initrd, which is empty
+// unless a TuneD profile adds an initrd overlay, so the images GRUB loads are
+// the remaining paths.
+func expandInitrd(initrd string, vars map[string]string) string {
+	if !strings.ContainsRune(initrd, '$') {
+		return initrd
+	}
+	expanded := reShellVar.ReplaceAllStringFunc(initrd, func(match string) string {
+		return vars[strings.Trim(match, "${}")]
+	})
+	return strings.Join(strings.Fields(expanded), " ")
+}
+
+// parameterValuesData converts the values of each parameter for a
+// map[string][]string field.
+func parameterValuesData(values map[string][]string) map[string]any {
+	res := make(map[string]any, len(values))
+	for k, v := range values {
+		res[k] = convert.SliceAnyToInterface(v)
+	}
+	return res
 }
 
 // ParseCmdline splits a kernel command line into its key-value parameters and
@@ -200,6 +263,8 @@ func finalizeEntries(entries []BootEntry, source string, vars map[string]string)
 		}
 
 		entry.Parameters, entry.Flags = ParseCmdline(args)
+		entry.ParameterValues = ParseCmdlineValues(args)
+		entry.Initrd = expandInitrd(entry.Initrd, vars)
 		entry.Kind = classifyEntry(entry)
 		entry.Bootable = entryBootable(entry.Kind)
 	}
@@ -256,4 +321,32 @@ func hasClass(classes []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// grubConfigRefused returns a forbidden error when a known boot menu location
+// cannot be examined because of its permissions, which is what a non-root scan
+// meets on the Red Hat family, where /boot/grub2 is 0700. It returns nil when
+// every location either exists or plainly does not.
+func grubConfigRefused(fs afero.Fs) error {
+	for _, candidates := range [][]string{grubCfgPaths, grubLegacyCfgPaths} {
+		for _, p := range candidates {
+			f, err := fs.Open(p)
+			if err == nil {
+				f.Close()
+				continue
+			}
+			if errors.Is(err, os.ErrPermission) {
+				return llx.Forbidden(fmt.Errorf("cannot read the GRUB configuration %s: %w", p, err))
+			}
+		}
+	}
+	return nil
+}
+
+// forbiddenOnly returns err when it is a refusal and nil otherwise.
+func forbiddenOnly(err error) error {
+	if errors.Is(err, llx.ErrForbidden) {
+		return err
+	}
+	return nil
 }

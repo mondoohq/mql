@@ -85,6 +85,14 @@ type mqlGrubConfigInternal struct {
 	cachedEntriesOK   bool
 	cachedEntries     []BootEntry
 	cachedPwProtected bool
+
+	// A non-root scan of the Red Hat family cannot read /boot/grub2 or
+	// /boot/loader/entries (both 0700). cachedGrubRefused records that no
+	// boot menu was found because a known location refused to be read, and
+	// cachedEntriesRefused that the entry files refused to be read, so that
+	// the fields report the refusal rather than a host without GRUB.
+	cachedGrubRefused    error
+	cachedEntriesRefused error
 }
 
 func initGrubConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -231,7 +239,9 @@ func (g *mqlGrubConfig) fetchGrubCfg() error {
 		// false and passwordProtected stays null: reporting false would say
 		// GRUB is installed and unprotected on a host that may not run GRUB
 		// at all.
-		entries, _ := LoadGrubEntries(fs, "", nil)
+		entries, err := LoadGrubEntries(fs, "", nil)
+		g.cachedEntriesRefused = forbiddenOnly(err)
+		g.cachedGrubRefused = grubConfigRefused(fs)
 		g.cachedEntries = entries
 		g.cachedEntriesOK = len(entries) > 0
 		g.fetched = true
@@ -251,7 +261,11 @@ func (g *mqlGrubConfig) fetchGrubCfg() error {
 
 	entries, err := LoadGrubEntries(fs, cfgPath, content)
 	if err != nil {
-		return err
+		if !errors.Is(err, llx.ErrForbidden) {
+			return err
+		}
+		// grub.cfg was read, so password protection is still answered.
+		g.cachedEntriesRefused = err
 	}
 	g.cachedEntriesOK = len(entries) > 0
 
@@ -290,9 +304,18 @@ func (g *mqlGrubConfig) entries() ([]any, error) {
 	}
 
 	if !g.cachedEntriesOK {
+		refused := g.cachedEntriesRefused
+		if refused == nil {
+			refused = g.cachedGrubRefused
+		}
+		if refused != nil && plugin.StructuredErrors() {
+			return nil, refused
+		}
 		// A host that does not boot with GRUB has no entries to report. An
 		// empty list would read as "GRUB is installed and offers nothing to
 		// boot", and would satisfy every assertion made over the entries.
+		// v13 also reported entries it was refused as null; that stays until
+		// structured errors are the default.
 		g.Entries.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
@@ -301,17 +324,18 @@ func (g *mqlGrubConfig) entries() ([]any, error) {
 	for _, entry := range g.cachedEntries {
 		entryID := "grub.config.entry:" + entry.Source + ":" + entry.Title + ":" + entry.Cmdline
 		resource, err := CreateResource(g.MqlRuntime, "grub.config.entry", map[string]*llx.RawData{
-			"__id":       llx.StringData(entryID),
-			"title":      llx.StringData(entry.Title),
-			"kind":       llx.StringData(entry.Kind),
-			"bootable":   llx.BoolData(entry.Bootable),
-			"kernel":     llx.StringData(entry.Kernel),
-			"cmdline":    llx.StringData(entry.Cmdline),
-			"parameters": llx.MapData(convert.MapToInterfaceMap(entry.Parameters), types.String),
-			"flags":      llx.ArrayData(convert.SliceAnyToInterface(entry.Flags), types.String),
-			"source":     llx.StringData(entry.Source),
-			"initrd":     llx.StringData(entry.Initrd),
-			"isSubmenu":  llx.BoolData(entry.IsSubmenu),
+			"__id":            llx.StringData(entryID),
+			"title":           llx.StringData(entry.Title),
+			"kind":            llx.StringData(entry.Kind),
+			"bootable":        llx.BoolData(entry.Bootable),
+			"kernel":          llx.StringData(entry.Kernel),
+			"cmdline":         llx.StringData(entry.Cmdline),
+			"parameters":      llx.MapData(convert.MapToInterfaceMap(entry.Parameters), types.String),
+			"parameterValues": llx.MapData(parameterValuesData(entry.ParameterValues), types.Array(types.String)),
+			"flags":           llx.ArrayData(convert.SliceAnyToInterface(entry.Flags), types.String),
+			"source":          llx.StringData(entry.Source),
+			"initrd":          llx.StringData(entry.Initrd),
+			"isSubmenu":       llx.BoolData(entry.IsSubmenu),
 		})
 		if err != nil {
 			return nil, err
@@ -327,6 +351,9 @@ func (g *mqlGrubConfig) passwordProtected() (bool, error) {
 		return false, err
 	}
 	if !g.cachedGrubFound {
+		if g.cachedGrubRefused != nil && plugin.StructuredErrors() {
+			return false, g.cachedGrubRefused
+		}
 		// No grub.cfg exists in any known location, so the host either boots
 		// with a different bootloader or keeps its configuration somewhere we
 		// cannot see. Reporting false there would read as "GRUB is installed

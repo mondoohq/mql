@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestParseEfiVarString(t *testing.T) {
@@ -161,11 +162,25 @@ func TestFindEsp(t *testing.T) {
 		assert.Equal(t, "/efi", findEsp(fs))
 	})
 
-	t.Run("a host with no boot loader still has an ESP", func(t *testing.T) {
-		// Nothing is installed under EFI/ yet the partition is plainly there.
-		// It is still the ESP, and reporting it is how a scan explains itself.
-		fs := newBootFs(t, "/boot/efi/EFI/")
+	t.Run("a UEFI host with no boot loader still has an ESP", func(t *testing.T) {
+		// Nothing is installed under EFI/ yet the firmware booted through
+		// UEFI, so the partition is plainly there. It is still the ESP, and
+		// reporting it is how a scan explains itself.
+		fs := newBootFs(t, "/boot/efi/EFI/", "/sys/firmware/efi/")
 		assert.Equal(t, "/boot/efi", findEsp(fs))
+	})
+
+	t.Run("an EFI binary names the ESP on a scan without firmware state", func(t *testing.T) {
+		// Debian installs GRUB under its own vendor directory only.
+		fs := newBootFs(t, "/boot/efi/EFI/debian/grubx64.efi")
+		assert.Equal(t, "/boot/efi", findEsp(fs))
+	})
+
+	t.Run("a legacy BIOS host with an empty EFI directory has no ESP", func(t *testing.T) {
+		// RHEL 7 on BIOS: grub2-common owns an empty /boot/efi/EFI/redhat on
+		// the root filesystem, and /sys/firmware/efi does not exist.
+		fs := newBootFs(t, "/boot/efi/EFI/redhat/", "/boot/grub2/grub.cfg")
+		assert.Equal(t, "", findEsp(fs))
 	})
 
 	t.Run("no EFI system partition is visible", func(t *testing.T) {
@@ -471,5 +486,42 @@ func TestReadBootEntries(t *testing.T) {
 	t.Run("nothing readable yields no entries", func(t *testing.T) {
 		assert.Empty(t, readBootEntries(afero.NewMemMapFs(), "/boot"))
 		assert.Empty(t, readBootEntries(afero.NewMemMapFs(), ""))
+	})
+}
+
+func TestSystemdBootEntriesBelongToSystemdBoot(t *testing.T) {
+	// A RHEL 9 host boots GRUB, which reads its entries from the same Boot
+	// Loader Specification directory systemd-boot would.
+	grubEntry := BootEntry{
+		Title:   "Red Hat Enterprise Linux (5.14.0-687.54.1.el9_8.x86_64) 9.6 (Plow)",
+		Kernel:  "/vmlinuz-5.14.0-687.54.1.el9_8.x86_64",
+		Cmdline: "root=UUID=x console=tty0 $tuned_params",
+		Source:  "/boot/loader/entries/rhel.conf",
+	}
+	newBoot := func() *mqlSystemdBoot {
+		s := &mqlSystemdBoot{}
+		s.once.Do(func() {})
+		s.cachedEsp = "/boot/efi"
+		s.cachedBootPath = "/boot"
+		s.cachedEfiVarsRead = true
+		s.cachedEntries = []BootEntry{grubEntry}
+		s.cachedEntriesOK = true
+		return s
+	}
+
+	t.Run("neither installed nor active", func(t *testing.T) {
+		s := newBoot()
+		res, err := s.entries()
+		require.NoError(t, err)
+		assert.Nil(t, res)
+		assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, s.Entries.State)
+	})
+
+	t.Run("not installed and the variables are unreadable", func(t *testing.T) {
+		s := newBoot()
+		efiVarErr := errors.New("cannot read LoaderInfo: permission denied")
+		s.efiVarErr = efiVarErr
+		_, err := s.entries()
+		assert.ErrorIs(t, err, efiVarErr)
 	})
 }

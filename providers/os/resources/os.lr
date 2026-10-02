@@ -6643,8 +6643,9 @@ systemd.boot @defaults("active version") {
   // Path to the EFI system partition
   //
   // Where the bootloaders are installed, which is `/efi`, `/boot` or
-  // `/boot/efi`. Empty on a legacy BIOS host and on a scan that cannot read
-  // the partition.
+  // `/boot/efi`. Empty on a legacy BIOS host, including one that carries an
+  // empty `EFI` directory on its root filesystem, and on a scan that cannot
+  // read the partition.
   espPath() string
   // Path the boot entries are read from
   //
@@ -6665,7 +6666,9 @@ systemd.boot @defaults("active version") {
   // have no entry file at all. Null when neither source yields an entry, since
   // a host whose boot entries cannot be read has none to report rather than an
   // empty list of them, which would satisfy every assertion made over the
-  // entries.
+  // entries. Null as well when systemd-boot is neither installed nor booted
+  // this host, since the entry files then belong to another boot loader, such
+  // as GRUB on the Red Hat family.
   entries() []systemd.boot.entry
 }
 
@@ -6708,9 +6711,14 @@ private systemd.boot.entry @defaults("title kind") {
   // Kernel command line parameters
   //
   // Key-value tokens from the kernel command line. When a parameter appears
-  // more than once the last occurrence wins, which is how the kernel reads it.
-  // Use `cmdline` to recover every occurrence.
+  // more than once the last occurrence wins, which is how the kernel reads
+  // most of them. `parameterValues` keeps every occurrence.
   parameters map[string]string
+  // Every value of each kernel command line parameter
+  //
+  // Values of each key-value token in command-line order, for a parameter the
+  // kernel reads once per occurrence, such as console.
+  parameterValues map[string][]string
   // Bare kernel command line tokens, such as ro, quiet, or single
   flags []string
   // Whether the entry is a unified kernel image
@@ -8490,14 +8498,26 @@ private grub.config.entry @defaults("title kind") {
   //
   // Key-value tokens from the kernel command line, with a variable that the
   // bootloader expands resolved first. When a parameter appears more than
-  // once the last occurrence wins, which is how the kernel reads it. Use
-  // `cmdline` to recover every occurrence.
+  // once the last occurrence wins, which is how the kernel reads most of
+  // them. `parameterValues` keeps every occurrence.
   parameters map[string]string
+  // Every value of each kernel command line parameter
+  //
+  // Values of each key-value token in command-line order, for a parameter the
+  // kernel reads once per occurrence. The Red Hat family's cloud images boot
+  // with `console=tty0 console=ttyS0,115200n8`, which is
+  // `parameterValues["console"] == ["tty0", "ttyS0,115200n8"]`.
+  parameterValues map[string][]string
   // Bare kernel command line tokens, such as ro, quiet, or single
   flags []string
   // Path of the file the entry was read from
   source string
-  // Initrd path (initrd/initrd16/initrdefi line)
+  // Initrd path
+  //
+  // The initrd, initrd16, or initrdefi line, with the variables GRUB expands
+  // resolved. A variable with no value expands to nothing, as it does when
+  // GRUB boots the entry, so the `$tuned_initrd` the Red Hat family appends
+  // leaves only the image paths.
   initrd string
   // Whether this is a submenu
   isSubmenu bool

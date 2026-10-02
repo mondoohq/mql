@@ -8530,6 +8530,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"systemd.boot.entry.parameters": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSystemdBootEntry).GetParameters()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"systemd.boot.entry.parameterValues": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBootEntry).GetParameterValues()).ToDataRes(types.Map(types.String, types.Array(types.String)))
+	},
 	"systemd.boot.entry.flags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSystemdBootEntry).GetFlags()).ToDataRes(types.Array(types.String))
 	},
@@ -9858,6 +9861,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"grub.config.entry.parameters": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrubConfigEntry).GetParameters()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"grub.config.entry.parameterValues": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGrubConfigEntry).GetParameterValues()).ToDataRes(types.Map(types.String, types.Array(types.String)))
 	},
 	"grub.config.entry.flags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrubConfigEntry).GetFlags()).ToDataRes(types.Array(types.String))
@@ -25895,6 +25901,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlSystemdBootEntry).Parameters, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"systemd.boot.entry.parameterValues": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBootEntry).ParameterValues, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"systemd.boot.entry.flags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSystemdBootEntry).Flags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -27905,6 +27915,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"grub.config.entry.parameters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGrubConfigEntry).Parameters, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"grub.config.entry.parameterValues": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGrubConfigEntry).ParameterValues, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"grub.config.entry.flags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -62845,6 +62859,7 @@ type mqlSystemdBootEntry struct {
 	Kernel             plugin.TValue[string]
 	Cmdline            plugin.TValue[string]
 	Parameters         plugin.TValue[map[string]any]
+	ParameterValues    plugin.TValue[map[string]any]
 	Flags              plugin.TValue[[]any]
 	UnifiedKernelImage plugin.TValue[bool]
 	Signed             plugin.TValue[bool]
@@ -62911,6 +62926,10 @@ func (c *mqlSystemdBootEntry) GetCmdline() *plugin.TValue[string] {
 
 func (c *mqlSystemdBootEntry) GetParameters() *plugin.TValue[map[string]any] {
 	return &c.Parameters
+}
+
+func (c *mqlSystemdBootEntry) GetParameterValues() *plugin.TValue[map[string]any] {
+	return &c.ParameterValues
 }
 
 func (c *mqlSystemdBootEntry) GetFlags() *plugin.TValue[[]any] {
@@ -68435,16 +68454,17 @@ type mqlGrubConfigEntry struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlGrubConfigEntryInternal it will be used here
-	Title      plugin.TValue[string]
-	Kind       plugin.TValue[string]
-	Bootable   plugin.TValue[bool]
-	Kernel     plugin.TValue[string]
-	Cmdline    plugin.TValue[string]
-	Parameters plugin.TValue[map[string]any]
-	Flags      plugin.TValue[[]any]
-	Source     plugin.TValue[string]
-	Initrd     plugin.TValue[string]
-	IsSubmenu  plugin.TValue[bool]
+	Title           plugin.TValue[string]
+	Kind            plugin.TValue[string]
+	Bootable        plugin.TValue[bool]
+	Kernel          plugin.TValue[string]
+	Cmdline         plugin.TValue[string]
+	Parameters      plugin.TValue[map[string]any]
+	ParameterValues plugin.TValue[map[string]any]
+	Flags           plugin.TValue[[]any]
+	Source          plugin.TValue[string]
+	Initrd          plugin.TValue[string]
+	IsSubmenu       plugin.TValue[bool]
 }
 
 // createGrubConfigEntry creates a new instance of this resource
@@ -68506,6 +68526,10 @@ func (c *mqlGrubConfigEntry) GetCmdline() *plugin.TValue[string] {
 
 func (c *mqlGrubConfigEntry) GetParameters() *plugin.TValue[map[string]any] {
 	return &c.Parameters
+}
+
+func (c *mqlGrubConfigEntry) GetParameterValues() *plugin.TValue[map[string]any] {
+	return &c.ParameterValues
 }
 
 func (c *mqlGrubConfigEntry) GetFlags() *plugin.TValue[[]any] {

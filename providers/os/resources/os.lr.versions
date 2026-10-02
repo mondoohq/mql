@@ -1177,6 +1177,7 @@ grub.config.entry.initrd 13.2.7
 grub.config.entry.isSubmenu 13.2.7
 grub.config.entry.kernel 14.0.0
 grub.config.entry.kind 14.0.0
+grub.config.entry.parameterValues 14.14.1
 grub.config.entry.parameters 14.0.0
 grub.config.entry.source 14.0.0
 grub.config.entry.title 13.2.7
@@ -4024,6 +4025,7 @@ systemd.boot.entry.flags 14.0.0
 systemd.boot.entry.initrd 14.0.0
 systemd.boot.entry.kernel 14.0.0
 systemd.boot.entry.kind 14.0.0
+systemd.boot.entry.parameterValues 14.14.1
 systemd.boot.entry.parameters 14.0.0
 systemd.boot.entry.signed 14.0.0
 systemd.boot.entry.source 14.0.0

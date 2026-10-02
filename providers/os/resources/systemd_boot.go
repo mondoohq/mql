@@ -106,13 +106,47 @@ func findEsp(fs afero.Fs) string {
 	}
 
 	// No boot loader is installed. The partition is still the ESP, and naming
-	// it explains what was searched.
+	// it explains what was searched. An EFI directory alone is not enough: a
+	// legacy BIOS host of the Red Hat family carries an empty
+	// /boot/efi/EFI/redhat on its root filesystem, put there by a package
+	// rather than by a partition. The directory names the ESP only when it
+	// holds an EFI binary, or when the host booted through UEFI firmware.
+	uefi := bootDirExists(fs, efiFirmwareDir)
 	for _, mount := range bootMountpoints {
-		if bootDirExists(fs, path.Join(mount, "EFI")) {
+		efi := path.Join(mount, "EFI")
+		if bootDirExists(fs, efi) && (uefi || holdsEfiBinary(fs, efi)) {
 			return mount
 		}
 	}
 	return ""
+}
+
+// efiFirmwareDir exists on a running Linux host that UEFI firmware booted.
+const efiFirmwareDir = "/sys/firmware/efi"
+
+// holdsEfiBinary reports whether a vendor directory under the EFI directory
+// holds an EFI executable, such as EFI/debian/grubx64.efi. The suffix is
+// matched without regard to case, since the fallback loader is BOOTX64.EFI.
+func holdsEfiBinary(fs afero.Fs, efiDir string) bool {
+	vendors, err := afero.ReadDir(fs, efiDir)
+	if err != nil {
+		return false
+	}
+	for _, vendor := range vendors {
+		if !vendor.IsDir() {
+			continue
+		}
+		files, err := afero.ReadDir(fs, path.Join(efiDir, vendor.Name()))
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			if !f.IsDir() && strings.HasSuffix(strings.ToLower(f.Name()), ".efi") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // findBootPath returns what $BOOT resolves to: the extended boot loader
@@ -267,6 +301,7 @@ func readUnifiedKernelEntries(fs afero.Fs, dir string) []BootEntry {
 			Kernel:             img.Kernel,
 			Cmdline:            img.Cmdline,
 			Parameters:         img.Parameters,
+			ParameterValues:    ParseCmdlineValues(img.Cmdline),
 			Flags:              img.Flags,
 			Source:             p,
 			UnifiedKernelImage: true,
@@ -450,6 +485,21 @@ func (s *mqlSystemdBoot) entries() ([]any, error) {
 		return nil, err
 	}
 
+	if !s.cachedInstalled && !s.cachedActive {
+		if s.efiVarErr != nil {
+			// systemd-boot is not installed, and whether it booted this host
+			// is unknown, so whose entries these are is unknown too.
+			return nil, s.efiVarErr
+		}
+		// The entry files belong to another boot loader. GRUB on the Red Hat
+		// family reads the same Boot Loader Specification directory, and its
+		// entries carry variables such as $kernelopts that only GRUB expands,
+		// so reporting them here would audit a boot loader the host does not
+		// have.
+		s.Entries.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
 	if !s.cachedEntriesOK {
 		// A host whose boot entries cannot be read has none to report. An
 		// empty list would read as "systemd-boot offers nothing to boot", and
@@ -468,6 +518,7 @@ func (s *mqlSystemdBoot) entries() ([]any, error) {
 			"kernel":             llx.StringData(entry.Kernel),
 			"cmdline":            llx.StringData(entry.Cmdline),
 			"parameters":         llx.MapData(convert.MapToInterfaceMap(entry.Parameters), types.String),
+			"parameterValues":    llx.MapData(parameterValuesData(entry.ParameterValues), types.Array(types.String)),
 			"flags":              llx.ArrayData(convert.SliceAnyToInterface(entry.Flags), types.String),
 			"unifiedKernelImage": llx.BoolData(entry.UnifiedKernelImage),
 			"signed":             llx.BoolData(entry.Signed),
