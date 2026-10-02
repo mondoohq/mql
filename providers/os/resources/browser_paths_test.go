@@ -45,16 +45,21 @@ func TestLinuxChromiumProfileRootsCoverPackagedBrowsers(t *testing.T) {
 func TestLinuxFirefoxProfileRootsCoverPackagedBrowsers(t *testing.T) {
 	rel := func(c firefoxBrowserConfig) string { return c.relPath }
 	name := func(c firefoxBrowserConfig) string { return c.name }
-	home := "/home/ubuntu"
-	cases := map[string]string{
+	cases := []struct{ home, path string }{
 		// Firefox snap 157 on Ubuntu 22.04, 24.04 and 26.04
-		"/home/ubuntu/snap/firefox/common/.mozilla/firefox/9td5zg57.default/extensions.json": "Firefox",
-		// Flatpak (Flathub org.mozilla.firefox)
-		"/home/ubuntu/.var/app/org.mozilla.firefox/.mozilla/firefox/abcd1234.default-release/extensions.json": "Firefox",
+		{"/home/ubuntu", "/home/ubuntu/snap/firefox/common/.mozilla/firefox/9td5zg57.default/extensions.json"},
 		// Firefox .deb / tarball on Ubuntu 16.04 to 20.04
-		"/home/ubuntu/.mozilla/firefox/ugko8kss.default-release/extensions.json": "Firefox",
+		{"/home/ubuntu", "/home/ubuntu/.mozilla/firefox/ugko8kss.default-release/extensions.json"},
+		// Firefox ESR 140 rpm on RHEL 8, 9 and 10
+		{"/home/alice", "/home/alice/.mozilla/firefox/sinb40bm.default-default/extensions.json"},
+		// Firefox 156 rpm on Fedora 44 creates new profiles in the XDG config dir
+		{"/home/alice", "/home/alice/.config/mozilla/firefox/uqpk7pz1.default-release/extensions.json"},
+		// Flathub org.mozilla.firefox 157 on Fedora 44
+		{"/home/alice", "/home/alice/.var/app/org.mozilla.firefox/config/mozilla/firefox/6fuhw206.default-release/extensions.json"},
+		// Older Flathub builds persisted ~/.mozilla inside the sandbox
+		{"/home/alice", "/home/alice/.var/app/org.mozilla.firefox/.mozilla/firefox/abcd1234.default-release/extensions.json"},
 	}
-	for path, want := range cases {
-		assert.Equal(t, want, coveringBrowser(firefoxBrowserConfigs["linux"], rel, name, home, path), path)
+	for _, tc := range cases {
+		assert.Equal(t, "Firefox", coveringBrowser(firefoxBrowserConfigs["linux"], rel, name, tc.home, tc.path), tc.path)
 	}
 }

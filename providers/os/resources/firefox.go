@@ -28,11 +28,18 @@ var firefoxBrowserConfigs = map[string][]firefoxBrowserConfig{
 	"linux": {
 		// Standard Firefox variants (use Profiles subdirectory, depth 3)
 		{name: "Firefox", relPath: ".mozilla/firefox"},
+		// Firefox 147 and later create new profiles under $XDG_CONFIG_HOME
+		// (default ~/.config) instead of ~/.mozilla. Existing ~/.mozilla
+		// profiles and ESR releases stay where they are, so both are read.
+		{name: "Firefox", relPath: ".config/mozilla/firefox"},
 		{name: "Firefox Developer Edition", relPath: ".mozilla/firefox-dev"},
 		{name: "Firefox Nightly", relPath: ".mozilla/firefox-nightly"},
 		// Firefox packaged as a snap (the default on Ubuntu 22.04 and later) or
 		// a flatpak keeps its profiles inside the package's private home.
 		{name: "Firefox", relPath: "snap/firefox/common/.mozilla/firefox"},
+		// Flathub org.mozilla.firefox: current releases use the sandbox's
+		// XDG config dir, older ones the persisted ~/.mozilla.
+		{name: "Firefox", relPath: ".var/app/org.mozilla.firefox/config/mozilla/firefox"},
 		{name: "Firefox", relPath: ".var/app/org.mozilla.firefox/.mozilla/firefox"},
 		// Firefox-based browsers
 		{name: "LibreWolf", relPath: ".librewolf"},
