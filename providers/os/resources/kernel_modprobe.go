@@ -7,7 +7,9 @@ import (
 	"errors"
 	"os"
 	"path"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/afero"
@@ -32,16 +34,123 @@ type modprobeRule struct {
 // directory wins and the later ones are ignored, so an /etc/modprobe.d file
 // overrides a package-shipped file of the same name in /usr/lib or /lib.
 //
-// kmod 29 added /usr/local/lib/modprobe.d and kmod 30 added
-// /usr/lib/modprobe.d. Older kmod releases skip those directories, but on
-// those releases they don't exist or, on merged-/usr systems, alias
-// /lib/modprobe.d, so walking the full list matches every release.
+// Not every kmod release reads every directory, see modprobeSearchPathsFor.
 var modprobeSearchPaths = []string{
 	"/etc/modprobe.d",
 	"/run/modprobe.d",
-	"/usr/local/lib/modprobe.d",
-	"/usr/lib/modprobe.d",
+	modprobeUsrLocalLibDir,
+	modprobeUsrLibDir,
 	"/lib/modprobe.d",
+}
+
+const (
+	modprobeUsrLocalLibDir = "/usr/local/lib/modprobe.d"
+	modprobeUsrLibDir      = "/usr/lib/modprobe.d"
+
+	// kmod 29 added /usr/local/lib/modprobe.d to default_config_paths.
+	kmodReleaseUsrLocalLib = 29
+	// kmod 32 added DISTCONFDIR/modprobe.d, /usr/lib/modprobe.d by default.
+	kmodReleaseUsrLib = 32
+)
+
+// modprobeSearchPathsFor returns the modprobe.d directories the installed
+// kmod reads, in search order. kmodRelease is the kmod release number (0 when
+// unknown, which keeps every directory). Before kmod 29 libkmod skips
+// /usr/local/lib/modprobe.d, so a file placed there on RHEL 7, 8 or 9 (kmod
+// 20, 25, 28) is never applied. Before kmod 32 it skips /usr/lib/modprobe.d,
+// except where that directory is /lib/modprobe.d (usrMerged: /lib links to
+// /usr/lib) and on SUSE, whose kmod is patched to read it on every release.
+func modprobeSearchPathsFor(kmodRelease int, usrMerged bool, suse bool) []string {
+	if kmodRelease <= 0 {
+		return modprobeSearchPaths
+	}
+	res := make([]string, 0, len(modprobeSearchPaths))
+	for _, dir := range modprobeSearchPaths {
+		switch dir {
+		case modprobeUsrLocalLibDir:
+			if kmodRelease < kmodReleaseUsrLocalLib {
+				continue
+			}
+		case modprobeUsrLibDir:
+			if kmodRelease < kmodReleaseUsrLib && !usrMerged && !suse {
+				continue
+			}
+		}
+		res = append(res, dir)
+	}
+	return res
+}
+
+var kmodVersionRegex = regexp.MustCompile(`^kmod version (\d+)`)
+
+// parseKmodRelease returns the release number from `kmod --version` output
+// ("kmod version 28", "kmod version 34.2"), or 0 when it isn't there.
+func parseKmodRelease(out string) int {
+	m := kmodVersionRegex.FindStringSubmatch(strings.TrimSpace(out))
+	if m == nil {
+		return 0
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// kmodVersion runs `kmod --version` once per query and caches the release
+// number. A host without kmod, or a connection that can't run commands,
+// yields 0, which keeps every search directory.
+func (k *mqlKernel) kmodVersion() int {
+	k.kmodOnce.Do(func() {
+		o, err := CreateResource(k.MqlRuntime, "command", map[string]*llx.RawData{
+			"command": llx.StringData("kmod --version"),
+		})
+		if err != nil {
+			return
+		}
+		cmd := o.(*mqlCommand)
+		if exit := cmd.GetExitcode(); exit.Error != nil || exit.Data != 0 {
+			return
+		}
+		k.kmodRelease = parseKmodRelease(cmd.GetStdout().Data)
+	})
+	return k.kmodRelease
+}
+
+// activeModprobeSearchPaths returns the modprobe.d directories the asset's
+// kmod reads. See modprobeSearchPathsFor.
+func activeModprobeSearchPaths(runtime *plugin.Runtime, fs afero.Fs) []string {
+	obj, err := CreateResource(runtime, "kernel", map[string]*llx.RawData{})
+	if err != nil {
+		return modprobeSearchPaths
+	}
+	release := obj.(*mqlKernel).kmodVersion()
+	if release <= 0 || release >= kmodReleaseUsrLib {
+		return modprobeSearchPathsFor(release, false, false)
+	}
+
+	conn := runtime.Connection.(shared.Connection)
+	suse := false
+	if pf := conn.Asset().Platform; pf != nil {
+		suse = pf.IsFamily("suse")
+	}
+	return modprobeSearchPathsFor(release, isUsrMerged(fs), suse)
+}
+
+// isUsrMerged reports whether /lib is a symlink, the merged-/usr layout where
+// /lib/modprobe.d and /usr/lib/modprobe.d are the same directory.
+func isUsrMerged(fs afero.Fs) bool {
+	entries, err := afero.ReadDir(fs, "/")
+	if err != nil {
+		// keep /usr/lib/modprobe.d when the layout can't be checked
+		return true
+	}
+	for _, entry := range entries {
+		if entry.Name() == "lib" {
+			return entry.Mode()&os.ModeSymlink != 0
+		}
+	}
+	return false
 }
 
 // isModprobeConfigName reports whether libkmod reads a directory entry with
@@ -95,9 +204,11 @@ func listModprobeConfigFiles(runtime *plugin.Runtime) ([]string, error) {
 	conn := runtime.Connection.(shared.Connection)
 	fs := conn.FileSystem()
 
+	dirs := activeModprobeSearchPaths(runtime, fs)
+
 	var errs []error
-	listings := make([][]string, len(modprobeSearchPaths))
-	for i, dir := range modprobeSearchPaths {
+	listings := make([][]string, len(dirs))
+	for i, dir := range dirs {
 		raw, err := CreateResource(runtime, "file", map[string]*llx.RawData{
 			"path": llx.StringData(dir),
 		})
@@ -134,7 +245,7 @@ func listModprobeConfigFiles(runtime *plugin.Runtime) ([]string, error) {
 		}
 	}
 
-	return selectModprobeConfigFiles(modprobeSearchPaths, listings), errors.Join(errs...)
+	return selectModprobeConfigFiles(dirs, listings), errors.Join(errs...)
 }
 
 // installBypassBins are the executable paths whose presence as the command

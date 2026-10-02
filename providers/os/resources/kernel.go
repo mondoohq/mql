@@ -50,6 +50,11 @@ type mqlKernelInternal struct {
 	moduleOnDisk    map[string]bool
 	moduleBuiltIn   map[string]bool
 	moduleIndexErr  error
+
+	// kmod release the asset runs, detected once per query by
+	// kmodVersion. 0 means it could not be determined.
+	kmodOnce    sync.Once
+	kmodRelease int
 }
 
 type KernelVersion struct {

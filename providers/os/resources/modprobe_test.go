@@ -464,3 +464,75 @@ func TestSelectModprobeConfigFiles_LibOnly(t *testing.T) {
 func TestSelectModprobeConfigFiles_Empty(t *testing.T) {
 	assert.Empty(t, selectModprobeConfigFiles(modprobeSearchPaths, make([][]string, len(modprobeSearchPaths))))
 }
+
+// First lines of `kmod --version` on the sweep hosts: RHEL 7 (kmod 20),
+// RHEL 9 (28), Fedora 44 and Debian 13 (34.2).
+func TestParseKmodRelease(t *testing.T) {
+	assert.Equal(t, 20, parseKmodRelease("kmod version 20\n-XZ +ZLIB -OPENSSL\n"))
+	assert.Equal(t, 28, parseKmodRelease("kmod version 28\n+ZSTD +XZ +ZLIB +LIBCRYPTO -EXPERIMENTAL\n"))
+	assert.Equal(t, 34, parseKmodRelease("kmod version 34.2\n+ZSTD +XZ +ZLIB +OPENSSL\n"))
+	assert.Equal(t, 0, parseKmodRelease(""))
+	assert.Equal(t, 0, parseKmodRelease("sh: kmod: command not found\n"))
+}
+
+// Directories each kmod release reads, checked against the paths compiled
+// into kmod (strings $(command -v kmod)) and modprobe -c on the sweep hosts.
+func TestModprobeSearchPathsFor(t *testing.T) {
+	all := modprobeSearchPaths
+
+	// RHEL/Alma 7, 8, 9 (kmod 20, 25, 28), merged /usr: no /usr/local/lib.
+	// /usr/lib/modprobe.d is /lib/modprobe.d there, so it stays.
+	el := []string{"/etc/modprobe.d", "/run/modprobe.d", "/usr/lib/modprobe.d", "/lib/modprobe.d"}
+	assert.Equal(t, el, modprobeSearchPathsFor(20, true, false))
+	assert.Equal(t, el, modprobeSearchPathsFor(25, true, false))
+	assert.Equal(t, el, modprobeSearchPathsFor(28, true, false))
+
+	// Debian 9 (kmod 23), /lib is a real directory: only /etc, /run, /lib.
+	assert.Equal(t, []string{"/etc/modprobe.d", "/run/modprobe.d", "/lib/modprobe.d"},
+		modprobeSearchPathsFor(23, false, false))
+
+	// SLES/Leap 15 (kmod 29), /lib is a real directory, but SUSE's kmod
+	// reads /usr/lib/modprobe.d.
+	assert.Equal(t, all, modprobeSearchPathsFor(29, false, true))
+
+	// Debian 12 (kmod 30, merged), RHEL 10 (31), Fedora 44 (34): everything.
+	assert.Equal(t, all, modprobeSearchPathsFor(30, true, false))
+	assert.Equal(t, all, modprobeSearchPathsFor(31, true, false))
+	assert.Equal(t, all, modprobeSearchPathsFor(34, false, false))
+
+	// Unknown release: keep everything.
+	assert.Equal(t, all, modprobeSearchPathsFor(0, false, false))
+}
+
+// RHEL 8 sweep host (kmod 25): /usr/local/lib/modprobe.d/sweep-local.conf
+// blacklists sweeplocal, but modprobe -c shows no trace of it.
+func TestSelectModprobeConfigFiles_Kmod25SkipsUsrLocal(t *testing.T) {
+	lib := []string{"blacklist-amdgpu.conf", "blacklist-nouveau.conf", "dist-blacklist.conf", "sweep-lib.conf", "sweep-run.conf", "sweep-shadow.conf", "systemd.conf"}
+	onDisk := map[string][]string{
+		"/etc/modprobe.d":           {"firewalld-sysctls.conf", "ignored.txt", "sweep.conf", "sweep-shadow.conf", "tuned.conf", "zz-linked.conf"},
+		"/run/modprobe.d":           {"sweep-run.conf"},
+		"/usr/local/lib/modprobe.d": {"sweep-local.conf"},
+		"/usr/lib/modprobe.d":       lib,
+		"/lib/modprobe.d":           lib,
+	}
+	dirs := modprobeSearchPathsFor(25, true, false)
+	listings := make([][]string, len(dirs))
+	for i, dir := range dirs {
+		listings[i] = onDisk[dir]
+	}
+	got := selectModprobeConfigFiles(dirs, listings)
+	assert.NotContains(t, got, "/usr/local/lib/modprobe.d/sweep-local.conf")
+	assert.Equal(t, []string{
+		"/usr/lib/modprobe.d/blacklist-amdgpu.conf",
+		"/usr/lib/modprobe.d/blacklist-nouveau.conf",
+		"/usr/lib/modprobe.d/dist-blacklist.conf",
+		"/etc/modprobe.d/firewalld-sysctls.conf",
+		"/usr/lib/modprobe.d/sweep-lib.conf",
+		"/run/modprobe.d/sweep-run.conf",
+		"/etc/modprobe.d/sweep-shadow.conf",
+		"/etc/modprobe.d/sweep.conf",
+		"/usr/lib/modprobe.d/systemd.conf",
+		"/etc/modprobe.d/tuned.conf",
+		"/etc/modprobe.d/zz-linked.conf",
+	}, got)
+}
