@@ -195,10 +195,15 @@ func isLvmPermissionDenied(output string) bool {
 }
 
 // lvmCommandFailure turns a failed lvm reporting command into an error. A run
-// that names a refused open is forbidden. LVM2 2.03 (RHEL 9 and later) logs
-// that reason in the JSON report on stdout rather than on stderr.
+// that names a refused open is forbidden under structured errors. LVM2 2.03
+// (RHEL 9 and later) logs that reason in the JSON report on stdout rather than
+// on stderr. Without structured errors the error stays unclassified, exactly
+// as v13 returned it.
 func lvmCommandFailure(tool string, exit int64, stdout, stderr string) error {
 	err := fmt.Errorf("lvm command failed (exit %d): %s", exit, strings.TrimSpace(stderr))
+	if !plugin.StructuredErrors() {
+		return err
+	}
 	if isLvmPermissionDenied(stderr) || isLvmPermissionDenied(stdout) {
 		return llx.Forbidden(fmt.Errorf("%s could not read the LVM metadata (you must be root): %w", tool, err))
 	}

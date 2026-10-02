@@ -381,7 +381,15 @@ func TestLvmCommandFailure(t *testing.T) {
   }
 `
 	stderr := "  WARNING: Running as a non-root user. Functionality may be unavailable.\n"
+
+	withStructuredErrors(t, false)
+	// v13 returned this run as an unclassified error, never as an empty list
 	err := lvmCommandFailure("vgs", 5, stdout, stderr)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, llx.ErrForbidden)
+
+	withStructuredErrors(t, true)
+	err = lvmCommandFailure("vgs", 5, stdout, stderr)
 	assert.ErrorIs(t, err, llx.ErrForbidden)
 
 	err = lvmCommandFailure("vgs", 5, "", "  Volume group \"vg0\" not found\n")
