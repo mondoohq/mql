@@ -6,6 +6,7 @@ package llx
 import (
 	"errors"
 	"math/rand"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -954,7 +955,7 @@ func arrayContainsAll(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 	}
 
 	ct := bind.Type.Child()
-	equalFunc, ok := types.Equal[ct]
+	equalFunc, ok := arrayElemEqualFunc(ct)
 	if !ok {
 		return nil, 0, errors.New("cannot compare array entries")
 	}
@@ -1015,7 +1016,7 @@ func arrayContainsNone(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64
 	}
 
 	ct := bind.Type.Child()
-	equalFunc, ok := types.Equal[ct]
+	equalFunc, ok := arrayElemEqualFunc(ct)
 	if !ok {
 		return nil, 0, errors.New("cannot compare array entries")
 	}
@@ -1109,8 +1110,37 @@ func tArrayCmp(left *RawData, right *RawData) func(any, any) bool {
 		if left.Type.Child() != right.Type.Child() {
 			return false
 		}
+		return rawValuesEqual(a, b)
+	}
+}
+
+// rawValuesEqual compares two array elements without panicking. The == operator
+// panics on values that hold a slice or map (an ip, a dict, a nested array),
+// which crashes the whole scan, so those take a type-aware path instead.
+func rawValuesEqual(a any, b any) bool {
+	if ipA, ok := a.(RawIP); ok {
+		ipB, ok := b.(RawIP)
+		return ok && ipA.equal(ipB)
+	}
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	va := reflect.ValueOf(a)
+	vb := reflect.ValueOf(b)
+	if va.Type() == vb.Type() && va.Comparable() && vb.Comparable() {
 		return a == b
 	}
+	return reflect.DeepEqual(a, b)
+}
+
+// arrayElemEqualFunc returns the equality used by array helpers such as
+// containsAll and containsNone for the given element type.
+func arrayElemEqualFunc(ct types.Type) (func(any, any) bool, bool) {
+	if ct == types.IP {
+		return rawValuesEqual, true
+	}
+	f, ok := types.Equal[ct]
+	return f, ok
 }
 
 func tarrayCmpTarrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
@@ -1186,7 +1216,7 @@ func tarrayDeleteTarrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uin
 	for i := range v {
 		found := false
 		for j := range list {
-			if v[i] == list[j] {
+			if rawValuesEqual(v[i], list[j]) {
 				found = true
 				break
 			}
