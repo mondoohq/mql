@@ -83,7 +83,8 @@ func (r *mqlLuaPackages) gatherData() error {
 		transitiveDeps = append(transitiveDeps, t...)
 		filePaths = append(filePaths, f...)
 	} else {
-		// Try CLI first
+		// The CLI also reports rocks in trees configured outside the
+		// default locations; the rock trees on disk are added to it.
 		if conn.Capabilities().Has(shared.Capability_RunCommand) {
 			cmd, err := conn.RunCommand("luarocks list --porcelain")
 			if err == nil && cmd.ExitStatus == 0 {
@@ -95,25 +96,11 @@ func (r *mqlLuaPackages) gatherData() error {
 				if cmd != nil {
 					exitStatus = cmd.ExitStatus
 				}
-				log.Debug().Err(err).Int("exitStatus", exitStatus).Msg("mql[lua]> luarocks list failed, falling back to filesystem")
+				log.Debug().Err(err).Int("exitStatus", exitStatus).Msg("mql[lua]> luarocks list failed, reading the rock trees from disk only")
 			}
 		}
 
-		// Without the CLI (no luarocks binary, or a target that cannot run
-		// commands), read the system trees from disk.
-		var trees []string
-		if len(transitiveDeps) == 0 {
-			trees = append(trees, defaultLuaRocksSystemTrees...)
-		}
-		for _, pattern := range defaultLuaRocksUserTreeGlobs {
-			matches, err := afero.Glob(afs, pattern)
-			if err != nil {
-				log.Debug().Err(err).Str("pattern", pattern).Msg("mql[lua]> could not search for per-user rock trees")
-				continue
-			}
-			trees = append(trees, matches...)
-		}
-		transitiveDeps, filePaths = addLuaRockTrees(afs, transitiveDeps, filePaths, trees)
+		transitiveDeps, filePaths = addDefaultLuaRockTrees(afs, transitiveDeps, filePaths)
 	}
 
 	slices.SortFunc(transitiveDeps, languages.SortFn)
@@ -138,6 +125,24 @@ func (r *mqlLuaPackages) gatherData() error {
 
 	r.fetched = true
 	return nil
+}
+
+// addDefaultLuaRockTrees adds the rocks of the system trees and every user's
+// tree, read from disk, to what `luarocks list` reported. The CLI is not
+// enough on its own: it lists the rocks of one Lua version (on RHEL and
+// Fedora, rocks for compat-lua 5.1 in /usr/lib/luarocks/rocks-5.1 are missing
+// from a list for 5.4) and only the trees of the user running it.
+func addDefaultLuaRockTrees(afs *afero.Afero, pkgs []*languages.Package, filePaths []string) ([]*languages.Package, []string) {
+	trees := append([]string{}, defaultLuaRocksSystemTrees...)
+	for _, pattern := range defaultLuaRocksUserTreeGlobs {
+		matches, err := afero.Glob(afs, pattern)
+		if err != nil {
+			log.Debug().Err(err).Str("pattern", pattern).Msg("mql[lua]> could not search for per-user rock trees")
+			continue
+		}
+		trees = append(trees, matches...)
+	}
+	return addLuaRockTrees(afs, pkgs, filePaths, trees)
 }
 
 // addLuaRockTrees adds the rocks of each tree to pkgs, skipping a rock already

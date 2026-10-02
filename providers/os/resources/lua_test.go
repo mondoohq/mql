@@ -103,3 +103,67 @@ func TestAddLuaRockTreesSkipsWhatTheCLIReported(t *testing.T) {
 }
 
 func stringsReader(s string) io.Reader { return strings.NewReader(s) }
+
+// The layout of a RHEL 9/10 or Fedora host with luarocks from the distro: the
+// system rock tree is /usr, rocks for the default Lua 5.4 sit in
+// /usr/lib/luarocks/rocks-5.4, a rock installed for compat-lua
+// (`luarocks --lua-version 5.1`) in rocks-5.1, and the luarocks modules plus
+// rpm-installed Lua modules under /usr/share/lua/5.4.
+func rhelLuaHostFS(t *testing.T) *afero.Afero {
+	t.Helper()
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	for _, p := range []string{
+		"/usr/share/lua/5.4/luarocks/cmd/install.lua",
+		"/usr/share/lua/5.4/json/decode/util.lua",
+		"/usr/share/lua/5.1/say/init.lua",
+		"/usr/lib/luarocks/rocks-5.4/manifest",
+		"/usr/lib/luarocks/rocks-5.4/argparse/0.7.1-1/argparse-0.7.1-1.rockspec",
+		"/usr/lib/luarocks/rocks-5.4/argparse/0.7.1-1/rock_manifest",
+		"/usr/lib/luarocks/rocks-5.4/inspect/3.1.1-0/inspect-3.1.1-0.rockspec",
+		"/usr/lib/luarocks/rocks-5.4/inspect/3.1.1-0/rock_manifest",
+		"/usr/lib/luarocks/rocks-5.1/manifest",
+		"/usr/lib/luarocks/rocks-5.1/say/1.4.1-3/say-1.4.1-3.rockspec",
+		"/usr/lib/luarocks/rocks-5.1/say/1.4.1-3/rock_manifest",
+		"/home/ec2-user/.luarocks/lib/luarocks/rocks-5.4/serpent/0.30-2/serpent-0.30-2.rockspec",
+	} {
+		require.NoError(t, afs.WriteFile(p, nil, 0o644))
+	}
+	return afs
+}
+
+// `luarocks list --porcelain` as root on RHEL 9 lists the rocks of the default
+// Lua version only. The rock installed for Lua 5.1 must still be reported.
+func TestAddDefaultLuaRockTreesAddsOtherLuaVersions(t *testing.T) {
+	afs := rhelLuaHostFS(t)
+	cli := "argparse\t0.7.1-1\tinstalled\t/usr/lib/luarocks/rocks-5.4\n" +
+		"inspect\t3.1.1-0\tinstalled\t/usr/lib/luarocks/rocks-5.4\n"
+	cliPkgs, cliFps := luarocks.ParseLuaRocksList(stringsReader(cli), "")
+
+	pkgs, fps := addDefaultLuaRockTrees(afs, cliPkgs, cliFps)
+	assert.Equal(t, []string{"argparse@0.7.1-1", "inspect@3.1.1-0", "say@1.4.1-3", "serpent@0.30-2"}, names(pkgs))
+	assert.Len(t, fps, 4)
+}
+
+// Without the CLI, the RHEL system tree /usr is read; the Lua modules in
+// /usr/share/lua (json, luarocks) are not rocks.
+func TestAddDefaultLuaRockTreesRHELWithoutCLI(t *testing.T) {
+	afs := rhelLuaHostFS(t)
+	pkgs, _ := addDefaultLuaRockTrees(afs, nil, nil)
+	assert.Equal(t, []string{"argparse@0.7.1-1", "inspect@3.1.1-0", "say@1.4.1-3", "serpent@0.30-2"}, names(pkgs))
+}
+
+// The path forms on a RHEL host: the directory holding the rocks-5.x
+// directories unions every Lua version, and the /usr tree yields only rocks.
+func TestCollectLuaPackagesRHELPathForms(t *testing.T) {
+	afs := rhelLuaHostFS(t)
+	all := []string{"argparse@0.7.1-1", "inspect@3.1.1-0", "say@1.4.1-3"}
+	for _, p := range []string{"/usr/lib/luarocks", "/usr"} {
+		pkgs, fps := collectLuaPackages(afs, p)
+		assert.Equal(t, all, names(pkgs), p)
+		assert.Len(t, fps, 3, p)
+	}
+	pkgs, _ := collectLuaPackages(afs, "/usr/lib/luarocks/rocks-5.1")
+	assert.Equal(t, []string{"say@1.4.1-3"}, names(pkgs))
+	pkgs, _ = collectLuaPackages(afs, "/usr/share/lua/5.4")
+	assert.Empty(t, pkgs)
+}

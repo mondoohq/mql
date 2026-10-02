@@ -11655,9 +11655,10 @@ private r.package @defaults("name version purl") {
 
 // Lua/LuaRocks package inventory
 //
-// Installed LuaRocks rocks with their versions, gathered from
-// `luarocks list` or the system rock tree (`/usr/local/lib/luarocks/rocks`
-// and `rocks-*`), plus every user's `~/.luarocks` tree. Pass `path` to
+// Installed LuaRocks rocks with their versions, for every Lua version,
+// gathered from `luarocks list` and the system rock trees
+// (`/usr/local/lib/luarocks` and `/usr/lib/luarocks`, each `rocks` and
+// `rocks-*` directory), plus every user's `~/.luarocks` tree. Pass `path` to
 // search a specific rock tree, such as `/usr/local` or a rocks directory.
 // Each entry carries a `purl` for SBOM and vulnerability matching.
 lua.packages {
