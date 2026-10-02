@@ -12,7 +12,7 @@ import (
 	"strings"
 	"unsafe"
 
-	wmi "github.com/StackExchange/wmi"
+	"go.mondoo.com/mql/providers/os/resources/wmiquery"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
@@ -30,8 +30,9 @@ var (
 // as "/Date(ms)/"). A key it cannot read is left out, never filled with a
 // guess; see NativeComputerInfoKeys for the keys it covers.
 func NativeComputerInfo() (info map[string]any, err error) {
-	// the wmi lib can panic on unexpected COM variant types; recover so the
-	// caller falls back to PowerShell instead of the scan crashing
+	// wmiquery already turns a panic in the WMI library into an error; this
+	// guard covers the rest of the native reads, so the caller falls back to
+	// PowerShell instead of the scan crashing
 	defer func() {
 		if r := recover(); r != nil {
 			info, err = nil, fmt.Errorf("panic reading computer info natively: %v", r)
@@ -126,60 +127,43 @@ func addCurrentVersion(info map[string]any) error {
 	return nil
 }
 
-type win32OperatingSystem struct {
-	Caption          *string
-	Version          *string
-	BuildNumber      *string
-	OSArchitecture   *string
-	OSLanguage       *uint32
-	Locale           *string
-	CountryCode      *string
-	CodeSet          *string
-	OSType           *uint16
-	MUILanguages     []string
-	SystemDirectory  *string
-	WindowsDirectory *string
-	SystemDrive      *string
-}
-
 func addOperatingSystem(info map[string]any) error {
-	var os []win32OperatingSystem
-	if err := wmi.Query("SELECT Caption, Version, BuildNumber, OSArchitecture, OSLanguage, Locale, CountryCode, CodeSet, OSType, MUILanguages, SystemDirectory, WindowsDirectory, SystemDrive FROM Win32_OperatingSystem", &os); err != nil {
+	rows, err := wmiquery.Query("SELECT Caption, Version, BuildNumber, OSArchitecture, OSLanguage, Locale, CountryCode, CodeSet, OSType, MUILanguages, SystemDirectory, WindowsDirectory, SystemDrive FROM Win32_OperatingSystem",
+		"Caption", "Version", "BuildNumber", "OSArchitecture", "OSLanguage", "Locale", "CountryCode", "CodeSet", "OSType", "MUILanguages", "SystemDirectory", "WindowsDirectory", "SystemDrive")
+	if err != nil {
 		return err
 	}
-	if len(os) == 0 {
+	if len(rows) == 0 {
 		return errors.New("Win32_OperatingSystem returned no instance")
 	}
-	o := os[0]
-	setString(info, "OsName", o.Caption)
-	setString(info, "OsVersion", o.Version)
-	setString(info, "OsBuildNumber", o.BuildNumber)
-	setString(info, "OsArchitecture", o.OSArchitecture)
-	setString(info, "OsLocaleID", o.Locale)
-	setString(info, "OsCountryCode", o.CountryCode)
-	setString(info, "OsCodeSet", o.CodeSet)
-	setString(info, "OsSystemDirectory", o.SystemDirectory)
-	setString(info, "OsWindowsDirectory", o.WindowsDirectory)
-	setString(info, "OsSystemDrive", o.SystemDrive)
-	if o.OSType != nil {
-		info["OsType"] = float64(*o.OSType)
-	}
-	if o.MUILanguages != nil {
-		langs := make([]any, len(o.MUILanguages))
-		for i := range o.MUILanguages {
-			langs[i] = o.MUILanguages[i]
+	o := rows[0]
+	setString(info, "OsName", o.StringPtr("Caption"))
+	setString(info, "OsVersion", o.StringPtr("Version"))
+	setString(info, "OsBuildNumber", o.StringPtr("BuildNumber"))
+	setString(info, "OsArchitecture", o.StringPtr("OSArchitecture"))
+	setString(info, "OsLocaleID", o.StringPtr("Locale"))
+	setString(info, "OsCountryCode", o.StringPtr("CountryCode"))
+	setString(info, "OsCodeSet", o.StringPtr("CodeSet"))
+	setString(info, "OsSystemDirectory", o.StringPtr("SystemDirectory"))
+	setString(info, "OsWindowsDirectory", o.StringPtr("WindowsDirectory"))
+	setString(info, "OsSystemDrive", o.StringPtr("SystemDrive"))
+	setNumber(info, "OsType", o, "OSType")
+	if langs, ok := o.Strings("MUILanguages"); ok {
+		out := make([]any, len(langs))
+		for i := range langs {
+			out[i] = langs[i]
 		}
-		info["OsMuiLanguages"] = langs
+		info["OsMuiLanguages"] = out
 	}
 	// Get-ComputerInfo reports OsLanguage and OsLocale as culture names, from
 	// Win32_OperatingSystem's OSLanguage (an LCID) and Locale (a hex LCID).
-	if o.OSLanguage != nil {
-		if name, ok := lcidToLocaleName(*o.OSLanguage); ok {
+	if lcid, ok := o.Int64("OSLanguage"); ok && lcid >= 0 && lcid <= 0xFFFFFFFF {
+		if name, ok := lcidToLocaleName(uint32(lcid)); ok {
 			info["OsLanguage"] = name
 		}
 	}
-	if o.Locale != nil {
-		if lcid, err := strconv.ParseUint(*o.Locale, 16, 32); err == nil {
+	if locale := o.StringPtr("Locale"); locale != nil {
+		if lcid, err := strconv.ParseUint(*locale, 16, 32); err == nil {
 			if name, ok := lcidToLocaleName(uint32(lcid)); ok {
 				info["OsLocale"] = name
 			}
@@ -188,103 +172,63 @@ func addOperatingSystem(info map[string]any) error {
 	return nil
 }
 
-type win32ComputerSystem struct {
-	Manufacturer              *string
-	Model                     *string
-	DomainRole                *uint16
-	Domain                    *string
-	PartOfDomain              *bool
-	Name                      *string
-	DNSHostName               *string
-	NumberOfProcessors        *uint32
-	NumberOfLogicalProcessors *uint32
-	TotalPhysicalMemory       *uint64
-	SystemType                *string
-	Workgroup                 *string
-}
-
 func addComputerSystem(info map[string]any) error {
-	var cs []win32ComputerSystem
-	if err := wmi.Query("SELECT Manufacturer, Model, DomainRole, Domain, PartOfDomain, Name, DNSHostName, NumberOfProcessors, NumberOfLogicalProcessors, TotalPhysicalMemory, SystemType, Workgroup FROM Win32_ComputerSystem", &cs); err != nil {
+	rows, err := wmiquery.Query("SELECT Manufacturer, Model, DomainRole, Domain, PartOfDomain, Name, DNSHostName, NumberOfProcessors, NumberOfLogicalProcessors, TotalPhysicalMemory, SystemType, Workgroup FROM Win32_ComputerSystem",
+		"Manufacturer", "Model", "DomainRole", "Domain", "PartOfDomain", "Name", "DNSHostName", "NumberOfProcessors", "NumberOfLogicalProcessors", "TotalPhysicalMemory", "SystemType", "Workgroup")
+	if err != nil {
 		return err
 	}
-	if len(cs) == 0 {
+	if len(rows) == 0 {
 		return errors.New("Win32_ComputerSystem returned no instance")
 	}
-	c := cs[0]
-	setString(info, "CsManufacturer", c.Manufacturer)
-	setString(info, "CsModel", c.Model)
-	setString(info, "CsDomain", c.Domain)
-	setString(info, "CsName", c.Name)
-	setString(info, "CsDNSHostName", c.DNSHostName)
-	setString(info, "CsSystemType", c.SystemType)
-	setString(info, "CsWorkgroup", c.Workgroup)
-	if c.DomainRole != nil {
-		info["CsDomainRole"] = float64(*c.DomainRole)
+	c := rows[0]
+	setString(info, "CsManufacturer", c.StringPtr("Manufacturer"))
+	setString(info, "CsModel", c.StringPtr("Model"))
+	setString(info, "CsDomain", c.StringPtr("Domain"))
+	setString(info, "CsName", c.StringPtr("Name"))
+	setString(info, "CsDNSHostName", c.StringPtr("DNSHostName"))
+	setString(info, "CsSystemType", c.StringPtr("SystemType"))
+	setString(info, "CsWorkgroup", c.StringPtr("Workgroup"))
+	setNumber(info, "CsDomainRole", c, "DomainRole")
+	if b, ok := c.Bool("PartOfDomain"); ok {
+		info["CsPartOfDomain"] = b
 	}
-	if c.PartOfDomain != nil {
-		info["CsPartOfDomain"] = *c.PartOfDomain
-	}
-	if c.NumberOfProcessors != nil {
-		info["CsNumberOfProcessors"] = float64(*c.NumberOfProcessors)
-	}
-	if c.NumberOfLogicalProcessors != nil {
-		info["CsNumberOfLogicalProcessors"] = float64(*c.NumberOfLogicalProcessors)
-	}
-	if c.TotalPhysicalMemory != nil {
-		info["CsTotalPhysicalMemory"] = float64(*c.TotalPhysicalMemory)
-	}
+	setNumber(info, "CsNumberOfProcessors", c, "NumberOfProcessors")
+	setNumber(info, "CsNumberOfLogicalProcessors", c, "NumberOfLogicalProcessors")
+	// a uint64, which WMI sends as a string; Int64 parses it
+	setNumber(info, "CsTotalPhysicalMemory", c, "TotalPhysicalMemory")
 	return nil
-}
-
-type win32Processor struct {
-	Name                      *string
-	Manufacturer              *string
-	Description               *string
-	Architecture              *uint16
-	AddressWidth              *uint16
-	DataWidth                 *uint16
-	MaxClockSpeed             *uint32
-	CurrentClockSpeed         *uint32
-	NumberOfCores             *uint32
-	NumberOfLogicalProcessors *uint32
-	ProcessorId               *string
-	SocketDesignation         *string
-	ProcessorType             *uint16
-	Role                      *string
-	Status                    *string
-	CpuStatus                 *uint16
-	Availability              *uint16
 }
 
 // addProcessors fills CsProcessors like Get-ComputerInfo: one object per
 // Win32_Processor with these 17 properties, ProcessorID spelled as
 // Get-ComputerInfo spells it.
 func addProcessors(info map[string]any) error {
-	var procs []win32Processor
-	if err := wmi.Query("SELECT Name, Manufacturer, Description, Architecture, AddressWidth, DataWidth, MaxClockSpeed, CurrentClockSpeed, NumberOfCores, NumberOfLogicalProcessors, ProcessorId, SocketDesignation, ProcessorType, Role, Status, CpuStatus, Availability FROM Win32_Processor", &procs); err != nil {
+	rows, err := wmiquery.Query("SELECT Name, Manufacturer, Description, Architecture, AddressWidth, DataWidth, MaxClockSpeed, CurrentClockSpeed, NumberOfCores, NumberOfLogicalProcessors, ProcessorId, SocketDesignation, ProcessorType, Role, Status, CpuStatus, Availability FROM Win32_Processor",
+		"Name", "Manufacturer", "Description", "Architecture", "AddressWidth", "DataWidth", "MaxClockSpeed", "CurrentClockSpeed", "NumberOfCores", "NumberOfLogicalProcessors", "ProcessorId", "SocketDesignation", "ProcessorType", "Role", "Status", "CpuStatus", "Availability")
+	if err != nil {
 		return err
 	}
-	out := make([]any, 0, len(procs))
-	for _, p := range procs {
+	out := make([]any, 0, len(rows))
+	for _, p := range rows {
 		out = append(out, map[string]any{
-			"Name":                      strOrNil(p.Name),
-			"Manufacturer":              strOrNil(p.Manufacturer),
-			"Description":               strOrNil(p.Description),
-			"Architecture":              u16OrNil(p.Architecture),
-			"AddressWidth":              u16OrNil(p.AddressWidth),
-			"DataWidth":                 u16OrNil(p.DataWidth),
-			"MaxClockSpeed":             u32OrNil(p.MaxClockSpeed),
-			"CurrentClockSpeed":         u32OrNil(p.CurrentClockSpeed),
-			"NumberOfCores":             u32OrNil(p.NumberOfCores),
-			"NumberOfLogicalProcessors": u32OrNil(p.NumberOfLogicalProcessors),
-			"ProcessorID":               strOrNil(p.ProcessorId),
-			"SocketDesignation":         strOrNil(p.SocketDesignation),
-			"ProcessorType":             u16OrNil(p.ProcessorType),
-			"Role":                      strOrNil(p.Role),
-			"Status":                    strOrNil(p.Status),
-			"CpuStatus":                 u16OrNil(p.CpuStatus),
-			"Availability":              u16OrNil(p.Availability),
+			"Name":                      strOrNil(p.StringPtr("Name")),
+			"Manufacturer":              strOrNil(p.StringPtr("Manufacturer")),
+			"Description":               strOrNil(p.StringPtr("Description")),
+			"Architecture":              numberOrNil(p, "Architecture"),
+			"AddressWidth":              numberOrNil(p, "AddressWidth"),
+			"DataWidth":                 numberOrNil(p, "DataWidth"),
+			"MaxClockSpeed":             numberOrNil(p, "MaxClockSpeed"),
+			"CurrentClockSpeed":         numberOrNil(p, "CurrentClockSpeed"),
+			"NumberOfCores":             numberOrNil(p, "NumberOfCores"),
+			"NumberOfLogicalProcessors": numberOrNil(p, "NumberOfLogicalProcessors"),
+			"ProcessorID":               strOrNil(p.StringPtr("ProcessorId")),
+			"SocketDesignation":         strOrNil(p.StringPtr("SocketDesignation")),
+			"ProcessorType":             numberOrNil(p, "ProcessorType"),
+			"Role":                      strOrNil(p.StringPtr("Role")),
+			"Status":                    strOrNil(p.StringPtr("Status")),
+			"CpuStatus":                 numberOrNil(p, "CpuStatus"),
+			"Availability":              numberOrNil(p, "Availability"),
 		})
 	}
 	info["CsProcessors"] = out
@@ -342,16 +286,20 @@ func strOrNil(v *string) any {
 	return *v
 }
 
-func u16OrNil(v *uint16) any {
-	if v == nil {
+// numberOrNil returns an integer property as Get-ComputerInfo's JSON has it
+// (a float64), or nil when WMI reports it NULL or as another type.
+func numberOrNil(row wmiquery.Row, name string) any {
+	n, ok := row.Int64(name)
+	if !ok {
 		return nil
 	}
-	return float64(*v)
+	return float64(n)
 }
 
-func u32OrNil(v *uint32) any {
-	if v == nil {
-		return nil
+// setNumber sets key to an integer property as a float64, and leaves it out
+// when the property is NULL.
+func setNumber(info map[string]any, key string, row wmiquery.Row, name string) {
+	if n, ok := row.Int64(name); ok {
+		info[key] = float64(n)
 	}
-	return float64(*v)
 }

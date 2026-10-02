@@ -89,3 +89,32 @@ func TestRowTime(t *testing.T) {
 		assert.False(t, ok, "%v", v)
 	}
 }
+
+func TestRowBool(t *testing.T) {
+	b, ok := Row{"PartOfDomain": true}.Bool("PartOfDomain")
+	require.True(t, ok)
+	assert.True(t, b)
+	b, ok = Row{"PartOfDomain": false}.Bool("PartOfDomain")
+	require.True(t, ok)
+	assert.False(t, b)
+
+	for _, v := range []any{nil, "true", int32(1)} {
+		_, ok := Row{"PartOfDomain": v}.Bool("PartOfDomain")
+		assert.False(t, ok, "%v", v)
+	}
+}
+
+func TestRowStrings(t *testing.T) {
+	langs, ok := Row{"MUILanguages": []any{"en-US", "de-DE"}}.Strings("MUILanguages")
+	require.True(t, ok)
+	assert.Equal(t, []string{"en-US", "de-DE"}, langs)
+
+	langs, ok = Row{"MUILanguages": []any{}}.Strings("MUILanguages")
+	require.True(t, ok)
+	assert.Empty(t, langs)
+
+	for _, v := range []any{nil, "en-US", []any{"en-US", int32(1)}} {
+		_, ok := Row{"MUILanguages": v}.Strings("MUILanguages")
+		assert.False(t, ok, "%v", v)
+	}
+}

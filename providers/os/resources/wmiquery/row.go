@@ -35,6 +35,32 @@ func (r Row) StringPtr(name string) *string {
 	return &s
 }
 
+// Bool returns a boolean property. ok is false when the property is NULL,
+// missing or not a boolean.
+func (r Row) Bool(name string) (bool, bool) {
+	b, ok := r[name].(bool)
+	return b, ok
+}
+
+// Strings returns a string array property, such as MUILanguages. ok is false
+// when the property is NULL, missing, not an array, or holds anything but
+// strings.
+func (r Row) Strings(name string) ([]string, bool) {
+	values, ok := r[name].([]any)
+	if !ok {
+		return nil, false
+	}
+	res := make([]string, len(values))
+	for i, v := range values {
+		s, ok := v.(string)
+		if !ok {
+			return nil, false
+		}
+		res[i] = s
+	}
+	return res, true
+}
+
 // Int64 returns an integer property of any width. WMI sends 64-bit integers
 // as decimal strings, which are parsed. ok is false when the property is NULL,
 // missing or not an integer.
