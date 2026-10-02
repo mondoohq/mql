@@ -11224,7 +11224,7 @@ wordpress.packages {
 private wordpress.package @defaults("name version purl") {
   // Plugin slug (directory name)
   name string
-  // Plugin version (from Stable tag)
+  // Installed plugin version, from the main plugin file's `Version` header (readme.txt `Stable tag` only when the plugin has no main file)
   version string
   // Package URL (purl), a standardized identifier for the plugin
   purl string

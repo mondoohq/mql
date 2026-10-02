@@ -20,6 +20,9 @@ var defaultWordPressPluginPaths = []string{
 	"/var/www/html/wp-content/plugins",
 	"/var/www/wordpress/wp-content/plugins",
 	"/usr/share/wordpress/wp-content/plugins",
+	// Debian and Ubuntu's wordpress package: the site's plugins live here, the
+	// bundled ones symlinked in from /usr/share/wordpress
+	"/var/lib/wordpress/wp-content/plugins",
 }
 
 func initWordpressPackages(_ *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -88,12 +91,26 @@ func (r *mqlWordpressPackages) gatherData() error {
 	}
 
 	// Build MQL resources
-	mqlPkgs := make([]any, len(allPlugins))
-	for i, p := range allPlugins {
+	mqlPkgs := []any{}
+	seen := map[string]struct{}{}
+	for _, p := range allPlugins {
+		// The same plugin can be reachable from two default paths (Debian
+		// links /usr/share/wordpress's plugins into /var/lib/wordpress), and
+		// the package is identified by slug and version, so it is listed once.
+		id := "wordpress.package/" + p.Slug + "@" + p.Version
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+
+		files := []string{p.FilePath}
+		if p.ReadmePath != "" && p.ReadmePath != p.FilePath {
+			files = append(files, p.ReadmePath)
+		}
 		mqlFiles := []any{}
-		if p.FilePath != "" {
+		for _, fp := range files {
 			lf, err := CreateResource(r.MqlRuntime, "pkgFileInfo", map[string]*llx.RawData{
-				"path": llx.StringData(p.FilePath),
+				"path": llx.StringData(fp),
 			})
 			if err != nil {
 				return err
@@ -102,7 +119,7 @@ func (r *mqlWordpressPackages) gatherData() error {
 		}
 
 		mqlPkg, err := CreateResource(r.MqlRuntime, "wordpress.package", map[string]*llx.RawData{
-			"__id":        llx.StringData("wordpress.package/" + p.Slug + "@" + p.Version),
+			"__id":        llx.StringData(id),
 			"name":        llx.StringData(p.Slug),
 			"version":     llx.StringData(p.Version),
 			"purl":        llx.StringData(wordpress.NewPackageUrl(p.Slug, p.Version)),
@@ -115,7 +132,7 @@ func (r *mqlWordpressPackages) gatherData() error {
 		if err != nil {
 			return err
 		}
-		mqlPkgs[i] = mqlPkg
+		mqlPkgs = append(mqlPkgs, mqlPkg)
 	}
 	r.List = plugin.TValue[[]any]{Data: mqlPkgs, State: plugin.StateIsSet}
 
