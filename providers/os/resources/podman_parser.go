@@ -219,10 +219,21 @@ func podmanImageNeedsInspect(entry podmanImageEntry) bool {
 }
 
 // podmanMergeImageInspect fills an image list record with what inspect reports.
-// Inspect is the authority for repo digests: a bare digest is no reference an
-// image can be pulled by.
+// A repo digest the list prints without its repository is no reference an image
+// can be pulled by, so only repository-qualified digests are kept, preferring
+// those inspect reports.
 func podmanMergeImageInspect(entry *podmanImageEntry, inspect podmanImageInspectEntry) {
-	entry.RepoDigests = inspect.RepoDigests
+	if len(inspect.RepoDigests) > 0 {
+		entry.RepoDigests = inspect.RepoDigests
+	} else {
+		qualified := []string{}
+		for _, digest := range entry.RepoDigests {
+			if strings.Contains(digest, "@") {
+				qualified = append(qualified, digest)
+			}
+		}
+		entry.RepoDigests = qualified
+	}
 	if inspect.Os != "" {
 		entry.Os = inspect.Os
 	}

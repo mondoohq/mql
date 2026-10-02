@@ -644,9 +644,19 @@ func TestPodmanMergeImageInspect(t *testing.T) {
 	assert.Equal(t, int64(689969), pause.Size)
 	assert.False(t, podmanImageNeedsInspect(pause))
 
-	// an image inspect knows no repo digests for has none, not bare digests
+	// with no repo digests from inspect, the list's bare digests are dropped
 	unpushed := entries[1]
 	podmanMergeImageInspect(&unpushed, podmanImageInspectEntry{ID: unpushed.ID, Os: "linux", Architecture: "arm64"})
 	assert.Empty(t, unpushed.RepoDigests)
 	assert.Equal(t, "arm64", unpushed.Architecture)
+
+	// but the list's repository-qualified digests are kept
+	v5, err := parsePodmanImages(podmanTestImagesV5)
+	require.NoError(t, err)
+	busybox := v5[0]
+	podmanMergeImageInspect(&busybox, podmanImageInspectEntry{ID: busybox.ID, Os: "linux", Architecture: "amd64"})
+	assert.Equal(t, []string{
+		"quay.io/libpod/busybox@sha256:a9286defaba7b3a519d585ba0e37d0b2cbee74ebfe590960b0b1d6a5e97d1e1d",
+		"quay.io/libpod/busybox@sha256:c9249fdf56138f0d929e2080ae98ee9cb2946f71498fc1484288e6a935b5e5bc",
+	}, busybox.RepoDigests)
 }
