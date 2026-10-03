@@ -143,6 +143,19 @@ func TestParseZypperListUpdatesResult(t *testing.T) {
 		assert.Empty(t, m)
 	})
 
+	// SLES 16.0, a non-root scan and /etc/zypp/repos.d/g03repo.repo mode 0600.
+	// zypper warns that it cannot read the repo file, leaves g03repo's updates
+	// out and exits 0. As root g03-epoch has 3:2.0-1 pending.
+	t.Run("a repo file cannot be read, exit 0", func(t *testing.T) {
+		m, err := parseZypperListUpdatesResult(zypperResult(t, "./testdata/zypper-lu-unreadable-repo-sles16.xml", 0))
+		require.ErrorIs(t, err, ErrUpdateCheckFailed)
+		assert.Contains(t, err.Error(), "Cannot read repo file '/etc/zypp/repos.d/g03repo.repo': Permission denied")
+		assert.NotContains(t, err.Error(), "Loading repository data", "an info message is not an error")
+		// the updates of the repositories zypper did read are kept
+		assert.Equal(t, "2.0-1", m["g03-uni.x86_64"].Available)
+		assert.NotContains(t, m, "g03-epoch.x86_64")
+	})
+
 	t.Run("output that is not zypper XML", func(t *testing.T) {
 		cmd := &shared.Command{Stdout: bytes.NewBufferString("zypper: command not found\n"), Stderr: &bytes.Buffer{}, ExitStatus: 0}
 		_, err := parseZypperListUpdatesResult(cmd)

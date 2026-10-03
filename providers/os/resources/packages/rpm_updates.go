@@ -68,14 +68,22 @@ type zypper struct {
 	Blocked  []zypperUpdate  `xml:"update-status>blocked-update-list>update"`
 }
 
-// errors returns the text of zypper's error messages, each on one line.
+// zypperUnreadRepoWarning starts the warning zypper prints, and exits 0
+// after, when it cannot read a repository's .repo file (a 0600 file and a
+// non-root user). It leaves that repository's updates out. The command runs
+// with LC_ALL=C so the text is not translated.
+const zypperUnreadRepoWarning = "Cannot read repo file "
+
+// errors returns the text of zypper's error messages, each on one line, and
+// of the warnings that say a repository was left out.
 func (z *zypper) errors() []string {
 	var res []string
 	for _, m := range z.Messages {
-		if m.Type != "error" {
+		text := strings.Join(strings.Fields(m.Text), " ")
+		if m.Type != "error" && (m.Type != "warning" || !strings.HasPrefix(text, zypperUnreadRepoWarning)) {
 			continue
 		}
-		res = append(res, strings.Join(strings.Fields(m.Text), " "))
+		res = append(res, text)
 	}
 	return res
 }
@@ -130,8 +138,9 @@ const zypperMaxErr = 512
 // its metadata could not be refreshed. zypper also exits 0 when it could not
 // load a repository at all, as a user who cannot write the metadata cache:
 // it then only reports error messages ("Resolvables from 'repo-oss' not
-// loaded because of error."). Every one of these printed fewer updates than
-// are pending, and was read as "up to date".
+// loaded because of error."), or when it cannot read a repo file, which it
+// only warns about. Every one of these printed fewer updates than are
+// pending, and was read as "up to date".
 //
 // A failed check returns the updates zypper did print together with an error
 // wrapping ErrUpdateCheckFailed: those updates are real, the absence of one
