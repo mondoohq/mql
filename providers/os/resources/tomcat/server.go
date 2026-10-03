@@ -131,7 +131,10 @@ type Realm struct {
 // Context is a <Context> element, from server.xml, conf/context.xml or an
 // application's META-INF/context.xml.
 type Context struct {
-	Path               string
+	Path string
+	// DocBase is the application's directory or WAR (@docBase), with
+	// ${catalina.*} expanded; relative to the Host's appBase when not absolute.
+	DocBase            string
 	Privileged         bool
 	CrossContext       bool
 	LogEffectiveWebXml bool
@@ -327,6 +330,7 @@ func ParseContextXML(data []byte, paths Paths) (*Context, error) {
 func newContext(node *Node, paths Paths) Context {
 	return Context{
 		Path:               node.AttrString("path"),
+		DocBase:            paths.Expand(node.AttrString("docBase")),
 		Privileged:         node.AttrBool(false, "privileged"),
 		CrossContext:       node.AttrBool(false, "crossContext"),
 		LogEffectiveWebXml: node.AttrBool(false, "logEffectiveWebXml"),

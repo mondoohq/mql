@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/spf13/afero"
@@ -31,6 +32,10 @@ type mqlTomcatInternal struct {
 // way it does for the global files.
 type mqlTomcatWebappInternal struct {
 	paths tomcat.Paths
+	// descriptor is the context descriptor that deploys the application
+	// (conf/<Engine>/<Host>/<name>.xml), "" when it is deployed from appBase
+	// or server.xml.
+	descriptor string
 }
 
 func initTomcat(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -544,54 +549,151 @@ func (t *mqlTomcat) webapps() ([]any, error) {
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 
 	server := t.GetServer()
-	if server.Error != nil || server.Data == nil {
+	if server.Error != nil {
+		// A server.xml the scan may not read (non-root) left the list empty,
+		// so webapps.none(...) passed. Returned only with structured errors
+		// on (ADR 046), since v13 returned an empty list.
+		if plugin.StructuredErrors() {
+			return nil, server.Error
+		}
+		return []any{}, nil
+	}
+	if server.Data == nil {
 		return []any{}, nil
 	}
 
+	serverPath := t.confPath("server.xml")
+	_, content, err := readFileResource(t.MqlRuntime, serverPath)
+	if err != nil {
+		return nil, err
+	}
 	p := t.installPaths()
-	res := []any{}
-	seen := map[string]struct{}{}
-
-	for _, host := range collectHosts(server.Data) {
-		appBaseDir := host.GetAppBaseDir().Data
-		if appBaseDir == "" {
-			continue
-		}
-		hostName := host.GetName().Data
-
-		entries, err := afs.ReadDir(appBaseDir)
-		if err != nil {
-			continue
-		}
-
-		for _, entry := range entries {
-			// Only exploded applications are enumerated. An undeployed WAR is
-			// an archive, and reading configuration out of archives is not
-			// something this resource does.
-			appPath := path.Join(appBaseDir, entry.Name())
-			if !isWebappDir(afs, appPath, entry) {
-				continue
-			}
-			if _, ok := seen[appPath]; ok {
-				continue
-			}
-			seen[appPath] = struct{}{}
-
-			obj, err := CreateResource(t.MqlRuntime, "tomcat.webapp", map[string]*llx.RawData{
-				"__id": llx.StringData("tomcat.webapp/" + appPath),
-				"name": llx.StringData(entry.Name()),
-				"path": llx.StringData(appPath),
-				"host": llx.StringData(hostName),
-			})
-			if err != nil {
-				return nil, err
-			}
-			obj.(*mqlTomcatWebapp).paths = p
-			res = append(res, obj)
-		}
+	parsed, err := tomcat.ParseServerXML([]byte(content), p)
+	if err != nil || parsed == nil {
+		return []any{}, err
 	}
 
+	res := []any{}
+	for _, app := range tomcatDeployedApps(afs, parsed, p) {
+		obj, err := CreateResource(t.MqlRuntime, "tomcat.webapp", map[string]*llx.RawData{
+			"__id": llx.StringData("tomcat.webapp/" + app.engine + "/" + app.host + "/" + app.name),
+			"name": llx.StringData(app.name),
+			"path": llx.StringData(app.path),
+			"host": llx.StringData(app.host),
+		})
+		if err != nil {
+			return nil, err
+		}
+		w := obj.(*mqlTomcatWebapp)
+		w.paths = p
+		w.descriptor = app.descriptor
+		res = append(res, obj)
+	}
 	return res, nil
+}
+
+// tomcatDeployedApp is an application a Host deploys.
+type tomcatDeployedApp struct {
+	engine, host string
+	// name is the context name as Tomcat names its files: ROOT for the root
+	// context, foo#bar for /foo/bar
+	name string
+	// path is the application's directory (or WAR)
+	path string
+	// descriptor is the context descriptor that deploys it, if any
+	descriptor string
+}
+
+// tomcatDeployedApps lists the applications each Host deploys, the way
+// Tomcat's HostConfig finds them: <Context> elements in server.xml, context
+// descriptors in $CATALINA_BASE/conf/<Engine>/<Host>/*.xml (whose docBase may
+// point anywhere, as Debian's tomcatN-admin does for manager and
+// host-manager), and the application directories in the Host's appBase. A
+// context name that an earlier source deploys is not deployed again.
+func tomcatDeployedApps(afs *afero.Afero, srv *tomcat.Server, p tomcat.Paths) []tomcatDeployedApp {
+	var res []tomcatDeployedApp
+	seen := map[string]bool{}
+	for _, service := range srv.Services {
+		for _, engine := range service.Engines {
+			for _, host := range engine.Hosts {
+				appBaseDir := resolveAppBase(host.AppBase, p)
+				add := func(app tomcatDeployedApp) {
+					key := engine.Name + "/" + host.Name + "/" + app.name
+					if seen[key] {
+						return
+					}
+					seen[key] = true
+					app.engine, app.host = engine.Name, host.Name
+					res = append(res, app)
+				}
+				docPath := func(docBase, name string) string {
+					switch {
+					case docBase == "" && appBaseDir != "":
+						return path.Join(appBaseDir, name)
+					case path.IsAbs(docBase):
+						return path.Clean(docBase)
+					case docBase != "" && appBaseDir != "":
+						return path.Join(appBaseDir, docBase)
+					}
+					return docBase
+				}
+
+				for _, ctx := range host.Contexts {
+					name := tomcatContextName(ctx.Path)
+					add(tomcatDeployedApp{name: name, path: docPath(ctx.DocBase, name)})
+				}
+
+				if p.Base != "" {
+					dir := path.Join(p.Base, "conf", engine.Name, host.Name)
+					if entries, err := afs.ReadDir(dir); err == nil {
+						for _, e := range entries {
+							if e.IsDir() || !strings.HasSuffix(e.Name(), ".xml") {
+								continue
+							}
+							name := strings.TrimSuffix(e.Name(), ".xml")
+							descriptor := path.Join(dir, e.Name())
+							docBase := ""
+							if data, err := afs.ReadFile(descriptor); err == nil {
+								if ctx, err := tomcat.ParseContextXML(data, p); err == nil && ctx != nil {
+									docBase = ctx.DocBase
+								}
+							}
+							add(tomcatDeployedApp{name: name, path: docPath(docBase, name), descriptor: descriptor})
+						}
+					}
+				}
+
+				if appBaseDir == "" {
+					continue
+				}
+				entries, err := afs.ReadDir(appBaseDir)
+				if err != nil {
+					continue
+				}
+				for _, entry := range entries {
+					// Only exploded applications are enumerated. An undeployed WAR is
+					// an archive, and reading configuration out of archives is not
+					// something this resource does.
+					appPath := path.Join(appBaseDir, entry.Name())
+					if !isWebappDir(afs, appPath, entry) {
+						continue
+					}
+					add(tomcatDeployedApp{name: entry.Name(), path: appPath})
+				}
+			}
+		}
+	}
+	return res
+}
+
+// tomcatContextName turns a context path into the name Tomcat gives its
+// directory and descriptor: "" is ROOT, /foo/bar is foo#bar.
+func tomcatContextName(contextPath string) string {
+	name := strings.ReplaceAll(strings.Trim(contextPath, "/"), "/", "#")
+	if name == "" {
+		return "ROOT"
+	}
+	return name
 }
 
 // isWebappDir reports whether an appBase entry is an application directory.
@@ -608,28 +710,6 @@ func isWebappDir(fs afero.Fs, appPath string, entry os.FileInfo) bool {
 	}
 	target, err := fs.Stat(appPath)
 	return err == nil && target.IsDir()
-}
-
-func collectHosts(server *mqlTomcatServer) []*mqlTomcatHost {
-	res := []*mqlTomcatHost{}
-	for _, rawService := range server.GetServices().Data {
-		service, ok := rawService.(*mqlTomcatService)
-		if !ok {
-			continue
-		}
-		for _, rawEngine := range service.GetEngines().Data {
-			engine, ok := rawEngine.(*mqlTomcatEngine)
-			if !ok {
-				continue
-			}
-			for _, rawHost := range engine.GetHosts().Data {
-				if host, ok := rawHost.(*mqlTomcatHost); ok {
-					res = append(res, host)
-				}
-			}
-		}
-	}
-	return res
 }
 
 // fileOrNull renders the file a configuration was parsed from. A resource
@@ -1019,7 +1099,12 @@ func newTomcatWebxml(runtime *plugin.Runtime, parsed *tomcat.WebXML, f *mqlFile,
 // --- webapp -----------------------------------------------------------------
 
 func (w *mqlTomcatWebapp) context() (*mqlTomcatContext, error) {
-	filePath := path.Join(w.Path.Data, "META-INF", "context.xml")
+	// A context descriptor in conf/<Engine>/<Host> replaces the
+	// application's own META-INF/context.xml.
+	filePath := w.descriptor
+	if filePath == "" {
+		filePath = path.Join(w.Path.Data, "META-INF", "context.xml")
+	}
 	if !w.exists(filePath) {
 		return nil, w.setContextNull()
 	}
