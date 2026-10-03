@@ -36,7 +36,9 @@ var systemdBinaries = []string{"/usr/lib/systemd/systemd", "/lib/systemd/systemd
 
 // dropInDirsOnDisk picks the drop-in directories by the systemd release on
 // the filesystem. A systemd without libsystemd-shared predates release 231
-// (RHEL 7 ships 219), which reads only a unit's own <unit>.d.
+// (RHEL 7 ships 219), which reads only a unit's own <unit>.d. When neither
+// the library nor the manager binary is there, nothing tells the release, so
+// every directory a current systemd reads is searched.
 func dropInDirsOnDisk(afs *afero.Afero, typeLevelBackport bool) systemd.DropInDirs {
 	version := systemd.InstalledVersion(afs)
 	if version == 0 {
