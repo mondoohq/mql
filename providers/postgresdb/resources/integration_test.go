@@ -4,10 +4,12 @@
 package resources
 
 import (
+	"errors"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -23,14 +25,19 @@ import (
 //	PG_TEST_USER      role name (default "postgres")
 //	PG_TEST_PASSWORD  password (required)
 func newIntegrationRuntime(t *testing.T) *plugin.Runtime {
-	host := os.Getenv("PG_TEST_HOST")
 	password := os.Getenv("PG_TEST_PASSWORD")
-	if host == "" || password == "" {
-		t.Skip("set PG_TEST_HOST and PG_TEST_PASSWORD to run postgres integration tests")
-	}
 	user := os.Getenv("PG_TEST_USER")
 	if user == "" {
 		user = "postgres"
+	}
+	return newIntegrationRuntimeAs(t, user, password)
+}
+
+// newIntegrationRuntimeAs connects to the PG_TEST_HOST server as the given role.
+func newIntegrationRuntimeAs(t *testing.T, user, password string) *plugin.Runtime {
+	host := os.Getenv("PG_TEST_HOST")
+	if host == "" || os.Getenv("PG_TEST_PASSWORD") == "" {
+		t.Skip("set PG_TEST_HOST and PG_TEST_PASSWORD to run postgres integration tests")
 	}
 
 	options := map[string]string{"sslmode": "disable"}
@@ -483,4 +490,150 @@ func TestIntegrationNullACLReportsDefaultGrants(t *testing.T) {
 		requirePrivileges(t, "tablespace", tsPrivs, owner+":CREATE")
 		requireNoPublic(t, "tablespace", tsPrivs)
 	}
+}
+
+// integrationExec runs setup statements as the PG_TEST_USER superuser and
+// registers the cleanup statements to run when the test ends.
+func integrationExec(t *testing.T, runtime *plugin.Runtime, setup []string, cleanup []string) {
+	t.Helper()
+	pool, err := pgPool(runtime, "")
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	t.Cleanup(func() {
+		for _, stmt := range cleanup {
+			if _, err := pool.Exec(pgContext(), stmt); err != nil {
+				t.Logf("cleanup %q: %v", stmt, err)
+			}
+		}
+	})
+	for _, stmt := range setup {
+		if _, err := pool.Exec(pgContext(), stmt); err != nil {
+			t.Fatalf("setup %q: %v", stmt, err)
+		}
+	}
+}
+
+func integrationServerVersion(t *testing.T, runtime *plugin.Runtime) int {
+	t.Helper()
+	pool, err := pgPool(runtime, "")
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	var v int
+	if err := pool.QueryRow(pgContext(), "SELECT current_setting('server_version_num')::int").Scan(&v); err != nil {
+		t.Fatalf("server_version_num: %v", err)
+	}
+	return v
+}
+
+func findRole(t *testing.T, inst *mqlPostgresdbInstance, name string) *mqlPostgresdbRole {
+	t.Helper()
+	roles := inst.GetRoles()
+	if roles.Error != nil {
+		t.Fatalf("roles errored: %v", roles.Error)
+	}
+	for _, x := range roles.Data {
+		if r := x.(*mqlPostgresdbRole); r.GetName().Data == name {
+			return r
+		}
+	}
+	t.Fatalf("role %s not found", name)
+	return nil
+}
+
+// TestIntegrationRoleValidUntilInfinity: one role with VALID UNTIL 'infinity'
+// used to fail the whole roles list ("cannot scan Infinity into *time.Time").
+func TestIntegrationRoleValidUntilInfinity(t *testing.T) {
+	admin := newIntegrationRuntime(t)
+	integrationExec(t, admin, []string{
+		"CREATE ROLE pgfix_inf VALID UNTIL 'infinity'",
+		"CREATE ROLE pgfix_neginf VALID UNTIL '-infinity'",
+		"CREATE ROLE pgfix_finite VALID UNTIL '2031-05-06 07:08:09+00'",
+	}, []string{"DROP ROLE IF EXISTS pgfix_inf", "DROP ROLE IF EXISTS pgfix_neginf", "DROP ROLE IF EXISTS pgfix_finite"})
+
+	inst := mustInstance(t, newIntegrationRuntime(t))
+	if v := findRole(t, inst, "pgfix_inf").GetValidUntil(); v.Error != nil || v.Data != nil {
+		t.Errorf("infinity validUntil = %v (err=%v), want null", v.Data, v.Error)
+	}
+	if v := findRole(t, inst, "pgfix_neginf").GetValidUntil(); v.Error != nil || v.Data == nil || !v.Data.Equal(llx.NeverPastTime) {
+		t.Errorf("-infinity validUntil = %v (err=%v), want the earliest time", v.Data, v.Error)
+	}
+	want := time.Date(2031, 5, 6, 7, 8, 9, 0, time.UTC)
+	if v := findRole(t, inst, "pgfix_finite").GetValidUntil(); v.Error != nil || v.Data == nil || !v.Data.Equal(want) {
+		t.Errorf("finite validUntil = %v (err=%v), want %v", v.Data, v.Error, want)
+	}
+}
+
+// TestIntegrationMembershipGrantors: on PostgreSQL 16+ a membership granted by
+// two grantors is two pg_auth_members rows, but one membership.
+func TestIntegrationMembershipGrantors(t *testing.T) {
+	admin := newIntegrationRuntime(t)
+	if integrationServerVersion(t, admin) < 160000 {
+		t.Skip("one row per grantor needs PostgreSQL 16+")
+	}
+	integrationExec(t, admin, []string{
+		"CREATE ROLE pgfix_grp",
+		"CREATE ROLE pgfix_member",
+		"CREATE ROLE pgfix_grantor",
+		"GRANT pgfix_grp TO pgfix_grantor WITH ADMIN OPTION",
+		"GRANT pgfix_grp TO pgfix_member",
+		"GRANT pgfix_grp TO pgfix_member GRANTED BY pgfix_grantor",
+	}, []string{"DROP ROLE IF EXISTS pgfix_member", "DROP ROLE IF EXISTS pgfix_grantor", "DROP ROLE IF EXISTS pgfix_grp"})
+
+	inst := mustInstance(t, newIntegrationRuntime(t))
+	memberOf := findRole(t, inst, "pgfix_member").GetMemberOf()
+	if memberOf.Error != nil || len(memberOf.Data) != 1 {
+		t.Errorf("memberOf = %d entries (err=%v), want 1", len(memberOf.Data), memberOf.Error)
+	}
+	members := findRole(t, inst, "pgfix_grp").GetMembers()
+	if members.Error != nil || len(members.Data) != 2 { // pgfix_member, pgfix_grantor
+		t.Errorf("members = %d entries (err=%v), want 2", len(members.Data), members.Error)
+	}
+}
+
+// TestIntegrationNonSuperuserRefusals: a role that cannot read pg_authid or
+// the superuser-only settings gets a refusal, not a null or a silently
+// shorter list, once StructuredErrors is on.
+func TestIntegrationNonSuperuserRefusals(t *testing.T) {
+	admin := newIntegrationRuntime(t)
+	integrationExec(t, admin, []string{
+		"CREATE ROLE pgfix_plain LOGIN PASSWORD 'pgfix-plain-pw'",
+	}, []string{"DROP ROLE IF EXISTS pgfix_plain"})
+
+	t.Run("structured errors on", func(t *testing.T) {
+		withStructuredErrors(t, true)
+		inst := mustInstance(t, newIntegrationRuntimeAs(t, "pgfix_plain", "pgfix-plain-pw"))
+		pt := findRole(t, inst, "pgfix_plain").GetPasswordType()
+		if !errors.Is(pt.Error, llx.ErrForbidden) {
+			t.Errorf("passwordType = %q (err=%v), want Forbidden", pt.Data, pt.Error)
+		}
+		if s := inst.GetSettings(); !errors.Is(s.Error, llx.ErrForbidden) {
+			t.Errorf("settings = %d entries (err=%v), want Forbidden", len(s.Data), s.Error)
+		}
+	})
+
+	t.Run("structured errors off keeps v13 values", func(t *testing.T) {
+		withStructuredErrors(t, false)
+		inst := mustInstance(t, newIntegrationRuntimeAs(t, "pgfix_plain", "pgfix-plain-pw"))
+		pt := findRole(t, inst, "pgfix_plain").GetPasswordType()
+		if pt.Error != nil || !pt.IsNull() {
+			t.Errorf("passwordType = %q (err=%v), want null", pt.Data, pt.Error)
+		}
+		if s := inst.GetSettings(); s.Error != nil || len(s.Data) == 0 {
+			t.Errorf("settings = %d entries (err=%v), want the visible subset", len(s.Data), s.Error)
+		}
+	})
+
+	t.Run("superuser reads both", func(t *testing.T) {
+		withStructuredErrors(t, true)
+		inst := mustInstance(t, newIntegrationRuntime(t))
+		pt := findRole(t, inst, "pgfix_plain").GetPasswordType()
+		if pt.Error != nil || pt.Data != "scram-sha-256" && pt.Data != "md5" {
+			t.Errorf("passwordType = %q (err=%v)", pt.Data, pt.Error)
+		}
+		if s := inst.GetSettings(); s.Error != nil {
+			t.Errorf("settings errored: %v", s.Error)
+		}
+	})
 }

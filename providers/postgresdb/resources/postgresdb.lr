@@ -51,6 +51,9 @@ postgresdb.instance @defaults("versionBanner") {
   // Value of the `listen_addresses` setting
   listenAddresses string
   // Runtime configuration parameters (pg_settings)
+  //
+  // Parameters marked superuser-only are visible only to superusers and
+  // members of pg_read_all_settings; other roles get a permission error.
   settings() []postgresdb.setting
   // Cluster roles (login and group roles)
   roles() []postgresdb.role
@@ -74,8 +77,7 @@ postgresdb.instance @defaults("versionBanner") {
 // `createDb`, `bypassRLS`, `isReplication`), login state (`canLogin`,
 // `connectionLimit`, `validUntil`), and role membership through `memberOf`
 // and `members`. `passwordType` reports how the role's password is stored
-// (scram-sha-256, md5, or none) and is null when the session role cannot read
-// pg_authid.
+// (scram-sha-256, md5, or none) and requires a superuser session.
 postgresdb.role @defaults("name") {
   // Role name
   name string
@@ -98,11 +100,14 @@ postgresdb.role @defaults("name") {
   // Maximum number of concurrent connections, or -1 for no limit
   connectionLimit int
   // Time after which the role's password is no longer valid
+  //
+  // Null when the password never expires (no VALID UNTIL, or VALID UNTIL
+  // 'infinity').
   validUntil time
   // How the role's password is stored
   //
-  // One of scram-sha-256, md5, or none (no password set). Null when the session
-  // role lacks the privilege to read pg_authid.
+  // One of scram-sha-256, md5, or none (no password set). Only a superuser can
+  // read pg_authid, where this is stored; other roles get a permission error.
   passwordType string
   // Roles this role is a direct member of
   memberOf() []postgresdb.role
