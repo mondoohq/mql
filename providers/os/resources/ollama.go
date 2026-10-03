@@ -6,7 +6,9 @@ package resources
 import (
 	"errors"
 	"io"
+	"io/fs"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -42,6 +44,12 @@ type mqlOllamaConfigInternal struct {
 	cfg *ollama.Config
 	// unit is the resolved systemd unit, nil when the host has none.
 	unit *systemd.UnitEnv
+
+	// vars and sources are the server's environment and where each
+	// variable came from: the running server's own environment or the
+	// image's when one is known, otherwise the unit's.
+	vars    map[string]string
+	sources map[string]string
 
 	isInstalled  bool
 	serverBinary string
@@ -83,14 +91,35 @@ func (c *mqlOllamaConfig) resolve() (*ollama.Config, error) {
 		c.unit = unit
 	}
 
-	c.serverBinary = c.findBinary(unit)
-	c.isInstalled = hasUnit || c.serverBinary != ""
+	c.vars, c.sources = unit.Vars, unit.Sources
+	launched := false
+	if launches := findServerLaunches(c.MqlRuntime, ollamaLaunch); len(launches) > 0 {
+		launched = true
+		l := launches[0]
+		switch {
+		case l.Env != nil:
+			c.vars, c.sources = l.Env, ollamaEnvSources(l)
+		case l.EnvErr != nil && errors.Is(l.EnvErr, fs.ErrPermission) && plugin.StructuredErrors():
+			// The unit only says how the next start would run; the
+			// running server may have been given anything.
+			c.resolved = true
+			return nil, llx.Forbidden(l.EnvErr)
+		}
+		if c.serverBinary = l.Argv[0]; !path.IsAbs(c.serverBinary) {
+			c.serverBinary = ""
+		}
+	}
+
+	if c.serverBinary == "" {
+		c.serverBinary = c.findBinary(unit)
+	}
+	c.isInstalled = hasUnit || launched || c.serverBinary != ""
 
 	// The daemon's home decides where the default model store and server.json
-	// sit. The unit states it outright on most packaged installations; failing
-	// that it is the home of the account named by User=, and failing that the
-	// home of the user being scanned.
-	home := unit.Vars["HOME"]
+	// sit. The server's environment states it outright on most installations;
+	// failing that it is the home of the account named by User=, and failing
+	// that the home of the user being scanned.
+	home := c.vars["HOME"]
 	if home == "" && unit.User != "" {
 		home = c.homeOfUser(unit.User)
 	}
@@ -121,11 +150,37 @@ func (c *mqlOllamaConfig) resolve() (*ollama.Config, error) {
 		}
 	}
 
-	c.cfg = ollama.Resolve(unit.Vars, home, settings)
-	c.cfg.Sources = unit.Sources
+	c.cfg = ollama.Resolve(c.vars, home, settings)
+	c.cfg.Sources = c.sources
 	c.cfg.Files = unit.Files()
 	c.resolved = true
 	return c.cfg, nil
+}
+
+// ollamaLaunch recognizes the Ollama server: `ollama serve`. The model
+// runners it starts (`ollama runner ...`) and CLI clients are other
+// subcommands.
+var ollamaLaunch = serverLaunchSpec{
+	Names: []string{"ollama"},
+	IsServer: func(argv []string) bool {
+		return path.Base(argv[0]) == "ollama" && len(argv) > 1 && argv[1] == "serve"
+	},
+	Env: true,
+}
+
+// ollamaEnvSources says where each variable of a server's environment was
+// read from: /proc/<pid>/environ for a running server, the image
+// configuration for a scanned image.
+func ollamaEnvSources(l serverLaunch) map[string]string {
+	src := "image configuration"
+	if l.Source == serverLaunchProcess {
+		src = path.Join("/proc", strconv.Itoa(l.Pid), "environ")
+	}
+	out := make(map[string]string, len(l.Env))
+	for k := range l.Env {
+		out[k] = src
+	}
+	return out
 }
 
 // systemdDropIns asks the target's systemd which drop-ins it applied to a
@@ -309,20 +364,14 @@ func (c *mqlOllamaConfig) variables() (map[string]any, error) {
 	if _, err := c.resolve(); err != nil {
 		return nil, err
 	}
-	if c.unit == nil {
-		return map[string]any{}, nil
-	}
-	return toAnyMap(ollama.ConfigVars(c.unit.Vars)), nil
+	return toAnyMap(ollama.ConfigVars(c.vars)), nil
 }
 
 func (c *mqlOllamaConfig) variableSources() (map[string]any, error) {
 	if _, err := c.resolve(); err != nil {
 		return nil, err
 	}
-	if c.unit == nil {
-		return map[string]any{}, nil
-	}
-	return toAnyMap(ollama.ConfigVars(c.unit.Sources)), nil
+	return toAnyMap(ollama.ConfigVars(c.sources)), nil
 }
 
 func (c *mqlOllamaConfig) service() (*mqlService, error) {

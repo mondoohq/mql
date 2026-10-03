@@ -18451,7 +18451,9 @@ ollama.config @defaults("host listensOnAllInterfaces authEnabled") @maturity("pr
   // File each declared variable was read from
   //
   // Keyed the same as variables, so a setting can be traced to the unit, a
-  // drop-in, or an environment file.
+  // drop-in, or an environment file. For a server that runs, or is started
+  // by a scanned container image, the environment is the server's own:
+  // `/proc/<pid>/environ` or `image configuration`.
   variableSources() map[string]string
 
   // Address the API is served on
