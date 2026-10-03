@@ -211,13 +211,13 @@ func (r *mqlPostgresdbDatabase) publications() ([]any, error) {
 	if !r.AllowConnections.Data {
 		return []any{}, nil
 	}
-	pool, err := pgPool(r.MqlRuntime, r.Name.Data)
-	if err != nil {
-		return nil, err
-	}
 	// Logical replication arrived in 10; an older server has no publications.
 	if !pgAtLeast(r.MqlRuntime, pgVersion10) {
 		return []any{}, nil
+	}
+	pool, err := pgPool(r.MqlRuntime, r.Name.Data)
+	if err != nil {
+		return nil, err
 	}
 	rows, err := pool.Query(pgContext(),
 		`SELECT p.pubname, COALESCE(o.rolname, ''), p.puballtables,
@@ -271,13 +271,13 @@ func sanitizeConnInfo(conninfo string) string {
 }
 
 func (r *mqlPostgresdbInstance) subscriptions() ([]any, error) {
-	pool, err := pgPool(r.MqlRuntime, "")
-	if err != nil {
-		return nil, err
-	}
 	// Logical replication arrived in 10; an older server has no subscriptions.
 	if !pgAtLeast(r.MqlRuntime, pgVersion10) {
 		return []any{}, nil
+	}
+	pool, err := pgPool(r.MqlRuntime, "")
+	if err != nil {
+		return nil, err
 	}
 	// pg_subscription is superuser-only; treat only a permission error as none,
 	// and propagate real failures (network, timeout, syntax).
