@@ -18308,7 +18308,11 @@ ai @maturity("preview") {
 // to filter by source, or inspect `size` and `modifiedAt` to find the
 // largest or most recently used models on the system.
 private ai.model @defaults("name source") @maturity("preview") {
-  // Model name (e.g., "llama3:latest", "meta-llama/Llama-2-7b-hf")
+  // Model name as its tool lists it
+  //
+  // For example "llama3:latest" or "meta-llama/Llama-2-7b-hf". Ollama models
+  // keep a namespace other than library and a registry other than Ollama's own,
+  // as in "someuser/smollm:135m" or "hf.co/bartowski/smollm2-135m-instruct-gguf:Q4_K_M".
   name string
   // Source tool that cached this model (ollama, huggingface, lmstudio, gpt4all, pytorch, keras, tfhub, jan)
   source string
@@ -18328,7 +18332,7 @@ private ai.model @defaults("name source") @maturity("preview") {
   version string
   // Quantization method or level
   //
-  // For example Q4_K_M, Q8_0, F16, gptq, or awq.
+  // For example Q4_K_M, IQ4_XS, Q8_0, F16, BF16, gptq, or awq.
   quantization string
   // Human-readable parameter count
   //

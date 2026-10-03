@@ -139,8 +139,7 @@ func (d *OllamaDetector) Detect(ctx DetectContext) []ModelInfo {
 
 	var results []ModelInfo
 	// A model reachable through two stores (a user's own and the daemon's) is
-	// one model. ai.model keys on source and name, so emitting it twice would
-	// collide in the resource cache rather than produce two entries.
+	// one model, so the stores are merged on the full name `ollama list` shows.
 	seen := map[string]struct{}{}
 	for _, dir := range dirs {
 		for _, m := range DetectOllamaModels(ctx.Fs, dir) {
@@ -212,7 +211,7 @@ func DetectOllamaModels(afs *afero.Afero, modelsDir string) []ModelInfo {
 						continue
 					}
 
-					name := modelBase + ":" + tag.Name()
+					name := ollamaDisplayName(registry.Name(), ns.Name(), modelBase, tag.Name())
 
 					var totalSize int64
 					for _, l := range manifest.Layers {
@@ -417,4 +416,25 @@ func readOllamaConfig(afs *afero.Afero, modelsDir string, digest string) ollamaE
 	}
 
 	return result
+}
+
+const (
+	ollamaDefaultRegistry  = "registry.ollama.ai"
+	ollamaDefaultNamespace = "library"
+)
+
+// ollamaDisplayName builds the name `ollama list` prints for the manifest at
+// registry/namespace/model/tag (Ollama's Name.DisplayShortest): the registry
+// and namespace are only omitted when they are the defaults, so a user's
+// namespaced copy or a model pulled from Hugging Face never reads as the
+// library model of the same name.
+func ollamaDisplayName(registry, namespace, model, tag string) string {
+	switch {
+	case !strings.EqualFold(registry, ollamaDefaultRegistry):
+		return registry + "/" + namespace + "/" + model + ":" + tag
+	case !strings.EqualFold(namespace, ollamaDefaultNamespace):
+		return namespace + "/" + model + ":" + tag
+	default:
+		return model + ":" + tag
+	}
 }

@@ -50,7 +50,7 @@ type Detector interface {
 }
 
 var (
-	reQuantization = regexp.MustCompile(`(?i)(Q[0-9]+_[A-Z0-9_]+|F16|F32|FP16|FP32)`)
+	reQuantization = regexp.MustCompile(`(?i)(I?Q[0-9]+_[A-Z0-9_]+|BF16|F16|F32|FP16|FP32)`)
 	// A parameter count in billions (b) or millions (m), such as the "7b" of
 	// "llama3:7b" or the "135m" of "smollm:135m". The leading separator (dash,
 	// underscore, colon, space) avoids matching the letter inside words.

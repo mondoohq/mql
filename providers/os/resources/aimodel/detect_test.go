@@ -659,6 +659,11 @@ func TestQuantizationRegex(t *testing.T) {
 		{"model-F32.safetensors", "F32"},
 		{"model-Q5_K_S.gguf", "Q5_K_S"},
 		{"model-q4_0.gguf", "q4_0"},
+		// Importance-matrix quants and bfloat16, as published in GGUF repos
+		// such as bartowski's: the leading I and B belong to the type.
+		{"SmolLM2-135M-Instruct-IQ4_XS.gguf", "IQ4_XS"},
+		{"SmolLM2-135M-Instruct-bf16.gguf", "bf16"},
+		{"model-IQ2_XXS.gguf", "IQ2_XXS"},
 		{"no-quant-model.gguf", ""},
 		{"readme.txt", ""},
 	}
@@ -750,4 +755,61 @@ func TestOllamaDetector_NoStore(t *testing.T) {
 	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
 	assert.Empty(t, DetectAll(afs, "/home/zero", "linux", []string{"/var/lib/ollama"}))
 	assert.Empty(t, DetectAll(afs, "", "linux", nil))
+}
+
+// writeOllamaManifest stores a manifest at the registry/namespace/model/tag
+// path Ollama itself uses, sharing one config blob.
+func writeOllamaManifest(t *testing.T, fs afero.Fs, modelsDir, registry, namespace, model, tag string) {
+	t.Helper()
+	writeJSON(t, fs, filepath.Join(modelsDir, "manifests", registry, namespace, model, tag), ollamaManifest{
+		Config: ollamaDescriptor{Digest: "sha256:cfg"},
+		Layers: []ollamaLayer{{MediaType: "application/vnd.ollama.image.model", Digest: "sha256:m", Size: 100}},
+	})
+	writeJSON(t, fs, filepath.Join(modelsDir, "blobs", "sha256-cfg"), map[string]any{"model_family": "llama"})
+}
+
+// The names are the ones `ollama list` prints for these manifest paths: the
+// registry and namespace are only dropped when they are Ollama's defaults.
+func TestDetectOllama_NamespacedAndThirdPartyRegistryNames(t *testing.T) {
+	afs, fs := newTestAfs()
+	home := "/home/testuser"
+	dir := filepath.Join(home, ".ollama/models")
+	writeOllamaManifest(t, fs, dir, "registry.ollama.ai", "library", "smollm", "135m")
+	writeOllamaManifest(t, fs, dir, "registry.ollama.ai", "someuser", "smollm", "135m")
+	writeOllamaManifest(t, fs, dir, "hf.co", "bartowski", "smollm2-135m-instruct-gguf", "Q4_K_M")
+
+	results := detectWith(&OllamaDetector{}, afs, home)
+	names := make([]string, 0, len(results))
+	for _, m := range results {
+		names = append(names, m.Name)
+	}
+	assert.ElementsMatch(t, []string{
+		"smollm:135m",
+		"someuser/smollm:135m",
+		"hf.co/bartowski/smollm2-135m-instruct-gguf:Q4_K_M",
+	}, names)
+}
+
+// The same model reachable through two stores is still one model.
+func TestDetectOllama_SameModelInTwoStoresIsOne(t *testing.T) {
+	afs, fs := newTestAfs()
+	writeOllamaManifest(t, fs, "/var/lib/ollama/models", "registry.ollama.ai", "library", "smollm", "135m")
+	writeOllamaManifest(t, fs, "/home/u/.ollama/models", "registry.ollama.ai", "library", "smollm", "135m")
+
+	results := (&OllamaDetector{}).Detect(DetectContext{Fs: afs, OllamaModelsDirs: []string{"/var/lib/ollama/models", "/home/u/.ollama/models"}})
+	require.Len(t, results, 1)
+	assert.Equal(t, "smollm:135m", results[0].Name)
+}
+
+func TestOllamaDisplayName(t *testing.T) {
+	for _, tc := range []struct{ registry, namespace, model, tag, want string }{
+		{"registry.ollama.ai", "library", "llama3", "latest", "llama3:latest"},
+		{"Registry.Ollama.AI", "Library", "llama3", "8b", "llama3:8b"},
+		{"registry.ollama.ai", "someuser", "smollm", "135m", "someuser/smollm:135m"},
+		{"hf.co", "bartowski", "m", "Q4_K_M", "hf.co/bartowski/m:Q4_K_M"},
+		// A third-party registry keeps its namespace even when it is "library".
+		{"example.com", "library", "m", "latest", "example.com/library/m:latest"},
+	} {
+		assert.Equal(t, tc.want, ollamaDisplayName(tc.registry, tc.namespace, tc.model, tc.tag))
+	}
 }
