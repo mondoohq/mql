@@ -356,7 +356,13 @@ func (r *mqlMysqldbInstance) mariadbReplicationChannels() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := db.QueryContext(mysqldbContext(), "SHOW ALL SLAVES STATUS")
+	// SHOW ALL REPLICAS STATUS is the 10.5.1+ name; earlier servers reject it
+	// with a syntax error and know only SHOW ALL SLAVES STATUS. The columns
+	// keep their Master_* names under both.
+	rows, err := db.QueryContext(mysqldbContext(), "SHOW ALL REPLICAS STATUS")
+	if isSyntaxError(err) {
+		rows, err = db.QueryContext(mysqldbContext(), "SHOW ALL SLAVES STATUS")
+	}
 	if err != nil {
 		if isAccessDenied(err) {
 			// v13 read the empty performance_schema table and returned no

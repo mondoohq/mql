@@ -61,6 +61,13 @@ func isMissingTable(err error) bool {
 	}
 }
 
+// isSyntaxError reports whether the server rejected a statement it does not
+// know (ER_PARSE_ERROR), for example syntax newer than the server.
+func isSyntaxError(err error) bool {
+	var myErr *mysqldriver.MySQLError
+	return errors.As(err, &myErr) && myErr.Number == 1064
+}
+
 // grantee formats an account as the 'user'@'host' string information_schema uses.
 func grantee(user, host string) string {
 	return "'" + user + "'@'" + host + "'"
