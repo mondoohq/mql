@@ -19,12 +19,14 @@ import (
 
 var (
 	// Regular expressions for parsing modprobe directives
-	installRegex   = regexp.MustCompile(`^install\s+(\S+)\s+(.+)$`)
-	removeRegex    = regexp.MustCompile(`^remove\s+(\S+)\s+(.+)$`)
-	blacklistRegex = regexp.MustCompile(`^blacklist\s+(\S+)`)
-	optionsRegex   = regexp.MustCompile(`^options\s+(\S+)\s+(.+)$`)
-	aliasRegex     = regexp.MustCompile(`^alias\s+(\S+)\s+(\S+)`)
-	softdepRegex   = regexp.MustCompile(`^softdep\s+(\S+)\s+(.+)$`)
+	// kmod splits tokens on spaces and tabs only, so a \r from a CRLF line
+	// stays part of the token
+	installRegex   = regexp.MustCompile(`^install[ \t]+([^ \t]+)[ \t]+(.+)$`)
+	removeRegex    = regexp.MustCompile(`^remove[ \t]+([^ \t]+)[ \t]+(.+)$`)
+	blacklistRegex = regexp.MustCompile(`^blacklist[ \t]+([^ \t]+)`)
+	optionsRegex   = regexp.MustCompile(`^options[ \t]+([^ \t]+)[ \t]+(.+)$`)
+	aliasRegex     = regexp.MustCompile(`^alias[ \t]+([^ \t]+)[ \t]+([^ \t]+)`)
+	softdepRegex   = regexp.MustCompile(`^softdep[ \t]+([^ \t]+)[ \t]+(.+)$`)
 )
 
 func initModprobe(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -321,6 +323,50 @@ func parseModprobeParams(s string) []string {
 	return parts
 }
 
+// modprobeLine is a logical line of a modprobe.d file and the number of the
+// physical line it starts on.
+type modprobeLine struct {
+	num  int
+	text string
+}
+
+// modprobeLines splits a modprobe.d file into lines the way libkmod's
+// getline_wrapped reads it: a backslash before the newline joins the next
+// line (both are dropped), a backslash before any other byte is dropped and
+// the byte kept (`a=x\y` reads `a=xy`, `\\` reads `\`), and a \r before
+// the newline stays in the line.
+func modprobeLines(content string) []modprobeLine {
+	var lines []modprobeLine
+	var buf strings.Builder
+	num, start := 1, 1
+	for i := 0; i < len(content); i++ {
+		c := content[i]
+		switch c {
+		case '\n':
+			lines = append(lines, modprobeLine{num: start, text: buf.String()})
+			buf.Reset()
+			num++
+			start = num
+		case '\\':
+			i++
+			if i == len(content) {
+				continue
+			}
+			if content[i] == '\n' {
+				num++
+				continue
+			}
+			buf.WriteByte(content[i])
+		default:
+			buf.WriteByte(c)
+		}
+	}
+	if buf.Len() > 0 {
+		lines = append(lines, modprobeLine{num: start, text: buf.String()})
+	}
+	return lines
+}
+
 // readFileContent reads a file's content and properly closes the file handle
 func readFileContent(conn shared.Connection, path string) (string, error) {
 	f, err := conn.FileSystem().Open(path)
@@ -340,13 +386,11 @@ func readFileContent(conn shared.Connection, path string) (string, error) {
 // parseInstalls parses install directives from modprobe content
 func parseInstalls(runtime *plugin.Runtime, filePath string, content string) ([]any, error) {
 	var installs []any
-	lines := strings.Split(content, "\n")
-
-	for lineNum, line := range lines {
-		actualLineNum := lineNum + 1
+	for _, l := range modprobeLines(content) {
+		actualLineNum := l.num
 
 		// Skip empty lines and comments
-		line = strings.TrimSpace(line)
+		line := strings.Trim(l.text, " \t")
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -358,7 +402,7 @@ func parseInstalls(runtime *plugin.Runtime, filePath string, content string) ([]
 		}
 
 		module := matches[1]
-		command := strings.TrimSpace(matches[2])
+		command := strings.Trim(matches[2], " \t")
 
 		entry, err := CreateResource(runtime, "modprobe.install", map[string]*llx.RawData{
 			"file":       llx.StringData(filePath),
@@ -379,13 +423,11 @@ func parseInstalls(runtime *plugin.Runtime, filePath string, content string) ([]
 // parseRemoves parses remove directives from modprobe content
 func parseRemoves(runtime *plugin.Runtime, filePath string, content string) ([]any, error) {
 	var removes []any
-	lines := strings.Split(content, "\n")
-
-	for lineNum, line := range lines {
-		actualLineNum := lineNum + 1
+	for _, l := range modprobeLines(content) {
+		actualLineNum := l.num
 
 		// Skip empty lines and comments
-		line = strings.TrimSpace(line)
+		line := strings.Trim(l.text, " \t")
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -397,7 +439,7 @@ func parseRemoves(runtime *plugin.Runtime, filePath string, content string) ([]a
 		}
 
 		module := matches[1]
-		command := strings.TrimSpace(matches[2])
+		command := strings.Trim(matches[2], " \t")
 
 		entry, err := CreateResource(runtime, "modprobe.remove", map[string]*llx.RawData{
 			"file":       llx.StringData(filePath),
@@ -418,13 +460,11 @@ func parseRemoves(runtime *plugin.Runtime, filePath string, content string) ([]a
 // parseBlacklists parses blacklist directives from modprobe content
 func parseBlacklists(runtime *plugin.Runtime, filePath string, content string) ([]any, error) {
 	var blacklists []any
-	lines := strings.Split(content, "\n")
-
-	for lineNum, line := range lines {
-		actualLineNum := lineNum + 1
+	for _, l := range modprobeLines(content) {
+		actualLineNum := l.num
 
 		// Skip empty lines and comments
-		line = strings.TrimSpace(line)
+		line := strings.Trim(l.text, " \t")
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -455,13 +495,11 @@ func parseBlacklists(runtime *plugin.Runtime, filePath string, content string) (
 // parseOptions parses options directives from modprobe content
 func parseOptions(runtime *plugin.Runtime, filePath string, content string) ([]any, error) {
 	var options []any
-	lines := strings.Split(content, "\n")
-
-	for lineNum, line := range lines {
-		actualLineNum := lineNum + 1
+	for _, l := range modprobeLines(content) {
+		actualLineNum := l.num
 
 		// Skip empty lines and comments
-		line = strings.TrimSpace(line)
+		line := strings.Trim(l.text, " \t")
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -473,7 +511,7 @@ func parseOptions(runtime *plugin.Runtime, filePath string, content string) ([]a
 		}
 
 		module := matches[1]
-		parameters := strings.TrimSpace(matches[2])
+		parameters := strings.Trim(matches[2], " \t")
 
 		entry, err := CreateResource(runtime, "modprobe.option", map[string]*llx.RawData{
 			"file":       llx.StringData(filePath),
@@ -494,13 +532,11 @@ func parseOptions(runtime *plugin.Runtime, filePath string, content string) ([]a
 // parseAliases parses alias directives from modprobe content
 func parseAliases(runtime *plugin.Runtime, filePath string, content string) ([]any, error) {
 	var aliases []any
-	lines := strings.Split(content, "\n")
-
-	for lineNum, line := range lines {
-		actualLineNum := lineNum + 1
+	for _, l := range modprobeLines(content) {
+		actualLineNum := l.num
 
 		// Skip empty lines and comments
-		line = strings.TrimSpace(line)
+		line := strings.Trim(l.text, " \t")
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -533,13 +569,11 @@ func parseAliases(runtime *plugin.Runtime, filePath string, content string) ([]a
 // parseSoftdeps parses softdep directives from modprobe content
 func parseSoftdeps(runtime *plugin.Runtime, filePath string, content string) ([]any, error) {
 	var softdeps []any
-	lines := strings.Split(content, "\n")
-
-	for lineNum, line := range lines {
-		actualLineNum := lineNum + 1
+	for _, l := range modprobeLines(content) {
+		actualLineNum := l.num
 
 		// Skip empty lines and comments
-		line = strings.TrimSpace(line)
+		line := strings.Trim(l.text, " \t")
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}

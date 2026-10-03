@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 // Install directive tests
@@ -554,4 +556,82 @@ func TestSelectModprobeConfigFiles_Suse15ReadsUsrLib(t *testing.T) {
 		"/usr/lib/modprobe.d/g01-usrlib.conf",
 		"/lib/modprobe.d/systemd.conf",
 	}, selectConfDFiles(dirs, listings))
+}
+
+// sweepCRLFConf and sweepContConf are /etc/modprobe.d/sweep-crlf.conf and
+// sweep-cont.conf from the Fedora 44 sweep host. `modprobe -c` prints
+// "blacklist sweepcrlf\r", "options sweepcrlfopt a=1 b=2\r" and
+// "install sweepcont /bin/echo   continued" for them.
+const (
+	sweepCRLFConf = "blacklist sweepcrlf\r\noptions sweepcrlfopt a=1 b=2\r\n"
+	sweepContConf = "install sweepcont /bin/echo \\\n  continued\n# comment\nblacklist sweepuni # ✓\n"
+)
+
+func TestModprobeLines(t *testing.T) {
+	t.Run("backslash-newline joins lines like getline_wrapped", func(t *testing.T) {
+		assert.Equal(t, []modprobeLine{
+			{num: 1, text: "install sweepcont /bin/echo   continued"},
+			{num: 3, text: "# comment"},
+			{num: 4, text: "blacklist sweepuni # ✓"},
+		}, modprobeLines(sweepContConf))
+	})
+
+	t.Run("carriage return stays in the line", func(t *testing.T) {
+		assert.Equal(t, []modprobeLine{
+			{num: 1, text: "blacklist sweepcrlf\r"},
+			{num: 2, text: "options sweepcrlfopt a=1 b=2\r"},
+		}, modprobeLines(sweepCRLFConf))
+	})
+
+	t.Run("a backslash escapes the next byte", func(t *testing.T) {
+		// options fixbs a=x\y b=p\\ and options fixbs2 c=1\\\ + "  d=2";
+		// modprobe -c prints "options fixbs a=xy b=p\" and
+		// "options fixbs2 c=1\  d=2" on kmod 20, 23, 31 and 34.2
+		assert.Equal(t, []modprobeLine{
+			{num: 1, text: "options fixbs a=xy b=p\\"},
+			{num: 2, text: "options fixbs2 c=1\\  d=2"},
+		}, modprobeLines("options fixbs a=x\\y b=p\\\\\noptions fixbs2 c=1\\\\\\\n  d=2\n"))
+	})
+}
+
+func newModprobeTestRuntime() *plugin.Runtime {
+	return &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+}
+
+func TestParseModprobeDirectivesLikeKmod(t *testing.T) {
+	runtime := newModprobeTestRuntime()
+
+	blacklists, err := parseBlacklists(runtime, "/etc/modprobe.d/sweep-crlf.conf", sweepCRLFConf)
+	require.NoError(t, err)
+	require.Len(t, blacklists, 1)
+	// kmod keeps the \r, so this line does not blacklist sweepcrlf
+	assert.Equal(t, "sweepcrlf\r", blacklists[0].(*mqlModprobeBlacklist).Module.Data)
+
+	options, err := parseOptions(runtime, "/etc/modprobe.d/sweep-crlf.conf", sweepCRLFConf)
+	require.NoError(t, err)
+	require.Len(t, options, 1)
+	assert.Equal(t, "a=1 b=2\r", options[0].(*mqlModprobeOption).Parameters.Data)
+
+	installs, err := parseInstalls(runtime, "/etc/modprobe.d/sweep-cont.conf", sweepContConf)
+	require.NoError(t, err)
+	require.Len(t, installs, 1)
+	inst := installs[0].(*mqlModprobeInstall)
+	assert.Equal(t, "/bin/echo   continued", inst.Command.Data)
+	assert.Equal(t, int64(1), inst.LineNumber.Data)
+
+	blacklists, err = parseBlacklists(runtime, "/etc/modprobe.d/sweep-cont.conf", sweepContConf)
+	require.NoError(t, err)
+	require.Len(t, blacklists, 1)
+	bl := blacklists[0].(*mqlModprobeBlacklist)
+	assert.Equal(t, "sweepuni", bl.Module.Data)
+	assert.Equal(t, int64(4), bl.LineNumber.Data)
+}
+
+func TestParseModprobeConfigLikeKmod(t *testing.T) {
+	// `blacklist dummy\r` does not stop `modprobe -b dummy` (Fedora 44)
+	got := parseModprobeConfig("blacklist dummy\r\n")
+	assert.False(t, got["dummy"].blacklisted)
+
+	got = parseModprobeConfig("install cramfs \\\n  /bin/false\n")
+	assert.True(t, got["cramfs"].installBypass)
 }
