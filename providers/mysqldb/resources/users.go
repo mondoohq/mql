@@ -10,6 +10,7 @@ import (
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/mysqldb/connection"
 )
 
 // hasPasswordExpr is the server-side projection behind the hasPassword field.
@@ -123,7 +124,7 @@ func (r *mqlMysqldbInstance) users() ([]any, error) {
 	rows, err := db.QueryContext(mysqldbContext(), "SELECT "+userColumns("", mariadb)+" FROM mysql.user ORDER BY User, Host")
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return refusedList(err, "SELECT ON mysql.user")
 		}
 		return nil, err
 	}
@@ -151,13 +152,21 @@ func (r *mqlMysqldbUser) grantedRoles() ([]any, error) {
 		return nil, err
 	}
 	mariadb := flavor == "mariadb"
+	// MySQL before 8.0 has no roles; MariaDB keeps them in roles_mapping
+	if hasRoles, err := conn.HasRolesAndComponents(); err != nil {
+		return nil, err
+	} else if !mariadb && !hasRoles {
+		return []any{}, nil
+	}
 	db, err := conn.Client()
 	if err != nil {
 		return nil, err
 	}
 
 	var q string
+	roleTable := "mysql.role_edges"
 	if mariadb {
+		roleTable = "mysql.roles_mapping"
 		q = `SELECT ` + userColumns("u.", true) + `
 			FROM mysql.roles_mapping rm
 			JOIN mysql.user u ON rm.Role = u.User
@@ -170,8 +179,14 @@ func (r *mqlMysqldbUser) grantedRoles() ([]any, error) {
 	}
 	rows, err := db.QueryContext(mysqldbContext(), q, r.User.Data, r.Host.Data)
 	if err != nil {
-		// role tables require privilege or may not exist; treat as no roles.
-		return []any{}, nil
+		// MySQL 5.7 has no role_edges table: no roles exist there.
+		if isMissingTable(err) {
+			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return refusedList(err, "SELECT ON "+roleTable, "SELECT ON mysql.user")
+		}
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -187,5 +202,12 @@ func (r *mqlMysqldbUser) grantedRoles() ([]any, error) {
 }
 
 func (r *mqlMysqldbUser) privileges() ([]any, error) {
-	return privilegesForGrantee(r.MqlRuntime, r.__id, grantee(r.User.Data, r.Host.Data))
+	g := grantee(r.User.Data, r.Host.Data)
+	// information_schema always shows the caller its own grants
+	if err := requireVisibility(r.MqlRuntime, func(a *connection.CallerAccess) bool {
+		return a.GrantsVisible || a.Self == g
+	}, "account's privileges", "SELECT ON mysql.*"); err != nil {
+		return nil, err
+	}
+	return privilegesForGrantee(r.MqlRuntime, r.__id, g)
 }
