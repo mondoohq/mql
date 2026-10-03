@@ -6,6 +6,7 @@ package resources
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -397,4 +398,68 @@ func TestParseUfwStatus(t *testing.T) {
 		_, err := parseUfwStatus(0, "Status: Aktiv\n", "")
 		require.Error(t, err)
 	})
+}
+
+func TestUfwStatusWithoutUfw(t *testing.T) {
+	refused := llx.Forbidden(errors.New("cannot determine whether ufw is active: ERROR: You need to be root to run this script"))
+	unit := func(stdout string, exit int64) func() (string, int64, error) {
+		return func() (string, int64, error) { return stdout, exit, nil }
+	}
+
+	t.Run("ENABLED=no reads inactive", func(t *testing.T) {
+		// `ufw disable` writes ENABLED=no and unloads the chains
+		st, err := ufwStatusWithoutUfw("inactive", refused, unit("active\n", 0))
+		require.NoError(t, err)
+		assert.Equal(t, "inactive", st)
+	})
+
+	t.Run("ENABLED=yes with the unit started reads active", func(t *testing.T) {
+		st, err := ufwStatusWithoutUfw("active", refused, unit("active\n", 0))
+		require.NoError(t, err)
+		assert.Equal(t, "active", st)
+	})
+
+	t.Run("ENABLED=yes with the unit stopped is not active", func(t *testing.T) {
+		// `systemctl stop ufw` unloads the chains and keeps ENABLED=yes; the
+		// Fedora and EPEL packages ship ENABLED=yes on a unit never started.
+		// `ufw enable` loads the chains without starting the unit, so an
+		// inactive unit does not prove the firewall is inactive either.
+		_, err := ufwStatusWithoutUfw("active", refused, unit("inactive\n", 3))
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, llx.ErrForbidden))
+	})
+
+	t.Run("ENABLED=yes with a failed unit is not active", func(t *testing.T) {
+		_, err := ufwStatusWithoutUfw("active", refused, unit("failed\n", 3))
+		require.Error(t, err)
+	})
+
+	t.Run("ENABLED=yes without systemd is not active", func(t *testing.T) {
+		_, err := ufwStatusWithoutUfw("active", refused, unit("", 127))
+		require.Error(t, err)
+	})
+
+	t.Run("systemctl cannot run", func(t *testing.T) {
+		_, err := ufwStatusWithoutUfw("active", refused, func() (string, int64, error) {
+			return "", 0, errors.New("command failed")
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("unreadable ufw output is not a refusal", func(t *testing.T) {
+		// "Status: Inaktiv" under LANGUAGE=de on Ubuntu with ufw stopped
+		_, perr := parseUfwStatus(0, "Status: Inaktiv\n", "")
+		require.Error(t, perr)
+		_, err := ufwStatusWithoutUfw("active", perr, unit("active\n", 0))
+		require.Error(t, err)
+	})
+}
+
+func TestUfwStatusCommandIgnoresLanguage(t *testing.T) {
+	// gettext reads LANGUAGE before LC_ALL; with LANGUAGE=de ufw prints
+	// "Status: Inaktiv", which parseUfwStatus cannot read
+	cmd := ufwStatusCommand("/usr/sbin/ufw")
+	assert.True(t, strings.HasPrefix(cmd, "env LANGUAGE= "), cmd)
+	assert.Contains(t, cmd, " LC_ALL=C ")
+	assert.True(t, strings.HasSuffix(cmd, " /usr/sbin/ufw status"), cmd)
 }

@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -150,7 +151,7 @@ func readUfwState(afs afero.Afero) (ufwState, error) {
 // runtimeStatus asks the installed ufw command whether the firewall is loaded.
 func (u *mqlUfw) runtimeStatus(binary string) (string, error) {
 	o, err := CreateResource(u.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("env LC_ALL=C " + binary + " status"),
+		"command": llx.StringData(ufwStatusCommand(binary)),
 	})
 	if err != nil {
 		return "", err
@@ -161,6 +162,14 @@ func (u *mqlUfw) runtimeStatus(binary string) (string, error) {
 		return "", exit.Error
 	}
 	return parseUfwStatus(exit.Data, cmd.GetStdout().Data, cmd.GetStderr().Data)
+}
+
+// ufwStatusCommand runs ufw status in the C locale. ufw translates through
+// Python's gettext, which reads LANGUAGE before LC_ALL, so LC_ALL=C alone
+// still prints "Status: Inaktiv" under LANGUAGE=de. gettext skips an empty
+// LANGUAGE.
+func ufwStatusCommand(binary string) string {
+	return "env LANGUAGE= LC_ALL=C LANG=C " + binary + " status"
 }
 
 // parseUfwStatus reads the first line of `ufw status`, which ufw derives
@@ -208,13 +217,59 @@ func (u *mqlUfw) status() (string, error) {
 	}
 	status, err := u.runtimeStatus(u.cacheBinary)
 	if err != nil {
-		// v13 reported the configured state when ufw could not be asked
+		// v13 answered from ufw.conf when ufw refused a non-root caller.
+		// ENABLED=yes alone is not an answer, so only keep a value where
+		// the systemd unit backs it. Any other failure, such as output that
+		// cannot be read, is an error.
 		if !plugin.StructuredErrors() {
-			return u.cacheStatus, nil
+			return ufwStatusWithoutUfw(u.cacheStatus, err, u.unitState)
 		}
 		return "", err
 	}
 	return status, nil
+}
+
+// unitState runs `systemctl is-active ufw`, which any user may run.
+func (u *mqlUfw) unitState() (string, int64, error) {
+	o, err := CreateResource(u.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData("systemctl is-active ufw.service"),
+	})
+	if err != nil {
+		return "", 0, err
+	}
+	cmd := o.(*mqlCommand)
+	exit := cmd.GetExitcode()
+	if exit.Error != nil {
+		return "", 0, exit.Error
+	}
+	return cmd.GetStdout().Data, exit.Data, nil
+}
+
+// ufwStatusWithoutUfw answers ufw.status when ufw itself refused to, from
+// the configured state (confStatus, read from ENABLED in ufw.conf) and the
+// output of `systemctl is-active ufw` (unitState). ENABLED=no means
+// `ufw disable` ran, which also unloads the chains. ENABLED=yes reads active
+// only while the unit that loads the chains at boot is running:
+// `systemctl stop ufw` unloads them without touching ufw.conf, and the
+// Fedora and EPEL packages ship ENABLED=yes on a unit that was never
+// started. An inactive unit does not prove the reverse, since `ufw enable`
+// loads the chains without starting the unit, so every other case returns
+// ufwErr. So does any ufwErr that is not a refusal.
+func ufwStatusWithoutUfw(confStatus string, ufwErr error, unitState func() (string, int64, error)) (string, error) {
+	if !errors.Is(ufwErr, llx.ErrForbidden) {
+		return "", ufwErr
+	}
+	if confStatus == "inactive" {
+		return "inactive", nil
+	}
+	if confStatus != "active" {
+		return "", ufwErr
+	}
+	stdout, exit, err := unitState()
+	if err == nil && exit == 0 && strings.TrimSpace(stdout) == "active" {
+		return "active", nil
+	}
+	return "", ufwErr
 }
 
 func (u *mqlUfw) defaultIncoming() (string, error) {
