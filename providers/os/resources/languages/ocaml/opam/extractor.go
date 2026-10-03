@@ -6,6 +6,7 @@
 package opam
 
 import (
+	"errors"
 	"io"
 	"path/filepath"
 	"regexp"
@@ -36,7 +37,10 @@ func (e *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 	if err != nil {
 		return nil, err
 	}
-	f := parseOpam(string(data))
+	f, err := parseOpam(string(data))
+	if err != nil {
+		return nil, err
+	}
 	f.name = packageName(f.declaredName, filename)
 	if filename != "" {
 		f.evidence = append(f.evidence, filename)
@@ -72,7 +76,9 @@ var (
 )
 
 // parseOpam extracts the package name/version fields and the depends: list.
-func parseOpam(content string) *opamFile {
+// A depends: list that never closes is a truncated file and an error.
+func parseOpam(content string) (*opamFile, error) {
+	content = stripComments(content)
 	f := &opamFile{}
 	if m := nameFieldRe.FindStringSubmatch(content); m != nil {
 		f.declaredName = m[1]
@@ -80,24 +86,78 @@ func parseOpam(content string) *opamFile {
 	if m := versionFieldRe.FindStringSubmatch(content); m != nil {
 		f.version = m[1]
 	}
-	if block, ok := dependsBlock(content); ok {
+	block, found, ok := dependsBlock(content)
+	if found && !ok {
+		return nil, errors.New("depends list is not closed")
+	}
+	if ok {
 		f.deps = parseDepends(block)
 	}
-	return f
+	return f, nil
 }
 
-// dependsBlock returns the text inside the `depends: [ ... ]` list. Bracket
+// stripComments blanks out opam comments, a `#` to the end of its line and a
+// `(* ... *)` block, which may nest. Quoted strings are left alone, so a `#`
+// inside one stays. Every comment byte but a newline becomes a space, which
+// keeps line starts where the field patterns expect them.
+func stripComments(s string) string {
+	b := []byte(s)
+	blank := func(from, to int) {
+		for k := from; k < to; k++ {
+			if b[k] != '\n' {
+				b[k] = ' '
+			}
+		}
+	}
+	for i := 0; i < len(b); {
+		switch {
+		case b[i] == '"':
+			i = skipQuoted(s, i)
+		case b[i] == '#':
+			end := strings.IndexByte(s[i:], '\n')
+			if end < 0 {
+				end = len(s) - i
+			}
+			blank(i, i+end)
+			i += end
+		case b[i] == '(' && i+1 < len(b) && b[i+1] == '*':
+			depth, j := 0, i
+			for j < len(b) {
+				if b[j] == '(' && j+1 < len(b) && b[j+1] == '*' {
+					depth++
+					j += 2
+				} else if b[j] == '*' && j+1 < len(b) && b[j+1] == ')' {
+					depth--
+					j += 2
+					if depth == 0 {
+						break
+					}
+				} else {
+					j++
+				}
+			}
+			blank(i, j)
+			i = j
+		default:
+			i++
+		}
+	}
+	return string(b)
+}
+
+// dependsBlock returns the text inside the `depends: [ ... ]` list, whether
+// the file has a depends: field, and whether its list closes. Bracket
 // counting skips over quoted strings so a `[` or `]` byte inside a string
 // literal does not throw off the depth.
-func dependsBlock(content string) (string, bool) {
+func dependsBlock(content string) (string, bool, bool) {
 	idx := dependsHeader.FindStringIndex(content)
 	if idx == nil {
-		return "", false
+		return "", false, false
 	}
 	rest := content[idx[1]:]
 	open := strings.IndexByte(rest, '[')
 	if open < 0 {
-		return "", false
+		return "", false, false
 	}
 	depth := 0
 	for i := open; i < len(rest); {
@@ -110,14 +170,14 @@ func dependsBlock(content string) (string, bool) {
 		case ']':
 			depth--
 			if depth == 0 {
-				return rest[open+1 : i], true
+				return rest[open+1 : i], true, true
 			}
 			i++
 		default:
 			i++
 		}
 	}
-	return "", false
+	return "", true, false
 }
 
 // parseDepends tokenizes a depends block into dependencies. A quoted string is a
