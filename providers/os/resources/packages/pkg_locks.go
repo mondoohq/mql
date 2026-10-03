@@ -4,13 +4,18 @@
 package packages
 
 import (
+	"errors"
+	"fmt"
 	"io"
+	iofs "io/fs"
 	"path"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // Lock files are read rather than the tools being asked, so a held package is
@@ -18,15 +23,19 @@ import (
 // filesystem. The commands (`dnf versionlock list`, `zypper locks`) only print
 // what these files already contain, and they cannot run on an image at all.
 
-// versionlockPaths are the stores the RPM family writes locks to, newest first.
+// The RPM family's lock stores, newest first.
 //
-// On RHEL 9 and its rebuilds the yum path is a symlink to the dnf one, so
+// On RHEL 9 and its rebuilds the yum paths are symlinks to the dnf ones, so
 // probing rather than gating on a platform version resolves both with one read
 // and stays correct on distributions this list has never heard of.
-var versionlockPaths = []string{
-	"/etc/dnf/versionlock.toml",              // dnf5: RHEL 10, Fedora 41+
-	"/etc/dnf/plugins/versionlock.list",      // dnf4: RHEL 8/9, Fedora <= 40
-	"/etc/yum/pluginconf.d/versionlock.list", // yum: RHEL 7, Amazon Linux 2
+const dnf5VersionlockPath = "/etc/dnf/versionlock.toml" // dnf5: Fedora 41+
+
+// versionlockPlugins are the dnf4 (RHEL 8 to 10, Fedora <= 40) and yum (RHEL
+// 7, Amazon Linux 2) versionlock plugins: the plugin configuration, and the
+// store it reads unless the configuration names another with `locklist`.
+var versionlockPlugins = []struct{ conf, list string }{
+	{"/etc/dnf/plugins/versionlock.conf", "/etc/dnf/plugins/versionlock.list"},
+	{"/etc/yum/pluginconf.d/versionlock.conf", "/etc/yum/pluginconf.d/versionlock.list"},
 }
 
 // zypperLocksPath is where zypper records `zypper addlock`.
@@ -57,26 +66,109 @@ func (l lockedNames) has(name string) bool {
 
 // readVersionlock returns the package names locked on an RPM-family host. A
 // missing store is the common case and is not an error: it means the
-// versionlock plugin is not installed, so nothing is locked.
-func readVersionlock(fs afero.Fs) lockedNames {
-	for _, p := range versionlockPaths {
-		f, err := fs.Open(p)
+// versionlock plugin is not installed, so nothing is locked. A store that
+// exists but cannot be read (a 0600 file and a non-root scan) is an error:
+// nothing is known about the locks it holds.
+func readVersionlock(fs afero.Fs) (lockedNames, error) {
+	raw, err := readLockStore(fs, dnf5VersionlockPath)
+	if err != nil {
+		return nil, err
+	}
+	if raw != nil {
+		return parseVersionlockTOML(raw), nil
+	}
+
+	for _, p := range versionlockPlugins {
+		list := p.list
+		conf, err := readLockStore(fs, p.conf)
 		if err != nil {
-			continue
+			return nil, err
 		}
-		raw, err := io.ReadAll(f)
-		f.Close()
-		if err != nil {
-			log.Debug().Err(err).Str("path", p).Msg("could not read the versionlock store")
-			continue
+		if conf != nil {
+			enabled, locklist := parseVersionlockConf(string(conf))
+			if !enabled {
+				// the plugin is installed and turned off: its locks hold nothing
+				return nil, nil
+			}
+			if locklist != "" {
+				list = locklist
+			}
 		}
 
-		if strings.HasSuffix(p, ".toml") {
-			return parseVersionlockTOML(raw)
+		raw, err := readLockStore(fs, list)
+		if err != nil {
+			return nil, err
 		}
-		return parseVersionlockList(string(raw))
+		if raw != nil {
+			return parseVersionlockList(string(raw)), nil
+		}
 	}
-	return nil
+	return nil, nil
+}
+
+// readLockStore reads a lock store or plugin configuration. A file that does
+// not exist returns nil and no error.
+func readLockStore(fs afero.Fs, p string) ([]byte, error) {
+	f, err := fs.Open(p)
+	if err != nil {
+		if errors.Is(err, iofs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+	if raw == nil {
+		raw = []byte{}
+	}
+	return raw, nil
+}
+
+// parseVersionlockConf reads the [main] section of the versionlock plugin's
+// configuration as AlmaLinux 9 ships it:
+//
+//	[main]
+//	enabled = 1
+//	locklist = /etc/dnf/plugins/versionlock.list
+//
+// A plugin is enabled unless `enabled` says otherwise. locklist is "" when
+// the configuration names no store.
+func parseVersionlockConf(content string) (enabled bool, locklist string) {
+	enabled = true
+	inMain := false
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line[0] == '#' || line[0] == ';' {
+			continue
+		}
+		if line[0] == '[' {
+			inMain = strings.TrimSpace(strings.Trim(line, "[]")) == "main"
+			continue
+		}
+		if !inMain {
+			continue
+		}
+		key, value, found := strings.Cut(line, "=")
+		if !found {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		switch strings.TrimSpace(key) {
+		case "enabled":
+			switch strings.ToLower(value) {
+			case "0", "false", "no", "off":
+				enabled = false
+			default:
+				enabled = true
+			}
+		case "locklist":
+			locklist = value
+		}
+	}
+	return enabled, locklist
 }
 
 // parseVersionlockList reads the flat store dnf4 and yum write, one entry per
@@ -99,7 +191,9 @@ func parseVersionlockList(content string) lockedNames {
 		if idx := strings.IndexByte(entry, '#'); idx >= 0 {
 			entry = strings.TrimSpace(entry[:idx])
 		}
-		if entry == "" {
+		// `!name-version` is an exclude: it keeps that version out and
+		// holds nothing
+		if entry == "" || entry[0] == '!' {
 			continue
 		}
 		if name := versionlockEntryName(entry); name != "" {
@@ -177,10 +271,15 @@ func isAllDigits(s string) bool {
 //	value = "2:9.2.530-1.fc44"
 //
 // Only the name is needed: a lock pinned to a specific version still means the
-// installed package is held.
+// installed package is held. The exception is the entry `dnf versionlock
+// exclude` writes, whose condition is `!=`: it keeps one version out and
+// leaves the package free to update.
 type versionlockTOML struct {
 	Packages []struct {
-		Name string `toml:"name"`
+		Name       string `toml:"name"`
+		Conditions []struct {
+			Comparator string `toml:"comparator"`
+		} `toml:"conditions"`
 	} `toml:"packages"`
 }
 
@@ -195,7 +294,16 @@ func parseVersionlockTOML(raw []byte) lockedNames {
 
 	out := lockedNames{}
 	for _, pkg := range doc.Packages {
-		if pkg.Name != "" {
+		if pkg.Name == "" {
+			continue
+		}
+		exclude := false
+		for _, c := range pkg.Conditions {
+			if c.Comparator == "!=" || c.Comparator == "<>" {
+				exclude = true
+			}
+		}
+		if !exclude {
 			out[pkg.Name] = struct{}{}
 		}
 	}
@@ -257,8 +365,25 @@ func parseZypperLocks(content string) lockedNames {
 }
 
 // markPinned flags the packages a lock store holds. Called once per listing,
-// so the store is read once rather than once per package.
-func markPinned(pkgs []Package, locks lockedNames) []Package {
+// so the store is read once rather than once per package. readErr is why the
+// store could not be read: with StructuredErrors every package's pinned is
+// that error; v13 reported nothing pinned.
+func markPinned(pkgs []Package, locks lockedNames, readErr error) []Package {
+	if readErr != nil {
+		if !plugin.StructuredErrors() {
+			log.Warn().Err(readErr).Msg("could not read the package lock store, packages report not pinned")
+			return pkgs
+		}
+		if errors.Is(readErr, iofs.ErrPermission) {
+			readErr = llx.Forbidden(fmt.Errorf("cannot read the package lock store: %w", readErr))
+		} else {
+			readErr = fmt.Errorf("cannot read the package lock store: %w", readErr)
+		}
+		for i := range pkgs {
+			pkgs[i].PinnedErr = readErr
+		}
+		return pkgs
+	}
 	if len(locks) == 0 {
 		return pkgs
 	}

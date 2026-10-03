@@ -35,7 +35,9 @@ type Package struct {
 	// Pinned reports that the package manager is configured to hold this
 	// package at its current version: a dpkg or opkg hold, a dnf or yum
 	// versionlock, or a zypper lock.
-	Pinned      bool   `json:"pinned,omitempty"`
+	Pinned bool `json:"pinned,omitempty"`
+	// PinnedErr is why Pinned is unknown: the lock store could not be read.
+	PinnedErr   error  `json:"-"`
 	Description string `json:"description"`
 
 	// this may be the source package or an origin

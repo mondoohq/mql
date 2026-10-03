@@ -440,6 +440,9 @@ func fillPackageArgs(args map[string]*llx.RawData, osPkg *packages.Package, cpes
 	args["arch"] = llx.StringData(osPkg.Arch)
 	args["status"] = llx.StringData(osPkg.Status)
 	args["pinned"] = llx.BoolData(osPkg.Pinned)
+	if osPkg.PinnedErr != nil {
+		args["pinned"] = &llx.RawData{Type: types.Bool, Error: osPkg.PinnedErr}
+	}
 	args["description"] = llx.StringData(osPkg.Description)
 	args["format"] = llx.StringData(osPkg.Format)
 	args["installed"] = llx.BoolData(true)
