@@ -5,6 +5,7 @@ package gemfilelock
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"sort"
 	"strings"
@@ -45,6 +46,7 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 	}
 
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	type section int
 	const (
@@ -56,6 +58,9 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 
 	currentSection := sectionNone
 	inSpecs := false
+	// Bundler always writes a DEPENDENCIES section, and a source section for
+	// any gem; a file with text but neither is not a Gemfile.lock
+	sawText, sawSection := false, false
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -66,6 +71,9 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 		// those this parser has no use for: RUBY VERSION and CHECKSUMS (Bundler
 		// 2.5 and later) follow DEPENDENCIES, and their lines would otherwise
 		// be read as more direct dependencies.
+		if trimmed != "" {
+			sawText = true
+		}
 		if trimmed != "" && line[0] != ' ' && line[0] != '\t' {
 			inSpecs = false
 			switch trimmed {
@@ -74,8 +82,10 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 			// project installs.
 			case "GEM", "GIT", "PATH":
 				currentSection = sectionGemSpecs
+				sawSection = true
 			case "DEPENDENCIES":
 				currentSection = sectionDependencies
+				sawSection = true
 			case "BUNDLED WITH":
 				currentSection = sectionBundledWith
 			default:
@@ -138,6 +148,9 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
+	}
+	if sawText && !sawSection {
+		return nil, errors.New("not a Gemfile.lock: no GEM, GIT, PATH or DEPENDENCIES section")
 	}
 
 	return lock, nil

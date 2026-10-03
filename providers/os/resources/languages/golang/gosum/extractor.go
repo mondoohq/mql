@@ -43,6 +43,7 @@ func parseGoSum(r io.Reader) (*goSum, error) {
 	seen := make(map[string]bool)
 
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {

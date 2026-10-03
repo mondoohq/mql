@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -71,7 +70,10 @@ func (r *mqlRPackages) gatherData() error {
 	var filePaths []string
 
 	if searchPath != "" {
-		t, f := collectRPackages(afs, fs, searchPath)
+		t, f, err := collectRPackages(afs, fs, searchPath)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 		transitiveDeps = append(transitiveDeps, t...)
 		filePaths = append(filePaths, f...)
 	} else {
@@ -87,7 +89,8 @@ func (r *mqlRPackages) gatherData() error {
 				matches = []string{sp}
 			}
 			for _, match := range matches {
-				t, f := collectRPackages(afs, fs, match)
+				t, f, err := collectRPackages(afs, fs, match)
+				skipLockfileError(match, err)
 				transitiveDeps = append(transitiveDeps, t...)
 				filePaths = append(filePaths, f...)
 			}
@@ -118,43 +121,34 @@ func (r *mqlRPackages) gatherData() error {
 	return nil
 }
 
-func collectRPackages(afs *afero.Afero, fs afero.Fs, path string) ([]*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectRPackages(afs *afero.Afero, fs afero.Fs, path string) ([]*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check R path")
-		return nil, nil
+		return nil, nil, err
 	}
 
 	if isDir {
 		renvPath := filepath.Join(path, "renv.lock")
-		if exists, _ := afs.Exists(renvPath); exists {
-			return collectRFromFile(afs, renvPath, &renvlock.Extractor{})
+		exists, err := lockfileExists(afs, renvPath)
+		if err != nil || !exists {
+			return nil, nil, err
 		}
-		return nil, nil
+		return collectRFromFile(afs, renvPath, &renvlock.Extractor{})
 	}
 
 	if strings.HasSuffix(path, "renv.lock") {
 		return collectRFromFile(afs, path, &renvlock.Extractor{})
 	}
 
-	return nil, nil
+	return nil, nil, nil
 }
 
-func collectRFromFile(afs *afero.Afero, path string, extractor languages.Extractor) ([]*languages.Package, []string) {
-	f, err := afs.Open(path)
+func collectRFromFile(afs *afero.Afero, path string, extractor languages.Extractor) ([]*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, extractor)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open R file")
-		return nil, nil
+		return nil, nil, err
 	}
-	defer f.Close()
-
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse R file")
-		return nil, nil
-	}
-
-	return bom.Transitive(), []string{path}
+	return bom.Transitive(), []string{path}, nil
 }
 
 func (r *mqlRPackages) list() ([]any, error) {

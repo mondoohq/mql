@@ -5,6 +5,7 @@ package cabalfreeze
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"strings"
 
@@ -42,14 +43,22 @@ func (e *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 func parseCabalFreeze(r io.Reader) (*cabalFreeze, error) {
 	freeze := &cabalFreeze{}
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	inConstraints := false
+	// cabal freeze always writes a constraints field; a file with text but
+	// none is not a freeze file
+	sawText, sawConstraints := false, false
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		if line != "" && !strings.HasPrefix(line, "--") {
+			sawText = true
+		}
 
 		// Detect constraints block
 		if strings.HasPrefix(line, "constraints:") {
 			inConstraints = true
+			sawConstraints = true
 			// The first constraint may be on the same line
 			line = strings.TrimPrefix(line, "constraints:")
 			line = strings.TrimSpace(line)
@@ -99,6 +108,9 @@ func parseCabalFreeze(r io.Reader) (*cabalFreeze, error) {
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
+	}
+	if sawText && !sawConstraints {
+		return nil, errors.New("not a cabal.project.freeze: no constraints field")
 	}
 
 	return freeze, nil

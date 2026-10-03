@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -73,7 +72,10 @@ func (r *mqlSwiftPackages) gatherData() error {
 	var filePaths []string
 
 	if path != "" {
-		deps, files := collectSwiftPackages(afs, path)
+		deps, files, err := collectSwiftPackages(afs, path)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 		allDeps = append(allDeps, deps...)
 		filePaths = append(filePaths, files...)
 	} else {
@@ -93,7 +95,8 @@ func (r *mqlSwiftPackages) gatherData() error {
 				matches = []string{searchPath}
 			}
 			for _, match := range matches {
-				deps, files := collectSwiftFromDir(afs, match)
+				deps, files, err := collectSwiftFromDir(afs, match)
+				skipLockfileError(match, err)
 				allDeps = append(allDeps, deps...)
 				filePaths = append(filePaths, files...)
 			}
@@ -128,11 +131,10 @@ func (r *mqlSwiftPackages) gatherData() error {
 	return nil
 }
 
-func collectSwiftPackages(afs *afero.Afero, path string) ([]*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectSwiftPackages(afs *afero.Afero, path string) ([]*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check Swift path")
-		return nil, nil
+		return nil, nil, err
 	}
 
 	if isDir {
@@ -142,37 +144,34 @@ func collectSwiftPackages(afs *afero.Afero, path string) ([]*languages.Package, 
 	return collectSwiftFromFile(afs, path)
 }
 
-func collectSwiftFromDir(afs *afero.Afero, dir string) ([]*languages.Package, []string) {
+// collectSwiftFromDir reads Package.resolved and Podfile.lock in dir. A file
+// that cannot be read or parsed is returned as an error alongside what the
+// other holds.
+func collectSwiftFromDir(afs *afero.Afero, dir string) ([]*languages.Package, []string, error) {
 	var allDeps []*languages.Package
 	var files []string
+	var errs []error
 
-	// Check Package.resolved
-	resolvedPath := filepath.Join(dir, "Package.resolved")
-	if exists, _ := afs.Exists(resolvedPath); exists {
-		deps, f := collectSwiftFromFile(afs, resolvedPath)
+	for _, name := range []string{"Package.resolved", "Podfile.lock"} {
+		p := filepath.Join(dir, name)
+		exists, err := lockfileExists(afs, p)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if !exists {
+			continue
+		}
+		deps, f, err := collectSwiftFromFile(afs, p)
+		errs = append(errs, err)
 		allDeps = append(allDeps, deps...)
 		files = append(files, f...)
 	}
 
-	// Check Podfile.lock
-	podPath := filepath.Join(dir, "Podfile.lock")
-	if exists, _ := afs.Exists(podPath); exists {
-		deps, f := collectSwiftFromFile(afs, podPath)
-		allDeps = append(allDeps, deps...)
-		files = append(files, f...)
-	}
-
-	return allDeps, files
+	return allDeps, files, errors.Join(errs...)
 }
 
-func collectSwiftFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string) {
-	f, err := afs.Open(path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open Swift file")
-		return nil, nil
-	}
-	defer f.Close()
-
+func collectSwiftFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string, error) {
 	var extractor languages.Extractor
 	switch {
 	case strings.HasSuffix(path, "Package.resolved"):
@@ -180,16 +179,14 @@ func collectSwiftFromFile(afs *afero.Afero, path string) ([]*languages.Package, 
 	case strings.HasSuffix(path, "Podfile.lock"):
 		extractor = &podfilelock.Extractor{}
 	default:
-		return nil, nil
+		return nil, nil, nil
 	}
 
-	bom, err := extractor.Parse(f, path)
+	bom, err := parseLockfile(afs, path, extractor)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse Swift file")
-		return nil, nil
+		return nil, nil, err
 	}
-
-	return bom.Transitive(), []string{path}
+	return bom.Transitive(), []string{path}, nil
 }
 
 func deduplicateSwiftPackages(pkgs []*languages.Package) []*languages.Package {

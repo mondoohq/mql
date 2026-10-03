@@ -5,8 +5,10 @@ package mixlock
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"regexp"
+	"strings"
 
 	"go.mondoo.com/mql/providers/os/resources/languages"
 	"go.mondoo.com/mql/providers/os/resources/languages/hex"
@@ -35,9 +37,19 @@ func (e *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 		lock.evidence = append(lock.evidence, filename)
 	}
 
+	// mix.lock is a single Elixir map, %{ ... }; a file that does not close
+	// it is truncated
+	var first, last string
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
+		if trimmed := strings.TrimSpace(line); trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			if first == "" {
+				first = trimmed
+			}
+			last = trimmed
+		}
 
 		m := mixLockPattern.FindStringSubmatch(line)
 		if len(m) == 3 {
@@ -50,6 +62,9 @@ func (e *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
+	}
+	if first != "" && (!strings.HasPrefix(first, "%{") || !strings.HasSuffix(last, "}")) {
+		return nil, errors.New("not a mix.lock map: it must open with %{ and close with }")
 	}
 
 	return lock, nil

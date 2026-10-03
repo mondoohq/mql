@@ -6,6 +6,7 @@ package resources
 import (
 	"archive/zip"
 	"bytes"
+	"os"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -70,7 +71,8 @@ func TestJavaDefaultsFindJPackageSubdirectories(t *testing.T) {
 // Fails if it skips subdirectories again.
 func TestJavaPathDirFindsJPackageSubdirectories(t *testing.T) {
 	afs := suseJavaFs(t)
-	_, _, transitive, files := collectJavaFromDir(afs, "/usr/share/java")
+	_, _, transitive, files, err := collectJavaFromDir(afs, "/usr/share/java")
+	require.NoError(t, err)
 	assert.Contains(t, packageNames(transitive), "org.apache.logging.log4j:log4j-core@2.26.1")
 	assert.Contains(t, files, "/usr/share/java/jackson-dataformats/jackson-dataformat-xml.jar")
 	assert.NotContains(t, files, "/usr/share/java/a/b/too-deep.jar")
@@ -87,9 +89,15 @@ func TestFindJavaArchivesDepth(t *testing.T) {
 	afs := &afero.Afero{Fs: fs}
 	isJar := func(name string) bool { return len(name) > 4 && name[len(name)-4:] == ".jar" }
 
-	assert.Equal(t, []string{"/d/top.jar"}, findJavaArchives(afs, "/d", 0, isJar))
-	assert.Equal(t, []string{"/d/top.jar", "/d/a/one.jar"}, findJavaArchives(afs, "/d", 1, isJar))
-	assert.Empty(t, findJavaArchives(afs, "/missing", 2, isJar))
+	got, err := findJavaArchives(afs, "/d", 0, isJar)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/d/top.jar"}, got)
+	got, err = findJavaArchives(afs, "/d", 1, isJar)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/d/top.jar", "/d/a/one.jar"}, got)
+	got, err = findJavaArchives(afs, "/missing", 2, isJar)
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	assert.Empty(t, got)
 }
 
 // Application directories stay top-level: their node_modules and vendor

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -64,12 +63,16 @@ func (r *mqlGithubactionsPackages) gatherData() error {
 	var filePaths []string
 
 	if path != "" {
-		deps, files := collectGithubActionsPackages(afs, fs, path)
+		deps, files, err := collectGithubActionsPackages(afs, fs, path)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 		allDeps = append(allDeps, deps...)
 		filePaths = append(filePaths, files...)
 	} else {
 		// Search default location: .github/workflows/
-		deps, files := collectGithubActionsFromDir(afs, ".github/workflows")
+		deps, files, err := collectGithubActionsFromDir(afs, ".github/workflows")
+		skipLockfileError(".github/workflows", err)
 		allDeps = append(allDeps, deps...)
 		filePaths = append(filePaths, files...)
 	}
@@ -102,28 +105,44 @@ func (r *mqlGithubactionsPackages) gatherData() error {
 	return nil
 }
 
-func collectGithubActionsPackages(afs *afero.Afero, fs afero.Fs, path string) ([]*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+// collectGithubActionsPackages reads the workflow file at path, or the
+// workflow files in the directory at path. A repository checkout keeps its
+// workflows in .github/workflows, so for a directory those are read as well.
+func collectGithubActionsPackages(afs *afero.Afero, fs afero.Fs, path string) ([]*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check GitHub Actions path")
-		return nil, nil
+		return nil, nil, err
 	}
 
-	if isDir {
-		return collectGithubActionsFromDir(afs, path)
+	if !isDir {
+		return collectGithubActionsFromFile(afs, path)
 	}
 
-	return collectGithubActionsFromFile(afs, path)
+	deps, files, err := collectGithubActionsFromDir(afs, path)
+	errs := []error{err}
+	workflowsDir := filepath.Join(path, ".github", "workflows")
+	if exists, err := lockfileExists(afs, workflowsDir); err != nil {
+		errs = append(errs, err)
+	} else if exists {
+		d, f, err := collectGithubActionsFromDir(afs, workflowsDir)
+		errs = append(errs, err)
+		deps = append(deps, d...)
+		files = append(files, f...)
+	}
+	return deps, files, errors.Join(errs...)
 }
 
-func collectGithubActionsFromDir(afs *afero.Afero, dir string) ([]*languages.Package, []string) {
+// collectGithubActionsFromDir reads the workflow files in dir. A file that
+// cannot be read or parsed is returned as an error alongside what the others
+// hold.
+func collectGithubActionsFromDir(afs *afero.Afero, dir string) ([]*languages.Package, []string, error) {
 	var allDeps []*languages.Package
 	var files []string
+	var errs []error
 
 	entries, err := afs.ReadDir(dir)
 	if err != nil {
-		log.Debug().Err(err).Str("path", dir).Msg("could not read GitHub Actions workflow directory")
-		return nil, nil
+		return nil, nil, lockfileReadError(dir, err)
 	}
 
 	for _, entry := range entries {
@@ -134,30 +153,21 @@ func collectGithubActionsFromDir(afs *afero.Afero, dir string) ([]*languages.Pac
 		if !isWorkflowFile(name) {
 			continue
 		}
-		deps, f := collectGithubActionsFromFile(afs, filepath.Join(dir, name))
+		deps, f, err := collectGithubActionsFromFile(afs, filepath.Join(dir, name))
+		errs = append(errs, err)
 		allDeps = append(allDeps, deps...)
 		files = append(files, f...)
 	}
 
-	return allDeps, files
+	return allDeps, files, errors.Join(errs...)
 }
 
-func collectGithubActionsFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string) {
-	f, err := afs.Open(path)
+func collectGithubActionsFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, &workflows.Extractor{})
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open workflow file")
-		return nil, nil
+		return nil, nil, err
 	}
-	defer f.Close()
-
-	extractor := &workflows.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse workflow file")
-		return nil, nil
-	}
-
-	return bom.Transitive(), []string{path}
+	return bom.Transitive(), []string{path}, nil
 }
 
 func isWorkflowFile(name string) bool {

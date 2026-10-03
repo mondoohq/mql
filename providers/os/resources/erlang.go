@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -69,7 +68,10 @@ func (r *mqlErlangPackages) gatherData() error {
 	var filePaths []string
 
 	if path != "" {
-		t, f := collectErlangPackages(afs, fs, path)
+		t, f, err := collectErlangPackages(afs, fs, path)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 		transitiveDeps = append(transitiveDeps, t...)
 		filePaths = append(filePaths, f...)
 	} else {
@@ -85,7 +87,8 @@ func (r *mqlErlangPackages) gatherData() error {
 				matches = []string{searchPath}
 			}
 			for _, match := range matches {
-				t, f := collectErlangPackages(afs, fs, match)
+				t, f, err := collectErlangPackages(afs, fs, match)
+				skipLockfileError(match, err)
 				transitiveDeps = append(transitiveDeps, t...)
 				filePaths = append(filePaths, f...)
 			}
@@ -116,43 +119,33 @@ func (r *mqlErlangPackages) gatherData() error {
 	return nil
 }
 
-func collectErlangPackages(afs *afero.Afero, _ afero.Fs, path string) ([]*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectErlangPackages(afs *afero.Afero, _ afero.Fs, path string) ([]*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check Erlang path")
-		return nil, nil
+		return nil, nil, err
 	}
 
 	if isDir {
 		lockPath := filepath.Join(path, "rebar.lock")
-		if exists, _ := afs.Exists(lockPath); exists {
-			return collectFromErlangFile(afs, lockPath)
+		exists, err := lockfileExists(afs, lockPath)
+		if err != nil || !exists {
+			return nil, nil, err
 		}
-		return nil, nil
+		return collectFromErlangFile(afs, lockPath)
 	}
 
 	if strings.HasSuffix(path, "rebar.lock") {
 		return collectFromErlangFile(afs, path)
 	}
-	return nil, nil
+	return nil, nil, nil
 }
 
-func collectFromErlangFile(afs *afero.Afero, path string) ([]*languages.Package, []string) {
-	f, err := afs.Open(path)
+func collectFromErlangFile(afs *afero.Afero, path string) ([]*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, &rebarlock.Extractor{})
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open rebar.lock")
-		return nil, nil
+		return nil, nil, err
 	}
-	defer f.Close()
-
-	extractor := &rebarlock.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse rebar.lock")
-		return nil, nil
-	}
-
-	return bom.Transitive(), []string{path}
+	return bom.Transitive(), []string{path}, nil
 }
 
 func (r *mqlErlangPackages) list() ([]any, error) {

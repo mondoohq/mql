@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -64,12 +63,16 @@ func (r *mqlTerraformPackages) gatherData() error {
 	var filePaths []string
 
 	if path != "" {
-		deps, files := collectTerraformPackages(afs, path)
+		deps, files, err := collectTerraformPackages(afs, path)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 		allDeps = append(allDeps, deps...)
 		filePaths = append(filePaths, files...)
 	} else {
 		// Search for .terraform.lock.hcl in current directory
-		deps, files := collectTerraformFromFile(afs, ".terraform.lock.hcl")
+		deps, files, err := collectTerraformFromFile(afs, ".terraform.lock.hcl")
+		skipLockfileError(".terraform.lock.hcl", err)
 		allDeps = append(allDeps, deps...)
 		filePaths = append(filePaths, files...)
 	}
@@ -98,11 +101,10 @@ func (r *mqlTerraformPackages) gatherData() error {
 	return nil
 }
 
-func collectTerraformPackages(afs *afero.Afero, path string) ([]*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectTerraformPackages(afs *afero.Afero, path string) ([]*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check Terraform path")
-		return nil, nil
+		return nil, nil, err
 	}
 
 	if isDir {
@@ -114,25 +116,17 @@ func collectTerraformPackages(afs *afero.Afero, path string) ([]*languages.Packa
 		return collectTerraformFromFile(afs, path)
 	}
 
-	return nil, nil
+	return nil, nil, nil
 }
 
-func collectTerraformFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string) {
-	f, err := afs.Open(path)
+// collectTerraformFromFile reads the lock file at path. A lock file that does
+// not exist is returned as an os.ErrNotExist error.
+func collectTerraformFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, &lockfile.Extractor{})
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open Terraform lock file")
-		return nil, nil
+		return nil, nil, err
 	}
-	defer f.Close()
-
-	extractor := &lockfile.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse Terraform lock file")
-		return nil, nil
-	}
-
-	return bom.Transitive(), []string{path}
+	return bom.Transitive(), []string{path}, nil
 }
 
 func (r *mqlTerraformPackages) list() ([]any, error) {
