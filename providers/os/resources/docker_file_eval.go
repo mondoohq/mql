@@ -117,6 +117,9 @@ func newDockerfileEval(escapeToken rune, metaArgs []instructions.ArgCommand) *do
 	}
 	for _, cmd := range metaArgs {
 		for _, kv := range cmd.Args {
+			// Like BuildKit, a global ARG without a default adds no value (and
+			// keeps an earlier one). A stage that redeclares it then finds no
+			// value, and whatever reads it is unknown.
 			if kv.Value == nil {
 				continue
 			}

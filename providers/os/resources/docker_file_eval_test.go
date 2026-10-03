@@ -64,6 +64,18 @@ func TestParseDockerfile_UserFromVariable(t *testing.T) {
 			user: "app", root: false,
 		},
 		{
+			// FOO has no value in the Dockerfile at all: only a build argument
+			// can set it, so the user is unknown
+			name: "global ARG without a default redeclared in the stage",
+			src:  "ARG FOO\nFROM alpine:3.20\nARG FOO\nUSER $FOO\n",
+			user: "$FOO", root: true,
+		},
+		{
+			name: "a later bare global ARG keeps the earlier default",
+			src:  "ARG FOO=app\nARG FOO\nFROM alpine:3.20\nARG FOO\nUSER $FOO\n",
+			user: "app", root: false,
+		},
+		{
 			name: "ARG without a default is set only at build time",
 			src:  "FROM alpine:3.20\nARG UID\nUSER $UID\n",
 			user: "$UID", root: true,
