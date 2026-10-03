@@ -295,9 +295,6 @@ func fileExistsOn(afs *afero.Afero, filePath string) bool {
 	return err == nil && !stat.IsDir()
 }
 
-// confPath resolves a file under conf/ the way Catalina does: CATALINA_BASE
-// owns instance configuration, CATALINA_HOME is the fallback. It returns the
-// path that actually exists, or the empty string when neither does.
 // explicitPathsExist returns an error when tomcat(home:) or tomcat(base:)
 // names a directory that does not exist. Reading nothing from it reported no
 // users, connectors or properties, so users.none(...) passed for an
@@ -315,15 +312,16 @@ func (t *mqlTomcat) explicitPathsExist() error {
 		if !f.v.IsSet() || f.v.Data == "" {
 			continue
 		}
-		if ok, err := afs.DirExists(f.v.Data); err == nil && !ok {
-			if _, statErr := afs.Stat(f.v.Data); errors.Is(statErr, fs.ErrNotExist) {
-				return fmt.Errorf("tomcat %s %q does not exist", f.name, f.v.Data)
-			}
+		if _, err := afs.Stat(f.v.Data); errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("tomcat %s %q does not exist", f.name, f.v.Data)
 		}
 	}
 	return nil
 }
 
+// confPath resolves a file under conf/ the way Catalina does: CATALINA_BASE
+// owns instance configuration, CATALINA_HOME is the fallback. It returns the
+// path that actually exists, or the empty string when neither does.
 func (t *mqlTomcat) confPath(name string) string {
 	conn, ok := t.MqlRuntime.Connection.(shared.Connection)
 	if !ok {
