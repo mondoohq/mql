@@ -6,24 +6,28 @@ package iox
 import (
 	"bufio"
 	"io"
-	"math"
 )
 
+// MaxLineBytes is the longest line NewLineScanner reads. It is far above any
+// line a scanned system produces: Linux caps a process's whole argv and
+// environment at 6 MiB, which bounds the longest ps line, and config files and
+// /etc databases stay well below that. It also bounds the memory one scanner
+// holds, so a target that serves a file with no newlines cannot exhaust the
+// scanner's memory.
+const MaxLineBytes = 16 << 20
+
 // NewLineScanner returns a bufio.Scanner that splits r into lines like
-// bufio.ScanLines, without the default 64 KiB limit on a line.
+// bufio.ScanLines, with lines up to MaxLineBytes instead of the default
+// 64 KiB.
 //
 // A default scanner stops at the first longer line and Scan returns false as
 // if the input had ended, so a parser that does not check Err reports the
-// lines before it as the whole input. Config files, /etc databases and
-// command output such as ps (a process's full command line) have no such
-// limit. Callers must still check Err after the loop: a read error also ends
-// Scan.
-//
-// A line is held in memory whole, so a reader with no newlines grows the
-// buffer to its full size. Use it for input that is read in full anyway
-// (files, command output), not for unbounded streams.
+// lines before it as the whole input. Callers must check Err after the loop:
+// a line over MaxLineBytes ends Scan with bufio.ErrTooLong, and a read error
+// ends it too, and either has to fail the parse rather than return the lines
+// read so far.
 func NewLineScanner(r io.Reader) *bufio.Scanner {
 	s := bufio.NewScanner(r)
-	s.Buffer(make([]byte, 0, 4096), math.MaxInt)
+	s.Buffer(make([]byte, 0, 4096), MaxLineBytes)
 	return s
 }

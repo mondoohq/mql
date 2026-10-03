@@ -12,7 +12,6 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/types"
-	"go.mondoo.com/mql/utils/iox"
 )
 
 // sysrcPaths lists the rc.conf file paths to check on FreeBSD systems.
@@ -216,9 +215,8 @@ func ParseSysrc(content string) []SysrcEntry {
 	seen := map[string]int{} // name -> index in entries
 	var entries []SysrcEntry
 
-	scanner := iox.NewLineScanner(strings.NewReader(content))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	for raw := range strings.Lines(content) {
+		line := strings.TrimSpace(raw)
 
 		// Skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "#") {
