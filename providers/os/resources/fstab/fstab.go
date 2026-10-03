@@ -15,7 +15,6 @@
 package fstab
 
 import (
-	"bufio"
 	"io"
 	"strconv"
 	"strings"
@@ -39,7 +38,6 @@ type Entry struct {
 // ignored"), so it does not hide the lines around it.
 func Parse(file io.Reader) ([]Entry, error) {
 	scanner := iox.NewLineScanner(file)
-	scanner.Split(bufio.ScanLines)
 
 	var entries []Entry
 	for scanner.Scan() {

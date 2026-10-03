@@ -18,6 +18,10 @@ import (
 // command output such as ps (a process's full command line) have no such
 // limit. Callers must still check Err after the loop: a read error also ends
 // Scan.
+//
+// A line is held in memory whole, so a reader with no newlines grows the
+// buffer to its full size. Use it for input that is read in full anyway
+// (files, command output), not for unbounded streams.
 func NewLineScanner(r io.Reader) *bufio.Scanner {
 	s := bufio.NewScanner(r)
 	s.Buffer(make([]byte, 0, 4096), math.MaxInt)
