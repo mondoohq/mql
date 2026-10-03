@@ -92,6 +92,23 @@ func TestAuditdRulesReadsRulesDirLikeAugenrules(t *testing.T) {
 	assert.Equal(t, []string{"9", "10"}, controlValues(t, rules, "-b"))
 }
 
+func TestAuditdRulesConcatenatesRulesDirLikeAugenrules(t *testing.T) {
+	// augenrules cats the files with no separator, so a file whose last line
+	// has no newline runs into the next file's first line. auditctl then
+	// rejects the merged line, and the kernel has neither watch.
+	runtime := newAuditdFilesTestRuntime(t, map[string]string{
+		"/etc/audit/rules.d/50-sweep.rules": "-w /etc/hosts -p wa -k hosts\n",
+		"/etc/audit/rules.d/59-nonl.rules":  "-w /etc/sudoers -p wa -k sudoers",
+		"/etc/audit/rules.d/60-next.rules":  "-w /etc/issue -p wa -k after60\n",
+	}, "/etc/audit/rules.d")
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	paths := watchPaths(t, rules)
+	assert.NotContains(t, paths, "watch:/etc/sudoers")
+	assert.NotContains(t, paths, "watch:/etc/issue")
+	assert.Contains(t, paths, "watch:/etc/hosts")
+}
+
 func TestAuditdRulesFallsBackToAuditRules(t *testing.T) {
 	t.Run("rules.d missing", func(t *testing.T) {
 		runtime := newAuditdFilesTestRuntime(t, map[string]string{

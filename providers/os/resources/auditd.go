@@ -402,16 +402,19 @@ func (s *mqlAuditdRules) load(path string) error {
 		return nil
 	}
 
-	var errors multierr.Errors
+	// augenrules cats the rules files with nothing in between, so a file
+	// whose last line has no newline runs into the next file's first line
+	var content strings.Builder
 	for _, file := range files {
-		content := file.GetContent()
-		if content.Error != nil {
-			s.setLoadError(content.Error)
-			return content.Error
+		c := file.GetContent()
+		if c.Error != nil {
+			s.setLoadError(c.Error)
+			return c.Error
 		}
-
-		s.parse(content.Data, &errors)
+		content.WriteString(c.Data)
 	}
+	var errors multierr.Errors
+	s.parse(content.String(), &errors)
 
 	singleFile := len(files) == 1 && files[0].Path.Data == path
 	s.Immutable = plugin.TValue[bool]{Data: auditdImmutable(s.Controls.Data, singleFile), State: plugin.StateIsSet}
@@ -518,11 +521,17 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 		syscalls := []any{}
 		other := [][2]string{}
 
+		positional := false
 		for line != "" {
 			k, v, idx := parseKeyVal(line)
 			line = line[idx:]
 
 			switch k {
+			case "":
+				// auditctl rejects a line with an argument that follows no
+				// option ("parameter passed without an option given"), as when
+				// augenrules runs two rules files' lines together
+				positional = true
 			case "-a", "-A", "-d":
 				// -A prepends the rule instead of appending it, and -d deletes
 				// the matching rule added earlier
@@ -570,6 +579,9 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 			default:
 				other = append(other, [2]string{k, v})
 			}
+		}
+		if positional {
+			continue
 		}
 
 		if resourceName != "auditd.rule.control" {
