@@ -30,6 +30,12 @@ func (s *RpmNewestKernel) Name() string {
 // verdict sentence untranslated.
 const rpmNeedsRestartingCmd = "LC_ALL=C needs-restarting -r"
 
+// dnfNeedsRestartingCmd is the same check as a dnf subcommand. The
+// needs-restarting binary comes from dnf4's dnf-utils, which a dnf5 host
+// (Fedora 41 and later) does not install; dnf5-plugins provides the
+// subcommand with the same verdicts and exit codes.
+const dnfNeedsRestartingCmd = "LC_ALL=C dnf needs-restarting -r"
+
 // rpmQueryKernelCmd lists the packages that provide "kernel": the kernel
 // package on RHEL 7, kernel and kernel-core since RHEL 8, and only
 // kernel-core on minimal Fedora images that don't install the metapackage.
@@ -50,21 +56,39 @@ func parseNeedsRestarting(exitStatus int, stdout string) (required bool, ok bool
 	}
 }
 
+// needsRestarting runs a needs-restarting command and returns its verdict,
+// with ok false when it gave none.
+func (s *RpmNewestKernel) needsRestarting(command string) (required bool, ok bool) {
+	cmd, err := s.conn.RunCommand(command)
+	if err != nil {
+		return false, false
+	}
+	out, _ := io.ReadAll(cmd.Stdout)
+	return parseNeedsRestarting(cmd.ExitStatus, string(out))
+}
+
 func (s *RpmNewestKernel) RebootPending() (bool, error) {
 	// if it is a static asset, no reboot is pending
 	if !s.conn.Capabilities().Has(shared.Capability_RunCommand) {
 		return false, nil
 	}
 
+	if pending, ok, err := ostreeRebootPending(s.conn); err != nil {
+		return false, err
+	} else if ok && pending {
+		return true, nil
+	}
+
 	// needs-restarting knows more than the kernel comparison below (core
 	// library updates), so a reboot it asks for counts. Its "no" doesn't
 	// overrule a newer installed kernel: it only looks at packages updated
 	// after boot.
-	if cmd, err := s.conn.RunCommand(rpmNeedsRestartingCmd); err == nil {
-		out, _ := io.ReadAll(cmd.Stdout)
-		if required, ok := parseNeedsRestarting(cmd.ExitStatus, string(out)); ok && required {
+	if required, ok := s.needsRestarting(rpmNeedsRestartingCmd); ok {
+		if required {
 			return true, nil
 		}
+	} else if required, ok := s.needsRestarting(dnfNeedsRestartingCmd); ok && required {
+		return true, nil
 	}
 
 	// get installed kernel version
