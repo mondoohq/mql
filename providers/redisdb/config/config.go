@@ -94,6 +94,18 @@ Examples:
 					Desc:    "Path to the trusted CA certificate for TLS verification",
 				},
 				{
+					Long:    "tls-cert",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Path to the client certificate, for servers with tls-auth-clients yes",
+				},
+				{
+					Long:    "tls-key",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Path to the private key of the client certificate",
+				},
+				{
 					Long:    "tls-insecure",
 					Type:    plugin.FlagType_Bool,
 					Default: "false",

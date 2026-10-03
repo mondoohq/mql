@@ -17,6 +17,7 @@ Arguments:
 - `--database` - the logical database index to select (default `0`).
 - `--tls` - connect over TLS.
 - `--tls-ca` - path to a CA certificate to verify the server.
+- `--tls-cert`, `--tls-key` - client certificate and its key, for a server with `tls-auth-clients yes`. Either implies `--tls`.
 - `--tls-insecure` - skip TLS certificate verification (testing only).
 
 ```shell
@@ -138,3 +139,4 @@ If `redisdb.instance.users` comes back empty, or errors with a forbidden error, 
 ## Notes
 
 - `rename-command` remaps are a startup-only directive and are not readable over a connection (`CONFIG GET` does not return them), so the provider does not attempt to report them.
+- On a server where `CONFIG` itself is renamed or removed (`rename-command CONFIG ""`), and on Sentinel, which has no `CONFIG` command, the fields read from `CONFIG GET` (`protectedMode`, `bind`, `bindsAllInterfaces`, `requirepassSet`, the ports, the TLS and ACL settings, and `config`) report an error saying so. The version, mode, and access-control users are still read.

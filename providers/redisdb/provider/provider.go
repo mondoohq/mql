@@ -56,8 +56,10 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 		conf.Host = h
 	}
 
-	if v := flagString("tls-ca"); v != "" {
-		conf.Options["tls-ca"] = v
+	for _, name := range []string{"tls-ca", "tls-cert", "tls-key"} {
+		if v := flagString(name); v != "" {
+			conf.Options[name] = v
+		}
 	}
 	for _, name := range []string{"tls", "tls-insecure"} {
 		if x, ok := flags[name]; ok && x.RawData().Value == true {

@@ -37,21 +37,30 @@ func initRedisdbInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	// report the refusal (null in v13) rather than a default posture.
 	configReadable := true
 	var configErr error
-	cfg, err := client.ConfigGet(ctx, "*").Result()
-	if err != nil {
-		if !isNoPerm(err) {
-			return nil, nil, err
-		}
-		configReadable = false
-		configErr = refusedField(err, "+config|get")
-		cfg = map[string]string{}
-	}
 
 	isValkey := info["valkey_version"] != "" || info["server_name"] == "valkey"
 	// Redis reports the server mode as redis_mode; Valkey uses server_mode.
 	mode := info["redis_mode"]
 	if mode == "" {
 		mode = info["server_mode"]
+	}
+
+	cfg, err := client.ConfigGet(ctx, "*").Result()
+	if err != nil {
+		switch {
+		case isNoPerm(err):
+			configErr = refusedField(err, "+config|get")
+		case isUnknownCommand(err):
+			// Sentinel has no CONFIG command, and rename-command CONFIG ""
+			// (a common hardening step) removes it. The identity, users, and
+			// everything else not read from CONFIG GET stay readable; the
+			// CONFIG-derived fields report why they cannot be read.
+			configErr = configUnavailable(mode, err)
+		default:
+			return nil, nil, err
+		}
+		configReadable = false
+		cfg = map[string]string{}
 	}
 
 	// INFO-derived identity is always available.

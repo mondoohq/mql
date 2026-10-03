@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -78,4 +79,23 @@ func atoiOr(s string, fallback int64) int64 {
 		return fallback
 	}
 	return v
+}
+
+// isUnknownCommand reports whether the server does not have the command at all:
+// it was renamed or removed with rename-command, or the server mode (Sentinel)
+// does not implement it.
+func isUnknownCommand(err error) bool {
+	return err != nil && strings.HasPrefix(err.Error(), "ERR unknown command")
+}
+
+// configUnavailable is the error the CONFIG GET-derived fields report when the
+// server has no CONFIG command. v13 failed the whole instance on it, so it is
+// an error in both modes rather than a null. It is not classified: the
+// command is neither refused nor inapplicable, the posture just cannot be read
+// over a connection.
+func configUnavailable(mode string, err error) error {
+	if mode == "sentinel" {
+		return fmt.Errorf("a Sentinel server does not implement CONFIG GET, so the server configuration cannot be read: %w", err)
+	}
+	return fmt.Errorf("CONFIG GET is not available on this server (CONFIG renamed or removed with rename-command), so the server configuration cannot be read: %w", err)
 }
