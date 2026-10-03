@@ -76,8 +76,8 @@ func initRedisdbInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 }
 
 // setConfigFields populates the CONFIG GET-derived posture fields. When the
-// config was not readable they carry configErr, or are null when that is nil
-// (v13), so a denied read is never reported as a posture value.
+// config was not readable they carry configErr, or are null when that is nil,
+// so an unread config is never reported as a posture value.
 func (r *mqlRedisdbInstance) setConfigFields(cfg map[string]string, readable bool) {
 	if !readable {
 		null := plugin.StateIsSet | plugin.StateIsNull
