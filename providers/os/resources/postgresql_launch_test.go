@@ -77,3 +77,15 @@ func TestPostgresqlConfCommandLineOverrides(t *testing.T) {
 		assertPgCommandLine(t, pgConfOf(t, newLaunchRuntime(t, files, nil, image)))
 	})
 }
+
+// The server reads postgresql.auto.conf after postgresql.conf and applies its
+// command line over both, so ALTER SYSTEM wins over the file and loses to -c.
+func TestPostgresqlConfCommandLineOverridesAutoConf(t *testing.T) {
+	files := mergeFiles(pgImageFiles, map[string]string{
+		"/var/lib/postgresql/data/postmaster.pid":       pgPostmasterPid,
+		"/var/lib/postgresql/data/postgresql.auto.conf": "password_encryption = 'scram-sha-256'\nlog_disconnections = 'on'\n",
+	})
+	conf := pgConfOf(t, newLaunchRuntime(t, files, pgrepPostgres, nil))
+	assertPgCommandLine(t, conf)
+	assert.True(t, conf.GetLogDisconnections().Data, "auto.conf applies over the file")
+}
