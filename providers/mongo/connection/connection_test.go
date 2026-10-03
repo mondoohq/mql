@@ -153,3 +153,32 @@ func TestPortDefaultAndOverride(t *testing.T) {
 		t.Errorf("port = %d, want 27018", p)
 	}
 }
+
+// A bare host is one server and must be audited as that server, not as the
+// primary of the replica set it belongs to.
+func TestClientOptionsDirectForBareHost(t *testing.T) {
+	opts, err := newTestConn(t, map[string]string{OptionHost: "127.0.0.1", OptionPort: "28002"}).clientOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.Direct == nil || !*opts.Direct {
+		t.Errorf("a bare host must use a direct connection, got %v", opts.Direct)
+	}
+	if len(opts.Hosts) != 1 || opts.Hosts[0] != "127.0.0.1:28002" {
+		t.Errorf("hosts = %v", opts.Hosts)
+	}
+}
+
+// A connection string keeps the topology it asks for.
+func TestClientOptionsConnectionStringKeepsTopology(t *testing.T) {
+	opts, err := newTestConn(t, map[string]string{OptionHost: "mongodb://a.example.com,b.example.com/?replicaSet=rs0"}).clientOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.Direct != nil && *opts.Direct {
+		t.Error("a replica-set connection string must not be forced direct")
+	}
+	if opts.ReplicaSet == nil || *opts.ReplicaSet != "rs0" {
+		t.Errorf("replicaSet = %v", opts.ReplicaSet)
+	}
+}

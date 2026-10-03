@@ -44,8 +44,7 @@ func initMongoInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 		tlsMode = "disabled"
 	}
 
-	authz := toStr(deepGet(parsed, "security", "authorization"))
-	authEnabled := authz == "enabled"
+	authEnabled := authEnforced(parsed)
 
 	// javascriptEnabled defaults to true when unset.
 	jsEnabled := true
@@ -61,7 +60,10 @@ func initMongoInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	}
 	bindIp := toStr(deepGet(parsed, "net", "bindIp"))
 	if bindIp == "" {
-		bindIp = conn.Host()
+		// Unset means the server default, localhost only (MongoDB 3.6+). The
+		// host this scan connected through says nothing about what the server
+		// binds to. --bind_ip_all is reported as bindIp "*".
+		bindIp = "localhost"
 	}
 
 	args["__id"] = llx.StringData(serverID)

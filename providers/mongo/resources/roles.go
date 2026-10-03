@@ -115,7 +115,12 @@ func (r *mqlMongoRole) privileges() ([]any, error) {
 			"database":   llx.StringData(toStr(resource["db"])),
 			"collection": llx.StringData(toStr(resource["collection"])),
 			"cluster":    llx.BoolData(toBool(resource["cluster"])),
-			"actions":    llx.ArrayData(actions, types.String),
+			// anyResource and system_buckets resources have no collection
+			// key, so without their own fields they read like the
+			// every-database grant.
+			"anyResource":   llx.BoolData(toBool(resource["anyResource"])),
+			"systemBuckets": systemBucketsData(resource),
+			"actions":       llx.ArrayData(actions, types.String),
 		})
 		if err != nil {
 			return nil, err
@@ -140,6 +145,16 @@ func (r *mqlMongoRole) inheritedRoles() ([]any, error) {
 		list = append(list, role)
 	}
 	return list, nil
+}
+
+// systemBucketsData returns the system_buckets name of a privilege resource,
+// or null when the resource is not a bucket resource.
+func systemBucketsData(resource bson.M) *llx.RawData {
+	v, ok := resource["system_buckets"]
+	if !ok {
+		return llx.NilData
+	}
+	return llx.StringData(toStr(v))
 }
 
 // roleDatabases returns every database that has at least one custom role

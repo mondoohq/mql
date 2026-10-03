@@ -40,7 +40,7 @@ func (r *mqlMongoInstance) users() ([]any, error) {
 	serverID := r.__id
 	// One memoized lookup for the whole listing: users share roles, so the role
 	// graph is read once no matter how many accounts reference it.
-	lookup := newServerRoleLookup(conn)
+	serverRoles := newServerRoles(conn)
 	list := []any{}
 	for _, u := range users {
 		m := asMap(u)
@@ -53,11 +53,22 @@ func (r *mqlMongoInstance) users() ([]any, error) {
 
 		// Role grants are transitive, so the privilege decision is made on the
 		// inheritance-expanded set rather than on the direct grants alone.
-		effective, err := resolveEffectiveRoles(refs, lookup)
+		effective, err := resolveEffectiveRoles(refs, serverRoles.lookup)
 		if err != nil {
 			return nil, err
 		}
-		privileged := hasPrivilegedRole(effective)
+		// A built-in privileged role, or a custom role whose privileges amount
+		// to one (anyAction, anyResource, user administration, data access in
+		// every database).
+		isPrivileged := llx.BoolData(true)
+		if !hasPrivilegedRole(effective) && !serverRoles.grantsPrivilegedAccess(effective) {
+			isPrivileged = llx.BoolData(false)
+			// The server refused to show some role: what it hides may be
+			// privileged, so false would be a guess.
+			if serverRoles.refused != nil {
+				isPrivileged = &llx.RawData{Type: types.Bool, Error: classifyRoleRefusal(serverRoles.refused)}
+			}
+		}
 
 		mechanisms := []any{}
 		for _, x := range asArray(m["mechanisms"]) {
@@ -70,7 +81,7 @@ func (r *mqlMongoInstance) users() ([]any, error) {
 			"db":           llx.StringData(db),
 			"userId":       llx.StringData(toStr(m["_id"])),
 			"mechanisms":   llx.ArrayData(mechanisms, types.String),
-			"isPrivileged": llx.BoolData(privileged),
+			"isPrivileged": isPrivileged,
 		})
 		if err != nil {
 			return nil, err
@@ -82,6 +93,12 @@ func (r *mqlMongoInstance) users() ([]any, error) {
 		list = append(list, mqlUser)
 	}
 	return list, nil
+}
+
+// classifyRoleRefusal marks a refused rolesInfo as Forbidden, naming the
+// action it needs.
+func classifyRoleRefusal(err error) error {
+	return llx.Forbidden(err, llx.WithPermissions("viewRole"))
 }
 
 func (r *mqlMongoUser) roles() ([]any, error) {

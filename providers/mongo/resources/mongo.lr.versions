@@ -34,9 +34,11 @@ mongo.role.inheritedRoles 13.0.0
 mongo.role.isBuiltin 13.0.0
 mongo.role.privilege 13.0.0
 mongo.role.privilege.actions 13.0.0
+mongo.role.privilege.anyResource 14.0.2
 mongo.role.privilege.cluster 13.0.0
 mongo.role.privilege.collection 13.0.0
 mongo.role.privilege.database 13.0.0
+mongo.role.privilege.systemBuckets 14.0.2
 mongo.role.privileges 13.0.0
 mongo.role.role 13.0.0
 mongo.user 13.0.0
