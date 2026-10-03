@@ -126,7 +126,7 @@ func (r *mqlMysqldbInstance) plugins() ([]any, error) {
 			return nil, err
 		}
 		res, err := CreateResource(r.MqlRuntime, "mysqldb.plugin", map[string]*llx.RawData{
-			"__id":    llx.StringData(r.__id + "/plugin/" + name),
+			"__id":    llx.StringData(pluginResourceID(r.__id, name, typ)),
 			"name":    llx.StringData(name),
 			"status":  llx.StringData(status),
 			"type":    llx.StringData(typ),

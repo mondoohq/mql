@@ -75,15 +75,24 @@ func schemaResourceID(serverID, name string) string {
 	return serverID + "/schema/" + name
 }
 
-func privilegeResourceID(parentID, scope, schema, table, privilegeType string) string {
-	return parentID + "/priv/" + scope + "/" + schema + "/" + table + "/" + privilegeType
+// privilegeResourceID keys a privilege row. The grantee is part of the key
+// because schema and table privileges list every account under one parent.
+func privilegeResourceID(parentID, granteeStr, scope, schema, table, privilegeType string) string {
+	return parentID + "/priv/" + granteeStr + "/" + scope + "/" + schema + "/" + table + "/" + privilegeType
+}
+
+// pluginResourceID keys a plugin row. The type is part of the key because one
+// name can be registered under several plugin types (MariaDB's uuid is both a
+// DATA TYPE and a FUNCTION).
+func pluginResourceID(serverID, name, pluginType string) string {
+	return serverID + "/plugin/" + pluginType + "/" + name
 }
 
 // --- privileges -------------------------------------------------------------
 
 func newMysqldbPrivilege(runtime *plugin.Runtime, parentID, granteeStr, scope, schema, table, privilegeType string, grantable bool) (*mqlMysqldbPrivilege, error) {
 	res, err := CreateResource(runtime, "mysqldb.privilege", map[string]*llx.RawData{
-		"__id":          llx.StringData(privilegeResourceID(parentID, scope, schema, table, privilegeType)),
+		"__id":          llx.StringData(privilegeResourceID(parentID, granteeStr, scope, schema, table, privilegeType)),
 		"grantee":       llx.StringData(granteeStr),
 		"scope":         llx.StringData(scope),
 		"schema":        llx.StringData(schema),
