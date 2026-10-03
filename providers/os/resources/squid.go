@@ -18,7 +18,9 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/haproxy"
 	"go.mondoo.com/mql/providers/os/resources/squid"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
 	"go.mondoo.com/mql/types"
 )
 
@@ -179,6 +181,25 @@ func (s *mqlSquidConf) id() (string, error) {
 func (s *mqlSquidConf) file() (*mqlFile, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+
+	// The -f squid is started with replaces its compiled-in default. A file
+	// it names that does not exist would keep squid from starting, so it
+	// says nothing about the server and the defaults are probed instead;
+	// one this user cannot stat is still the right file, and reading it
+	// reports the refusal.
+	if p := squidLaunchConfig(s.MqlRuntime, afs); p != "" {
+		if _, err := afs.Stat(p); err == nil || !errors.Is(err, os.ErrNotExist) {
+			f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
+				"path": llx.StringData(p),
+			})
+			if err != nil {
+				return nil, err
+			}
+			return f.(*mqlFile), nil
+		}
+	}
+
 	preferred := squidConfPath(conn)
 	seen := map[string]bool{preferred: true}
 	candidates := []string{preferred}
@@ -189,7 +210,6 @@ func (s *mqlSquidConf) file() (*mqlFile, error) {
 		}
 	}
 
-	afs := &afero.Afero{Fs: conn.FileSystem()}
 	for _, path := range candidates {
 		if ok, _ := afs.Exists(path); ok {
 			f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
@@ -206,6 +226,38 @@ func (s *mqlSquidConf) file() (*mqlFile, error) {
 	// return empty data instead of cascading file-not-found errors.
 	s.File.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
+}
+
+// squidLaunch recognizes squid's master process. Its kids rename their
+// command line to "(squid-1)", "(squid-coord-3)" and so on.
+var squidLaunch = serverLaunchSpec{Names: []string{"squid"}}
+
+// squidUnit starts squid on systemd hosts. RHEL's runs
+// `squid --foreground $SQUID_OPTS -f ${SQUID_CONF}` with both from
+// /etc/sysconfig/squid; Debian's and SUSE's pass no -f.
+const squidUnit = "squid.service"
+
+// squidLaunchConfig returns the configuration file squid is started with: the
+// -f of the running master, or of the squid a scanned image starts, or else
+// of the systemd unit's ExecStart= with its environment expanded. A relative
+// path resolves against the server's working directory. It returns "" when
+// squid reads its compiled-in default.
+func squidLaunchConfig(runtime *plugin.Runtime, afs *afero.Afero) string {
+	if launches := findServerLaunches(runtime, squidLaunch); len(launches) > 0 {
+		// a running squid without -f reads its default, whatever the unit
+		// says about the next start
+		l := launches[0]
+		return l.resolve(squid.ConfigFromArgs(l.Argv[1:]))
+	}
+	env, ok := systemd.ResolveUnitEnv(afs, squidUnit)
+	if !ok || env.ExecStart == "" {
+		return ""
+	}
+	argv := haproxy.ExpandSystemdCommand(env.ExecStart, env.Vars)
+	if len(argv) == 0 || filepath.Base(argv[0]) != "squid" {
+		return ""
+	}
+	return serverLaunch{}.resolve(squid.ConfigFromArgs(argv[1:]))
 }
 
 var reSquidGlob = regexp.MustCompile(`[*?\[]`)
