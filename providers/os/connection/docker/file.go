@@ -10,10 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strings"
 
-	"github.com/kballard/go-shellquote"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 	"github.com/spf13/afero"
@@ -88,41 +85,14 @@ func (f *File) Readdir(count int) (res []os.FileInfo, err error) {
 	return f.catFs.ReadDir(f.path)
 }
 
-// listDirsCommand builds the command that lists the immediate subdirectories
-// of path. The container runs it through /bin/sh, so the path has to arrive
-// as a single argument whatever characters a directory name in the image
-// happens to contain.
-func listDirsCommand(path string) string {
-	return shellquote.Join("find", path, "-maxdepth", "1", "-type", "d")
-}
-
+// Readdirnames lists every entry of the directory: files, links and
+// subdirectories, dotfiles included. It used to run `find <dir> -maxdepth 1
+// -type d`, which lists subdirectories only, so every Glob and directory
+// listing over this transport lost its regular files (journald drop-ins,
+// polkit actions, python packages). The cat filesystem already lists a
+// directory this way for Readdir, so both now agree.
 func (f *File) Readdirnames(n int) ([]string, error) {
-	c, err := f.connection.RunCommand(listDirsCommand(f.path))
-	if err != nil {
-		return []string{}, err
-	}
-
-	content, err := io.ReadAll(c.Stdout)
-	if err != nil {
-		return []string{}, err
-	}
-
-	directories := strings.Split(string(content), "\n")
-
-	// first result is always self
-	if len(directories) > 0 {
-		directories = directories[1:]
-	}
-
-	// extract names
-	basenames := []string{}
-	for _, dir := range directories {
-		if dir == "" {
-			continue
-		}
-		basenames = append(basenames, filepath.Base(dir))
-	}
-	return basenames, nil
+	return cat.NewFile(f.catFs, f.path, false).Readdirnames(n)
 }
 
 func (f *File) Seek(offset int64, whence int) (int64, error) {
