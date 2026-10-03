@@ -5,12 +5,14 @@ package resources
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"testing"
 
 	"github.com/BurntSushi/toml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // createTestCodexConfig creates a temporary directory tree mimicking an OpenAI Codex
@@ -367,4 +369,60 @@ url = "https://mcp.example.com/mcp"
 	assert.Equal(t, map[string]string{"DEBUG": "1"}, cfg.McpServers["sequential-thinking"].Env)
 	assert.Equal(t, "https://mcp.example.com/mcp", cfg.McpServers["docs"].URL)
 	assert.Equal(t, mcpTransportHTTP, deriveMcpTransport("", cfg.McpServers["docs"].Command, cfg.McpServers["docs"].URL))
+}
+
+func TestOpenaiCodexChildrenPerUser(t *testing.T) {
+	files := perUserFiles(map[string]string{
+		"/home/{u}/.codex/config.toml":                           "[mcp_servers.fs]\ncommand = \"{u}-cmd\"\n",
+		"/home/{u}/.codex/.tmp/plugins/plugins/github/.mcp.json": `{"mcpServers":{"gh":{"command":"{u}-plugin-cmd"}}}`,
+		"/home/{u}/.codex/.tmp/plugins/plugins/github/.app.json": `{"apps":{"github":{"id":"{u}-connector"}}}`,
+	})
+	// Only alice's plugin ships hooks.
+	files["/home/alice/.codex/.tmp/plugins/plugins/github/hooks.json"] = "{}"
+	rt := newAIToolsTestRuntime(t, files)
+
+	assertPerUser(t, childValues(t, rt, "openai.codex", ".codex", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlOpenaiCodex).GetMcpServers()
+		if l.Error != nil {
+			return "", "", l.Error
+		}
+		for _, raw := range l.Data {
+			s := raw.(*mqlOpenaiCodexMcpServer)
+			if s.Name.Data == "fs" {
+				return s.MqlID(), s.Command.Data, nil
+			}
+		}
+		return "", "", fmt.Errorf("fs server missing")
+	}), "%s-cmd")
+	assertPerUser(t, childValues(t, rt, "openai.codex", ".codex", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlOpenaiCodex).GetMcpServers()
+		if l.Error != nil {
+			return "", "", l.Error
+		}
+		for _, raw := range l.Data {
+			s := raw.(*mqlOpenaiCodexMcpServer)
+			if s.Name.Data == "gh" {
+				return s.MqlID(), s.Command.Data, nil
+			}
+		}
+		return "", "", fmt.Errorf("gh server missing")
+	}), "%s-plugin-cmd")
+	assertPerUser(t, childValues(t, rt, "openai.codex", ".codex", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlOpenaiCodex).GetConnectors()
+		s, err := only[*mqlOpenaiCodexConnector](t, l.Data, l.Error)
+		if err != nil {
+			return "", "", err
+		}
+		return s.MqlID(), s.Id.Data, nil
+	}), "%s-connector")
+
+	hooks := childValues(t, rt, "openai.codex", ".codex", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlOpenaiCodex).GetPlugins()
+		s, err := only[*mqlOpenaiCodexPlugin](t, l.Data, l.Error)
+		if err != nil {
+			return "", "", err
+		}
+		return s.MqlID(), fmt.Sprint(s.HasHooks.Data), nil
+	})
+	assert.Equal(t, map[string]string{"ubuntu": "false", "alice": "true"}, hooks)
 }
