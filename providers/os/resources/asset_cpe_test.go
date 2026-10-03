@@ -20,6 +20,9 @@ func TestOsReleaseCPEName(t *testing.T) {
 		"sles16": "cpe:2.3:o:suse:sles:16:16.0:*:*:*:*:*:*",
 		"leap15": "cpe:2.3:o:opensuse:leap:15.6:*:*:*:*:*:*:*",
 		"leap16": "cpe:2.3:o:opensuse:leap:16.0:*:*:*:*:*:*:*",
+		// ALT ships no /etc/system-release-cpe and has no platform table entry
+		"altp11":      "cpe:2.3:o:alt:container:11:*:*:*:*:*:*:*",
+		"altsisyphus": "cpe:2.3:o:alt:sisyphus:20260316:*:*:*:*:*:*:*",
 	}
 	for name, want := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -48,6 +51,7 @@ func TestUsesOsReleaseCPE(t *testing.T) {
 		{"redhat", []string{"redhat", "linux", "unix", "os"}, false},
 		{"ubuntu", []string{"debian", "linux", "unix", "os"}, false},
 		{"debian", []string{"debian", "linux", "unix", "os"}, false},
+		{"altlinux", []string{"linux", "unix", "os"}, true},
 	}
 	for _, tc := range tests {
 		pf := &inventory.Platform{Name: tc.name, Family: tc.family}

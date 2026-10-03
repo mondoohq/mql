@@ -1,0 +1,11 @@
+NAME="ALT Container"
+VERSION="11"
+ID=altlinux
+VERSION_ID=11
+PRETTY_NAME="ALT Container"
+ANSI_COLOR="1;33"
+CPE_NAME="cpe:/o:alt:container:11"
+BUILD_ID="ALT Container 11"
+ALT_BRANCH_ID="p11"
+HOME_URL="https://basealt.ru/"
+

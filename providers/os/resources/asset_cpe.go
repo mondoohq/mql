@@ -117,8 +117,10 @@ func osReleaseCPEName(content string) string {
 }
 
 // usesOsReleaseCPE reports whether the asset's CPE comes from os-release
-// CPE_NAME. Only the SUSE family does: every other platform keeps
+// CPE_NAME. The SUSE family and ALT Linux do; ALT has neither
+// /etc/system-release-cpe nor a platform table entry, and declares
+// CPE_NAME="cpe:/o:alt:container:11". Every other platform keeps
 // /etc/system-release-cpe and the platform table.
 func usesOsReleaseCPE(pf *inventory.Platform) bool {
-	return pf != nil && pf.IsFamily("suse")
+	return pf != nil && (pf.IsFamily("suse") || pf.Name == "altlinux")
 }

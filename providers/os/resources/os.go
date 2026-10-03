@@ -6,6 +6,7 @@ package resources
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"strings"
 	"time"
 
@@ -351,6 +352,9 @@ func (s *mqlOs) machineid() (string, error) {
 	if v.Error != nil {
 		return "", v.Error
 	}
+	if v.IsNull() {
+		s.Machineid.State = plugin.StateIsSet | plugin.StateIsNull
+	}
 	return v.Data, nil
 }
 
@@ -369,6 +373,13 @@ func (s *mqlOsBase) machineid() (string, error) {
 	}
 
 	id, err := uuidProvider.ID()
+	// Container images and minimal systems ship no machine-id at all
+	// (systemd writes it on first boot): there is no id, which is not a
+	// failure to read one.
+	if errors.Is(err, fs.ErrNotExist) {
+		s.Machineid.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
 	if err != nil {
 		return "", errors.Wrap(err, "cannot determine platform uuid")
 	}
