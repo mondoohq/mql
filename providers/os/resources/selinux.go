@@ -20,6 +20,7 @@ type mqlSelinuxInternal struct {
 	configParsed    bool
 	cfgMode         string
 	cfgType         string
+	cfgErr          error
 	getenforced     bool
 	getenforceMode  string
 	getenforceAvail bool
@@ -163,38 +164,43 @@ func selinuxRuntimeMode(selinuxfsPresent bool, enforce []byte) (string, error) {
 // Uses double-checked locking (same pattern as fetchGetenforce above).
 func (s *mqlSelinux) parseConfig() error {
 	if s.configParsed {
-		return nil
+		return s.cfgErr
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	if s.configParsed {
-		return nil
+		return s.cfgErr
 	}
 
+	// the error is kept so every field that reads the config reports it, not
+	// only the first one asked
+	s.cfgErr = s.readConfig()
+	s.configParsed = true
+	return s.cfgErr
+}
+
+func (s *mqlSelinux) readConfig() error {
 	fileRes, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
 		"path": llx.StringData("/etc/selinux/config"),
 	})
 	if err != nil {
-		s.configParsed = true
 		return err
 	}
 	f := fileRes.(*mqlFile)
 	exists := f.GetExists()
-	if exists.Error != nil || !exists.Data {
-		s.configParsed = true
+	if exists.Error != nil {
+		return exists.Error
+	}
+	if !exists.Data {
 		return nil
 	}
 
 	content := f.GetContent()
 	if content.Error != nil {
-		s.configParsed = true
 		return content.Error
 	}
 
-	mode, policyType := ParseSelinuxConfig(content.Data)
-	s.cfgMode = mode
-	s.cfgType = policyType
-	s.configParsed = true
+	s.cfgMode, s.cfgType = ParseSelinuxConfig(content.Data)
 	return nil
 }
 
@@ -374,7 +380,8 @@ func ParseSemodule(output string) []SELinuxModule {
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
-		if len(fields) == 0 {
+		// semodule prints "No modules." for an empty or missing policy store
+		if len(fields) == 0 || (len(fields) == 2 && fields[0] == "No" && fields[1] == "modules.") {
 			continue
 		}
 

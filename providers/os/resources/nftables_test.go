@@ -460,3 +460,11 @@ func TestNftElemToString_Verdicts(t *testing.T) {
 	assert.Equal(t, "jump regular", nftElemToString(map[string]any{"jump": map[string]any{"target": "regular"}}))
 	assert.Equal(t, "goto regular", nftElemToString(map[string]any{"goto": map[string]any{"target": "regular"}}))
 }
+
+func TestNftCommandError(t *testing.T) {
+	// nft 1.0.4 on AlmaLinux 8 segfaults on `nft -j list ruleset` with
+	// firewalld on the iptables backend and prints nothing
+	assert.EqualError(t, nftCommandError(-1, ""), "nft command failed (nft was killed by a signal)")
+	assert.EqualError(t, nftCommandError(139, ""), "nft command failed (nft was killed by signal 11 (segmentation fault))")
+	assert.EqualError(t, nftCommandError(1, "Error: syntax error\n"), "nft command failed (exit 1): Error: syntax error")
+}
