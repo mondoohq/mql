@@ -166,6 +166,19 @@ func IsPermissionError(err error) bool {
 		strings.Contains(msg, "code: 492")
 }
 
+// IsAccessDenied reports whether an error is the server refusing a query for
+// lack of a grant: code 497 (ACCESS_DENIED), whose message reads "Not enough
+// privileges. To execute this query, it's necessary to have the grant ...".
+func IsAccessDenied(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "ACCESS_DENIED") ||
+		strings.Contains(msg, "Not enough privileges") ||
+		strings.Contains(msg, "code: 497")
+}
+
 // IsUnknownPortError reports whether an error is getServerPort() refusing a
 // listener the server has not configured.
 //

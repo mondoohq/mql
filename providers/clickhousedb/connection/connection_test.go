@@ -98,3 +98,22 @@ func TestIsUnknownPortError(t *testing.T) {
 		}
 	}
 }
+
+func TestIsAccessDenied(t *testing.T) {
+	cases := []struct {
+		err  error
+		want bool
+	}{
+		// captured live from ClickHouse 26.9 as a user without the grant
+		{errors.New("code: 497, message: nopriv: Not enough privileges. To execute this query, it's necessary to have the grant SELECT ON system.users"), true},
+		{errors.New("code: 492, message: There is no role `x` in user directories"), false},
+		{errors.New("code: 516, message: nopriv: Authentication failed: password is incorrect, or there is no user with such name"), false},
+		{errors.New("dial tcp 192.0.2.10:9000: connect: connection refused"), false},
+		{nil, false},
+	}
+	for _, c := range cases {
+		if got := IsAccessDenied(c.err); got != c.want {
+			t.Errorf("IsAccessDenied(%v) = %v, want %v", c.err, got, c.want)
+		}
+	}
+}

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"go.mondoo.com/mql/llx"
-	"go.mondoo.com/mql/providers/clickhousedb/connection"
 )
 
 func (r *mqlClickhousedbInstance) users() ([]any, error) {
@@ -24,10 +23,7 @@ func (r *mqlClickhousedbInstance) users() ([]any, error) {
 		        grantees_any, grantees_list, grantees_except
 		 FROM system.users ORDER BY name`)
 	if err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, "SELECT ON system.users")
 	}
 	defer rows.Close()
 

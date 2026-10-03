@@ -43,13 +43,21 @@ func initClickhousedbInstance(runtime *plugin.Runtime, args map[string]*llx.RawD
 // not configured -- "There is no port named tcp_port_secure" -- which is the
 // normal state for a server with TLS switched off. That is reported as 0 here,
 // since "not configured" is exactly what a caller asking for the port wants to
-// be told.
+// be told. A refusal is an error, not a 0 (ADR 046).
 func serverPort(ctx context.Context, db *sql.DB, name string) (int64, error) {
 	var port uint16
 	err := db.QueryRowContext(ctx, `SELECT getServerPort(?)`, name).Scan(&port)
 	if err != nil {
-		if connection.IsUnknownPortError(err) || connection.IsPermissionError(err) {
+		if connection.IsUnknownPortError(err) {
 			return 0, nil
+		}
+		// A refused call is not an unconfigured port: reading it as 0 would
+		// make a server with a plaintext listener look TLS-only.
+		if connection.IsPermissionError(err) {
+			if !plugin.StructuredErrors() {
+				return 0, nil
+			}
+			return 0, refusal(err, "getServerPort")
 		}
 		return 0, fmt.Errorf("clickhousedb: cannot read port %s: %w", name, err)
 	}
@@ -110,10 +118,7 @@ func (r *mqlClickhousedbInstance) roles() ([]any, error) {
 	rows, err := db.QueryContext(conn.Context(),
 		`SELECT name, storage FROM system.roles ORDER BY name`)
 	if err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, "SELECT ON system.roles")
 	}
 	defer rows.Close()
 
@@ -147,10 +152,7 @@ func (r *mqlClickhousedbInstance) settingsProfiles() ([]any, error) {
 		`SELECT name, storage, num_elements, apply_to_all, apply_to_list
 		 FROM system.settings_profiles ORDER BY name`)
 	if err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, "SELECT ON system.settings_profiles")
 	}
 	defer rows.Close()
 
@@ -190,10 +192,7 @@ func (r *mqlClickhousedbInstance) quotas() ([]any, error) {
 		`SELECT name, storage, keys, apply_to_all, apply_to_list
 		 FROM system.quotas ORDER BY name`)
 	if err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, "SELECT ON system.quotas")
 	}
 	defer rows.Close()
 
@@ -232,10 +231,7 @@ func (r *mqlClickhousedbInstance) clusters() ([]any, error) {
 		`SELECT cluster, countDistinct(shard_num) AS shards, max(replica_num) AS replicas
 		 FROM system.clusters GROUP BY cluster ORDER BY cluster`)
 	if err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, "SELECT ON system.clusters")
 	}
 	defer rows.Close()
 
@@ -273,10 +269,7 @@ func (r *mqlClickhousedbInstance) serverSettings() ([]any, error) {
 		"SELECT name, value, `default`, changed, description"+
 			" FROM system.server_settings ORDER BY name")
 	if err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, "SELECT ON system.server_settings")
 	}
 	defer rows.Close()
 
@@ -313,10 +306,7 @@ func grantsFor(ctx context.Context, db *sql.DB, column, name string) ([]any, err
 		`SELECT access_type, database, table, column, is_partial_revoke, grant_option
 		 FROM system.grants WHERE `+column+` = ? ORDER BY access_type`, name)
 	if err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, "SELECT ON system.grants")
 	}
 	defer rows.Close()
 

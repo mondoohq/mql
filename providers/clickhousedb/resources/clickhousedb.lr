@@ -19,8 +19,8 @@ clickhousedb @root {
 //
 // The connected ClickHouse server: its version, plus the users, roles, grants,
 // settings profiles, quotas, clusters, and server settings reached from here.
-// Populated from the system.* tables; data the connecting user is not permitted
-// to read is left empty rather than failing.
+// Populated from the system.* tables, which the connecting user needs SELECT
+// on.
 clickhousedb.instance @defaults("version") {
   // ClickHouse server version, for example "24.8.4.13"
   version string

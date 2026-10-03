@@ -30,7 +30,9 @@ mql shell clickhousedb db.contoso.com --user auditor --ask-pass
 > GRANT SHOW ACCESS ON *.* TO auditor;
 > ```
 >
-> Reading users, roles, and grants requires SQL-driven access management to be enabled on the server. Without the catalog privileges, those collections come back empty (an access-denied error is treated as "not permitted") rather than failing the scan.
+> Reading users, roles, and grants requires SQL-driven access management to be enabled on the server.
+>
+> In mql 14, a collection the account cannot read (`ACCESS_DENIED`, code 497) comes back empty and a refused listener port reads 0, so a check over it can pass on a server the scanner could not read. With the `StructuredErrors` feature enabled (the default from mql 15), it errors and names the missing grant instead: `users` (`SELECT ON system.users`), `roles`, `settingsProfiles`, `quotas`, `clusters`, `serverSettings`, and the `grants` of a user or role (`SELECT ON system.<table>`).
 
 ## Examples
 
@@ -102,7 +104,7 @@ Confirm the connection with a single query:
 mql shell clickhousedb db.contoso.com --user auditor --ask-pass -c "clickhousedb.instance { version }"
 ```
 
-If `clickhousedb.instance.users` comes back empty, the server does not have SQL-driven access management enabled for the connecting user, or the user lacks `SHOW ACCESS`; enable it (or use a more privileged auditing account) and retry.
+If `clickhousedb.instance.users` comes back empty, or errors with a forbidden error, the server does not have SQL-driven access management enabled for the connecting user, or the user lacks `SELECT ON system.*`; grant it (or use a more privileged auditing account) and retry.
 
 ## Development
 
