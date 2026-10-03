@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -368,4 +369,72 @@ func TestParseStartupConfig(t *testing.T) {
 		assert.Empty(t, cfg.JavaOpts)
 		assert.NotNil(t, cfg.JavaOpts, "an empty option list is a list, not nil")
 	})
+}
+
+// countingFs counts the files read, standing in for an SSH --sudo connection
+// where every read is a `sudo cat`.
+type countingFs struct {
+	afero.Fs
+	reads int
+}
+
+func (c *countingFs) Open(name string) (afero.File, error) {
+	if fi, err := c.Stat(name); err == nil && !fi.IsDir() {
+		c.reads++
+	}
+	return c.Fs.Open(name)
+}
+
+func TestSystemdUnitsFiltered(t *testing.T) {
+	files := map[string]string{
+		"/etc/systemd/system/wildfly.service":    "[Service]\nEnvironment=JBOSS_HOME=/opt/wildfly\nExecStart=/opt/wildfly/bin/standalone.sh\n",
+		"/usr/lib/systemd/system/domain.service": "[Service]\nEnvironment=JBOSS_HOME=/opt/sweep-domain\nExecStart=/opt/sweep-domain/bin/domain.sh\n",
+	}
+	// a host carries hundreds of unrelated units
+	for i := 0; i < 500; i++ {
+		files[path.Join("/usr/lib/systemd/system", "unit"+strconv.Itoa(i)+".service")] = "[Service]\nExecStart=/usr/bin/true\n"
+	}
+	mem := newFs(t, files)
+
+	all := &countingFs{Fs: mem}
+	units := jboss.SystemdUnits(all, nil)
+	assert.Equal(t, 502, all.reads)
+	require.Len(t, units, 2)
+
+	// one grep over the unit directories names the candidates
+	grepped := &countingFs{Fs: mem}
+	filter := func() ([]string, bool) {
+		return []string{"/etc/systemd/system/wildfly.service", "/usr/lib/systemd/system/domain.service"}, true
+	}
+	assert.Equal(t, units, jboss.SystemdUnits(grepped, filter))
+	assert.Equal(t, 2, grepped.reads)
+
+	home, launch := jboss.SelectUnit(units, "/opt/sweep-domain")
+	assert.Equal(t, "/opt/sweep-domain", home)
+	assert.Equal(t, "domain", launch)
+	home, launch = jboss.SelectUnit(units, "")
+	assert.Equal(t, "/opt/wildfly", home)
+	assert.Equal(t, "standalone", launch)
+	home, _ = jboss.SelectUnit(units, "/opt/other")
+	assert.Equal(t, "", home)
+
+	// a filter that could not run falls back to reading every unit
+	failed := &countingFs{Fs: mem}
+	assert.Equal(t, units, jboss.SystemdUnits(failed, func() ([]string, bool) { return nil, false }))
+	assert.Equal(t, 502, failed.reads)
+}
+
+func TestParseUnitGrepOutput(t *testing.T) {
+	out := "/etc/systemd/system/wildfly.service\n/usr/lib/systemd/system/domain.service\n" + jboss.UnitGrepDone + "\n"
+	paths, ok := jboss.ParseUnitGrepOutput(out)
+	require.True(t, ok)
+	assert.Equal(t, []string{"/etc/systemd/system/wildfly.service", "/usr/lib/systemd/system/domain.service"}, paths)
+
+	paths, ok = jboss.ParseUnitGrepOutput(jboss.UnitGrepDone + "\n")
+	require.True(t, ok)
+	assert.Empty(t, paths)
+
+	// cut short (no sentinel): not trusted
+	_, ok = jboss.ParseUnitGrepOutput("/etc/systemd/system/wildfly.service\n")
+	assert.False(t, ok)
 }

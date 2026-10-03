@@ -276,51 +276,128 @@ func HomeFromEnvFile(content string) string {
 // counts. A host can carry several installations, and the launch mode of a
 // unit that runs one of them says nothing about the others.
 func PathsFromSystemd(fs afero.Fs, want string) (string, string) {
+	return SelectUnit(SystemdUnits(fs, nil), want)
+}
+
+// Unit is what a systemd unit that starts JBoss says about the installation.
+type Unit struct {
+	Home       string
+	LaunchType string
+}
+
+// UnitFilter returns the unit files that may start JBoss, so the others are
+// not read. It reports false when it could not tell, and every unit is read.
+type UnitFilter func() ([]string, bool)
+
+// UnitGrepDone ends the output of UnitGrepCommand, so output that was cut
+// short is not taken for the full list.
+const UnitGrepDone = "__mql_jboss_units_done__"
+
+// UnitGrepCommand lists, in one command, the unit files in SystemdUnitDirs
+// with an ExecStart or Environment line naming jboss, wildfly or eap: a
+// superset of what IsJBossUnit accepts. Reading ~500 units one at a time
+// over SSH with sudo took more than a minute.
+var UnitGrepCommand = func() string {
+	var dirs []string
+	for _, d := range SystemdUnitDirs {
+		dirs = append(dirs, "'"+d+"'")
+	}
+	return "for d in " + strings.Join(dirs, " ") + "; do [ -d \"$d\" ] && grep -l -i -s -E " +
+		"'^[[:space:]]*(ExecStart|Environment).*(jboss|wildfly|eap)' \"$d\"/*.service; done; echo " + UnitGrepDone
+}()
+
+// ParseUnitGrepOutput reads the output of UnitGrepCommand.
+func ParseUnitGrepOutput(out string) ([]string, bool) {
+	var paths []string
+	done := false
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		switch line {
+		case "":
+		case UnitGrepDone:
+			done = true
+		default:
+			paths = append(paths, line)
+		}
+	}
+	return paths, done
+}
+
+// SystemdUnits returns every unit in SystemdUnitDirs that starts JBoss, in
+// directory order, with JBOSS_HOME and the launch mode it declares. filter,
+// when not nil, names the unit files to read.
+func SystemdUnits(fs afero.Fs, filter UnitFilter) []Unit {
 	afs := &afero.Afero{Fs: fs}
 
-	for _, dir := range SystemdUnitDirs {
-		entries, err := afs.ReadDir(dir)
-		if err != nil {
-			continue
+	// The unit files to read, in directory order. Listing a directory over
+	// SSH stats every entry, so a filter's list replaces the listing.
+	var unitPaths []string
+	filtered := false
+	if filter != nil {
+		if paths, ok := filter(); ok {
+			filtered = true
+			for _, p := range paths {
+				if strings.HasSuffix(p, ".service") {
+					unitPaths = append(unitPaths, path.Clean(p))
+				}
+			}
 		}
-		for _, entry := range entries {
-			name := entry.Name()
-			if entry.IsDir() || !strings.HasSuffix(name, ".service") {
+	}
+	if !filtered {
+		for _, dir := range SystemdUnitDirs {
+			entries, err := afs.ReadDir(dir)
+			if err != nil {
 				continue
 			}
-			// A template unit resolves its instance from a %i that is only
-			// bound when a named instance is started; reading it would yield a
-			// literal "%i" path.
-			if strings.Contains(name, "@.service") {
-				continue
-			}
-
-			content, err := afs.ReadFile(path.Join(dir, name))
-			if err != nil || !IsJBossUnit(string(content)) {
-				continue
-			}
-
-			home, launchType, envFiles := PathsFromUnit(string(content))
-			for _, envFile := range envFiles {
-				if home != "" {
-					break
+			for _, entry := range entries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".service") {
+					unitPaths = append(unitPaths, path.Join(dir, entry.Name()))
 				}
-				envContent, err := afs.ReadFile(envFile)
-				if err != nil {
-					continue
-				}
-				home = HomeFromEnvFile(string(envContent))
-			}
-
-			if want != "" && !SameHome(home, want) {
-				continue
-			}
-			if home != "" || launchType != "" {
-				return home, launchType
 			}
 		}
 	}
 
+	var units []Unit
+	for _, unitPath := range unitPaths {
+		// A template unit resolves its instance from a %i that is only
+		// bound when a named instance is started; reading it would yield a
+		// literal "%i" path.
+		if strings.Contains(path.Base(unitPath), "@.service") {
+			continue
+		}
+
+		content, err := afs.ReadFile(unitPath)
+		if err != nil || !IsJBossUnit(string(content)) {
+			continue
+		}
+
+		home, launchType, envFiles := PathsFromUnit(string(content))
+		for _, envFile := range envFiles {
+			if home != "" {
+				break
+			}
+			envContent, err := afs.ReadFile(envFile)
+			if err != nil {
+				continue
+			}
+			home = HomeFromEnvFile(string(envContent))
+		}
+		if home != "" || launchType != "" {
+			units = append(units, Unit{Home: home, LaunchType: launchType})
+		}
+	}
+	return units
+}
+
+// SelectUnit returns the home and launch mode of the first unit for want,
+// or of the first unit at all when want is empty.
+func SelectUnit(units []Unit, want string) (string, string) {
+	for _, u := range units {
+		if want != "" && !SameHome(u.Home, want) {
+			continue
+		}
+		return u.Home, u.LaunchType
+	}
 	return "", ""
 }
 
