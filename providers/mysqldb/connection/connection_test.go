@@ -7,7 +7,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -16,7 +15,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"slices"
 	"syscall"
 	"testing"
 	"time"
@@ -91,9 +89,8 @@ func TestTLSConfigPreferred(t *testing.T) {
 	if !cfg.InsecureSkipVerify {
 		t.Error("preferred without a CA cannot verify the server")
 	}
-	// YaSSL-built servers speak only TLSv1.0 with AES256-SHA
-	if cfg.MinVersion != tls.VersionTLS10 || !slices.Contains(cfg.CipherSuites, tls.TLS_RSA_WITH_AES_256_CBC_SHA) {
-		t.Errorf("preferred does not reach a TLSv1.0 AES256-SHA server: min=%x suites=%v", cfg.MinVersion, cfg.CipherSuites)
+	if cfg.MinVersion != 0 || cfg.CipherSuites != nil {
+		t.Errorf("preferred must keep Go's TLS defaults: min=%x suites=%v", cfg.MinVersion, cfg.CipherSuites)
 	}
 
 	// a CA with preferred verifies the server but still falls back to

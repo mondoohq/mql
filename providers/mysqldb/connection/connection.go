@@ -162,22 +162,6 @@ const (
 	ioTimeout   = 5 * time.Minute
 )
 
-// legacyCipherSuites are offered in preferred mode on top of Go's defaults.
-// Servers built against YaSSL (MariaDB 10.3 on Ubuntu 20.04) speak only
-// TLSv1.0 with RSA key exchange suites such as AES256-SHA, which Go no longer
-// offers by default. Preferred mode does not verify the server, so a weak
-// encrypted session is still better than the alternative, plaintext.
-func legacyCipherSuites() []uint16 {
-	var ids []uint16
-	for _, s := range tls.CipherSuites() {
-		ids = append(ids, s.ID)
-	}
-	for _, s := range tls.InsecureCipherSuites() {
-		ids = append(ids, s.ID)
-	}
-	return ids
-}
-
 // tlsConfig resolves the TLS settings for a connection. It returns a nil
 // config for plaintext, and whether the driver may fall back to plaintext when
 // the server does not offer TLS.
@@ -185,7 +169,9 @@ func legacyCipherSuites() []uint16 {
 //   - false: plaintext, whatever certificate flags are given.
 //   - preferred: TLS when the server offers it, plaintext otherwise. The
 //     server is verified against --tls-ca when one is given, and not
-//     verified otherwise. TLSv1.0 and legacy suites are allowed.
+//     verified otherwise. The fallback covers a server that does not offer
+//     TLS; a server that offers TLS but fails verification or the handshake
+//     is an error, not a plaintext connection.
 //   - skip-verify: TLS required, server not verified.
 //   - true: TLS required, server verified against --tls-ca or the system
 //     roots, by --tls-server-name or the host name.
@@ -200,24 +186,20 @@ func (c *MysqldbConnection) tlsConfig() (*tls.Config, bool, error) {
 	case "1":
 		mode = "true"
 	}
-	cfg := &tls.Config{ServerName: c.tlsServerName}
-	fallback := false
 	switch mode {
 	case "false":
 		return nil, false, nil
-	case "preferred":
-		fallback = true
-		cfg.InsecureSkipVerify = c.tlsCA == ""
-		cfg.MinVersion = tls.VersionTLS10
-		cfg.CipherSuites = legacyCipherSuites()
-	case "skip-verify":
-		cfg.InsecureSkipVerify = true
-	case "true":
+	case "preferred", "skip-verify", "true":
 	default:
 		return nil, false, fmt.Errorf("invalid tls-mode %q: use false, preferred, skip-verify, or true", c.tlsMode)
 	}
+	fallback := mode == "preferred"
+	// skip-verify, and preferred without a CA to verify against, encrypt
+	// without authenticating the server, as their names say
+	skipVerify := mode == "skip-verify" || (mode == "preferred" && c.tlsCA == "")
+	cfg := &tls.Config{ServerName: c.tlsServerName, InsecureSkipVerify: skipVerify}
 
-	if c.tlsCA != "" && !cfg.InsecureSkipVerify {
+	if c.tlsCA != "" && !skipVerify {
 		pem, err := os.ReadFile(c.tlsCA)
 		if err != nil {
 			return nil, false, fmt.Errorf("failed to read tls-ca: %w", err)
@@ -337,7 +319,7 @@ func (c *MysqldbConnection) resolveMeta() error {
 	c.metaOnce.Do(func() {
 		db, err := c.Client()
 		if err != nil {
-			c.metaErr = err
+			c.metaErr = classifyConnectError(err)
 			return
 		}
 

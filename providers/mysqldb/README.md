@@ -17,7 +17,7 @@ Arguments:
 - `--database` - an optional default schema for the connection.
 - `--tls-mode`:
   - `false` - plaintext, even when certificate flags are given.
-  - `preferred` (default) - TLS when the server offers it, plaintext otherwise. The server is verified against `--tls-ca` when one is given. TLSv1.0 and legacy cipher suites are accepted, so old YaSSL-built servers still get an encrypted connection.
+  - `preferred` (default) - TLS when the server offers it, plaintext otherwise. The server is verified against `--tls-ca` when one is given. A server that offers TLS but fails the handshake (for example a YaSSL-built server limited to TLSv1.0) is an error; use `false` for such a server.
   - `skip-verify` - TLS required, server certificate not verified.
   - `true` - TLS required, server certificate verified against `--tls-ca` (or the system roots).
 - `--tls-ca`, `--tls-cert`, `--tls-key` - paths to CA and client-certificate material for verified or mutual TLS.
