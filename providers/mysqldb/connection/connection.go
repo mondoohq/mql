@@ -5,9 +5,11 @@ package connection
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -58,6 +60,7 @@ type MysqldbConnection struct {
 	metaOnce sync.Once
 	serverID string
 	flavor   string
+	version  string
 	metaErr  error
 }
 
@@ -298,13 +301,38 @@ func classifyConnectError(err error) error {
 	return err
 }
 
-// ServerID returns a stable identifier for the server (@@server_uuid, falling
-// back to host:port when the variable is unavailable, e.g. older MariaDB).
+// ServerID returns a stable identifier for the server: @@server_uuid, or on a
+// server without one (MariaDB) an id derived from the server's own identity.
 func (c *MysqldbConnection) ServerID() (string, error) {
 	if err := c.resolveMeta(); err != nil {
 		return "", err
 	}
 	return c.serverID, nil
+}
+
+// IsMariaDB reports whether the server is MariaDB. It is false when the
+// flavor cannot be read.
+func (c *MysqldbConnection) IsMariaDB() bool {
+	flavor, err := c.Flavor()
+	return err == nil && flavor == "mariadb"
+}
+
+// Version returns the server version (@@version).
+func (c *MysqldbConnection) Version() (string, error) {
+	if err := c.resolveMeta(); err != nil {
+		return "", err
+	}
+	return c.version, nil
+}
+
+// derivedServerID identifies a server that has no @@server_uuid from what the
+// server reports about itself, so the same server reached under two names
+// gets one id and two servers both reached as 127.0.0.1:3306 get two. The
+// datadir separates instances that share a hostname; it is hashed because it
+// is a path and the id is used as a platform id segment.
+func derivedServerID(hostname, port, serverID, datadir string) string {
+	sum := sha256.Sum256([]byte(hostname + "\x00" + port + "\x00" + serverID + "\x00" + datadir))
+	return hex.EncodeToString(sum[:16])
 }
 
 // Flavor returns the detected server flavor: mysql, mariadb, or percona.
@@ -330,11 +358,18 @@ func (c *MysqldbConnection) resolveMeta() error {
 			return
 		}
 		c.flavor = classifyFlavor(versionComment, version)
+		c.version = version
 
 		var uuid string
-		// @@server_uuid is MySQL/Percona; some MariaDB versions lack it.
+		// @@server_uuid is MySQL/Percona; MariaDB has none.
 		if err := db.QueryRowContext(context.Background(), "SELECT @@server_uuid").Scan(&uuid); err == nil && uuid != "" {
 			c.serverID = uuid
+			return
+		}
+		var hostname, port, serverID, datadir sql.NullString
+		if err := db.QueryRowContext(context.Background(),
+			"SELECT @@hostname, @@port, @@server_id, @@datadir").Scan(&hostname, &port, &serverID, &datadir); err == nil && hostname.String != "" {
+			c.serverID = derivedServerID(hostname.String, port.String, serverID.String, datadir.String)
 		} else {
 			c.serverID = net.JoinHostPort(c.host, strconv.Itoa(c.port))
 		}

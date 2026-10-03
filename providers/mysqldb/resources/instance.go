@@ -216,6 +216,9 @@ func (r *mqlMysqldbInstance) components() ([]any, error) {
 }
 
 func (r *mqlMysqldbInstance) replicationChannels() ([]any, error) {
+	if r.Flavor.Data == "mariadb" {
+		return r.mariadbReplicationChannels()
+	}
 	db, err := mysqldbClient(r.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -324,4 +327,79 @@ func activeKeyringComponent(db *sql.DB) (string, bool, error) {
 	}
 	urn, ok := keyringComponent(status)
 	return urn, ok, nil
+}
+
+// replicationChannelRow is one replication source connection.
+type replicationChannelRow struct {
+	channel, host                   string
+	sslAllowed, sslVerifyServerCert bool
+}
+
+// mariadbChannelFromStatus maps one row of SHOW ALL SLAVES STATUS, keyed by
+// column name, to a channel. The column set grows between MariaDB releases,
+// so columns are read by name. The default (unnamed) connection has an empty
+// Connection_name.
+func mariadbChannelFromStatus(row map[string]string) replicationChannelRow {
+	return replicationChannelRow{
+		channel:             row["Connection_name"],
+		host:                row["Master_Host"],
+		sslAllowed:          isYes(strings.ToUpper(row["Master_SSL_Allowed"])),
+		sslVerifyServerCert: isYes(strings.ToUpper(row["Master_SSL_Verify_Server_Cert"])),
+	}
+}
+
+// mariadbReplicationChannels reads MariaDB's replication connections. MariaDB
+// does not populate performance_schema.replication_connection_configuration;
+// SHOW ALL SLAVES STATUS lists every named connection.
+func (r *mqlMysqldbInstance) mariadbReplicationChannels() ([]any, error) {
+	db, err := mysqldbClient(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.QueryContext(mysqldbContext(), "SHOW ALL SLAVES STATUS")
+	if err != nil {
+		if isAccessDenied(err) {
+			// v13 read the empty performance_schema table and returned no
+			// channels for every caller
+			if !plugin.StructuredErrors() {
+				return []any{}, nil
+			}
+			return nil, llx.Forbidden(err, llx.WithPermissions("SLAVE MONITOR ON *.*"))
+		}
+		return nil, err
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	list := []any{}
+	for rows.Next() {
+		vals := make([]sql.NullString, len(cols))
+		ptrs := make([]any, len(cols))
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, err
+		}
+		row := make(map[string]string, len(cols))
+		for i, c := range cols {
+			row[c] = vals[i].String
+		}
+		ch := mariadbChannelFromStatus(row)
+		res, err := CreateResource(r.MqlRuntime, "mysqldb.replicationChannel", map[string]*llx.RawData{
+			"__id":                llx.StringData(r.__id + "/replchannel/" + ch.channel),
+			"channel":             llx.StringData(ch.channel),
+			"sourceHost":          llx.StringData(ch.host),
+			"sslAllowed":          llx.BoolData(ch.sslAllowed),
+			"sslVerifyServerCert": llx.BoolData(ch.sslVerifyServerCert),
+		})
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, res)
+	}
+	return list, rows.Err()
 }

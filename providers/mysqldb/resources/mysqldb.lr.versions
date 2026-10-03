@@ -73,6 +73,7 @@ mysqldb.user.grantedRoles 13.0.0
 mysqldb.user.hasPassword 13.0.0
 mysqldb.user.host 13.0.0
 mysqldb.user.isAnonymous 13.0.0
+mysqldb.user.isRole 14.0.2
 mysqldb.user.isWildcardHost 13.0.0
 mysqldb.user.maxConnections 13.0.0
 mysqldb.user.maxUserConnections 13.0.0

@@ -109,6 +109,12 @@ mysqldb.user @defaults("user host") {
   // The MAX_USER_CONNECTIONS resource limit; 0 applies the server's
   // max_user_connections.
   maxUserConnections int
+  // Whether the account is a role
+  //
+  // Read from mysql.user is_role on MariaDB, where a role has an empty host.
+  // Null on MySQL and Percona, where a role is an ordinary account that is
+  // normally locked and has no password.
+  isRole bool
   // Roles granted to this account
   grantedRoles() []mysqldb.user
   // Privileges held by this account
