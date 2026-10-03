@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/rs/zerolog/log"
+
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
@@ -163,20 +165,16 @@ func (c *mqlMssqlLogin) databaseUsers() ([]any, error) {
 
 	list := []any{}
 	for _, dbName := range dbNames {
+		// A database the scanner cannot read is a partition of a partial
+		// result (ADR 046 §8): skip it and keep the others, and say so.
 		if err := requireDatabaseCatalog(c.MqlRuntime, dbName, "database user"); err != nil {
-			return nil, err
+			log.Warn().Err(err).Str("database", dbName).Str("login", c.Name.Data).Msg("mssql> skipping database for login.databaseUsers")
+			continue
 		}
 		users, err := databaseUsersMatching(c.MqlRuntime, dbName, c.cacheSid)
 		if err != nil {
-			// v13 skipped a database it could not read, which drops the
-			// login's user there from the list.
-			if !plugin.StructuredErrors() {
-				continue
-			}
-			if isRefusal(err) {
-				return nil, llx.Forbidden(err, llx.WithPermissions("VIEW DEFINITION ON DATABASE::"+quoteName(dbName)))
-			}
-			return nil, err
+			log.Warn().Err(err).Str("database", dbName).Str("login", c.Name.Data).Msg("mssql> skipping database for login.databaseUsers")
+			continue
 		}
 		list = append(list, users...)
 	}
