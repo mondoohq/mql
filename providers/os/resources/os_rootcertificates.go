@@ -111,6 +111,7 @@ func initOsRootCertificates(runtime *plugin.Runtime, args map[string]*llx.RawDat
 
 func (s *mqlOsRootCertificates) content(files []any) ([]any, error) {
 	contents := []any{}
+	var readErr error
 
 	for i := range files {
 		file := files[i].(*mqlFile)
@@ -121,9 +122,18 @@ func (s *mqlOsRootCertificates) content(files []any) ([]any, error) {
 			// missing, not a reason to report none at all
 			log.Warn().Err(content.Error).Str("path", file.Path.Data).
 				Msg("os.rootcertificates> could not read certificate bundle")
+			readErr = content.Error
 			continue
 		}
 		contents = append(contents, content.Data)
+	}
+
+	// With no bundle read at all, an empty list reads as a host that trusts
+	// no CA, and passes a check that a distrusted CA is absent.
+	if len(contents) == 0 {
+		if err := certificateReadError(readErr); err != nil {
+			return nil, err
+		}
 	}
 
 	return contents, nil
