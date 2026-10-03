@@ -95,10 +95,13 @@ func kubeletConfigContent(content *plugin.TValue[string]) (string, error) {
 	if content.Error == nil {
 		return content.Data, nil
 	}
-	if errors.Is(content.Error, fs.ErrNotExist) || !plugin.StructuredErrors() {
+	if errors.Is(content.Error, fs.ErrNotExist) {
 		return "", nil
 	}
 	if errors.Is(content.Error, fs.ErrPermission) {
+		if !plugin.StructuredErrors() {
+			return "", nil
+		}
 		return "", llx.Forbidden(content.Error)
 	}
 	return "", content.Error

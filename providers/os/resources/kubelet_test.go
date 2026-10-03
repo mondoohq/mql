@@ -4,14 +4,14 @@
 package resources
 
 import (
+	"errors"
+	"io/fs"
 	"testing"
 
-	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
-	"io/fs"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 )
 
@@ -214,5 +214,11 @@ func TestKubeletConfigContent(t *testing.T) {
 		assert.True(t, errors.Is(err, llx.ErrForbidden))
 		_, err = kubeletConfigContent(&plugin.TValue[string]{Error: fs.ErrNotExist, State: plugin.StateIsSet | plugin.StateIsNull})
 		assert.NoError(t, err)
+	})
+
+	t.Run("an I/O error is not swallowed", func(t *testing.T) {
+		require.False(t, plugin.StructuredErrors())
+		_, err := kubeletConfigContent(&plugin.TValue[string]{Error: errors.New("read: input/output error"), State: plugin.StateIsSet | plugin.StateIsNull})
+		assert.Error(t, err)
 	})
 }
