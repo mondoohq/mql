@@ -3,8 +3,10 @@
 package resources
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -74,4 +76,12 @@ sshd_enable="YES"
 		require.Len(t, entries, 1)
 		require.Equal(t, SysrcEntry{Name: "sshd_enable", Value: "YES"}, entries[0])
 	})
+}
+
+// The parser reads a whole file already held in memory. A line over 64 KiB
+// must not end the parse and drop the settings after it.
+func TestParseSysrcAfterLongLine(t *testing.T) {
+	entries := ParseSysrc("ifconfig_em0_aliases=\"" + strings.Repeat("x", 70000) + "\"\nsshd_enable=\"YES\"\n")
+	require.Len(t, entries, 2)
+	assert.Equal(t, SysrcEntry{Name: "sshd_enable", Value: "YES"}, entries[1])
 }

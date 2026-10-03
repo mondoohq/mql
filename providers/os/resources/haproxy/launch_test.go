@@ -4,6 +4,7 @@
 package haproxy
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -138,4 +139,15 @@ func TestParseEnvironmentFile(t *testing.T) {
 
 	env = ParseEnvironmentFile("CONFIG='/x.cfg'\nexport EXTRAOPTS=\"-de\"\nbogus\n")
 	assert.Equal(t, map[string]string{"CONFIG": "/x.cfg", "EXTRAOPTS": "-de"}, env)
+}
+
+func TestParseEnvironmentFileKeepsKeysAfterLongLine(t *testing.T) {
+	env := ParseEnvironmentFile("LONG=" + strings.Repeat("x", 70000) + "\nCONFIG=/srv/lb/main.cfg\n")
+	assert.Equal(t, "/srv/lb/main.cfg", env["CONFIG"])
+}
+
+func TestParseSystemdServiceKeepsDirectivesAfterLongLine(t *testing.T) {
+	unit := "[Service]\nEnvironment=\"LONG=" + strings.Repeat("x", 70000) + "\"\nExecStart=/usr/sbin/haproxy -f /srv/lb/main.cfg\n"
+	svc := ParseSystemdService(unit)
+	assert.Equal(t, "/usr/sbin/haproxy -f /srv/lb/main.cfg", svc.ExecStart)
 }

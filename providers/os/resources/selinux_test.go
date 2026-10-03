@@ -3,6 +3,7 @@
 package resources
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -334,4 +335,12 @@ func TestSelinuxModuleIDNullPriority(t *testing.T) {
 	zeroID, err := zero.id()
 	require.NoError(t, err)
 	assert.NotEqual(t, unsetID, zeroID)
+}
+
+// The parser reads a whole file already held in memory. A line over 64 KiB
+// must not end the parse and drop the settings after it.
+func TestParseSelinuxConfigAfterLongLine(t *testing.T) {
+	mode, policyType := ParseSelinuxConfig("# " + strings.Repeat("x", 70000) + "\nSELINUX=permissive\nSELINUXTYPE=targeted\n")
+	assert.Equal(t, "permissive", mode)
+	assert.Equal(t, "targeted", policyType)
 }
