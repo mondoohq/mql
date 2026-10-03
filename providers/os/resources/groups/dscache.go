@@ -4,7 +4,6 @@
 package groups
 
 import (
-	"bufio"
 	"io"
 	"regexp"
 	"strconv"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/utils/iox"
 )
 
 var GROUP_OSX_DSCACHEUTIL_REGEX = regexp.MustCompile(`^(\S+):\s(.*?)$`)
@@ -28,7 +28,7 @@ func ParseDscacheutilResult(input io.Reader) ([]*Group, error) {
 		}
 	}
 
-	scanner := bufio.NewScanner(input)
+	scanner := iox.NewLineScanner(input)
 	group := Group{Members: []string{}}
 
 	var key string
@@ -70,6 +70,10 @@ func ParseDscacheutilResult(input io.Reader) ([]*Group, error) {
 				group.Members = strings.Split(content, " ")
 			}
 		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
 
 	// if the last line is not an empty line we have things in flight, lets check it
