@@ -5,6 +5,7 @@ package packages
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -195,7 +196,10 @@ func (apm *AlpinePkgManager) List() ([]Package, error) {
 }
 
 func (apm *AlpinePkgManager) Available() (map[string]PackageUpdate, error) {
-	// it only works if apk is updated
+	// Refresh the indexes first. Its exit status is not checked: as non-root
+	// it always fails (it cannot open the log), and it exits 2 when a
+	// repository is unreachable even though the cached index is still read.
+	// Whether apk could read an index is what apkUpdateCheck answers.
 	_, _ = apm.conn.RunCommand("apk update")
 
 	// determine package updates
@@ -204,7 +208,48 @@ func (apm *AlpinePkgManager) Available() (map[string]PackageUpdate, error) {
 		log.Debug().Err(err).Msg("mql[packages]> could not read package updates")
 		return nil, fmt.Errorf("could not read apk package update list")
 	}
-	return ParseApkUpdates(cmd.Stdout)
+	return apkUpdateCheck(cmd.Stdout, cmd.Stderr, cmd.ExitStatus)
+}
+
+// apkUnreadableIndexRegex matches the warning apk prints for a repository
+// whose index it could not read, from apk-tools 2 ("opening from cache
+// <repo>: No such file or directory") and 3 ("fetching <repo>/APKINDEX.tar.gz:
+// DNS: transient error"). apk still exits 0 and lists no update from that
+// repository.
+var apkUnreadableIndexRegex = regexp.MustCompile(`^WARNING: (?:opening from cache|opening|fetching|updating and opening) (\S+): (.+)$`)
+
+// apkUpdateCheck reads the result of `apk version -v -l '<'`. A repository
+// whose index apk could not read makes the check incomplete: apk then reports
+// no update for the packages that repository carries, which reads as "up to
+// date". The updates it did list are real and are kept.
+func apkUpdateCheck(stdout io.Reader, stderr io.Reader, exitStatus int) (map[string]PackageUpdate, error) {
+	errOut := ""
+	if stderr != nil {
+		errOut = readCommandOutput(stderr)
+	}
+	if exitStatus == 127 {
+		// no apk binary, as in an image that had it removed: no update check
+		return nil, errors.New("apk is not installed, cannot check for package updates")
+	}
+	if exitStatus != 0 {
+		return nil, fmt.Errorf("%w: apk version exited with status %d: %s", ErrUpdateCheckFailed, exitStatus, strings.TrimSpace(errOut))
+	}
+
+	updates, err := ParseApkUpdates(stdout)
+	if err != nil {
+		return nil, err
+	}
+
+	var unreadable []string
+	for _, line := range strings.Split(errOut, "\n") {
+		if m := apkUnreadableIndexRegex.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
+			unreadable = append(unreadable, m[1]+": "+m[2])
+		}
+	}
+	if len(unreadable) > 0 {
+		return updates, fmt.Errorf("%w: apk could not read the index of %s", ErrUpdateCheckFailed, strings.Join(unreadable, "; "))
+	}
+	return updates, nil
 }
 
 func (apm *AlpinePkgManager) Files(name string, version string, arch string) ([]FileRecord, error) {

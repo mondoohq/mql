@@ -114,7 +114,7 @@ func TestParseXbpsFileList(t *testing.T) {
 }
 
 func TestParseXbpsUpdates(t *testing.T) {
-	// The shape xbps-install -Sun prints: pkgver, action, arch, repo, sizes.
+	// The shape xbps-install -un prints: pkgver, action, arch, repo, sizes.
 	out := strings.Join([]string{
 		"acl-2.3.2_1 update x86_64 https://repo-default.voidlinux.org/current 16502 38904",
 		"base-files-0.143_1 update x86_64 https://repo-default.voidlinux.org/current 20000 40000",
@@ -172,4 +172,36 @@ func TestResolveSystemPkgManagersVoid(t *testing.T) {
 	require.NoError(t, err, "Void has an xbps database, so a manager must resolve")
 	require.Len(t, pms, 1)
 	assert.Equal(t, "xbps Package Manager", pms[0].Name())
+}
+
+// From ghcr.io/void-linux/void-glibc (aarch64) images. `xbps-query -L` before
+// the first sync prints the repository with a package count of -1, and
+// `xbps-install -un` then lists nothing and exits 0.
+func TestXbpsUpdateCheck(t *testing.T) {
+	const synced = "14176 https://repo-default.voidlinux.org/current/aarch64 (RSA signed)\n"
+	const unsynced = "   -1 https://repo-default.voidlinux.org/current/aarch64 (RSA maybe-signed)\n"
+
+	updates, err := packages.ParseXbpsUpdates(strings.NewReader(
+		"libcrypto3-3.6.5_1 update aarch64 https://repo-default.voidlinux.org/current/aarch64 6112808 2559691\n" +
+			"openssl-3.6.5_1 update aarch64 https://repo-default.voidlinux.org/current/aarch64 2294229 617154\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "aarch64", updates["openssl"].Arch)
+
+	require.NoError(t, packages.XbpsUpdateCheck(updates, strings.NewReader(synced)))
+	require.NoError(t, packages.XbpsUpdateCheck(map[string]packages.PackageUpdate{}, strings.NewReader(synced)))
+
+	err = packages.XbpsUpdateCheck(map[string]packages.PackageUpdate{}, strings.NewReader(unsynced))
+	require.ErrorIs(t, err, packages.ErrUpdateCheckFailed)
+	assert.Contains(t, err.Error(), "https://repo-default.voidlinux.org/current/aarch64")
+
+	// The 20250601R1 image: xbps itself is outdated, so the transaction holds
+	// only xbps and its libraries.
+	selfUpdate, err := packages.ParseXbpsUpdates(strings.NewReader(
+		"libcrypto3-3.6.5_1 update aarch64 https://repo-default.voidlinux.org/current/aarch64 6112808 2559691\n" +
+			"libssl3-3.6.5_1 update aarch64 https://repo-default.voidlinux.org/current/aarch64 1064872 438164\n" +
+			"libxbps-0.60.7_1 update aarch64 https://repo-default.voidlinux.org/current/aarch64 331328 144470\n" +
+			"xbps-0.60.7_1 update aarch64 https://repo-default.voidlinux.org/current/aarch64 1207594 120671\n"))
+	require.NoError(t, err)
+	err = packages.XbpsUpdateCheck(selfUpdate, strings.NewReader(synced))
+	require.ErrorIs(t, err, packages.ErrUpdateCheckFailed)
 }

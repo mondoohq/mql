@@ -4,6 +4,7 @@
 package packages
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -214,21 +215,63 @@ func (xpm *XbpsPkgManager) Available() (map[string]PackageUpdate, error) {
 		return map[string]PackageUpdate{}, nil
 	}
 
-	cmd, err := xpm.conn.RunCommand("xbps-install -Sun")
+	// Sync the repository data first. `xbps-install -Sun` does not: the dry
+	// run skips the sync, and with no repository data on disk it lists no
+	// update and exits 0. The sync's exit status is not checked, as non-root
+	// it always fails while the data a root sync left is still read.
+	// xbps-query -L says whether every repository could be read.
+	_, _ = xpm.conn.RunCommand("xbps-install -S")
+
+	cmd, err := xpm.conn.RunCommand("xbps-install -un")
 	if err != nil {
 		log.Debug().Err(err).Msg("mql[packages]> could not read xbps package updates")
 		return nil, fmt.Errorf("could not read the xbps package update list: %w", err)
 	}
+	if cmd.ExitStatus == 127 {
+		return nil, errors.New("xbps-install is not installed, cannot check for package updates")
+	}
 	if cmd.ExitStatus != 0 {
-		log.Debug().Int("exit", cmd.ExitStatus).
-			Msg("mql[packages]> xbps-install exited non-zero, reporting no available updates")
-		return map[string]PackageUpdate{}, nil
+		return nil, fmt.Errorf("%w: xbps-install -un exited with status %d: %s",
+			ErrUpdateCheckFailed, cmd.ExitStatus, strings.TrimSpace(readCommandOutput(cmd.Stderr)))
+	}
+	updates, err := ParseXbpsUpdates(cmd.Stdout)
+	if err != nil {
+		return nil, err
 	}
 
-	return ParseXbpsUpdates(cmd.Stdout)
+	repos, err := xpm.conn.RunCommand("xbps-query -L")
+	if err != nil || repos.ExitStatus != 0 {
+		log.Debug().Err(err).Msg("mql[packages]> could not list the xbps repositories")
+		return updates, nil
+	}
+	return updates, XbpsUpdateCheck(updates, repos.Stdout)
 }
 
-// ParseXbpsUpdates reads `xbps-install -Sun`, which prints one candidate per
+// XbpsUpdateCheck says whether the update list from `xbps-install -un` is
+// complete. It is not when a repository has no readable data, which
+// `xbps-query -L` prints with a package count of -1, or when xbps has to
+// update itself first: the transaction then holds only xbps and the
+// libraries it needs, and every other update is left out.
+func XbpsUpdateCheck(updates map[string]PackageUpdate, repoList io.Reader) error {
+	var unreadable []string
+	if repoList != nil {
+		for _, line := range strings.Split(readCommandOutput(repoList), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && fields[0] == "-1" {
+				unreadable = append(unreadable, fields[1])
+			}
+		}
+	}
+	if len(unreadable) > 0 {
+		return fmt.Errorf("%w: xbps has no readable data for repository %s", ErrUpdateCheckFailed, strings.Join(unreadable, ", "))
+	}
+	if _, ok := updates["xbps"]; ok {
+		return fmt.Errorf("%w: xbps must update itself before it lists the other updates", ErrUpdateCheckFailed)
+	}
+	return nil
+}
+
+// ParseXbpsUpdates reads `xbps-install -un`, which prints one candidate per
 // line as "<name>-<version>_<rev> update x86_64 <repo> <sizes>". Only the
 // leading token is read; the rest describes the download rather than the
 // package.
@@ -264,10 +307,14 @@ func ParseXbpsUpdates(r io.Reader) (map[string]PackageUpdate, error) {
 		if name == "" {
 			continue
 		}
-		updates[name] = PackageUpdate{
+		update := PackageUpdate{
 			Name:      name,
 			Available: pkgver[dash+1:],
 		}
+		if len(fields) >= 3 && fields[1] == "update" {
+			update.Arch = fields[2]
+		}
+		updates[name] = update
 	}
 	return updates, nil
 }

@@ -217,6 +217,22 @@ func TestPkgUpdatesLookup(t *testing.T) {
 		assert.Equal(t, "", lookupOK(t, u, "g03-epoch", "x86_64"))
 	})
 
+	// apk and xbps print no architecture with an update. apk installs one
+	// package per name, so the name alone is the match; keying it as
+	// "libcrypto3/" missed the installed "libcrypto3/aarch64" and every apk
+	// package read as up to date.
+	t.Run("an update with no arch matches on the name", func(t *testing.T) {
+		updates, err := packages.ParseApkUpdates(strings.NewReader("Installed:                                Available:\n" +
+			"libcrypto3-3.5.8-r0                     < 3.5.9-r0 \n" +
+			"libssl3-3.5.8-r0                        < 3.5.9-r0 \n"))
+		require.NoError(t, err)
+		u := &pkgUpdates{pm: &fakeUpdatesPkgManager{updates: updates}}
+
+		assert.Equal(t, "3.5.9-r0", lookupOK(t, u, "libcrypto3", "aarch64"))
+		assert.Equal(t, "3.5.9-r0", lookupOK(t, u, "libssl3", "aarch64"))
+		assert.Equal(t, "", lookupOK(t, u, "busybox", "aarch64"))
+	})
+
 	// From `dnf check-update` on RHEL 9 with the g03 test packages installed.
 	t.Run("multilib and arch-changing rpm updates", func(t *testing.T) {
 		f, err := os.Open("./packages/testdata/dnf-alma9-g03.txt")

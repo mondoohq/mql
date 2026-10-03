@@ -395,3 +395,59 @@ func BenchmarkParseApkDbPackages(b *testing.B) {
 		}
 	}
 }
+
+// From alpine:3.23 (apk-tools 3.0.8) and alpine:3.20 (apk-tools 2.14.4)
+// containers. With no cached index and no network, apk prints a warning per
+// repository, lists nothing and exits 0, which read as "every package is up to
+// date".
+func TestApkUpdateCheck(t *testing.T) {
+	const header = "Installed:                                Available:\n"
+	const pending = header +
+		"libcrypto3-3.5.8-r0                     < 3.5.9-r0 \n" +
+		"libssl3-3.5.8-r0                        < 3.5.9-r0 \n"
+
+	t.Run("updates listed", func(t *testing.T) {
+		updates, err := apkUpdateCheck(strings.NewReader(pending), strings.NewReader(""), 0)
+		require.NoError(t, err)
+		require.Len(t, updates, 2)
+		assert.Equal(t, "3.5.9-r0", updates["libcrypto3"].Available)
+	})
+
+	t.Run("nothing pending", func(t *testing.T) {
+		updates, err := apkUpdateCheck(strings.NewReader(header), strings.NewReader(""), 0)
+		require.NoError(t, err)
+		assert.Empty(t, updates)
+	})
+
+	unreadable := map[string]string{
+		"apk-tools 3, offline": "WARNING: fetching https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/APKINDEX.tar.gz: DNS: transient error (try again later)\n" +
+			"WARNING: fetching https://dl-cdn.alpinelinux.org/alpine/v3.23/community/aarch64/APKINDEX.tar.gz: DNS: transient error (try again later)\n",
+		"apk-tools 2, no cache": "WARNING: opening from cache https://dl-cdn.alpinelinux.org/alpine/v3.20/main: No such file or directory\n" +
+			"WARNING: opening from cache https://dl-cdn.alpinelinux.org/alpine/v3.20/community: No such file or directory\n",
+	}
+	for name, stderr := range unreadable {
+		t.Run(name, func(t *testing.T) {
+			_, err := apkUpdateCheck(strings.NewReader(header), strings.NewReader(stderr), 0)
+			require.ErrorIs(t, err, ErrUpdateCheckFailed)
+			assert.Contains(t, err.Error(), "/main")
+		})
+	}
+
+	t.Run("updates of the repositories it read are kept", func(t *testing.T) {
+		stderr := "WARNING: fetching https://dl-cdn.alpinelinux.org/alpine/v3.23/community/aarch64/APKINDEX.tar.gz: DNS: transient error (try again later)\n"
+		updates, err := apkUpdateCheck(strings.NewReader(pending), strings.NewReader(stderr), 0)
+		require.ErrorIs(t, err, ErrUpdateCheckFailed)
+		assert.Equal(t, "3.5.9-r0", updates["libssl3"].Available)
+	})
+
+	t.Run("non-zero exit is a failed check", func(t *testing.T) {
+		_, err := apkUpdateCheck(strings.NewReader(""), strings.NewReader("ERROR: Failed to open apk database: Permission denied\n"), 99)
+		require.ErrorIs(t, err, ErrUpdateCheckFailed)
+	})
+
+	t.Run("no apk binary is no update check", func(t *testing.T) {
+		_, err := apkUpdateCheck(strings.NewReader(""), strings.NewReader("sh: apk: not found\n"), 127)
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrUpdateCheckFailed)
+	})
+}

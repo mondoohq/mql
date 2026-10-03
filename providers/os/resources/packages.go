@@ -404,10 +404,16 @@ func (u *pkgUpdates) load() {
 // reverse move the same way. A multilib pair is not such a case, an i686
 // package is never updated by an x86_64 one, so for an arch-specific package
 // only a noarch update stands in for a missing same-arch one, and a noarch
-// package takes an arch-specific update only when it is the only one.
+// package takes an arch-specific update only when it is the only one. An
+// update the manager reports without an architecture matches on the name.
 func (u *pkgUpdates) lookup(name, arch string) (string, error) {
 	u.once.Do(u.load)
 	if v, ok := u.byNameArch[name+"/"+arch]; ok {
+		return v, nil
+	}
+	// apk prints no architecture with an update; it installs one package
+	// per name, so the name is the match.
+	if v, ok := u.byNameArch[name+"/"]; ok {
 		return v, nil
 	}
 	var v string
