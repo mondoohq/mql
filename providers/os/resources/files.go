@@ -6,6 +6,8 @@ package resources
 
 import (
 	"errors"
+	"fmt"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -126,14 +128,44 @@ func (l *mqlFilesFind) fsFilesFind(conn shared.Connection) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-	} else if len(l.Name.Data) > 0 {
-		compiledRegexp, err = regexp.Compile(l.Name.Data)
-		if err != nil {
-			return nil, err
-		}
 	}
 
-	return fsSearch.Find(l.From.Data, compiledRegexp, l.Type.Data, perm, depth)
+	matchesName, err := findNameMatcher(l.Name.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	found, err := fsSearch.Find(l.From.Data, compiledRegexp, l.Type.Data, perm, depth)
+	if err != nil || matchesName == nil {
+		return found, err
+	}
+	res := found[:0]
+	for _, p := range found {
+		if matchesName(p) {
+			res = append(res, p)
+		}
+	}
+	return res, nil
+}
+
+// findNameMatcher returns a test for files.find's name filter, which is a
+// `find -name` glob on the last path component. It returns nil when no name
+// is set. The native search used to compile the name as a regular expression
+// against the full path: "*.conf" was a regexp error and "in.conf" matched
+// anywhere in a path (or, on the mounted filesystem, nowhere).
+func findNameMatcher(name string) (func(string) bool, error) {
+	if name == "" {
+		return nil, nil
+	}
+	// fnmatch negates a bracket expression with "!", Go's path.Match with "^"
+	pattern := strings.ReplaceAll(name, "[!", "[^")
+	if _, err := path.Match(pattern, ""); err != nil {
+		return nil, fmt.Errorf("invalid files.find name pattern %q: %w", name, err)
+	}
+	return func(p string) bool {
+		ok, _ := path.Match(pattern, path.Base(p))
+		return ok
+	}, nil
 }
 
 func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
