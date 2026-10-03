@@ -312,6 +312,9 @@ func TestCgroupsV1UnreadableProcCgroups(t *testing.T) {
 	assert.Error(t, cg.GetControllers().Error)
 }
 
+// runShellCmd backs ovs and sriov. A command that never ran used to come back
+// as a successful empty run: ovs reported itself installed and sriov reported
+// no physical functions.
 func TestRunShellCmd_CommandCannotRun(t *testing.T) {
 	_, ok, err := runShellCmd(noCommandRuntime(t), "true")
 	require.Error(t, err)
@@ -332,7 +335,3 @@ func TestRunShellCmd_CommandCannotRun(t *testing.T) {
 	assert.False(t, ok)
 	assert.Equal(t, "", out)
 }
-
-// nft --version on a connection whose commands fail to run must not cache an
-
-// empty version as measured.
