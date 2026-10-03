@@ -33,10 +33,10 @@ drwxrwxrwt. 10 0 0     4096 Oct  3 02:05 /tmp
 
 // fakeLstat answers from captured ls output and counts the calls.
 func fakeLstat(out string) (func([]string) map[string]pathEntry, *int) {
-	all := parseLsLong(out)
 	calls := 0
 	return func(paths []string) map[string]pathEntry {
 		calls++
+		all := parseLsLong(out, paths)
 		res := map[string]pathEntry{}
 		for _, p := range paths {
 			if e, ok := all[p]; ok {
@@ -48,7 +48,7 @@ func fakeLstat(out string) (func([]string) map[string]pathEntry, *int) {
 }
 
 func TestParseLsLong(t *testing.T) {
-	entries := parseLsLong(rhel7NodeTarball + "ls: cannot access /nonexist: No such file or directory\n")
+	entries := parseLsLong(rhel7NodeTarball+"ls: cannot access /nonexist: No such file or directory\n", nil)
 	require.Contains(t, entries, "/")
 	assert.Equal(t, pathEntry{mode: "dr-xr-xr-x", uid: 0}, entries["/"])
 	assert.Equal(t, int64(1000), entries["/usr/local/lib/node_modules"].uid)
@@ -59,10 +59,14 @@ func TestParseLsLong(t *testing.T) {
 	assert.NotContains(t, entries, "/nonexist")
 
 	// macOS: ACL/xattr markers after the mode, a group-writable Homebrew bin
-	mac := parseLsLong("drwxrwxr-x  563 501  80  18016 Oct  2 08:34 /opt/homebrew/bin\nlrwxr-xr-x@   1 0    0      11 Sep  3 03:34 /tmp -> private/tmp\n")
+	mac := parseLsLong("drwxrwxr-x  563 501  80  18016 Oct  2 08:34 /opt/homebrew/bin\nlrwxr-xr-x@   1 0    0      11 Sep  3 03:34 /tmp -> private/tmp\n", nil)
 	assert.Equal(t, int64(501), mac["/opt/homebrew/bin"].uid)
 	assert.True(t, mac["/opt/homebrew/bin"].writableByOthers())
 	assert.Equal(t, "private/tmp", mac["/tmp"].link)
+
+	// a name holding " -> " is split after the path that was asked for
+	odd := parseLsLong("lrwxrwxrwx 1 0 0 7 Apr 22  2024 /opt/a -> b -> /usr/bin/b\n", []string{"/opt", "/opt/a -> b"})
+	assert.Equal(t, "/usr/bin/b", odd["/opt/a -> b"].link)
 }
 
 func TestTrustedResolution(t *testing.T) {
