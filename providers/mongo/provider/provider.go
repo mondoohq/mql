@@ -86,6 +86,10 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 	if user != "" || flagString("password") != "" || flagBool("ask-pass") {
 		conf.Credentials = append(conf.Credentials, vault.NewPasswordCredential(user, flagString("password")))
 	}
+	// Take a password out of a mongodb:// host before it lands in the asset.
+	// Runs after the flags so --user and --password win over the host's
+	// user info.
+	connection.MoveURICredentials(conf)
 
 	discoverTargets := []string{}
 	if x, ok := flags["discover"]; ok && len(x.Array) != 0 {
@@ -196,7 +200,7 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.MongoConnectio
 
 	id := connection.NewMongoServerIdentifier(serverID)
 	asset.Id = id
-	asset.Name = conn.Conf.Host
+	asset.Name = conn.DisplayName()
 	asset.Platform = connection.NewMongoServerPlatform(serverID)
 	if v, ok := buildInfo["version"].(string); ok {
 		asset.Platform.Version = v
