@@ -621,6 +621,7 @@ func (st *parseState) expandInclude(cfg *Config, pattern string, optional bool) 
 		// A refusal is recorded for Include and IncludeOptional alike:
 		// IncludeOptional only tolerates a pattern that matches nothing.
 		if errors.Is(err, fs.ErrPermission) {
+			log.Warn().Err(err).Str("pattern", pattern).Msg("unable to expand Include directive")
 			cfg.Unreadable = append(cfg.Unreadable, fmt.Errorf("cannot expand Include %s: %w", pattern, err))
 			return
 		}
@@ -640,6 +641,7 @@ func (st *parseState) expandInclude(cfg *Config, pattern string, optional bool) 
 		content, err := st.fileContent(p)
 		if err != nil {
 			if errors.Is(err, fs.ErrPermission) {
+				log.Warn().Err(err).Str("path", p).Msg("unable to read included file")
 				cfg.Unreadable = append(cfg.Unreadable, fmt.Errorf("cannot read included file %s: %w", p, err))
 				continue
 			}
