@@ -38,12 +38,46 @@ func TestIdentifierBuilders(t *testing.T) {
 	if got := schemaResourceID("SRV", "appdb"); got != "SRV/schema/appdb" {
 		t.Errorf("schemaResourceID = %q", got)
 	}
-	// composite privilege id must vary by scope, object, and type
-	a := privilegeResourceID("p", "GLOBAL", "", "", "SUPER")
-	b := privilegeResourceID("p", "SCHEMA", "appdb", "", "SELECT")
-	c := privilegeResourceID("p", "TABLE", "appdb", "t1", "SELECT")
+	// composite privilege id must vary by grantee, scope, object, and type
+	a := privilegeResourceID("p", "'app'@'%'", "GLOBAL", "", "", "SUPER")
+	b := privilegeResourceID("p", "'app'@'%'", "SCHEMA", "appdb", "", "SELECT")
+	c := privilegeResourceID("p", "'app'@'%'", "TABLE", "appdb", "t1", "SELECT")
 	if a == b || b == c || a == c {
 		t.Errorf("privilegeResourceID collides: %q %q %q", a, b, c)
+	}
+}
+
+// schema.privileges and table.privileges list every grantee under one parent,
+// so two accounts holding the same privilege on the same object must get
+// distinct ids. Captured on MySQL 8.4: 'mqlapp'@'10.0.0.1' and 'mql_ro'@'%'
+// both hold SELECT on the mqlapp schema, and mysql.user is readable by both
+// 'mysql.session'@'localhost' and 'mqlmid'@'%'.
+func TestPrivilegeResourceIDIncludesGrantee(t *testing.T) {
+	cases := []struct {
+		scope, schema, table, priv string
+		grantees                   []string
+	}{
+		{"SCHEMA", "mqlapp", "", "SELECT", []string{"'mqlapp'@'10.0.0.1'", "'mql_ro'@'%'"}},
+		{"TABLE", "mysql", "user", "SELECT", []string{"'mysql.session'@'localhost'", "'mqlmid'@'%'"}},
+		// a MariaDB role has an empty host
+		{"SCHEMA", "mqlapp", "", "SELECT", []string{"'mql_ro'@''", "'mql_ro'@'%'"}},
+	}
+	for _, tc := range cases {
+		a := privilegeResourceID("srv/schema/"+tc.schema, tc.grantees[0], tc.scope, tc.schema, tc.table, tc.priv)
+		b := privilegeResourceID("srv/schema/"+tc.schema, tc.grantees[1], tc.scope, tc.schema, tc.table, tc.priv)
+		if a == b {
+			t.Errorf("grantees %v share privilege id %q", tc.grantees, a)
+		}
+	}
+}
+
+// MariaDB 10.10+ registers uuid twice in information_schema.PLUGINS, once as
+// DATA TYPE and once as FUNCTION; both rows must survive.
+func TestPluginResourceIDIncludesType(t *testing.T) {
+	a := pluginResourceID("srv", "uuid", "DATA TYPE")
+	b := pluginResourceID("srv", "uuid", "FUNCTION")
+	if a == b {
+		t.Errorf("plugin rows of different type share id %q", a)
 	}
 }
 
