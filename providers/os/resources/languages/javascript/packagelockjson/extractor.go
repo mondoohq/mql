@@ -4,6 +4,8 @@
 package packagelockjson
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"io"
 
@@ -27,7 +29,7 @@ func (p *Extractor) Name() string {
 
 func (p *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 	var packageJsonLock packageLock
-	err := json.NewDecoder(r).Decode(&packageJsonLock)
+	err := json.NewDecoder(skipByteOrderMark(r)).Decode(&packageJsonLock)
 	if err != nil {
 		return nil, err
 	}
@@ -138,4 +140,15 @@ func (p *packageLock) Transitive() languages.Packages {
 		}
 	}
 	return transitive
+}
+
+// skipByteOrderMark returns r without the UTF-8 byte order mark a lockfile
+// saved by some Windows editors starts with. npm strips it before parsing;
+// encoding/json rejects it.
+func skipByteOrderMark(r io.Reader) io.Reader {
+	br := bufio.NewReader(r)
+	if b, err := br.Peek(3); err == nil && bytes.Equal(b, []byte("\xef\xbb\xbf")) {
+		_, _ = br.Discard(3)
+	}
+	return br
 }
