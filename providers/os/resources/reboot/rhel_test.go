@@ -263,3 +263,60 @@ func TestRhelRebootDnf5NeedsRestarting(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, required)
 }
+
+// The CentOS Stream 10 bootc image: its rpm database is the booted
+// deployment's and it ships no needs-restarting, so only the staged
+// deployment shows the pending reboot.
+func bootcRebootMock(t *testing.T, files map[string]*mock.MockFileData, commands map[string]*mock.Command) *RpmNewestKernel {
+	if commands == nil {
+		commands = map[string]*mock.Command{}
+	}
+	commands[rpmQueryKernelCmd] = &mock.Command{Stdout: "kernel 0:6.12.0-271.el10 x86_64__CentOS__The Linux kernel__GPL-2.0-only__1790668889\n"}
+	commands["uname -r"] = &mock.Command{Stdout: "6.12.0-271.el10.x86_64\n"}
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:    "centos",
+			Version: "10",
+			Family:  []string{"redhat", "linux", "unix", "os"},
+		},
+	}, mock.WithData(&mock.TomlData{Commands: commands, Files: files}))
+	require.NoError(t, err)
+	return &RpmNewestKernel{conn: conn}
+}
+
+func TestRhelRebootOstreeStaged(t *testing.T) {
+	booted := &mock.MockFileData{Path: ostreeBootedPath, Content: "{}"}
+
+	lb := bootcRebootMock(t, map[string]*mock.MockFileData{
+		ostreeBootedPath:           booted,
+		ostreeStagedDeploymentPath: {Path: ostreeStagedDeploymentPath, Content: "{}"},
+	}, nil)
+	required, err := lb.RebootPending()
+	require.NoError(t, err)
+	assert.True(t, required)
+
+	// nothing staged, rpm-ostree says the booted deployment boots next
+	lb = bootcRebootMock(t, map[string]*mock.MockFileData{ostreeBootedPath: booted},
+		map[string]*mock.Command{rpmOstreeStatusCmd: {Stdout: rpmOstreeStatusBooted}})
+	required, err = lb.RebootPending()
+	require.NoError(t, err)
+	assert.False(t, required)
+
+	// nothing staged, a deployment written straight to the boot entries
+	lb = bootcRebootMock(t, map[string]*mock.MockFileData{ostreeBootedPath: booted},
+		map[string]*mock.Command{rpmOstreeStatusCmd: {Stdout: rpmOstreeStatusDeployed}})
+	required, err = lb.RebootPending()
+	require.NoError(t, err)
+	assert.True(t, required)
+}
+
+// A staged deployment file left in /run on a host that is not booted from
+// ostree is not read.
+func TestRhelRebootNotOstree(t *testing.T) {
+	lb := bootcRebootMock(t, map[string]*mock.MockFileData{
+		ostreeStagedDeploymentPath: {Path: ostreeStagedDeploymentPath, Content: "{}"},
+	}, nil)
+	required, err := lb.RebootPending()
+	require.NoError(t, err)
+	assert.False(t, required)
+}
