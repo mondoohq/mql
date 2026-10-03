@@ -570,8 +570,8 @@ mssql.auditSpecification @defaults("name isEnabled") {
   //
   // Keys are audited action group names (for example SUCCESSFUL_LOGIN_GROUP or
   // FAILED_LOGIN_GROUP) and values are the recorded audit-action state. An
-  // action audited on several objects appears once; read auditedActions for
-  // the per-object entries.
+  // action audited on several objects appears once, with the state of only
+  // one of those rows; read auditedActions for the per-object entries.
   actionGroups map[string]string
   // Audited actions, one entry per row of the specification
   //
