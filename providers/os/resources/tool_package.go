@@ -90,7 +90,7 @@ type toolPackageSpec struct {
 
 // toolPackageSpecs is keyed by MQL resource name.
 var toolPackageSpecs = map[string]toolPackageSpec{
-	"claude.code":    {packageName: "claude-code", binaryNames: []string{"claude"}, managerCandidates: []string{"claude-code", "claude-code@latest", "Claude Code", "Claude CLI"}, vendor: "Anthropic", inferVersion: inferClaudeVersion},
+	"claude.code":    {packageName: "claude-code", binaryNames: []string{"claude"}, managerCandidates: []string{"claude-code", "claude-code@latest", "Claude Code", "Claude CLI"}, vendor: "Anthropic", inferVersion: inferClaudeCodeVersion},
 	"openai.codex":   {packageName: "openai-codex", binaryNames: []string{"codex"}, managerCandidates: []string{"codex", "OpenAI.Codex"}, vendor: "OpenAI", inferVersion: inferCodexVersion},
 	"cursor":         {packageName: "cursor", binaryNames: []string{"cursor"}, managerCandidates: []string{"cursor", "Cursor", "Cursor (User)"}, vendor: "Anysphere"},
 	"github.copilot": {packageName: "github-copilot", vendor: "GitHub", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
@@ -817,4 +817,70 @@ func parseOllamaVersion(stdout string) string {
 		}
 	}
 	return serverVersion
+}
+
+// inferClaudeCodeVersion reads the version of a native install in the home
+// that owns configPath, and otherwise asks the claude binary on the system.
+// The native installer puts claude in ~/.local/bin, which the binary lookup
+// leaves out on purpose (it is not a system path), so a root scan of a user's
+// native install read no version.
+func inferClaudeCodeVersion(runtime *plugin.Runtime, configPath string) (string, error) {
+	if v := claudeNativeVersion(connectionAfs(runtime), configPath); v != "" {
+		return v, nil
+	}
+	return inferClaudeVersion(runtime, configPath)
+}
+
+// claudeNativeVersion returns the version of Claude Code's native install for
+// the home that holds configPath (<home>/.claude), without running anything.
+// The installer keeps each release as ~/.local/share/claude/versions/<version>
+// and points the ~/.local/bin/claude launcher at the active one. When the
+// filesystem cannot read links, the highest version kept stands in while the
+// launcher exists. Empty when there is no native install.
+func claudeNativeVersion(afs *afero.Afero, configPath string) string {
+	if configPath == "" || filepath.Base(configPath) != ".claude" {
+		return ""
+	}
+	home := filepath.Dir(configPath)
+	launcher := filepath.Join(home, ".local", "bin", "claude")
+	versionsDir := filepath.Join(home, ".local", "share", "claude", "versions")
+
+	if lr, ok := afs.Fs.(afero.LinkReader); ok {
+		if target, err := lr.ReadlinkIfPossible(launcher); err == nil {
+			if !filepath.IsAbs(target) {
+				target = filepath.Join(filepath.Dir(launcher), target)
+			}
+			target = filepath.Clean(target)
+			if filepath.Dir(target) != versionsDir || !isSemverVersion(filepath.Base(target)) {
+				return ""
+			}
+			return filepath.Base(target)
+		}
+	}
+
+	if _, err := afs.Stat(launcher); err != nil {
+		return ""
+	}
+	entries, err := afs.ReadDir(versionsDir)
+	if err != nil {
+		return ""
+	}
+	version := ""
+	for _, e := range entries {
+		if e.IsDir() || !isSemverVersion(e.Name()) {
+			continue
+		}
+		if version == "" || semverLess(version, e.Name()) {
+			version = e.Name()
+		}
+	}
+	return version
+}
+
+// isSemverVersion reports whether MQL's semver parser recognizes v. The parser
+// exposes only Compare, so a valid version is one that compares against itself
+// without error.
+func isSemverVersion(v string) bool {
+	_, err := (semver.Parser{}).Compare(v, v)
+	return err == nil
 }
