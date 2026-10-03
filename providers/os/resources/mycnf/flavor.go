@@ -224,12 +224,18 @@ func ParseVersion(output string) (version string, flavor string) {
 // the socket path; Oracle MySQL does not. Neither product reads a
 // version-suffixed [server] group.
 //
-// [galera] is deliberately excluded even though a wsrep-enabled MariaDB reads
-// it, so that cluster transport settings stay separable from server settings.
+// This is the fallback for when the server binary cannot be asked: the list
+// the binary prints (ParseServerHelp) is the authority, since it varies by
+// build. MariaDB from 10.1 reads [galera] whether or not wsrep is on, so it is
+// server scope. MySQL 8.4 reads [mysql_cluster] in every build seen; on 8.0
+// only Oracle's and Percona's builds do, so it is left out there.
 func ServerGroups(flavor string, version string) []string {
 	mm := majorMinor(version)
 	if flavor == FlavorMariaDB {
 		groups := []string{"client-server", "mysqld", "server", "mariadb"}
+		if mm == "" || versionAtLeast(mm, 10, 1) {
+			groups = append(groups, "galera")
+		}
 		readsMariadbd := mm == "" || versionAtLeast(mm, 10, 4)
 		if readsMariadbd {
 			groups = append(groups, "mariadbd")
@@ -245,6 +251,9 @@ func ServerGroups(flavor string, version string) []string {
 	groups := []string{"mysqld", "server"}
 	if mm != "" {
 		groups = append(groups, "mysqld-"+mm)
+		if versionAtLeast(mm, 8, 4) {
+			groups = append(groups, "mysql_cluster")
+		}
 	}
 	return groups
 }

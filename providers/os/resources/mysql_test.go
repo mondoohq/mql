@@ -1011,3 +1011,97 @@ func TestMariadbConf_ServerOptionsFollowTheRunningVersion(t *testing.T) {
 	assert.Equal(t, plugin.StateIsSet, local.State)
 	assert.False(t, local.Data)
 }
+
+// A RHEL 7 host with Oracle MySQL 8.0.46, as `mysqld --verbose --help`
+// describes it: four default option files and [mysql_cluster]. The server
+// merges every file in that order, then its persisted options. Before, only
+// /etc/my.cnf was read and [mysql_cluster] was not server scope.
+func TestMysqlConf_ReadsWhatTheServerBinaryLists(t *testing.T) {
+	file := func(p, content string) *mock.MockFileData {
+		return &mock.MockFileData{Path: p, Content: content, StatData: mock.FileInfo{Mode: 0o644}}
+	}
+	data := &mock.TomlData{
+		Files: map[string]*mock.MockFileData{
+			"/usr/sbin/mysqld":  file("/usr/sbin/mysqld", "ELF"),
+			"/etc/my.cnf":       file("/etc/my.cnf", "[mysqld]\ndatadir=/var/lib/mysql\nmax_connections=120\n"),
+			"/etc/mysql/my.cnf": file("/etc/mysql/my.cnf", "[mysqld]\nlocal_infile=1\nmax_connections=444\n"),
+			"/usr/etc/my.cnf":   file("/usr/etc/my.cnf", "[mysql_cluster]\nskip-show-database\n"),
+			"/usr/lib/systemd/system/mysqld.service": file("/usr/lib/systemd/system/mysqld.service",
+				"[Service]\nUser=mysql\nExecStart=/usr/sbin/mysqld $MYSQLD_OPTS\n"),
+			"/etc/passwd":                    file("/etc/passwd", "root:x:0:0:root:/root:/bin/bash\nmysql:x:27:27:MySQL Server:/var/lib/mysql:/bin/false\n"),
+			"/var/lib/mysql/.my.cnf":         file("/var/lib/mysql/.my.cnf", "[mysqld]\nmax_connections=199\nrequire_secure_transport=OFF\n"),
+			"/var/lib/mysql/mysqld-auto.cnf": file("/var/lib/mysql/mysqld-auto.cnf", `{"Version": 2, "mysql_dynamic_variables": {"require_secure_transport": {"Value": "ON"}}}`),
+		},
+		Commands: map[string]*mock.Command{
+			"mysqld --version": {Stdout: "/usr/sbin/mysqld  Ver 8.0.46 for Linux on x86_64 (MySQL Community Server - GPL)\n"},
+			"mysqld --verbose --help": {Stdout: "/usr/sbin/mysqld  Ver 8.0.46 for Linux on x86_64 (MySQL Community Server - GPL)\n" +
+				"Default options are read from the following files in the given order:\n" +
+				"/etc/my.cnf /etc/mysql/my.cnf /usr/etc/my.cnf ~/.my.cnf \n" +
+				"The following groups are read: mysql_cluster mysqld server mysqld-8.0\n"},
+		},
+	}
+	conn, err := mock.New(0, &inventory.Asset{Platform: &inventory.Platform{Name: "redhat", Family: []string{"redhat", "linux", "unix"}}}, mock.WithData(data))
+	require.NoError(t, err)
+	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+
+	raw, err := CreateResource(runtime, "mysql.conf", nil)
+	require.NoError(t, err)
+	conf := raw.(*mqlMysqlConf)
+	f := conf.GetFile()
+	require.NoError(t, f.Error)
+	assert.Equal(t, "/etc/my.cnf", f.Data.Path.Data)
+
+	opts := serverOptions(t, conf)
+	assert.Equal(t, "199", opts["max_connections"], "~/.my.cnf of the server account is read last")
+	assert.Equal(t, "1", opts["local_infile"], "/etc/mysql/my.cnf is read after /etc/my.cnf")
+	assert.Equal(t, "ON", opts["skip_show_database"], "[mysql_cluster] is server scope when the binary lists it")
+	assert.Equal(t, "ON", opts["require_secure_transport"], "persisted options win over every option file")
+
+	files := conf.GetFiles()
+	require.NoError(t, files.Error)
+	var paths []string
+	for _, x := range files.Data {
+		paths = append(paths, x.(*mqlFile).Path.Data)
+	}
+	assert.Equal(t, []string{"/etc/my.cnf", "/etc/mysql/my.cnf", "/usr/etc/my.cnf", "/var/lib/mysql/.my.cnf", "/var/lib/mysql/mysqld-auto.cnf"}, paths)
+}
+
+// Fedora 44, MariaDB 11.8.8: the binary also reads [mariadb-11] and
+// [mariadbd-11], which the version-exact static group list (#11405) left out,
+// and [galera], which it read with wsrep off.
+func TestMariadbConf_ReadsTheGroupsTheServerBinaryLists(t *testing.T) {
+	file := func(p, content string) *mock.MockFileData {
+		return &mock.MockFileData{Path: p, Content: content, StatData: mock.FileInfo{Mode: 0o644}}
+	}
+	data := &mock.TomlData{
+		Files: map[string]*mock.MockFileData{
+			"/usr/sbin/mariadbd":    file("/usr/sbin/mariadbd", "ELF"),
+			"/etc/my.cnf":           file("/etc/my.cnf", "[client-server]\n!includedir /etc/my.cnf.d\n"),
+			"/etc/my.cnf.d":         {Path: "/etc/my.cnf.d", StatData: mock.FileInfo{Mode: os.ModeDir | 0o755, IsDir: true}},
+			"/etc/my.cnf.d/zz.cnf":  file("/etc/my.cnf.d/zz.cnf", "[mariadb-11]\nlocal_infile=1\n[mariadbd-11]\nmax_connections=332\n[galera]\nskip-grant-tables\n"),
+			"/etc/my.cnf.d/old.cnf": file("/etc/my.cnf.d/old.cnf", "[mariadb-10]\nport=4444\n"),
+		},
+		Commands: map[string]*mock.Command{
+			"mariadbd --version": {Stdout: "/usr/sbin/mariadbd  Ver 11.8.8-MariaDB-log for Linux on x86_64 (MariaDB Server)\n"},
+			"mariadbd --verbose --help": {Stdout: "Default options are read from the following files in the given order:\n" +
+				"/etc/my.cnf ~/.my.cnf \n" +
+				"The following groups are read: mysqld server mysqld-11.8 mariadb mariadb-11.8 mariadb-11 mariadbd mariadbd-11.8 mariadbd-11 client-server galera\n"},
+		},
+	}
+	conn, err := mock.New(0, &inventory.Asset{Platform: &inventory.Platform{Name: "fedora", Family: []string{"redhat", "linux", "unix"}}}, mock.WithData(data))
+	require.NoError(t, err)
+	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+
+	raw, err := CreateResource(runtime, "mariadb.conf", nil)
+	require.NoError(t, err)
+	conf := raw.(*mqlMariadbConf)
+	opts := conf.GetServerOptions()
+	require.NoError(t, opts.Error)
+	assert.Equal(t, "1", opts.Data["local_infile"])
+	assert.Equal(t, "332", opts.Data["max_connections"])
+	assert.Equal(t, "ON", opts.Data["skip_grant_tables"], "[galera] is read with wsrep off")
+	assert.NotContains(t, opts.Data, "port", "[mariadb-10] is another major")
+	skip := conf.GetSkipGrantTables()
+	require.NoError(t, skip.Error)
+	assert.True(t, skip.Data)
+}
