@@ -4,6 +4,9 @@
 package apache2
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"path"
 	"regexp"
 	"strconv"
@@ -72,6 +75,10 @@ type Config struct {
 	Locations []Location          // <Location> / <LocationMatch> blocks at top-level scope
 	Headers   map[string][]string // headers added via `Header always set` at any scope
 	Includes  []string            // Include/IncludeOptional paths (unexpanded)
+	// Unreadable holds the included files and directories the parse was
+	// refused (a permission error). httpd fails to start on these, so the
+	// parsed configuration lacks what they hold.
+	Unreadable []error
 }
 
 type (
@@ -611,6 +618,13 @@ func splitDefine(s string) (string, string, bool) {
 func (st *parseState) expandInclude(cfg *Config, pattern string, optional bool) {
 	paths, err := st.globExpand(pattern)
 	if err != nil {
+		// A refusal is recorded for Include and IncludeOptional alike:
+		// IncludeOptional only tolerates a pattern that matches nothing.
+		if errors.Is(err, fs.ErrPermission) {
+			log.Warn().Err(err).Str("pattern", pattern).Msg("unable to expand Include directive")
+			cfg.Unreadable = append(cfg.Unreadable, fmt.Errorf("cannot expand Include %s: %w", pattern, err))
+			return
+		}
 		if !optional {
 			log.Warn().Err(err).Str("pattern", pattern).Msg("unable to expand Include directive")
 		}
@@ -626,6 +640,11 @@ func (st *parseState) expandInclude(cfg *Config, pattern string, optional bool) 
 
 		content, err := st.fileContent(p)
 		if err != nil {
+			if errors.Is(err, fs.ErrPermission) {
+				log.Warn().Err(err).Str("path", p).Msg("unable to read included file")
+				cfg.Unreadable = append(cfg.Unreadable, fmt.Errorf("cannot read included file %s: %w", p, err))
+				continue
+			}
 			if !optional {
 				log.Warn().Err(err).Str("path", p).Msg("unable to read included file")
 			}
