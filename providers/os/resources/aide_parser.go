@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
@@ -68,6 +69,9 @@ type aideConfig struct {
 	// XEnv holds the @@x_include_setenv variables, in the order they were set,
 	// for the scripts an @@x_include runs.
 	XEnv []aideEnvVar
+	// Invalid is the first line the installed AIDE rejects. AIDE refuses to
+	// run with such a configuration, so it checks nothing at all.
+	Invalid error
 }
 
 // aideEnvVar is one variable set by @@x_include_setenv.
@@ -156,6 +160,16 @@ func (cfg *aideConfig) unescapesRules() bool {
 		return true
 	}
 	return aideVersionAtLeast(cfg.Version, 0, 17)
+}
+
+// readsNonRecursiveNegativeRules reports whether the AIDE release accepts a
+// '-' rule, which 0.19 introduced. An unknown release is treated as a current
+// one.
+func (cfg *aideConfig) readsNonRecursiveNegativeRules() bool {
+	if _, _, ok := aideReleaseNumbers(cfg.Version); !ok {
+		return true
+	}
+	return aideVersionAtLeast(cfg.Version, 0, 19)
 }
 
 // aideIncludeFile is one file an include target expanded to.
@@ -262,6 +276,14 @@ func parseAideConfigPrefixed(cfg *aideConfig, filePath string, content string, d
 		}
 
 		line = expandAideMacros(cfg, line)
+
+		if strings.HasPrefix(line, "-") && !cfg.readsNonRecursiveNegativeRules() {
+			// AIDE before 0.19 stops at this line with "unexpected character: '-'"
+			if cfg.Invalid == nil {
+				cfg.Invalid = fmt.Errorf("aide: %s:%d: AIDE %s rejects the configuration: '-' rules need AIDE 0.19 or later", filePath, lineNumber, cfg.Version)
+			}
+			continue
+		}
 
 		if rule, ok := parseAideSelectionLine(cfg, line, prefix, filePath, lineNumber); ok {
 			cfg.Rules = append(cfg.Rules, rule)
@@ -963,6 +985,8 @@ func aideDatabasePath(value string) string {
 	return ""
 }
 
+var aideReleaseRegex = regexp.MustCompile(`^[0-9]+\.[0-9]+`)
+
 // parseAideVersion pulls the release out of "aide --version" output, whose first
 // line reads like "Aide 0.17.4".
 func parseAideVersion(out string) string {
@@ -977,7 +1001,9 @@ func parseAideVersion(out string) string {
 			if field == "" {
 				continue
 			}
-			if field[0] >= '0' && field[0] <= '9' {
+			// a release is MAJOR.MINOR[...]; "1:" in "bash: line 1: aide:
+			// command not found" is not one
+			if aideReleaseRegex.MatchString(field) {
 				return field
 			}
 		}

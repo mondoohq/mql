@@ -10277,13 +10277,14 @@ private polkit.localAuthorityRule @defaults("name resultActive") {
 aide @defaults("installed version") {
   // Whether AIDE is present on the system
   //
-  // True when a configuration file or an AIDE binary is found. Use it to guard
-  // integrity-monitoring audits on hosts that ship no AIDE at all.
+  // True when an AIDE binary is found. A configuration file left behind by a
+  // removed package does not count. Use it to guard integrity-monitoring
+  // audits on hosts that ship no AIDE at all.
   installed() bool
   // AIDE release reported by the aide binary
   //
   // Requires command execution, so it is null on backends that expose only a
-  // filesystem, such as an image scan.
+  // filesystem, such as an image scan, and when no aide binary can be run.
   version() string
   // Root configuration file the settings are read from
   configFile() file

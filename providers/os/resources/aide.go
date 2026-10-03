@@ -37,6 +37,7 @@ var (
 		"/usr/sbin/aide",
 		"/usr/bin/aide",
 		"/usr/local/bin/aide",
+		"/usr/local/sbin/aide",
 	}
 )
 
@@ -219,6 +220,9 @@ func (a *mqlAide) readConfig() (*aideConfig, []*mqlFile, error) {
 	if readErr != nil {
 		return nil, nil, readErr
 	}
+	if cfg.Invalid != nil {
+		return nil, nil, llx.MalformedData(cfg.Invalid)
+	}
 
 	return cfg, files, nil
 }
@@ -368,27 +372,29 @@ func aideShortHostname(fs afero.Fs) string {
 	return name
 }
 
+// installed reports whether an AIDE binary is present. A configuration file
+// alone does not count: removing the package on Debian keeps its conffiles,
+// /etc/aide/aide.conf among them.
 func (a *mqlAide) installed() (bool, error) {
 	fs, err := a.fs()
 	if err != nil {
 		return false, err
 	}
+	return aideBinaryPath(fs) != "", nil
+}
 
-	if a.findConfigFile(fs) != "" {
-		return true, nil
-	}
-
+// aideBinaryPath returns the first AIDE binary present, or "".
+func aideBinaryPath(fs afero.Fs) string {
 	for _, binary := range aideBinaries {
 		exists, err := afero.Exists(fs, binary)
 		if err != nil {
 			continue
 		}
 		if exists {
-			return true, nil
+			return binary
 		}
 	}
-
-	return false, nil
+	return ""
 }
 
 func (a *mqlAide) version() (string, error) {
@@ -423,10 +429,19 @@ func (a *mqlAide) version() (string, error) {
 
 // versionOutput returns what `aide --version` printed. ok is false when the
 // command could not run, which a backend that cannot run commands, such as an
-// image scan, reports; the version is then unknown rather than wrong.
+// image scan, reports, or when there is no aide to run; the version is then
+// unknown rather than wrong. The binary found on disk is run by its path, since
+// /usr/sbin, where the Red Hat family installs it, is not on a regular user's
+// PATH.
 func (a *mqlAide) versionOutput() (string, bool, error) {
+	command := "aide"
+	if fs, err := a.fs(); err == nil {
+		if binary := aideBinaryPath(fs); binary != "" {
+			command = binary
+		}
+	}
 	o, err := CreateResource(a.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("aide --version"),
+		"command": llx.StringData(command + " --version"),
 	})
 	if err != nil {
 		return "", false, err
@@ -452,7 +467,24 @@ func (a *mqlAide) versionOutput() (string, bool, error) {
 			out = stderr.Data
 		}
 	}
+	if aideCommandMissing(exit.Data, out) {
+		log.Debug().Str("output", out).Msg("aide> aide command not found")
+		return "", false, nil
+	}
 	return out, true, nil
+}
+
+// aideCommandMissing reports whether `aide --version` failed because the shell
+// found no aide to run: exit status 127, or a "not found" message, which sudo
+// prints with exit status 1.
+func aideCommandMissing(exit int64, out string) bool {
+	if exit == 127 {
+		return true
+	}
+	if exit == 0 {
+		return false
+	}
+	return strings.Contains(out, "command not found") || strings.Contains(out, "aide: not found")
 }
 
 func (a *mqlAide) configFile() (*mqlFile, error) {

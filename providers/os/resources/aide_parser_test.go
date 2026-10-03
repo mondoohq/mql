@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
@@ -323,6 +324,10 @@ func TestParseAideVersion(t *testing.T) {
 		{"aide 0.18", "Aide 0.18.6", "0.18.6"},
 		{"leading blank line", "\nAide 0.16\n", "0.16"},
 		{"no version", "command not found\n", ""},
+		{"aide 0.18 lowercase", "aide 0.18.6\n", "0.18.6"},
+		// what `aide --version` prints through sh -c when aide is not on PATH
+		{"bash command not found", "bash: line 1: aide: command not found\n", ""},
+		{"dash not found", "sh: 1: aide: not found\n", ""},
 		{"empty", "", ""},
 	}
 
@@ -795,4 +800,63 @@ func TestParseAideConfig_MatchesDebian13RuleTree(t *testing.T) {
 	}
 	assert.Equal(t, len(cfg.Rules), checked, "every parsed rule is one AIDE reports")
 	assert.Greater(t, checked, 180)
+}
+
+// AIDE before 0.19 has no '-' rules: 0.18.6 (Ubuntu 24.04) refuses the whole
+// configuration with "unexpected character: '-'", so it checks nothing.
+func TestParseAideConfig_NonRecursiveNegativeRuleBefore019(t *testing.T) {
+	for _, version := range []string{"0.18.6", "0.17.3", "0.16"} {
+		t.Run(version, func(t *testing.T) {
+			cfg := newAideConfig()
+			cfg.Version = version
+			parseAideConfig(cfg, "/etc/aide/aide.conf", "/etc p+sha256\n-/etc$ 0\n", 0, nil)
+
+			require.Error(t, cfg.Invalid)
+			assert.Contains(t, cfg.Invalid.Error(), "/etc/aide/aide.conf:2")
+			assert.Contains(t, cfg.Invalid.Error(), "AIDE "+version)
+			for _, rule := range cfg.Rules {
+				assert.NotEqual(t, aideSelectionNonRecursiveNegative, rule.Selection)
+			}
+		})
+	}
+
+	t.Run("0.19.1 reads it", func(t *testing.T) {
+		cfg := newAideConfig()
+		cfg.Version = "0.19.1"
+		parseAideConfig(cfg, "/etc/aide/aide.conf", "-/etc$ 0\n", 0, nil)
+		assert.NoError(t, cfg.Invalid)
+		require.Len(t, cfg.Rules, 1)
+		assert.Equal(t, aideSelectionNonRecursiveNegative, cfg.Rules[0].Selection)
+	})
+
+	t.Run("unknown release reads it", func(t *testing.T) {
+		cfg := parseAideString("-/etc$ 0\n")
+		assert.NoError(t, cfg.Invalid)
+		require.Len(t, cfg.Rules, 1)
+	})
+}
+
+func TestAideVersionCommandMissing(t *testing.T) {
+	assert.True(t, aideCommandMissing(127, ""))
+	// sudo without the binary on secure_path exits 1
+	assert.True(t, aideCommandMissing(1, "sudo: aide: command not found\n"))
+	assert.True(t, aideCommandMissing(1, "bash: line 1: aide: command not found\n"))
+	assert.False(t, aideCommandMissing(0, "Aide 0.16\n"))
+	// some releases print the version and exit non-zero
+	assert.False(t, aideCommandMissing(1, "Aide 0.15.1\n"))
+}
+
+// Removing the aide package on Debian (`apt remove`) leaves its conffiles,
+// /etc/aide/aide.conf among them, but takes the binary: AIDE is not installed.
+func TestAideBinaryPath(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/etc/aide/aide.conf", []byte("/etc p\n"), 0o644))
+	assert.Equal(t, "", aideBinaryPath(fs))
+
+	require.NoError(t, afero.WriteFile(fs, "/usr/bin/aide", []byte{}, 0o755))
+	assert.Equal(t, "/usr/bin/aide", aideBinaryPath(fs))
+
+	rhel := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(rhel, "/usr/sbin/aide", []byte{}, 0o700))
+	assert.Equal(t, "/usr/sbin/aide", aideBinaryPath(rhel))
 }
