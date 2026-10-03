@@ -682,7 +682,7 @@ func (spm *SusePkgManager) Available() (map[string]PackageUpdate, error) {
 	return parseZypperListUpdatesResult(cmd)
 }
 
-const zypperListUpdatesCommand = "zypper -n --xmlout list-updates"
+const zypperListUpdatesCommand = "LC_ALL=C zypper -n --xmlout list-updates"
 
 // modularitySupportedByPlatform checks if the platform supports modularity
 // Not every rpm based distro supports modules.
