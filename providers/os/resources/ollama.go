@@ -104,6 +104,9 @@ func (c *mqlOllamaConfig) resolve() (*ollama.Config, error) {
 			// running server may have been given anything.
 			c.resolved = true
 			return nil, llx.Forbidden(l.EnvErr)
+		case l.EnvErr != nil:
+			log.Debug().Err(l.EnvErr).Int("pid", l.Pid).
+				Msg("mql[ollama.config]> cannot read the server's environment, using the unit's")
 		}
 		if c.serverBinary = l.Argv[0]; !path.IsAbs(c.serverBinary) {
 			c.serverBinary = ""
