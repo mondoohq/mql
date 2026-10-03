@@ -7,6 +7,7 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"strconv"
 	"strings"
 
@@ -64,9 +65,9 @@ func initKubelet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 }
 
 func (m *mqlKubelet) configuration() (map[string]any, error) {
-	configFileData := ""
-	if m.ConfigFile.Data.GetContent() != nil {
-		configFileData = m.ConfigFile.Data.GetContent().Data
+	configFileData, err := kubeletConfigContent(m.ConfigFile.Data.GetContent())
+	if err != nil {
+		return nil, err
 	}
 	kubeletFlags := map[string]any{}
 	if m.Process.Data.GetFlags() != nil {
@@ -78,6 +79,29 @@ func (m *mqlKubelet) configuration() (map[string]any, error) {
 		return nil, err
 	}
 	return configuration, nil
+}
+
+// kubeletConfigContent returns the content of the kubelet config file. A file
+// that is not there (AKS has none) reads as empty, and the kubelet defaults
+// apply. A file the scan may not read (config.yaml is 0600, as CIS
+// recommends, on a non-root scan) is a refusal: reading it as empty reported
+// the defaults, so readOnlyPort == 0 passed on a kubelet serving 10255. That
+// is returned only with structured errors on (ADR 046), since v13 reported
+// the defaults.
+func kubeletConfigContent(content *plugin.TValue[string]) (string, error) {
+	if content == nil {
+		return "", nil
+	}
+	if content.Error == nil {
+		return content.Data, nil
+	}
+	if errors.Is(content.Error, fs.ErrNotExist) || !plugin.StructuredErrors() {
+		return "", nil
+	}
+	if errors.Is(content.Error, fs.ErrPermission) {
+		return "", llx.Forbidden(content.Error)
+	}
+	return "", content.Error
 }
 
 // createConfiguration applies the kubelet defaults to the config and then

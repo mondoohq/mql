@@ -6,8 +6,12 @@ package resources
 import (
 	"testing"
 
+	"errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"io/fs"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 )
 
@@ -175,4 +179,40 @@ func TestMergeDeprecatedFlags_AnonymousAuthMergesExisting(t *testing.T) {
 	assert.Equal(t, false, auth["anonymous"].(map[string]any)["enabled"])
 	// sibling webhook block must be preserved
 	assert.Equal(t, true, auth["webhook"].(map[string]any)["enabled"])
+}
+
+// /var/lib/kubelet/config.yaml at 0600 (CIS) on a non-root scan: reading it
+// as empty reported kubelet's defaults (readOnlyPort 0, Webhook).
+func TestKubeletConfigContent(t *testing.T) {
+	refused := &plugin.TValue[string]{Error: &fs.PathError{Op: "open", Path: "/var/lib/kubelet/config.yaml", Err: fs.ErrPermission}, State: plugin.StateIsSet | plugin.StateIsNull}
+
+	t.Run("content", func(t *testing.T) {
+		c, err := kubeletConfigContent(&plugin.TValue[string]{Data: "readOnlyPort: 10255\n", State: plugin.StateIsSet})
+		require.NoError(t, err)
+		assert.Equal(t, "readOnlyPort: 10255\n", c)
+	})
+
+	t.Run("no config file", func(t *testing.T) {
+		c, err := kubeletConfigContent(&plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull})
+		require.NoError(t, err)
+		assert.Equal(t, "", c)
+		c, err = kubeletConfigContent(nil)
+		require.NoError(t, err)
+		assert.Equal(t, "", c)
+	})
+
+	t.Run("refused before structured errors", func(t *testing.T) {
+		require.False(t, plugin.StructuredErrors())
+		_, err := kubeletConfigContent(refused)
+		assert.NoError(t, err)
+	})
+
+	t.Run("refused with structured errors", func(t *testing.T) {
+		enableStructuredErrorsForTest(t)
+		_, err := kubeletConfigContent(refused)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, llx.ErrForbidden))
+		_, err = kubeletConfigContent(&plugin.TValue[string]{Error: fs.ErrNotExist, State: plugin.StateIsSet | plugin.StateIsNull})
+		assert.NoError(t, err)
+	})
 }
