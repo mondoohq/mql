@@ -41,6 +41,23 @@ func TestPhpPackageCarriesLicenseAndDescription(t *testing.T) {
 	require.Equal(t, "Two licenses", pkg.Description.Data)
 }
 
+// A directory with several files keeps what the readable ones hold when one
+// of them is refused: without the flag that is all v13 reported, and it must
+// not lose the rest.
+func TestPhpDirKeepsReadableFilesBesideRefusedOne(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(mem, "/srv/app/composer.lock",
+		[]byte(`{"packages":[{"name":"monolog/monolog","version":"2.3.0"}]}`), 0o644))
+	installed := "/srv/app/vendor/composer/installed.json"
+	require.NoError(t, afero.WriteFile(mem, installed, []byte(`[]`), 0o600))
+	afs := &afero.Afero{Fs: &unreadableFs{Fs: mem, files: []string{installed}}}
+
+	_, _, transitive, files, err := collectPhpPackages(afs, "/srv/app")
+	assert.ErrorIs(t, err, llx.ErrForbidden)
+	assert.Equal(t, []string{"monolog/monolog@2.3.0"}, packageNames(transitive))
+	assert.Equal(t, []string{"/srv/app/composer.lock"}, files)
+}
+
 // A package whose manifest declares neither reports empty rather than carrying
 // a value from somewhere else, and the fields are still set so a query reads ""
 // instead of failing.
@@ -86,21 +103,4 @@ func TestPhpDefaultsSUSEDocroot(t *testing.T) {
 	assert.Equal(t, "1.5.14", pkg.Version.Data)
 	require.Len(t, r.Files.Data, 1)
 	assert.Equal(t, "/srv/www/htdocs/composer.lock", r.Files.Data[0].(*mqlPkgFileInfo).Path.Data)
-}
-
-// A directory with several files keeps what the readable ones hold when one
-// of them is refused: without the flag that is all v13 reported, and it must
-// not lose the rest.
-func TestPhpDirKeepsReadableFilesBesideRefusedOne(t *testing.T) {
-	mem := afero.NewMemMapFs()
-	require.NoError(t, afero.WriteFile(mem, "/srv/app/composer.lock",
-		[]byte(`{"packages":[{"name":"monolog/monolog","version":"2.3.0"}]}`), 0o644))
-	installed := "/srv/app/vendor/composer/installed.json"
-	require.NoError(t, afero.WriteFile(mem, installed, []byte(`[]`), 0o600))
-	afs := &afero.Afero{Fs: &unreadableFs{Fs: mem, files: []string{installed}}}
-
-	_, _, transitive, files, err := collectPhpPackages(afs, "/srv/app")
-	assert.ErrorIs(t, err, llx.ErrForbidden)
-	assert.Equal(t, []string{"monolog/monolog@2.3.0"}, packageNames(transitive))
-	assert.Equal(t, []string{"/srv/app/composer.lock"}, files)
 }
