@@ -4,11 +4,13 @@
 package resources
 
 import (
+	"errors"
 	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 )
 
 func aptConfigFixture(t *testing.T, name string) map[string]any {
@@ -172,4 +174,17 @@ func TestAptWeakestBool(t *testing.T) {
 	// Acquire::Check-Date is weak when false
 	assert.False(t, aptWeakestBool(map[string]any{"Binary::apt-get::Acquire::Check-Date": "false"}, "Acquire::Check-Date", true, false))
 	assert.True(t, aptWeakestBool(map[string]any{"Binary::apt-get::Acquire::Check-Date": "true"}, "Acquire::Check-Date", true, false))
+}
+
+// apt-config dump as a non-root user on Ubuntu 18.04 and Debian 12, with an
+// apt.conf.d fragment of mode 0600: it warns, exits 0 and dumps the defaults
+// that fragment overrides (APT::Install-Recommends "1" where it sets "false").
+func TestAptConfigReadError(t *testing.T) {
+	err := aptConfigReadError("W: Unable to read /etc/apt/apt.conf.d/99g03secret - open (13: Permission denied)\n")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "/etc/apt/apt.conf.d/99g03secret")
+	assert.True(t, errors.Is(err, llx.ErrForbidden))
+
+	assert.NoError(t, aptConfigReadError(""))
+	assert.NoError(t, aptConfigReadError("W: some unrelated warning\n"))
 }
