@@ -4,8 +4,11 @@
 package cpe
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/facebookincubator/nvdtools/wfn"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPlatformCPE(t *testing.T) {
@@ -140,4 +143,19 @@ func TestOsReleaseCPE(t *testing.T) {
 	assert.False(t, ok)
 	_, ok = OsReleaseCPE("not a cpe")
 	assert.False(t, ok)
+}
+
+// Debian sid's version is "forky/sid". Put into the CPE as is, the "/" made
+// the formatted string invalid; CPE 2.3 quotes it.
+func TestPlatformCPEQuotesTheVersion(t *testing.T) {
+	cpe, ok := PlatformCPE("debian", "forky/sid", false)
+	require.True(t, ok)
+	assert.Equal(t, `cpe:2.3:o:debian:debian_linux:forky\/sid:*:*:*:*:*:*:*`, cpe)
+	attr, err := wfn.UnbindFmtString(cpe)
+	require.NoError(t, err)
+	assert.Equal(t, `forky\/sid`, attr.Version)
+
+	cpe, ok = PlatformCPE("debian", "12.15", false)
+	require.True(t, ok)
+	assert.Equal(t, "cpe:2.3:o:debian:debian_linux:12.15:*:*:*:*:*:*:*", cpe)
 }

@@ -1,0 +1,12 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.1.0-52-cloud-amd64"
+
+# Debian 6 and older ship no /etc/os-release
+[files."/etc/debian_version"]
+content = "6.0.10\n"

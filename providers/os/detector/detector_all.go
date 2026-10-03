@@ -358,21 +358,34 @@ var debian = &PlatformResolver{
 			return false, nil
 		}
 
+		debianVersion := strings.TrimSpace(string(c))
 		osr, err := osrd.osrelease()
 		if err != nil {
-			return false, nil
-		}
-
-		if osr["ID"] != "debian" {
-			return false, nil
-		}
-
-		// gardenlinux identifies itself as debian, but we want to set the proper name / version
-		if osr["GARDENLINUX_VERSION"] != "" {
-			pf.Name = "gardenlinux"
-			pf.Version = osr["GARDENLINUX_VERSION"]
+			// Debian 6 and older ship no os-release; /etc/debian_version is
+			// the release. Only a numeric one is taken as Debian's own.
+			if pf.Name != "" || !startsWithDigit(debianVersion) {
+				return false, nil
+			}
+			pf.Name = "debian"
+			pf.Title = "Debian GNU/Linux " + debianVersion
+			pf.Version = debianVersion
 		} else {
-			pf.Version = strings.TrimSpace(string(c))
+			if osr["ID"] != "debian" {
+				return false, nil
+			}
+
+			// gardenlinux identifies itself as debian, but we want to set the proper name / version
+			if osr["GARDENLINUX_VERSION"] != "" {
+				pf.Name = "gardenlinux"
+				pf.Version = osr["GARDENLINUX_VERSION"]
+			} else {
+				pf.Version = debianVersion
+				// testing and sid carry "<codename>/sid" rather than a
+				// number. The codename names the release being built.
+				if !startsWithDigit(debianVersion) && osr["VERSION_CODENAME"] != "" {
+					pf.Build = osr["VERSION_CODENAME"]
+				}
+			}
 		}
 
 		unamem, err := osrd.unamem()
@@ -381,6 +394,37 @@ var debian = &PlatformResolver{
 		}
 
 		return true, nil
+	},
+}
+
+// startsWithDigit reports whether a release string is a numbered release
+// ("12.15") rather than a codename ("forky/sid").
+func startsWithDigit(v string) bool {
+	return v != "" && v[0] >= '0' && v[0] <= '9'
+}
+
+// debianLike claims a Debian derivative no resolver above names, by the
+// ID_LIKE its os-release declares (ID_LIKE=debian, or "ubuntu debian"). The
+// name, version and title come from its own os-release, read by the linux
+// family; this only keeps it in the debian family, whose package manager,
+// services and policies apply to it.
+var debianLike = &PlatformResolver{
+	Name:     "debian-like",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		if pf.Name == "" {
+			return false, nil
+		}
+		osr, err := NewOSReleaseDetector(conn).osrelease()
+		if err != nil {
+			return false, nil
+		}
+		for _, like := range strings.Fields(osr["ID_LIKE"]) {
+			if like == "debian" || like == "ubuntu" {
+				return true, nil
+			}
+		}
+		return false, nil
 	},
 }
 
@@ -1636,7 +1680,7 @@ var redhatFamily = &PlatformResolver{
 var debianFamily = &PlatformResolver{
 	Name:     "debian",
 	IsFamily: true,
-	Children: []*PlatformResolver{mxlinux, debian, ubuntu, raspbian, kali, linuxmint, popos, elementary, zorin, parrot, cumulus, gardenlinux, tails, kdeneon, elxr, deepin, openkylin},
+	Children: []*PlatformResolver{mxlinux, debian, ubuntu, raspbian, kali, linuxmint, popos, elementary, zorin, parrot, cumulus, gardenlinux, tails, kdeneon, elxr, deepin, openkylin, debianLike},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		return true, nil
 	},

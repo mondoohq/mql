@@ -1,0 +1,21 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.1.0-52-cloud-amd64"
+
+# a Debian derivative this detector has no resolver for
+[files."/etc/os-release"]
+content = """
+NAME="C2 Distro"
+PRETTY_NAME="C2 Distro 7.1"
+ID=c2distro
+ID_LIKE=debian
+VERSION_ID=7.1
+"""
+
+[files."/etc/debian_version"]
+content = "12.15\n"

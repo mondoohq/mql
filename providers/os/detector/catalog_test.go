@@ -110,7 +110,7 @@ func TestEveryEmittedPlatformNameIsInTheTree(t *testing.T) {
 		}
 
 		pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, conn)
-		if !resolved || leaf == nil || leaf == defaultLinux || pf.Name == "" {
+		if !resolved || leaf == nil || leaf == defaultLinux || leaf == debianLike || pf.Name == "" {
 			continue
 		}
 
