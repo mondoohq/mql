@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -349,4 +350,20 @@ Bad: { url: "https://b.example.com/pkg"
 	assert.Empty(t, parsePkgRepoBlocks(""))
 	assert.Empty(t, parsePkgRepoBlocks("# only a comment\n"))
 	assert.Empty(t, parsePkgRepoBlocks("}}}{{{"))
+}
+
+// memFSRuntime is a runtime over an in-memory filesystem connection.
+func memFSRuntime(t *testing.T, mockFS afero.Fs) *plugin.Runtime {
+	conn, err := fs.NewFileSystemConnectionWithFs(0, &inventory.Config{}, &inventory.Asset{}, "", nil, mockFS)
+	require.NoError(t, err)
+	return &plugin.Runtime{
+		Resources:  &syncx.Map[plugin.Resource]{},
+		Connection: conn,
+		Callback:   &providerCallbacks{},
+	}
+}
+
+func writeMemFSFile(t *testing.T, mockFS afero.Fs, p string, content []byte) {
+	require.NoError(t, mockFS.MkdirAll(filepath.Dir(p), 0o755))
+	require.NoError(t, afero.WriteFile(mockFS, p, content, 0o644))
 }
