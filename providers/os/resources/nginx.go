@@ -180,9 +180,13 @@ var nginxDynamicModuleFiles = map[string]string{
 
 // nginxDynamicModuleFlags is nginxDynamicModuleFiles reversed: the module
 // name of an ngx_*.so file.
-var nginxDynamicModuleFlags = map[string]string{
-	"http_xslt_filter_module": "http_xslt_module",
-}
+var nginxDynamicModuleFlags = func() map[string]string {
+	m := make(map[string]string, len(nginxDynamicModuleFiles))
+	for flag, file := range nginxDynamicModuleFiles {
+		m[file] = flag
+	}
+	return m
+}()
 
 // nginxModules returns the modules nginx runs with: every module compiled
 // into the binary, each dynamic module whose ngx_<name>.so file one of the
@@ -863,8 +867,8 @@ func nginxValueOr(values map[string]string, name, def string) string {
 // always says the header is sent with every response code; it is not part
 // of the value.
 func nginxAddHeaderValue(args []string) string {
-	if len(args) == 3 && args[2] == "always" {
-		return args[1]
+	if len(args) >= 3 && args[len(args)-1] == "always" {
+		return strings.Join(args[1:len(args)-1], " ")
 	}
 	return strings.Join(args[1:], " ")
 }

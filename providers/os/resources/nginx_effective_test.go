@@ -417,6 +417,7 @@ func TestNginxAddHeaderAlways(t *testing.T) {
         add_header X-Frame-Options DENY always;
         add_header Content-Security-Policy "default-src 'self'; frame-ancestors 'none'" always;
         add_header X-Plain plain;
+        add_header X-Words two words always;
     }
     server {
         listen 8450;
@@ -428,6 +429,7 @@ func TestNginxAddHeaderAlways(t *testing.T) {
 	assert.Equal(t, []string{"DENY"}, w.servers[0].AddHeaders["X-Frame-Options"])
 	assert.Equal(t, []string{"default-src 'self'; frame-ancestors 'none'"}, w.servers[0].AddHeaders["Content-Security-Policy"])
 	assert.Equal(t, []string{"plain"}, w.servers[0].AddHeaders["X-Plain"])
+	assert.Equal(t, []string{"two words"}, w.servers[0].AddHeaders["X-Words"])
 	// inherited from http{}
 	assert.Equal(t, []string{"nosniff"}, w.servers[1].AddHeaders["X-Content-Type-Options"])
 }
