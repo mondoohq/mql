@@ -714,6 +714,7 @@ func TestParseAideConfig_MatchesDebian13RuleTree(t *testing.T) {
 	version := readAideTestdata(t, "debian13/version.txt")
 	cfg.Builtins = aideBuiltinGroups(version)
 	cfg.Version = parseAideVersion(version)
+	cfg.AttributeNames = aideAttributeNames(version)
 	cfg.Host = aideHost{
 		Hostname: "deb13-host",
 		Exists: func(p string) (bool, bool) {
@@ -746,6 +747,8 @@ func TestParseAideConfig_MatchesDebian13RuleTree(t *testing.T) {
 		return res
 	}
 	parseAideConfig(cfg, "/etc/aide/aide.conf", readAideTestdata(t, "debian13/aide.conf"), 0, resolve)
+	// AIDE 0.19.1 accepts this configuration
+	require.NoError(t, cfg.Invalid)
 
 	type location struct {
 		file string
@@ -859,4 +862,146 @@ func TestAideBinaryPath(t *testing.T) {
 	rhel := afero.NewMemMapFs()
 	require.NoError(t, afero.WriteFile(rhel, "/usr/sbin/aide", []byte{}, 0o700))
 	assert.Equal(t, "/usr/sbin/aide", aideBinaryPath(rhel))
+}
+
+// parseAideRelease parses a configuration as the AIDE release whose
+// `aide --version` output is in testdata/aide/<versionFile> reads it.
+func parseAideRelease(t *testing.T, versionFile string, content string) *aideConfig {
+	t.Helper()
+	out := readAideTestdata(t, versionFile)
+	cfg := newAideConfig()
+	cfg.Builtins = aideBuiltinGroups(out)
+	cfg.Version = parseAideVersion(out)
+	cfg.AttributeNames = aideAttributeNames(out)
+	parseAideConfig(cfg, "/etc/aide.conf", content, 0, nil)
+	return cfg
+}
+
+// The stock configurations AIDE accepts (`aide --config-check` exits 0 on
+// each of these hosts) parse without an error.
+func TestParseAideConfig_StockConfigsAreValid(t *testing.T) {
+	for _, tc := range []struct{ conf, version string }{
+		{"rocky8-aide.conf", "version-0.16.txt"},
+		{"sles15-aide.conf", "version-0.16-suse.txt"},
+		{"al2023-aide.conf", "version-0.18.6.txt"},
+		{"sles16-aide.conf", "version-0.18.8.txt"},
+		{"al2027-aide.conf", "version-0.19.2.txt"},
+		{"rhel9-aide.conf", "version-0.19.2.txt"},
+	} {
+		t.Run(tc.conf, func(t *testing.T) {
+			cfg := parseAideRelease(t, tc.version, readAideTestdata(t, tc.conf))
+			assert.NoError(t, cfg.Invalid)
+			assert.NotEmpty(t, cfg.Rules)
+		})
+	}
+}
+
+// A rule naming a group nobody defined makes AIDE reject the whole
+// configuration: "group 'NORMAL' is not defined", exit 17 (0.16 prints
+// "Error in expression"). SUSE 16's aide.conf has no NORMAL and AIDE has no
+// built-in one, so a rule copied from RHEL stops AIDE there.
+func TestParseAideConfig_UndefinedGroup(t *testing.T) {
+	for _, tc := range []struct{ conf, version string }{
+		{"rocky8-aide.conf", "version-0.16.txt"},
+		{"sles16-aide.conf", "version-0.18.8.txt"},
+		{"al2027-aide.conf", "version-0.19.2.txt"},
+	} {
+		t.Run(tc.conf, func(t *testing.T) {
+			stock := readAideTestdata(t, tc.conf)
+			if !strings.HasSuffix(stock, "\n") {
+				stock += "\n"
+			}
+			line := strings.Count(stock, "\n") + 1
+			cfg := parseAideRelease(t, tc.version, stock+"/g05undefgrp G05NOPE\n")
+
+			require.Error(t, cfg.Invalid)
+			assert.Contains(t, cfg.Invalid.Error(), "group 'G05NOPE' is not defined")
+			assert.Contains(t, cfg.Invalid.Error(), "/etc/aide.conf:"+strconv.Itoa(line)+":")
+		})
+	}
+
+	cfg := parseAideRelease(t, "version-0.18.8.txt", readAideTestdata(t, "sles16-aide.conf")+"/opt/app NORMAL\n")
+	require.Error(t, cfg.Invalid)
+	assert.Contains(t, cfg.Invalid.Error(), "group 'NORMAL' is not defined")
+
+	// the RHEL configuration defines NORMAL before using it
+	cfg = parseAideRelease(t, "version-0.19.2.txt", "NORMAL = p+sha512\n/opt/app NORMAL\n")
+	assert.NoError(t, cfg.Invalid)
+}
+
+// Each case was run through `aide --config-check` on the release named.
+func TestParseAideConfig_TermsPerRelease(t *testing.T) {
+	for _, tc := range []struct {
+		version string
+		rule    string
+		valid   bool
+	}{
+		// H is a built-in group from 0.17 on (Rocky 8 and SLES 15 reject it)
+		{"version-0.16.txt", "/x p+H", false},
+		{"version-0.18.8.txt", "/x p+H", true},
+		// growing, compressed and caps arrived after 0.16
+		{"version-0.16.txt", "/x p+growing", false},
+		{"version-0.16.txt", "/x p+caps", false},
+		{"version-0.18.6.txt", "/x p+growing+compressed", true},
+		// caps is accepted, with a warning, by a build without it
+		{"version-0.18.8.txt", "/x p+caps", true},
+		// sha512_256 and sha3 arrived in 0.19
+		{"version-0.18.6.txt", "/x p+sha3_256", false},
+		{"version-0.18.8.txt", "/x p+sha512_256+sha256", false},
+		{"version-0.19.2.txt", "/x p+sha3_256+sha512_256", true},
+		// 0.16 knows only the attributes it was built with: SLES 15 has no
+		// WITH_E2FSATTRS, Rocky 8 has no mhash (gost, whirlpool)
+		{"version-0.16-suse.txt", "/x p+e2fsattrs", false},
+		{"version-0.16.txt", "/x p+e2fsattrs", true},
+		{"version-0.16.txt", "/x p+gost", false},
+		{"version-0.16.txt", "/x R+ANF+ARF+I+S+X+E+ftype+tiger", true},
+		// a removed term must be defined as well
+		{"version-0.19.2.txt", "/x R-NOPE", false},
+		// a restriction is not part of the expression
+		{"version-0.19.2.txt", "/x f p", true},
+		// long names are for reports, not for rules
+		{"version-0.19.2.txt", "/x perm", false},
+		{"version-0.18.8.txt", "/x 0", false},
+	} {
+		t.Run(tc.version+" "+tc.rule, func(t *testing.T) {
+			cfg := parseAideRelease(t, tc.version, tc.rule+"\n")
+			if tc.valid {
+				assert.NoError(t, cfg.Invalid)
+			} else {
+				assert.Error(t, cfg.Invalid)
+			}
+		})
+	}
+}
+
+// AIDE checks a group definition where it is written, used or not, and a
+// group used before its definition is not defined yet.
+func TestParseAideConfig_UndefinedGroupInDefinition(t *testing.T) {
+	cfg := parseAideRelease(t, "version-0.18.8.txt", "/x p\nG = p+NOPE\n")
+	require.Error(t, cfg.Invalid)
+	assert.Contains(t, cfg.Invalid.Error(), "/etc/aide.conf:2:")
+	assert.Contains(t, cfg.Invalid.Error(), "group 'NOPE' is not defined")
+
+	cfg = parseAideRelease(t, "version-0.18.8.txt", "/x G\nG = p\n")
+	require.Error(t, cfg.Invalid)
+	assert.Contains(t, cfg.Invalid.Error(), "/etc/aide.conf:1:")
+
+	// redefining a group in terms of itself is fine
+	cfg = parseAideRelease(t, "version-0.18.8.txt", "G = p\nG = G+sha256\n/x G\n")
+	assert.NoError(t, cfg.Invalid)
+
+	// settings are not group definitions
+	cfg = parseAideRelease(t, "version-0.18.8.txt", "report_url=stdout\nnum_workers=4\n/x p\n")
+	assert.NoError(t, cfg.Invalid)
+}
+
+// Without the release, a name no AIDE release knows is still undefined, and a
+// built-in group or a name some release knows is accepted.
+func TestParseAideConfig_UndefinedGroupUnknownRelease(t *testing.T) {
+	cfg := parseAideString("/x NORMAL\n")
+	require.Error(t, cfg.Invalid)
+	assert.Contains(t, cfg.Invalid.Error(), "AIDE rejects the configuration: group 'NORMAL' is not defined")
+
+	cfg = parseAideString("/x R+H+sha3_256+growing+caps\n")
+	assert.NoError(t, cfg.Invalid)
 }

@@ -201,6 +201,7 @@ func (a *mqlAide) readConfig() (*aideConfig, []*mqlFile, error) {
 	} else if ok {
 		cfg.Builtins = aideBuiltinGroups(out)
 		cfg.Version = parseAideVersion(out)
+		cfg.AttributeNames = aideAttributeNames(out)
 	}
 
 	// what @@if hostname and @@if exists ask about
