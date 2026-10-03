@@ -106,7 +106,7 @@ func (r *mqlJenkinsPackages) gatherData() error {
 		}
 
 		mqlPkg, err := CreateResource(r.MqlRuntime, "jenkins.package", map[string]*llx.RawData{
-			"__id":         llx.StringData("jenkins.package/" + p.Name + "@" + p.Version),
+			"__id":         llx.StringData(jenkinsPackageID(p)),
 			"name":         llx.StringData(p.Name),
 			"version":      llx.StringData(p.Version),
 			"purl":         llx.StringData(jenkins.NewPackageUrl(p.Name, p.Version)),
@@ -145,4 +145,12 @@ func (r *mqlJenkinsPackages) list() ([]any, error) {
 
 func (r *mqlJenkinsPackages) files() ([]any, error) {
 	return nil, r.gatherData()
+}
+
+// jenkinsPackageID is the cache key of one jenkins.package. Two plugin
+// directories can hold the same plugin at the same version, so the plugin file
+// is part of the key; without it, a scan of the second directory returned the
+// first directory's resource and its files.
+func jenkinsPackageID(p jenkins.JenkinsPlugin) string {
+	return "jenkins.package/" + p.Name + "@" + p.Version + ":" + p.FilePath
 }

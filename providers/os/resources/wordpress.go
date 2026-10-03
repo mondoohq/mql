@@ -93,18 +93,17 @@ func (r *mqlWordpressPackages) gatherData() error {
 		}
 	}
 
+	// The same plugin can be reachable from two default paths (Debian links
+	// /usr/share/wordpress's plugins into /var/lib/wordpress), so it is listed
+	// once
+	if path == "" && len(allPlugins) > 1 {
+		allPlugins = dedupeWordPressPlugins(allPlugins, resolveTruststorePaths(conn, wordPressPluginFiles(allPlugins)))
+	}
+
 	// Build MQL resources
 	mqlPkgs := []any{}
-	seen := map[string]struct{}{}
 	for _, p := range allPlugins {
-		// The same plugin can be reachable from two default paths (Debian
-		// links /usr/share/wordpress's plugins into /var/lib/wordpress), and
-		// the package is identified by slug and version, so it is listed once.
-		id := "wordpress.package/" + p.Slug + "@" + p.Version
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
+		id := wordPressPackageID(p)
 
 		files := []string{p.FilePath}
 		if p.ReadmePath != "" && p.ReadmePath != p.FilePath {
@@ -162,4 +161,41 @@ func (r *mqlWordpressPackages) list() ([]any, error) {
 
 func (r *mqlWordpressPackages) files() ([]any, error) {
 	return nil, r.gatherData()
+}
+
+// wordPressPackageID is the cache key of one wordpress.package. Two sites can
+// hold the same plugin at the same version, so the file it was read from is
+// part of the key; without it, a scan of the second site returned the first
+// site's resource and its files.
+func wordPressPackageID(p wordpress.WordPressPlugin) string {
+	return "wordpress.package/" + p.Slug + "@" + p.Version + ":" + p.FilePath
+}
+
+func wordPressPluginFiles(plugins []wordpress.WordPressPlugin) []string {
+	res := make([]string, 0, len(plugins))
+	for _, p := range plugins {
+		res = append(res, p.FilePath)
+	}
+	return res
+}
+
+// dedupeWordPressPlugins keeps the first of the plugins whose files resolve
+// to the same file. real maps a plugin file to the file it names once every
+// symlink is followed; a file missing from it keeps its own name, so a plugin
+// installed in two sites is listed for each of them.
+func dedupeWordPressPlugins(plugins []wordpress.WordPressPlugin, real map[string]string) []wordpress.WordPressPlugin {
+	res := make([]wordpress.WordPressPlugin, 0, len(plugins))
+	seen := map[string]struct{}{}
+	for _, p := range plugins {
+		key, ok := real[p.FilePath]
+		if !ok {
+			key = p.FilePath
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		res = append(res, p)
+	}
+	return res
 }
