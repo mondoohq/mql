@@ -196,14 +196,11 @@ var installBypassBins = map[string]bool{
 func parseModprobeConfig(content string) map[string]modprobeRule {
 	out := map[string]modprobeRule{}
 
-	for _, raw := range strings.Split(content, "\n") {
-		line := stripModprobeComment(raw)
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		fields := strings.Fields(line)
+	for _, l := range modprobeLines(content) {
+		line := stripModprobeComment(l.text)
+		// kmod splits on spaces and tabs only: `blacklist dummy\r` names
+		// a module "dummy\r" and does not blacklist dummy
+		fields := strings.FieldsFunc(line, func(r rune) bool { return r == ' ' || r == '\t' })
 		if len(fields) < 2 {
 			continue
 		}
