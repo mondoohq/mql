@@ -12,6 +12,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
+	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/binary"
@@ -21,6 +22,8 @@ import (
 	"hash"
 	"math/bits"
 	"unicode/utf16"
+
+	"github.com/rs/zerolog/log"
 )
 
 // The PKCS#12 reader in go-pkcs12 verifies the integrity MAC and decrypts the
@@ -121,8 +124,8 @@ type p12PBKDF2Params struct {
 // 10,000 to 50,000; OpenSSL 2,048.
 const maxPBEIterations = 10_000_000
 
-// readPKCS12Bags returns one entry per certificate bag, in store order, with
-// the alias and trust classification the bag attributes carry. It does not
+// readPKCS12Bags returns the store's entries, in store order, with the alias
+// and trust classification the bag attributes carry; see classifyBags. It does not
 // verify the integrity MAC: callers establish that the password is right first.
 func readPKCS12Bags(data []byte, password string) ([]Entry, error) {
 	var pfx p12PFX
@@ -199,11 +202,17 @@ func safeBags(der []byte, depth int) ([]p12SafeBag, error) {
 }
 
 // classifyBags turns certificate bags into entries the way Java's own PKCS#12
-// reader does: a certificate carrying the trusted key usage attribute is a
-// trustedCertEntry, one whose localKeyId matches a key bag belongs to that
-// key's chain. A certificate with neither is a trust anchor in a store that
-// holds no private key (what OpenSSL writes for a CA bundle) and a chain
-// certificate in one that does.
+// reader does (`keytool -list` agrees):
+//
+//   - A certificate carrying the trusted key usage attribute is a
+//     trustedCertEntry.
+//   - A certificate whose localKeyId matches a key bag is that key's leaf. The
+//     key's entry carries the leaf followed by its chain: the certificates of
+//     the store that issued it, followed issuer by issuer.
+//   - In a store with no private key, any other certificate is a trust anchor
+//     (what OpenSSL writes for a CA bundle).
+//   - In a store with a private key, any other certificate is part of a key's
+//     chain or, if it is in none, not an entry at all, as Java reads it.
 func classifyBags(bags []p12SafeBag) ([]Entry, error) {
 	keyIDs := map[string]struct{}{}
 	hasKey := false
@@ -218,7 +227,14 @@ func classifyBags(bags []p12SafeBag) ([]Entry, error) {
 		}
 	}
 
-	var entries []Entry
+	type certBag struct {
+		alias   string
+		der     []byte
+		trusted bool // carries the trusted key usage attribute
+		keyLeaf bool // its localKeyId matches a key bag
+		cert    *x509.Certificate
+	}
+	var certs []certBag
 	for _, bag := range bags {
 		if !bag.ID.Equal(oidP12CertBag) {
 			continue
@@ -241,21 +257,81 @@ func classifyBags(bags []p12SafeBag) ([]Entry, error) {
 			return nil, err
 		}
 		_, belongsToAKey := keyIDs[id]
-
-		var trusted bool
-		switch {
-		case hasAttribute(bag, oidJavaTrustedKeyUsage):
-			trusted = true
-		case hasID && belongsToAKey:
-			trusted = false
-		default:
-			trusted = !hasKey
+		// a certificate that does not parse cannot be placed in a chain, so a
+		// key's chain may end before it; it is logged, and as a trusted entry
+		// still reported, failing where its fields are read
+		cert, parseErr := x509.ParseCertificate(cb.Data)
+		if parseErr != nil {
+			log.Debug().Err(parseErr).Str("alias", alias).Msg("java> PKCS#12 certificate does not parse, it cannot be placed in a chain")
 		}
+		certs = append(certs, certBag{
+			alias:   alias,
+			der:     cb.Data,
+			trusted: hasAttribute(bag, oidJavaTrustedKeyUsage),
+			keyLeaf: hasID && belongsToAKey,
+			cert:    cert,
+		})
+	}
 
-		entries = append(entries, Entry{Alias: alias, Trusted: trusted, Certs: [][]byte{cb.Data}})
+	// issuerOf finds the certificate in the store that issued c: one whose
+	// subject is c's issuer, preferring one whose signature on c verifies, and
+	// then one that is not a trusted entry of its own, since keytool writes
+	// each chain certificate as a bag of its own beside any trusted copy.
+	issuerOf := func(c *x509.Certificate) int {
+		best, bestScore := -1, -1
+		for i, cand := range certs {
+			if cand.cert == nil || cand.keyLeaf || !bytes.Equal(cand.cert.RawSubject, c.RawIssuer) {
+				continue
+			}
+			score := 0
+			if c.CheckSignatureFrom(cand.cert) == nil {
+				score += 2
+			}
+			if !cand.trusted {
+				score++
+			}
+			if score > bestScore {
+				best, bestScore = i, score
+			}
+		}
+		return best
+	}
+
+	if !hasKey {
+		entries := make([]Entry, 0, len(certs))
+		for _, c := range certs {
+			entries = append(entries, Entry{Alias: c.alias, Trusted: true, Certs: [][]byte{c.der}})
+		}
+		return entries, nil
+	}
+
+	var entries []Entry
+	for i, c := range certs {
+		switch {
+		case c.trusted:
+			entries = append(entries, Entry{Alias: c.alias, Trusted: true, Certs: [][]byte{c.der}})
+		case c.keyLeaf:
+			chain := [][]byte{c.der}
+			cur := c.cert
+			seen := map[int]bool{i: true}
+			for cur != nil && len(chain) < maxChainLength && !bytes.Equal(cur.RawIssuer, cur.RawSubject) {
+				next := issuerOf(cur)
+				if next < 0 || seen[next] {
+					break
+				}
+				seen[next] = true
+				chain = append(chain, certs[next].der)
+				cur = certs[next].cert
+			}
+			entries = append(entries, Entry{Alias: c.alias, Trusted: false, Certs: chain})
+		}
 	}
 	return entries, nil
 }
+
+// maxChainLength bounds a key's chain, so a store whose certificates issue
+// each other in a cycle cannot loop.
+const maxChainLength = 16
 
 func hasAttribute(bag p12SafeBag, id asn1.ObjectIdentifier) bool {
 	for _, attr := range bag.Attributes {
