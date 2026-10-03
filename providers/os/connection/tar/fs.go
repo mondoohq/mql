@@ -357,6 +357,11 @@ func matchesFindType(types []byte, entry *tar.Header, target *tar.Header) bool {
 			ok = target.Typeflag == tar.TypeChar
 		case 'p':
 			ok = target.Typeflag == tar.TypeFifo
+		case 's':
+			// tar has no typeflag for a socket (tar and docker export skip
+			// them), so no entry is one, as find -type s finds none in an
+			// extracted image
+			ok = false
 		}
 		if ok {
 			return true
