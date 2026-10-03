@@ -1,0 +1,159 @@
+# The host of linux_ip_addr_show_sniffer.toml scanned without `ip` on the
+# PATH, so the sysfs walk answers.
+
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "5.14.0-687.54.1.el9_8.x86_64"
+
+[files."/sys/class/net"]
+stat.isdir = true
+
+[files."/sys/class/net/br-g01"]
+stat.isdir = true
+[files."/sys/class/net/br-g01/ifindex"]
+content = "1\n"
+[files."/sys/class/net/br-g01/address"]
+content = "3a:06:48:72:da:4a\n"
+[files."/sys/class/net/br-g01/mtu"]
+content = "1400\n"
+[files."/sys/class/net/br-g01/flags"]
+content = "0x1102\n"
+[files."/sys/class/net/br-g01/operstate"]
+content = "down\n"
+[files."/sys/class/net/br-g01/type"]
+content = "1\n"
+
+[files."/sys/class/net/br-g01b"]
+stat.isdir = true
+[files."/sys/class/net/br-g01b/ifindex"]
+content = "1\n"
+[files."/sys/class/net/br-g01b/address"]
+content = "1a:11:68:93:44:41\n"
+[files."/sys/class/net/br-g01b/mtu"]
+content = "1500\n"
+[files."/sys/class/net/br-g01b/flags"]
+content = "0x1102\n"
+[files."/sys/class/net/br-g01b/operstate"]
+content = "down\n"
+[files."/sys/class/net/br-g01b/type"]
+content = "1\n"
+
+[files."/sys/class/net/eth0"]
+stat.isdir = true
+[files."/sys/class/net/eth0/ifindex"]
+content = "1\n"
+[files."/sys/class/net/eth0/address"]
+content = "06:ff:c3:69:b3:57\n"
+[files."/sys/class/net/eth0/mtu"]
+content = "9001\n"
+[files."/sys/class/net/eth0/flags"]
+content = "0x1103\n"
+[files."/sys/class/net/eth0/operstate"]
+content = "up\n"
+[files."/sys/class/net/eth0/type"]
+content = "1\n"
+[files."/sys/class/net/eth0/carrier"]
+content = "1\n"
+[files."/sys/class/net/eth0/device"]
+stat.isdir = true
+
+[files."/sys/class/net/g01-int0"]
+stat.isdir = true
+[files."/sys/class/net/g01-int0/ifindex"]
+content = "1\n"
+[files."/sys/class/net/g01-int0/address"]
+content = "5e:02:25:e6:bd:73\n"
+[files."/sys/class/net/g01-int0/mtu"]
+content = "1400\n"
+[files."/sys/class/net/g01-int0/flags"]
+content = "0x1103\n"
+[files."/sys/class/net/g01-int0/operstate"]
+content = "unknown\n"
+[files."/sys/class/net/g01-int0/type"]
+content = "1\n"
+[files."/sys/class/net/g01-int0/carrier"]
+content = "1\n"
+
+[files."/sys/class/net/g01-trunk"]
+stat.isdir = true
+[files."/sys/class/net/g01-trunk/ifindex"]
+content = "1\n"
+[files."/sys/class/net/g01-trunk/address"]
+content = "9e:21:0e:7f:55:0f\n"
+[files."/sys/class/net/g01-trunk/mtu"]
+content = "1400\n"
+[files."/sys/class/net/g01-trunk/flags"]
+content = "0x1102\n"
+[files."/sys/class/net/g01-trunk/operstate"]
+content = "down\n"
+[files."/sys/class/net/g01-trunk/type"]
+content = "1\n"
+
+[files."/sys/class/net/lo"]
+stat.isdir = true
+[files."/sys/class/net/lo/ifindex"]
+content = "1\n"
+[files."/sys/class/net/lo/address"]
+content = "00:00:00:00:00:00\n"
+[files."/sys/class/net/lo/mtu"]
+content = "65536\n"
+[files."/sys/class/net/lo/flags"]
+content = "0x9\n"
+[files."/sys/class/net/lo/operstate"]
+content = "unknown\n"
+[files."/sys/class/net/lo/type"]
+content = "772\n"
+[files."/sys/class/net/lo/carrier"]
+content = "1\n"
+
+[files."/sys/class/net/ovs-netdev"]
+stat.isdir = true
+[files."/sys/class/net/ovs-netdev/ifindex"]
+content = "1\n"
+[files."/sys/class/net/ovs-netdev/address"]
+content = "16:19:7a:ca:29:d8\n"
+[files."/sys/class/net/ovs-netdev/mtu"]
+content = "1500\n"
+[files."/sys/class/net/ovs-netdev/flags"]
+content = "0x1102\n"
+[files."/sys/class/net/ovs-netdev/operstate"]
+content = "down\n"
+[files."/sys/class/net/ovs-netdev/type"]
+content = "1\n"
+
+[files."/sys/class/net/ovs-system"]
+stat.isdir = true
+[files."/sys/class/net/ovs-system/ifindex"]
+content = "1\n"
+[files."/sys/class/net/ovs-system/address"]
+content = "da:93:1c:8e:c7:94\n"
+[files."/sys/class/net/ovs-system/mtu"]
+content = "1500\n"
+[files."/sys/class/net/ovs-system/flags"]
+content = "0x1102\n"
+[files."/sys/class/net/ovs-system/operstate"]
+content = "down\n"
+[files."/sys/class/net/ovs-system/type"]
+content = "1\n"
+
+[files."/sys/class/net/vxlan_sys_4789"]
+stat.isdir = true
+[files."/sys/class/net/vxlan_sys_4789/ifindex"]
+content = "1\n"
+[files."/sys/class/net/vxlan_sys_4789/address"]
+content = "32:a9:9a:66:18:93\n"
+[files."/sys/class/net/vxlan_sys_4789/mtu"]
+content = "65000\n"
+[files."/sys/class/net/vxlan_sys_4789/flags"]
+content = "0x1103\n"
+[files."/sys/class/net/vxlan_sys_4789/operstate"]
+content = "unknown\n"
+[files."/sys/class/net/vxlan_sys_4789/type"]
+content = "1\n"
+[files."/sys/class/net/vxlan_sys_4789/carrier"]
+content = "1\n"

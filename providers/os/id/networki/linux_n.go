@@ -37,10 +37,12 @@ func (n *neti) detectLinuxInterfaces() ([]Interface, error) {
 		n.getLinuxCmdInterfaces,
 		n.getLinuxSysfsInterfaces,
 	}
-	for _, detectFn := range detectors {
+	cmdDetected := false
+	for i, detectFn := range detectors {
 		detectedInterfaces, err := detectFn()
 		if err == nil && len(detectedInterfaces) != 0 {
 			interfaces = AddOrUpdateInterfaces(interfaces, detectedInterfaces)
+			cmdDetected = i == 0
 			break
 		}
 		log.Debug().Err(err).
@@ -74,6 +76,19 @@ func (n *neti) detectLinuxInterfaces() ([]Interface, error) {
 		n.getLinuxIPv4GatewayDetails,
 		n.getLinuxIPv6GatewayDetails,
 	)
+
+	// `ip addr` prints PROMISC and ALLMULTI only when they were requested
+	// with `ip link set`. A packet sniffer (tcpdump) or an Open vSwitch port
+	// raises the kernel's counter without that, and the interface receives
+	// every frame all the same; the sysfs walk reads the kernel's flags and
+	// reports it. Add them to what the command detector found, so a PROMISC
+	// check doesn't depend on which detector ran.
+	if cmdDetected {
+		known := interfaceNames(interfaces)
+		enrichments = append(enrichments, func() ([]Interface, error) {
+			return n.getLinuxSysfsReceiveFlags(known)
+		})
+	}
 
 	// The sysfs detector already answers Virtual for every interface it walks,
 	// so the enrichment has something to add only when the command detector
@@ -198,12 +213,14 @@ func (n *neti) getLinuxSysfsInterfaces() (interfaces []Interface, err error) {
 
 		iinterface := Interface{Name: ifaceName}
 
-		// Read MAC Address
+		// Read MAC Address. `ip addr` reports one for Ethernet links only
+		// (link/ether); loopback, tunnels and the like have an address file
+		// too, all zeros or an IPv4 address, which is no MAC.
 		macAddress, err := afero.ReadFile(
 			n.connection.FileSystem(),
 			filepath.Join("/sys/class/net/", ifaceName, "address"),
 		)
-		if err == nil {
+		if err == nil && linuxInterfaceIsEther(n.connection.FileSystem(), ifaceName) {
 			iinterface.SetMAC(strings.TrimSpace(string(macAddress)))
 		}
 
@@ -228,6 +245,15 @@ func (n *neti) getLinuxSysfsInterfaces() (interfaces []Interface, err error) {
 			// sysfs values end in a newline, "0x1003\n"
 			flagBits, flagsOK = parseHexFlagBits(strings.TrimPrefix(strings.TrimSpace(string(flags)), "0x"))
 			iinterface.Flags = hexFlagNames(flagBits)
+		}
+
+		// The kernel reports carrier only on an interface that is up, and
+		// `ip` prints that as LOWER_UP; flags never carries it.
+		if carrier, err := afero.ReadFile(
+			n.connection.FileSystem(),
+			filepath.Join("/sys/class/net/", ifaceName, "carrier"),
+		); err == nil && strings.TrimSpace(string(carrier)) == "1" {
+			iinterface.Flags = insertLinuxFlag(iinterface.Flags, "LOWER_UP")
 		}
 
 		// Read Status
@@ -265,8 +291,87 @@ func (n *neti) getLinuxSysfsInterfaces() (interfaces []Interface, err error) {
 	return
 }
 
-// linuxIffUp is IFF_UP in the interface flags.
-const linuxIffUp = 0x1
+// IFF_* bits in the interface flags.
+const (
+	linuxIffUp       = 0x1
+	linuxIffPromisc  = 0x100
+	linuxIffAllmulti = 0x200
+)
+
+// linuxArphrdEther is ARPHRD_ETHER, the /sys/class/net/<iface>/type of an
+// Ethernet link.
+const linuxArphrdEther = "1"
+
+// linuxInterfaceIsEther reports whether an interface is an Ethernet link, and
+// true when its type can't be read.
+func linuxInterfaceIsEther(fs afero.Fs, name string) bool {
+	typ, err := afero.ReadFile(fs, filepath.Join("/sys/class/net", name, "type"))
+	if err != nil {
+		return true
+	}
+	return strings.TrimSpace(string(typ)) == linuxArphrdEther
+}
+
+// getLinuxSysfsReceiveFlags returns the PROMISC and ALLMULTI flags the
+// kernel has set on each named interface, from /sys/class/net/<iface>/flags,
+// as enrichments that add them to an interface's flags.
+func (n *neti) getLinuxSysfsReceiveFlags(names []string) ([]Interface, error) {
+	interfaces := []Interface{}
+	for _, name := range names {
+		// `ip addr` names a veth inside a container eth0@if104
+		base, _, _ := strings.Cut(name, "@")
+		raw, err := afero.ReadFile(n.connection.FileSystem(), filepath.Join("/sys/class/net", base, "flags"))
+		if err != nil {
+			continue
+		}
+		bits, ok := parseHexFlagBits(strings.TrimPrefix(strings.TrimSpace(string(raw)), "0x"))
+		if !ok {
+			continue
+		}
+		var add []string
+		if bits&linuxIffAllmulti != 0 {
+			add = append(add, "ALLMULTI")
+		}
+		if bits&linuxIffPromisc != 0 {
+			add = append(add, "PROMISC")
+		}
+		if len(add) == 0 {
+			continue
+		}
+		interfaces = append(interfaces, Interface{
+			Name: name,
+			enrichments: func(in *Interface) {
+				for _, flag := range add {
+					in.Flags = insertLinuxFlag(in.Flags, flag)
+				}
+			},
+		})
+	}
+	return interfaces, nil
+}
+
+// linuxFlagOrder is the order iproute2 prints interface flags in
+// (print_link_flags).
+var linuxFlagOrder = []string{
+	"NO-CARRIER", "LOOPBACK", "BROADCAST", "POINTOPOINT", "MULTICAST", "NOARP",
+	"ALLMULTI", "PROMISC", "NOTRAILERS", "DEBUG", "DYNAMIC", "AUTOMEDIA",
+	"PORTSEL", "MASTER", "SLAVE", "UP", "RUNNING", "LOWER_UP", "DORMANT", "ECHO",
+}
+
+// insertLinuxFlag adds flag to flags in the order `ip` prints them, unless
+// it is there already.
+func insertLinuxFlag(flags []string, flag string) []string {
+	if slices.Contains(flags, flag) {
+		return flags
+	}
+	rank := slices.Index(linuxFlagOrder, flag)
+	for i, f := range flags {
+		if slices.Index(linuxFlagOrder, f) > rank {
+			return slices.Insert(flags, i, flag)
+		}
+	}
+	return append(flags, flag)
+}
 
 // linuxIfFlags are the IFF_* bits /sys/class/net/<iface>/flags carries, in
 // the order `ip link` prints them (print_link_flags in iproute2), so the list

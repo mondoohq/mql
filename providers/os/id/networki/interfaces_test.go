@@ -748,3 +748,49 @@ func TestInterfacesLinuxSysfsRhel7NonRoot(t *testing.T) {
 		assert.False(t, *ovs.Active)
 	}
 }
+
+// tcpdump on eth0 and Open vSwitch on its ports raise the kernel's
+// promiscuity without the PROMISC flag `ip addr` prints, so the command
+// detector missed a sniffer while the sysfs walk, which reads the kernel's
+// flags, reported it. The sysfs walk never reported LOWER_UP, and gave
+// loopback the all-zero address `ip` doesn't print. Both detectors now agree
+// on every interface.
+func TestInterfacesLinuxFlagsAgreeAcrossDetectors(t *testing.T) {
+	detect := func(fixture string) map[string]subject.Interface {
+		conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath(fixture))
+		require.NoError(t, err)
+		platform, ok := detector.DetectOS(conn)
+		require.True(t, ok)
+		interfaces, err := subject.Interfaces(conn, platform)
+		require.NoError(t, err)
+		byName := map[string]subject.Interface{}
+		for _, i := range interfaces {
+			byName[i.Name] = i
+		}
+		return byName
+	}
+	cmd := detect("./testdata/linux_ip_addr_show_sniffer.toml")
+	sysfs := detect("./testdata/linux_sys_class_net_sniffer.toml")
+
+	want := map[string][]string{
+		"lo":             {"LOOPBACK", "UP", "LOWER_UP"},
+		"eth0":           {"BROADCAST", "MULTICAST", "PROMISC", "UP", "LOWER_UP"},
+		"ovs-system":     {"BROADCAST", "MULTICAST", "PROMISC"},
+		"br-g01":         {"BROADCAST", "MULTICAST", "PROMISC"},
+		"g01-int0":       {"BROADCAST", "MULTICAST", "PROMISC", "UP", "LOWER_UP"},
+		"g01-trunk":      {"BROADCAST", "MULTICAST", "PROMISC"},
+		"vxlan_sys_4789": {"BROADCAST", "MULTICAST", "PROMISC", "UP", "LOWER_UP"},
+		"ovs-netdev":     {"BROADCAST", "MULTICAST", "PROMISC"},
+		"br-g01b":        {"BROADCAST", "MULTICAST", "PROMISC"},
+	}
+	require.Len(t, cmd, len(want))
+	require.Len(t, sysfs, len(want))
+	for name, flags := range want {
+		assert.Equal(t, flags, cmd[name].Flags, "ip addr: %s", name)
+		assert.Equal(t, flags, sysfs[name].Flags, "sysfs: %s", name)
+		assert.Equal(t, cmd[name].MACAddress, sysfs[name].MACAddress, name)
+		assert.Equal(t, cmd[name].Active, sysfs[name].Active, name)
+	}
+	assert.Equal(t, "", sysfs["lo"].MACAddress)
+	assert.Equal(t, "06:ff:c3:69:b3:57", sysfs["eth0"].MACAddress)
+}

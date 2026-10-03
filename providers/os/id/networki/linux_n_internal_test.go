@@ -140,3 +140,17 @@ func TestIsLinuxNetworkInterface(t *testing.T) {
 		"the bonding control file is not an interface")
 	assert.False(t, isLinuxNetworkInterface(fs, "does-not-exist"))
 }
+
+// Flags added to what `ip addr` printed land where `ip` prints them.
+func TestInsertLinuxFlag(t *testing.T) {
+	flags := []string{"BROADCAST", "MULTICAST", "UP", "LOWER_UP"}
+	flags = insertLinuxFlag(flags, "PROMISC")
+	assert.Equal(t, []string{"BROADCAST", "MULTICAST", "PROMISC", "UP", "LOWER_UP"}, flags)
+	flags = insertLinuxFlag(flags, "ALLMULTI")
+	assert.Equal(t, []string{"BROADCAST", "MULTICAST", "ALLMULTI", "PROMISC", "UP", "LOWER_UP"}, flags)
+	flags = insertLinuxFlag(flags, "PROMISC")
+	assert.Equal(t, []string{"BROADCAST", "MULTICAST", "ALLMULTI", "PROMISC", "UP", "LOWER_UP"}, flags)
+
+	assert.Equal(t, []string{"LOOPBACK", "UP", "LOWER_UP"}, insertLinuxFlag([]string{"LOOPBACK", "UP"}, "LOWER_UP"))
+	assert.Equal(t, []string{"PROMISC"}, insertLinuxFlag([]string{}, "PROMISC"))
+}
