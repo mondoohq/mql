@@ -472,3 +472,22 @@ func TestResolveManagerFindsSystemdWithoutSbinInit(t *testing.T) {
 	assert.NotEqual(t, "none", osm.Name(),
 		"a target carrying systemd unit files has a service manager to read")
 }
+
+// Debian testing and sid carry "<codename>/sid" as their version, which is
+// not a number: services and service() errored "unknown debian version".
+func TestManagerDebianSid(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:    "debian",
+			Version: "forky/sid",
+			Family:  []string{"debian", "linux", "unix", "os"},
+		},
+	}, mock.WithData(&mock.TomlData{Files: map[string]*mock.MockFileData{
+		"/lib/systemd/systemd": {Content: ""},
+	}}))
+	require.NoError(t, err)
+
+	mm, err := services.ResolveManager(conn)
+	require.NoError(t, err)
+	assert.Equal(t, "systemd Service Manager", mm.Name())
+}

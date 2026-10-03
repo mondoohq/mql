@@ -6,6 +6,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 
@@ -181,7 +182,12 @@ func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 		rv := detector.ParseOsVersion(asset.Platform.Version)
 		v, err := rv.MajorAtoi()
 		if err != nil {
-			return nil, errors.New("unknown debian version: " + asset.Platform.Version)
+			// testing and sid carry "<codename>/sid" rather than a number;
+			// both are later than any numbered release
+			if !strings.HasSuffix(asset.Platform.Version, "/sid") {
+				return nil, errors.New("unknown debian version: " + asset.Platform.Version)
+			}
+			v = math.MaxInt
 		}
 
 		if v < 7 {

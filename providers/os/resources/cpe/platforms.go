@@ -294,6 +294,9 @@ func OsReleaseCPE(cpeName string) (string, bool) {
 }
 
 func cpeVersionPatternFunc(pattern string, args cpePatternArgs) (string, error) {
+	args.Version = quoteCPEValue(args.Version)
+	args.Update = quoteCPEValue(args.Update)
+	args.SwEdition = quoteCPEValue(args.SwEdition)
 	t := template.Must(template.New("cpe-template").Parse(pattern))
 	buf := bytes.Buffer{}
 	err := t.Execute(&buf, args)
@@ -301,6 +304,26 @@ func cpeVersionPatternFunc(pattern string, args cpePatternArgs) (string, error) 
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// quoteCPEValue quotes a value for a CPE 2.3 formatted string, where any
+// character other than a letter, digit, "_", "-" or "." is escaped with a
+// backslash. Debian sid's version "forky/sid" otherwise made the CPE invalid.
+// The logical values "*" (ANY) and "-" (NA) stay as they are.
+func quoteCPEValue(v string) string {
+	if v == "*" || v == "-" {
+		return v
+	}
+	var b strings.Builder
+	for _, r := range v {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteByte('\\')
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func PlatformCPE(platform string, version string, workstation bool) (string, bool) {
