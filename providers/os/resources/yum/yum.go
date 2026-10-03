@@ -27,7 +27,10 @@ import (
 )
 
 const (
-	RhelYumRepoListCommand = "yum -v repolist all"
+	// RhelYumRepoListCommand runs in the C locale: dnf 4 and yum 3 translate
+	// the labels ("Paketquellenkennung" for "Repo-id") and the status
+	// ("aktiviert"), which ParseRepos reads in English.
+	RhelYumRepoListCommand = "LC_ALL=C yum -v repolist all"
 	DnfVarsCommand         = "%s -c 'import dnf, json; db = dnf.dnf.Base(); print(json.dumps(db.conf.substitutions))'"
 	PythonRhel             = "/usr/libexec/platform-python"
 	Python3                = "python3"
@@ -36,8 +39,9 @@ const (
 
 // Dnf5RepoInfoCommand lists repositories on dnf5, which has no verbose
 // repolist; `repo info` prints the same details under different labels.
-// See libdnf5-cli/output/repo_info.cpp.
-const Dnf5RepoInfoCommand = "dnf5 repo info --all"
+// See libdnf5-cli/output/repo_info.cpp. It runs in the C locale for the same
+// reason as RhelYumRepoListCommand.
+const Dnf5RepoInfoCommand = "LC_ALL=C dnf5 repo info --all"
 
 type YumRepo struct {
 	Id       string

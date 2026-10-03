@@ -304,3 +304,17 @@ func TestParseDnf5Variables(t *testing.T) {
 	_, err = ParseDnf5Variables(strings.NewReader("Unknown argument \"--dump-variables\"\n"))
 	require.Error(t, err)
 }
+
+// dnf 4 and yum 3 translate the labels and the status of `repolist -v`. Under
+// LANG=de_DE.UTF-8 dnf 4 prints
+//
+//	Paketquellenkennung            : g03repo
+//	Paketquellenstatus        : aktiviert
+//
+// which ParseRepos cannot read (dnf 4: no repos at all; yum 3: every repo
+// disabled), so the commands must run in the C locale whatever the caller's.
+func TestRepoListCommandsRunInCLocale(t *testing.T) {
+	for _, cmd := range []string{RhelYumRepoListCommand, Dnf5RepoInfoCommand} {
+		assert.True(t, strings.HasPrefix(cmd, "LC_ALL=C "), cmd)
+	}
+}
