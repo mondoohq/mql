@@ -52,6 +52,14 @@ type MysqldbConnection struct {
 	serverID string
 	flavor   string
 	metaErr  error
+
+	accessOnce sync.Once
+	access     *CallerAccess
+	accessErr  error
+
+	versionOnce sync.Once
+	version     string
+	versionErr  error
 }
 
 func NewMysqldbConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*MysqldbConnection, error) {
