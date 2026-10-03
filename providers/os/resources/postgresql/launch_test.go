@@ -271,3 +271,47 @@ func TestApplyEnvironmentFileOverridesEnvironment(t *testing.T) {
 	assert.Equal(t, "/srv/pgdata", inst.DataDir)
 	assert.Equal(t, "5432", inst.Env["PGPORT"], "Environment= stays for what the file does not set")
 }
+
+func TestApplyEnv(t *testing.T) {
+	// postgres:13-alpine runs `postgres -c log_connections=on ...` with
+	// PGDATA from the image
+	inst, ok := ParsePostmasterArgs([]string{"postgres", "-c", "log_connections=on"})
+	assert.True(t, ok)
+	assert.Equal(t, "", inst.ConfigFile())
+	inst.ApplyEnv(map[string]string{"PGDATA": "/var/lib/postgresql/data/"})
+	assert.Equal(t, "/var/lib/postgresql/data/postgresql.conf", inst.ConfigFile())
+	assert.Equal(t, "/var/lib/postgresql/data/", inst.Env["PGDATA"])
+
+	inst, _ = ParsePostmasterArgs([]string{"postgres", "-D", "/srv/pg"})
+	inst.ApplyEnv(map[string]string{"PGDATA": "/var/lib/postgresql/data"})
+	assert.Equal(t, "/srv/pg", inst.DataDir, "-D wins over PGDATA")
+}
+
+func TestParsePostmasterPid(t *testing.T) {
+	// postmaster.pid of the postgres:13-alpine container
+	pid, ok := ParsePostmasterPid("1\n/var/lib/postgresql/data\n1791032192\n5432\n/var/run/postgresql\n127.0.0.1\n   278037         5\nready   \n")
+	assert.True(t, ok)
+	assert.Equal(t, 1, pid)
+	_, ok = ParsePostmasterPid("")
+	assert.False(t, ok)
+	_, ok = ParsePostmasterPid("-1\n")
+	assert.False(t, ok)
+}
+
+func TestOverlay(t *testing.T) {
+	file := map[string]string{"listen_addresses": "*", "log_connections": "off", "port": "5432"}
+	inst, _ := ParsePostmasterArgs([]string{"postgres", "-c", "log_connections=on", "--password-encryption=md5", "-p", "5433"})
+	got := Overlay(file, &inst)
+	assert.Equal(t, "on", got["log_connections"])
+	assert.Equal(t, "md5", got["password_encryption"], "the long form, with dashes, names the same setting")
+	assert.Equal(t, "5433", got["port"])
+	assert.Equal(t, "*", got["listen_addresses"], "settings the command line does not give stay")
+	assert.Equal(t, "off", file["log_connections"], "the file's own map is not changed")
+	assert.Equal(t, file, Overlay(file, nil))
+}
+
+func TestRunningByPid(t *testing.T) {
+	running := []Instance{{Pid: 7}, {Pid: 1, Settings: map[string]string{"log_connections": "on"}}}
+	assert.Equal(t, "on", RunningByPid(running, 1).Settings["log_connections"])
+	assert.Nil(t, RunningByPid(running, 2))
+}

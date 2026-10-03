@@ -20,6 +20,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/postgresql"
+	"go.mondoo.com/mql/providers/os/resources/serverlaunch"
 	"go.mondoo.com/mql/types"
 )
 
@@ -207,7 +208,35 @@ func findPostgresqlConfigFile(fs afero.Fs, name string, preferred ...string) (st
 // unavailable (a container image has no processes, a host without systemd
 // has no units) and then contributes nothing.
 func postgresqlInstances(runtime *plugin.Runtime) (running, units []postgresql.Instance) {
-	return runningPostmasters(runtime), postgresqlUnits(runtime)
+	running = runningPostmasters(runtime)
+	if len(running) == 0 {
+		running = imagePostmasters(runtime)
+	}
+	return running, postgresqlUnits(runtime)
+}
+
+// postgresqlLaunch recognizes the postmaster in a container image's
+// configuration (docker-entrypoint.sh postgres -c ...).
+var postgresqlLaunch = serverLaunchSpec{Names: []string{"postgres", "postmaster"}, Env: true}
+
+// imagePostmasters returns the postmaster a scanned container image starts,
+// with the data directory from its PGDATA, or nil when the connection is
+// not an image or the image starts something else.
+func imagePostmasters(runtime *plugin.Runtime) []postgresql.Instance {
+	conn, ok := runtime.Connection.(shared.Connection)
+	if !ok {
+		return nil
+	}
+	l := imageServerLaunch(conn, postgresqlLaunch)
+	if l == nil {
+		return nil
+	}
+	inst, ok := postgresql.ParsePostmasterArgs(l.Argv)
+	if !ok {
+		return nil
+	}
+	inst.ApplyEnv(l.Env)
+	return []postgresql.Instance{inst}
 }
 
 // postgresqlPidsCmd lists the processes named postgres or postmaster: the
@@ -261,9 +290,21 @@ func runningPostmasters(runtime *plugin.Runtime) []postgresql.Instance {
 			continue
 		}
 		argv := strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00")
-		if inst, ok := postgresql.ParsePostmasterArgs(argv); ok {
-			out = append(out, inst)
+		inst, ok := postgresql.ParsePostmasterArgs(argv)
+		if !ok {
+			continue
 		}
+		inst.Pid, _ = strconv.Atoi(pid)
+		// Without -D or config_file the data directory is PGDATA. The
+		// environment is readable by the server's own account and root
+		// with ptrace rights; otherwise postmaster.pid ties the process
+		// to its data directory (see instanceFor).
+		if inst.ConfigFile() == "" {
+			if env, err := afs.ReadFile("/proc/" + pid + "/environ"); err == nil {
+				inst.ApplyEnv(serverlaunch.ParseEnviron(env))
+			}
+		}
+		out = append(out, inst)
 	}
 	return out
 }
@@ -447,6 +488,9 @@ type mqlPostgresqlConfInternal struct {
 	instancesOnce sync.Once
 	running       []postgresql.Instance
 	units         []postgresql.Instance
+
+	// inst is the cluster that loads the file, resolved by parse.
+	inst *postgresql.Instance
 }
 
 // instances returns what the host says about its clusters, read once per
@@ -464,8 +508,42 @@ func (s *mqlPostgresqlConf) instance() *postgresql.Instance {
 	if s.MqlRuntime == nil || s.File.Data == nil {
 		return nil
 	}
+	if s.parse(s.File.Data) != nil {
+		return nil
+	}
+	return s.inst
+}
+
+// instanceFor returns the cluster that loads the postgresql.conf at
+// confPath, whose own settings are fileParams. A postmaster whose data
+// directory is not known from its command line or environment is matched
+// through the postmaster.pid it writes into its data directory.
+func (s *mqlPostgresqlConf) instanceFor(confPath string, fileParams map[string]string) *postgresql.Instance {
 	running, units := s.instances()
-	return postgresql.InstanceFor(s.File.Data.Path.Data, running, units)
+	if inst := postgresql.InstanceFor(confPath, running, units); inst != nil {
+		return inst
+	}
+	var unplaced []postgresql.Instance
+	for _, inst := range running {
+		if inst.Pid != 0 && inst.ConfigFile() == "" {
+			unplaced = append(unplaced, inst)
+		}
+	}
+	if len(unplaced) == 0 {
+		return nil
+	}
+	conn := s.MqlRuntime.Connection.(shared.Connection)
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	dataDir := path.Dir(postgresql.AuxFilePath(confPath, fileParams, "", "postmaster.pid"))
+	raw, err := afs.ReadFile(path.Join(dataDir, "postmaster.pid"))
+	if err != nil {
+		return nil
+	}
+	pid, ok := postgresql.ParsePostmasterPid(string(raw))
+	if !ok {
+		return nil
+	}
+	return postgresql.RunningByPid(unplaced, pid)
 }
 
 func initPostgresqlConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -564,8 +642,12 @@ func (s *mqlPostgresqlConf) parse(file *mqlFile) error {
 		return err
 	}
 
-	params := make(map[string]any, len(cfg.Params))
-	for k, v := range cfg.Params {
+	// The postmaster's command line (-c name=value, --name=value, -p)
+	// overrides the file.
+	s.inst = s.instanceFor(file.Path.Data, cfg.Params)
+	effective := postgresql.Overlay(cfg.Params, s.inst)
+	params := make(map[string]any, len(effective))
+	for k, v := range effective {
 		params[k] = v
 	}
 	s.Params = plugin.TValue[map[string]any]{Data: params, State: plugin.StateIsSet}

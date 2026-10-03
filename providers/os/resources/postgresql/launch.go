@@ -29,6 +29,60 @@ type Instance struct {
 	// Env is the environment the server starts with. PGPORT only applies
 	// when postgresql.conf does not set port.
 	Env map[string]string
+	// Pid is the postmaster's process id, 0 when the instance does not come
+	// from a running process.
+	Pid int
+}
+
+// ApplyEnv records the environment a postmaster runs with. A postmaster
+// started without -D (the official container images run a bare
+// `postgres -c ...`) takes its data directory from PGDATA.
+func (i *Instance) ApplyEnv(env map[string]string) {
+	i.Env = env
+	if i.DataDir == "" && env["PGDATA"] != "" {
+		i.DataDir = path.Clean(env["PGDATA"])
+	}
+}
+
+// ParsePostmasterPid reads the pid from the first line of a data
+// directory's postmaster.pid, which the running postmaster writes.
+func ParsePostmasterPid(content string) (int, bool) {
+	line, _, _ := strings.Cut(content, "\n")
+	pid, err := strconv.Atoi(strings.TrimSpace(line))
+	if err != nil || pid <= 0 {
+		return 0, false
+	}
+	return pid, true
+}
+
+// RunningByPid returns the running instance with the given pid, nil when
+// none has it.
+func RunningByPid(running []Instance, pid int) *Instance {
+	for _, inst := range running {
+		if inst.Pid == pid {
+			inst := inst
+			return &inst
+		}
+	}
+	return nil
+}
+
+// Overlay returns the settings of a postgresql.conf with the instance's
+// command line settings applied: the server reads its command line after
+// the file, so pg_settings reports them with source "command line". inst
+// may be nil.
+func Overlay(params map[string]string, inst *Instance) map[string]string {
+	out := make(map[string]string, len(params))
+	for k, v := range params {
+		out[k] = v
+	}
+	if inst == nil {
+		return out
+	}
+	for k, v := range inst.Settings {
+		out[k] = v
+	}
+	return out
 }
 
 // ConfigFile returns the postgresql.conf the instance loads: config_file from
