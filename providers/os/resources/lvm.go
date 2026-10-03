@@ -211,11 +211,19 @@ func lvmCommandFailure(tool string, exit int64, stdout, stderr string) error {
 }
 
 func (l *mqlLvm) runLvmCommand(cmdline string) (string, string, int64, error) {
-	cmd, err := runSbinCommand(l.MqlRuntime, cmdline)
+	cmd, err := runSbinCommand(l.MqlRuntime, lvmCommandLine(cmdline))
 	if err != nil {
 		return "", "", 0, err
 	}
 	return cmd.GetStdout().Data, cmd.GetStderr().Data, cmd.GetExitcode().Data, nil
+}
+
+// lvmCommandLine runs an lvm command in the C locale. lvm prints numbers and
+// messages in the caller's locale: "0,02" for a percentage under de_DE.UTF-8,
+// and "Keine Berechtigung" for "Permission denied". env sets the locale
+// where sudo, which may refuse a VAR=value word, would not.
+func lvmCommandLine(cmdline string) string {
+	return "env LC_ALL=C " + cmdline
 }
 
 // isLvmReportFormatUnsupported reports whether an lvm reporting command

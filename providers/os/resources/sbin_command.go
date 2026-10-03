@@ -5,6 +5,7 @@ package resources
 
 import (
 	"path"
+	"regexp"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
@@ -19,17 +20,29 @@ var sbinDirs = []string{"/usr/sbin", "/sbin"}
 
 // sbinCommandCandidates returns cmdline followed by the same command line
 // with its tool named by its absolute path in each of sbinDirs. A command
-// line whose tool already names a path is returned alone.
+// line whose tool already names a path is returned alone. Leading `env` and
+// VAR=value words stay in front of the tool.
 func sbinCommandCandidates(cmdline string) []string {
 	cmdline = strings.TrimSpace(cmdline)
-	tool, args, hasArgs := strings.Cut(cmdline, " ")
+	prefix := ""
+	rest := cmdline
+	for {
+		word, after, _ := strings.Cut(rest, " ")
+		if (word == "env" && prefix == "") || envAssignmentWord.MatchString(word) {
+			prefix += word + " "
+			rest = after
+			continue
+		}
+		break
+	}
+	tool, args, hasArgs := strings.Cut(rest, " ")
 	if tool == "" || strings.Contains(tool, "/") {
 		return []string{cmdline}
 	}
 	res := make([]string, 0, len(sbinDirs)+1)
 	res = append(res, cmdline)
 	for _, dir := range sbinDirs {
-		c := path.Join(dir, tool)
+		c := prefix + path.Join(dir, tool)
 		if hasArgs {
 			c += " " + args
 		}
@@ -38,10 +51,21 @@ func sbinCommandCandidates(cmdline string) []string {
 	return res
 }
 
-// isCommandNotFound reports whether the shell could not find the tool of a
-// command line, which POSIX shells signal with exit code 127.
-func isCommandNotFound(exit int64) bool {
-	return exit == 127
+// envAssignmentWord matches a VAR=value word; the value may be empty (VAR=).
+var envAssignmentWord = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=\S*$`)
+
+// elevationNotFound matches what sudo and doas print, with exit status 1, when
+// the tool is not on their PATH (sudo's secure_path).
+var elevationNotFound = regexp.MustCompile(`(?m)^(sudo|doas): \S+: command not found`)
+
+// isCommandNotFound reports whether the tool of a command line could not be
+// found: POSIX shells and env signal that with exit code 127, sudo and doas
+// with exit code 1 and a "command not found" message.
+func isCommandNotFound(exit int64, stderr string) bool {
+	if exit == 127 {
+		return true
+	}
+	return exit != 0 && elevationNotFound.MatchString(stderr)
 }
 
 // runSbinCommand runs cmdline through the command resource. When the shell
@@ -63,7 +87,7 @@ func runSbinCommand(runtime *plugin.Runtime, cmdline string) (*mqlCommand, error
 		if exit.Error != nil {
 			return nil, exit.Error
 		}
-		if !isCommandNotFound(exit.Data) {
+		if !isCommandNotFound(exit.Data, cmd.GetStderr().Data) {
 			return cmd, nil
 		}
 		if first == nil {

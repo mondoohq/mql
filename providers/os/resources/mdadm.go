@@ -5,12 +5,14 @@ package resources
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // validMdDevicePath matches standard md device paths like /dev/md0, /dev/md127, /dev/md/name
@@ -30,16 +32,18 @@ func (m *mqlMdadm) id() (string, error) {
 
 func (m *mqlMdadm) arrays() ([]any, error) {
 	// Discover arrays via mdadm --detail --scan
-	o, err := CreateResource(m.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("mdadm --detail --scan"),
-	})
+	cmd, err := runSbinCommand(m.MqlRuntime, "mdadm --detail --scan")
 	if err != nil {
 		return nil, err
 	}
-	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		// mdadm not installed or no arrays
-		return []any{}, nil
+	if exit := cmd.GetExitcode().Data; exit != 0 {
+		absent, err := mdadmFailure(exit, cmd.GetStderr().Data)
+		if err != nil {
+			return nil, err
+		}
+		if absent {
+			return []any{}, nil
+		}
 	}
 
 	arrayNames := parseMdadmScan(cmd.Stdout.Data)
@@ -52,15 +56,20 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 		if !validMdDevicePath.MatchString(name) {
 			continue
 		}
-		o, err := CreateResource(m.MqlRuntime, "command", map[string]*llx.RawData{
-			"command": llx.StringData(fmt.Sprintf("mdadm --detail %q", name)),
-		})
+		detail, err := runSbinCommand(m.MqlRuntime, fmt.Sprintf("mdadm --detail %q", name))
 		if err != nil {
 			return nil, err
 		}
-		detail := o.(*mqlCommand)
-		if detail.GetExitcode().Data != 0 {
-			continue
+		if exit := detail.GetExitcode().Data; exit != 0 {
+			skip, err := mdadmFailure(exit, detail.GetStderr().Data)
+			if err != nil {
+				return nil, err
+			}
+			if skip {
+				// the v13 answer for a refused array: leave it out and keep
+				// the arrays already read
+				continue
+			}
 		}
 
 		arr := parseMdadmDetail(detail.Stdout.Data)
@@ -87,6 +96,26 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 		results = append(results, mqlArray)
 	}
 	return results, nil
+}
+
+// mdadmFailure decides what a failed mdadm run means. absent is true when
+// mdadm is not installed, so the host has no arrays to report. A run refused
+// for want of root is forbidden under structured errors; v13 reported it as no
+// arrays, which stays until structured errors are the default (ADR 046 §9).
+// Any other failure is an error: mdadm ran and could not say what arrays
+// there are.
+func mdadmFailure(exit int64, stderr string) (absent bool, err error) {
+	if isCommandNotFound(exit, stderr) {
+		return true, nil
+	}
+	msg := strings.TrimSpace(stderr)
+	if strings.Contains(stderr, "must be super-user") {
+		if !plugin.StructuredErrors() {
+			return true, nil
+		}
+		return false, llx.Forbidden(errors.New(msg))
+	}
+	return false, fmt.Errorf("mdadm failed (exit %d): %s", exit, msg)
 }
 
 func (a *mqlMdadmArray) id() (string, error) {
