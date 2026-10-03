@@ -4,12 +4,14 @@
 package resources
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/utils/syncx"
 )
@@ -201,4 +203,51 @@ func TestParseAptOneLineTrailingComment(t *testing.T) {
 
 	assert.False(t, repos[2].Enabled)
 	assert.Equal(t, []string{"multiverse"}, repos[2].Components)
+}
+
+// A sources.list.d the scan cannot read used to leave apt.repos with only the
+// main sources.list, which on Debian 12 and later (deb822 only) is no repos at
+// all, so apt.repos.none(trusted == true) passed.
+func TestAptSourceFragmentsListingFailed(t *testing.T) {
+	failed := &plugin.TValue[[]any]{
+		Error: errors.New("find failed with exit code 1: find: '/etc/apt/sources.list.d': Permission denied"),
+		State: plugin.StateIsSet,
+	}
+
+	t.Run("structured errors", func(t *testing.T) {
+		// ReadFeatures only sets the StructuredErrors flag; restore it as found
+		was := plugin.StructuredErrors()
+		plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
+		t.Cleanup(func() {
+			if !was {
+				plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)}))
+			}
+		})
+
+		_, err := aptSourceFragments(failed)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Permission denied")
+	})
+
+	t.Run("v13 behavior", func(t *testing.T) {
+		require.False(t, plugin.StructuredErrors())
+		files, err := aptSourceFragments(failed)
+		require.NoError(t, err)
+		assert.Empty(t, files)
+	})
+
+	t.Run("listing filtered to source files", func(t *testing.T) {
+		runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+		file := func(p string) *mqlFile {
+			return &mqlFile{MqlRuntime: runtime, Path: plugin.TValue[string]{Data: p, State: plugin.StateIsSet}}
+		}
+		files, err := aptSourceFragments(&plugin.TValue[[]any]{
+			Data:  []any{file("/etc/apt/sources.list.d/a.list"), file("/etc/apt/sources.list.d/a.list.save"), file("/etc/apt/sources.list.d/b.sources")},
+			State: plugin.StateIsSet,
+		})
+		require.NoError(t, err)
+		require.Len(t, files, 2)
+		assert.Equal(t, "/etc/apt/sources.list.d/a.list", files[0].Path.Data)
+		assert.Equal(t, "/etc/apt/sources.list.d/b.sources", files[1].Path.Data)
+	})
 }

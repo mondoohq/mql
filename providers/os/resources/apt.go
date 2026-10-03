@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/types"
 )
 
@@ -104,20 +106,38 @@ func (a *mqlApt) sourceFiles() ([]*mqlFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	list := o.(*mqlFilesFind).GetList()
-	if list.Error == nil {
-		for _, item := range list.Data {
-			mf, ok := item.(*mqlFile)
-			if !ok {
-				continue
-			}
-			if !isAptSourceFile(mf.Path.Data) {
-				continue
-			}
-			out = append(out, mf)
-		}
+	fragments, err := aptSourceFragments(o.(*mqlFilesFind).GetList())
+	if err != nil {
+		return nil, err
 	}
+	return append(out, fragments...), nil
+}
 
+// aptSourceFragments picks the files apt reads out of a listing of
+// sources.list.d. A listing that failed (a directory the scan cannot read) is
+// an error: apt itself reads those fragments, so a repos list without them
+// is incomplete, not empty. Without structured errors the fragments are
+// skipped as before.
+func aptSourceFragments(list *plugin.TValue[[]any]) ([]*mqlFile, error) {
+	if list.Error != nil {
+		if !plugin.StructuredErrors() {
+			log.Warn().Err(list.Error).Str("path", aptSourcesListD).
+				Msg("mql[apt]> cannot list the apt source fragments, apt.repos leaves them out")
+			return nil, nil
+		}
+		return nil, fmt.Errorf("cannot list %s: %w", aptSourcesListD, list.Error)
+	}
+	var out []*mqlFile
+	for _, item := range list.Data {
+		mf, ok := item.(*mqlFile)
+		if !ok {
+			continue
+		}
+		if !isAptSourceFile(mf.Path.Data) {
+			continue
+		}
+		out = append(out, mf)
+	}
 	return out, nil
 }
 
