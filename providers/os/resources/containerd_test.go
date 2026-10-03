@@ -302,6 +302,10 @@ func TestIsCtrNotInstalled(t *testing.T) {
 	// sudo's "not found" in the remote's language (de_DE.UTF-8, RHEL 9)
 	assert.True(t, isCtrNotInstalled("docker-containerd-ctr", 1, "sudo: docker-containerd-ctr: Befehl nicht gefunden\n"))
 	assert.True(t, isCtrNotInstalled("containerd-ctr", 1, "sudo: containerd-ctr: commande introuvable\n"))
+	// sudo has no separate message for a binary it may not execute: with mode
+	// 0644 it says the same "command not found" (sudo 1.8.27 on Debian 10 and
+	// 1.9.5 on RHEL 9), which the English check already treated as missing
+	assert.True(t, isCtrNotInstalled("/usr/local/bin/ctr", 1, "sudo: /usr/local/bin/ctr: command not found\n"))
 	// sudo refusing to run anything is not a missing binary
 	assert.False(t, isCtrNotInstalled("ctr", 1, "sudo: sorry, you must have a tty to run sudo\n"))
 	assert.False(t, isCtrNotInstalled("ctr", 1, "sudo: a password is required\n"))
