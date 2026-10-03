@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/rs/zerolog/log"
+
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
@@ -119,11 +121,17 @@ func newMssqlServerRoleRef(runtime *plugin.Runtime, principalID int64, name stri
 // --- mssql.login ------------------------------------------------------------
 
 func (c *mqlMssqlLogin) explicitPermissions() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "server permission"); err != nil {
+		return nil, err
+	}
 	pid := c.PrincipalId.Data
 	return serverPermissionsFor(c.MqlRuntime, c.__id, &pid)
 }
 
 func (c *mqlMssqlLogin) memberOfRoles() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "server role membership"); err != nil {
+		return nil, err
+	}
 	return serverRolesForMember(c.MqlRuntime, c.PrincipalId.Data)
 }
 
@@ -157,10 +165,19 @@ func (c *mqlMssqlLogin) databaseUsers() ([]any, error) {
 
 	list := []any{}
 	for _, dbName := range dbNames {
+		// A database the scanner cannot read is a partition of a partial
+		// result (ADR 046 §8): skip it and keep the others, and say so.
+		if err := requireDatabaseCatalog(c.MqlRuntime, dbName, "database user"); err != nil {
+			log.Warn().Err(err).Str("database", dbName).Str("login", c.Name.Data).Msg("mssql> skipping database for login.databaseUsers")
+			continue
+		}
 		users, err := databaseUsersMatching(c.MqlRuntime, dbName, c.cacheSid)
 		if err != nil {
-			// A single inaccessible database should not fail the whole lookup.
-			continue
+			if isRefusal(err) || isDatabaseUnavailable(err) {
+				log.Warn().Err(err).Str("database", dbName).Str("login", c.Name.Data).Msg("mssql> skipping database for login.databaseUsers")
+				continue
+			}
+			return nil, err
 		}
 		list = append(list, users...)
 	}
@@ -203,6 +220,9 @@ func serverRolesForMember(runtime *plugin.Runtime, memberPrincipalID int64) ([]a
 // --- mssql.serverRole -------------------------------------------------------
 
 func (c *mqlMssqlServerRole) members() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "server role member"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -232,10 +252,16 @@ func (c *mqlMssqlServerRole) members() ([]any, error) {
 }
 
 func (c *mqlMssqlServerRole) memberOfRoles() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "server role membership"); err != nil {
+		return nil, err
+	}
 	return serverRolesForMember(c.MqlRuntime, c.PrincipalId.Data)
 }
 
 func (c *mqlMssqlServerRole) explicitPermissions() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "server permission"); err != nil {
+		return nil, err
+	}
 	pid := c.PrincipalId.Data
 	return serverPermissionsFor(c.MqlRuntime, c.__id, &pid)
 }
@@ -251,7 +277,11 @@ func (c *mqlMssqlDatabaseUser) login() (*mqlMssqlLogin, error) {
 		"name": llx.StringData(c.cacheLoginName),
 	})
 	if err != nil {
-		// The mapped login may not be visible (orphaned user); treat as null.
+		// A login the scanner cannot see is not an orphaned user.
+		if err := requireServerCatalog(c.MqlRuntime, "login"); err != nil {
+			return nil, err
+		}
+		// The mapped login is absent (orphaned user); treat as null.
 		c.Login.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
@@ -259,17 +289,26 @@ func (c *mqlMssqlDatabaseUser) login() (*mqlMssqlLogin, error) {
 }
 
 func (c *mqlMssqlDatabaseUser) explicitPermissions() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.cacheDatabase, "database permission"); err != nil {
+		return nil, err
+	}
 	pid := c.PrincipalId.Data
 	return databasePermissionsFor(c.MqlRuntime, c.cacheDatabase, c.__id, &pid)
 }
 
 func (c *mqlMssqlDatabaseUser) memberOfRoles() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.cacheDatabase, "database role membership"); err != nil {
+		return nil, err
+	}
 	return databaseRolesForMember(c.MqlRuntime, c.cacheDatabase, c.PrincipalId.Data)
 }
 
 // --- mssql.databaseRole -----------------------------------------------------
 
 func (c *mqlMssqlDatabaseRole) members() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.cacheDatabase, "database role member"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -301,10 +340,16 @@ func (c *mqlMssqlDatabaseRole) members() ([]any, error) {
 }
 
 func (c *mqlMssqlDatabaseRole) memberOfRoles() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.cacheDatabase, "database role membership"); err != nil {
+		return nil, err
+	}
 	return databaseRolesForMember(c.MqlRuntime, c.cacheDatabase, c.PrincipalId.Data)
 }
 
 func (c *mqlMssqlDatabaseRole) explicitPermissions() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.cacheDatabase, "database permission"); err != nil {
+		return nil, err
+	}
 	pid := c.PrincipalId.Data
 	return databasePermissionsFor(c.MqlRuntime, c.cacheDatabase, c.__id, &pid)
 }
@@ -356,10 +401,16 @@ func databaseRolesForMember(runtime *plugin.Runtime, database string, memberPrin
 // --- mssql.applicationRole --------------------------------------------------
 
 func (c *mqlMssqlApplicationRole) explicitPermissions() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.cacheDatabase, "database permission"); err != nil {
+		return nil, err
+	}
 	pid := c.PrincipalId.Data
 	return databasePermissionsFor(c.MqlRuntime, c.cacheDatabase, c.__id, &pid)
 }
 
 func (c *mqlMssqlApplicationRole) memberOfRoles() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.cacheDatabase, "database role membership"); err != nil {
+		return nil, err
+	}
 	return databaseRolesForMember(c.MqlRuntime, c.cacheDatabase, c.PrincipalId.Data)
 }
