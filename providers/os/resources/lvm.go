@@ -215,7 +215,11 @@ func (l *mqlLvm) runLvmCommand(cmdline string) (string, string, int64, error) {
 	if err != nil {
 		return "", "", 0, err
 	}
-	return cmd.GetStdout().Data, cmd.GetStderr().Data, cmd.GetExitcode().Data, nil
+	run, err := commandResult(cmd)
+	if err != nil {
+		return "", "", 0, err
+	}
+	return run.stdout, run.stderr, run.exitcode, nil
 }
 
 // isLvmReportFormatUnsupported reports whether an lvm reporting command

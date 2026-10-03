@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // validMdDevicePath matches standard md device paths like /dev/md0, /dev/md127, /dev/md/name
@@ -37,17 +38,34 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		// mdadm not installed or no arrays
-		return []any{}, nil
+	run, err := commandResult(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if run.exitcode != 0 {
+		if plugin.StructuredErrors() && commandRefused(run.stderr) {
+			return nil, llx.Forbidden(fmt.Errorf("mdadm --detail --scan could not read the RAID arrays (you must be root): %s", strings.TrimSpace(run.stderr)))
+		}
+		// mdadm is absent or refused to answer. That is not the same as a host
+		// with no RAID arrays: an empty list is vacuously true for
+		// `mdadm.arrays.none(...)` and `mdadm.arrays.all(...)`, so a scan that
+		// could not run would silently pass every array assertion. Report the
+		// arrays as unknown instead.
+		m.Arrays.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 
-	arrayNames := parseMdadmScan(cmd.Stdout.Data)
+	arrayNames := parseMdadmScan(run.stdout)
 	if len(arrayNames) == 0 {
+		// The scan ran and listed nothing. This one is a measured fact, so it
+		// stays an empty list.
 		return []any{}, nil
 	}
 
-	var results []any
+	results := make([]any, 0, len(arrayNames))
+	// refused holds the first `mdadm --detail` that was denied, reported when
+	// no array could be read at all.
+	var refused error
 	for _, name := range arrayNames {
 		if !validMdDevicePath.MatchString(name) {
 			continue
@@ -59,11 +77,18 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 			return nil, err
 		}
 		detail := o.(*mqlCommand)
-		if detail.GetExitcode().Data != 0 {
+		detailRun, err := commandResult(detail)
+		if err != nil {
+			return nil, err
+		}
+		if detailRun.exitcode != 0 {
+			if refused == nil && commandRefused(detailRun.stderr) {
+				refused = llx.Forbidden(fmt.Errorf("mdadm --detail %s could not read the array (you must be root): %s", name, strings.TrimSpace(detailRun.stderr)))
+			}
 			continue
 		}
 
-		arr := parseMdadmDetail(detail.Stdout.Data)
+		arr := parseMdadmDetail(detailRun.stdout)
 
 		mqlArray, err := CreateResource(m.MqlRuntime, "mdadm.array", map[string]*llx.RawData{
 			"name":           llx.StringData(name),
@@ -85,6 +110,16 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 		mqlArr.cachedDevices = arr.devices
 
 		results = append(results, mqlArray)
+	}
+	if len(results) == 0 {
+		// The scan named arrays but `mdadm --detail` answered for none of them.
+		// Reporting that as "no arrays" would hide the very arrays the scan
+		// just found.
+		if plugin.StructuredErrors() && refused != nil {
+			return nil, refused
+		}
+		m.Arrays.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return results, nil
 }

@@ -50,9 +50,15 @@ func (r *mqlSystemdResolved) resolveGlobal() (*resolvedGlobal, error) {
 	// starts systemd-resolved, and its DNS listener, on a host where it is
 	// installed but not running (stock Debian 9 to 11). So only a running
 	// resolved is asked; otherwise the settings come from the configuration.
-	running, err := isSystemdUnitActive(r.MqlRuntime, "systemd-resolved")
-	if err != nil {
-		return nil, err
+	// Without command execution (a filesystem, snapshot or image scan) there
+	// is no daemon to ask, and the settings come from the configuration alone.
+	running := false
+	if conn, ok := r.MqlRuntime.Connection.(shared.Connection); ok && conn.Capabilities().Has(shared.Capability_RunCommand) {
+		var err error
+		running, err = isSystemdUnitActive(r.MqlRuntime, "systemd-resolved")
+		if err != nil {
+			return nil, err
+		}
 	}
 	g := &resolvedGlobal{}
 	if running {
@@ -604,5 +610,9 @@ func isSystemdUnitActive(runtime *plugin.Runtime, unit string) (bool, error) {
 		return false, err
 	}
 	cmd := o.(*mqlCommand)
-	return cmd.GetExitcode().Data == 0, nil
+	run, err := commandResult(cmd)
+	if err != nil {
+		return false, err
+	}
+	return run.exitcode == 0, nil
 }
