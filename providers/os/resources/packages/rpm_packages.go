@@ -351,12 +351,13 @@ func (rpm *RpmPkgManager) List() ([]Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	return markPinned(pkgs, rpm.lockedPackages()), nil
+	locks, lockErr := rpm.lockedPackages()
+	return markPinned(pkgs, locks, lockErr), nil
 }
 
 // lockedPackages reads the versionlock store. Overridden by SusePkgManager,
 // which locks through zypper instead.
-func (rpm *RpmPkgManager) lockedPackages() lockedNames {
+func (rpm *RpmPkgManager) lockedPackages() (lockedNames, error) {
 	return readVersionlock(rpm.conn.FileSystem())
 }
 
@@ -381,7 +382,7 @@ func (spm *SusePkgManager) List() ([]Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	return markPinned(pkgs, spm.lockedPackages()), nil
+	return markPinned(pkgs, spm.lockedPackages(), nil), nil
 }
 
 func (rpm *RpmPkgManager) Available() (map[string]PackageUpdate, error) {
