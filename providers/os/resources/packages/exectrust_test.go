@@ -4,6 +4,7 @@
 package packages
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,26 +32,35 @@ drwxrwxrwt. 10 0 0     4096 Oct  3 02:05 /tmp
 -rwxr-xr-x.  1 0 0 28627920 Oct  2 16:55 /tmp/ollama
 `
 
-// fakeLstat answers from captured ls output and counts the calls.
-func fakeLstat(out string) (func([]string) map[string]pathEntry, *int) {
+// fakeLstat answers from captured ls output and counts the calls. A path
+// the output does not list is reported on stderr as GNU ls does for a path
+// that does not exist.
+func fakeLstat(out string) (func([]string) lsResult, *int) {
 	calls := 0
-	return func(paths []string) map[string]pathEntry {
+	return func(paths []string) lsResult {
 		calls++
 		all := parseLsLong(out, paths)
-		res := map[string]pathEntry{}
+		var stdout, stderr strings.Builder
 		for _, p := range paths {
-			if e, ok := all[p]; ok {
-				res[p] = e
+			if _, ok := all[p]; !ok {
+				stderr.WriteString("ls: cannot access '" + p + "': No such file or directory\n")
+				continue
+			}
+			for _, line := range strings.Split(out, "\n") {
+				if strings.HasSuffix(line, " "+p) || strings.Contains(line, " "+p+" -> ") {
+					stdout.WriteString(line + "\n")
+				}
 			}
 		}
-		return res
+		return parseLs(stdout.String(), stderr.String(), paths)
 	}, &calls
 }
 
 func TestParseLsLong(t *testing.T) {
 	entries := parseLsLong(rhel7NodeTarball+"ls: cannot access /nonexist: No such file or directory\n", nil)
 	require.Contains(t, entries, "/")
-	assert.Equal(t, pathEntry{mode: "dr-xr-xr-x", uid: 0}, entries["/"])
+	assert.Equal(t, pathEntry{mode: "dr-xr-xr-x", uid: 0, size: 224}, entries["/"])
+	assert.Equal(t, int64(245517112), entries["/usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe"].size)
 	assert.Equal(t, int64(1000), entries["/usr/local/lib/node_modules"].uid)
 	assert.Equal(t, "../lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe", entries["/usr/local/bin/claude"].link)
 	assert.True(t, entries["/usr/local/bin/claude"].isLink())
@@ -145,7 +155,7 @@ drwxr-xr-x 22 0 0 4096 Oct  2 23:56 /usr/libexec
 	assert.Equal(t, "/opt/hop is owned by uid 1000 with mode drwxr-xr-x", reason)
 }
 
-func TestPathPrefixes(t *testing.T) {
-	assert.Equal(t, []string{"/"}, pathPrefixes("/"))
-	assert.Equal(t, []string{"/", "/usr", "/usr/bin", "/usr/bin/x"}, pathPrefixes("/usr/bin/x"))
+func TestPathComponents(t *testing.T) {
+	assert.Empty(t, pathComponents("/"))
+	assert.Equal(t, []string{"usr", "bin", "..", "x"}, pathComponents("/usr//bin/./../x/"))
 }
