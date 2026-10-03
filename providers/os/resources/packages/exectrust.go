@@ -343,10 +343,15 @@ func trustedExecutable(p string, x execProbe, depth int) (string, string) {
 	if !strings.HasPrefix(interp, "/") {
 		return target, "interpreter " + interp + " is not absolute"
 	}
-	if _, r := trustedExecutable(interp, x, depth+1); r != "" {
+	interpTarget, r := trustedExecutable(interp, x, depth+1)
+	if r != "" {
 		return target, "interpreter " + interp + ": " + r
 	}
-	if path.Base(interp) != "env" {
+	// env is recognized by the name the #! line gives it, which is what a
+	// multi-call binary such as busybox goes by, or by the file it resolves
+	// to, so a link with another name to env is followed too. A copy of env
+	// under another name is not recognized.
+	if path.Base(interp) != "env" && path.Base(interpTarget) != "env" {
 		return target, ""
 	}
 
