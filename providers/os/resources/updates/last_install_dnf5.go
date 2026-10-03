@@ -45,7 +45,7 @@ func Dnf5Present(fs afero.Fs) bool {
 // dnf5's transaction history. A connection that cannot run commands, a dnf5
 // that cannot print its history as JSON (older than 5.2), and an empty
 // history all read nil: there is no upgrade evidence to report.
-func LastInstalledDnf5(conn shared.Connection, isVendorPackage func(name string) bool) (*LastInstalledUpdate, error) {
+func LastInstalledDnf5(conn shared.Connection, isVendorPackage func(name string) bool, installedVersions func(name string) []string) (*LastInstalledUpdate, error) {
 	if isVendorPackage == nil || !conn.Capabilities().Has(shared.Capability_RunCommand) {
 		return nil, nil
 	}
@@ -58,19 +58,20 @@ func LastInstalledDnf5(conn shared.Connection, isVendorPackage func(name string)
 		log.Debug().Int("exit", cmd.ExitStatus).Str("stderr", string(stderr)).Msg("dnf5 history is not readable, no dnf5 update evidence")
 		return nil, nil
 	}
-	return ParseDnf5History(cmd.Stdout, isVendorPackage)
+	return ParseDnf5History(cmd.Stdout, isVendorPackage, installedVersions)
 }
 
 // ParseDnf5History returns the end time of the newest successful transaction
 // in `dnf5 history info --json` output that upgraded a package
 // isVendorPackage attributes to the operating system vendor.
 //
-// Only the Upgrade action counts, which names the incoming build. Install is
-// an operator adding a package, and Replaced names the outgoing build of an
+// Only the Upgrade action counts, which names the incoming build, and the
+// Install of a new kernel (isKernelUpdate). Any other Install is an operator
+// adding a package, and Replaced names the outgoing build of an
 // upgrade and of a downgrade alike. A transaction that didn't finish ("Error",
 // "Started") changed nothing to count. dnf5 records times per transaction,
 // not per package, so the transaction's end time is the answer.
-func ParseDnf5History(r io.Reader, isVendorPackage func(name string) bool) (*LastInstalledUpdate, error) {
+func ParseDnf5History(r io.Reader, isVendorPackage func(name string) bool, installedVersions func(name string) []string) (*LastInstalledUpdate, error) {
 	var transactions []dnf5Transaction
 	if err := json.NewDecoder(r).Decode(&transactions); err != nil {
 		if err == io.EOF {
@@ -79,19 +80,37 @@ func ParseDnf5History(r io.Reader, isVendorPackage func(name string) bool) (*Las
 		return nil, err
 	}
 
+	// every version of a kernel package the history names, for
+	// isKernelUpdate
+	versions := map[string][]string{}
+	for _, t := range transactions {
+		for _, pkg := range t.Packages {
+			if name := rpmNevraName(pkg.Nevra); isKernelPackage(name) {
+				if evr := rpmNevraEVR(pkg.Nevra, name); evr != "" {
+					versions[name] = append(versions[name], evr)
+				}
+			}
+		}
+	}
+
 	var newest int64
 	for _, t := range transactions {
 		if t.Status != "Ok" || t.EndTime <= newest {
 			continue
 		}
 		for _, pkg := range t.Packages {
-			if pkg.Action != "Upgrade" {
+			if pkg.Action != "Upgrade" && pkg.Action != "Install" {
 				continue
 			}
-			if name := rpmNevraName(pkg.Nevra); name != "" && isVendorPackage(name) {
-				newest = t.EndTime
-				break
+			name := rpmNevraName(pkg.Nevra)
+			if name == "" || !isVendorPackage(name) {
+				continue
 			}
+			if pkg.Action == "Install" && !isKernelUpdate(name, rpmNevraEVR(pkg.Nevra, name), versions[name], installedVersions) {
+				continue
+			}
+			newest = t.EndTime
+			break
 		}
 	}
 
