@@ -36,7 +36,8 @@ var apacheLaunchSpec = serverLaunchSpec{
 func (s *mqlApache2Conf) effectiveLaunch() (*apache2.Launch, error) {
 	s.processLaunchOnce.Do(func() {
 		conn := s.MqlRuntime.Connection.(shared.Connection)
-		if apacheRunningLaunch(&afero.Afero{Fs: conn.FileSystem()}) != nil {
+		if l := apacheRunningLaunch(&afero.Afero{Fs: conn.FileSystem()}); l != nil {
+			s.processLaunch = l
 			return
 		}
 		s.processLaunch = apacheFoundLaunch(findServerLaunches(s.MqlRuntime, apacheLaunchSpec))
