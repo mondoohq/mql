@@ -145,11 +145,12 @@ func (p *mqlDockerFile) parse(file *mqlFile) error {
 	if err != nil {
 		return setError(multierr.Wrap(err, "failed to parse dockerfile instructions in "+file.Path.Data))
 	}
+	eval := newDockerfileEval(ast.EscapeToken, meta)
 
 	stages := make([]any, len(parsedStages))
 	var stagesErr error
 	for i := range parsedStages {
-		stages[i], err = p.stage2resource(parsedStages[i], i == len(parsedStages)-1)
+		stages[i], err = p.stage2resource(parsedStages[i], i == len(parsedStages)-1, eval)
 		if err != nil {
 			stagesErr = multierr.Wrap(err, "failed to parse stage in dockerfile "+file.Path.Data)
 			break
@@ -183,14 +184,12 @@ func (p *mqlDockerFile) parse(file *mqlFile) error {
 		}
 	}
 
-	// FIXME: add meta data
-	_ = meta
-
 	return nil
 }
 
-func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (*mqlDockerFileStage, error) {
-	image, tag, digest := splitDockerfileBaseName(stage.BaseName)
+func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool, eval *dockerfileEval) (*mqlDockerFileStage, error) {
+	st, baseName, platform := eval.startStage(stage)
+	image, tag, digest := splitDockerfileBaseName(baseName)
 
 	stageID := p.locationID(stage.Location)
 
@@ -200,7 +199,7 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 	}
 	rawFrom, err := CreateResource(p.MqlRuntime, ResourceDockerFileFrom, map[string]*llx.RawData{
 		"__id":     llx.StringData(stageID),
-		"platform": llx.StringData(stage.Platform),
+		"platform": llx.StringData(platform),
 		"image":    llx.StringData(image),
 		"tag":      llx.StringData(tag),
 		"digest":   llx.StringData(digest),
@@ -225,6 +224,9 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 	var entrypointRaw *instructions.EntrypointCommand
 	var cmdRaw *instructions.CmdCommand
 	var userRaw *instructions.UserCommand
+	var userValue, groupValue string
+	var userIsRoot bool
+	var exposeErr error
 	var healthcheckRaw *instructions.HealthCheckCommand
 	var shellRaw *instructions.ShellCommand
 	var stopsignalRaw *instructions.StopSignalCommand
@@ -239,7 +241,7 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 				envResource, err := CreateResource(p.MqlRuntime, ResourceDockerFileEnv, map[string]*llx.RawData{
 					"__id":    llx.StringData(p.locationID(v.Location()) + "/" + strconv.Itoa(j)),
 					"name":    llx.StringData(kv.Key),
-					"value":   llx.StringData(kv.Value),
+					"value":   llx.StringData(st.env(kv)),
 					"context": llx.ResourceData(ctx, "file.context"),
 				})
 				if err != nil {
@@ -256,7 +258,7 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 				argResource, err := CreateResource(p.MqlRuntime, ResourceDockerFileArg, map[string]*llx.RawData{
 					"__id":    llx.StringData(p.locationID(v.Location()) + "/" + strconv.Itoa(j)),
 					"name":    llx.StringData(kv.Key),
-					"default": llx.StringDataPtr(kv.Value),
+					"default": llx.StringDataPtr(st.arg(kv)),
 					"context": llx.ResourceData(ctx, "file.context"),
 				})
 				if err != nil {
@@ -266,19 +268,20 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 			}
 		case *instructions.LabelCommand:
 			for _, kv := range v.Labels {
-				labels[kv.Key] = kv.Value
+				labels[st.labelKey(kv.Key)] = kv.Value
 			}
 		case *instructions.UserCommand:
 			userRaw = v
+			userValue, groupValue, userIsRoot = st.user(v.User)
 
 		case *instructions.RunCommand:
-			script := strings.Join(v.CmdLine, "\n")
+			script, argvs := runScript(v)
 			mounts, err := p.mountResources(v)
 			if err != nil {
 				return nil, err
 			}
 			mountsSecret, mountsSsh := mountTypeFlags(mounts)
-			commands, err := p.runCommandResources(p.locationID(v.Location()), v.CmdLine, !v.PrependShell)
+			commands, err := p.runCommandResources(p.locationID(v.Location()), argvs)
 			if err != nil {
 				return nil, err
 			}
@@ -368,21 +371,21 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 			if err != nil {
 				return nil, err
 			}
-			for _, port := range v.Ports {
-				arr := strings.Split(port, "/")
-				var protocol string
-				if len(arr) < 2 {
-					protocol = "tcp"
-				} else {
-					protocol = arr[1]
+			ports, err := st.expose(v.Ports)
+			if err != nil {
+				if exposeErr == nil {
+					exposeErr = multierr.Wrap(err, "line "+strconv.Itoa(locationLine(v.Location())))
 				}
-				portNum, _ := strconv.Atoi(arr[0])
-				id := p.locationID(v.Location()) + ":" + arr[0] + "/" + protocol
+				continue
+			}
+			for _, port := range ports {
+				portStr := strconv.FormatInt(port.port, 10)
+				id := p.locationID(v.Location()) + ":" + portStr + "/" + port.protocol
 
 				resource, err := CreateResource(p.MqlRuntime, ResourceDockerFileExpose, map[string]*llx.RawData{
 					"__id":     llx.StringData(id),
-					"port":     llx.IntData(portNum),
-					"protocol": llx.StringData(protocol),
+					"port":     llx.IntData(port.port),
+					"protocol": llx.StringData(port.protocol),
 					"context":  llx.ResourceData(ctx, "file.context"),
 				})
 				if err != nil {
@@ -459,15 +462,9 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 		log.Debug().Strs("commands", slices.Compact(unsupported)).Msg("unsupported dockerfile commands")
 	}
 
-	var userValue, groupValue string
+	runsAsRoot := st.parentRunsAsRoot
 	if userRaw != nil {
-		parts := strings.SplitN(userRaw.User, ":", 2)
-		if len(parts) > 0 && parts[0] != "" {
-			userValue = parts[0]
-		}
-		if len(parts) > 1 && parts[1] != "" {
-			groupValue = parts[1]
-		}
+		runsAsRoot = userIsRoot
 	}
 
 	args := map[string]*llx.RawData{
@@ -484,7 +481,7 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 		"volumes":        llx.ArrayData(volumes, types.Resource(ResourceDockerFileVolume)),
 		"workdir":        llx.ArrayData(workdir, types.Resource(ResourceDockerFileWorkdir)),
 		"onbuild":        llx.ArrayData(onbuild, types.Resource(ResourceDockerFileOnbuild)),
-		"runsAsRoot":     llx.BoolData(userRaw == nil || isRootUser(userValue)),
+		"runsAsRoot":     llx.BoolData(runsAsRoot),
 		"hasHealthcheck": llx.BoolData(healthcheckRaw != nil && !isHealthcheckNone(healthcheckRaw)),
 		"final":          llx.BoolData(isFinal),
 	}
@@ -509,7 +506,7 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 
 	if entrypointRaw != nil {
 		script := strings.Join(entrypointRaw.CmdLine, "\n")
-		commands, err := p.runCommandResources(p.locationID(entrypointRaw.Location()), entrypointRaw.CmdLine, !entrypointRaw.PrependShell)
+		commands, err := p.runCommandResources(p.locationID(entrypointRaw.Location()), cmdLineArgvs(entrypointRaw.CmdLine, !entrypointRaw.PrependShell))
 		if err != nil {
 			return nil, err
 		}
@@ -540,7 +537,7 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 
 	if cmdRaw != nil {
 		script := strings.Join(cmdRaw.CmdLine, "\n")
-		commands, err := p.runCommandResources(p.locationID(cmdRaw.Location()), cmdRaw.CmdLine, !cmdRaw.PrependShell)
+		commands, err := p.runCommandResources(p.locationID(cmdRaw.Location()), cmdLineArgvs(cmdRaw.CmdLine, !cmdRaw.PrependShell))
 		if err != nil {
 			return nil, err
 		}
@@ -578,7 +575,7 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 			"__id":    llx.StringData(p.locationID(userRaw.Location())),
 			"user":    llx.StringData(userValue),
 			"group":   llx.StringData(groupValue),
-			"isRoot":  llx.BoolData(isRootUser(userValue)),
+			"isRoot":  llx.BoolData(userIsRoot),
 			"context": llx.ResourceData(ctx, "file.context"),
 		})
 		if err != nil {
@@ -651,8 +648,13 @@ func (p *mqlDockerFile) stage2resource(stage instructions.Stage, isFinal bool) (
 	if err != nil {
 		return nil, err
 	}
+	mqlStage := rawStage.(*mqlDockerFileStage)
+	if exposeErr != nil {
+		mqlStage.Expose = plugin.TValue[[]any]{Error: exposeErr, State: plugin.StateIsSet}
+	}
+	eval.finishStage(stage, st, runsAsRoot)
 
-	return rawStage.(*mqlDockerFileStage), nil
+	return mqlStage, nil
 }
 
 // ociAnnotationFields maps a docker.file.oci field to its OpenContainer image
@@ -781,10 +783,17 @@ func (p *mqlDockerFile) finalStage(file *mqlFile) (*mqlDockerFileStage, error) {
 	return nil, p.parse(file)
 }
 
-// isRootUser reports whether the USER value resolves to root. Only the user
-// portion is considered — the group is ignored.
+// isRootUser reports whether the user part of a USER value is root. An empty
+// user is root as well: it is what a USER set from an empty variable builds.
 func isRootUser(user string) bool {
-	return user == "0" || user == "root"
+	return user == "" || user == "0" || user == "root"
+}
+
+func locationLine(location []parser.Range) int {
+	if len(location) == 0 {
+		return 0
+	}
+	return location[0].Start.Line
 }
 
 // mountTypeFlags scans the parsed `--mount=...` entries on a RUN and reports
@@ -825,18 +834,8 @@ func runFlagValue(cmd *instructions.RunCommand, name string) string {
 }
 
 // runCommandResources builds the parsed docker.file.run.command list for a
-// RUN/CMD/ENTRYPOINT instruction. For exec form the CmdLine is already the argv
-// of a single command; for shell form it is parsed with parseShellCommands.
-func (p *mqlDockerFile) runCommandResources(parentID string, cmdLine []string, execForm bool) ([]any, error) {
-	var argvs [][]string
-	if execForm {
-		if len(cmdLine) > 0 {
-			argvs = [][]string{cmdLine}
-		}
-	} else {
-		argvs = parseShellCommands(strings.Join(cmdLine, " "))
-	}
-
+// RUN/CMD/ENTRYPOINT instruction from the argv of each of its commands.
+func (p *mqlDockerFile) runCommandResources(parentID string, argvs [][]string) ([]any, error) {
 	out := make([]any, 0, len(argvs))
 	for i, argv := range argvs {
 		if len(argv) == 0 {

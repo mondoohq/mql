@@ -7414,6 +7414,9 @@ private docker.file.stage @defaults("from.name") {
   // ARG instructions in this stage
   arg []docker.file.arg
   // LABEL instructions in this stage, as key/value pairs
+  //
+  // Keys are unquoted the way the build reads them, so `LABEL "a"=b` is
+  // `labels["a"]`. Values are kept as written, including their quotes.
   labels map[string]string
   // OpenContainer image annotations parsed from this stage's labels
   oci docker.file.oci
@@ -7448,10 +7451,12 @@ private docker.file.stage @defaults("from.name") {
   onbuild []docker.file.onbuild
   // Whether this stage runs as root
   //
-  // True when no `USER` instruction is present in the stage or when the
-  // declared user resolves to UID 0 (`0` or `root`). Inherited `USER` from
-  // the base image is not considered, because it is not visible from the
-  // Dockerfile alone.
+  // True when the stage's last `USER` instruction resolves to UID 0 (`0` or
+  // `root`), or is set from a variable that has no value in the Dockerfile,
+  // such as an `ARG` without a default. A stage without `USER` has the user
+  // of the stage it is built from (`FROM <stage>`). A stage built from an
+  // image and without `USER` counts as root, because the image's user is not
+  // visible from the Dockerfile alone.
   runsAsRoot bool
   // Whether this stage defines a HEALTHCHECK
   //
@@ -7529,7 +7534,9 @@ private docker.file.arg @defaults("name default") @context("file.context") {
   name string
   // (optional) Default value of the variable
   //
-  // Values are preserved as-is, without stripping quotes.
+  // The value the build uses: shell quotes are removed and variables set
+  // earlier in the Dockerfile are substituted. A reference to a variable
+  // without a value in the Dockerfile stays as written, for example `$PATH`.
   default string
 }
 
@@ -7543,7 +7550,9 @@ private docker.file.env @defaults("name value") @context("file.context") {
   name string
   // Value of the variable
   //
-  // Values are preserved as-is, without stripping quotes.
+  // The value the build sets: shell quotes are removed and variables set
+  // earlier in the Dockerfile are substituted. A reference to a variable
+  // without a value in the Dockerfile stays as written, for example `$PATH`.
   value string
 }
 
@@ -7553,20 +7562,25 @@ private docker.file.env @defaults("name value") @context("file.context") {
 // `group`, with `isRoot` flagging containers that would run privileged.
 private docker.file.user @defaults("user") @context("file.context") {
   // User name or UID the stage switches to
+  //
+  // Variables are substituted with their values in the Dockerfile. A
+  // variable without a value stays as written, for example `$UID`.
   user string
   // Group name or GID the stage switches to (optional)
   group string
   // Whether the declared user is root
   //
-  // True when `user` is `0` or `root`. The group is not considered.
+  // True when `user` is `0` or `root`, or is set from a variable that has no
+  // value in the Dockerfile. The group is not considered.
   isRoot bool
 }
 
 // Dockerfile EXPOSE instruction
 //
 // A network port advertised by `EXPOSE`, with its `port` number and
-// `protocol`. This documents intended listening ports, useful for reconciling
-// against what a container actually binds.
+// `protocol`. A port range such as `8000-8010` has one entry per port. This
+// documents intended listening ports, useful for reconciling against what a
+// container actually binds.
 private docker.file.expose @defaults("port protocol") @context("file.context") {
   // Port that is exposed
   port int
@@ -7584,6 +7598,9 @@ private docker.file.from @defaults("name image tag") @context("file.context") {
   // Target platform for the base image (`--platform=<os>/<arch>`), empty when not set
   platform string
   // Base image repository, e.g. `alpine` or `docker.io/library/nginx`
+  //
+  // Global `ARG` values declared before the first `FROM` are substituted, as
+  // the build does.
   image string
   // Image tag, e.g. `3.19`; empty when the image is pinned by digest only
   tag string
@@ -7772,14 +7789,24 @@ private docker.file.healthcheck @defaults("test") @context("file.context") {
   // The health check test command (e.g., ["CMD-SHELL", "curl -f http://localhost/ || exit 1"])
   test []string
   // Time between running the check in nanoseconds
+  //
+  // 0 when `--interval` is not set, in which case Docker uses 30 seconds.
   interval int
   // Time to wait before considering the check hung in nanoseconds
+  //
+  // 0 when `--timeout` is not set, in which case Docker uses 30 seconds.
   timeout int
   // Start period for the container to initialize before counting retries in nanoseconds
+  //
+  // 0 when `--start-period` is not set, which is also Docker's default.
   startPeriod int
   // Interval between checks during start period in nanoseconds
+  //
+  // 0 when `--start-interval` is not set, in which case Docker uses 5 seconds.
   startInterval int
   // Number of consecutive failures needed to report unhealthy
+  //
+  // 0 when `--retries` is not set, in which case Docker uses 3.
   retries int
   // Whether HEALTHCHECK is set to NONE (disables any inherited healthcheck)
   none bool
