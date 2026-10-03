@@ -8970,9 +8970,11 @@ secboot.config @defaults("path efiSubdir") {
   fwupdBinary() string
   // Unified kernel images installed on the EFI system partition
   //
-  // Read from efiSubdir. Null when that directory cannot be read, since a host
-  // whose images cannot be listed has none to report rather than an empty list
-  // of them, which would satisfy every assertion made over the images.
+  // Read from efiSubdir. Null when there is no configuration file, and when
+  // that directory cannot be read, or lies under an automount that nothing has
+  // mounted yet, since a host whose images cannot be listed has none to report
+  // rather than an empty list of them, which would satisfy every assertion
+  // made over the images.
   images() []secboot.image
 }
 

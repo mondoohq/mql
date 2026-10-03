@@ -296,3 +296,56 @@ func TestReadSecbootConfigRefused(t *testing.T) {
 		assert.Equal(t, "audit=1", cfg.KernelParams)
 	})
 }
+
+// /proc/self/mountinfo of a stock Amazon Linux 2023 host, whose fstab mounts
+// the EFI system partition at /boot/efi with x-systemd.automount. Until
+// something looks inside, /boot/efi is only the autofs placeholder.
+const al2023MountinfoUntriggered = `68 1 259:4 / / rw,noatime shared:1 - xfs /dev/nvme0n1p1 rw,seclabel,attr2,inode64,logbufs=8,logbsize=32k,sunit=1024,swidth=1024,noquota
+36 23 0:31 / /proc/sys/fs/binfmt_misc rw,relatime shared:14 - autofs systemd-1 rw,fd=33,pgrp=1,timeout=0,minproto=5,maxproto=5,direct,pipe_ino=1736
+43 68 0:38 / /boot/efi rw,relatime shared:24 - autofs systemd-1 rw,fd=49,pgrp=1,timeout=0,minproto=5,maxproto=5,direct,pipe_ino=2665
+`
+
+const al2023MountinfoTriggered = al2023MountinfoUntriggered +
+	`225 43 259:6 / /boot/efi rw,noatime shared:92 - vfat /dev/nvme0n1p128 rw,fmask=0077,dmask=0077,codepage=437,iocharset=ascii,shortname=winnt,errors=remount-ro
+`
+
+// secboot.config.images must not mount an automounted EFI system partition.
+// Without a configuration there are no images to describe, so the default
+// /boot/efi/EFI/Linux is not read at all; a configured directory under an
+// automount nothing has triggered is not read either.
+func TestSecbootImagesDir(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		config    string
+		mountinfo string
+		want      string
+	}{
+		{"no config, untriggered automount", "", al2023MountinfoUntriggered, ""},
+		{"no config, mounted ESP", "", al2023MountinfoTriggered, ""},
+		{"config on the ESP, untriggered automount", `{"efi-subdir": "/boot/efi/EFI/Linux"}`, al2023MountinfoUntriggered, ""},
+		{"config on the ESP, mounted ESP", `{"efi-subdir": "/boot/efi/EFI/Linux"}`, al2023MountinfoTriggered, "/boot/efi/EFI/Linux"},
+		{"config off the ESP, untriggered automount", `{"efi-subdir": "/srv/efi/Linux"}`, al2023MountinfoUntriggered, "/srv/efi/Linux"},
+		{"config, no mountinfo", `{"efi-subdir": "/boot/efi/EFI/Linux"}`, "", "/boot/efi/EFI/Linux"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mem := afero.NewMemMapFs()
+			if tc.mountinfo != "" {
+				require.NoError(t, afero.WriteFile(mem, "/proc/self/mountinfo", []byte(tc.mountinfo), 0o444))
+			}
+			dir := secbootDefaults.EfiSubdir
+			if tc.config != "" {
+				require.NoError(t, afero.WriteFile(mem, secbootDefaultConfigPath, []byte(tc.config), 0o644))
+				cfg, err := ParseSecbootConfig(strings.NewReader(tc.config))
+				require.NoError(t, err)
+				dir = cfg.EfiSubdir
+			}
+			opened := []string{}
+			fs := &recordingFs{Fs: mem, opened: &opened}
+
+			assert.Equal(t, tc.want, secbootImagesDir(fs, secbootDefaultConfigPath, dir))
+			for _, name := range opened {
+				assert.False(t, strings.HasPrefix(name, "/boot/efi/"), "opened %s", name)
+			}
+		})
+	}
+}

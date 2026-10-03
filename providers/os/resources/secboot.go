@@ -402,7 +402,7 @@ func (s *mqlSecbootConfig) fetchImages() error {
 
 	s.imagesFetched.Store(true)
 
-	dir := s.cachedConfig.EfiSubdir
+	dir := secbootImagesDir(fs, s.Path.Data, s.cachedConfig.EfiSubdir)
 	if dir == "" {
 		return nil
 	}
@@ -452,6 +452,31 @@ func (s *mqlSecbootConfig) fetchImages() error {
 	s.cachedImages = images
 	s.cachedImagesOK = len(images) > 0
 	return nil
+}
+
+// secbootImagesDir returns the directory the images are read from, or "" when
+// none is read. A host without a configuration does not run secboot and has no
+// images, and its default directory, /boot/efi/EFI/Linux, is where Amazon
+// Linux automounts the EFI system partition, so it is not looked at. A
+// configured directory under an automount nothing has triggered yet is not
+// read either: looking inside would mount the partition on the scanned host.
+func secbootImagesDir(fs afero.Fs, configPath string, dir string) string {
+	if dir == "" {
+		return ""
+	}
+	// a configuration that cannot be checked for (an unreadable /etc/secboot)
+	// may still exist
+	if exists, err := afero.Exists(fs, configPath); err == nil && !exists {
+		return ""
+	}
+	var untriggered map[string]bool
+	if mountinfo, err := afero.ReadFile(fs, "/proc/self/mountinfo"); err == nil {
+		untriggered = parseUntriggeredAutomounts(mountinfo)
+	}
+	if underUntriggeredAutomount(untriggered, dir) {
+		return ""
+	}
+	return dir
 }
 
 func (s *mqlSecbootConfig) images() ([]any, error) {
