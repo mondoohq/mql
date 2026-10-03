@@ -238,6 +238,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mysqldb.user.maxUserConnections": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMysqldbUser).GetMaxUserConnections()).ToDataRes(types.Int)
 	},
+	"mysqldb.user.isRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbUser).GetIsRole()).ToDataRes(types.Bool)
+	},
 	"mysqldb.user.grantedRoles": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMysqldbUser).GetGrantedRoles()).ToDataRes(types.Array(types.Resource("mysqldb.user")))
 	},
@@ -497,6 +500,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mysqldb.user.maxUserConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMysqldbUser).MaxUserConnections, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mysqldb.user.isRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbUser).IsRole, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"mysqldb.user.grantedRoles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -969,6 +976,7 @@ type mqlMysqldbUser struct {
 	SslType             plugin.TValue[string]
 	MaxConnections      plugin.TValue[int64]
 	MaxUserConnections  plugin.TValue[int64]
+	IsRole              plugin.TValue[bool]
 	GrantedRoles        plugin.TValue[[]any]
 	Privileges          plugin.TValue[[]any]
 }
@@ -1055,6 +1063,10 @@ func (c *mqlMysqldbUser) GetMaxConnections() *plugin.TValue[int64] {
 
 func (c *mqlMysqldbUser) GetMaxUserConnections() *plugin.TValue[int64] {
 	return &c.MaxUserConnections
+}
+
+func (c *mqlMysqldbUser) GetIsRole() *plugin.TValue[bool] {
+	return &c.IsRole
 }
 
 func (c *mqlMysqldbUser) GetGrantedRoles() *plugin.TValue[[]any] {

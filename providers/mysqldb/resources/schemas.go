@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func (r *mqlMysqldbInstance) schemas() ([]any, error) {
@@ -88,9 +89,31 @@ func (r *mqlMysqldbSchema) tables() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := db.QueryContext(mysqldbContext(),
-		`SELECT TABLE_NAME, COALESCE(ENGINE, ''), COALESCE(ROW_FORMAT, ''), COALESCE(CREATE_OPTIONS, '')
-		 FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME`, r.Name.Data)
+	// On MariaDB a table can be encrypted without saying so in its options
+	// (innodb_encrypt_tables), so the tablespace's encryption state is read
+	// from INNODB_TABLESPACES_ENCRYPTION, which needs PROCESS.
+	mariadb := mysqldbConnection(r.MqlRuntime).IsMariaDB()
+	tablespaceExpr := "0"
+	tablespaceJoin := ""
+	if mariadb {
+		tablespaceExpr = "COALESCE(e.ENCRYPTION_SCHEME > 0 AND e.CURRENT_KEY_VERSION > 0, 0)"
+		tablespaceJoin = ` LEFT JOIN information_schema.INNODB_TABLESPACES_ENCRYPTION e
+			ON e.NAME = CONCAT(t.TABLE_SCHEMA, '/', t.TABLE_NAME)`
+	}
+	query := `SELECT t.TABLE_NAME, COALESCE(t.ENGINE, ''), COALESCE(t.ROW_FORMAT, ''), COALESCE(t.CREATE_OPTIONS, ''), ` +
+		tablespaceExpr + `
+		 FROM information_schema.TABLES t` + tablespaceJoin + `
+		 WHERE t.TABLE_SCHEMA = ? ORDER BY t.TABLE_NAME`
+	rows, err := db.QueryContext(mysqldbContext(), query, r.Name.Data)
+	if err != nil && mariadb && isAccessDenied(err) {
+		if plugin.StructuredErrors() {
+			return nil, llx.Forbidden(err, llx.WithPermissions("PROCESS ON *.*"))
+		}
+		// v13 read the table options only; keep that answer without PROCESS
+		rows, err = db.QueryContext(mysqldbContext(),
+			`SELECT TABLE_NAME, COALESCE(ENGINE, ''), COALESCE(ROW_FORMAT, ''), COALESCE(CREATE_OPTIONS, ''), 0
+			 FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME`, r.Name.Data)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -99,10 +122,11 @@ func (r *mqlMysqldbSchema) tables() ([]any, error) {
 	list := []any{}
 	for rows.Next() {
 		var name, engine, rowFormat, createOptions string
-		if err := rows.Scan(&name, &engine, &rowFormat, &createOptions); err != nil {
+		var tablespaceEncrypted int64
+		if err := rows.Scan(&name, &engine, &rowFormat, &createOptions, &tablespaceEncrypted); err != nil {
 			return nil, err
 		}
-		encrypted := strings.Contains(strings.ToLower(createOptions), "encryption='y'")
+		encrypted := tablespaceEncrypted > 0 || createOptionsEncrypted(createOptions)
 		res, err := CreateResource(r.MqlRuntime, "mysqldb.table", map[string]*llx.RawData{
 			"__id":      llx.StringData(r.__id + "/table/" + name),
 			"name":      llx.StringData(name),
@@ -117,6 +141,15 @@ func (r *mqlMysqldbSchema) tables() ([]any, error) {
 		list = append(list, res)
 	}
 	return list, rows.Err()
+}
+
+// createOptionsEncrypted reports whether information_schema.TABLES
+// CREATE_OPTIONS declares the table encrypted: ENCRYPTION='Y' on MySQL and
+// Percona, `ENCRYPTED`='YES' on MariaDB.
+func createOptionsEncrypted(createOptions string) bool {
+	o := strings.ToLower(strings.ReplaceAll(createOptions, "`", ""))
+	return strings.Contains(o, "encryption='y'") || strings.Contains(o, "encrypted='yes'") ||
+		strings.Contains(o, "encrypted=yes")
 }
 
 func (r *mqlMysqldbTable) privileges() ([]any, error) {

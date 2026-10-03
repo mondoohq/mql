@@ -5,8 +5,11 @@ package resources
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
+
+	mysqldriver "github.com/go-sql-driver/mysql"
 )
 
 func TestIsYes(t *testing.T) {
@@ -67,31 +70,52 @@ func TestHasPasswordExprDoesNotSelectTheCredential(t *testing.T) {
 	}
 }
 
+// stripLengthCalls removes every LENGTH(...) call, balancing parentheses, so
+// what remains is what the server would project as data.
+func stripLengthCalls(s string) string {
+	for {
+		i := strings.Index(s, "LENGTH(")
+		if i < 0 {
+			return s
+		}
+		depth, j := 0, i+len("LENGTH")
+		for ; j < len(s); j++ {
+			if s[j] == '(' {
+				depth++
+			} else if s[j] == ')' {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+		}
+		s = s[:i] + s[j+1:]
+	}
+}
+
+var allUserSchemas = map[string]userSchema{
+	"mysql":                  userSchemaMySQL,
+	"mariadb":                userSchemaMariaDB,
+	"mariadb no global_priv": userSchemaMariaDBNoGlobalPriv,
+	"mariadb before 10.4":    userSchemaMariaDBLegacy,
+}
+
 func TestUserColumnsNeverProjectsTheCredential(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		alias   string
-		mariadb bool
-	}{
-		{"mysql", "", false},
-		{"mysql aliased", "u.", false},
-		{"mariadb", "", true},
-		{"mariadb aliased", "u.", true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cols := userColumns(tc.alias, tc.mariadb)
-			// every mention of the credential column must be wrapped in the
-			// length comparison; a bare COALESCE(...) would ship the hash
-			if strings.Contains(cols, "COALESCE("+tc.alias+"authentication_string, ''),") {
-				t.Errorf("userColumns projects the raw credential: %s", cols)
+	for name, schema := range allUserSchemas {
+		for _, alias := range []string{"", "u."} {
+			cols := userColumns(alias, schema)
+			// the credential columns may only be read inside LENGTH(), never
+			// projected, or the hash would cross the connection
+			rest := stripLengthCalls(cols)
+			for _, credential := range []string{"authentication_string", "Password"} {
+				if strings.Contains(rest, credential) {
+					t.Errorf("%s/%q projects %s outside LENGTH(): %s", name, alias, credential, cols)
+				}
 			}
-			if !strings.Contains(cols, hasPasswordExpr(tc.alias)) {
-				t.Errorf("userColumns missing hasPassword projection: %s", cols)
+			if !strings.Contains(cols, "LENGTH(") {
+				t.Errorf("%s/%q has no hasPassword projection: %s", name, alias, cols)
 			}
-			if n := strings.Count(cols, "authentication_string"); n != 1 {
-				t.Errorf("authentication_string appears %d times, want 1: %s", n, cols)
-			}
-		})
+		}
 	}
 }
 
@@ -115,19 +139,135 @@ func countSelectColumns(list string) int {
 }
 
 func TestUserColumnsCountMatchesScan(t *testing.T) {
-	// the scan targets in scanMysqldbUser are positional, so replacing the
-	// credential projection must keep the column count intact
-	if got := countSelectColumns(userColumns("", false)); got != 11 {
-		t.Errorf("mysql userColumns has %d columns, want 11", got)
+	// the scan targets in scanMysqldbUser are positional
+	want := map[userSchema]int{
+		userSchemaMySQL:               11,
+		userSchemaMariaDB:             12,
+		userSchemaMariaDBNoGlobalPriv: 12,
+		userSchemaMariaDBLegacy:       9,
 	}
-	if got := countSelectColumns(userColumns("u.", false)); got != 11 {
-		t.Errorf("aliased mysql userColumns has %d columns, want 11", got)
+	for name, schema := range allUserSchemas {
+		for _, alias := range []string{"", "u."} {
+			if got := countSelectColumns(userColumns(alias, schema)); got != want[schema] {
+				t.Errorf("%s/%q userColumns has %d columns, want %d", name, alias, got, want[schema])
+			}
+		}
 	}
-	if got := countSelectColumns(userColumns("", true)); got != 8 {
-		t.Errorf("mariadb userColumns has %d columns, want 8", got)
+}
+
+func TestLegacyMariaDBReadsThePasswordColumn(t *testing.T) {
+	// MariaDB 10.1 and 10.3 keep the hash in Password with plugin and
+	// authentication_string empty
+	expr := legacyHasPasswordExpr("u.")
+	if !strings.Contains(expr, "u.Password") || !strings.Contains(expr, "u.authentication_string") {
+		t.Errorf("legacyHasPasswordExpr does not consider both credential columns: %s", expr)
 	}
-	if got := countSelectColumns(userColumns("u.", true)); got != 8 {
-		t.Errorf("aliased mariadb userColumns has %d columns, want 8", got)
+	if !strings.Contains(userColumns("u.", userSchemaMariaDBLegacy), "mysql_native_password") {
+		t.Error("legacy layout does not name the built-in plugin for an empty plugin column")
+	}
+}
+
+func TestMariadbUserSchema(t *testing.T) {
+	cases := map[string]userSchema{
+		"10.1.48-MariaDB-0ubuntu0.18.04.1":  userSchemaMariaDBLegacy,
+		"10.3.39-MariaDB-0ubuntu0.20.04.2":  userSchemaMariaDBLegacy,
+		"10.4.0-MariaDB":                    userSchemaMariaDB,
+		"10.6.28-MariaDB-ubu2204":           userSchemaMariaDB,
+		"10.11.14-MariaDB-0ubuntu0.24.04.1": userSchemaMariaDB,
+		"11.8.6-MariaDB-5ubuntu0.1":         userSchemaMariaDB,
+		"13.0.2-MariaDB":                    userSchemaMariaDB,
+	}
+	for v, want := range cases {
+		if got := mariadbUserSchema(v); got != want {
+			t.Errorf("mariadbUserSchema(%q) = %v, want %v", v, got, want)
+		}
+	}
+}
+
+// Values as JSON_VALUE returns them from mysql.global_priv on MariaDB 10.6.
+func TestMariadbGlobalPriv(t *testing.T) {
+	str := func(s string) sql.NullString { return sql.NullString{String: s, Valid: true} }
+	null := sql.NullString{}
+
+	// mqllocked: "account_locked":true, which JSON_VALUE returns as 1
+	locked, life, changed := mariadbGlobalPriv(str("1"), null, str("1790993093"))
+	if locked == nil || !*locked {
+		t.Errorf("account_locked true read as %v", locked)
+	}
+	if life.Valid {
+		t.Errorf("absent password_lifetime read as %v", life)
+	}
+	if changed == nil || changed.Unix() != 1790993093 {
+		t.Errorf("password_last_changed = %v", changed)
+	}
+
+	// an ordinary account has no account_locked key: unlocked, not unknown
+	locked, _, _ = mariadbGlobalPriv(null, null, str("1790993093"))
+	if locked == nil || *locked {
+		t.Errorf("absent account_locked read as %v, want false", locked)
+	}
+
+	// mqllife: INTERVAL 30 DAY; mqlnever: NEVER
+	if _, life, _ = mariadbGlobalPriv(null, str("30"), null); !life.Valid || life.Int64 != 30 {
+		t.Errorf("password_lifetime 30 read as %v", life)
+	}
+	if _, life, _ = mariadbGlobalPriv(null, str("0"), null); !life.Valid || life.Int64 != 0 {
+		t.Errorf("password_lifetime 0 (never) read as %v", life)
+	}
+	// mqlexpired: PASSWORD EXPIRE writes password_last_changed 0 and
+	// password_lifetime -1 (server default)
+	_, life, changed = mariadbGlobalPriv(null, str("-1"), str("0"))
+	if life.Valid {
+		t.Errorf("password_lifetime -1 read as %v, want the default", life)
+	}
+	if changed != nil {
+		t.Errorf("password_last_changed 0 read as %v, want null", changed)
+	}
+}
+
+// Values from SHOW ALL SLAVES STATUS on MariaDB 10.6 with a named connection
+// to a source that does not use TLS.
+func TestMariadbChannelFromStatus(t *testing.T) {
+	ch := mariadbChannelFromStatus(map[string]string{
+		"Connection_name":               "mqlchan",
+		"Slave_IO_State":                "",
+		"Master_Host":                   "192.0.2.10",
+		"Master_User":                   "r",
+		"Master_Port":                   "3306",
+		"Master_SSL_Allowed":            "No",
+		"Master_SSL_Verify_Server_Cert": "No",
+	})
+	if ch.channel != "mqlchan" || ch.host != "192.0.2.10" {
+		t.Errorf("channel = %+v", ch)
+	}
+	if ch.sslAllowed || ch.sslVerifyServerCert {
+		t.Errorf("No read as true: %+v", ch)
+	}
+	ch = mariadbChannelFromStatus(map[string]string{
+		"Connection_name":               "",
+		"Master_Host":                   "192.0.2.11",
+		"Master_SSL_Allowed":            "Yes",
+		"Master_SSL_Verify_Server_Cert": "Yes",
+	})
+	if ch.channel != "" || !ch.sslAllowed || !ch.sslVerifyServerCert {
+		t.Errorf("default connection with TLS = %+v", ch)
+	}
+}
+
+func TestCreateOptionsEncrypted(t *testing.T) {
+	cases := map[string]bool{
+		"`ENCRYPTED`='YES'":                 true, // MariaDB 10.6, ENCRYPTED=YES
+		"ENCRYPTION='Y'":                    true, // MySQL 8
+		"row_format=DYNAMIC ENCRYPTION='Y'": true,
+		"`ENCRYPTED`='NO'":                  false,
+		"ENCRYPTION='N'":                    false,
+		"row_format=COMPACT":                false,
+		"":                                  false,
+	}
+	for in, want := range cases {
+		if got := createOptionsEncrypted(in); got != want {
+			t.Errorf("createOptionsEncrypted(%q) = %v, want %v", in, got, want)
+		}
 	}
 }
 
@@ -153,5 +293,15 @@ func TestHasPasswordValue(t *testing.T) {
 				t.Errorf("hasPasswordValue(%+v) = %v, want %v", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestIsSyntaxError(t *testing.T) {
+	// MariaDB 10.3 on SHOW ALL REPLICAS STATUS
+	if !isSyntaxError(&mysqldriver.MySQLError{Number: 1064, Message: "You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'REPLICAS STATUS' at line 1"}) {
+		t.Error("1064 is a syntax error")
+	}
+	if isSyntaxError(&mysqldriver.MySQLError{Number: 1227}) || isSyntaxError(nil) || isSyntaxError(errors.New("i/o timeout")) {
+		t.Error("only 1064 is a syntax error")
 	}
 }
