@@ -262,6 +262,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mysqldb.privilege.isGrantable": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMysqldbPrivilege).GetIsGrantable()).ToDataRes(types.Bool)
 	},
+	"mysqldb.privilege.column": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbPrivilege).GetColumn()).ToDataRes(types.String)
+	},
+	"mysqldb.privilege.routine": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbPrivilege).GetRoutine()).ToDataRes(types.String)
+	},
+	"mysqldb.privilege.routineType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbPrivilege).GetRoutineType()).ToDataRes(types.String)
+	},
+	"mysqldb.privilege.proxiedAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMysqldbPrivilege).GetProxiedAccount()).ToDataRes(types.String)
+	},
 	"mysqldb.schema.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMysqldbSchema).GetName()).ToDataRes(types.String)
 	},
@@ -533,6 +545,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mysqldb.privilege.isGrantable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMysqldbPrivilege).IsGrantable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mysqldb.privilege.column": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbPrivilege).Column, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.privilege.routine": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbPrivilege).Routine, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.privilege.routineType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbPrivilege).RoutineType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mysqldb.privilege.proxiedAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMysqldbPrivilege).ProxiedAccount, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"mysqldb.schema.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1094,12 +1122,16 @@ type mqlMysqldbPrivilege struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMysqldbPrivilegeInternal it will be used here
-	Grantee       plugin.TValue[string]
-	Scope         plugin.TValue[string]
-	Schema        plugin.TValue[string]
-	Table         plugin.TValue[string]
-	PrivilegeType plugin.TValue[string]
-	IsGrantable   plugin.TValue[bool]
+	Grantee        plugin.TValue[string]
+	Scope          plugin.TValue[string]
+	Schema         plugin.TValue[string]
+	Table          plugin.TValue[string]
+	PrivilegeType  plugin.TValue[string]
+	IsGrantable    plugin.TValue[bool]
+	Column         plugin.TValue[string]
+	Routine        plugin.TValue[string]
+	RoutineType    plugin.TValue[string]
+	ProxiedAccount plugin.TValue[string]
 }
 
 // createMysqldbPrivilege creates a new instance of this resource
@@ -1156,6 +1188,22 @@ func (c *mqlMysqldbPrivilege) GetPrivilegeType() *plugin.TValue[string] {
 
 func (c *mqlMysqldbPrivilege) GetIsGrantable() *plugin.TValue[bool] {
 	return &c.IsGrantable
+}
+
+func (c *mqlMysqldbPrivilege) GetColumn() *plugin.TValue[string] {
+	return &c.Column
+}
+
+func (c *mqlMysqldbPrivilege) GetRoutine() *plugin.TValue[string] {
+	return &c.Routine
+}
+
+func (c *mqlMysqldbPrivilege) GetRoutineType() *plugin.TValue[string] {
+	return &c.RoutineType
+}
+
+func (c *mqlMysqldbPrivilege) GetProxiedAccount() *plugin.TValue[string] {
+	return &c.ProxiedAccount
 }
 
 // mqlMysqldbSchema for the mysqldb.schema resource

@@ -30,9 +30,13 @@ mysqldb.plugin.name 13.0.0
 mysqldb.plugin.status 13.0.0
 mysqldb.plugin.type 13.0.0
 mysqldb.privilege 13.0.0
+mysqldb.privilege.column 14.0.2
 mysqldb.privilege.grantee 13.0.0
 mysqldb.privilege.isGrantable 13.0.0
 mysqldb.privilege.privilegeType 13.0.0
+mysqldb.privilege.proxiedAccount 14.0.2
+mysqldb.privilege.routine 14.0.2
+mysqldb.privilege.routineType 14.0.2
 mysqldb.privilege.schema 13.0.0
 mysqldb.privilege.scope 13.0.0
 mysqldb.privilege.table 13.0.0

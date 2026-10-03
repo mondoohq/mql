@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"go.mondoo.com/mql/llx"
@@ -90,6 +91,11 @@ func newMysqldbPrivilege(runtime *plugin.Runtime, parentID, granteeStr, scope, s
 		"table":         llx.StringData(table),
 		"privilegeType": llx.StringData(privilegeType),
 		"isGrantable":   llx.BoolData(grantable),
+		// set by newObjectPrivilege for the scopes that have them
+		"column":         llx.StringData(""),
+		"routine":        llx.StringData(""),
+		"routineType":    llx.StringData(""),
+		"proxiedAccount": llx.StringData(""),
 	})
 	if err != nil {
 		return nil, err
@@ -99,4 +105,74 @@ func newMysqldbPrivilege(runtime *plugin.Runtime, parentID, granteeStr, scope, s
 
 func isYes(s string) bool {
 	return s == "YES" || s == "Y" || s == "ON" || s == "1"
+}
+
+// objectPrivilege is a privilege on a column, a stored routine, or another
+// account (PROXY), which information_schema.USER_PRIVILEGES,
+// SCHEMA_PRIVILEGES, and TABLE_PRIVILEGES do not list.
+type objectPrivilege struct {
+	scope, schema, table, column  string
+	routine, routineType, proxied string
+	privilegeType                 string
+	grantable                     bool
+}
+
+// objectPrivilegeID keys an objectPrivilege under its account. The parts are
+// joined with NUL, which cannot appear in a MySQL identifier, so a schema,
+// table, or routine name containing '/' cannot collide with another row.
+func objectPrivilegeID(parentID, granteeStr string, p objectPrivilege) string {
+	return parentID + "/priv/" + strings.Join([]string{granteeStr, p.scope, p.schema, p.table,
+		p.column, p.routineType, p.routine, p.proxied, p.privilegeType}, "\x00")
+}
+
+func newObjectPrivilege(runtime *plugin.Runtime, parentID, granteeStr string, p objectPrivilege) (*mqlMysqldbPrivilege, error) {
+	res, err := CreateResource(runtime, "mysqldb.privilege", map[string]*llx.RawData{
+		"__id":           llx.StringData(objectPrivilegeID(parentID, granteeStr, p)),
+		"grantee":        llx.StringData(granteeStr),
+		"scope":          llx.StringData(p.scope),
+		"schema":         llx.StringData(p.schema),
+		"table":          llx.StringData(p.table),
+		"privilegeType":  llx.StringData(p.privilegeType),
+		"isGrantable":    llx.BoolData(p.grantable),
+		"column":         llx.StringData(p.column),
+		"routine":        llx.StringData(p.routine),
+		"routineType":    llx.StringData(p.routineType),
+		"proxiedAccount": llx.StringData(p.proxied),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlMysqldbPrivilege), nil
+}
+
+// routinePrivileges expands one mysql.procs_priv row. Proc_priv is a SET of
+// Execute, Alter Routine, and Grant; Grant is the grant option on the others.
+func routinePrivileges(schema, routine, routineType, procPriv string) []objectPrivilege {
+	var types []string
+	grantable := false
+	for _, p := range strings.Split(procPriv, ",") {
+		p = strings.TrimSpace(p)
+		switch {
+		case p == "":
+		case strings.EqualFold(p, "Grant"):
+			grantable = true
+		default:
+			types = append(types, strings.ToUpper(p))
+		}
+	}
+	// GRANT ... ON PROCEDURE p TO u WITH GRANT OPTION followed by REVOKE
+	// EXECUTE, ALTER ROUTINE leaves a row holding only Grant; the account can
+	// still grant on the routine, which information_schema reports as the
+	// GRANT OPTION privilege type at the other scopes.
+	if len(types) == 0 && grantable {
+		types = []string{"GRANT OPTION"}
+	}
+	res := make([]objectPrivilege, 0, len(types))
+	for _, t := range types {
+		res = append(res, objectPrivilege{
+			scope: "ROUTINE", schema: schema, routine: routine, routineType: strings.ToUpper(routineType),
+			privilegeType: t, grantable: grantable,
+		})
+	}
+	return res
 }
