@@ -368,8 +368,8 @@ func sudoValidateRuntime(t *testing.T, files []string) *plugin.Runtime {
 	}}, mock.WithData(&mock.TomlData{
 		Files: mockFiles,
 		Commands: map[string]*mock.Command{
-			"/usr/sbin/visudo -c":   {Command: "/usr/sbin/visudo -c", Stdout: visudoCOK},
-			"/usr/bin/visudo-rs -c": {Command: "/usr/bin/visudo-rs -c", Stderr: visudoRsStderr, ExitStatus: 1},
+			cLocale + "/usr/sbin/visudo -c":   {Command: cLocale + "/usr/sbin/visudo -c", Stdout: visudoCOK},
+			cLocale + "/usr/bin/visudo-rs -c": {Command: cLocale + "/usr/bin/visudo-rs -c", Stderr: visudoRsStderr, ExitStatus: 1},
 		},
 	}))
 	require.NoError(t, err)
