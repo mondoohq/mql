@@ -405,15 +405,15 @@ func (c *coordinator) unsafeStartProvider(id string, update UpdateProvidersConfi
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to start provider "+id)
 	}
+	if err := ensureWritableTempDir(); err != nil {
+		return nil, errors.Wrap(err, "failed to start provider "+id)
+	}
 
 	connectFunc := func() (pp.ProviderPlugin, *plugin.Client, error) {
 		pluginCmd := exec.Command(provider.binPath(), []string{"run_as_plugin", "--log-level", zerolog.GlobalLevel().String()}...)
 
 		addColorConfig(pluginCmd)
 		addProxyConfig(pluginCmd)
-		if err := ensureWritableTempDir(); err != nil {
-			return nil, nil, errors.Wrap(err, "failed to start provider "+id)
-		}
 
 		pluginLogger := &hclogger{Logger: log.Logger}
 		pluginLogger.SetLevel(hclog.Warn)
