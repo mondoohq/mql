@@ -189,8 +189,8 @@ type LinuxHost struct {
 // LinuxPolicyFileCandidates returns the policy files to probe on a Linux host,
 // in the order the installed Firefox would consult them.
 //
-// A distribution Firefox (a package under one of the install prefixes, or the
-// snap, which is granted read access to /etc/firefox/policies) reads
+// A distribution Firefox (a Firefox binary in one of the install prefixes, or
+// the snap, which is granted read access to /etc/firefox/policies) reads
 // SystemPolicyFile and then its install prefix. Flathub's Firefox reads
 // neither: it reads its systemconfig extension. Crediting /etc/firefox to a
 // host whose only Firefox is the flatpak reports a policy the browser never
@@ -207,10 +207,8 @@ type LinuxHost struct {
 // reads as unconfigured rather than crediting the administrator's file.
 func LinuxPolicyFileCandidates(host LinuxHost) []string {
 	native := PolicyFileCandidates("linux")
-	for _, prefix := range linuxInstallPrefixes {
-		if host.Exists(prefix) {
-			return native
-		}
+	if linuxDistributionFirefox(host) {
+		return native
 	}
 
 	flatpak := host.Exists(FlatpakApp(FlatpakSystemInstallation))
@@ -245,6 +243,30 @@ func LinuxPolicyFileCandidates(host LinuxHost) []string {
 		res = append(res, flatpakPolicyFile(dir))
 	}
 	return res
+}
+
+// linuxFirefoxBinaries are the names a Firefox install prefix holds its binary
+// under: Debian's firefox-esr package names it after itself.
+var linuxFirefoxBinaries = []string{"firefox", "firefox-bin", "firefox-esr"}
+
+// linuxDistributionFirefox reports whether a Firefox binary sits in one of
+// the install prefixes. The prefix alone is not enough: removing the package
+// leaves it behind while other packages own files in it (Leap 16.0's
+// mozilla-openh264 and branding packages keep defaults/pref there, Rocky 10
+// leaves empty defaults directories), and the Firefox left on such a host may
+// be the flatpak, which does not read /etc/firefox.
+func linuxDistributionFirefox(host LinuxHost) bool {
+	for _, prefix := range linuxInstallPrefixes {
+		if !host.Exists(prefix) {
+			continue
+		}
+		for _, bin := range linuxFirefoxBinaries {
+			if host.Exists(prefix + "/" + bin) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func userInstallation(home string) string {

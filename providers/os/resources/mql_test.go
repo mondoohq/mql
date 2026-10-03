@@ -1583,8 +1583,16 @@ func TestResource_FirefoxPoliciesFlatpakOnly(t *testing.T) {
 	})
 
 	t.Run("a distribution Firefox next to the flatpak keeps /etc", func(t *testing.T) {
-		x := firefoxLinuxHost(t, map[string]string{systemPolicyPath: esrPolicy}, flatpakApp, "/usr/lib/firefox-esr")
+		x := firefoxLinuxHost(t, map[string]string{systemPolicyPath: esrPolicy}, flatpakApp, "/usr/lib/firefox-esr", "/usr/lib/firefox-esr/firefox-esr")
 		assert.Equal(t, systemPolicyPath, x.value(t, "firefox.policies.file.path").Data.Value)
+	})
+
+	// The prefix a removed package left behind is not a Firefox: the
+	// flatpak is the only browser there, and it does not read /etc/firefox.
+	t.Run("a leftover install prefix next to the flatpak does not credit /etc", func(t *testing.T) {
+		x := firefoxLinuxHost(t, map[string]string{systemPolicyPath: esrPolicy}, flatpakApp, "/usr/lib64/firefox")
+		assert.Equal(t, false, x.value(t, "firefox.policies.configured").Data.Value)
+		assert.Nil(t, x.value(t, "firefox.policies.file").Data.Value)
 	})
 }
 

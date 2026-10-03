@@ -4,6 +4,7 @@
 package firefox
 
 import (
+	"path"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -234,14 +235,37 @@ func TestLinuxPolicyFileCandidates(t *testing.T) {
 	homes := []string{"/root", "/home/ec2-user", "/home/alice"}
 
 	t.Run("a distribution Firefox keeps the /etc and prefix lookup", func(t *testing.T) {
-		host := fakeLinuxHost("x86_64", homes, "/usr/lib64/firefox")
+		host := fakeLinuxHost("x86_64", homes, "/usr/lib64/firefox", "/usr/lib64/firefox/firefox", "/usr/lib64/firefox/firefox-bin")
 		assert.Equal(t, PolicyFileCandidates("linux"), LinuxPolicyFileCandidates(host))
+	})
+
+	// Debian's firefox-esr names its binary after the package; the snap
+	// keeps the binary under its own prefix.
+	for _, bin := range []string{"/usr/lib/firefox-esr/firefox-esr", "/snap/firefox/current/usr/lib/firefox/firefox"} {
+		t.Run("a distribution Firefox at "+bin, func(t *testing.T) {
+			host := fakeLinuxHost("x86_64", homes, path.Dir(bin), bin, "/var/lib/flatpak/app/org.mozilla.firefox")
+			assert.Equal(t, PolicyFileCandidates("linux"), LinuxPolicyFileCandidates(host))
+		})
+	}
+
+	// Removing the distribution package leaves its prefix behind when other
+	// packages still own files in it: on Leap 16.0 mozilla-openh264 and
+	// MozillaFirefox-branding-openSUSE keep /usr/lib64/firefox/defaults/pref,
+	// on Rocky 10 empty browser/defaults and defaults/pref directories remain.
+	// The Flathub Firefox that is left does not read /etc/firefox.
+	t.Run("a leftover install prefix is not a distribution Firefox", func(t *testing.T) {
+		host := fakeLinuxHost("x86_64", homes,
+			"/usr/lib64/firefox", "/usr/lib64/firefox/defaults/pref", "/usr/lib64/firefox/defaults/pref/gmpopenh264.js",
+			"/var/lib/flatpak/app/org.mozilla.firefox")
+		candidates := LinuxPolicyFileCandidates(host)
+		assert.Equal(t, []string{flatpakSystemPolicy}, candidates)
+		assert.NotContains(t, candidates, SystemPolicyFile)
 	})
 
 	// Both installed: the distribution Firefox is the one reported, so its
 	// /etc file still applies and the flatpak systemconfig is not mixed in.
 	t.Run("a host with both installs reports the distribution Firefox", func(t *testing.T) {
-		host := fakeLinuxHost("x86_64", homes, "/usr/lib64/firefox", "/var/lib/flatpak/app/org.mozilla.firefox")
+		host := fakeLinuxHost("x86_64", homes, "/usr/lib64/firefox", "/usr/lib64/firefox/firefox", "/var/lib/flatpak/app/org.mozilla.firefox")
 		candidates := LinuxPolicyFileCandidates(host)
 		assert.Equal(t, SystemPolicyFile, candidates[0])
 		assert.NotContains(t, candidates, flatpakSystemPolicy)
