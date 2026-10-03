@@ -215,8 +215,14 @@ func TestAptSourceFragmentsListingFailed(t *testing.T) {
 	}
 
 	t.Run("structured errors", func(t *testing.T) {
+		// ReadFeatures only sets the StructuredErrors flag; restore it as found
+		was := plugin.StructuredErrors()
 		plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
-		t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
+		t.Cleanup(func() {
+			if !was {
+				plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)}))
+			}
+		})
 
 		_, err := aptSourceFragments(failed)
 		require.Error(t, err)
@@ -224,6 +230,7 @@ func TestAptSourceFragmentsListingFailed(t *testing.T) {
 	})
 
 	t.Run("v13 behavior", func(t *testing.T) {
+		require.False(t, plugin.StructuredErrors())
 		files, err := aptSourceFragments(failed)
 		require.NoError(t, err)
 		assert.Empty(t, files)
