@@ -642,9 +642,16 @@ func (s *mqlPostgresqlConf) parse(file *mqlFile) error {
 		return err
 	}
 
-	// The postmaster's command line (-c name=value, --name=value, -p)
-	// overrides the file.
+	// The cluster that loads the file decides where postgresql.auto.conf
+	// is, and its command line (-c name=value, --name=value, -p) overrides
+	// both files.
 	s.inst = s.instanceFor(file.Path.Data, cfg.Params)
+
+	if err := s.applyAutoConf(cfg, file.Path.Data, fileReader, dirLister); err != nil {
+		s.setConfError(err)
+		return err
+	}
+
 	effective := postgresql.Overlay(cfg.Params, s.inst)
 	params := make(map[string]any, len(effective))
 	for k, v := range effective {
@@ -662,6 +669,40 @@ func (s *mqlPostgresqlConf) parse(file *mqlFile) error {
 	}
 	s.Files = plugin.TValue[[]any]{Data: files, State: plugin.StateIsSet}
 
+	return nil
+}
+
+// applyAutoConf overlays postgresql.auto.conf, which ALTER SYSTEM writes in
+// the data directory and the server reads after postgresql.conf, so each of
+// its settings wins. The data directory is data_directory from the config,
+// else the -D of the cluster that loads it, else the config's own directory,
+// which is where RHEL and the PGDG packages keep postgresql.conf. A missing
+// file means ALTER SYSTEM never ran. A refused one is a Forbidden error with
+// structured errors; without them it is skipped, as v13 never read it, and
+// Debian's data directory is 0700 postgres.
+func (s *mqlPostgresqlConf) applyAutoConf(cfg *postgresql.Conf, confPath string, fileReader postgresql.FileReader, dirLister postgresql.DirLister) error {
+	dataDir := cfg.Params["data_directory"]
+	if dataDir == "" && s.inst != nil {
+		dataDir = s.inst.DataDir
+	}
+	if dataDir == "" {
+		dataDir = path.Dir(confPath)
+	}
+	autoPath := path.Join(dataDir, "postgresql.auto.conf")
+	auto, err := postgresql.ParseConf(autoPath, fileReader, dirLister)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if errors.Is(err, os.ErrPermission) {
+			if !plugin.StructuredErrors() {
+				return nil
+			}
+			return llx.Forbidden(err)
+		}
+		return err
+	}
+	cfg.Overlay(auto)
 	return nil
 }
 

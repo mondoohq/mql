@@ -831,3 +831,14 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
+
+func TestConfOverlay(t *testing.T) {
+	c := &Conf{Params: map[string]string{"ssl": "on", "port": "5443"}, Files: []string{"/etc/postgresql/18/main/postgresql.conf"}}
+	c.Overlay(&Conf{Params: map[string]string{"ssl": "off"}, Files: []string{"/var/lib/postgresql/18/main/postgresql.auto.conf"}})
+	if want := map[string]string{"ssl": "off", "port": "5443"}; !reflect.DeepEqual(c.Params, want) {
+		t.Errorf("params = %v, want %v", c.Params, want)
+	}
+	if want := []string{"/etc/postgresql/18/main/postgresql.conf", "/var/lib/postgresql/18/main/postgresql.auto.conf"}; !reflect.DeepEqual(c.Files, want) {
+		t.Errorf("files = %v, want %v", c.Files, want)
+	}
+}
