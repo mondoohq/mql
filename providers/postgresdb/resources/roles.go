@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -17,6 +18,14 @@ import (
 const roleColumns = `r.rolname, r.oid::bigint, r.rolsuper, r.rolcanlogin, r.rolcreaterole,
 	r.rolcreatedb, r.rolreplication, r.rolbypassrls, r.rolinherit, r.rolconnlimit,
 	r.rolvaliduntil, r.rolconfig`
+
+// roleColumnsFor is roleColumns for the runtime's server. rolbypassrls arrived
+// in 9.5; before that no role can bypass row-level security, which does not
+// exist yet.
+func roleColumnsFor(runtime *plugin.Runtime) string {
+	return strings.Replace(roleColumns, "r.rolbypassrls",
+		pgColumn(runtime, pgVersion95, "r.rolbypassrls", "false"), 1)
+}
 
 // passwordTypesByOid best-effort reads pg_authid (superuser-only) and maps each
 // role oid to how its password is stored. The credential itself stays in the
@@ -109,7 +118,7 @@ func initPostgresdbRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	if err != nil {
 		return nil, nil, err
 	}
-	rows, err := pool.Query(pgContext(), "SELECT "+roleColumns+" FROM pg_roles r WHERE r.rolname = $1", name)
+	rows, err := pool.Query(pgContext(), "SELECT "+roleColumnsFor(runtime)+" FROM pg_roles r WHERE r.rolname = $1", name)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -133,7 +142,7 @@ func (r *mqlPostgresdbInstance) roles() ([]any, error) {
 		return nil, err
 	}
 	passwordTypes := passwordTypesByOid(pool)
-	rows, err := pool.Query(pgContext(), "SELECT "+roleColumns+" FROM pg_roles r ORDER BY r.rolname")
+	rows, err := pool.Query(pgContext(), "SELECT "+roleColumnsFor(r.MqlRuntime)+" FROM pg_roles r ORDER BY r.rolname")
 	if err != nil {
 		return nil, err
 	}

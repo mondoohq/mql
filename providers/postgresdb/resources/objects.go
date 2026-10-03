@@ -168,12 +168,16 @@ func (r *mqlPostgresdbForeignServer) userMappings() ([]any, error) {
 // --- replication ------------------------------------------------------------
 
 func (r *mqlPostgresdbInstance) replicationSlots() ([]any, error) {
+	// Replication slots arrived in 9.4; an older server has none.
+	if !pgAtLeast(r.MqlRuntime, pgVersion94) {
+		return []any{}, nil
+	}
 	pool, err := pgPool(r.MqlRuntime, "")
 	if err != nil {
 		return nil, err
 	}
 	rows, err := pool.Query(pgContext(),
-		`SELECT slot_name, slot_type, active, COALESCE(database, ''), temporary
+		`SELECT slot_name, slot_type, active, COALESCE(database, ''), `+pgColumn(r.MqlRuntime, pgVersion10, "temporary", "false")+`
 		 FROM pg_replication_slots ORDER BY slot_name`)
 	if err != nil {
 		return nil, err
@@ -211,9 +215,13 @@ func (r *mqlPostgresdbDatabase) publications() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Logical replication arrived in 10; an older server has no publications.
+	if !pgAtLeast(r.MqlRuntime, pgVersion10) {
+		return []any{}, nil
+	}
 	rows, err := pool.Query(pgContext(),
 		`SELECT p.pubname, COALESCE(o.rolname, ''), p.puballtables,
-			p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate
+			p.pubinsert, p.pubupdate, p.pubdelete, `+pgColumn(r.MqlRuntime, pgVersion11, "p.pubtruncate", "false")+`
 		 FROM pg_publication p LEFT JOIN pg_roles o ON p.pubowner = o.oid ORDER BY p.pubname`)
 	if err != nil {
 		return nil, err
@@ -266,6 +274,10 @@ func (r *mqlPostgresdbInstance) subscriptions() ([]any, error) {
 	pool, err := pgPool(r.MqlRuntime, "")
 	if err != nil {
 		return nil, err
+	}
+	// Logical replication arrived in 10; an older server has no subscriptions.
+	if !pgAtLeast(r.MqlRuntime, pgVersion10) {
+		return []any{}, nil
 	}
 	// pg_subscription is superuser-only; treat only a permission error as none,
 	// and propagate real failures (network, timeout, syntax).
