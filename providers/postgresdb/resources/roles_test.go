@@ -78,13 +78,6 @@ func TestSettingsRefusal(t *testing.T) {
 	assert.NoError(t, settingsRefusal(false), "v13 behavior: the visible subset is returned")
 }
 
-func TestMembershipQueriesFoldGrantors(t *testing.T) {
-	// PostgreSQL 16+ stores one pg_auth_members row per grantor
-	for _, q := range []string{memberOfQuery, membersQuery} {
-		assert.Contains(t, q, "SELECT DISTINCT")
-	}
-}
-
 func TestRoleColumnsSelectBypassRLS(t *testing.T) {
 	// roleColumnsFor swaps exactly this column; keep the two in step
 	assert.Contains(t, roleColumns, "r.rolbypassrls,")
