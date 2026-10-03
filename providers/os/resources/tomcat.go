@@ -5,6 +5,8 @@ package resources
 
 import (
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"strconv"
@@ -300,6 +302,30 @@ func fileExistsOn(afs *afero.Afero, filePath string) bool {
 	return err == nil && !stat.IsDir()
 }
 
+// explicitPathsExist returns an error when tomcat(home:) or tomcat(base:)
+// names a directory that does not exist. Reading nothing from it reported no
+// users, connectors or properties, so users.none(...) passed for an
+// installation that is not there.
+func (t *mqlTomcat) explicitPathsExist() error {
+	conn, ok := t.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return nil
+	}
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	for _, f := range []struct {
+		name string
+		v    *plugin.TValue[string]
+	}{{"home", &t.Home}, {"base", &t.Base}} {
+		if !f.v.IsSet() || f.v.Data == "" {
+			continue
+		}
+		if _, err := afs.Stat(f.v.Data); errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("tomcat %s %q does not exist", f.name, f.v.Data)
+		}
+	}
+	return nil
+}
+
 // confPath resolves a file under conf/ the way Catalina does: CATALINA_BASE
 // owns instance configuration, CATALINA_HOME is the fallback. It returns the
 // path that actually exists, or the empty string when neither does.
@@ -403,6 +429,9 @@ func readFileResource(runtime *plugin.Runtime, filePath string) (*mqlFile, strin
 }
 
 func (t *mqlTomcat) server() (*mqlTomcatServer, error) {
+	if err := t.explicitPathsExist(); err != nil {
+		return nil, err
+	}
 	serverPath := t.confPath("server.xml")
 	if serverPath == "" {
 		t.Server = plugin.TValue[*mqlTomcatServer]{State: plugin.StateIsSet | plugin.StateIsNull}
@@ -431,6 +460,9 @@ func (t *mqlTomcat) server() (*mqlTomcatServer, error) {
 }
 
 func (t *mqlTomcat) webXml() (*mqlTomcatWebxml, error) {
+	if err := t.explicitPathsExist(); err != nil {
+		return nil, err
+	}
 	webXmlPath := t.confPath("web.xml")
 	if webXmlPath == "" {
 		return nil, t.setWebXmlNull()
@@ -455,6 +487,9 @@ func (t *mqlTomcat) setWebXmlNull() error {
 }
 
 func (t *mqlTomcat) context() (*mqlTomcatContext, error) {
+	if err := t.explicitPathsExist(); err != nil {
+		return nil, err
+	}
 	contextPath := t.confPath("context.xml")
 	if contextPath == "" {
 		return nil, t.setContextNull()
@@ -484,6 +519,9 @@ func (t *mqlTomcat) logging() (map[string]any, error) {
 }
 
 func (t *mqlTomcat) readConfProperties(name string) (map[string]any, error) {
+	if err := t.explicitPathsExist(); err != nil {
+		return nil, err
+	}
 	filePath := t.confPath(name)
 	if filePath == "" {
 		return map[string]any{}, nil
@@ -506,6 +544,9 @@ func propertiesToDict(props map[string]string) map[string]any {
 }
 
 func (t *mqlTomcat) users() ([]any, error) {
+	if err := t.explicitPathsExist(); err != nil {
+		return nil, err
+	}
 	usersPath := t.confPath("tomcat-users.xml")
 	if usersPath == "" {
 		return []any{}, nil

@@ -137,11 +137,33 @@ func (e *mqlExim) params() (map[string]any, error) {
 	if configPath.Error != nil {
 		return nil, configPath.Error
 	}
+	if err := e.explicitConfigExists(configPath.Data); err != nil {
+		return nil, err
+	}
 	content, err := e.readFile(configPath.Data)
 	if err != nil {
 		return nil, err
 	}
 	return parseEximConfigFile(configPath.Data, content, e.builtinMacros(), e.readInclude)
+}
+
+// explicitConfigExists returns an error when exim(path) names a file that
+// does not exist, as snmpd.config and nginx.conf do. A missing config at the
+// installed Exim's own location means Exim is not configured and reads as
+// empty.
+func (e *mqlExim) explicitConfigExists(configPath string) error {
+	conn := e.MqlRuntime.Connection.(shared.Connection)
+	if _, err := conn.FileSystem().Stat(configPath); !errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	detected, err := e.detectConfigPath()
+	if err != nil {
+		return err
+	}
+	if detected == configPath {
+		return nil
+	}
+	return fmt.Errorf("could not read %q: no such file", configPath)
 }
 
 // eximBinaries are the names tried, in order, to run Exim. The absolute

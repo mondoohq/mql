@@ -361,9 +361,14 @@ func (s *mqlSquidConf) parse(file *mqlFile) error {
 		s.setEmpty()
 		return nil
 	}
-	if exists := file.GetExists(); exists.Error != nil || !exists.Data {
+	// file() only picks a default location that exists, so a file that does
+	// not is one named with squid.conf(path), which must exist as with
+	// snmpd.config and nginx.conf
+	if exists := file.GetExists(); exists.Error != nil {
 		s.setEmpty()
 		return nil
+	} else if !exists.Data {
+		return fmt.Errorf("could not read %q: no such file", file.Path.Data)
 	}
 
 	filesIdx := map[string]*mqlFile{
