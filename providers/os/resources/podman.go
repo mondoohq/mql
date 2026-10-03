@@ -6,6 +6,7 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -87,15 +88,75 @@ func (p *mqlPodman) loadInfo() (*podmanInfo, error) {
 // them anyway, so read them first and let the whole resource share one call. A
 // binary that is present but cannot reach an engine still fails that read, so
 // fall back to the version probe rather than report podman as absent.
+//
+// Podman is absent only when the binary is missing. Any other failure of the
+// probe means podman is there but could not be run, which is an error. A
+// refusal (sudo refusing to run it, a binary the user may not execute) kept
+// the v13 answer of false unless structured errors are on (ADR 046 §9).
 func (p *mqlPodman) installed() (bool, error) {
 	if _, err := p.loadInfo(); err == nil {
 		return true, nil
 	}
-	if _, err := runPodman(p.MqlRuntime, "--version"); err != nil {
-		log.Debug().Err(err).Msg("podman> engine not available")
+	o, err := CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData("podman --version"),
+	})
+	if err != nil {
+		return false, err
+	}
+	cmd := o.(*mqlCommand)
+	exit := cmd.GetExitcode()
+	if exit.Error != nil {
+		return false, exit.Error
+	}
+	if exit.Data == 0 {
+		return true, nil
+	}
+	stderr := cmd.GetStderr()
+	if stderr.Error != nil {
+		return false, stderr.Error
+	}
+	if isPodmanNotInstalled(exit.Data, stderr.Data) {
 		return false, nil
 	}
-	return true, nil
+
+	failure := fmt.Errorf("podman --version failed: %s", strings.TrimSpace(stderr.Data))
+	if isPodmanRefused(exit.Data, stderr.Data) {
+		if !plugin.StructuredErrors() {
+			log.Debug().Err(failure).Msg("podman> cannot run podman")
+			return false, nil
+		}
+		return false, llx.Forbidden(failure)
+	}
+	return false, failure
+}
+
+// isPodmanNotInstalled reports whether a failed "podman --version" means the
+// binary is missing: the shell's "not found" (exit 127), or sudo's, which exits
+// 1 and prints "sudo: podman: " followed by "command not found" in the
+// remote's language. Only the message after that prefix is translated, and
+// sudo's own refusals don't name the command, so the prefix alone identifies
+// a missing binary in any language.
+func isPodmanNotInstalled(exitCode int64, stderr string) bool {
+	if exitCode == 127 {
+		return true
+	}
+	stderr = strings.TrimSpace(stderr)
+	return strings.HasPrefix(stderr, "sudo: podman: ") ||
+		strings.Contains(stderr, "podman: command not found") ||
+		strings.Contains(stderr, "podman: not found")
+}
+
+// isPodmanRefused reports whether a failed "podman --version" was refused
+// rather than run: a binary the user may not execute (exit 126), or sudo
+// refusing to run it (no tty, a password required, not in sudoers).
+func isPodmanRefused(exitCode int64, stderr string) bool {
+	if isPodmanNotInstalled(exitCode, stderr) {
+		return false
+	}
+	if exitCode == 126 {
+		return true
+	}
+	return strings.HasPrefix(strings.TrimSpace(stderr), "sudo: ")
 }
 
 // loadVersion reads the podman release once. The engine settings carry it from

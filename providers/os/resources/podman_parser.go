@@ -32,11 +32,59 @@ type podmanPsEntry struct {
 }
 
 type podmanPort struct {
-	HostIP        string `json:"host_ip"`
-	ContainerPort int64  `json:"container_port"`
-	HostPort      int64  `json:"host_port"`
-	Range         int64  `json:"range"`
-	Protocol      string `json:"protocol"`
+	HostIP        string
+	ContainerPort int64
+	HostPort      int64
+	Range         int64
+	Protocol      string
+	// hasContainerPort is false for a record without a container port in
+	// either spelling, which maps nothing
+	hasContainerPort bool
+}
+
+// UnmarshalJSON reads a port mapping in both spellings podman has used:
+// snake_case with a range from podman 4 on, and the camelCase
+// hostIP/hostPort/containerPort of podman 3, which lists one port per record.
+func (p *podmanPort) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		HostIP        *string `json:"host_ip"`
+		ContainerPort *int64  `json:"container_port"`
+		HostPort      *int64  `json:"host_port"`
+		Range         *int64  `json:"range"`
+		Protocol      string  `json:"protocol"`
+
+		V3HostIP        *string `json:"hostIP"`
+		V3ContainerPort *int64  `json:"containerPort"`
+		V3HostPort      *int64  `json:"hostPort"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	*p = podmanPort{Protocol: raw.Protocol, Range: 1}
+	if raw.Range != nil {
+		p.Range = *raw.Range
+	}
+	if v := firstNonNil(raw.HostIP, raw.V3HostIP); v != nil {
+		p.HostIP = *v
+	}
+	if v := firstNonNil(raw.HostPort, raw.V3HostPort); v != nil {
+		p.HostPort = *v
+	}
+	if v := firstNonNil(raw.ContainerPort, raw.V3ContainerPort); v != nil {
+		p.ContainerPort = *v
+		p.hasContainerPort = true
+	}
+	return nil
+}
+
+func firstNonNil[T any](values ...*T) *T {
+	for _, v := range values {
+		if v != nil {
+			return v
+		}
+	}
+	return nil
 }
 
 // podmanInspectEntry is one record of "podman inspect --format json", limited to
@@ -380,7 +428,7 @@ func podmanParseTime(value string) *time.Time {
 }
 
 // podmanAllInterfaces is the address a port published on every host interface
-// is reported with. Podman 4 and later leave host_ip empty for such a port.
+// is reported with. Podman leaves the host IP empty for such a port.
 const podmanAllInterfaces = "0.0.0.0"
 
 // podmanPortDicts converts the port mappings of a container listing.
@@ -388,7 +436,7 @@ func podmanPortDicts(ports []podmanPort) []any {
 	res := make([]any, 0, len(ports))
 	for _, port := range ports {
 		hostIP := strings.TrimSpace(port.HostIP)
-		if hostIP == "" {
+		if hostIP == "" && port.hasContainerPort {
 			hostIP = podmanAllInterfaces
 		}
 		res = append(res, map[string]any{
