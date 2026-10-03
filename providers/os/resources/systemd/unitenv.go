@@ -199,7 +199,7 @@ type DropInDirs struct {
 	// foo-bar.service), read since systemd 239.
 	Prefix bool
 	// TypeLevel covers the unit type's directory (service.d for every service),
-	// read since systemd 246.
+	// read since systemd 244.
 	TypeLevel bool
 }
 
@@ -210,9 +210,10 @@ const (
 	// prefixDropInsSince: systemd 232 (Debian 9) ignores foo-.service.d,
 	// 241 (Debian 10) reads it.
 	prefixDropInsSince = 239
-	// typeLevelDropInsSince: systemd 241 (Debian 10) ignores service.d, 247
-	// (Debian 11) reads it.
-	typeLevelDropInsSince = 246
+	// typeLevelDropInsSince: systemd NEWS lists <type>.d/ drop-ins under
+	// "CHANGES WITH 244". 241 (Debian 10) ignores service.d, 245 (Ubuntu
+	// 20.04) reads it.
+	typeLevelDropInsSince = 244
 )
 
 // DropInDirsForVersion returns the drop-in directories a systemd release

@@ -150,7 +150,7 @@ func systemdDropIns(runtime *plugin.Runtime, unitName string) ([]string, bool) {
 // typeLevelDropInBackport reports a distribution whose systemd 239 reads
 // type-level drop-ins: RHEL 8 and its rebuilds (Alma, Rocky, Oracle Linux,
 // CentOS Stream 8) backported them. Fedora is in the same family but took
-// them with upstream 246.
+// them with upstream 244.
 func typeLevelDropInBackport(runtime *plugin.Runtime) bool {
 	conn, ok := runtime.Connection.(shared.Connection)
 	if !ok {

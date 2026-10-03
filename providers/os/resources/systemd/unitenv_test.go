@@ -518,7 +518,11 @@ func TestDropInDirsForVersion(t *testing.T) {
 		{238, false, DropInDirs{}},
 		{239, false, DropInDirs{Prefix: true}},
 		{241, false, DropInDirs{Prefix: true}},
-		{245, false, DropInDirs{Prefix: true}},
+		// Type-level drop-ins arrived in 244 (NEWS: "CHANGES WITH 244"); Ubuntu
+		// 20.04's 245 applies /etc/systemd/system/service.d.
+		{243, false, DropInDirs{Prefix: true}},
+		{244, false, AllDropInDirs},
+		{245, false, AllDropInDirs},
 		{239, true, AllDropInDirs},
 		{246, false, AllDropInDirs},
 		{247, false, AllDropInDirs},
