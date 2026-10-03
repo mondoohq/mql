@@ -93,3 +93,25 @@ func TestOpkgManager(t *testing.T) {
 	}
 	assert.Contains(t, pkgList, p, "pkg detected")
 }
+
+// OpenWrt 25.x snapshots replaced opkg with apk. The openwrt case only ever
+// asked opkg, whose /usr/lib/opkg/status does not exist there, so the 103
+// packages in the apk database read as an empty inventory.
+func TestOpenWrtApk(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "openwrt", Arch: "x86_64", Family: []string{"linux", "unix", "os"}},
+	}, mock.WithPath("./testdata/packages_openwrt_apk.toml"))
+	require.NoError(t, err)
+
+	pms, err := packages.ResolveSystemPkgManagers(conn)
+	require.NoError(t, err)
+	require.Len(t, pms, 1)
+	assert.Equal(t, "apk Package Manager", pms[0].Name())
+
+	pkgList, err := pms[0].List()
+	require.NoError(t, err)
+	require.Len(t, pkgList, 2)
+	assert.Equal(t, "apk-mbedtls", pkgList[0].Name)
+	assert.Equal(t, "3.0.5-r4", pkgList[0].Version)
+	assert.Equal(t, "x86_64", pkgList[0].Arch)
+}
