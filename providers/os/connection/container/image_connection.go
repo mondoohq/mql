@@ -242,7 +242,7 @@ func NewFromTarImage(id uint32, conf *inventory.Config, asset *inventory.Asset, 
 	}
 
 	conn.PlatformIdentifier = containerid.MondooContainerImageID(hash.String())
-if imgConfig, err := img.ConfigFile(); err == nil && imgConfig != nil {
+	if imgConfig, err := img.ConfigFile(); err == nil && imgConfig != nil {
 		conn.ImageConfig = tar.ImageConfigFrom(imgConfig)
 		conn.PlatformArchitecture = imgConfig.Architecture
 	}
