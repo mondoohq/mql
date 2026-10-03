@@ -92,6 +92,10 @@ func (s *Service) detect(asset *inventory.Asset, conn shared.Connection) error {
 				// if we weren't able to detect a name for this asset, don't update to an empty value
 				asset.Name = cloudPlatformInfo.Name
 			}
+			// This also wins over a container found from the inside: with
+			// the VM's metadata service reachable, the asset already carries
+			// the VM's platform id and name, and calling it a container
+			// would relabel the VM's asset.
 			asset.Platform.Kind = cloudPlatformInfo.Kind
 			// RelatedAssets is kept for backward compatibility until
 			// consumers migrate to relationships (ADR 030).
