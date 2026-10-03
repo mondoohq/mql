@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"path/filepath"
@@ -78,7 +79,31 @@ func (p *mqlPostfix) masterCfPath() (string, error) {
 	return filepath.Join(filepath.Dir(mainCf.Data), postfixMasterCfName), nil
 }
 
+// explicitMainCfExists returns an error when postfix(path) names a main.cf
+// that does not exist, as snmpd.config and nginx.conf do; postconf then
+// fails and the main.cf fallback reads nothing, which passed
+// inetInterfaces.all(_ == "127.0.0.1"). A missing main.cf at the default
+// location means postfix is not configured and reads as empty.
+func (p *mqlPostfix) explicitMainCfExists() error {
+	mainCf := p.GetMainCfPath()
+	if mainCf.Error != nil {
+		return mainCf.Error
+	}
+	conn := p.MqlRuntime.Connection.(shared.Connection)
+	if mainCf.Data == filepath.Join(postfixConfigDir(conn), postfixMainCfName) {
+		return nil
+	}
+	if _, err := conn.FileSystem().Stat(mainCf.Data); errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("could not read %q: no such file", mainCf.Data)
+	}
+	return nil
+}
+
 func (p *mqlPostfix) params() (map[string]any, error) {
+	if err := p.explicitMainCfExists(); err != nil {
+		return nil, err
+	}
+
 	// prefer postconf: it reports effective values, including built-in defaults
 	// for parameters that are not written to main.cf
 	params, ok, err := p.postconfParams()
@@ -147,6 +172,9 @@ func (p *mqlPostfix) inetInterfaces() ([]any, error) {
 }
 
 func (p *mqlPostfix) services() ([]any, error) {
+	if err := p.explicitMainCfExists(); err != nil {
+		return nil, err
+	}
 	masterCf := p.GetMasterCfPath()
 	if masterCf.Error != nil {
 		return nil, masterCf.Error
