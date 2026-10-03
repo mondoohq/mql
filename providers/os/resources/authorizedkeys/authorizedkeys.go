@@ -10,6 +10,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rsa"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"strings"
 
@@ -59,9 +60,17 @@ func (e Entry) Bits() int64 {
 	}
 }
 
+// maxLineBytes bounds a single authorized_keys line. sshd reads the file
+// with getline(3) and has no line limit, so a key after a long line (a large
+// from= allow list, for example) is still accepted. The bound only keeps a
+// pathological file from exhausting memory; a line over it fails the parse
+// instead of silently dropping the keys that follow.
+const maxLineBytes = 16 << 20
+
 func Parse(r io.Reader) ([]Entry, error) {
 	res := []Entry{}
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 
 	// lineNo tracks the physical 1-based line in the file, so it must advance
 	// for skipped blank/comment lines too — Entry.Line is meant to locate the
@@ -87,6 +96,9 @@ func Parse(r io.Reader) ([]Entry, error) {
 			Label:   comment,
 			Options: options,
 		})
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read authorized_keys line %d: %w", lineNo+1, err)
 	}
 	return res, nil
 }
