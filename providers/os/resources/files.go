@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -162,6 +163,11 @@ func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
 
 	lines := strings.TrimSpace(out.Data)
 	if err := checkFindExit("find", callCmd, exit.Data, lines, cmd.GetStderr().Data); err != nil {
+		if llx.KindOf(err) == llx.ErrorKind_ERROR_KIND_NOT_FOUND {
+			if found, ok, werr := l.localWalk(depth); ok {
+				return found, werr
+			}
+		}
 		return nil, err
 	}
 
@@ -172,6 +178,37 @@ func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
 		foundFiles = strings.Split(lines, "\n")
 	}
 	return foundFiles, nil
+}
+
+// localWalk searches without the find binary, for a local scan of a host that
+// ships no findutils (amazonlinux 2023 and other minimal images). It only
+// applies where this process reads the target's filesystem directly: a local
+// connection without sudo. ok is false everywhere else, and the caller reports
+// the missing find as an error.
+func (l *mqlFilesFind) localWalk(depth *int64) ([]string, bool, error) {
+	conn := l.MqlRuntime.Connection.(shared.Connection)
+	if conn.Type() != shared.Type_Local {
+		return nil, false, nil
+	}
+	if _, ok := conn.FileSystem().(*afero.OsFs); !ok {
+		return nil, false, nil
+	}
+	log.Debug().Str("from", l.From.Data).Msg("files.find> no find command, walking the filesystem")
+	found, err := filesfind.Walk(filesfind.WalkOptions{
+		From:       l.From.Data,
+		Xdev:       l.Xdev.Data,
+		FileType:   l.Type.Data,
+		Regex:      l.Regex.Data,
+		Permission: l.Permissions.Data,
+		Name:       l.Name.Data,
+		Depth:      depth,
+	})
+	if errors.Is(err, filesfind.ErrPartialWalk) {
+		// like find exiting 1 after printing what it reached
+		log.Warn().Str("from", l.From.Data).Msg("file search could not read some directories, results may be incomplete")
+		return found, true, nil
+	}
+	return found, true, err
 }
 
 // hasGNUFind reports whether the target's find is GNU findutils, which has

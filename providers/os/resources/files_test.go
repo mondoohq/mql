@@ -4,6 +4,10 @@
 package resources
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,6 +15,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/local"
 	"go.mondoo.com/mql/providers/os/connection/mock"
 	"go.mondoo.com/mql/providers/os/resources/filesfind"
 	"go.mondoo.com/mql/providers/os/resources/powershell"
@@ -143,4 +148,46 @@ func TestFilesFind_Powershell_FailedScriptIsAnError(t *testing.T) {
 	require.Error(t, err)
 	assert.Empty(t, found)
 	assert.Contains(t, err.Error(), "cannot find the path")
+}
+
+// On a local scan of a host without findutils, files.find walks the
+// filesystem itself instead of failing: `find` exits 127, and the walk
+// answers the same search.
+func TestFilesFind_LocalWithoutFindWalks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix shell only")
+	}
+	sh, err := exec.LookPath("sh")
+	require.NoError(t, err)
+	pathDir := t.TempDir()
+	require.NoError(t, os.Symlink(sh, filepath.Join(pathDir, "sh")))
+	t.Setenv("PATH", pathDir)
+
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "usr", "bin"), 0o755))
+	su := filepath.Join(root, "usr", "bin", "su")
+	require.NoError(t, os.WriteFile(su, nil, 0o755))
+	require.NoError(t, os.Chmod(su, 0o755|os.ModeSetuid))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "usr", "bin", "ls"), nil, 0o755))
+	require.NoError(t, os.Symlink("usr/bin", filepath.Join(root, "bin")))
+
+	asset := &inventory.Asset{Platform: &inventory.Platform{Name: "amazonlinux", Family: []string{"linux", "unix"}}}
+	conn := local.NewConnection(0, &inventory.Config{}, asset)
+	res := &mqlFilesFind{}
+	res.MqlRuntime = &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+	res.From = plugin.TValue[string]{Data: filepath.Join(root, "bin"), State: plugin.StateIsSet}
+	res.Type = plugin.TValue[string]{Data: "file", State: plugin.StateIsSet}
+	res.Permissions = plugin.TValue[int64]{Data: 0o4000, State: plugin.StateIsSet}
+
+	found, err := res.unixFilesFindCmd()
+	require.NoError(t, err)
+	assert.Equal(t, []string{filepath.Join(root, "bin", "su")}, found)
+
+	// a start path that does not exist is still an error
+	res2 := &mqlFilesFind{}
+	res2.MqlRuntime = &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+	res2.From = plugin.TValue[string]{Data: filepath.Join(root, "missing"), State: plugin.StateIsSet}
+	res2.Permissions = plugin.TValue[int64]{Data: 0o777, State: plugin.StateIsSet}
+	_, err = res2.unixFilesFindCmd()
+	require.Error(t, err)
 }
