@@ -92,9 +92,8 @@ func TestParseRpmManifestMalformed(t *testing.T) {
 	_, err := parseRpmManifest(azureLinux3, strings.NewReader("glibc 2.38-21.azl3\n"))
 	assert.Error(t, err, "a manifest with no readable line is not an empty system")
 
-	pkgs, err := parseRpmManifest(azureLinux3, strings.NewReader("\n"))
-	require.NoError(t, err)
-	assert.Empty(t, pkgs)
+	_, err = parseRpmManifest(azureLinux3, strings.NewReader(" \n\n"))
+	assert.Error(t, err, "an empty manifest is not an empty system")
 }
 
 // With neither an rpm database nor a manifest the list cannot be read. It

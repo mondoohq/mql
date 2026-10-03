@@ -26,8 +26,8 @@ const rpmManifestPath = "/var/lib/rpmmanifest/container-manifest-2"
 const rpmManifestFields = 10
 
 // parseRpmManifest reads container-manifest-2. A line that doesn't have the
-// ten columns is skipped; a manifest where no line could be read is an error,
-// not an image without packages.
+// ten columns is skipped; a manifest that yields no package at all, empty or
+// unreadable, is an error, not an image without packages.
 func parseRpmManifest(pf *inventory.Platform, r io.Reader) ([]Package, error) {
 	pkgs := []Package{}
 	skipped := 0
@@ -58,10 +58,12 @@ func parseRpmManifest(pf *inventory.Platform, r io.Reader) ([]Package, error) {
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
+	// The image build writes every installed package here, so an empty
+	// manifest is a broken one, never an image without packages.
+	if len(pkgs) == 0 {
+		return nil, errors.New("could not parse any package in " + rpmManifestPath)
+	}
 	if skipped > 0 {
-		if len(pkgs) == 0 {
-			return nil, errors.New("could not parse any package in " + rpmManifestPath)
-		}
 		log.Warn().Int("skipped", skipped).Str("path", rpmManifestPath).Msg("mql[packages]> skipped malformed rpm manifest lines")
 	}
 	return pkgs, nil
