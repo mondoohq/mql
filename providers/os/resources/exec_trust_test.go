@@ -46,6 +46,20 @@ drwxr-xr-x. 13    0    0       155 Sep 30  2024 /usr
 dr-xr-xr-x.  2    0    0     40960 Oct  2 16:55 /usr/bin
 -rwxr-xr-x.  1    0    0  28627920 Oct  2 16:55 /usr/bin/ollama
 `},
+		// a root-owned script run through `#!/usr/bin/env claude`
+		"printenv PATH": {Stdout: "/usr/local/bin:/usr/bin\n"},
+		"LC_ALL=C ls -ldn -- '/' '/usr' '/usr/bin' '/usr/bin/envtool'": {Stdout: `dr-xr-xr-x. 17    0    0       224 Oct  2 23:58 /
+drwxr-xr-x. 13    0    0       155 Sep 30  2024 /usr
+dr-xr-xr-x.  2    0    0     40960 Oct  2 16:55 /usr/bin
+-rwxr-xr-x.  1    0    0        40 Oct  2 16:55 /usr/bin/envtool
+`},
+		"LC_ALL=C ls -ldn -- '/' '/usr' '/usr/bin' '/usr/bin/env'": {Stdout: `dr-xr-xr-x. 17    0    0       224 Oct  2 23:58 /
+drwxr-xr-x. 13    0    0       155 Sep 30  2024 /usr
+dr-xr-xr-x.  2    0    0     40960 Oct  2 16:55 /usr/bin
+-rwxr-xr-x.  1    0    0     28992 Oct  2 16:55 /usr/bin/env
+`},
+		"LC_ALL=C ls -ldn -- '/' '/usr' '/usr/local' '/usr/local/bin'": {Stdout: lsPrefix},
+		"LC_ALL=C ls -ldn -- '/usr/local/bin/claude'":                  {Stdout: "lrwxrwxrwx.  1    0    0        60 Oct  3 01:00 /usr/local/bin/claude -> ../lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe\n"},
 		// a process that named itself /tmp/k/kubelet
 		"LC_ALL=C ls -ldn -- '/' '/tmp' '/tmp/k' '/tmp/k/kubelet'": {Stdout: `dr-xr-xr-x. 17    0    0       224 Oct  2 23:58 /
 drwxrwxrwt. 10    0    0      4096 Oct  3 02:05 /tmp
@@ -59,6 +73,10 @@ drwxr-xr-x.  2 1000 1000        20 Oct  3 02:05 /tmp/k
 		Commands: cmds,
 		Files: map[string]*mock.MockFileData{
 			"/usr/local/bin/claude": {Path: "/usr/local/bin/claude", Content: "ELF", StatData: mock.FileInfo{Mode: 0o755}},
+			"/usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe": {Content: "\x7fELF"},
+			"/usr/bin/ollama":  {Content: "\x7fELF"},
+			"/usr/bin/env":     {Content: "\x7fELF"},
+			"/usr/bin/envtool": {Content: "#!/usr/bin/env claude\n"},
 		},
 	}))
 	require.NoError(t, err)
@@ -72,6 +90,8 @@ func TestRunnableBinary(t *testing.T) {
 	assert.Empty(t, runnableBinary(root, "/usr/local/bin/claude"))
 	// a root-owned binary in root-owned directories runs
 	assert.Equal(t, "/usr/bin/ollama", runnableBinary(root, "/usr/bin/ollama"))
+	// a root-owned script whose interpreter env finds in a tree uid 1000 owns
+	assert.Empty(t, runnableBinary(root, "/usr/bin/envtool"))
 	// a process can name itself after a path it controls
 	assert.Empty(t, runnableBinary(root, "/tmp/k/kubelet"))
 	// a bare name is left to the PATH, like any other command
@@ -80,6 +100,7 @@ func TestRunnableBinary(t *testing.T) {
 	// the account that owns the tree may run what it owns
 	owner := rhel7ExecConn(t, 9101, "1000")
 	assert.Equal(t, "/usr/local/bin/claude", runnableBinary(owner, "/usr/local/bin/claude"))
+	assert.Equal(t, "/usr/bin/envtool", runnableBinary(owner, "/usr/bin/envtool"))
 	// another account may not
 	other := rhel7ExecConn(t, 9102, "1500")
 	assert.Empty(t, runnableBinary(other, "/usr/local/bin/claude"))

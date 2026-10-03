@@ -4,6 +4,8 @@
 package packages
 
 import (
+	"errors"
+	"io"
 	"path"
 	"regexp"
 	"strconv"
@@ -46,7 +48,10 @@ func LocateBinary(conn shared.Connection, binaryName string) (Binary, bool) {
 // account code execution as root. This is the case for a Node tarball
 // unpacked as root, which keeps the archive's uid 1000 on
 // /usr/local/lib/node_modules, and for Homebrew's /opt/homebrew/bin, which
-// belongs to the user who installed it.
+// belongs to the user who installed it. A script is trusted only when the
+// interpreter its #! line names, and the one env finds on the PATH for
+// `#!/usr/bin/env <name>`, pass the same check (see trustedExecutable): the
+// kernel runs that interpreter with the scan's privileges.
 //
 // target is the resolved path, empty when the resolution failed, which is
 // also untrusted.
@@ -67,7 +72,24 @@ func ResolveTrustedExecutable(conn shared.Connection, p string) (target string, 
 		// others, so the output is parsed whatever the exit status.
 		return parseLsLong(readCommandOutput(cmd.Stdout), paths)
 	}
-	target, err := trustedResolution(p, uid, lstat)
+	x := execProbe{
+		uid:   uid,
+		lstat: lstat,
+		head: func(p string) ([]byte, error) {
+			f, err := conn.FileSystem().Open(p)
+			if err != nil {
+				return nil, errors.New("cannot read " + p)
+			}
+			defer f.Close()
+			b, err := io.ReadAll(io.LimitReader(f, shebangLen))
+			if err != nil {
+				return nil, errors.New("cannot read " + p)
+			}
+			return b, nil
+		},
+		path: func() (string, bool) { return commandPath(conn) },
+	}
+	target, err := trustedExecutable(p, x, 0)
 	if err != "" {
 		log.Debug().Str("path", p).Str("reason", err).
 			Msg("mql[packages]> not executing a binary another account can replace")
@@ -98,6 +120,27 @@ func commandUID(conn shared.Connection) (int64, bool) {
 	return uid, true
 }
 
+// commandPaths caches commandPath per connection id.
+var commandPaths sync.Map // uint32 -> string
+
+// commandPath returns the PATH that commands run with on the target, which
+// for a sudo scan is sudo's secure_path. false when it is unknown.
+func commandPath(conn shared.Connection) (string, bool) {
+	if p, ok := commandPaths.Load(conn.ID()); ok {
+		return p.(string), true
+	}
+	cmd, err := conn.RunCommand("printenv PATH")
+	if err != nil || cmd.ExitStatus != 0 {
+		return "", false
+	}
+	p := strings.TrimRight(readCommandOutput(cmd.Stdout), "\r\n")
+	if p == "" {
+		return "", false
+	}
+	commandPaths.Store(conn.ID(), p)
+	return p, true
+}
+
 // pathEntry is what `ls -ldn` reports for one path, without following it.
 type pathEntry struct {
 	mode string // the 10-character mode, e.g. "drwxr-xr-x"
@@ -107,6 +150,11 @@ type pathEntry struct {
 
 func (e pathEntry) isLink() bool { return strings.HasPrefix(e.mode, "l") }
 func (e pathEntry) isDir() bool  { return strings.HasPrefix(e.mode, "d") }
+
+// executable reports whether anyone may execute the entry.
+func (e pathEntry) executable() bool {
+	return len(e.mode) >= 10 && strings.ContainsAny(e.mode[3:4]+e.mode[6:7]+e.mode[9:10], "xst")
+}
 
 // writableByOthers reports whether group or others may write to the entry.
 func (e pathEntry) writableByOthers() bool {
@@ -177,11 +225,19 @@ const maxLinkHops = 40
 // path is still known for reading files next to the binary; a component that
 // cannot be read does, and the resolved path is then empty.
 func trustedResolution(p string, uid int64, lstat func([]string) map[string]pathEntry) (string, string) {
+	target, reason, _ := resolveTrusted(p, uid, lstat, false)
+	return target, reason
+}
+
+// resolveTrusted is trustedResolution for a file (wantDir false) or a
+// directory (wantDir true). missing reports that a component does not exist
+// while every component before it is trusted: nobody but root or uid can
+// create it then.
+func resolveTrusted(p string, uid int64, lstat func([]string) map[string]pathEntry, wantDir bool) (target, reason string, missing bool) {
 	trusted := func(e pathEntry) bool {
 		return (e.uid == 0 || e.uid == uid) && !e.writableByOthers()
 	}
 
-	reason := ""
 	hops := 0
 	cur := path.Clean(p)
 	for {
@@ -191,12 +247,15 @@ func trustedResolution(p string, uid int64, lstat func([]string) map[string]path
 		for i, prefix := range prefixes {
 			e, ok := entries[prefix]
 			if !ok {
-				return "", prefix + " cannot be read"
+				if reason != "" {
+					return "", reason, false
+				}
+				return "", prefix + " cannot be read", true
 			}
 			if e.isLink() {
 				hops++
 				if hops > maxLinkHops {
-					return "", "too many symbolic links at " + prefix
+					return "", "too many symbolic links at " + prefix, false
 				}
 				target := e.link
 				if !strings.HasPrefix(target, "/") {
@@ -212,16 +271,176 @@ func trustedResolution(p string, uid int64, lstat func([]string) map[string]path
 			}
 			last := i == len(prefixes)-1
 			if !last && !e.isDir() {
-				return "", prefix + " is not a directory"
+				return "", prefix + " is not a directory", false
 			}
-			if last && e.isDir() {
-				return "", prefix + " is a directory"
+			if last && e.isDir() != wantDir {
+				if wantDir {
+					return "", prefix + " is not a directory", false
+				}
+				return "", prefix + " is a directory", false
 			}
 		}
 		if !restarted {
-			return cur, reason
+			return cur, reason, false
 		}
 	}
+}
+
+// execProbe is what trustedExecutable reads from the target.
+type execProbe struct {
+	// uid is the account commands run as.
+	uid int64
+	// lstat reports paths without following them (see trustedResolution).
+	lstat func([]string) map[string]pathEntry
+	// head returns the first bytes of a file.
+	head func(path string) ([]byte, error)
+	// path returns the PATH commands run with, false when it is unknown.
+	path func() (string, bool)
+}
+
+// maxInterpreterDepth is how many scripts trustedExecutable follows from a
+// script to the interpreter that runs it, a binary at the end. Linux follows
+// a few more; a chain this long does not occur in practice and is refused.
+const maxInterpreterDepth = 4
+
+// shebangLen is how much of a file the kernel reads for its #! line.
+const shebangLen = 256
+
+// trustedExecutable is trustedResolution for a file the scan is about to
+// execute, followed through the interpreters the kernel runs for it: a
+// script's #! interpreter is executed with the script's privileges, so it is
+// checked the same way, and so is the one it names in turn. For
+// `#!/usr/bin/env <name>`, env looks <name> up on the PATH, so every PATH
+// directory up to the one that holds it must pass the check as well: one
+// another account can write to lets that account put its own <name> first.
+// depth counts the scripts followed so far.
+func trustedExecutable(p string, x execProbe, depth int) (string, string) {
+	target, reason := trustedResolution(p, x.uid, x.lstat)
+	if reason != "" {
+		return target, reason
+	}
+	head, err := x.head(target)
+	if err != nil {
+		// root reads every file, so a file root cannot read is refused. An
+		// unprivileged account cannot read some binaries it may execute
+		// (RHEL ships sudo as mode 4111); whatever such a file starts, it
+		// starts with that account's privileges, which are the scan's own.
+		if x.uid != 0 {
+			return target, ""
+		}
+		return target, err.Error()
+	}
+	interp, arg, ok := parseShebang(head)
+	if !ok {
+		return target, ""
+	}
+	if depth >= maxInterpreterDepth {
+		return target, "interpreters nest deeper than the kernel follows"
+	}
+	if interp == "" {
+		return target, "the file names no interpreter"
+	}
+	if !strings.HasPrefix(interp, "/") {
+		return target, "interpreter " + interp + " is not absolute"
+	}
+	if _, r := trustedExecutable(interp, x, depth+1); r != "" {
+		return target, "interpreter " + interp + ": " + r
+	}
+	if path.Base(interp) != "env" {
+		return target, ""
+	}
+
+	prog, r := envProgram(arg)
+	if r != "" {
+		return target, r
+	}
+	if strings.Contains(prog, "/") {
+		if !strings.HasPrefix(prog, "/") {
+			return target, "interpreter " + prog + " is not absolute"
+		}
+		if _, r := trustedExecutable(prog, x, depth+1); r != "" {
+			return target, "interpreter " + prog + ": " + r
+		}
+		return target, ""
+	}
+	if r := trustedPathLookup(prog, x, depth+1); r != "" {
+		return target, "interpreter " + prog + ": " + r
+	}
+	return target, ""
+}
+
+// trustedPathLookup checks the program env runs for name: it walks the PATH
+// in order, like env does, and every directory up to the one that holds an
+// executable name must pass the check, then that file must.
+func trustedPathLookup(name string, x execProbe, depth int) string {
+	pathEnv, ok := x.path()
+	if !ok {
+		return "the PATH commands run with is unknown"
+	}
+	for _, dir := range strings.Split(pathEnv, ":") {
+		if !strings.HasPrefix(dir, "/") {
+			// an empty entry is the working directory
+			return "PATH entry " + dir + " is not absolute"
+		}
+		resolved, reason, missing := resolveTrusted(dir, x.uid, x.lstat, true)
+		if missing {
+			continue
+		}
+		if reason != "" {
+			return "PATH entry " + dir + ": " + reason
+		}
+		candidate := path.Join(resolved, name)
+		e, found := x.lstat([]string{candidate})[candidate]
+		if !found || e.isDir() || (!e.isLink() && !e.executable()) {
+			continue
+		}
+		if _, r := trustedExecutable(candidate, x, depth); r != "" {
+			return r
+		}
+		return ""
+	}
+	return name + " is not found on PATH"
+}
+
+// parseShebang splits a file's #! line the way Linux does: the interpreter
+// runs up to the first blank, and the rest of the line, trimmed, is one
+// argument. ok is false when the file does not start with #!.
+func parseShebang(head []byte) (interp, arg string, ok bool) {
+	if len(head) < 2 || head[0] != '#' || head[1] != '!' {
+		return "", "", false
+	}
+	line := string(head[2:])
+	if i := strings.IndexByte(line, '\n'); i >= 0 {
+		line = line[:i]
+	}
+	line = strings.Trim(line, " \t")
+	if i := strings.IndexAny(line, " \t"); i >= 0 {
+		return line[:i], strings.Trim(line[i+1:], " \t"), true
+	}
+	return line, "", true
+}
+
+// envProgram returns the program `env <arg>` runs, or why it cannot tell.
+// Linux hands the rest of the #! line to env as one argument and macOS splits
+// it; splitting it here finds the program either way. Variable assignments
+// are skipped, but one to PATH changes where env looks, and an option other
+// than -S may change it too, so both are refused.
+func envProgram(arg string) (string, string) {
+	for _, f := range strings.Fields(arg) {
+		switch {
+		case f == "-S" || f == "--split-string":
+			continue
+		case strings.HasPrefix(f, "-"):
+			return "", "env option " + f + " is not understood"
+		case strings.HasPrefix(f, "PATH="):
+			return "", "env changes PATH"
+		case strings.Contains(f, "="):
+			continue
+		default:
+			return f, ""
+		}
+	}
+	return "", "env names no program"
 }
 
 // pathPrefixes returns "/" and every prefix of the clean absolute path p, p
