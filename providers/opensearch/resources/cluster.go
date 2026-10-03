@@ -29,8 +29,9 @@ type osHealth struct {
 }
 
 // initOpensearchCluster fetches the cluster info and health once and populates
-// the cluster's scalar fields. Health needs the monitor privilege; a permission
-// denial leaves the health fields null rather than reporting misleading zeros.
+// the cluster's scalar fields. Health needs the cluster_monitor permission; a
+// refusal fails the health fields rather than reporting misleading zeros, and
+// leaves the rest of the cluster readable.
 func initOpensearchCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 3 {
 		return args, nil, nil
@@ -44,12 +45,12 @@ func initOpensearchCluster(runtime *plugin.Runtime, args map[string]*llx.RawData
 	}
 
 	var health osHealth
-	healthDenied := false
+	var healthErr error
 	if err := conn.Get("/_cluster/health", &health); err != nil {
 		if !connection.IsPermissionError(err) {
 			return nil, nil, err
 		}
-		healthDenied = true
+		healthErr = err
 	}
 
 	clusterID := root.ClusterUUID
@@ -73,14 +74,23 @@ func initOpensearchCluster(runtime *plugin.Runtime, args map[string]*llx.RawData
 		return nil, nil, err
 	}
 	cluster := res.(*mqlOpensearchCluster)
-	if healthDenied {
-		// The credential cannot read health: report null, not zero, so a policy
-		// like nodeCount == 0 does not fire on a missing privilege.
+	switch {
+	case healthErr != nil && plugin.StructuredErrors():
+		// The credential cannot read health: each health field carries the
+		// refusal, so a policy reading them fails instead of passing on null.
+		denied := refusal(healthErr, permClusterHealth)
+		failed := plugin.StateIsSet | plugin.StateIsNull
+		cluster.HealthStatus = plugin.TValue[string]{State: failed, Error: denied}
+		cluster.NodeCount = plugin.TValue[int64]{State: failed, Error: denied}
+		cluster.DataNodeCount = plugin.TValue[int64]{State: failed, Error: denied}
+	case healthErr != nil:
+		// v13: report null, not zero, so a policy like nodeCount == 0 does
+		// not fire on a missing privilege.
 		null := plugin.StateIsSet | plugin.StateIsNull
 		cluster.HealthStatus = plugin.TValue[string]{State: null}
 		cluster.NodeCount = plugin.TValue[int64]{State: null}
 		cluster.DataNodeCount = plugin.TValue[int64]{State: null}
-	} else {
+	default:
 		set := plugin.StateIsSet
 		cluster.HealthStatus = plugin.TValue[string]{Data: health.Status, State: set}
 		cluster.NodeCount = plugin.TValue[int64]{Data: health.NumberOfNodes, State: set}
@@ -122,11 +132,11 @@ func (r *mqlOpensearchCluster) security() (*mqlOpensearchSecurity, error) {
 
 	var secConfig osSecurityConfig
 	if err := conn.Get("/_plugins/_security/api/securityconfig", &secConfig); err != nil {
-		if connection.IsPermissionError(err) {
+		if connection.IsPermissionError(err) && !plugin.StructuredErrors() {
 			r.Security.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
 		}
-		return nil, err
+		return nil, refusal(err, permSecurityAPI)
 	}
 	dyn := secConfig.Config.Dynamic
 
@@ -139,8 +149,9 @@ func (r *mqlOpensearchCluster) security() (*mqlOpensearchSecurity, error) {
 	}
 	if err := conn.Get("/_plugins/_security/api/audit", &audit); err == nil {
 		auditEnabled = audit.Config.Enabled
-	} else if !connection.IsPermissionError(err) {
-		return nil, err
+	} else if !connection.IsPermissionError(err) || plugin.StructuredErrors() {
+		// A refused audit read is not "audit logging off".
+		return nil, refusal(err, permSecurityAPI)
 	}
 
 	realms := []any{}
@@ -183,10 +194,7 @@ func (r *mqlOpensearchCluster) users() ([]any, error) {
 	conn := osConnection(r.MqlRuntime)
 	var resp map[string]osUser
 	if err := conn.Get("/_plugins/_security/api/internalusers", &resp); err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, permSecurityAPI)
 	}
 
 	names := make([]string, 0, len(resp))
@@ -230,10 +238,7 @@ func (r *mqlOpensearchCluster) roleMappings() ([]any, error) {
 	conn := osConnection(r.MqlRuntime)
 	var resp map[string]osRoleMapping
 	if err := conn.Get("/_plugins/_security/api/rolesmapping", &resp); err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, permSecurityAPI)
 	}
 
 	names := make([]string, 0, len(resp))

@@ -4,6 +4,7 @@
 package connection
 
 import (
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -95,5 +96,54 @@ func TestGetReportsOtherStatusAsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "status 404") || !strings.Contains(err.Error(), "no such index") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+// Bodies OpenSearch 3.9 returned live: the security REST API to a user mapped
+// to monitor_only, and the core API to the anonymous user.
+const (
+	securityAPI403 = `{"status":"FORBIDDEN","message":"No permission to access REST API: User monuser with Security roles [monitor_only] does not have any role privileged for admin access. No client TLS certificate found in request"}`
+	health403      = `{"error":{"root_cause":[{"type":"security_exception","reason":"no permissions for [cluster:monitor/health] and User [name=opendistro_security_anonymous, backend_roles=[opendistro_security_anonymous_backendrole], requestedTenant=null]"}],"type":"security_exception","reason":"no permissions for [cluster:monitor/health] and User [name=opendistro_security_anonymous, backend_roles=[opendistro_security_anonymous_backendrole], requestedTenant=null]"},"status":403}`
+)
+
+func TestGetRefusalKeepsStatusAndReason(t *testing.T) {
+	conn := newServerConn(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/_plugins/_security/api/internalusers":
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(securityAPI403))
+		case "/_cluster/health":
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(health403))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	})
+
+	cases := map[string]string{
+		"/_plugins/_security/api/internalusers": "does not have any role privileged for admin access",
+		"/_cluster/health":                      "no permissions for [cluster:monitor/health]",
+	}
+	for path, want := range cases {
+		err := conn.Get(path, nil)
+		var pe *PermissionError
+		if !errors.As(err, &pe) {
+			t.Fatalf("Get(%s) = %v, want a PermissionError", path, err)
+		}
+		if pe.StatusCode != http.StatusForbidden {
+			t.Errorf("Get(%s) status = %d", path, pe.StatusCode)
+		}
+		if !strings.Contains(pe.Reason, want) || !strings.Contains(err.Error(), want) {
+			t.Errorf("Get(%s) reason = %q, error = %q; want %q", path, pe.Reason, err.Error(), want)
+		}
+	}
+}
+
+func TestErrorReasonIgnoresOtherBodies(t *testing.T) {
+	for _, body := range []string{"", "not json", `{"status":403}`, `<html>Forbidden</html>`, `{"error":"plain string"}`} {
+		if got := errorReason([]byte(body)); got != "" {
+			t.Errorf("errorReason(%q) = %q, want empty", body, got)
+		}
 	}
 }

@@ -22,7 +22,9 @@ Arguments:
 mql shell opensearch localhost --user admin --ask-pass --tls-insecure
 ```
 
-> Prefer a least-privileged account for auditing. A user mapped to a role with the `cluster_monitor` permission and read access to the security API can read everything the resources below need. With only monitor-level access, the cluster resolves while the security posture, users, roles, and role mappings come back empty rather than failing the scan.
+> Prefer a least-privileged account for auditing. A user mapped to a role with the `cluster_monitor` permission and read access to the security API (for example through `security_rest_api_access`) can read everything the resources below need.
+>
+> In mql 14, with only monitor-level access the cluster resolves while the security posture comes back null and users, roles, and role mappings come back empty, so a check over them can pass on a cluster the scanner could not read. With the `StructuredErrors` feature enabled (the default from mql 15), a 403 errors and names the missing permission instead: `security`, `users`, `roles`, and `roleMappings` (`security_rest_api_access`), and `healthStatus`, `nodeCount`, and `dataNodeCount` (`cluster_monitor`). A 401 is reported as an authentication error.
 
 ## Usage
 
@@ -107,8 +109,9 @@ Confirm the connection and permissions with a single query:
 mql shell opensearch localhost --user admin --ask-pass --tls-insecure -c "opensearch.cluster { version healthStatus }"
 ```
 
-If `opensearch.cluster.users` comes back empty, the connecting account cannot read the security API; map it to a role with security-read access (or use a more privileged auditing account) and retry.
+If `opensearch.cluster.users` comes back empty, or errors with a forbidden error, the connecting account cannot read the security API; map it to a role with security-read access (or use a more privileged auditing account) and retry.
 
 ## Notes
 
 - OpenSearch masks user password hashes in the security API, so the provider does not report whether a user has a password set.
+- `opensearch.security.auditLoggingEnabled` reads the `enabled` flag of the audit configuration. The audit sink (`plugins.security.audit.type` in `opensearch.yml`) is not exposed over the API, so a cluster with the flag on and no sink configured reports `true` while writing no audit events. Check the node configuration for the sink.
