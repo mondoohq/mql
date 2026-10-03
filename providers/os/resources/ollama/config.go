@@ -119,7 +119,11 @@ func Resolve(vars map[string]string, home string, settings *ServerSettings) *Con
 	}
 
 	c.Host, c.BindAddress, c.Port, c.TLS = resolveHost(get(vars, "OLLAMA_HOST"))
-	if ip := net.ParseIP(c.BindAddress); ip != nil {
+	if c.BindAddress == "" {
+		// resolveHost only leaves the host empty for ":PORT", which the server
+		// hands to net.Listen as is: Go's wildcard address, every interface.
+		c.ListensOnAllInterfaces = true
+	} else if ip := net.ParseIP(c.BindAddress); ip != nil {
 		c.ListensOnAllInterfaces = ip.IsUnspecified()
 	}
 
