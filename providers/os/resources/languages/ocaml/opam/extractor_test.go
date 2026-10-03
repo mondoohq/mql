@@ -5,6 +5,7 @@ package opam
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -92,7 +93,8 @@ depends: [
   "conf-pkg" {= "1.0"}
 ]
 `
-	f := parseOpam(content)
+	f, err := parseOpam(content)
+	require.NoError(t, err)
 	f.name = packageName(f.declaredName, "disj.opam")
 	deps := f.Direct()
 
@@ -109,4 +111,40 @@ depends: [
 func TestName(t *testing.T) {
 	e := &Extractor{}
 	assert.Equal(t, "opam", e.Name())
+}
+
+// merlin.opam (merlin 5.x) comments a dependency out with a `#` line, and opam
+// also has `(* ... *)` block comments. Both were read as dependencies, so
+// merlin listed "reason". Fails if either comment form is tokenized again.
+func TestParseDependsSkipsComments(t *testing.T) {
+	content := `opam-version: "2.0"
+depends: [
+  "dune" {>= "3.0.0"}
+  "merlin-lib" {= version}
+  "ppx_let" {with-test}
+#  "reason" {with-test} Removed temporarily until reason is compatible with 5.5
+  (* "menhir" {>= "20201216"}
+     "csexp" (* nested *) *)
+  "yojson" {>= "2.0.0"} # trailing "comment" with a ] bracket
+  "str#ing" {= "1.0"}
+]
+`
+	bom, err := (&Extractor{}).Parse(strings.NewReader(content), "merlin.opam")
+	require.NoError(t, err)
+	var names []string
+	for _, p := range bom.Direct() {
+		names = append(names, p.Name)
+	}
+	assert.Equal(t, []string{"dune", "merlin-lib", "ppx_let", "yojson", "str#ing"}, names)
+}
+
+// A depends list that never closes is a truncated file, not one without
+// dependencies.
+func TestParseDependsUnterminated(t *testing.T) {
+	_, err := (&Extractor{}).Parse(strings.NewReader("depends: [ \"unterminated\n"), "dune.opam")
+	assert.Error(t, err)
+
+	bom, err := (&Extractor{}).Parse(strings.NewReader("opam-version: \"2.0\"\n"), "dune.opam")
+	require.NoError(t, err)
+	assert.Empty(t, bom.Direct())
 }
