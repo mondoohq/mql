@@ -6,6 +6,7 @@ package gemfilelock
 import (
 	"bufio"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
@@ -56,6 +57,12 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 
 	currentSection := sectionNone
 	inSpecs := false
+	// A platform-specific lock lists one gem once per platform it was
+	// resolved for (nokogiri (1.15.4), (1.15.4-x86_64-linux), ...). With the
+	// platform stripped those are one gem, kept once; cur is the entry the
+	// dependency lines that follow belong to.
+	gemIndex := map[string]int{}
+	cur := -1
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -88,6 +95,7 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 		case sectionGemSpecs:
 			if trimmed == "specs:" {
 				inSpecs = true
+				cur = -1
 				continue
 			}
 			if !inSpecs {
@@ -100,22 +108,30 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 				continue
 			}
 			if strings.HasPrefix(line, "      ") {
-				// A dependency line of the gem most recently appended. Bundler
-				// always writes them directly beneath their gem, so the last
-				// entry is the owner; a stray one before any gem has no owner
-				// and is dropped rather than guessed at.
-				if n := len(lock.Gems); n > 0 && trimmed != "" {
-					if name := gemDepName(trimmed); name != "" {
-						lock.Gems[n-1].Deps = append(lock.Gems[n-1].Deps, name)
+				// A dependency line of the gem above it. Bundler always
+				// writes them directly beneath their gem; a stray one before
+				// any gem has no owner and is dropped rather than guessed at.
+				if cur >= 0 && trimmed != "" {
+					if name := gemDepName(trimmed); name != "" && !slices.Contains(lock.Gems[cur].Deps, name) {
+						lock.Gems[cur].Deps = append(lock.Gems[cur].Deps, name)
 					}
 				}
 				continue
 			}
 
 			entry := parseGemEntry(trimmed)
-			if entry.Name != "" {
-				lock.Gems = append(lock.Gems, entry)
+			if entry.Name == "" {
+				cur = -1
+				continue
 			}
+			key := entry.Name + "@" + entry.Version
+			if i, ok := gemIndex[key]; ok {
+				cur = i
+				continue
+			}
+			lock.Gems = append(lock.Gems, entry)
+			cur = len(lock.Gems) - 1
+			gemIndex[key] = cur
 
 		case sectionDependencies:
 			if trimmed == "" {
