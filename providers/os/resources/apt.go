@@ -5,6 +5,7 @@ package resources
 
 import (
 	"fmt"
+	"path"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
@@ -124,9 +125,28 @@ func (a *mqlApt) sourceFiles() ([]*mqlFile, error) {
 // isAptSourceFile reports whether a path under sources.list.d is one apt would
 // read. apt honours exactly two extensions: .list for the one-line format and
 // .sources for deb822. Everything else in the directory, notably the .save and
-// .distUpgrade backups apt itself leaves behind, is ignored.
-func isAptSourceFile(path string) bool {
-	return strings.HasSuffix(path, ".list") || strings.HasSuffix(path, ".sources")
+// .distUpgrade backups apt itself leaves behind, is ignored. apt also skips
+// names that start with a dot or hold any character other than ASCII
+// letters, digits, '_', '-', ':' and '.' (`apt-get -o
+// Debug::GetListOfFilesInDir=1` reports them as "bad character"), so
+// "my repo.list" or "docker~old.list" configure nothing.
+func isAptSourceFile(p string) bool {
+	name := path.Base(p)
+	if !strings.HasSuffix(name, ".list") && !strings.HasSuffix(name, ".sources") {
+		return false
+	}
+	if name[0] == '.' {
+		return false
+	}
+	for _, c := range name {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '_', c == '-', c == ':', c == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // aptRepoID identifies the idx-th entry parsed from a source file. Type, URL
@@ -299,12 +319,13 @@ func parseAptDeb822(content string) []aptRepo {
 		}
 
 		components := strings.Fields(fields["components"])
-		signedBy := strings.TrimSpace(fields["signed-by"])
+		signedBy := aptDeb822SignedBy(fields["signed-by"])
 		trusted := aptBool(fields["trusted"])
-		// Enabled defaults to true; only an explicit "no"/"false" disables.
+		// Enabled defaults to true: apt skips a stanza only when Enabled is
+		// a boolean false, so "Enabled: maybe" is still read.
 		enabled := true
-		if v, ok := fields["enabled"]; ok {
-			enabled = aptBool(v)
+		if v := fields["enabled"]; strings.TrimSpace(v) != "" {
+			enabled = aptStringToBool(v, true)
 		}
 
 		var opts aptRepo
@@ -340,6 +361,17 @@ func parseAptDeb822(content string) []aptRepo {
 	return res
 }
 
+// aptDeb822SignedBy returns a deb822 Signed-By value. An inline ASCII-armored
+// key keeps its lines, so it reads as the key it is; a list of keyring paths
+// or fingerprints spread over several lines is joined with spaces.
+func aptDeb822SignedBy(v string) string {
+	v = strings.TrimSpace(v)
+	if strings.HasPrefix(v, "-----BEGIN PGP") {
+		return v
+	}
+	return strings.Join(strings.Fields(v), " ")
+}
+
 // splitDeb822Stanzas splits a deb822 document into stanzas separated by
 // one or more blank lines, dropping comment lines.
 func splitDeb822Stanzas(content string) []string {
@@ -369,7 +401,9 @@ func splitDeb822Stanzas(content string) []string {
 
 // parseDeb822Fields parses a single stanza into a lower-cased field map.
 // Continuation lines (leading whitespace) are appended to the previous
-// field's value.
+// field's value on a line of their own, and a continuation line holding only
+// "." stands for an empty line, as deb822 writes one inside a multi-line
+// value such as an inline Signed-By key.
 func parseDeb822Fields(stanza string) map[string]string {
 	fields := map[string]string{}
 	lastKey := ""
@@ -378,7 +412,11 @@ func parseDeb822Fields(stanza string) map[string]string {
 			continue
 		}
 		if (line[0] == ' ' || line[0] == '\t') && lastKey != "" {
-			fields[lastKey] += " " + strings.TrimSpace(line)
+			cont := strings.TrimSpace(line)
+			if cont == "." {
+				cont = ""
+			}
+			fields[lastKey] += "\n" + cont
 			continue
 		}
 		kv := strings.SplitN(line, ":", 2)
@@ -392,13 +430,12 @@ func parseDeb822Fields(stanza string) map[string]string {
 	return fields
 }
 
-// aptBool interprets apt boolean option values (yes/no, true/false,
-// 1/0). Unrecognized or empty values are false.
+// aptBool interprets a boolean source option the way apt does, with false
+// as the default: an empty value is false, anything else goes through
+// aptStringToBool.
 func aptBool(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "yes", "true", "1":
-		return true
-	default:
+	if strings.TrimSpace(v) == "" {
 		return false
 	}
+	return aptStringToBool(v, false)
 }
