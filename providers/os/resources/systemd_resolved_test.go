@@ -5,6 +5,7 @@ package resources
 
 import (
 	"os"
+	"path"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -448,4 +449,69 @@ func TestSystemdResolved_NotRunningIsNotQueried(t *testing.T) {
 	require.NoError(t, dns.Error)
 	assert.Equal(t, []any{"198.51.100.53"}, dns.Data)
 	assert.Empty(t, r.GetResolvConfMode().Data)
+}
+
+// The resolved.conf drop-in used on the Ubuntu 18.04 and Debian 9 test hosts.
+const g04ResolvedDropin = "[Resolve]\nDNSOverTLS=opportunistic\nCache=no-negative\nLLMNR=no\nMulticastDNS=no\nDomains=g04.example g04b.example\nDNS=192.0.2.53\n"
+
+// Ubuntu 18.04 (systemd 237): resolved logs "Unknown lvalue 'DNSOverTLS'"
+// and runs without it, so the drop-in's DNSOverTLS is not in effect. Debian 9
+// (systemd 232) does not know MulticastDNS either.
+func TestSystemdResolved_SettingsTheReleaseLacksAreNull(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		library      string
+		version      string
+		dnsOverTls   any
+		multicastDns any
+	}{
+		{name: "ubuntu 18.04", library: "/lib/systemd/libsystemd-shared-237.so", dnsOverTls: nil, multicastDns: "no"},
+		{name: "debian 9", library: "/lib/systemd/libsystemd-shared-232.so", dnsOverTls: nil, multicastDns: nil},
+		{name: "debian 9 via systemctl", version: "systemd 232\n+PAM +AUDIT +SELINUX\n", dnsOverTls: nil, multicastDns: nil},
+		{name: "debian 12", library: "/usr/lib/x86_64-linux-gnu/systemd/libsystemd-shared-252.so", dnsOverTls: "opportunistic", multicastDns: "no"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmds := map[string]*mock.Command{
+				"systemctl is-active -- systemd-resolved": {ExitStatus: 3},
+			}
+			if tc.version != "" {
+				cmds["systemctl --version"] = &mock.Command{Stdout: tc.version}
+			}
+			files := map[string]*mock.MockFileData{
+				"/etc/systemd/resolved.conf":               resolvedFile("[Resolve]\n#DNS=\n"),
+				"/etc/systemd/resolved.conf.d":             {StatData: mock.FileInfo{Mode: os.ModeDir | 0o755, IsDir: true}},
+				"/etc/systemd/resolved.conf.d/50-g04.conf": resolvedFile(g04ResolvedDropin),
+			}
+			if tc.library != "" {
+				files[tc.library] = resolvedFile("")
+				files[path.Dir(tc.library)] = &mock.MockFileData{StatData: mock.FileInfo{Mode: os.ModeDir | 0o755, IsDir: true}}
+			}
+			raw, err := CreateResource(resolvedMockRuntime(t, cmds, files), "systemd.resolved", nil)
+			require.NoError(t, err)
+			r := raw.(*mqlSystemdResolved)
+
+			dot := r.GetDnsOverTls()
+			require.NoError(t, dot.Error)
+			if tc.dnsOverTls == nil {
+				assert.True(t, dot.IsNull(), "dnsOverTls is %q", dot.Data)
+			} else {
+				assert.Equal(t, tc.dnsOverTls, dot.Data)
+			}
+			mdns := r.GetMulticastDns()
+			require.NoError(t, mdns.Error)
+			if tc.multicastDns == nil {
+				assert.True(t, mdns.IsNull(), "multicastDns is %q", mdns.Data)
+			} else {
+				assert.Equal(t, tc.multicastDns, mdns.Data)
+			}
+			// settings every release has are still read
+			assert.Equal(t, "no", r.GetLlmnr().Data)
+		})
+	}
+}
+
+func TestParseSystemctlRelease(t *testing.T) {
+	assert.Equal(t, 237, parseSystemctlRelease("systemd 237\n+PAM +AUDIT\n"))
+	assert.Equal(t, 252, parseSystemctlRelease("systemd 252 (252.39-1~deb12u2)\n+PAM\n"))
+	assert.Equal(t, 0, parseSystemctlRelease("bash: systemctl: command not found\n"))
 }
