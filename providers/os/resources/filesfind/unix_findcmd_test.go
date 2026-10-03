@@ -100,7 +100,7 @@ func TestUnixFilesCmdGeneration(t *testing.T) {
 			From:        "/etc/pam.d",
 			FileType:    "file",
 			HasGNUFind:  true,
-			ExpectedCmd: "find -L \"/etc/pam.d\" -xdev \\( -xtype l -prune -o -true \\) -type f -perm -0 -print",
+			ExpectedCmd: "find -L \"/etc/pam.d\" -xdev \\( -path '/etc/pam.d' -o -xtype l -prune -o -true \\) -type f -perm -0 -print",
 		},
 		{
 			// -perm tests the target under -L. Without it, every symlinked
@@ -110,14 +110,14 @@ func TestUnixFilesCmdGeneration(t *testing.T) {
 			FileType:    "directory",
 			Permission:  0o002,
 			HasGNUFind:  true,
-			ExpectedCmd: "find -L \"/\" -xdev \\( -xtype l -prune -o -true \\) -type d -perm -2 -print",
+			ExpectedCmd: "find -L \"/\" -xdev \\( -path '/' -o -xtype l -prune -o -true \\) -type d -perm -2 -print",
 		},
 		{
 			From:        "/etc",
 			HasGNUFind:  true,
 			Search:      "*.conf",
 			Depth:       ptrInt64(1),
-			ExpectedCmd: "find -L \"/etc\" -xdev \\( -xtype l -prune -o -true \\) -perm -0 -name '*.conf' -maxdepth 1 -print",
+			ExpectedCmd: "find -L \"/etc\" -xdev \\( -path '/etc' -o -xtype l -prune -o -true \\) -perm -0 -name '*.conf' -maxdepth 1 -print",
 		},
 	}
 
