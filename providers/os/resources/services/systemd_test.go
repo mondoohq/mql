@@ -113,7 +113,15 @@ func TestSystemdFS(t *testing.T) {
 
 	assert.NotContains(t, servicesMap, "default")
 	assert.NotContains(t, servicesMap, "default.target")
-	assert.NotContains(t, servicesMap, "not-enabled")
+	// on disk but reached from no target: installed, not enabled
+	assert.Equal(t, &Service{
+		Name:        "not-enabled",
+		Type:        "service",
+		Description: "Not Enabled Service",
+		State:       ServiceUnknown,
+		Installed:   true,
+		Static:      true,
+	}, servicesMap["not-enabled"])
 	assert.Contains(t, servicesMap, "aliased")
 	assert.Equal(t, &Service{
 		Name:        "aliased",
