@@ -3,11 +3,13 @@
 package resources
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
@@ -200,6 +202,11 @@ func TestParseSemoduleListings(t *testing.T) {
 		assert.Nil(t, modules[1].Priority)
 	})
 
+	t.Run("empty policy store", func(t *testing.T) {
+		// semodule -lfull with SELINUXTYPE naming a store that does not exist
+		assert.Empty(t, ParseSemodule("No modules.\n"))
+	})
+
 	t.Run("old semodule -l marks disabled modules", func(t *testing.T) {
 		modules := ParseSemodule("zosremote\t1.2.0\tDisabled\n")
 		require.Len(t, modules, 1)
@@ -334,4 +341,34 @@ func TestSelinuxModuleIDNullPriority(t *testing.T) {
 	zeroID, err := zero.id()
 	require.NoError(t, err)
 	assert.NotEqual(t, unsetID, zeroID)
+}
+
+func TestSelinuxConfigReadErrorOnEveryField(t *testing.T) {
+	rhel9 := &inventory.Asset{
+		Platform: &inventory.Platform{Name: "redhat", Version: "9.6", Family: []string{"redhat", "linux", "unix"}},
+	}
+	conn, err := mock.New(0, rhel9, mock.WithData(&mock.TomlData{
+		Files: map[string]*mock.MockFileData{
+			"/etc/selinux/config": {Path: "/etc/selinux/config", Content: "SELINUX=enforcing\nSELINUXTYPE=targeted\n", StatData: mock.FileInfo{Mode: 0o600}},
+		},
+	}))
+	require.NoError(t, err)
+	rt := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+
+	// a non-root scan of a 0600 /etc/selinux/config
+	fileRes, err := CreateResource(rt, "file", map[string]*llx.RawData{"path": llx.StringData("/etc/selinux/config")})
+	require.NoError(t, err)
+	denied := errors.New("open /etc/selinux/config: permission denied")
+	fileRes.(*mqlFile).Content = plugin.TValue[string]{State: plugin.StateIsSet, Error: denied}
+
+	res, err := CreateResource(rt, "selinux", nil)
+	require.NoError(t, err)
+	s := res.(*mqlSelinux)
+
+	// whichever field reads the config first, the other must not read ""
+	policyType := s.GetPolicyType()
+	assert.ErrorIs(t, policyType.Error, denied)
+	configMode := s.GetConfigMode()
+	assert.ErrorIs(t, configMode.Error, denied)
+	assert.ErrorIs(t, s.parseConfig(), denied)
 }
