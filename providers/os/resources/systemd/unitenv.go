@@ -5,6 +5,7 @@ package systemd
 
 import (
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -366,10 +367,56 @@ var sharedLibraryGlobs = []string{
 	"/usr/lib/*-linux-gnu*/systemd/libsystemd-shared-*.so",
 }
 
+// managerBinaries are where the systemd manager binary sits, before and after
+// the /usr merge.
+var managerBinaries = []string{
+	"/usr/lib/systemd/systemd",
+	"/lib/systemd/systemd",
+}
+
+// managerVersionLine matches the log line the manager prints at start-up,
+// compiled into its binary as "systemd 219 running in %ssystem mode".
+var managerVersionLine = regexp.MustCompile(`systemd (\d{2,3}) running in `)
+
+// preSharedLibraryVersion stands in for a release that predates
+// libsystemd-shared when the binary does not say which one it is.
+const preSharedLibraryVersion = 230
+
+// maxManagerBinarySize bounds how much of a manager binary is read for its
+// release. systemd 219's is 1.6 MB.
+const maxManagerBinarySize = 16 << 20
+
 // InstalledVersion reads the systemd release installed on a filesystem without
-// running anything, from the name of libsystemd-shared. It returns 0 when there
-// is none (no systemd, or a release before 231, which did not ship it).
+// running anything, from the name of libsystemd-shared, which systemd ships
+// since 231. A filesystem with a manager binary but no libsystemd-shared runs
+// an older release (systemd 219 on RHEL 7), read from the binary, or 230 when
+// the binary does not say. It returns 0 when there is no systemd.
 func InstalledVersion(afs *afero.Afero) int {
+	if v := sharedLibraryVersion(afs); v != 0 {
+		return v
+	}
+	for _, p := range managerBinaries {
+		fi, err := afs.Stat(p)
+		if err != nil || fi.IsDir() {
+			continue
+		}
+		if fi.Size() <= maxManagerBinarySize {
+			if data, err := afs.ReadFile(p); err == nil {
+				if m := managerVersionLine.FindSubmatch(data); m != nil {
+					if v, err := strconv.Atoi(string(m[1])); err == nil && v < 231 {
+						return v
+					}
+				}
+			}
+		}
+		return preSharedLibraryVersion
+	}
+	return 0
+}
+
+// sharedLibraryVersion reads the release from the name of libsystemd-shared,
+// 0 when there is none.
+func sharedLibraryVersion(afs *afero.Afero) int {
 	best := 0
 	for _, g := range sharedLibraryGlobs {
 		matches, err := afero.Glob(afs.Fs, g)

@@ -553,6 +553,16 @@ func TestInstalledVersion(t *testing.T) {
 		"sles16": {map[string]string{"/usr/lib64/systemd/libsystemd-shared-257.13-160000.1.1.so": ""}, 257},
 		"leap15": {map[string]string{"/usr/lib64/systemd/libsystemd-shared-254.so": ""}, 254},
 		"none":   {map[string]string{"/usr/lib/systemd/system/ollama.service": ""}, 0},
+		// RHEL 7 ships systemd 219, before libsystemd-shared existed. The
+		// release is read from the log line compiled into the manager binary
+		// (bytes copied from RHEL 7.9's /usr/lib/systemd/systemd).
+		"rhel7": {map[string]string{
+			"/usr/lib/systemd/systemd": "ignoring: %m\x00\x00\x00\x00\x00\x00\x00\x00systemd 219 running in %ssystem mode. (+PAM +AUDIT +SELINUX +I",
+			"/lib/systemd/systemd":     "ignoring: %m\x00\x00\x00\x00\x00\x00\x00\x00systemd 219 running in %ssystem mode. (+PAM +AUDIT +SELINUX +I",
+		}, 219},
+		// A manager binary without libsystemd-shared and without a readable
+		// release still predates 231.
+		"pre231 unreadable": {map[string]string{"/lib/systemd/systemd": "\x7fELF"}, 230},
 	}
 	for name, c := range cases {
 		assert.Equal(t, c.want, InstalledVersion(testFs(c.files)), name)
