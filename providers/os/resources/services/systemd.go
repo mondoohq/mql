@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/coreos/go-systemd/unit"
 	"github.com/rs/zerolog/log"
@@ -46,6 +47,38 @@ func ResolveSystemdServiceManager(conn shared.Connection) OSServiceManager {
 // Newer linux systems use systemd as service manager
 type SystemDServiceManager struct {
 	conn shared.Connection
+
+	versionOnce sync.Once
+	version     int
+
+	answeringOnce sync.Once
+	answering     bool
+}
+
+// systemdVersion is the release of the systemd on the host, or 0 when
+// systemctl --version does not say.
+func (s *SystemDServiceManager) systemdVersion() int {
+	s.versionOnce.Do(func() {
+		cmd, err := s.conn.RunCommand("systemctl --version")
+		if err != nil || cmd.ExitStatus != 0 {
+			return
+		}
+		out, err := io.ReadAll(cmd.Stdout)
+		if err != nil {
+			return
+		}
+		s.version = parseSystemctlVersion(string(out))
+	})
+	return s.version
+}
+
+// systemdAnswering reports whether systemctl reaches a running systemd. It
+// is asked once, and only after a batch failed.
+func (s *SystemDServiceManager) systemdAnswering() bool {
+	s.answeringOnce.Do(func() {
+		s.answering = systemdAnswering(s.conn)
+	})
+	return s.answering
 }
 
 func (s *SystemDServiceManager) Name() string {
@@ -136,7 +169,11 @@ func applySystemdUnitFileState(service *Service, unitFileState string) {
 	service.Enabled = unitFileState == "enabled" || unitFileState == "enabled-runtime"
 	service.Masked = strings.HasPrefix(unitFileState, "masked")
 	service.Static = unitFileState == "static"
-	service.needsIsEnabled = unitFileState == "bad" || unitFileState == "generated"
+	// systemd 237 (Ubuntu 18.04) reports an enabled instance of a template
+	// as "indirect", the template's own state, while is-enabled answers for
+	// the instance
+	service.needsIsEnabled = unitFileState == "bad" || unitFileState == "generated" ||
+		(unitFileState == "indirect" && isSystemdInstanceName(service.Name))
 }
 
 // resolveWithIsEnabled asks `systemctl is-enabled` about each service whose
@@ -166,7 +203,7 @@ func (s *SystemDServiceManager) resolveWithIsEnabled(services []*Service) {
 		// is-enabled exits non-zero for a disabled unit, so the exit status
 		// does not tell an answer from a failure; the printed state does
 		state := parseSystemdIsEnabled(cmd.Stdout)
-		if state == "" || state == "bad" || state == "generated" {
+		if state == "" || state == "bad" || state == "generated" || state == "indirect" {
 			continue
 		}
 		applySystemdUnitFileState(service, state)
@@ -326,12 +363,7 @@ func parseSystemDShowRecord(record map[string]string) (*Service, error) {
 }
 
 func (s *SystemDServiceManager) showUnits(units []string) (map[string]*Service, error) {
-	cmd, err := s.conn.RunCommand(buildSystemdServiceShowCommand(units))
-	if err != nil {
-		return nil, err
-	}
-
-	services, err := ParseServiceSystemDShow(cmd.Stdout)
+	services, err := s.showRecords(units)
 	if err != nil {
 		return nil, err
 	}
@@ -340,6 +372,53 @@ func (s *SystemDServiceManager) showUnits(units []string) (map[string]*Service, 
 		shown = append(shown, service)
 	}
 	s.resolveWithIsEnabled(shown)
+	return services, nil
+}
+
+// showRecords asks systemctl show about units. A batch systemctl fails as a
+// whole is split until the unit that fails it is on its own, so one unit
+// cannot take the state of every other unit in the batch with it (see
+// bisectSystemdShow). A single unit is read from whatever systemctl printed,
+// whatever its exit status, which reads a unit systemd does not know as not
+// found.
+func (s *SystemDServiceManager) showRecords(units []string) (map[string]*Service, error) {
+	if len(units) == 1 {
+		cmd, err := s.conn.RunCommand(buildSystemdServiceShowCommand(units))
+		if err != nil {
+			return nil, err
+		}
+		return ParseServiceSystemDShow(cmd.Stdout)
+	}
+
+	services := map[string]*Service{}
+	err := bisectSystemdShow(units,
+		func(batch []string) (map[string]*Service, error) {
+			cmd, err := s.conn.RunCommand(buildSystemdServiceShowCommand(batch))
+			if err != nil {
+				return nil, err
+			}
+			if cmd.ExitStatus != 0 {
+				return nil, systemctlError("systemctl show", cmd)
+			}
+			return ParseServiceSystemDShow(cmd.Stdout)
+		},
+		func(shown map[string]*Service) {
+			for name, service := range shown {
+				// a canonical record always wins over an alias claim on its name
+				if existing, ok := services[name]; ok && existing.Name == name {
+					continue
+				}
+				services[name] = service
+			}
+		},
+		func(unit string, err error) {
+			log.Debug().Err(err).Str("unit", unit).Msg("mql[services]> systemctl show failed for this unit")
+		},
+		s.systemdAnswering,
+	)
+	if err != nil {
+		return nil, err
+	}
 	return services, nil
 }
 
@@ -435,7 +514,15 @@ func (s *SystemDServiceManager) List() ([]*Service, error) {
 	// list-units -- list-unit-files carries the template (getty@) instead --
 	// so without this the running instance is invisible and the template
 	// reads running=false while an instance of it is up.
-	services = append(services, s.instanceUnits(unitStates, known)...)
+	//
+	// systemd before 220 (RHEL 7) lists no SysV service in list-unit-files,
+	// and list-units only the ones that are loaded, so a SysV service that is
+	// neither running nor enabled was missing. Its init script names it.
+	var sysvUnits []string
+	if version := s.systemdVersion(); version > 0 && version < systemdListsSysVUnitFilesSince {
+		sysvUnits = sysvInitScriptUnits(s.conn.FileSystem())
+	}
+	services = append(services, s.instanceUnits(unitStates, known, sysvUnits)...)
 	s.resolveWithIsEnabled(services)
 	return services, nil
 }
@@ -484,6 +571,14 @@ func (s *SystemDServiceManager) resolveUnloadedUnits(services []*Service, unitSt
 			row.Name = name
 			continue
 		}
+		// a unit file whose link is severed, or a unit whose package was
+		// removed, still has a list-unit-files row, but systemd cannot load
+		// it: it is not installed, and its leftover state says nothing
+		if !record.Installed {
+			row.Installed = false
+			row.Enabled, row.Masked, row.Static = false, false, false
+			row.needsIsEnabled = false
+		}
 		if row.Description == "" {
 			row.Description = record.Description
 		}
@@ -497,8 +592,23 @@ func (s *SystemDServiceManager) resolveUnloadedUnits(services []*Service, unitSt
 // full set, but concrete instances return a record each. An instance's
 // enablement cannot be inherited from its template -- nut-driver@ can be
 // "indirect" while nut-driver@apc is "enabled" -- so it has to be asked for.
-func (s *SystemDServiceManager) instanceUnits(unitStates map[string]*Service, known map[string]struct{}) []*Service {
+//
+// extraUnits are further units neither listing named (SysV services on systemd
+// before 220); one that systemd cannot load is not reported.
+func (s *SystemDServiceManager) instanceUnits(unitStates map[string]*Service, known map[string]struct{}, extraUnits []string) []*Service {
 	names := make([]string, 0, len(unitStates))
+	extra := map[string]bool{}
+	for _, unit := range extraUnits {
+		name := normalizeSystemdServiceName(unit)
+		if _, ok := known[name]; ok {
+			continue
+		}
+		if _, ok := unitStates[name]; ok {
+			continue
+		}
+		extra[name] = true
+		names = append(names, name)
+	}
 	for name, state := range unitStates {
 		if _, ok := known[name]; ok {
 			continue
@@ -531,10 +641,16 @@ func (s *SystemDServiceManager) instanceUnits(unitStates map[string]*Service, kn
 	instances := make([]*Service, 0, len(names))
 	for _, name := range names {
 		if service, ok := shown[name]; ok {
+			if extra[name] && !service.Installed {
+				continue
+			}
 			instances = append(instances, service)
 			continue
 		}
-		state := unitStates[name]
+		state, ok := unitStates[name]
+		if !ok {
+			continue
+		}
 		instances = append(instances, &Service{
 			Name:        name,
 			Description: state.Description,
