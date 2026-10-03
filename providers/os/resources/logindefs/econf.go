@@ -6,6 +6,7 @@ package logindefs
 import (
 	"bytes"
 	"debug/elf"
+	"io"
 	"strings"
 
 	"github.com/spf13/afero"
@@ -28,13 +29,36 @@ func ShadowLinksLibeconf(fs afero.Fs) bool {
 		return false
 	}
 	for _, p := range useraddPaths {
-		data, err := afero.ReadFile(fs, p)
+		f, err := fs.Open(p)
 		if err != nil {
 			continue
 		}
-		return LinksLibeconf(data)
+		links := fileLinksLibeconf(f)
+		f.Close()
+		return links
 	}
 	return false
+}
+
+// maxShadowBinarySize bounds how much of useradd is read when the file system
+// cannot serve random access. useradd is about 150 KB.
+const maxShadowBinarySize = 16 << 20
+
+// fileLinksLibeconf reads only the ELF headers and dynamic section when the
+// file supports random access (local and SFTP). The cat file system used over
+// SSH --sudo streams the whole file instead, up to maxShadowBinarySize.
+func fileLinksLibeconf(f afero.File) bool {
+	if ra, ok := f.(io.ReaderAt); ok {
+		if ef, err := elf.NewFile(ra); err == nil {
+			defer ef.Close()
+			return importsLibeconf(ef)
+		}
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxShadowBinarySize))
+	if err != nil {
+		return false
+	}
+	return LinksLibeconf(data)
 }
 
 // LinksLibeconf reports whether the ELF binary lists libeconf as a needed
@@ -45,6 +69,10 @@ func LinksLibeconf(binary []byte) bool {
 		return false
 	}
 	defer f.Close()
+	return importsLibeconf(f)
+}
+
+func importsLibeconf(f *elf.File) bool {
 	libs, err := f.ImportedLibraries()
 	if err != nil {
 		return false

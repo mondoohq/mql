@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"debug/elf"
 	"encoding/binary"
+	"errors"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -93,8 +94,29 @@ func TestShadowLinksLibeconf(t *testing.T) {
 		assert.False(t, ShadowLinksLibeconf(fs))
 	})
 
+	t.Run("file system without random access, as over SSH --sudo", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(fs, "/usr/sbin/useradd", econf, 0o755))
+		assert.True(t, ShadowLinksLibeconf(&streamOnlyFs{fs}))
+	})
+
 	t.Run("no useradd", func(t *testing.T) {
 		assert.False(t, ShadowLinksLibeconf(afero.NewMemMapFs()))
 		assert.False(t, ShadowLinksLibeconf(nil))
 	})
+}
+
+// streamOnlyFs serves files whose ReadAt fails, like the cat file system.
+type streamOnlyFs struct{ afero.Fs }
+
+type streamOnlyFile struct{ afero.File }
+
+func (f streamOnlyFile) ReadAt([]byte, int64) (int, error) { return 0, errors.New("not implemented") }
+
+func (s *streamOnlyFs) Open(name string) (afero.File, error) {
+	f, err := s.Fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return streamOnlyFile{f}, nil
 }
