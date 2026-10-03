@@ -235,6 +235,15 @@ func TestCronFlavorOf(t *testing.T) {
 	assert.Equal(t, cronFlavorDebian, cronFlavorOf(platform("debian", "linux", "unix", "os")))
 	assert.Equal(t, cronFlavorDefault, cronFlavorOf(platform("bsd", "unix", "os")))
 	assert.Equal(t, cronFlavorDefault, cronFlavorOf(nil))
+
+	// Amazon Linux 2, 2023 and 2027 run cronie but are detected outside the
+	// redhat family
+	amazon := platform("linux", "unix", "os")
+	amazon.Platform.Name = "amazonlinux"
+	assert.Equal(t, cronFlavorCronie, cronFlavorOf(amazon))
+	other := platform("linux", "unix", "os")
+	other.Platform.Name = "alpine"
+	assert.Equal(t, cronFlavorDefault, cronFlavorOf(other))
 }
 
 // A non-root scan on RHEL cannot list /var/spool/cron (0700). With structured
@@ -331,6 +340,36 @@ func TestCrontabSUSECronie(t *testing.T) {
 	}
 	assert.Equal(t, "*/15", minutes["test -x /usr/lib/cron/run-crons && /usr/lib/cron/run-crons >/dev/null 2>&1"])
 	assert.Equal(t, "*/10", minutes["/usr/bin/true g04-nolog"])
+}
+
+// On Amazon Linux, which is not in the redhat family, crontab still reports
+// the files cronie loads and reads its "-" no-syslog prefix.
+func TestCrontabAmazonLinuxCronie(t *testing.T) {
+	c := newCrontabOnFixture(t, "testdata/crontab_amazonlinux_cronie.toml", []string{"amazonlinux", "linux", "unix", "os"}, nil)
+
+	files := c.GetFiles()
+	require.NoError(t, files.Error)
+	var paths []string
+	for _, f := range files.Data {
+		paths = append(paths, f.(*mqlFile).Path.Data)
+	}
+	assert.ElementsMatch(t, []string{
+		"/etc/crontab",
+		"/etc/cron.d/0hourly",
+		"/etc/cron.d/g04m.bak",
+		"/etc/cron.d/g04m.dpkg-old",
+		"/etc/cron.d/g04m_ok",
+		"/etc/cron.d/g04mnolog",
+	}, paths)
+
+	entries := c.GetEntries()
+	require.NoError(t, entries.Error)
+	minutes := map[string]string{}
+	for _, e := range entries.Data {
+		entry := e.(*mqlCrontabEntry)
+		minutes[entry.Command.Data] = entry.Minute.Data
+	}
+	assert.Equal(t, "*", minutes["touch /var/tmp/g04cron/nolog"])
 }
 
 // SUSE's /etc/crontab is 0600. A non-root scan cannot read it: with

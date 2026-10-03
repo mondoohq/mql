@@ -211,8 +211,8 @@ const (
 	// cronFlavorDebian is Debian's cron, which runs a cron.d file only when
 	// its name follows the run-parts convention.
 	cronFlavorDebian
-	// cronFlavorCronie is cronie (RHEL, Fedora, SUSE), which runs every file
-	// except a few it names.
+	// cronFlavorCronie is cronie (RHEL, Fedora, SUSE, Amazon Linux), which runs
+	// every file except a few it names.
 	cronFlavorCronie
 )
 
@@ -223,7 +223,9 @@ func cronFlavorOf(asset *inventory.Asset) cronFlavor {
 	switch {
 	case asset.Platform.IsFamily("debian"):
 		return cronFlavorDebian
-	case asset.Platform.IsFamily("redhat"), asset.Platform.IsFamily("suse"):
+	case asset.Platform.IsFamily("redhat"), asset.Platform.IsFamily("suse"),
+		// Amazon Linux is not in the redhat family, but its cron is cronie
+		asset.Platform.Name == "amazonlinux":
 		return cronFlavorCronie
 	default:
 		return cronFlavorDefault

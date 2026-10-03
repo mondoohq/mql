@@ -1,0 +1,87 @@
+# /etc/crontab and /etc/cron.d on Amazon Linux 2023 (cronie 1.5.7), names,
+# modes and owners as `stat -c "%a %u"` showed them. Every cron.d job touches a
+# marker; the markers that appeared each minute were bak, dpkgold, ok and
+# nolog. cron's journal: BAD FILE MODE for g04mbadmode, WRONG FILE OWNER for
+# g04mnotroot. #g04mhash and g04m.rpmorig never ran.
+
+[files."/etc/cron.d"]
+path = "/etc/cron.d"
+[files."/etc/cron.d".stat]
+isdir = true
+
+[files."/etc/crontab"]
+path = "/etc/crontab"
+content = """SHELL=/bin/bash
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+MAILTO=root
+"""
+[files."/etc/crontab".stat]
+mode = 420
+
+[files."/etc/cron.d/0hourly"]
+path = "/etc/cron.d/0hourly"
+content = """# Run the hourly jobs
+SHELL=/bin/bash
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+MAILTO=root
+01 * * * * root run-parts /etc/cron.hourly
+"""
+[files."/etc/cron.d/0hourly".stat]
+mode = 420
+
+[files."/etc/cron.d/#g04mhash"]
+path = "/etc/cron.d/#g04mhash"
+content = """* * * * * root touch /var/tmp/g04cron/hash
+"""
+[files."/etc/cron.d/#g04mhash".stat]
+mode = 420
+
+[files."/etc/cron.d/g04m.bak"]
+path = "/etc/cron.d/g04m.bak"
+content = """* * * * * root touch /var/tmp/g04cron/bak
+"""
+[files."/etc/cron.d/g04m.bak".stat]
+mode = 420
+
+[files."/etc/cron.d/g04m.dpkg-old"]
+path = "/etc/cron.d/g04m.dpkg-old"
+content = """* * * * * root touch /var/tmp/g04cron/dpkgold
+"""
+[files."/etc/cron.d/g04m.dpkg-old".stat]
+mode = 420
+
+[files."/etc/cron.d/g04m.rpmorig"]
+path = "/etc/cron.d/g04m.rpmorig"
+content = """* * * * * root touch /var/tmp/g04cron/rpmorig
+"""
+[files."/etc/cron.d/g04m.rpmorig".stat]
+mode = 420
+
+[files."/etc/cron.d/g04m_ok"]
+path = "/etc/cron.d/g04m_ok"
+content = """* * * * * root touch /var/tmp/g04cron/ok
+"""
+[files."/etc/cron.d/g04m_ok".stat]
+mode = 420
+
+[files."/etc/cron.d/g04mbadmode"]
+path = "/etc/cron.d/g04mbadmode"
+content = """* * * * * root touch /var/tmp/g04cron/badmode
+"""
+[files."/etc/cron.d/g04mbadmode".stat]
+mode = 436
+
+[files."/etc/cron.d/g04mnotroot"]
+path = "/etc/cron.d/g04mnotroot"
+content = """* * * * * root touch /var/tmp/g04cron/notroot
+"""
+[files."/etc/cron.d/g04mnotroot".stat]
+mode = 420
+uid = 1000
+
+[files."/etc/cron.d/g04mnolog"]
+path = "/etc/cron.d/g04mnolog"
+content = """-* * * * * root touch /var/tmp/g04cron/nolog
+"""
+[files."/etc/cron.d/g04mnolog".stat]
+mode = 420
