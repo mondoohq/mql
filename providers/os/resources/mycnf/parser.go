@@ -797,6 +797,8 @@ func SplitPluginList(value string) []string {
 	if v == "" {
 		return nil
 	}
+	// The server picks its separators by platform, never per entry, so a
+	// Windows path anywhere in the value means no entry is split on ":".
 	windows := isWindowsPath(v)
 	fields := strings.FieldsFunc(v, func(r rune) bool {
 		return r == ';' || (r == ':' && !windows)
