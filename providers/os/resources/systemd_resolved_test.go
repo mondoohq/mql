@@ -614,3 +614,51 @@ func TestSystemdRelease(t *testing.T) {
 		})
 	}
 }
+
+func TestSystemdUnitActive_CommandCannotRun(t *testing.T) {
+	for name, rt := range map[string]func(*testing.T) *plugin.Runtime{
+		"no command execution": noCommandRuntime,
+		"command fails to run": failingCommandRuntime,
+	} {
+		t.Run(name, func(t *testing.T) {
+			resolved := mustResource(t, rt(t), "systemd.resolved").(*mqlSystemdResolved)
+			v := resolved.GetActive()
+			require.Error(t, v.Error)
+			assert.False(t, v.Data)
+
+			timesyncd := mustResource(t, rt(t), "systemd.timesyncd").(*mqlSystemdTimesyncd)
+			v = timesyncd.GetActive()
+			require.Error(t, v.Error)
+			assert.False(t, v.Data)
+			require.Error(t, timesyncd.GetSynchronized().Error)
+		})
+	}
+}
+
+func TestSystemdResolved_ConfigWithoutCommands(t *testing.T) {
+	rt := noCommandRuntimeWithFiles(t, map[string]string{
+		"/etc/systemd/resolved.conf": "[Resolve]\nDNS=192.0.2.53\nDNSSEC=allow-downgrade\nCache=no\n",
+	})
+	r := mustResource(t, rt, "systemd.resolved").(*mqlSystemdResolved)
+
+	cache := r.GetCache()
+	require.NoError(t, cache.Error)
+	assert.False(t, cache.Data)
+
+	dns := r.GetDns()
+	require.NoError(t, dns.Error)
+	assert.Equal(t, []any{"192.0.2.53"}, dns.Data)
+
+	dnssec := r.GetDnssec()
+	require.NoError(t, dnssec.Error)
+	assert.Equal(t, "allow-downgrade", dnssec.Data)
+
+	cur := r.GetCurrentDnsServer()
+	require.NoError(t, cur.Error)
+	assert.Equal(t, "", cur.Data)
+}
+
+func TestSystemdResolved_FailingCommandErrors(t *testing.T) {
+	r := mustResource(t, failingCommandRuntime(t), "systemd.resolved").(*mqlSystemdResolved)
+	require.Error(t, r.GetCache().Error)
+}
