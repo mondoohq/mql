@@ -49,6 +49,8 @@ func InContainer(conn shared.Connection) bool {
 	if conn == nil || shared.WindowsNative(conn) {
 		return false
 	}
+	// Only files are read below. The capability check stands for "this is
+	// a live system", which a connection that only offers files isn't.
 	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
 		return false
 	}
