@@ -133,7 +133,9 @@ func (p *mqlPodman) installed() (bool, error) {
 // isPodmanNotInstalled reports whether a failed "podman --version" means the
 // binary is missing: the shell's "not found" (exit 127), or sudo's, which exits
 // 1 and prints "sudo: podman: " followed by "command not found" in the
-// remote's language.
+// remote's language. Only the message after that prefix is translated, and
+// sudo's own refusals don't name the command, so the prefix alone identifies
+// a missing binary in any language.
 func isPodmanNotInstalled(exitCode int64, stderr string) bool {
 	if exitCode == 127 {
 		return true

@@ -37,8 +37,9 @@ type podmanPort struct {
 	HostPort      int64
 	Range         int64
 	Protocol      string
-	// decoded is false for a record that names no port in either spelling
-	decoded bool
+	// hasContainerPort is false for a record without a container port in
+	// either spelling, which maps nothing
+	hasContainerPort bool
 }
 
 // UnmarshalJSON reads a port mapping in both spellings podman has used:
@@ -72,7 +73,7 @@ func (p *podmanPort) UnmarshalJSON(data []byte) error {
 	}
 	if v := firstNonNil(raw.ContainerPort, raw.V3ContainerPort); v != nil {
 		p.ContainerPort = *v
-		p.decoded = true
+		p.hasContainerPort = true
 	}
 	return nil
 }
@@ -435,7 +436,7 @@ func podmanPortDicts(ports []podmanPort) []any {
 	res := make([]any, 0, len(ports))
 	for _, port := range ports {
 		hostIP := strings.TrimSpace(port.HostIP)
-		if hostIP == "" && port.decoded {
+		if hostIP == "" && port.hasContainerPort {
 			hostIP = podmanAllInterfaces
 		}
 		res = append(res, map[string]any{
