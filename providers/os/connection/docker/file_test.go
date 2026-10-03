@@ -23,7 +23,7 @@ func (c *fakeContainer) RunCommand(command string) (*shared.Command, error) {
 	res := &shared.Command{Command: command, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
 	switch {
 	case strings.HasPrefix(command, "ls -1A /usr/lib/systemd/journald.conf.d"):
-		res.Stdout.(*bytes.Buffer).WriteString("syslog.conf\nlinked.conf\nsub\n")
+		res.Stdout.(*bytes.Buffer).WriteString(".hidden.conf\nsyslog.conf\nlinked.conf\nsub\n")
 	default:
 		res.ExitStatus = 1
 		res.Stderr.(*bytes.Buffer).WriteString("ls: cannot access: No such file or directory\n")
@@ -41,7 +41,7 @@ func TestReaddirnamesListsEveryEntry(t *testing.T) {
 
 	names, err := f.Readdirnames(-1)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{"syslog.conf", "linked.conf", "sub"}, names)
+	assert.ElementsMatch(t, []string{".hidden.conf", "syslog.conf", "linked.conf", "sub"}, names)
 }
 
 func TestReaddirnamesOfAMissingDirectoryIsAnError(t *testing.T) {
