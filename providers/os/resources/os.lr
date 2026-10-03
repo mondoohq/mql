@@ -5204,7 +5204,10 @@ mysql {
 // and then the settings `SET PERSIST` wrote to `mysqld-auto.cnf` in the data
 // directory, which the server applies last. A setting made at runtime with
 // `SET GLOBAL` is not visible here, and an option nothing sets reads null
-// rather than zero.
+// rather than zero. An option belonging to a plugin or component the server
+// does not load (`validate_password.*` without the component, `audit_log_*`
+// on a server without the audit plugin, a `loose-` option the version does
+// not know) is reported as written but has no effect on the server.
 mysql.conf {
   init(path? string)
   // Primary option file
