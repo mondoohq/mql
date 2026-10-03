@@ -4,7 +4,7 @@
 package resources
 
 import (
-	"regexp"
+	"net/url"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
@@ -69,12 +69,12 @@ func (r *mqlPostgresdbTablespace) privileges() ([]any, error) {
 
 // redactOptions drops any option whose key carries a secret. Options are
 // "key=value" pairs; the key is compared exactly so benign keys such as
-// "password_timeout" are kept.
+// "password_required" are kept.
 func redactOptions(in []string) []any {
 	out := []any{}
 	for _, opt := range in {
 		key, _, _ := strings.Cut(opt, "=")
-		if strings.EqualFold(strings.TrimSpace(key), "password") {
+		if isSecretConnKeyword(strings.TrimSpace(key)) {
 			continue
 		}
 		out = append(out, opt)
@@ -246,20 +246,165 @@ func (r *mqlPostgresdbDatabase) publications() ([]any, error) {
 	return list, rows.Err()
 }
 
-// connInfoPasswordRe matches a libpq keyword password, including single-quoted
-// values that may contain spaces (password='s3cret value').
-var connInfoPasswordRe = regexp.MustCompile(`(?i)password=('[^']*'|[^ ]*)`)
+// redactedValue replaces every secret in a sanitized connection string.
+const redactedValue = "REDACTED"
 
-// connInfoURIRe matches the password in a URI-style connection string
-// (postgresql://user:password@host/db).
-var connInfoURIRe = regexp.MustCompile(`(://[^:/@]+:)([^@]+)(@)`)
+// isSecretConnKeyword reports whether a libpq connection keyword carries a
+// secret: the password itself, or sslpassword (PG13+), which decrypts the
+// client key. libpq keywords are case-sensitive, but any case is matched so
+// a near-miss spelling can never leak.
+func isSecretConnKeyword(key string) bool {
+	switch strings.ToLower(key) {
+	case "password", "sslpassword":
+		return true
+	}
+	return false
+}
 
-// sanitizeConnInfo removes a password from a subscription connection string,
-// covering both keyword-value and URI formats.
+// sanitizeConnInfo removes every secret from a subscription connection
+// string. It covers both libpq formats, following libpq's own parser
+// (conninfo_parse and conninfo_uri_parse_options in fe-connect.c):
+//
+//   - keyword/value: whitespace is allowed around '=', values may be
+//     single-quoted, and a backslash escapes the next character both inside
+//     and outside quotes
+//   - URI: the password in the userinfo, and password/sslpassword query
+//     parameters (whose keys may be percent-encoded)
+//
+// A string that does not parse is cut off at the point parsing failed, so a
+// malformed value can never pass through unredacted.
 func sanitizeConnInfo(conninfo string) string {
-	s := connInfoPasswordRe.ReplaceAllString(conninfo, "password=REDACTED")
-	s = connInfoURIRe.ReplaceAllString(s, "${1}REDACTED${3}")
-	return strings.TrimSpace(s)
+	s := strings.TrimSpace(conninfo)
+	if strings.HasPrefix(s, "postgresql://") || strings.HasPrefix(s, "postgres://") {
+		return sanitizeConnURI(s)
+	}
+	return sanitizeConnKeywords(s)
+}
+
+func isConnSpace(c byte) bool {
+	// libpq uses isspace(): space, \t, \n, \v, \f, \r
+	return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r'
+}
+
+// sanitizeConnKeywords redacts secrets in a keyword/value connection string.
+// Non-secret pairs and the whitespace between pairs are kept verbatim; a
+// secret pair is rewritten as "<keyword>=REDACTED".
+func sanitizeConnKeywords(s string) string {
+	var out strings.Builder
+	i := 0
+	for i < len(s) {
+		// whitespace between pairs is copied as is
+		start := i
+		for i < len(s) && isConnSpace(s[i]) {
+			i++
+		}
+		out.WriteString(s[start:i])
+		if i >= len(s) {
+			break
+		}
+		pairStart := i
+
+		// keyword: up to '=' or whitespace
+		for i < len(s) && s[i] != '=' && !isConnSpace(s[i]) {
+			i++
+		}
+		key := s[pairStart:i]
+		for i < len(s) && isConnSpace(s[i]) {
+			i++
+		}
+		if i >= len(s) || s[i] != '=' || key == "" {
+			// libpq rejects this ("missing = after keyword"); stop here
+			out.WriteString(redactedValue)
+			return out.String()
+		}
+		i++ // '='
+		for i < len(s) && isConnSpace(s[i]) {
+			i++
+		}
+
+		// value: single-quoted or up to whitespace, with backslash escapes
+		terminated := true
+		if i < len(s) && s[i] == '\'' {
+			i++
+			terminated = false
+			for i < len(s) {
+				if s[i] == '\\' {
+					i += 2
+					continue
+				}
+				if s[i] == '\'' {
+					i++
+					terminated = true
+					break
+				}
+				i++
+			}
+		} else {
+			for i < len(s) && !isConnSpace(s[i]) {
+				if s[i] == '\\' {
+					i++
+				}
+				i++
+			}
+		}
+		if i > len(s) {
+			i = len(s)
+		}
+		if !terminated {
+			// unterminated quoted string: libpq rejects it
+			out.WriteString(redactedValue)
+			return out.String()
+		}
+
+		if isSecretConnKeyword(key) {
+			out.WriteString(key + "=" + redactedValue)
+		} else {
+			out.WriteString(s[pairStart:i])
+		}
+	}
+	return out.String()
+}
+
+// sanitizeConnURI redacts the userinfo password and secret query parameters
+// of a postgresql:// or postgres:// connection URI.
+func sanitizeConnURI(s string) string {
+	schemeEnd := strings.Index(s, "://") + len("://")
+	rest := s[schemeEnd:]
+
+	query := ""
+	if q := strings.IndexByte(rest, '?'); q >= 0 {
+		rest, query = rest[:q], rest[q+1:]
+	}
+
+	// The userinfo ends at an '@' before the first '/'. libpq takes the first
+	// '@'; the last one is used here so an unencoded '@' inside a password
+	// cannot leave part of it behind.
+	authority := rest
+	if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+		authority = rest[:slash]
+	}
+	if at := strings.LastIndexByte(authority, '@'); at >= 0 {
+		if colon := strings.IndexByte(authority[:at], ':'); colon >= 0 {
+			rest = authority[:colon+1] + redactedValue + rest[at:]
+		}
+	}
+
+	out := s[:schemeEnd] + rest
+	if query == "" && !strings.Contains(s, "?") {
+		return out
+	}
+	params := strings.Split(query, "&")
+	for i, param := range params {
+		rawKey, _, hasValue := strings.Cut(param, "=")
+		key, err := url.QueryUnescape(rawKey)
+		if err != nil {
+			key = rawKey
+		}
+		if isSecretConnKeyword(key) || (err != nil && hasValue) {
+			params[i] = rawKey + "=" + redactedValue
+		}
+	}
+	return out + "?" + strings.Join(params, "&")
 }
 
 func (r *mqlPostgresdbInstance) subscriptions() ([]any, error) {

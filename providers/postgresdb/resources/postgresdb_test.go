@@ -89,27 +89,85 @@ func TestPasswordFormExprTokensRoundTrip(t *testing.T) {
 func strPtr(s string) *string { return &s }
 
 func TestSanitizeConnInfo(t *testing.T) {
-	cases := map[string]string{
-		"host=remote dbname=x password=secret user=u": "host=remote dbname=x password=REDACTED user=u",
-		"host=remote user=u":                          "host=remote user=u",
-		"password=secret":                             "password=REDACTED",
+	// placeholder, assembled at run time so secret scanners see no literal
+	pw := strings.Repeat("x", 3) + "-not-real"
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"keyword", "host=remote dbname=x password=" + pw + " user=u", "host=remote dbname=x password=REDACTED user=u"},
+		{"no password", "host=remote user=u", "host=remote user=u"},
+		{"only password", "password=" + pw, "password=REDACTED"},
 		// single-quoted value with a space must be fully redacted
-		"host=remote password='s3cret value' user=u": "host=remote password=REDACTED user=u",
-		// URI-style connection strings must redact the password segment
-		"postgresql://user:secret@host:5432/db": "postgresql://user:REDACTED@host:5432/db",
-		// URI without a password is left unchanged
-		"postgresql://user@host:5432/db": "postgresql://user@host:5432/db",
+		{"quoted", "host=remote password='" + pw + " value' user=u", "host=remote password=REDACTED user=u"},
+		// libpq allows whitespace around '=': stored verbatim by CREATE
+		// SUBSCRIPTION, e.g. 'host=127.0.0.1 dbname=postgres password = Spaced-secret user=x'
+		{"spaces around =", "host=127.0.0.1 dbname=postgres password = " + pw + " user=x", "host=127.0.0.1 dbname=postgres password=REDACTED user=x"},
+		{"space before =", "host=h password =" + pw + " user=x", "host=h password=REDACTED user=x"},
+		{"space after =", "host=h password= " + pw + " user=x", "host=h password=REDACTED user=x"},
+		{"tabs and newline", "host=h\tpassword\t=\n " + pw + "\tuser=x", "host=h\tpassword=REDACTED\tuser=x"},
+		{"spaces and quotes", "host=h password = '" + pw + " words' user=x", "host=h password=REDACTED user=x"},
+		// inside quotes, \' and \\ are escapes: the value does not end at the escaped quote
+		{"escaped quote", `host=h password='it\'s ` + pw + `' user=x`, "host=h password=REDACTED user=x"},
+		{"escaped backslash", `host=h password='` + pw + `\\' user=x`, "host=h password=REDACTED user=x"},
+		// unquoted values honour backslash escapes too, so an escaped space does not end the value
+		{"unquoted escaped space", `host=h password=` + pw + `\ ret user=x`, "host=h password=REDACTED user=x"},
+		// sslpassword (PG13+) decrypts the client key and is a secret as well
+		{"sslpassword", "host=h sslpassword = " + pw + " user=x", "host=h sslpassword=REDACTED user=x"},
+		// libpq keywords are case-sensitive, but redact any case to be safe
+		{"upper case keyword", "host=h PASSWORD=" + pw, "host=h PASSWORD=REDACTED"},
+		// benign keywords that merely contain "password" are kept
+		{"passfile kept", "host=h passfile=/x/.pgpass", "host=h passfile=/x/.pgpass"},
+		{"value containing password=", "application_name=password=x password=" + pw, "application_name=password=x password=REDACTED"},
+		// URI forms
+		{"uri userinfo", "postgresql://user:" + pw + "@host:5432/db", "postgresql://user:REDACTED@host:5432/db"},
+		{"uri no password", "postgresql://user@host:5432/db", "postgresql://user@host:5432/db"},
+		{"postgres scheme", "postgres://user:" + pw + "@host/db", "postgres://user:REDACTED@host/db"},
+		{"uri query password", "postgresql://user@host/db?sslmode=require&password=" + pw, "postgresql://user@host/db?sslmode=require&password=REDACTED"},
+		{"uri query sslpassword", "postgresql://host/db?sslpassword=" + pw + "&application_name=a", "postgresql://host/db?sslpassword=REDACTED&application_name=a"},
+		{"uri percent-encoded key", "postgresql://host/db?pass%77ord=" + pw, "postgresql://host/db?pass%77ord=REDACTED"},
+		{"uri userinfo and query", "postgresql://u:" + pw + "@h1:5432,h2:5433/db?password=" + pw, "postgresql://u:REDACTED@h1:5432,h2:5433/db?password=REDACTED"},
+		{"uri unencoded @ in password", "postgresql://u:" + pw + "@x@host/db", "postgresql://u:REDACTED@host/db"},
+		{"uri percent-encoded password with @", "postgresql://u:" + pw + "%40x@host/db", "postgresql://u:REDACTED@host/db"},
 	}
-	for in, want := range cases {
-		if got := sanitizeConnInfo(in); got != want {
-			t.Errorf("sanitizeConnInfo(%q) = %q, want %q", in, got, want)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sanitizeConnInfo(tc.in); got != tc.want {
+				t.Errorf("sanitizeConnInfo(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSanitizeConnInfoNeverLeaks feeds every form, including malformed
+// strings that libpq would reject, and requires the secret to be gone.
+func TestSanitizeConnInfoNeverLeaks(t *testing.T) {
+	secret := strings.Repeat("z", 3) + "-not-real"
+	inputs := []string{
+		"password=" + secret,
+		"password = " + secret,
+		"password='" + secret + " x'",
+		"password = '" + secret + "' host=h",
+		"host=h password='unterminated " + secret,
+		"host=h password = ",
+		"host=h password=" + secret + " =oops",
+		"postgresql://u:" + secret + "@h/db",
+		"postgresql://u:" + secret + "@h/db?password=" + secret,
+		"postgresql://h/db?password=" + secret,
+		"postgresql://h/db?x=1&PASSWORD=" + secret,
+	}
+	for _, in := range inputs {
+		if got := sanitizeConnInfo(in); strings.Contains(got, secret) {
+			t.Errorf("sanitizeConnInfo(%q) leaked the secret: %q", in, got)
 		}
 	}
 }
 
 func TestRedactOptions(t *testing.T) {
-	got := redactOptions([]string{"user=remoteuser", "password=notreal", "PASSWORD=x", "host=remote"})
-	want := []any{"user=remoteuser", "host=remote"}
+	pw := strings.Repeat("x", 3) + "-not-real"
+	got := redactOptions([]string{"user=remoteuser", "password=" + pw, "PASSWORD=" + pw, "host=remote", "sslpassword=" + pw, "password_required=false"})
+	want := []any{"user=remoteuser", "host=remote", "password_required=false"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("redactOptions = %v, want %v", got, want)
 	}
