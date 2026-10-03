@@ -81,7 +81,10 @@ func LastInstalledRpm(fs afero.Fs, isVendorPackage func(name string) bool, insta
 }
 
 // isKernelPackage reports whether a package is one of the kernel's, which
-// dnf installs side by side (installonlypkgs) instead of upgrading.
+// dnf installs side by side (installonlypkgs) instead of upgrading. The
+// prefix also matches kernel-headers and kernel-tools, which are upgraded
+// like any package: they are never installed next to an older version, so
+// isKernelUpdate never counts their installs.
 func isKernelPackage(name string) bool {
 	return name == "kernel" || strings.HasPrefix(name, "kernel-")
 }
