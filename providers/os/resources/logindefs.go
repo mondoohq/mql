@@ -76,12 +76,25 @@ func (s *mqlLogindefs) params(content string) (map[string]any, error) {
 
 	if conn, ok := s.MqlRuntime.Connection.(shared.Connection); ok {
 		file := s.GetFile()
-		if file.Data != nil && readsLoginDefsDropIns(conn.Asset().GetPlatform(), file.Data.Path.Data) {
-			layers, err := s.dropInParams(conn.FileSystem())
-			if err != nil {
-				return nil, err
+		if file.Data != nil && isSystemLoginDefs(file.Data.Path.Data) {
+			platform := conn.Asset().GetPlatform()
+			fs := conn.FileSystem()
+			// Elsewhere than SUSE, whether shadow reads drop-ins depends on its
+			// build. Probe useradd only when there is a drop-in directory.
+			econf := false
+			if fs != nil && (platform == nil || !platform.IsFamily("suse")) {
+				if _, err := fs.Stat(logindefs.EtcDropInDir); err == nil {
+					econf = logindefs.ShadowLinksLibeconf(fs)
+				}
 			}
-			params = logindefs.Overlay(append([]map[string]string{params}, layers...)...)
+			mode := loginDefsDropInMode(platform, file.Data.Path.Data, econf)
+			if mode != loginDefsNoDropIns {
+				layers, err := s.dropInParams(fs, mode == loginDefsVendorAndEtcDropIns)
+				if err != nil {
+					return nil, err
+				}
+				params = logindefs.Overlay(append([]map[string]string{params}, layers...)...)
+			}
 		}
 	}
 
@@ -92,36 +105,64 @@ func (s *mqlLogindefs) params(content string) (map[string]any, error) {
 	return res, nil
 }
 
-// readsLoginDefsDropIns reports whether the shadow tools on the platform read
-// login.defs.d drop-ins on top of mainPath. SUSE builds shadow with libeconf,
-// which reads /etc/login.defs.d/*.defs (and /usr/etc/login.defs.d on releases
-// with a vendor directory) after the main file. Debian, Ubuntu and RHEL do
-// not: Debian's shadow has no libeconf build dependency, so its useradd reads
-// login.defs alone even when a login.defs.d directory exists. Drop-ins only
-// extend the system login.defs, never a file passed by path.
-func readsLoginDefsDropIns(platform *inventory.Platform, mainPath string) bool {
-	if platform == nil || !platform.IsFamily("suse") {
-		return false
-	}
+// loginDefsDropIns says which login.defs.d directories the shadow tools read
+// after the main login.defs.
+type loginDefsDropIns int
+
+const (
+	// loginDefsNoDropIns: login.defs is read alone.
+	loginDefsNoDropIns loginDefsDropIns = iota
+	// loginDefsEtcDropIns: /etc/login.defs.d only. shadow built with libeconf
+	// but without a vendor directory: RHEL 10, CentOS Stream 10, AlmaLinux 10
+	// and Fedora 44 apply /etc/login.defs.d/*.defs and ignore
+	// /usr/etc/login.defs.d, even when /usr/etc/login.defs exists.
+	loginDefsEtcDropIns
+	// loginDefsVendorAndEtcDropIns: /usr/etc/login.defs.d (when the vendor
+	// login.defs exists), then /etc/login.defs.d. SUSE builds shadow with
+	// libeconf and a vendor directory.
+	loginDefsVendorAndEtcDropIns
+)
+
+func isSystemLoginDefs(mainPath string) bool {
 	return mainPath == defaultLoginDefsConfig || mainPath == vendorLoginDefsConfig
 }
 
+// loginDefsDropInMode picks the drop-in directories the shadow tools read on
+// top of mainPath. econf says whether useradd links libeconf. Debian and
+// Ubuntu (through shadow 4.17) and RHEL 7 to 9 do not, so their useradd reads
+// login.defs alone even when a login.defs.d directory exists. Drop-ins only
+// extend the system login.defs, never a file passed by path.
+func loginDefsDropInMode(platform *inventory.Platform, mainPath string, econf bool) loginDefsDropIns {
+	if !isSystemLoginDefs(mainPath) {
+		return loginDefsNoDropIns
+	}
+	if platform != nil && platform.IsFamily("suse") {
+		return loginDefsVendorAndEtcDropIns
+	}
+	if econf {
+		return loginDefsEtcDropIns
+	}
+	return loginDefsNoDropIns
+}
+
 // dropInParams parses the login.defs drop-ins in the order shadow applies
-// them. The vendor drop-in directory is read only when the vendor login.defs
-// exists: SLES 15 and Leap 15 build shadow without a vendor directory and
-// ignore /usr/etc/login.defs.d.
-func (s *mqlLogindefs) dropInParams(fs afero.Fs) ([]map[string]string, error) {
+// them. The vendor drop-in directory is read only when withVendor is set and
+// the vendor login.defs exists: SLES 15 and Leap 15 build shadow without a
+// vendor directory and ignore /usr/etc/login.defs.d.
+func (s *mqlLogindefs) dropInParams(fs afero.Fs, withVendor bool) ([]map[string]string, error) {
 	if fs == nil {
 		return nil, nil
 	}
 
 	var vendorNames []string
-	if _, err := fs.Stat(vendorLoginDefsConfig); err == nil {
-		names, err := loginDefsDropInNames(fs, logindefs.VendorDropInDir)
-		if err != nil {
-			return nil, err
+	if withVendor {
+		if _, err := fs.Stat(vendorLoginDefsConfig); err == nil {
+			names, err := loginDefsDropInNames(fs, logindefs.VendorDropInDir)
+			if err != nil {
+				return nil, err
+			}
+			vendorNames = names
 		}
-		vendorNames = names
 	}
 	etcNames, err := loginDefsDropInNames(fs, logindefs.EtcDropInDir)
 	if err != nil {
