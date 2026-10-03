@@ -4,8 +4,9 @@
 package haproxy
 
 import (
-	"bufio"
 	"strings"
+
+	"go.mondoo.com/mql/utils/iox"
 )
 
 // LaunchArgs is what the haproxy command line says about configuration:
@@ -56,7 +57,7 @@ func SplitProcCmdline(data []byte) []string {
 // single or double quotes around the value is removed.
 func ParseEnvironmentFile(content string) map[string]string {
 	env := map[string]string{}
-	scanner := bufio.NewScanner(strings.NewReader(content))
+	scanner := iox.NewLineScanner(strings.NewReader(content))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || line[0] == '#' || line[0] == ';' {
@@ -96,7 +97,7 @@ func ParseSystemdService(contents ...string) SystemdService {
 	svc := SystemdService{Environment: map[string]string{}}
 	for _, content := range contents {
 		inService := false
-		scanner := bufio.NewScanner(strings.NewReader(content))
+		scanner := iox.NewLineScanner(strings.NewReader(content))
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
 			if line == "" || line[0] == '#' || line[0] == ';' {
