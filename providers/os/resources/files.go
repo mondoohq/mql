@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -155,9 +156,22 @@ func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
 	if out.Error != nil {
 		return nil, out.Error
 	}
+	exit := cmd.GetExitcode()
+	if exit.Error != nil {
+		return nil, exit.Error
+	}
+
+	lines := strings.TrimSpace(out.Data)
+	if err := checkFindExit("find", callCmd, exit.Data, lines, cmd.GetStderr().Data); err != nil {
+		if llx.KindOf(err) == llx.ErrorKind_ERROR_KIND_NOT_FOUND {
+			if found, ok, werr := l.localWalk(depth); ok {
+				return found, werr
+			}
+		}
+		return nil, err
+	}
 
 	var foundFiles []string
-	lines := strings.TrimSpace(out.Data)
 	if lines == "" {
 		foundFiles = []string{}
 	} else {
@@ -166,11 +180,41 @@ func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
 	return foundFiles, nil
 }
 
+// localWalk searches without the find binary, for a local scan of a host that
+// ships no findutils (amazonlinux 2023 and other minimal images). It only
+// applies where this process reads the target's filesystem directly: a local
+// connection without sudo. ok is false everywhere else, and the caller reports
+// the missing find as an error.
+func (l *mqlFilesFind) localWalk(depth *int64) ([]string, bool, error) {
+	conn := l.MqlRuntime.Connection.(shared.Connection)
+	if conn.Type() != shared.Type_Local {
+		return nil, false, nil
+	}
+	if _, ok := conn.FileSystem().(*afero.OsFs); !ok {
+		return nil, false, nil
+	}
+	log.Debug().Str("from", l.From.Data).Msg("files.find> no find command, walking the filesystem")
+	found, err := filesfind.Walk(filesfind.WalkOptions{
+		From:       l.From.Data,
+		Xdev:       l.Xdev.Data,
+		FileType:   l.Type.Data,
+		Regex:      l.Regex.Data,
+		Permission: l.Permissions.Data,
+		Name:       l.Name.Data,
+		Depth:      depth,
+	})
+	if errors.Is(err, filesfind.ErrPartialWalk) {
+		// like find exiting 1 after printing what it reached
+		log.Warn().Str("from", l.From.Data).Msg("file search could not read some directories, results may be incomplete")
+		return found, true, nil
+	}
+	return found, true, err
+}
+
 // hasGNUFind reports whether the target's find is GNU findutils, which has
 // -xtype. Linux alone doesn't imply it: BusyBox find (Alpine and many
-// containers) rejects -xtype, and because the find output is read from stdout
-// only, the search would silently come back empty. The command resource is
-// cached per connection, so the probe runs once per scan.
+// containers) rejects -xtype and would fail every search that used it. The
+// command resource is cached per connection, so the probe runs once per scan.
 func (l *mqlFilesFind) hasGNUFind() bool {
 	raw, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData("find --version"),
@@ -180,6 +224,47 @@ func (l *mqlFilesFind) hasGNUFind() bool {
 	}
 	out := raw.(*mqlCommand).GetStdout()
 	return out.Error == nil && strings.Contains(out.Data, "GNU findutils")
+}
+
+// checkFindExit decides what a non-zero exit from the search command means.
+//
+// A search tool fails for two very different reasons. It can fail to run at
+// all: `find` is absent (exit 127, common on minimal amazonlinux, opencloudos
+// and openEuler images, which ship no findutils), is not executable (126), or
+// was handed a start path that does not exist. It can also run fine and still
+// report a failure because it could not descend into some subdirectory, which
+// GNU find signals with exit 1 while printing every path it did reach. That
+// second case is routine for an unprivileged scan of /etc or / and its results
+// are valid.
+//
+// Output separates the two. No results plus a failure means nothing was
+// searched, and returning an empty list there is indistinguishable from "the
+// directory is empty" for every caller. Results plus a failure is a partial
+// traversal: keep what was found and warn.
+func checkFindExit(tool string, cmdline string, exitcode int64, stdout string, stderr string) error {
+	if exitcode == 0 {
+		return nil
+	}
+
+	stderr = strings.TrimSpace(stderr)
+	if stdout == "" {
+		msg := tool + " failed with exit code " + strconv.FormatInt(exitcode, 10)
+		if stderr != "" {
+			msg += ": " + stderr
+		}
+		if exitcode == 127 {
+			// the shell could not find the tool: it is not installed
+			return llx.NotFound(errors.New(msg))
+		}
+		return errors.New(msg)
+	}
+
+	log.Warn().
+		Int64("exitcode", exitcode).
+		Str("stderr", stderr).
+		Str("command", cmdline).
+		Msg("file search reported errors, results may be incomplete")
+	return nil
 }
 
 func (l *mqlFilesFind) windowsPowershellCmd() ([]string, error) {
@@ -201,9 +286,17 @@ func (l *mqlFilesFind) windowsPowershellCmd() ([]string, error) {
 	if out.Error != nil {
 		return nil, out.Error
 	}
+	exit := ps.GetExitcode()
+	if exit.Error != nil {
+		return nil, exit.Error
+	}
+
+	lines := strings.TrimSpace(out.Data)
+	if err := checkFindExit("Get-ChildItem", pwshScript, exit.Data, lines, ps.GetStderr().Data); err != nil {
+		return nil, err
+	}
 
 	var foundFiles []string
-	lines := strings.TrimSpace(out.Data)
 	if lines == "" {
 		foundFiles = []string{}
 	} else {
