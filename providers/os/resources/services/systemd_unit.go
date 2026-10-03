@@ -175,6 +175,51 @@ func markUnsupportedFileProperties(props map[string]string, version int) {
 	}
 }
 
+// systemdSeccompProperties are the settings systemd enforces through seccomp.
+// A systemd built without it (-SECCOMP in `systemctl --version`, as on RHEL 7)
+// accepts them in a unit file, warns, and ignores them, so a unit that sets
+// RestrictAddressFamilies=AF_UNIX still opens AF_INET sockets.
+var systemdSeccompProperties = []string{
+	"SystemCallFilter",
+	"SystemCallArchitectures",
+	"RestrictAddressFamilies",
+	"MemoryDenyWriteExecute",
+	"RestrictRealtime",
+	"RestrictSUIDSGID",
+	"RestrictNamespaces",
+	"LockPersonality",
+}
+
+// markSeccompUnsupported records the seccomp-backed settings as ones the
+// running systemd does not have.
+func markSeccompUnsupported(props map[string]string) {
+	names := strings.Fields(props[systemdUnsupportedKey])
+	have := make(map[string]bool, len(names))
+	for _, name := range names {
+		have[name] = true
+	}
+	for _, property := range systemdSeccompProperties {
+		if !have[property] {
+			names = append(names, property)
+		}
+	}
+	props[systemdUnsupportedKey] = strings.Join(names, " ")
+}
+
+// parseSystemctlSeccomp reads whether systemd was built with seccomp from the
+// feature line of `systemctl --version` ("+PAM +AUDIT ... -SECCOMP ..."). Only
+// an explicit -SECCOMP says it was not.
+func parseSystemctlSeccomp(output string) bool {
+	_, features, _ := strings.Cut(output, "\n")
+	features, _, _ = strings.Cut(features, "\n")
+	for _, feature := range strings.Fields(features) {
+		if feature == "-SECCOMP" {
+			return false
+		}
+	}
+	return true
+}
+
 // parseSystemctlVersion reads the release number from `systemctl --version`,
 // whose first line is "systemd 232" or "systemd 252 (252.39-1~deb12u2)". It
 // returns 0 when the output is not that.
@@ -229,6 +274,7 @@ type SystemdUnitManager struct {
 
 	versionOnce sync.Once
 	version     int
+	noSeccomp   bool
 
 	lastCapOnce sync.Once
 	lastCap     int
@@ -247,8 +293,16 @@ func (m *SystemdUnitManager) systemdVersion() int {
 			return
 		}
 		m.version = parseSystemctlVersion(string(out))
+		m.noSeccomp = !parseSystemctlSeccomp(string(out))
 	})
 	return m.version
+}
+
+// seccompDisabled reports whether the host's systemd was built without
+// seccomp, so it ignores the settings that rely on it.
+func (m *SystemdUnitManager) seccompDisabled() bool {
+	m.systemdVersion()
+	return m.noSeccomp
 }
 
 // fsFallback reads the unit files off disk. systemctl needs a running systemd
@@ -262,7 +316,7 @@ func (m *SystemdUnitManager) systemdVersion() int {
 // The host's systemd may be older than the settings in a unit file, and
 // ignores the ones it does not know, so the fallback is told the release.
 func (m *SystemdUnitManager) fsFallback() *SystemdFSUnitManager {
-	return &SystemdFSUnitManager{Fs: m.conn.FileSystem(), Version: m.systemdVersion()}
+	return &SystemdFSUnitManager{Fs: m.conn.FileSystem(), Version: m.systemdVersion(), NoSeccomp: m.seccompDisabled()}
 }
 
 func (m *SystemdUnitManager) List() ([]*SystemdUnit, error) {
@@ -598,12 +652,18 @@ func (m *SystemdUnitManager) unitFromProperties(props map[string]string) *System
 		lastCap = m.kernelLastCap()
 	}
 
+	if m.seccompDisabled() {
+		markSeccompUnsupported(props)
+	}
+
 	u := systemdUnitFromProperties(props, lastCap)
 	if u == nil {
 		return nil
 	}
 
-	if strings.TrimSpace(props["RestrictAddressFamilies"]) == systemdUnitUnprintable {
+	// a release that cannot print the setting may still apply it, unless it
+	// has no seccomp to apply it with
+	if strings.TrimSpace(props["RestrictAddressFamilies"]) == systemdUnitUnprintable && !m.seccompDisabled() {
 		value, err := m.restrictAddressFamiliesFromFiles(props)
 		if err != nil {
 			log.Debug().Err(err).Str("unit", u.Name).
@@ -911,6 +971,9 @@ type SystemdFSUnitManager struct {
 	// Version is the release of the host's systemd, 0 when unknown. Settings
 	// a unit file makes that this release does not know are not reported.
 	Version int
+	// NoSeccomp is set when the host's systemd was built without seccomp,
+	// so it ignores the settings that rely on it.
+	NoSeccomp bool
 }
 
 func (m *SystemdFSUnitManager) List() ([]*SystemdUnit, error) {
@@ -984,6 +1047,9 @@ func (m *SystemdFSUnitManager) readUnit(name string, unitPath string) (*SystemdU
 		}
 	}
 	markUnsupportedFileProperties(props, m.Version)
+	if m.NoSeccomp {
+		markSeccompUnsupported(props)
+	}
 
 	return systemdUnitFromProperties(props, -1), nil
 }
