@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -69,7 +68,10 @@ func (r *mqlElixirPackages) gatherData() error {
 	var filePaths []string
 
 	if path != "" {
-		t, f := collectElixirPackages(afs, fs, path)
+		t, f, err := collectElixirPackages(afs, fs, path)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 		transitiveDeps = append(transitiveDeps, t...)
 		filePaths = append(filePaths, f...)
 	} else {
@@ -85,7 +87,8 @@ func (r *mqlElixirPackages) gatherData() error {
 				matches = []string{searchPath}
 			}
 			for _, match := range matches {
-				t, f := collectElixirPackages(afs, fs, match)
+				t, f, err := collectElixirPackages(afs, fs, match)
+				skipLockfileError(match, err)
 				transitiveDeps = append(transitiveDeps, t...)
 				filePaths = append(filePaths, f...)
 			}
@@ -116,43 +119,33 @@ func (r *mqlElixirPackages) gatherData() error {
 	return nil
 }
 
-func collectElixirPackages(afs *afero.Afero, _ afero.Fs, path string) ([]*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectElixirPackages(afs *afero.Afero, _ afero.Fs, path string) ([]*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check Elixir path")
-		return nil, nil
+		return nil, nil, err
 	}
 
 	if isDir {
 		lockPath := filepath.Join(path, "mix.lock")
-		if exists, _ := afs.Exists(lockPath); exists {
-			return collectFromElixirFile(afs, lockPath)
+		exists, err := lockfileExists(afs, lockPath)
+		if err != nil || !exists {
+			return nil, nil, err
 		}
-		return nil, nil
+		return collectFromElixirFile(afs, lockPath)
 	}
 
 	if strings.HasSuffix(path, "mix.lock") {
 		return collectFromElixirFile(afs, path)
 	}
-	return nil, nil
+	return nil, nil, nil
 }
 
-func collectFromElixirFile(afs *afero.Afero, path string) ([]*languages.Package, []string) {
-	f, err := afs.Open(path)
+func collectFromElixirFile(afs *afero.Afero, path string) ([]*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, &mixlock.Extractor{})
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open mix.lock")
-		return nil, nil
+		return nil, nil, err
 	}
-	defer f.Close()
-
-	extractor := &mixlock.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse mix.lock")
-		return nil, nil
-	}
-
-	return bom.Transitive(), []string{path}
+	return bom.Transitive(), []string{path}, nil
 }
 
 func (r *mqlElixirPackages) list() ([]any, error) {

@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -101,7 +102,10 @@ func (r *mqlJavaPackages) gatherData() error {
 	var filePaths []string
 
 	if path != "" {
-		r, d, t, f := collectJavaPackages(afs, path)
+		r, d, t, f, err := collectJavaPackages(afs, path)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 		root = r
 		directDeps = d
 		transitiveDeps = t
@@ -162,7 +166,8 @@ func (r *mqlJavaPackages) gatherData() error {
 
 // collectJavaDefaults searches the default locations: pom.xml,
 // gradle.lockfile and JAR files in each directory, and JAR files in the
-// subdirectories of defaultJavaArchiveTrees.
+// subdirectories of defaultJavaArchiveTrees. What cannot be read is logged
+// and skipped.
 func collectJavaDefaults(afs *afero.Afero, searchPaths []string) ([]*languages.Package, []*languages.Package, []string) {
 	var directDeps []*languages.Package
 	var transitiveDeps []*languages.Package
@@ -173,7 +178,8 @@ func collectJavaDefaults(afs *afero.Afero, searchPaths []string) ([]*languages.P
 		matches, err := afero.Glob(afs.Fs, filepath.Join(searchPath, "pom.xml"))
 		if err == nil {
 			for _, match := range matches {
-				_, d, t, f := collectJavaPackages(afs, match)
+				_, d, t, f, err := collectJavaPackages(afs, match)
+				skipLockfileError(match, err)
 				directDeps = append(directDeps, d...)
 				transitiveDeps = append(transitiveDeps, t...)
 				filePaths = append(filePaths, f...)
@@ -184,7 +190,8 @@ func collectJavaDefaults(afs *afero.Afero, searchPaths []string) ([]*languages.P
 		matches, err = afero.Glob(afs.Fs, filepath.Join(searchPath, "gradle.lockfile"))
 		if err == nil {
 			for _, match := range matches {
-				_, _, t, f := collectJavaPackages(afs, match)
+				_, _, t, f, err := collectJavaPackages(afs, match)
+				skipLockfileError(match, err)
 				transitiveDeps = append(transitiveDeps, t...)
 				filePaths = append(filePaths, f...)
 			}
@@ -201,8 +208,11 @@ func collectJavaDefaults(afs *afero.Afero, searchPaths []string) ([]*languages.P
 		}
 		isJar := func(name string) bool { return strings.HasSuffix(name, ".jar") }
 		for _, dir := range dirs {
-			for _, match := range findJavaArchives(afs, dir, depth, isJar) {
-				_, _, t, f := collectJavaPackages(afs, match)
+			archives, err := findJavaArchives(afs, dir, depth, isJar)
+			skipLockfileError(dir, err)
+			for _, match := range archives {
+				_, _, t, f, err := collectFromArchive(afs, match)
+				skipLockfileError(match, err)
 				transitiveDeps = append(transitiveDeps, t...)
 				filePaths = append(filePaths, f...)
 			}
@@ -213,21 +223,23 @@ func collectJavaDefaults(afs *afero.Afero, searchPaths []string) ([]*languages.P
 }
 
 // findJavaArchives lists the files in dir whose names match, then those in
-// its subdirectories down to depth levels, in name order.
+// its subdirectories down to depth levels, in name order. A directory that
+// exists but cannot be listed is returned as an error alongside the archives
+// found elsewhere.
 //
 // Names are read without a stat per entry, and only an entry that does not
 // match and could still be descended into is stat'ed: over SSH with --sudo
 // every stat is a command of its own, and directories such as
 // /usr/local/lib/python3.x/site-packages hold hundreds of entries.
-func findJavaArchives(afs *afero.Afero, dir string, depth int, match func(name string) bool) []string {
+func findJavaArchives(afs *afero.Afero, dir string, depth int, match func(name string) bool) ([]string, error) {
 	f, err := afs.Open(dir)
 	if err != nil {
-		return nil
+		return nil, lockfileReadError(dir, err)
 	}
 	names, err := f.Readdirnames(-1)
 	f.Close()
 	if err != nil {
-		return nil
+		return nil, lockfileReadError(dir, err)
 	}
 	slices.Sort(names)
 
@@ -246,19 +258,22 @@ func findJavaArchives(afs *afero.Afero, dir string, depth int, match func(name s
 			subdirs = append(subdirs, p)
 		}
 	}
+	var errs []error
 	for _, sub := range subdirs {
-		res = append(res, findJavaArchives(afs, sub, depth-1, match)...)
+		archives, err := findJavaArchives(afs, sub, depth-1, match)
+		errs = append(errs, err)
+		res = append(res, archives...)
 	}
-	return res
+	return res, errors.Join(errs...)
 }
 
 // collectJavaPackages parses Java package metadata from a given path.
-// Returns root, direct deps, transitive deps, and evidence file paths.
-func collectJavaPackages(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+// Returns root, direct deps, transitive deps, and evidence file paths, and
+// what could not be read or parsed as an error.
+func collectJavaPackages(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check Java path")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, err
 	}
 
 	if isDir {
@@ -267,28 +282,38 @@ func collectJavaPackages(afs *afero.Afero, path string) (*languages.Package, []*
 
 	// Single file
 	if strings.HasSuffix(path, "pom.xml") {
-		return collectFromPomXml(afs, path)
+		return collectJavaFromFile(afs, path, &pomxml.Extractor{})
 	}
 	if strings.HasSuffix(path, "gradle.lockfile") {
-		return collectFromGradleLockfile(afs, path)
+		return collectJavaFromFile(afs, path, &gradlelockfile.Extractor{})
 	}
 	if jarscanner.IsArchive(path) {
 		return collectFromArchive(afs, path)
 	}
 
-	return nil, nil, nil, nil
+	return nil, nil, nil, nil, nil
 }
 
-func collectJavaFromDir(afs *afero.Afero, dir string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
+// collectJavaFromDir reads pom.xml, gradle.lockfile and the archives in dir
+// and its subdirectories. What cannot be read, and a pom.xml or
+// gradle.lockfile that does not parse, is returned as an error alongside the
+// rest. An archive that is not a valid one is logged and skipped: a
+// directory of jars may well hold one that is not, and it must not hide the
+// others.
+func collectJavaFromDir(afs *afero.Afero, dir string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
 	var root *languages.Package
 	var direct []*languages.Package
 	var transitive []*languages.Package
 	var files []string
+	var errs []error
 
 	// Try pom.xml first
 	pomPath := filepath.Join(dir, "pom.xml")
-	if exists, _ := afs.Exists(pomPath); exists {
-		r, d, t, f := collectFromPomXml(afs, pomPath)
+	if exists, err := lockfileExists(afs, pomPath); err != nil {
+		errs = append(errs, err)
+	} else if exists {
+		r, d, t, f, err := collectJavaFromFile(afs, pomPath, &pomxml.Extractor{})
+		errs = append(errs, err)
 		root = r
 		direct = append(direct, d...)
 		transitive = append(transitive, t...)
@@ -297,69 +322,55 @@ func collectJavaFromDir(afs *afero.Afero, dir string) (*languages.Package, []*la
 
 	// Try gradle.lockfile
 	gradlePath := filepath.Join(dir, "gradle.lockfile")
-	if exists, _ := afs.Exists(gradlePath); exists {
-		_, _, t, f := collectFromGradleLockfile(afs, gradlePath)
+	if exists, err := lockfileExists(afs, gradlePath); err != nil {
+		errs = append(errs, err)
+	} else if exists {
+		_, _, t, f, err := collectJavaFromFile(afs, gradlePath, &gradlelockfile.Extractor{})
+		errs = append(errs, err)
 		transitive = append(transitive, t...)
 		files = append(files, f...)
 	}
 
 	// Scan JAR files in the directory and its subdirectories
-	for _, jarPath := range findJavaArchives(afs, dir, javaArchiveSearchDepth, jarscanner.IsArchive) {
-		_, _, t, f := collectFromArchive(afs, jarPath)
+	archives, err := findJavaArchives(afs, dir, javaArchiveSearchDepth, jarscanner.IsArchive)
+	errs = append(errs, err)
+	for _, jarPath := range archives {
+		_, _, t, f, err := collectFromArchive(afs, jarPath)
+		if errors.Is(err, llx.ErrMalformedData) {
+			log.Warn().Err(err).Str("path", jarPath).Msg("could not scan Java archive, skipping")
+			continue
+		}
+		errs = append(errs, err)
 		transitive = append(transitive, t...)
 		files = append(files, f...)
 	}
 
-	return root, direct, transitive, files
+	return root, direct, transitive, files, errors.Join(errs...)
 }
 
-func collectFromPomXml(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	f, err := afs.Open(path)
+func collectJavaFromFile(afs *afero.Afero, path string, extractor languages.Extractor) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, extractor)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open pom.xml")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, err
 	}
-	defer f.Close()
-
-	extractor := &pomxml.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse pom.xml")
-		return nil, nil, nil, nil
-	}
-
-	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}
+	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}, nil
 }
 
-func collectFromGradleLockfile(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	f, err := afs.Open(path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open gradle.lockfile")
-		return nil, nil, nil, nil
-	}
-	defer f.Close()
-
-	extractor := &gradlelockfile.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse gradle.lockfile")
-		return nil, nil, nil, nil
-	}
-
-	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}
-}
-
-func collectFromArchive(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
+// collectFromArchive scans the archive at path. An archive that cannot be
+// read is an error, one that is not a valid archive malformed data.
+func collectFromArchive(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
 	packages, err := jarscanner.ScanArchive(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not scan Java archive")
-		return nil, nil, nil, nil
+		if isFsError(err) {
+			return nil, nil, nil, nil, lockfileReadError(path, err)
+		}
+		return nil, nil, nil, nil, llx.MalformedData(fmt.Errorf("cannot scan %s: %w", path, err))
 	}
 	if len(packages) == 0 {
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 
-	return nil, nil, packages, []string{path}
+	return nil, nil, packages, []string{path}, nil
 }
 
 // deduplicatePackages removes duplicate packages by name@version.

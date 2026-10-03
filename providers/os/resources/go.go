@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -80,9 +79,10 @@ func (r *mqlGoPackages) gatherData() error {
 	if path != "" {
 		// Specific path provided
 		bom, evidence, err := collectGoPackages(afs, path)
-		if err != nil {
-			log.Debug().Err(err).Str("path", path).Msg("could not collect Go packages")
-		} else if bom != nil {
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
+		if bom != nil {
 			root = bom.Root()
 			directDeps = bom.Direct()
 			transitiveDeps = bom.Transitive()
@@ -99,6 +99,7 @@ func (r *mqlGoPackages) gatherData() error {
 				dir := filepath.Dir(match)
 				bom, evidence, err := collectGoPackages(afs, dir)
 				if err != nil {
+					skipLockfileError(dir, err)
 					continue
 				}
 				if bom != nil {
@@ -160,9 +161,10 @@ func (r *mqlGoPackages) gatherData() error {
 }
 
 // collectGoPackages reads go.mod (and optionally go.sum) from a directory or file path.
-// Returns the BOM and a list of evidence file paths.
+// Returns the BOM and a list of evidence file paths, or no BOM when the path
+// holds neither.
 func collectGoPackages(afs *afero.Afero, path string) (languages.Bom, []string, error) {
-	isDir, err := afs.IsDir(path)
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -176,23 +178,15 @@ func collectGoPackages(afs *afero.Afero, path string) (languages.Bom, []string, 
 		// If pointed directly at a go.sum, parse it
 		return parseGoSumFile(afs, path)
 	} else {
-		return nil, nil, errors.New("path is not a go.mod, go.sum, or directory containing one")
+		return nil, nil, nil
 	}
 
-	exists, err := afs.Exists(goModPath)
+	exists, err := lockfileExists(afs, goModPath)
 	if err != nil || !exists {
-		return nil, nil, errors.New("go.mod not found at " + goModPath)
-	}
-
-	// Parse go.mod
-	f, err := afs.Open(goModPath)
-	if err != nil {
 		return nil, nil, err
 	}
-	defer f.Close()
 
-	extractor := &gomod.Extractor{}
-	bom, err := extractor.Parse(f, goModPath)
+	bom, err := parseLockfile(afs, goModPath, &gomod.Extractor{})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -201,18 +195,10 @@ func collectGoPackages(afs *afero.Afero, path string) (languages.Bom, []string, 
 }
 
 func parseGoSumFile(afs *afero.Afero, path string) (languages.Bom, []string, error) {
-	f, err := afs.Open(path)
+	bom, err := parseLockfile(afs, path, &gosum.Extractor{})
 	if err != nil {
 		return nil, nil, err
 	}
-	defer f.Close()
-
-	extractor := &gosum.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		return nil, nil, err
-	}
-
 	return bom, []string{path}, nil
 }
 

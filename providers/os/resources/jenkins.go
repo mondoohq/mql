@@ -65,11 +65,12 @@ func (r *mqlJenkinsPackages) gatherData() error {
 
 	if path != "" {
 		plugins, err := jenkins.ScanPluginDirExtended(afs, path)
-		if err == nil {
-			allPlugins = append(allPlugins, plugins...)
-			if len(plugins) > 0 {
-				filePaths = append(filePaths, path)
-			}
+		if err := explicitLockfileError(classifyReadErrors(err)); err != nil {
+			return err
+		}
+		allPlugins = append(allPlugins, plugins...)
+		if len(plugins) > 0 {
+			filePaths = append(filePaths, path)
 		}
 	} else {
 		for _, searchPath := range defaultJenkinsPluginPaths {
@@ -77,11 +78,10 @@ func (r *mqlJenkinsPackages) gatherData() error {
 				continue
 			}
 			plugins, err := jenkins.ScanPluginDirExtended(afs, searchPath)
-			if err == nil {
-				allPlugins = append(allPlugins, plugins...)
-				if len(plugins) > 0 {
-					filePaths = append(filePaths, searchPath)
-				}
+			skipLockfileError(searchPath, classifyReadErrors(err))
+			allPlugins = append(allPlugins, plugins...)
+			if len(plugins) > 0 {
+				filePaths = append(filePaths, searchPath)
 			}
 		}
 	}

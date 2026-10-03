@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -69,7 +68,10 @@ func (r *mqlOpamPackages) gatherData() error {
 	var filePaths []string
 
 	if searchPath != "" {
-		t, f := collectOpamPackages(afs, searchPath)
+		t, f, err := collectOpamPackages(afs, searchPath)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 		deps = append(deps, t...)
 		filePaths = append(filePaths, f...)
 	} else {
@@ -79,7 +81,8 @@ func (r *mqlOpamPackages) gatherData() error {
 				continue
 			}
 			for _, match := range matches {
-				t, f := collectOpamPackages(afs, match)
+				t, f, err := collectOpamPackages(afs, match)
+				skipLockfileError(match, err)
 				deps = append(deps, t...)
 				filePaths = append(filePaths, f...)
 			}
@@ -116,55 +119,48 @@ func isOpamFile(name string) bool {
 	return strings.HasSuffix(name, ".opam") || strings.HasSuffix(name, ".opam.locked")
 }
 
-func collectOpamPackages(afs *afero.Afero, path string) ([]*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectOpamPackages(afs *afero.Afero, path string) ([]*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		return nil, nil
+		return nil, nil, err
 	}
 
 	if !isDir {
 		if isOpamFile(path) {
 			return collectOpamFromFile(afs, path)
 		}
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// A directory can declare several packages, one *.opam file each.
 	entries, err := afs.ReadDir(path)
 	if err != nil {
-		return nil, nil
+		return nil, nil, lockfileReadError(path, err)
 	}
 	var deps []*languages.Package
 	var files []string
+	var errs []error
 	for _, e := range entries {
 		if e.IsDir() || !isOpamFile(e.Name()) {
 			continue
 		}
-		d, f := collectOpamFromFile(afs, filepath.Join(path, e.Name()))
+		d, f, err := collectOpamFromFile(afs, filepath.Join(path, e.Name()))
+		errs = append(errs, err)
 		deps = append(deps, d...)
 		files = append(files, f...)
 	}
-	return deps, files
+	return deps, files, errors.Join(errs...)
 }
 
-func collectOpamFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string) {
-	f, err := afs.Open(path)
+func collectOpamFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, &opam.Extractor{})
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open opam file")
-		return nil, nil
-	}
-	defer f.Close()
-
-	extractor := &opam.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse opam file")
-		return nil, nil
+		return nil, nil, err
 	}
 
 	// opam dependencies are reported as direct; the root is the package itself.
 	pkgs := append(bom.Direct(), bom.Transitive()...)
-	return pkgs, []string{path}
+	return pkgs, []string{path}, nil
 }
 
 func (r *mqlOpamPackages) list() ([]any, error) {

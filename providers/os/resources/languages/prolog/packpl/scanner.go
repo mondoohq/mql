@@ -69,6 +69,7 @@ func parsePackPl(afs *afero.Afero, packPath string) (*PrologPack, error) {
 
 	pack := &PrologPack{FilePath: packPath}
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())

@@ -5,6 +5,7 @@ package wordpress
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"io/fs"
 	"path"
@@ -52,20 +53,27 @@ const pluginHeaderBytes = 8 * 1024
 // A PHP file directly in the plugins directory that carries a "Plugin Name"
 // header is a single-file plugin, as Hello Dolly is in the Fedora and EPEL
 // wordpress package.
+//
+// A directory that cannot be listed is an error. A plugin whose files cannot
+// be read because of their permissions is returned as an error alongside the
+// plugins that could be read.
 func ScanPluginDir(afs *afero.Afero, dir string) ([]WordPressPlugin, error) {
 	entries, err := afs.ReadDir(dir)
 	if err != nil {
-		log.Debug().Err(err).Str("path", dir).Msg("mql[wordpress]> could not read plugins directory")
-		return nil, nil
+		return nil, err
 	}
 
 	var plugins []WordPressPlugin
+	var refused []error
 	for _, entry := range entries {
 		slug := entry.Name()
 		pluginDir := path.Join(dir, slug)
 		if !isDirOrLinkToDir(afs, entry, pluginDir) {
 			if strings.EqualFold(path.Ext(slug), ".php") {
-				if plugin := parseSingleFilePlugin(afs, pluginDir); plugin != nil {
+				plugin, err := parseSingleFilePlugin(afs, pluginDir)
+				if err != nil {
+					refused = append(refused, err)
+				} else if plugin != nil {
 					plugins = append(plugins, *plugin)
 				}
 			}
@@ -73,16 +81,17 @@ func ScanPluginDir(afs *afero.Afero, dir string) ([]WordPressPlugin, error) {
 		}
 
 		plugin, err := parsePlugin(afs, pluginDir, slug)
-		if err != nil {
-			log.Debug().Err(err).Str("path", pluginDir).Msg("mql[wordpress]> could not parse plugin")
-			continue
-		}
 		if plugin != nil {
 			plugins = append(plugins, *plugin)
 		}
+		if errors.Is(err, fs.ErrPermission) {
+			refused = append(refused, err)
+		} else if err != nil {
+			log.Debug().Err(err).Str("path", pluginDir).Msg("mql[wordpress]> could not parse plugin")
+		}
 	}
 
-	return plugins, nil
+	return plugins, errors.Join(refused...)
 }
 
 func isDirOrLinkToDir(afs *afero.Afero, entry fs.FileInfo, p string) bool {
@@ -99,13 +108,19 @@ func isDirOrLinkToDir(afs *afero.Afero, entry fs.FileInfo, p string) bool {
 // parsePlugin reads one plugin directory. The main plugin file is
 // authoritative, as it is for WordPress; readme.txt fills in what the header
 // does not carry ("Tested up to") and stands in for a plugin with no main file.
+//
+// A file of the plugin that cannot be read because of its permissions is
+// returned as an error, alongside the plugin when the others identify it.
 func parsePlugin(afs *afero.Afero, pluginDir, slug string) (*WordPressPlugin, error) {
 	plugin := &WordPressPlugin{Slug: slug}
+	var refused error
 
 	readmePath := path.Join(pluginDir, "readme.txt")
 	if exists, _ := afs.Exists(readmePath); exists {
 		readme, err := parseReadme(afs, readmePath, slug)
-		if err != nil {
+		if errors.Is(err, fs.ErrPermission) {
+			refused = err
+		} else if err != nil {
 			log.Debug().Err(err).Str("path", readmePath).Msg("mql[wordpress]> could not parse readme.txt")
 		} else {
 			*plugin = *readme
@@ -114,7 +129,11 @@ func parsePlugin(afs *afero.Afero, pluginDir, slug string) (*WordPressPlugin, er
 	}
 
 	mainFile, headers, err := findMainPluginFile(afs, pluginDir, slug)
-	if err != nil {
+	if errors.Is(err, fs.ErrPermission) {
+		if refused == nil {
+			refused = err
+		}
+	} else if err != nil {
 		return nil, err
 	}
 	if mainFile != "" {
@@ -135,24 +154,27 @@ func parsePlugin(afs *afero.Afero, pluginDir, slug string) (*WordPressPlugin, er
 	}
 
 	if plugin.Version == "" {
-		return nil, nil
+		return nil, refused
 	}
-	return plugin, nil
+	return plugin, refused
 }
 
 // parseSingleFilePlugin reads a PHP file that sits directly in the plugins
 // directory. It is a plugin when it carries a "Plugin Name" header. Its slug
 // is the "Text Domain" header, which wordpress.org requires to match the
 // plugin's slug (hello.php is "hello-dolly"), or else the file name.
-func parseSingleFilePlugin(afs *afero.Afero, p string) *WordPressPlugin {
+func parseSingleFilePlugin(afs *afero.Afero, p string) (*WordPressPlugin, error) {
 	head, err := readHead(afs, p, pluginHeaderBytes)
 	if err != nil {
+		if errors.Is(err, fs.ErrPermission) {
+			return nil, err
+		}
 		log.Debug().Err(err).Str("path", p).Msg("mql[wordpress]> could not read plugin file")
-		return nil
+		return nil, nil
 	}
 	headers := parsePluginHeaders(head)
 	if headers["plugin name"] == "" || headers["version"] == "" {
-		return nil
+		return nil, nil
 	}
 	slug := headers["text domain"]
 	if slug == "" {
@@ -165,20 +187,23 @@ func parseSingleFilePlugin(afs *afero.Afero, p string) *WordPressPlugin {
 		License:     headers["license"],
 		RequiresWp:  headers["requires at least"],
 		FilePath:    p,
-	}
+	}, nil
 }
 
 var pluginHeaderNames = []string{"plugin name", "version", "license", "requires at least", "text domain"}
 
 // findMainPluginFile returns the top-level PHP file of pluginDir that carries
 // a "Plugin Name" header, and its headers. It prefers <slug>.php, then takes
-// the files in name order, which is the order WordPress reads them in.
+// the files in name order, which is the order WordPress reads them in. When
+// none is found and a candidate could not be read because of its permissions,
+// that refusal is the error.
 func findMainPluginFile(afs *afero.Afero, pluginDir, slug string) (string, map[string]string, error) {
 	entries, err := afs.ReadDir(pluginDir)
 	if err != nil {
 		return "", nil, err
 	}
 	var candidates []string
+	var refused error
 	for _, e := range entries {
 		if e.IsDir() || !strings.EqualFold(path.Ext(e.Name()), ".php") {
 			continue
@@ -194,6 +219,9 @@ func findMainPluginFile(afs *afero.Afero, pluginDir, slug string) (string, map[s
 		p := path.Join(pluginDir, name)
 		head, err := readHead(afs, p, pluginHeaderBytes)
 		if err != nil {
+			if errors.Is(err, fs.ErrPermission) && refused == nil {
+				refused = err
+			}
 			log.Debug().Err(err).Str("path", p).Msg("mql[wordpress]> could not read plugin file")
 			continue
 		}
@@ -202,7 +230,7 @@ func findMainPluginFile(afs *afero.Afero, pluginDir, slug string) (string, map[s
 			return p, headers, nil
 		}
 	}
-	return "", nil, nil
+	return "", nil, refused
 }
 
 func readHead(afs *afero.Afero, p string, n int64) ([]byte, error) {
@@ -257,6 +285,7 @@ func parseReadme(afs *afero.Afero, readmePath, slug string) (*WordPressPlugin, e
 	}
 
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	lineNum := 0
 
 	for scanner.Scan() {

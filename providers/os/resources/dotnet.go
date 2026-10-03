@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -83,7 +82,11 @@ func (r *mqlDotnetPackages) gatherData() error {
 	var filePaths []string
 
 	if path != "" {
-		root, directDeps, transitiveDeps, filePaths = collectDotnetPackages(afs, path)
+		var err error
+		root, directDeps, transitiveDeps, filePaths, err = collectDotnetPackages(afs, path)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 	} else {
 		for _, searchPath := range defaultDotnetPaths {
 			for _, pattern := range []string{"packages.lock.json", "*.deps.json", "packages.config", "*.csproj", "*.fsproj"} {
@@ -92,7 +95,8 @@ func (r *mqlDotnetPackages) gatherData() error {
 					continue
 				}
 				for _, match := range matches {
-					collectedRoot, d, t, f := collectDotnetPackages(afs, match)
+					collectedRoot, d, t, f, err := collectDotnetPackages(afs, match)
+					skipLockfileError(match, err)
 					if root == nil {
 						root = collectedRoot
 					}
@@ -157,11 +161,10 @@ func (r *mqlDotnetPackages) gatherData() error {
 	return nil
 }
 
-func collectDotnetPackages(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectDotnetPackages(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check .NET path")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, err
 	}
 
 	if isDir {
@@ -171,62 +174,69 @@ func collectDotnetPackages(afs *afero.Afero, path string) (*languages.Package, [
 	return collectDotnetFromFile(afs, path)
 }
 
-func collectDotnetFromDir(afs *afero.Afero, dir string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
+// collectDotnetFromDir reads the .NET project files in dir. A file that
+// cannot be read or parsed is returned as an error alongside what the others
+// hold.
+func collectDotnetFromDir(afs *afero.Afero, dir string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
 	var root *languages.Package
 	var direct []*languages.Package
 	var transitive []*languages.Package
 	var files []string
+	var errs []error
 
 	// Prefer packages.lock.json (resolved versions)
 	lockPath := filepath.Join(dir, "packages.lock.json")
-	if exists, _ := afs.Exists(lockPath); exists {
-		r, d, t, f := parseDotnetFile(afs, lockPath, &packageslockjson.Extractor{})
-		root = r
-		direct = append(direct, d...)
-		transitive = append(transitive, t...)
-		files = append(files, f...)
-		return root, direct, transitive, files
+	exists, err := lockfileExists(afs, lockPath)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	if exists {
+		return parseDotnetFile(afs, lockPath, &packageslockjson.Extractor{})
+	}
+
+	entries, err := afs.ReadDir(dir)
+	if err != nil {
+		return nil, nil, nil, nil, lockfileReadError(dir, err)
 	}
 
 	// Try deps.json files
-	entries, err := afs.ReadDir(dir)
-	if err == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".deps.json") {
-				_, _, t, f := parseDotnetFile(afs, filepath.Join(dir, entry.Name()), &depsjson.Extractor{})
-				transitive = append(transitive, t...)
-				files = append(files, f...)
-			}
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".deps.json") {
+			_, _, t, f, err := parseDotnetFile(afs, filepath.Join(dir, entry.Name()), &depsjson.Extractor{})
+			errs = append(errs, err)
+			transitive = append(transitive, t...)
+			files = append(files, f...)
 		}
 	}
 
 	// Try packages.config
 	configPath := filepath.Join(dir, "packages.config")
-	if exists, _ := afs.Exists(configPath); exists {
-		_, d, t, f := parseDotnetFile(afs, configPath, &packagesconfig.Extractor{})
+	if exists, err := lockfileExists(afs, configPath); err != nil {
+		errs = append(errs, err)
+	} else if exists {
+		_, d, t, f, err := parseDotnetFile(afs, configPath, &packagesconfig.Extractor{})
+		errs = append(errs, err)
 		direct = append(direct, d...)
 		transitive = append(transitive, t...)
 		files = append(files, f...)
 	}
 
 	// Try csproj/fsproj files
-	if entries == nil {
-		entries, _ = afs.ReadDir(dir)
-	}
 	for _, entry := range entries {
 		name := entry.Name()
 		if !entry.IsDir() && (strings.HasSuffix(name, ".csproj") || strings.HasSuffix(name, ".fsproj")) {
-			_, d, t, f := parseDotnetFile(afs, filepath.Join(dir, name), &csproj.Extractor{})
+			_, d, t, f, err := parseDotnetFile(afs, filepath.Join(dir, name), &csproj.Extractor{})
+			errs = append(errs, err)
 			direct = append(direct, d...)
 			transitive = append(transitive, t...)
 			files = append(files, f...)
 		}
 	}
 
-	return root, direct, transitive, files
+	return root, direct, transitive, files, errors.Join(errs...)
 }
 
-func collectDotnetFromFile(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
+func collectDotnetFromFile(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
 	var extractor languages.Extractor
 
 	switch {
@@ -239,27 +249,18 @@ func collectDotnetFromFile(afs *afero.Afero, path string) (*languages.Package, [
 	case strings.HasSuffix(path, ".csproj") || strings.HasSuffix(path, ".fsproj"):
 		extractor = &csproj.Extractor{}
 	default:
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 
 	return parseDotnetFile(afs, path, extractor)
 }
 
-func parseDotnetFile(afs *afero.Afero, path string, extractor languages.Extractor) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	f, err := afs.Open(path)
+func parseDotnetFile(afs *afero.Afero, path string, extractor languages.Extractor) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, extractor)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open .NET file")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, err
 	}
-	defer f.Close()
-
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse .NET file")
-		return nil, nil, nil, nil
-	}
-
-	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}
+	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}, nil
 }
 
 func deduplicateDotnetPackages(pkgs []*languages.Package) []*languages.Package {

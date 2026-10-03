@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -69,7 +68,10 @@ func (r *mqlVcpkgPackages) gatherData() error {
 	var filePaths []string
 
 	if searchPath != "" {
-		t, f := collectVcpkgPackages(afs, searchPath)
+		t, f, err := collectVcpkgPackages(afs, searchPath)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 		deps = append(deps, t...)
 		filePaths = append(filePaths, f...)
 	} else {
@@ -79,7 +81,8 @@ func (r *mqlVcpkgPackages) gatherData() error {
 				continue
 			}
 			for _, match := range matches {
-				t, f := collectVcpkgPackages(afs, match)
+				t, f, err := collectVcpkgPackages(afs, match)
+				skipLockfileError(match, err)
 				deps = append(deps, t...)
 				filePaths = append(filePaths, f...)
 			}
@@ -110,45 +113,37 @@ func (r *mqlVcpkgPackages) gatherData() error {
 	return nil
 }
 
-func collectVcpkgPackages(afs *afero.Afero, path string) ([]*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectVcpkgPackages(afs *afero.Afero, path string) ([]*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		return nil, nil
+		return nil, nil, err
 	}
 
 	if isDir {
 		manifest := filepath.Join(path, "vcpkg.json")
-		if exists, _ := afs.Exists(manifest); exists {
-			return collectVcpkgFromFile(afs, manifest)
+		exists, err := lockfileExists(afs, manifest)
+		if err != nil || !exists {
+			return nil, nil, err
 		}
-		return nil, nil
+		return collectVcpkgFromFile(afs, manifest)
 	}
 
 	if strings.HasSuffix(path, "vcpkg.json") {
 		return collectVcpkgFromFile(afs, path)
 	}
 
-	return nil, nil
+	return nil, nil, nil
 }
 
-func collectVcpkgFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string) {
-	f, err := afs.Open(path)
+func collectVcpkgFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, &vcpkg.Extractor{})
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open vcpkg file")
-		return nil, nil
-	}
-	defer f.Close()
-
-	extractor := &vcpkg.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse vcpkg file")
-		return nil, nil
+		return nil, nil, err
 	}
 
 	// vcpkg dependencies are reported as direct; the root is the project itself.
 	pkgs := append(bom.Direct(), bom.Transitive()...)
-	return pkgs, []string{path}
+	return pkgs, []string{path}, nil
 }
 
 func (r *mqlVcpkgPackages) list() ([]any, error) {
