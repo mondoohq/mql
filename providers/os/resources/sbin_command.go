@@ -51,6 +51,7 @@ func sbinCommandCandidates(cmdline string) []string {
 	return res
 }
 
+// envAssignmentWord matches a VAR=value word; the value may be empty (VAR=).
 var envAssignmentWord = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=\S*$`)
 
 // elevationNotFound matches what sudo and doas print, with exit status 1, when

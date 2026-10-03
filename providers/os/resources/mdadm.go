@@ -61,12 +61,14 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 			return nil, err
 		}
 		if exit := detail.GetExitcode().Data; exit != 0 {
-			absent, err := mdadmFailure(exit, detail.GetStderr().Data)
+			skip, err := mdadmFailure(exit, detail.GetStderr().Data)
 			if err != nil {
 				return nil, err
 			}
-			if absent {
-				return []any{}, nil
+			if skip {
+				// the v13 answer for a refused array: leave it out and keep
+				// the arrays already read
+				continue
 			}
 		}
 

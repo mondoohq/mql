@@ -26,6 +26,8 @@ func TestSbinCommandCandidates(t *testing.T) {
 		"env LC_ALL=C /sbin/vgs -o vg_name",
 	}, sbinCommandCandidates("env LC_ALL=C vgs -o vg_name"))
 	assert.Equal(t, []string{"LC_ALL=C mdadm", "LC_ALL=C /usr/sbin/mdadm", "LC_ALL=C /sbin/mdadm"}, sbinCommandCandidates("LC_ALL=C mdadm"))
+	// an empty value is still an assignment
+	assert.Equal(t, []string{"env LANG= vgs", "env LANG= /usr/sbin/vgs", "env LANG= /sbin/vgs"}, sbinCommandCandidates("env LANG= vgs"))
 
 	// a tool named by its path is run as is
 	assert.Equal(t, []string{"/usr/local/sbin/zpool list"}, sbinCommandCandidates("/usr/local/sbin/zpool list"))
