@@ -33,7 +33,11 @@ mysqldb.instance @defaults("version flavor") {
   flavor string
   // Server UUID, or empty when the server does not expose one
   serverUuid string
-  // Whether TLS is available (have_ssl = YES)
+  // Whether the server accepts TLS connections
+  //
+  // Read from have_ssl where the server has it, otherwise (MySQL 8.4 and
+  // later) from performance_schema.tls_channel_status for the mysql_main
+  // channel.
   ssl bool
   // Whether the server requires encrypted connections (require_secure_transport)
   requireSecureTransport bool
@@ -55,7 +59,7 @@ mysqldb.instance @defaults("version flavor") {
   schemas() []mysqldb.schema
   // Installed plugins (information_schema.PLUGINS)
   plugins() []mysqldb.plugin
-  // Installed server components (mysql.component)
+  // Installed server components
   components() []mysqldb.component
   // Replication source connections configured on the server
   replicationChannels() []mysqldb.replicationChannel
@@ -104,14 +108,14 @@ mysqldb.user @defaults("user host") {
 
 // MySQL privilege grant
 //
-// A single privilege granted to an account, expanded from
-// information_schema. `scope` is the level it applies at (GLOBAL, SCHEMA,
-// TABLE, or ROUTINE), `schema` and `table` name the object where relevant, and
+// A single privilege granted to an account. `scope` is the level it applies at
+// (GLOBAL, SCHEMA, TABLE, COLUMN, ROUTINE, or PROXY); `schema`, `table`,
+// `column`, `routine`, and `proxiedAccount` name the object where relevant, and
 // `isGrantable` reports whether the grantee may grant it onward (GRANT OPTION).
 mysqldb.privilege @defaults("privilegeType scope") {
   // Account the privilege is granted to, as user@host
   grantee string
-  // Scope: GLOBAL, SCHEMA, TABLE, or ROUTINE
+  // Scope: GLOBAL, SCHEMA, TABLE, COLUMN, ROUTINE, or PROXY
   scope string
   // Schema the privilege applies to, when scoped below GLOBAL
   schema string
@@ -121,6 +125,17 @@ mysqldb.privilege @defaults("privilegeType scope") {
   privilegeType string
   // Whether the grantee may grant the privilege to others
   isGrantable bool
+  // Column the privilege applies to, when scope is COLUMN
+  column string
+  // Stored routine the privilege applies to, when scope is ROUTINE
+  routine string
+  // Type of the routine, PROCEDURE or FUNCTION, when scope is ROUTINE
+  routineType string
+  // Account the grantee may proxy as, when scope is PROXY
+  //
+  // Formatted as 'user'@'host'. The host may be a pattern, and ''@'' stands
+  // for any account.
+  proxiedAccount string
 }
 
 // MySQL schema
@@ -195,9 +210,10 @@ mysqldb.plugin @defaults("name status") {
 
 // MySQL component
 //
-// An installed server component (mysql.component), for example
-// component_validate_password or a keyring component. Components are the modern
-// replacement for several plugins.
+// An installed server component, for example component_validate_password or a
+// keyring component. Lists the components in mysql.component and the active
+// keyring component loaded through the server manifest. Components are the
+// modern replacement for several plugins.
 mysqldb.component @defaults("name") {
   // Component name
   name string
