@@ -43,16 +43,16 @@ func initElasticsearchCluster(runtime *plugin.Runtime, args map[string]*llx.RawD
 		return nil, nil, err
 	}
 
-	// Cluster health needs the monitor privilege. A permission denial leaves the
-	// health fields null (set below) rather than reporting misleading zeros,
-	// matching the documented degradation contract; any other error fails.
+	// Cluster health needs the monitor privilege. A refusal fails the health
+	// fields (set below) rather than reporting misleading zeros, and leaves
+	// the rest of the cluster readable; any other error fails.
 	var health esHealth
-	healthDenied := false
+	var healthErr error
 	if err := conn.Get("/_cluster/health", &health); err != nil {
 		if !connection.IsPermissionError(err) {
 			return nil, nil, err
 		}
-		healthDenied = true
+		healthErr = err
 	}
 
 	clusterID := root.ClusterUUID
@@ -78,14 +78,23 @@ func initElasticsearchCluster(runtime *plugin.Runtime, args map[string]*llx.RawD
 		return nil, nil, err
 	}
 	cluster := res.(*mqlElasticsearchCluster)
-	if healthDenied {
-		// The credential cannot read health: report null, not zero, so a policy
-		// like nodeCount == 0 does not fire on a missing privilege.
+	switch {
+	case healthErr != nil && plugin.StructuredErrors():
+		// The credential cannot read health: each health field carries the
+		// refusal, so a policy reading them fails instead of passing on null.
+		denied := refusal(healthErr, "monitor")
+		failed := plugin.StateIsSet | plugin.StateIsNull
+		cluster.HealthStatus = plugin.TValue[string]{State: failed, Error: denied}
+		cluster.NodeCount = plugin.TValue[int64]{State: failed, Error: denied}
+		cluster.DataNodeCount = plugin.TValue[int64]{State: failed, Error: denied}
+	case healthErr != nil:
+		// v13: report null, not zero, so a policy like nodeCount == 0 does
+		// not fire on a missing privilege.
 		null := plugin.StateIsSet | plugin.StateIsNull
 		cluster.HealthStatus = plugin.TValue[string]{State: null}
 		cluster.NodeCount = plugin.TValue[int64]{State: null}
 		cluster.DataNodeCount = plugin.TValue[int64]{State: null}
-	} else {
+	default:
 		set := plugin.StateIsSet
 		cluster.HealthStatus = plugin.TValue[string]{Data: health.Status, State: set}
 		cluster.NodeCount = plugin.TValue[int64]{Data: health.NumberOfNodes, State: set}
@@ -112,11 +121,11 @@ func (r *mqlElasticsearchCluster) security() (*mqlElasticsearchSecurity, error) 
 	conn := esConnection(r.MqlRuntime)
 	var usage esUsage
 	if err := conn.Get("/_xpack/usage", &usage); err != nil {
-		if connection.IsPermissionError(err) {
+		if connection.IsPermissionError(err) && !plugin.StructuredErrors() {
 			r.Security.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
 		}
-		return nil, err
+		return nil, refusal(err, "monitor")
 	}
 	s := usage.Security
 	res, err := CreateResource(r.MqlRuntime, "elasticsearch.security", map[string]*llx.RawData{
@@ -153,10 +162,7 @@ func (r *mqlElasticsearchCluster) users() ([]any, error) {
 		Metadata map[string]any `json:"metadata"`
 	}
 	if err := conn.Get("/_security/user", &resp); err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, "read_security")
 	}
 
 	names := make([]string, 0, len(resp))
@@ -192,10 +198,7 @@ func (r *mqlElasticsearchCluster) roleMappings() ([]any, error) {
 		Roles   []string `json:"roles"`
 	}
 	if err := conn.Get("/_security/role_mapping", &resp); err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, "read_security")
 	}
 
 	names := make([]string, 0, len(resp))
@@ -236,10 +239,7 @@ func (r *mqlElasticsearchCluster) apiKeys() ([]any, error) {
 		APIKeys []esAPIKey `json:"api_keys"`
 	}
 	if err := conn.Get("/_security/api_key", &resp); err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, "read_security")
 	}
 
 	// Sort for deterministic output, matching users/roles/roleMappings.

@@ -19,9 +19,9 @@ elasticsearch @root {
 //
 // The connected cluster: its name, version, health, and node counts, plus the
 // security posture, users, roles, role mappings, and API keys reached from
-// here. Populated from the cluster info, health, and security APIs; fields the
-// connecting credential is not permitted to read are left null rather than
-// failing.
+// here. Populated from the cluster info, health, and security APIs. Health and
+// the security posture need the monitor cluster privilege; users, roles, role
+// mappings, and API keys need read_security.
 elasticsearch.cluster @defaults("name version healthStatus") {
   // Cluster name
   name string

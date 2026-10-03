@@ -23,7 +23,9 @@ Arguments:
 mql shell elasticsearch localhost --user elastic --ask-pass
 ```
 
-> Prefer a least-privileged account for auditing. A user with the `monitor` cluster privilege plus `read_security` can read everything the resources below need. With only `monitor`, the cluster and security-posture summary still resolve, while the user, role, role-mapping, and API-key collections come back empty rather than failing the scan.
+> Prefer a least-privileged account for auditing. A user with the `monitor` cluster privilege plus `read_security` can read everything the resources below need.
+>
+> In mql 14, a collection the account cannot read comes back empty, and health and `security` come back null, so a check over them can pass on a cluster the scanner could not read. With the `StructuredErrors` feature enabled (the default from mql 15), a 403 errors and names the missing privilege instead: `users`, `roles`, `roleMappings`, and `apiKeys` (`read_security`), and `healthStatus`, `nodeCount`, `dataNodeCount`, and `security` (`monitor`). A 401 is reported as an authentication error.
 
 ## Usage
 
@@ -123,4 +125,4 @@ Confirm the connection and permissions with a single query:
 mql shell elasticsearch localhost --user elastic --ask-pass -c "elasticsearch.cluster { version healthStatus }"
 ```
 
-If `elasticsearch.cluster.users` comes back empty, the connecting account lacks the `read_security` privilege; grant it (or use a more privileged auditing account) and retry.
+If `elasticsearch.cluster.users` comes back empty, or errors with a forbidden error, the connecting account lacks the `read_security` privilege; grant it (or use a more privileged auditing account) and retry.

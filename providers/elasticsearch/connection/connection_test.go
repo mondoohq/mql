@@ -5,6 +5,11 @@ package connection
 
 import (
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -78,5 +83,59 @@ func TestPermissionError(t *testing.T) {
 	}
 	if IsPermissionError(nil) {
 		t.Error("nil is not a permission error")
+	}
+}
+
+// The body Elasticsearch 8.19 returned live to a user holding only the
+// monitor cluster privilege.
+const monuserUserGet403 = `{"error":{"root_cause":[{"type":"security_exception","reason":"action [cluster:admin/xpack/security/user/get] is unauthorized for user [monuser] with effective roles [monitor_only], this action is granted by the cluster privileges [read_security,manage_security,all]"}],"type":"security_exception","reason":"action [cluster:admin/xpack/security/user/get] is unauthorized for user [monuser] with effective roles [monitor_only], this action is granted by the cluster privileges [read_security,manage_security,all]"},"status":403}`
+
+func TestGetRefusalKeepsStatusAndReason(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Elastic-Product", "Elasticsearch")
+		switch r.URL.Path {
+		case "/_security/user":
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprint(w, monuserUserGet403)
+		default:
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":{"type":"security_exception","reason":"missing authentication credentials for REST request [/]"},"status":401}`)
+		}
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	c := newTestConn(t, map[string]string{OptionHost: u.Hostname(), OptionPort: u.Port(), OptionScheme: "http"})
+
+	err := c.Get("/_security/user", nil)
+	var pe *PermissionError
+	if !errors.As(err, &pe) {
+		t.Fatalf("Get = %v, want a PermissionError", err)
+	}
+	if pe.StatusCode != http.StatusForbidden {
+		t.Errorf("StatusCode = %d, want 403", pe.StatusCode)
+	}
+	if !strings.Contains(pe.Reason, "granted by the cluster privileges [read_security,manage_security,all]") {
+		t.Errorf("Reason = %q, want the cluster's explanation", pe.Reason)
+	}
+	if !strings.Contains(err.Error(), "read_security") {
+		t.Errorf("Error() = %q drops the reason", err.Error())
+	}
+
+	err = c.Get("/", nil)
+	if !errors.As(err, &pe) || pe.StatusCode != http.StatusUnauthorized {
+		t.Errorf("Get(/) = %v, want a 401 PermissionError", err)
+	}
+	// a wrapped PermissionError is still one
+	if !IsPermissionError(fmt.Errorf("users: %w", err)) {
+		t.Error("IsPermissionError misses a wrapped PermissionError")
+	}
+}
+
+func TestErrorReasonIgnoresOtherBodies(t *testing.T) {
+	for _, body := range []string{"", "not json", `{"status":403}`, `<html>Forbidden</html>`} {
+		if got := errorReason([]byte(body)); got != "" {
+			t.Errorf("errorReason(%q) = %q, want empty", body, got)
+		}
 	}
 }
