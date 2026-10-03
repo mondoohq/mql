@@ -167,7 +167,7 @@ func (u *mqlUfw) runtimeStatus(binary string) (string, error) {
 // ufwStatusCommand runs ufw status in the C locale. ufw translates through
 // Python's gettext, which reads LANGUAGE before LC_ALL, so LC_ALL=C alone
 // still prints "Status: Inaktiv" under LANGUAGE=de. gettext skips an empty
-// LANGUAGE.
+// LANGUAGE. binary is unquoted because it is always one of ufwBinaryPaths.
 func ufwStatusCommand(binary string) string {
 	return "env LANGUAGE= LC_ALL=C LANG=C " + binary + " status"
 }
