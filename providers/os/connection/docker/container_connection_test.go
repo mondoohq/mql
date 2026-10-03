@@ -10,11 +10,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/moby/moby/client"
-
 	"github.com/google/uuid"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	specs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -182,4 +181,15 @@ func TestDockerContainerConnection(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, cmd)
 	assert.Equal(t, 0, cmd.ExitStatus)
+}
+
+// An amd64 image running under emulation on an arm64 Docker Desktop reported
+// the daemon's arm64, so its packages got arm64 purls and matched the wrong
+// advisories. The image's architecture wins.
+func TestContainerArchitecture(t *testing.T) {
+	assert.Equal(t, "amd64", containerArchitecture("amd64", "", "arm64"),
+		"a multi-platform image inspects with no architecture; the manifest names it")
+	assert.Equal(t, "amd64", containerArchitecture("", "amd64", "arm64"))
+	assert.Equal(t, "arm64", containerArchitecture("", "", "arm64"), "the daemon's is the fallback")
+	assert.Equal(t, "", containerArchitecture("", "", ""))
 }
