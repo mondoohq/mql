@@ -26,6 +26,7 @@ import (
 	"go.mondoo.com/mql/providers/os/resources/lsof"
 	"go.mondoo.com/mql/providers/os/resources/ports"
 	"go.mondoo.com/mql/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers/os/resources/processes"
 )
 
 type mqlPortsInternal struct {
@@ -1132,6 +1133,13 @@ func (s *mqlPort) process() (*mqlProcess, error) {
 
 	procs, err := ports.processesBySocket()
 	if err != nil {
+		// v13 resolved no process for a socket it could not see under
+		// hidepid; keep that null until structured errors are the default.
+		var hidden *processes.HiddenProcessesError
+		if errors.As(err, &hidden) && !plugin.StructuredErrors() {
+			s.Process = plugin.TValue[*mqlProcess]{State: plugin.StateIsSet | plugin.StateIsNull}
+			return nil, nil
+		}
 		return nil, err
 	}
 	proc := procs[s.inode]
