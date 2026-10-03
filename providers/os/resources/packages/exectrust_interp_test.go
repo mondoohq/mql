@@ -4,7 +4,8 @@
 package packages
 
 import (
-	"errors"
+	"fmt"
+	"io/fs"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -72,7 +73,7 @@ func fakeProbe(ls string, heads map[string]string, pathEnv string) execProbe {
 		head: func(p string) ([]byte, error) {
 			h, ok := heads[p]
 			if !ok {
-				return nil, errors.New("cannot read " + p)
+				return nil, fmt.Errorf("cannot read %s: %w", p, fs.ErrPermission)
 			}
 			return []byte(h), nil
 		},
@@ -189,7 +190,7 @@ func TestTrustedExecutableUnreadable(t *testing.T) {
 	delete(heads, "/opt/tools/elftool")
 	x := fakeProbe(al2027NodeTarball, heads, al2027SecurePath)
 	_, reason := trustedExecutable("/opt/tools/elftool", x, 0)
-	assert.Equal(t, "cannot read /opt/tools/elftool", reason)
+	assert.Equal(t, "cannot read /opt/tools/elftool: permission denied", reason)
 
 	// RHEL's sudo is mode 4111: an unprivileged scan may run it without
 	// reading it
