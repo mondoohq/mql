@@ -788,12 +788,10 @@ func TestNftMatchValues_ElemWithAttributes(t *testing.T) {
 	assert.Equal(t, []string{"192.0.2.1/32"}, nftMatchValues("==", right, nftAddrValue))
 }
 
+// nft --version on a connection whose commands fail to run must not cache an
+// empty version as measured.
 func TestNftablesVersion_CommandCannotRun(t *testing.T) {
 	n := mustResource(t, failingCommandRuntime(t), "nftables").(*mqlNftables)
 	_, err := n.fetchVersion()
 	require.Error(t, err)
 }
-
-// pgrep that fails to run used to read as "listed, no postmasters", which
-
-// skipped the /proc walk and lost every running cluster.
