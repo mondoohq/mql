@@ -144,6 +144,8 @@ func objectPrivilegesForGrantee(db *sql.DB, granteeStr string) ([]objectPrivileg
 		if plugin.StructuredErrors() {
 			return nil, llx.Forbidden(err, llx.WithPermissions("SELECT ON mysql.procs_priv"))
 		}
+		// v13 listed no routine grants: skip them and still read the
+		// proxy grants below
 	} else {
 		for routines.Next() {
 			var schema, name, typ, procPriv string
