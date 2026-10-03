@@ -10,6 +10,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/types"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 // initMongoInstance fetches the server's version and command-line options once
@@ -30,8 +31,11 @@ func initMongoInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	}
 
 	var cmdLine bson.M
-	// getCmdLineOpts needs a privilege; degrade to buildInfo-only rather than fail.
-	_ = conn.RunAdminCommand(bson.D{{Key: "getCmdLineOpts", Value: 1}}, &cmdLine)
+	// Everything but the version comes from getCmdLineOpts. When it is
+	// refused, those fields carry the error instead of the defaults below: a
+	// default would report auth and TLS as disabled on a server that enforces
+	// both.
+	cmdLineErr := conn.RunAdminCommand(bson.D{{Key: "getCmdLineOpts", Value: 1}}, &cmdLine)
 	parsed := asMap(deepGet(cmdLine, "parsed"))
 
 	// TLS block lives under net.tls (7.x) or net.ssl (legacy).
@@ -81,14 +85,46 @@ func initMongoInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	// logAppend is not a runtime parameter, so getCmdLineOpts is the only
 	// source; absent means the server default, which replaces the log file.
 	args["logAppend"] = llx.BoolData(toBool(deepGet(parsed, "systemLog", "logAppend")))
+
+	// Not gated on plugin.StructuredErrors: the opt-in keeps a v13 null or
+	// empty, and these fields never were one. They reported the defaults
+	// above as facts, which states the opposite of a hardened server's
+	// posture, so there is no v13 answer worth keeping.
+	if cmdLineErr != nil {
+		setCmdLineError(args, classifyRefusal(cmdLineErr, "getCmdLineOpts"))
+	}
 	return args, nil, nil
+}
+
+// cmdLineFields are the instance fields read from getCmdLineOpts, with their
+// types. port is not among them: it falls back to the port the connection
+// reached, which is a fact rather than a default.
+var cmdLineFields = map[string]types.Type{
+	"bindIp":                types.String,
+	"authenticationEnabled": types.Bool,
+	"authorizationEnabled":  types.Bool,
+	"clusterAuthMode":       types.String,
+	"tlsMode":               types.String,
+	"tlsDisabledProtocols":  types.String,
+	"tlsFIPSMode":           types.Bool,
+	"javascriptEnabled":     types.Bool,
+	"auditLogDestination":   types.String,
+	"logVerbosity":          types.Int,
+	"logAppend":             types.Bool,
+}
+
+// setCmdLineError replaces every getCmdLineOpts-derived field with err.
+func setCmdLineError(args map[string]*llx.RawData, err error) {
+	for name, typ := range cmdLineFields {
+		args[name] = &llx.RawData{Type: typ, Error: err}
+	}
 }
 
 func (r *mqlMongoInstance) parameters() ([]any, error) {
 	conn := mongoConnection(r.MqlRuntime)
 	var res bson.M
 	if err := conn.RunAdminCommand(bson.D{{Key: "getParameter", Value: "*"}}, &res); err != nil {
-		return nil, err
+		return nil, classifyRefusal(err, "getParameter")
 	}
 
 	// Sort keys for stable output.
@@ -123,9 +159,16 @@ func (r *mqlMongoInstance) databases() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	result, err := client.ListDatabases(mongoContext(), bson.D{})
+	// Without the listDatabases action the server silently narrows the answer
+	// to the databases the account can read. authorizedDatabases=false makes
+	// it refuse instead, so a partial list never passes for the full one.
+	opts := options.ListDatabases()
+	if plugin.StructuredErrors() {
+		opts.SetAuthorizedDatabases(false)
+	}
+	result, err := client.ListDatabases(mongoContext(), bson.D{}, opts)
 	if err != nil {
-		return nil, err
+		return nil, classifyRefusal(err, "listDatabases")
 	}
 
 	serverID := r.__id
