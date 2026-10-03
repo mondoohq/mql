@@ -13,6 +13,7 @@ import (
 	"errors"
 	"io/fs"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,6 +29,23 @@ type Conf struct {
 	// Files lists every file that contributed (main + includes, in load
 	// order, deduplicated).
 	Files []string
+}
+
+// Overlay applies another parse over this one, as the server applies
+// postgresql.auto.conf after postgresql.conf: each of its settings wins, and
+// its files are read after this one's.
+func (c *Conf) Overlay(other *Conf) {
+	if other == nil {
+		return
+	}
+	for k, v := range other.Params {
+		c.Params[k] = v
+	}
+	for _, f := range other.Files {
+		if !slices.Contains(c.Files, f) {
+			c.Files = append(c.Files, f)
+		}
+	}
 }
 
 // FileReader returns the textual content of `path`. A missing file must be
