@@ -285,13 +285,14 @@ func TestImageConnections(t *testing.T) {
 				fSearch := fs.(*tar.FS)
 				switch test.testfile {
 				case "/etc/alpine-release":
-					infos, err := fSearch.Find("/", regexp.MustCompile(`alpine-release`), "file", nil, nil)
+					infos, err := fSearch.Find("/", regexp.MustCompile(`/etc/alpine-release`), "file", nil, nil)
 					require.NoError(t, err)
 					assert.Equal(t, 1, len(infos))
 				case "/etc/centos-release":
-					infos, err := fSearch.Find("/", regexp.MustCompile(`centos-release`), "file", nil, nil)
+					// the regex matches the whole path, as find -regex does
+					infos, err := fSearch.Find("/", regexp.MustCompile(`/etc/centos-release`), "file", nil, nil)
 					require.NoError(t, err)
-					assert.Equal(t, 6, len(infos))
+					assert.Equal(t, []string{"/etc/centos-release"}, infos)
 				}
 			})
 		})
