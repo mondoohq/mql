@@ -275,3 +275,19 @@ func TestCollectLuaPackagesRockTreeWithoutLuaRocksIsNotARocksDir(t *testing.T) {
 	pkgs, _ = collectLuaPackages(&afero.Afero{Fs: mem}, "/srv/rocks-copy")
 	assert.Equal(t, []string{"argparse@0.7.1-1"}, names(pkgs))
 }
+
+// `luarocks list` names a rock by its version directory, a rock read from
+// disk by its rockspec, so lua.packages.files differed between a scan that
+// found the CLI and one that did not (root on RHEL 7, whose secure_path has
+// no /usr/local/bin). Fails if the CLI's version directories are reported as
+// they are again.
+func TestLuaRocksCLIFilesMatchDisk(t *testing.T) {
+	afs := luaHostFS(t, "rocks-5.1")
+	cli := "argparse\t0.7.1-1\tinstalled\t/usr/local/lib/luarocks/rocks-5.1\n" +
+		"inspect\t3.1.1-0\tinstalled\t/usr/local/lib/luarocks/rocks-5.1\n" +
+		"gone\t1.0-1\tinstalled\t/usr/local/lib/luarocks/rocks-5.1\n"
+	_, cliFps := luarocks.ParseLuaRocksList(stringsReader(cli), "")
+	_, diskFps := addLuaRockTrees(afs, nil, nil, []string{"/usr/local"})
+
+	assert.Equal(t, append(diskFps, "/usr/local/lib/luarocks/rocks-5.1/gone/1.0-1"), luaRocksListFiles(afs, cliFps))
+}
