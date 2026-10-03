@@ -25,6 +25,8 @@ type mqlTomcatInternal struct {
 	discovered bool
 	homePath   string
 	basePath   string
+	// parsedServer is server.xml as server() parsed it, for webapps()
+	parsedServer *tomcat.Server
 }
 
 // mqlTomcatWebappInternal keeps the installation paths on each webapp so that
@@ -421,6 +423,9 @@ func (t *mqlTomcat) server() (*mqlTomcatServer, error) {
 		t.Server = plugin.TValue[*mqlTomcatServer]{State: plugin.StateIsSet | plugin.StateIsNull}
 		return nil, nil
 	}
+	t.lock.Lock()
+	t.parsedServer = parsed
+	t.lock.Unlock()
 
 	return newTomcatServer(t.MqlRuntime, parsed, f, serverPath, p)
 }
@@ -562,17 +567,10 @@ func (t *mqlTomcat) webapps() ([]any, error) {
 		return []any{}, nil
 	}
 
-	serverPath := t.confPath("server.xml")
-	_, content, err := readFileResource(t.MqlRuntime, serverPath)
-	if err != nil {
-		return nil, err
-	}
 	p := t.installPaths()
-	parsed, err := tomcat.ParseServerXML([]byte(content), p)
-	if err != nil || parsed == nil {
-		return []any{}, err
-	}
-
+	t.lock.Lock()
+	parsed := t.parsedServer
+	t.lock.Unlock()
 	res := []any{}
 	for _, app := range tomcatDeployedApps(afs, parsed, p) {
 		obj, err := CreateResource(t.MqlRuntime, "tomcat.webapp", map[string]*llx.RawData{
@@ -612,6 +610,9 @@ type tomcatDeployedApp struct {
 // context name that an earlier source deploys is not deployed again.
 func tomcatDeployedApps(afs *afero.Afero, srv *tomcat.Server, p tomcat.Paths) []tomcatDeployedApp {
 	var res []tomcatDeployedApp
+	if srv == nil {
+		return nil
+	}
 	seen := map[string]bool{}
 	for _, service := range srv.Services {
 		for _, engine := range service.Engines {
