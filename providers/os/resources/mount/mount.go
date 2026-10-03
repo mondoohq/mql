@@ -231,7 +231,17 @@ func mountsFromFSLinux(fs afero.Fs) ([]MountPoint, error) {
 			return nil, err
 		}
 		defer f.Close()
-		return ParseFstab(f)
+		mounts, err := ParseFstab(f)
+		if err != nil {
+			return nil, err
+		}
+		// fstab lists what would be mounted at boot. With no /proc/mounts
+		// there is no running system to say what is mounted, and an entry
+		// such as a noauto cdrom never is, so none reads as mounted.
+		for i := range mounts {
+			mounts[i].Unmounted = true
+		}
+		return mounts, nil
 	}
 	return nil, errors.New("could not find mounts")
 }

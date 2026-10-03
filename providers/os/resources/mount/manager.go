@@ -15,7 +15,8 @@ type MountPoint struct {
 	FSType     string
 	Options    map[string]string
 	// Unmounted is true for an access path that carries no file system, such
-	// as a Windows drive letter assigned to an empty optical drive.
+	// as a Windows drive letter assigned to an empty optical drive, and for an
+	// entry read from /etc/fstab rather than from the running system.
 	Unmounted bool
 	// Overmounted is true for a mount hidden by a later mount on the same
 	// path. It is still mounted, but the path shows the later mount.

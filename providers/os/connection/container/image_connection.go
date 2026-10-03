@@ -236,8 +236,19 @@ func NewFromTar(id uint32, conf *inventory.Config, asset *inventory.Asset) (*tar
 	}
 
 	conn.PlatformIdentifier = containerid.MondooContainerImageID(hash.String())
-	if imgConfig, err := img.ConfigFile(); err == nil {
+if imgConfig, err := img.ConfigFile(); err == nil && imgConfig != nil {
 		conn.ImageConfig = tar.ImageConfigFrom(imgConfig)
+		conn.PlatformArchitecture = imgConfig.Architecture
 	}
 	return conn, nil
+}
+
+// IsImageTarball reports whether path is a saved image (`docker save`, which
+// carries a manifest.json) rather than an exported filesystem.
+func IsImageTarball(path string) bool {
+	if path == "" {
+		return false
+	}
+	_, err := tarball.ImageFromPath(path, nil)
+	return err == nil
 }

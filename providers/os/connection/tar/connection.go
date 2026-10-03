@@ -7,6 +7,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -36,6 +37,7 @@ type Connection struct {
 	conf      *inventory.Config
 	fetchFn   func() (string, error)
 	fetchOnce sync.Once
+	loadErr   error
 
 	fs      *FS
 	closeFN func()
@@ -87,20 +89,33 @@ func (p *Connection) RunCommand(command string) (*shared.Command, error) {
 	return &res, nil
 }
 
+// EnsureLoaded fetches and indexes the tar file on first use. A failure is
+// kept and returned by Fetch.
 func (p *Connection) EnsureLoaded() {
+	_ = p.Fetch()
+}
+
+// Fetch fetches and indexes the tar file once and returns the error if that
+// failed. Without it a tar that could not be fetched (an empty container id,
+// a missing file) scanned as an empty filesystem: no platform, no packages,
+// no files, and no failure.
+func (p *Connection) Fetch() error {
 	if p.fetchFn != nil {
 		p.fetchOnce.Do(func() {
 			f, err := p.fetchFn()
 			if err != nil {
 				log.Error().Err(err).Msg("tar> could not fetch tar file")
+				p.loadErr = fmt.Errorf("could not fetch tar file: %w", err)
 				return
 			}
 			if err := p.LoadFile(f); err != nil {
 				log.Error().Err(err).Str("file", f).Msg("tar> could not load tar file")
+				p.loadErr = fmt.Errorf("could not load tar file %s: %w", f, err)
 				return
 			}
 		})
 	}
+	return p.loadErr
 }
 
 // ImageConfig is what a container image's configuration says about the

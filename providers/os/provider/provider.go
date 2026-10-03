@@ -557,10 +557,20 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 			}
 
 		case shared.Type_Tar.String():
-			conn, err = tar.NewConnection(connId, conf, asset)
+			var tarConn *tar.Connection
+			if container.IsImageTarball(conf.Options[tar.OPTION_FILE]) {
+				// `docker save` output: scan the image's filesystem
+				tarConn, err = container.NewFromTar(connId, conf, asset)
+			} else {
+				tarConn, err = tar.NewConnection(connId, conf, asset)
+			}
 			if err != nil {
 				return nil, err
 			}
+			if err := tarConn.Fetch(); err != nil {
+				return nil, err
+			}
+			conn = tarConn
 
 			fingerprint, p, err := id.IdentifyPlatform(conn, req, asset.Platform, asset.IdDetector)
 			if err == nil {
@@ -572,10 +582,14 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 			}
 
 		case shared.Type_DockerSnapshot.String():
-			conn, err = docker.NewSnapshotConnection(connId, conf, asset)
+			snapshot, err := docker.NewSnapshotConnection(connId, conf, asset)
 			if err != nil {
 				return nil, err
 			}
+			if err := snapshot.Fetch(); err != nil {
+				return nil, err
+			}
+			conn = snapshot
 
 			fingerprint, p, err := id.IdentifyPlatform(conn, req, asset.Platform, asset.IdDetector)
 			if err == nil {
@@ -797,8 +811,15 @@ func parseContainerSubcommand(subcommand, target string, conf *inventory.Config)
 		conf.Host = target
 		conf.DelayDiscovery = true
 	case "tar":
-		conf.Type = shared.Type_DockerSnapshot.String()
+		// a tar file on disk: an exported filesystem or a saved image. The
+		// snapshot connection exports a stopped container by id and never
+		// read a path, so a tar scanned as an empty filesystem.
+		conf.Type = shared.Type_Tar.String()
 		conf.Path = target
+		if conf.Options == nil {
+			conf.Options = map[string]string{}
+		}
+		conf.Options[tar.OPTION_FILE] = target
 	case "container":
 		conf.Type = shared.Type_DockerContainer.String()
 		conf.Host = target

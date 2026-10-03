@@ -4,6 +4,7 @@
 package tar_test
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -107,4 +108,19 @@ func cacheImageToTar(source string, filename string) error {
 	}
 
 	return tar.StreamToTmpFile(mutate.Extract(img), w)
+}
+
+// A tar that cannot be fetched must fail the connection. It used to be logged
+// and the scan went on over an empty filesystem: no platform, no packages.
+func TestFetchFailureIsAnError(t *testing.T) {
+	require.NoError(t, cacheAlpine())
+	c, err := tar.NewConnection(0, &inventory.Config{
+		Type:    "tar",
+		Options: map[string]string{tar.OPTION_FILE: alpineContainerPath},
+	}, &inventory.Asset{}, tar.WithFetchFn(func() (string, error) {
+		return "", errors.New("invalid container name or ID: value is empty")
+	}))
+	require.NoError(t, err)
+	assert.ErrorContains(t, c.Fetch(), "value is empty")
+	assert.ErrorContains(t, c.Fetch(), "value is empty", "the error stays")
 }
