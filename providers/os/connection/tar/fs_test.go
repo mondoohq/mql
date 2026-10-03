@@ -156,7 +156,7 @@ func TestTarFileAlpine(t *testing.T) {
 	t.Run("test file search", func(t *testing.T) {
 		fs := c.FileSystem()
 		fSearch := fs.(*tar.FS)
-		infos, err := fSearch.Find("/", regexp.MustCompile(`alpine-release`), "file", nil, nil)
+		infos, err := fSearch.Find("/", regexp.MustCompile(`.*/alpine-release`), "file", nil, nil)
 		require.NoError(t, err)
 		assert.Equal(t, 1, len(infos))
 	})
