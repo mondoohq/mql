@@ -110,3 +110,20 @@ func ParseProcessCmdline(content io.Reader) (string, error) {
 
 	return strings.Join(strParts, " "), nil
 }
+
+// ParseProcessArgv splits /proc/<pid>/cmdline into the process's argv. The
+// kernel separates arguments with NUL, so an argument that contains spaces
+// stays one element, unlike in the space-joined command line. Empty arguments
+// between others are kept; the terminating NUL, and the NUL padding a process
+// leaves after rewriting its title, are not arguments. A kernel thread has an
+// empty cmdline and no argv.
+func ParseProcessArgv(data []byte) []string {
+	parts := strings.Split(string(data), "\x00")
+	for len(parts) > 0 && parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	return parts
+}
