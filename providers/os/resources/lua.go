@@ -203,7 +203,60 @@ func collectLuaPackages(afs *afero.Afero, searchPath string) ([]*languages.Packa
 	}
 
 	// a rocks directory under another name
+	if !looksLikeRocksDir(afs, searchPath) {
+		return nil, nil
+	}
 	return luarocks.ParseRocksDir(afs, searchPath)
+}
+
+// looksLikeRocksDir reports whether dir, which LuaRocks did not name, holds
+// rocks: it has the manifest LuaRocks writes into every rocks directory, or
+// each of its directories is a rock, which holds version directories that have
+// a rockspec or rock_manifest. It stops at the first directory that is not a
+// rock, so a rock tree without rocks of its own, such as Amazon Linux's /usr
+// with LuaRocks in /usr/local, costs a listing of the tree and of its first
+// directory instead of a read of every directory two levels down.
+func looksLikeRocksDir(afs *afero.Afero, dir string) bool {
+	if ok, _ := afs.Exists(path.Join(dir, "manifest")); ok {
+		return true
+	}
+	entries, err := afs.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	found := false
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if !isRock(afs, path.Join(dir, entry.Name())) {
+			return false
+		}
+		found = true
+	}
+	return found
+}
+
+// isRock reports whether the first entry of a rock's directory is a version
+// directory that holds an installed rock. It lists the entry names only: over
+// SSH with --sudo, reading a directory's entries stats each of them, which for
+// /usr/bin is a command per program.
+func isRock(afs *afero.Afero, rockDir string) bool {
+	f, err := afs.Open(rockDir)
+	if err != nil {
+		return false
+	}
+	names, err := f.Readdirnames(-1)
+	f.Close()
+	if err != nil || len(names) == 0 {
+		return false
+	}
+	slices.Sort(names)
+	versionDir := path.Join(rockDir, names[0])
+	if isDir, err := afs.IsDir(versionDir); err != nil || !isDir {
+		return false
+	}
+	return luarocks.RockEvidence(afs, versionDir) != ""
 }
 
 // collectLuaRockTree reads every rocks directory of the rock tree rooted at

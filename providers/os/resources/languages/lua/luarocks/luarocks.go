@@ -122,7 +122,7 @@ func ParseRocksDir(afs *afero.Afero, rocksDir string) (languages.Packages, []str
 			version := vEntry.Name()
 
 			versionDir := path.Join(pkgDir, version)
-			evidence := rockEvidence(afs, versionDir)
+			evidence := RockEvidence(afs, versionDir)
 			if evidence == "" {
 				continue
 			}
@@ -147,10 +147,10 @@ func ParseRocksDir(afs *afero.Afero, rocksDir string) (languages.Packages, []str
 	return pkgs, filePaths
 }
 
-// rockEvidence returns the file that marks versionDir as an installed rock:
+// RockEvidence returns the file that marks versionDir as an installed rock:
 // its rockspec, or else its rock_manifest. It returns "" for a directory that
 // is not a rock.
-func rockEvidence(afs *afero.Afero, versionDir string) string {
+func RockEvidence(afs *afero.Afero, versionDir string) string {
 	files, err := afs.ReadDir(versionDir)
 	if err != nil {
 		return ""
