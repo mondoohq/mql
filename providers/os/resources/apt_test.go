@@ -99,12 +99,63 @@ Enabled: no`
 	require.False(t, last.Enabled)
 }
 
+// add-apt-repository on Ubuntu 24.04 writes the PPA's key inline. deb822
+// continues a field on lines starting with a space and writes an empty line
+// inside it as " .". signedBy used to flatten the key to one line with the
+// " ." markers left in.
+func TestParseAptDeb822InlineSignedBy(t *testing.T) {
+	b, err := os.ReadFile("testdata/apt-sources/ubuntu-2404-ppa-inline-key.sources")
+	require.NoError(t, err)
+	repos := parseAptDeb822(string(b))
+	require.Len(t, repos, 1)
+	assert.Equal(t, "https://ppa.launchpadcontent.net/git-core/ppa/ubuntu/", repos[0].URL)
+	assert.Equal(t, []string{"main"}, repos[0].Components)
+
+	key := repos[0].SignedBy
+	lines := strings.Split(key, "\n")
+	assert.Equal(t, "-----BEGIN PGP PUBLIC KEY BLOCK-----", lines[0])
+	assert.Equal(t, "", lines[1], "the \" .\" line is an empty line")
+	assert.True(t, strings.HasPrefix(lines[2], "mQINB"))
+	assert.Equal(t, "-----END PGP PUBLIC KEY BLOCK-----", lines[len(lines)-1])
+	assert.NotContains(t, key, " .")
+}
+
+func TestParseAptDeb822MultiLineValues(t *testing.T) {
+	repos := parseAptDeb822(`Types: deb
+URIs: http://deb.example.invalid/a
+  http://deb.example.invalid/b
+Suites: s
+Components: main
+  contrib
+Signed-By: /usr/share/keyrings/a.gpg
+  /usr/share/keyrings/b.gpg
+`)
+	require.Len(t, repos, 2)
+	assert.Equal(t, "http://deb.example.invalid/b", repos[1].URL)
+	assert.Equal(t, []string{"main", "contrib"}, repos[0].Components)
+	assert.Equal(t, "/usr/share/keyrings/a.gpg /usr/share/keyrings/b.gpg", repos[0].SignedBy)
+}
+
 func TestAptBool(t *testing.T) {
-	for _, v := range []string{"yes", "YES", "true", "1", " yes "} {
+	for _, v := range []string{"yes", "YES", "true", "1", " yes ", "0x1"} {
 		require.True(t, aptBool(v), v)
 	}
-	for _, v := range []string{"no", "false", "0", "", "maybe"} {
+	for _, v := range []string{"no", "false", "0", "", "maybe", "2"} {
 		require.False(t, aptBool(v), v)
+	}
+}
+
+// apt skips a stanza only when Enabled is a boolean false; an empty value or
+// one that is not a boolean leaves it enabled (checked with apt-get update
+// --print-uris on Debian 9 and Ubuntu 26.04).
+func TestParseAptDeb822Enabled(t *testing.T) {
+	for value, want := range map[string]bool{
+		"": true, "maybe": true, "2": true, "010": true, "yes": true,
+		"0": false, "0x0": false, "off": false, "No": false,
+	} {
+		repos := parseAptDeb822("Types: deb\nURIs: http://deb.example.invalid/x\nSuites: s\nComponents: main\nEnabled: " + value + "\n")
+		require.Len(t, repos, 1)
+		assert.Equal(t, want, repos[0].Enabled, "Enabled: %q", value)
 	}
 }
 
@@ -118,6 +169,11 @@ func TestIsAptSourceFile(t *testing.T) {
 		"/etc/apt/sources.list.d/kali.sources",
 		"/etc/apt/sources.list.d/ubuntu.sources",
 		"/etc/apt/sources.list.d/docker.list",
+		// accepted by Debian 9's apt 1.4 and Ubuntu 26.04's apt 3.2
+		"/etc/apt/sources.list.d/G03UPPER.list",
+		"/etc/apt/sources.list.d/g03.dot.list",
+		"/etc/apt/sources.list.d/g03:colon.list",
+		"/etc/apt/sources.list.d/g03_ok-1.list",
 	}
 	for _, p := range included {
 		t.Run("include/"+p, func(t *testing.T) {
@@ -133,6 +189,15 @@ func TestIsAptSourceFile(t *testing.T) {
 		// unrelated files that share the directory
 		"/etc/apt/sources.list.d/README",
 		"/etc/apt/sources.list.d/deadsnakes.gpg",
+		// names apt skips: Debug::GetListOfFilesInDir reports "bad
+		// character" for all but the dot file, which it skips silently
+		"/etc/apt/sources.list.d/g03 bad~name.list",
+		"/etc/apt/sources.list.d/g03~tilde.list",
+		"/etc/apt/sources.list.d/g03+plus.list",
+		"/etc/apt/sources.list.d/g03,comma.list",
+		"/etc/apt/sources.list.d/g03@at.list",
+		"/etc/apt/sources.list.d/g03\u00e9.list",
+		"/etc/apt/sources.list.d/.g03hidden.list",
 		"/etc/apt/sources.list.d/",
 		"",
 	}

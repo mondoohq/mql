@@ -94,7 +94,7 @@ func TestAptConfigCustom(t *testing.T) {
 
 func TestAptBoolParam(t *testing.T) {
 	for value, want := range map[string]bool{
-		"1": true, "0": false, "2": true, "true": true, "FALSE": false, "Yes": true, "no": false,
+		"1": true, "0": false, "true": true, "FALSE": false, "Yes": true, "no": false,
 		"on": true, "off": false, "with": true, "without": false, "enable": true, "disable": false,
 		" true ": true,
 	} {
@@ -103,6 +103,30 @@ func TestAptBoolParam(t *testing.T) {
 	assert.True(t, aptBoolParam(map[string]any{}, "k", true), "absent: the default")
 	assert.False(t, aptBoolParam(map[string]any{"k": "maybe"}, "k", false), "unrecognized: the default")
 	assert.True(t, aptBoolParam(map[string]any{"k": "maybe"}, "k", true), "unrecognized: the default")
+	assert.True(t, aptBoolParam(map[string]any{"k": ""}, "k", true), "empty: the default")
+}
+
+// What `apt-config -o G03::B=<value> shell X G03::B/b` prints on Debian 9
+// (apt 1.4) and Ubuntu 26.04 (apt 3.2). A number is a boolean only when it is
+// 0 or 1 as strtol reads it; "2" used to read as true and "0x0" as true.
+func TestAptStringToBool(t *testing.T) {
+	for value, want := range map[string]bool{
+		"0x0": false, "0x1": true, " 1": true, "+1": true, "-0": false,
+		"TRUE": true, "On": true, "enable": true,
+	} {
+		assert.Equal(t, want, aptStringToBool(value, !want), "value %q", value)
+	}
+	// not a boolean: APT falls back to the default, either way
+	for _, value := range []string{"2", "010", "07", "1_0", "bogus", "-1", "0x", "+", "18446744073709551617"} {
+		assert.False(t, aptStringToBool(value, false), "value %q", value)
+		assert.True(t, aptStringToBool(value, true), "value %q", value)
+	}
+	// Acquire::AllowInsecureRepositories "2" and APT::Install-Recommends "0x0"
+	a := &mqlAptConfig{}
+	v, _ := a.allowInsecureRepositories(map[string]any{"Acquire::AllowInsecureRepositories": "2"})
+	assert.False(t, v)
+	v, _ = a.installRecommends(map[string]any{"APT::Install-Recommends": "0x0"})
+	assert.False(t, v)
 }
 
 // APT option names are case-insensitive, and apt-config dump prints a key in
