@@ -332,8 +332,9 @@ type modprobeLine struct {
 
 // modprobeLines splits a modprobe.d file into lines the way libkmod's
 // getline_wrapped reads it: a backslash before the newline joins the next
-// line (both are dropped), a backslash before any other byte keeps both,
-// and a \r before the newline stays in the line.
+// line (both are dropped), a backslash before any other byte is dropped and
+// the byte kept (`a=x\y` reads `a=xy`, `\\` reads `\`), and a \r before
+// the newline stays in the line.
 func modprobeLines(content string) []modprobeLine {
 	var lines []modprobeLine
 	var buf strings.Builder
@@ -346,13 +347,15 @@ func modprobeLines(content string) []modprobeLine {
 			buf.Reset()
 			num++
 			start = num
-		case c == '\\' && i+1 < len(content):
+		case c == '\\':
 			i++
+			if i == len(content) {
+				continue
+			}
 			if content[i] == '\n' {
 				num++
 				continue
 			}
-			buf.WriteByte(c)
 			buf.WriteByte(content[i])
 		default:
 			buf.WriteByte(c)

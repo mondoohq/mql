@@ -583,11 +583,14 @@ func TestModprobeLines(t *testing.T) {
 		}, modprobeLines(sweepCRLFConf))
 	})
 
-	t.Run("an escaped backslash does not continue the line", func(t *testing.T) {
+	t.Run("a backslash escapes the next byte", func(t *testing.T) {
+		// options fixbs a=x\y b=p\\ and options fixbs2 c=1\\\ + "  d=2";
+		// modprobe -c prints "options fixbs a=xy b=p\" and
+		// "options fixbs2 c=1\  d=2" on kmod 20, 23, 31 and 34.2
 		assert.Equal(t, []modprobeLine{
-			{num: 1, text: "install a /bin/echo \\\\"},
-			{num: 2, text: "blacklist b"},
-		}, modprobeLines("install a /bin/echo \\\\\nblacklist b"))
+			{num: 1, text: "options fixbs a=xy b=p\\"},
+			{num: 2, text: "options fixbs2 c=1\\  d=2"},
+		}, modprobeLines("options fixbs a=x\\y b=p\\\\\noptions fixbs2 c=1\\\\\\\n  d=2\n"))
 	})
 }
 
