@@ -5,7 +5,9 @@ package users
 
 import (
 	"bufio"
+	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 
@@ -18,6 +20,9 @@ import (
 func ParseEtcPasswd(input io.Reader) ([]*User, error) {
 	var users []*User
 	scanner := bufio.NewScanner(input)
+	// glibc has no line limit for /etc/passwd; read whole lines so a long
+	// GECOS field does not end the scan early.
+	scanner.Buffer(make([]byte, 0, 64*1024), math.MaxInt)
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -54,6 +59,9 @@ func ParseEtcPasswd(input io.Reader) ([]*User, error) {
 				Shell:       m[6],
 			})
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read passwd entries: %w", err)
 	}
 
 	return users, nil
