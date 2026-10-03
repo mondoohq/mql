@@ -588,6 +588,9 @@ func (c *coordinator) unsafeStartProvider(id string, update UpdateProvidersConfi
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to start provider "+id)
 	}
+	if err := ensureWritableTempDir(); err != nil {
+		return nil, errors.Wrap(err, "failed to start provider "+id)
+	}
 
 	// lastCmd remembers the subprocess of the most recent connect attempt so
 	// the initial-start failure path below can report how it ended. Written
