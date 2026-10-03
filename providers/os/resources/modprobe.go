@@ -341,13 +341,13 @@ func modprobeLines(content string) []modprobeLine {
 	num, start := 1, 1
 	for i := 0; i < len(content); i++ {
 		c := content[i]
-		switch {
-		case c == '\n':
+		switch c {
+		case '\n':
 			lines = append(lines, modprobeLine{num: start, text: buf.String()})
 			buf.Reset()
 			num++
 			start = num
-		case c == '\\':
+		case '\\':
 			i++
 			if i == len(content) {
 				continue
