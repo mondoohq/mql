@@ -257,29 +257,117 @@ func (fs *FS) open(header *tar.Header) (io.Reader, error) {
 	return reader, nil
 }
 
-// Find searches for files and returns the file info, regex can be nil
+// Find searches the archive the way the command-based files.find does with
+// `find -L`, so an image scan and a scan of the running system agree:
+//
+//   - from is a directory: only entries below from (or from itself) match, not
+//     siblings that merely share its name as a prefix.
+//   - typ is a comma-separated list of find types (file, directory, link, ...
+//     or their one-letter forms). A symlink and a hardlink are tested by their
+//     target's type, so a link to a regular file is a "file"; "link" matches
+//     every symlink. A dangling symlink is only ever a link.
+//   - perm is a `find -perm -mode` mask: every bit in it must be set on the
+//     target's mode. A zero mask is no filter.
+//   - r must match the whole path, as `find -regex` does.
+//   - a symlink loop is skipped, as find -L skips it with an error.
+//
+// Links to directories are reported but not descended into, as the command
+// backend's `-xtype l -prune` does.
 func (fs *FS) Find(from string, r *regexp.Regexp, typ string, perm *uint32, depth *int) ([]string, error) {
+	from = Abs(from)
+	prefix := from
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+	types := findTypes(typ)
+	if r != nil {
+		anchored, err := regexp.Compile(`^(?:` + r.String() + `)$`)
+		if err != nil {
+			return nil, err
+		}
+		r = anchored
+	}
+
 	list := []string{}
-	for k := range fs.FileMap {
-		p := strings.HasPrefix(k, from)
-		m := true
-		if r != nil {
-			m = r.MatchString(k)
+	for k, entry := range fs.FileMap {
+		if k != from && !strings.HasPrefix(k, prefix) {
+			continue
 		}
 		if !depthMatch(from, k, depth) {
 			continue
 		}
-		log.Trace().Str("path", k).Str("from", from).Str("prefix", from).Bool("prefix", p).Bool("m", m).Msg("check if matches")
-		if p && m {
-			entry := fs.FileMap[k]
-			if (typ == "directory" && entry.Typeflag == tar.TypeDir) || (typ == "file" && entry.Typeflag == tar.TypeReg) || typ == "" {
-				list = append(list, k)
-				log.Debug().Msg("matches")
+		if r != nil && !r.MatchString(k) {
+			continue
+		}
+		// the target decides type and mode, as with find -L
+		target := entry
+		if entry.Typeflag == tar.TypeSymlink || entry.Typeflag == tar.TypeLink {
+			info, err := fs.Stat(k)
+			switch {
+			case err == nil:
+				if h, ok := info.Sys().(*tar.Header); ok {
+					target = h
+				}
+			case !os.IsNotExist(err):
+				// a link loop: find -L reports it as an error and skips it
 				continue
 			}
 		}
+
+		if len(types) > 0 && !matchesFindType(types, entry, target) {
+			continue
+		}
+		if perm != nil && *perm != 0 && uint32(target.Mode)&*perm != *perm {
+			continue
+		}
+		list = append(list, k)
 	}
 	return list, nil
+}
+
+// findTypes parses a files.find type list into find's one-letter types.
+func findTypes(typ string) []byte {
+	res := []byte{}
+	for _, t := range strings.Split(typ, ",") {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		switch t[0] {
+		case 'b', 'c', 'd', 'p', 'f', 'l', 's':
+			res = append(res, t[0])
+		}
+	}
+	return res
+}
+
+func matchesFindType(types []byte, entry *tar.Header, target *tar.Header) bool {
+	for _, t := range types {
+		var ok bool
+		switch t {
+		case 'l':
+			ok = entry.Typeflag == tar.TypeSymlink
+		case 'f':
+			ok = target.Typeflag == tar.TypeReg
+		case 'd':
+			ok = target.Typeflag == tar.TypeDir
+		case 'b':
+			ok = target.Typeflag == tar.TypeBlock
+		case 'c':
+			ok = target.Typeflag == tar.TypeChar
+		case 'p':
+			ok = target.Typeflag == tar.TypeFifo
+		case 's':
+			// tar has no typeflag for a socket (tar and docker export skip
+			// them), so no entry is one, as find -type s finds none in an
+			// extracted image
+			ok = false
+		}
+		if ok {
+			return true
+		}
+	}
+	return false
 }
 
 func depthMatch(from, filepath string, depth *int) bool {
