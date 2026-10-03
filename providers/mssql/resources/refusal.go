@@ -29,6 +29,25 @@ const (
 	errCrossDatabaseUnsupported = 40515 // Reference to database and/or server name ... is not supported
 )
 
+// SQL Server error numbers for a database that exists but cannot be opened
+// right now.
+const (
+	errSingleUser          = 924 // Database '%.*ls' is already open and can only have one user at a time
+	errDatabaseOffline     = 942 // Database '%.*ls' cannot be opened because it is offline
+	errDatabaseTransition  = 952 // Database '%.*ls' is in transition
+	errDatabaseUnavailable = 4060
+)
+
+// isDatabaseUnavailable reports whether err is a database that cannot be
+// opened right now (single-user, offline, in transition).
+func isDatabaseUnavailable(err error) bool {
+	switch sqlErrorNumber(err) {
+	case errSingleUser, errDatabaseOffline, errDatabaseTransition, errDatabaseUnavailable:
+		return true
+	}
+	return false
+}
+
 // sqlErrorNumber returns the SQL Server error number of err, or 0.
 func sqlErrorNumber(err error) int32 {
 	var e interface{ SQLErrorNumber() int32 }

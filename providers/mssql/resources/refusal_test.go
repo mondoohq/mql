@@ -94,3 +94,14 @@ func TestRefusedListAbsenceAndOtherErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestIsDatabaseUnavailable(t *testing.T) {
+	if !isDatabaseUnavailable(mssqldb.Error{Number: 942, Message: "Database 'db4_off' cannot be opened because it is offline."}) {
+		t.Error("942 not an unavailable database")
+	}
+	for _, err := range []error{errProxiesDenied, errMissingView, errors.New("driver: bad connection")} {
+		if isDatabaseUnavailable(err) {
+			t.Errorf("isDatabaseUnavailable(%v) = true", err)
+		}
+	}
+}

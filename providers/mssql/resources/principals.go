@@ -173,8 +173,11 @@ func (c *mqlMssqlLogin) databaseUsers() ([]any, error) {
 		}
 		users, err := databaseUsersMatching(c.MqlRuntime, dbName, c.cacheSid)
 		if err != nil {
-			log.Warn().Err(err).Str("database", dbName).Str("login", c.Name.Data).Msg("mssql> skipping database for login.databaseUsers")
-			continue
+			if isRefusal(err) || isDatabaseUnavailable(err) {
+				log.Warn().Err(err).Str("database", dbName).Str("login", c.Name.Data).Msg("mssql> skipping database for login.databaseUsers")
+				continue
+			}
+			return nil, err
 		}
 		list = append(list, users...)
 	}
