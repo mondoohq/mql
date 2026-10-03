@@ -94,6 +94,10 @@ type mycnfState struct {
 	// bits that such a check fails to recognize as "already done", which
 	// sends the resource into an endless re-parse.
 	resolved bool
+	// refused reports that this product's option files could not be read
+	// because the scan was refused, while structured errors are off. The
+	// resource then reports its fields null (see markUnsetFieldsNull).
+	refused bool
 	// rootPath is the option file that was parsed, empty when the product
 	// this resource covers is not installed on the target.
 	rootPath string
@@ -249,6 +253,9 @@ func (st *mycnfState) locate(runtime *plugin.Runtime, afs *afero.Afero, wantFlav
 	}
 	for _, candidate := range readableCandidates(candidates, isFile) {
 		if !isFile(candidate) {
+			if _, err := afs.Stat(candidate); errors.Is(err, fs.ErrPermission) && st.refuse(runtime, probe, wantFlavor, err) {
+				return st.parseErr
+			}
 			continue
 		}
 		// Every candidate is parsed before it can be judged. On RHEL-family
@@ -259,6 +266,9 @@ func (st *mycnfState) locate(runtime *plugin.Runtime, afs *afero.Afero, wantFlav
 		if err != nil && len(conf.Files) == 0 {
 			// The root file itself could not be read, so there is nothing
 			// to tell which product it belongs to.
+			if errors.Is(err, fs.ErrPermission) && st.refuse(runtime, probe, wantFlavor, err) {
+				return st.parseErr
+			}
 			continue
 		}
 		banner := func() string { return installedServerFlavor(runtime) }
@@ -658,6 +668,30 @@ func classifyOptionFileError(err error) error {
 		return llx.Forbidden(err)
 	}
 	return err
+}
+
+// refuse handles a candidate option file the scan was refused, for example
+// because /etc/mysql is 0750 root:mysql. Such a file may well be the root
+// file of this product's server, so reading the host as one without it would
+// report the server's defaults (bind address "*", port 3306) as configured.
+// The refusal counts when the installed server is this product, judged from
+// the server binaries alone since no option file could be read; otherwise
+// the candidate belongs to the other product and is skipped.
+//
+// With structured errors on the refusal is a Forbidden error. Without them it
+// keeps the shape v13 reported, no file, and sets refused so the resource
+// reports its fields null. refuse reports whether the refusal counts.
+func (st *mycnfState) refuse(runtime *plugin.Runtime, probe mycnf.FileProbe, wantFlavor string, err error) bool {
+	banner := func() string { return installedServerFlavor(runtime) }
+	if mycnf.DetectFlavor(&mycnf.Conf{}, probe, banner) != wantFlavor {
+		return false
+	}
+	if plugin.StructuredErrors() {
+		st.parseErr = llx.Forbidden(err)
+	} else {
+		st.refused = true
+	}
+	return true
 }
 
 // installedServerVersion returns the version of the server the named resource

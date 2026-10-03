@@ -6,6 +6,7 @@ package resources
 import (
 	"errors"
 	"io"
+	"io/fs"
 	"path"
 	"strings"
 
@@ -68,7 +69,13 @@ func resolveCassandraPathArg(runtime *plugin.Runtime, args map[string]*llx.RawDa
 // path. A miss is not an error: Cassandra is most likely not installed, so
 // the field is marked set and null and the dependent fields report empty
 // rather than cascading a missing-file error.
-func probeCassandraFile(runtime *plugin.Runtime, state *plugin.TValue[*mqlFile], name string) (*mqlFile, error) {
+//
+// A candidate that cannot be checked because its directory refuses the
+// scanning user (/etc/cassandra 0750 root:cassandra) is not a miss: the file
+// may well be there, and reading the host as one without Cassandra reports
+// the server's defaults (AllowAllAuthenticator, local JMX) for a node that
+// runs with neither. See cassandraRefusal.
+func probeCassandraFile(runtime *plugin.Runtime, resource any, state *plugin.TValue[*mqlFile], name string) (*mqlFile, error) {
 	conn, ok := runtime.Connection.(shared.Connection)
 	if !ok {
 		state.State = plugin.StateIsSet | plugin.StateIsNull
@@ -77,7 +84,15 @@ func probeCassandraFile(runtime *plugin.Runtime, state *plugin.TValue[*mqlFile],
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 
 	for _, p := range cassandraConfPaths(name) {
-		if ok, _ := afs.Exists(p); ok {
+		ok, err := afs.Exists(p)
+		if err != nil && errors.Is(err, fs.ErrPermission) {
+			if err := cassandraRefusal(resource, err); err != nil {
+				return nil, err
+			}
+			state.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		if ok {
 			f, err := CreateResource(runtime, "file", map[string]*llx.RawData{
 				"path": llx.StringData(p),
 			})
@@ -95,12 +110,17 @@ func probeCassandraFile(runtime *plugin.Runtime, state *plugin.TValue[*mqlFile],
 // readCassandraFile reports the content of a located configuration file, and
 // the empty string when there is none. Every parser treats empty content as a
 // server running on its defaults, so the callers do not need to distinguish
-// the two.
-func readCassandraFile(file *mqlFile) (string, error) {
+// the two. A file whose existence the scan was refused is not one that is
+// missing (see cassandraRefusal).
+func readCassandraFile(resource any, file *mqlFile) (string, error) {
 	if file == nil {
 		return "", nil
 	}
-	if exists := file.GetExists(); exists.Error != nil || !exists.Data {
+	exists := file.GetExists()
+	if exists.Error != nil && errors.Is(exists.Error, fs.ErrPermission) {
+		return "", cassandraRefusal(resource, exists.Error)
+	}
+	if exists.Error != nil || !exists.Data {
 		return "", nil
 	}
 	content := file.GetContent()
@@ -108,6 +128,18 @@ func readCassandraFile(file *mqlFile) (string, error) {
 		return "", content.Error
 	}
 	return content.Data, nil
+}
+
+// cassandraRefusal reports a configuration file the scan was refused. With
+// structured errors on it is a Forbidden error. Without them it keeps the
+// shape v13 reported, no file, but marks every field of the resource null:
+// v13 went on to report the server's defaults as if they had been read.
+func cassandraRefusal(resource any, err error) error {
+	if plugin.StructuredErrors() {
+		return llx.Forbidden(err)
+	}
+	markUnsetFieldsNull(resource)
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -197,22 +229,23 @@ func initCassandraConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 }
 
 func (c *mqlCassandraConf) id() (string, error) {
+	// A file that could not be located (a refusal) is reported on the fields,
+	// where its error keeps its kind. Failing here would fail the resource's
+	// creation, and that error reaches the caller as an unclassified RPC
+	// error.
 	file := c.GetFile()
-	if file.Error != nil {
-		return "", file.Error
-	}
-	if file.Data == nil {
+	if file.Error != nil || file.Data == nil {
 		return "cassandra.yaml", nil
 	}
 	return file.Data.Path.Data, nil
 }
 
 func (c *mqlCassandraConf) file() (*mqlFile, error) {
-	return probeCassandraFile(c.MqlRuntime, &c.File, "cassandra.yaml")
+	return probeCassandraFile(c.MqlRuntime, c, &c.File, "cassandra.yaml")
 }
 
 func (c *mqlCassandraConf) params(file *mqlFile) (any, error) {
-	content, err := readCassandraFile(file)
+	content, err := readCassandraFile(c, file)
 	if err != nil {
 		return nil, err
 	}
@@ -547,18 +580,19 @@ func initCassandraEnv(runtime *plugin.Runtime, args map[string]*llx.RawData) (ma
 }
 
 func (c *mqlCassandraEnv) id() (string, error) {
+	// A file that could not be located (a refusal) is reported on the fields,
+	// where its error keeps its kind. Failing here would fail the resource's
+	// creation, and that error reaches the caller as an unclassified RPC
+	// error.
 	file := c.GetFile()
-	if file.Error != nil {
-		return "", file.Error
-	}
-	if file.Data == nil {
+	if file.Error != nil || file.Data == nil {
 		return "cassandra-env.sh", nil
 	}
 	return file.Data.Path.Data, nil
 }
 
 func (c *mqlCassandraEnv) file() (*mqlFile, error) {
-	return probeCassandraFile(c.MqlRuntime, &c.File, "cassandra-env.sh")
+	return probeCassandraFile(c.MqlRuntime, c, &c.File, "cassandra-env.sh")
 }
 
 // parseEnv reads the script backing this resource.
@@ -567,7 +601,7 @@ func (c *mqlCassandraEnv) file() (*mqlFile, error) {
 // cheap enough that running it for each is not worth an extra cache: the file
 // content itself is already memoized by the file resource.
 func (c *mqlCassandraEnv) parseEnv(file *mqlFile) (*cassandraconf.Env, error) {
-	content, err := readCassandraFile(file)
+	content, err := readCassandraFile(c, file)
 	if err != nil {
 		return nil, err
 	}
@@ -656,22 +690,23 @@ func initCassandraRackdc(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 }
 
 func (c *mqlCassandraRackdc) id() (string, error) {
+	// A file that could not be located (a refusal) is reported on the fields,
+	// where its error keeps its kind. Failing here would fail the resource's
+	// creation, and that error reaches the caller as an unclassified RPC
+	// error.
 	file := c.GetFile()
-	if file.Error != nil {
-		return "", file.Error
-	}
-	if file.Data == nil {
+	if file.Error != nil || file.Data == nil {
 		return "cassandra-rackdc.properties", nil
 	}
 	return file.Data.Path.Data, nil
 }
 
 func (c *mqlCassandraRackdc) file() (*mqlFile, error) {
-	return probeCassandraFile(c.MqlRuntime, &c.File, "cassandra-rackdc.properties")
+	return probeCassandraFile(c.MqlRuntime, c, &c.File, "cassandra-rackdc.properties")
 }
 
 func (c *mqlCassandraRackdc) params(file *mqlFile) (map[string]any, error) {
-	content, err := readCassandraFile(file)
+	content, err := readCassandraFile(c, file)
 	if err != nil {
 		return nil, err
 	}

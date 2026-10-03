@@ -565,11 +565,11 @@ func initPostgresqlConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 }
 
 func (s *mqlPostgresqlConf) id() (string, error) {
+	// A refusal to read the file is reported on the fields, where its error
+	// keeps its kind. Failing here would fail the resource's creation, and
+	// that error reaches the caller as an unclassified RPC error.
 	file := s.GetFile()
-	if file.Error != nil {
-		return "", file.Error
-	}
-	if file.Data == nil {
+	if file.Error != nil || file.Data == nil {
 		return "postgresql.conf", nil
 	}
 	return file.Data.Path.Data, nil
@@ -976,11 +976,11 @@ func initPostgresqlHba(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 }
 
 func (s *mqlPostgresqlHba) id() (string, error) {
+	// A refusal to read the file is reported on the fields, where its error
+	// keeps its kind. Failing here would fail the resource's creation, and
+	// that error reaches the caller as an unclassified RPC error.
 	file := s.GetFile()
-	if file.Error != nil {
-		return "", file.Error
-	}
-	if file.Data == nil {
+	if file.Error != nil || file.Data == nil {
 		return "postgresql.hba", nil
 	}
 	return file.Data.Path.Data, nil
@@ -1076,11 +1076,11 @@ func initPostgresqlIdent(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 }
 
 func (s *mqlPostgresqlIdent) id() (string, error) {
+	// A refusal to read the file is reported on the fields, where its error
+	// keeps its kind. Failing here would fail the resource's creation, and
+	// that error reaches the caller as an unclassified RPC error.
 	file := s.GetFile()
-	if file.Error != nil {
-		return "", file.Error
-	}
-	if file.Data == nil {
+	if file.Error != nil || file.Data == nil {
 		return "postgresql.ident", nil
 	}
 	return file.Data.Path.Data, nil

@@ -84,11 +84,12 @@ func initMariadbConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 }
 
 func (s *mqlMariadbConf) id() (string, error) {
+	// A refusal to read the option files is reported on the fields, where
+	// its error keeps its kind. Failing here would fail the resource's
+	// creation, and that error reaches the caller as an unclassified RPC
+	// error.
 	file := s.GetFile()
-	if file.Error != nil {
-		return "", file.Error
-	}
-	if file.Data == nil {
+	if file.Error != nil || file.Data == nil {
 		return "mariadb.conf", nil
 	}
 	return file.Data.Path.Data, nil
@@ -98,6 +99,7 @@ func (s *mqlMariadbConf) file() (*mqlFile, error) {
 	if err := s.resolve(s.MqlRuntime, mycnf.FlavorMariaDB, mariadbConfPaths, ""); err != nil {
 		return nil, err
 	}
+	s.nullIfRefused()
 	f := s.rootFile()
 	if f == nil {
 		// No MariaDB option file on this host, either because MariaDB is not
@@ -109,7 +111,18 @@ func (s *mqlMariadbConf) file() (*mqlFile, error) {
 }
 
 func (s *mqlMariadbConf) ensure(file *mqlFile) error {
-	return s.ensureFrom(s.MqlRuntime, mycnf.FlavorMariaDB, mariadbConfPaths, file)
+	err := s.ensureFrom(s.MqlRuntime, mycnf.FlavorMariaDB, mariadbConfPaths, file)
+	s.nullIfRefused()
+	return err
+}
+
+// nullIfRefused marks every field that comes from the option files null when
+// the scan was refused them (see mycnfState.refuse). userFiles reads the
+// per-user files on its own and stays.
+func (s *mqlMariadbConf) nullIfRefused() {
+	if s.refused {
+		markUnsetFieldsNull(s, "UserFiles")
+	}
 }
 
 func (s *mqlMariadbConf) files(file *mqlFile) ([]any, error) {

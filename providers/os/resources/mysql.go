@@ -144,11 +144,12 @@ func initMysqlConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[s
 }
 
 func (s *mqlMysqlConf) id() (string, error) {
+	// A refusal to read the option files is reported on the fields, where
+	// its error keeps its kind. Failing here would fail the resource's
+	// creation, and that error reaches the caller as an unclassified RPC
+	// error.
 	file := s.GetFile()
-	if file.Error != nil {
-		return "", file.Error
-	}
-	if file.Data == nil {
+	if file.Error != nil || file.Data == nil {
 		return "mysql.conf", nil
 	}
 	return file.Data.Path.Data, nil
@@ -160,6 +161,7 @@ func (s *mqlMysqlConf) file() (*mqlFile, error) {
 	if err := s.resolve(s.MqlRuntime, mycnf.FlavorMySQL, mysqlConfPaths, ""); err != nil {
 		return nil, err
 	}
+	s.nullIfRefused()
 	f := s.rootFile()
 	if f == nil {
 		// No MySQL option file on this host, either because MySQL is not
@@ -173,7 +175,18 @@ func (s *mqlMysqlConf) file() (*mqlFile, error) {
 }
 
 func (s *mqlMysqlConf) ensure(file *mqlFile) error {
-	return s.ensureFrom(s.MqlRuntime, mycnf.FlavorMySQL, mysqlConfPaths, file)
+	err := s.ensureFrom(s.MqlRuntime, mycnf.FlavorMySQL, mysqlConfPaths, file)
+	s.nullIfRefused()
+	return err
+}
+
+// nullIfRefused marks every field that comes from the option files null when
+// the scan was refused them (see mycnfState.refuse). userFiles reads the
+// per-user files on its own and stays.
+func (s *mqlMysqlConf) nullIfRefused() {
+	if s.refused {
+		markUnsetFieldsNull(s, "UserFiles")
+	}
 }
 
 func (s *mqlMysqlConf) files(file *mqlFile) ([]any, error) {
