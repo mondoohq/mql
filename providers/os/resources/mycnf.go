@@ -104,7 +104,8 @@ type mycnfState struct {
 	parseErr error
 	// launch is how the server is started, when a running server process
 	// or its systemd unit says. Its command line options override the
-	// option files.
+	// option files. The zero value, with an empty Binary, means no server
+	// command line was found, and contributes nothing.
 	launch mycnf.ServerLaunch
 	// groups are the option groups the server binary says it reads, empty
 	// when it could not be asked and the static per-product list applies.

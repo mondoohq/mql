@@ -78,6 +78,11 @@ func ParseServerArgs(argv []string) (ServerLaunch, bool) {
 		}
 		rest = rest[1:]
 	}
+	if launch.NoDefaults {
+		// --no-defaults reads no file at all; the server refuses to start
+		// when it is combined with a file argument, so none applies.
+		launch.DefaultsFile, launch.ExtraFile = "", ""
+	}
 
 	for i, arg := range rest {
 		if arg == "--" {
@@ -118,6 +123,9 @@ func WithGroupSuffix(groups []string, suffix string) []string {
 	return out
 }
 
+// argsGroup is the group MergeWithArgs files command line options under.
+const argsGroup = "\x00command-line"
+
 // MergeWithArgs is Merge with the options given on a server's command line
 // applied last. The server reads its command line after every option file, so
 // each of those options wins over a file's, except that a cumulative option
@@ -126,15 +134,16 @@ func MergeWithArgs(c *Conf, args []Option, groups ...string) map[string]string {
 	if len(args) == 0 {
 		return Merge(c, groups...)
 	}
-	// Command line options carry no group. No option read from a file has
-	// an empty group, since the parser drops options before any header.
+	// Command line options carry no group. They are merged under a name no
+	// group header can produce (the parser never yields a NUL), so no
+	// option read from a file can be mistaken for one of them.
 	all := &Conf{Options: make([]Option, 0, len(c.Options)+len(args))}
 	all.Options = append(all.Options, c.Options...)
 	for _, opt := range args {
-		opt.Section = ""
+		opt.Section = argsGroup
 		all.Options = append(all.Options, opt)
 	}
-	return Merge(all, append(slices.Clone(groups), "")...)
+	return Merge(all, append(slices.Clone(groups), argsGroup)...)
 }
 
 // Append adds the options, groups and files of another parse after this

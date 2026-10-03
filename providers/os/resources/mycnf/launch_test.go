@@ -29,8 +29,8 @@ func TestParseServerArgsOptionFileArguments(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "mariadbd", launch.Binary)
 	assert.True(t, launch.NoDefaults)
-	assert.Equal(t, "/etc/mysql/extra.cnf", launch.ExtraFile)
 	assert.Equal(t, "_eu", launch.GroupSuffix)
+	assert.Empty(t, launch.ExtraFile, "--no-defaults reads no file, extra file included")
 	require.Len(t, launch.Options, 1)
 	assert.Equal(t, "port", launch.Options[0].Name)
 }
@@ -116,4 +116,14 @@ func TestConfAppendReadsExtraFileLast(t *testing.T) {
 	assert.Equal(t, "3306", merged["port"])
 	assert.Equal(t, []string{"/etc/mysql/my.cnf", "/etc/mysql/extra.cnf"}, conf.Files)
 	assert.Contains(t, conf.SectionNames(), "galera")
+}
+
+// An option from a file can never be taken for a command line option, even
+// one the parser filed under an empty group.
+func TestMergeWithArgsKeepsFileOptionsOutOfTheCommandLine(t *testing.T) {
+	conf := &Conf{Options: []Option{{Section: "", Name: "local_infile", Value: "1"}}}
+	launch, _ := ParseServerArgs([]string{"/usr/sbin/mysqld", "--port=3307"})
+	merged := MergeWithArgs(conf, launch.Options, "mysqld")
+	assert.NotContains(t, merged, "local_infile")
+	assert.Equal(t, "3307", merged["port"])
 }
