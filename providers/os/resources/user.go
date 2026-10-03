@@ -340,6 +340,28 @@ func (u *mqlUser) sshkeys() ([]any, error) {
 	return res, nil
 }
 
+// maxSSHKeyFileSize bounds what is read from ~/.ssh. The largest private key
+// OpenSSH writes (RSA 16384, PEM) is about 13 KB.
+const maxSSHKeyFileSize = 1 << 20
+
+// isSSHKeyFile reports whether the walked entry is a regular file, or a
+// symlink to one, small enough to be a key.
+func isSSHKeyFile(fs afero.Fs, path string, f os.FileInfo) bool {
+	if f.Mode()&os.ModeSymlink != 0 {
+		target, err := fs.Stat(path)
+		if err != nil {
+			return false
+		}
+		f = target
+	}
+	// The cat filesystem used over SSH --sudo marks a symlink by adding
+	// ModeSymlink to the target's type, so ignore that bit here.
+	if f.Mode().Type()&^os.ModeSymlink != 0 {
+		return false
+	}
+	return f.Size() <= maxSSHKeyFileSize
+}
+
 // sshKeyCandidates walks dir and returns every file that may hold a private
 // key: everything except public keys, known_hosts files and ssh config.
 func sshKeyCandidates(fs afero.Fs, dir string) ([]string, error) {
@@ -356,6 +378,12 @@ func sshKeyCandidates(fs afero.Fs, dir string) ([]string, error) {
 			return classifyFsError(err)
 		}
 		if f == nil || f.IsDir() {
+			return nil
+		}
+		// Reading a FIFO blocks until a writer shows up, and a socket or
+		// device cannot be read at all, so only regular files (and symlinks
+		// to them) can hold a key. ssh-keygen refuses the others too.
+		if !isSSHKeyFile(fs, path, f) {
 			return nil
 		}
 
