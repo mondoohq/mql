@@ -6,7 +6,9 @@ package groups
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 
@@ -23,6 +25,9 @@ import (
 func ParseEtcGroup(input io.Reader) ([]*Group, error) {
 	var groups []*Group
 	scanner := bufio.NewScanner(input)
+	// glibc has no line limit for /etc/group; read whole lines so a group
+	// with thousands of members does not end the scan early.
+	scanner.Buffer(make([]byte, 0, 64*1024), math.MaxInt)
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -36,7 +41,10 @@ func ParseEtcGroup(input io.Reader) ([]*Group, error) {
 			// parse gid
 			gid, err := strconv.ParseInt(m[2], 10, 0)
 			if err != nil {
-				log.Error().Err(err).Str("group", m[0]).Msg("could not parse gid")
+				// glibc skips the line; reporting it with gid 0 would invent
+				// a second root group.
+				log.Error().Err(err).Str("group", m[0]).Msg("could not parse gid, skipping group")
+				continue
 			}
 
 			// extract usernames
@@ -55,6 +63,9 @@ func ParseEtcGroup(input io.Reader) ([]*Group, error) {
 		} else {
 			log.Warn().Str("line", line).Msg("cannot parse etc group entry")
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read group entries: %w", err)
 	}
 
 	return groups, nil
