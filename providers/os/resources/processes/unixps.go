@@ -416,7 +416,7 @@ func (upm *UnixProcessManager) freebsdComms() map[int64]string {
 // the rest of the line as the name.
 func ParseFreeBSDComms(input io.Reader) map[int64]string {
 	res := map[int64]string{}
-	scanner := bufio.NewScanner(input)
+	scanner := iox.NewLineScanner(input)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		pidStr, comm, ok := strings.Cut(line, " ")
