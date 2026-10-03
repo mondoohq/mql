@@ -106,7 +106,7 @@ func TestRedhat8Parser(t *testing.T) {
 		Epoch:       "1",
 		Arch:        "x86_64",
 		Description: "A general purpose cryptography library with TLS implementation",
-		PUrl:        "pkg:rpm/redhat/openssl-libs@1:1.1.1g-15.el8_3?arch=x86_64&distro=rhel-8.4&epoch=1",
+		PUrl:        "pkg:rpm/redhat/openssl-libs@1.1.1g-15.el8_3?arch=x86_64&distro=rhel-8.4&epoch=1",
 		CPEs: []string{
 			"cpe:2.3:a:red_hat\\,_inc.:openssl-libs:1.1.1g-15.el8_3:1:*:*:*:*:x86_64:*",
 			"cpe:2.3:a:red_hat\\,_inc.:openssl-libs:1.1.1g-15.el8_3:*:*:*:*:*:x86_64:*",
@@ -126,7 +126,7 @@ func TestRedhat8Parser(t *testing.T) {
 		Epoch:       "1",
 		Arch:        "x86_64",
 		Description: "Libraries for accessing D-BUS",
-		PUrl:        "pkg:rpm/redhat/dbus-libs@1:1.12.8-12.el8_4.2?arch=x86_64&distro=rhel-8.4&epoch=1",
+		PUrl:        "pkg:rpm/redhat/dbus-libs@1.12.8-12.el8_4.2?arch=x86_64&distro=rhel-8.4&epoch=1",
 		CPEs: []string{
 			"cpe:2.3:a:red_hat\\,_inc.:dbus-libs:1.12.8-12.el8_4.2:1:*:*:*:*:x86_64:*",
 			"cpe:2.3:a:red_hat\\,_inc.:dbus-libs:1.12.8-12.el8_4.2:*:*:*:*:*:x86_64:*",
@@ -774,6 +774,9 @@ func TestRpmEpochParityAcrossCollectionPaths(t *testing.T) {
 		name            string
 		pkg             *rpmdb.PackageInfo
 		expectedVersion string
+		// the purl spec for rpm carries the epoch in the epoch qualifier
+		// only, never in the version
+		expectedPurl string
 	}{
 		{
 			name: "no epoch",
@@ -783,6 +786,7 @@ func TestRpmEpochParityAcrossCollectionPaths(t *testing.T) {
 				Summary: "Python 3 interpreter",
 			},
 			expectedVersion: "3.9.25-7.el9_8.2",
+			expectedPurl:    "pkg:rpm/redhat/python3@3.9.25-7.el9_8.2?arch=aarch64&distro=rhel-9",
 		},
 		{
 			// Epoch is a nil pointer when rpm never recorded one at all;
@@ -794,6 +798,7 @@ func TestRpmEpochParityAcrossCollectionPaths(t *testing.T) {
 				Summary: "The GNU libc libraries",
 			},
 			expectedVersion: "2.34-274.el9_8",
+			expectedPurl:    "pkg:rpm/redhat/glibc@2.34-274.el9_8?arch=aarch64&distro=rhel-9",
 		},
 		{
 			// A real epoch belongs in the version, and both paths already agreed here.
@@ -804,6 +809,7 @@ func TestRpmEpochParityAcrossCollectionPaths(t *testing.T) {
 				Summary: "A GNU arbitrary precision library",
 			},
 			expectedVersion: "1:6.1.2-11.el8",
+			expectedPurl:    "pkg:rpm/redhat/gmp@6.1.2-11.el8?arch=aarch64&distro=rhel-9&epoch=1",
 		},
 	}
 
@@ -823,6 +829,7 @@ func TestRpmEpochParityAcrossCollectionPaths(t *testing.T) {
 			assert.Equal(t, test.expectedVersion, fromDB.Version, "rpmdb path version")
 			assert.Equal(t, test.expectedVersion, fromCmd[0].Version, "command path version")
 			assert.Equal(t, fromCmd[0].Version, fromDB.Version, "versions must agree across paths")
+			assert.Equal(t, test.expectedPurl, fromDB.PUrl, "rpmdb path purl")
 			assert.Equal(t, fromCmd[0].PUrl, fromDB.PUrl, "purls must agree across paths")
 			assert.Equal(t, fromCmd[0].Epoch, fromDB.Epoch, "epochs must agree across paths")
 			assert.Equal(t, fromCmd[0].CPEs, fromDB.CPEs, "cpes must agree across paths")
