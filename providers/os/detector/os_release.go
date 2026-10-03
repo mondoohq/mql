@@ -6,6 +6,7 @@ package detector
 import (
 	"io"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -39,19 +40,84 @@ func (d *OSReleaseDetector) command(command string) (string, error) {
 }
 
 // UNIX helper methods
+//
+// Each falls back to the kernel's own answer when the command cannot run, as
+// in a distroless or scratch image that ships no shell and no uname. That
+// fallback is only taken on a local connection: there the scanner runs on the
+// target's kernel, so /proc/sys/kernel and the scanner's own build answer for
+// the target.
+
 // operating system name
 func (d *OSReleaseDetector) unames() (string, error) {
-	return d.command("uname -s")
+	out, err := d.command("uname -s")
+	if (err != nil || out == "") && d.provider.Type() == shared.Type_Local {
+		if v := d.procKernel("ostype"); v != "" {
+			return v, nil
+		}
+	}
+	return out, err
 }
 
 // operating system release
 func (d *OSReleaseDetector) unamer() (string, error) {
-	return d.command("uname -r")
+	out, err := d.command("uname -r")
+	if (err != nil || out == "") && d.provider.Type() == shared.Type_Local {
+		if v := d.procKernel("osrelease"); v != "" {
+			return v, nil
+		}
+	}
+	return out, err
 }
 
 // machine hardware name
 func (d *OSReleaseDetector) unamem() (string, error) {
-	return d.command("uname -m")
+	out, err := d.command("uname -m")
+	if (err != nil || out == "") && d.provider.Type() == shared.Type_Local && localGOOS == "linux" {
+		if v := unameMachine(localGOARCH); v != "" {
+			return v, nil
+		}
+	}
+	return out, err
+}
+
+// localGOOS and localGOARCH are the scanner's own build, which is the
+// target's on a local connection. Tests replace them.
+var (
+	localGOOS   = runtime.GOOS
+	localGOARCH = runtime.GOARCH
+)
+
+// procKernel reads /proc/sys/kernel/<name>, the value uname reports for it.
+func (d *OSReleaseDetector) procKernel(name string) string {
+	f, err := d.provider.FileSystem().Open("/proc/sys/kernel/" + name)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	content, err := io.ReadAll(f)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(content))
+}
+
+// unameMachine spells a Go architecture the way `uname -m` does on Linux.
+// 32-bit arm is left out: uname names the ISA revision (armv6l, armv7l),
+// which GOARCH does not carry.
+func unameMachine(goarch string) string {
+	switch goarch {
+	case "amd64":
+		return "x86_64"
+	case "arm64":
+		return "aarch64"
+	case "386":
+		return "i686"
+	case "ppc64le", "ppc64", "s390x", "riscv64":
+		return goarch
+	case "loong64":
+		return "loongarch64"
+	}
+	return ""
 }
 
 // osrelease reads /etc/os/release and parses the file

@@ -1,0 +1,6 @@
+# a scratch image run with /proc mounted: no shell, no os-release
+[files."/proc/sys/kernel/ostype"]
+content = "Linux\n"
+
+[files."/proc/sys/kernel/osrelease"]
+content = "6.12.76-linuxkit\n"
