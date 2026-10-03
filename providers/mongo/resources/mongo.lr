@@ -162,10 +162,14 @@ mongo.database @defaults("name") {
 // MongoDB server parameter
 //
 // A single server parameter from getParameter, selected by `name`. The value
-// is rendered as a string for uniform querying regardless of its native type.
+// is rendered as a string for uniform querying regardless of its native type:
+// scalars in their plain form, arrays and documents as JSON, for example
+// `["SCRAM-SHA-1","SCRAM-SHA-256"]` for authenticationMechanisms.
 mongo.parameter @defaults("name value") {
   // Parameter name
   name string
   // Parameter value, rendered as a string
+  //
+  // Arrays and documents are JSON, for example `{"version":"8.0"}`.
   value string
 }
