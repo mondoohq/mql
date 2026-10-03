@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -58,6 +57,8 @@ func NewMongoConnection(id uint32, asset *inventory.Asset, conf *inventory.Confi
 	if conf.Options == nil {
 		conf.Options = make(map[string]string)
 	}
+	// A password in a mongodb:// host must not travel with the asset.
+	MoveURICredentials(conf)
 
 	conn.host = conf.Options[OptionHost]
 	if conn.host == "" {
@@ -117,13 +118,22 @@ func (c *MongoConnection) ScopedDatabase() string {
 }
 
 // ServerID returns a stable identifier for the server, used to build asset
-// platform ids. When the host is a full connection string it is used verbatim;
-// otherwise it is host:port.
+// platform ids: host:port, or for a full connection string its host list. It
+// never carries the user info or options of a connection string.
 func (c *MongoConnection) ServerID() string {
-	if strings.HasPrefix(c.host, "mongodb://") || strings.HasPrefix(c.host, "mongodb+srv://") {
-		return c.host
+	if p, ok := splitConnString(c.host); ok {
+		return p.serverID()
 	}
 	return net.JoinHostPort(c.host, strconv.Itoa(c.port))
+}
+
+// DisplayName is the asset name for the server: the host as given, or for a
+// full connection string its host list.
+func (c *MongoConnection) DisplayName() string {
+	if p, ok := splitConnString(c.host); ok {
+		return p.serverID()
+	}
+	return c.host
 }
 
 // Host returns the configured host (a hostname or a full mongodb:// string).
@@ -136,12 +146,16 @@ func (c *MongoConnection) Port() int {
 	return c.port
 }
 
-// uri builds a mongodb:// connection string from the resolved settings, unless
-// the host is already a full connection string. TLS is configured separately
-// via tlsConfig/SetTLSConfig, not through query parameters.
+// uri builds a mongodb:// connection string from the resolved settings. A host
+// that is already a full connection string is used as given, with the
+// credentials added as its user info. TLS is configured separately via
+// tlsConfig/SetTLSConfig, not through query parameters.
 func (c *MongoConnection) uri() string {
-	if strings.HasPrefix(c.host, "mongodb://") || strings.HasPrefix(c.host, "mongodb+srv://") {
-		return c.host
+	if p, ok := splitConnString(c.host); ok {
+		if c.user == "" && c.password == "" {
+			return c.host
+		}
+		return p.withCredentials(c.user, c.password)
 	}
 	q := url.Values{}
 	q.Set("authSource", c.authDB)
