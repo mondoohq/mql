@@ -132,6 +132,7 @@ func (r *mqlClickhousedbInstance) roles() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		res.(*mqlClickhousedbRole).cacheInstance = r
 		list = append(list, res)
 	}
 	return list, rows.Err()
@@ -328,20 +329,29 @@ func grantsFor(ctx context.Context, db *sql.DB, column, name string) ([]any, err
 		if err := rows.Scan(&accessType, &database, &table, &col, &partialRevoke, &grantOption); err != nil {
 			return nil, err
 		}
-		scope := grantScope(database, table, col)
-		line := accessType + " ON " + scope
-		if grantOption {
-			line += " WITH GRANT OPTION"
-		}
-		if partialRevoke {
-			line = "REVOKE " + line
-		}
-		out = append(out, line)
+		out = append(out, renderGrant(accessType, grantScope(database, table, col), partialRevoke, grantOption))
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return toAnySlice(out), nil
+}
+
+// renderGrant renders a system.grants row the way SHOW GRANTS states it. A
+// partial revoke with grant_option set revokes only the grant option, so the
+// privilege itself stays in place: "REVOKE GRANT OPTION FOR <privilege> ON
+// <scope>", not "REVOKE <privilege> ... WITH GRANT OPTION".
+func renderGrant(accessType, scope string, partialRevoke, grantOption bool) string {
+	switch {
+	case partialRevoke && grantOption:
+		return "REVOKE GRANT OPTION FOR " + accessType + " ON " + scope
+	case partialRevoke:
+		return "REVOKE " + accessType + " ON " + scope
+	case grantOption:
+		return accessType + " ON " + scope + " WITH GRANT OPTION"
+	default:
+		return accessType + " ON " + scope
+	}
 }
 
 // grantScope formats the database/table/column of a grant, using "*" for the
