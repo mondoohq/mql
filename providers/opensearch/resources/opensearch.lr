@@ -19,9 +19,9 @@ opensearch @root {
 //
 // The connected cluster: its name, version, health, and node counts, plus the
 // security posture, internal users, roles, and role mappings reached from here.
-// Populated from the cluster info, health, and security-plugin APIs; fields the
-// connecting credential is not permitted to read are left null rather than
-// failing.
+// Populated from the cluster info, health, and security-plugin APIs. Health
+// needs the cluster_monitor permission; the security posture, users, roles,
+// and role mappings need access to the security REST API.
 opensearch.cluster @defaults("name version healthStatus") {
   // Cluster name
   name string
@@ -61,6 +61,11 @@ opensearch.security @defaults("anonymousAccessEnabled auditLoggingEnabled") {
   // When true, unauthenticated requests are served as an anonymous user.
   anonymousAccessEnabled bool
   // Whether audit logging is enabled
+  //
+  // The enabled flag of the audit configuration. It does not show whether an
+  // audit sink is configured: plugins.security.audit.type in opensearch.yml
+  // is not readable over the API, and without it the cluster writes no audit
+  // events even when this is true.
   auditLoggingEnabled bool
   // Whether authorization failures are hidden
   //

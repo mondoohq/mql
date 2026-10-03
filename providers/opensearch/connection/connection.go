@@ -169,7 +169,8 @@ func (c *OpensearchConnection) Get(path string, out any) error {
 	defer res.Body.Close()
 
 	if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
-		return &PermissionError{Path: path, StatusCode: res.StatusCode}
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
+		return &PermissionError{Path: path, StatusCode: res.StatusCode, Reason: errorReason(body)}
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
@@ -186,10 +187,37 @@ func (c *OpensearchConnection) Get(path string, out any) error {
 type PermissionError struct {
 	Path       string
 	StatusCode int
+	// Reason is the cluster's own explanation of the refusal.
+	Reason string
 }
 
 func (e *PermissionError) Error() string {
+	if e.Reason != "" {
+		return fmt.Sprintf("opensearch GET %s: not authorized (status %d): %s", e.Path, e.StatusCode, e.Reason)
+	}
 	return fmt.Sprintf("opensearch GET %s: not authorized (status %d)", e.Path, e.StatusCode)
+}
+
+// errorReason extracts the explanation from an OpenSearch error body. The
+// security REST API answers {"status":"FORBIDDEN","message":"No permission to
+// access REST API: ..."}; the core APIs answer {"error":{"reason":"no
+// permissions for [cluster:monitor/health] ..."}}. It returns "" for any other
+// body.
+func errorReason(body []byte) string {
+	var e struct {
+		Error   json.RawMessage `json:"error"`
+		Message string          `json:"message"`
+	}
+	if json.Unmarshal(body, &e) != nil {
+		return ""
+	}
+	var nested struct {
+		Reason string `json:"reason"`
+	}
+	if len(e.Error) > 0 && json.Unmarshal(e.Error, &nested) == nil && nested.Reason != "" {
+		return nested.Reason
+	}
+	return e.Message
 }
 
 // IsPermissionError reports whether err is an authorization failure, including

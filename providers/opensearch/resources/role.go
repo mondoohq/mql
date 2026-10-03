@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"go.mondoo.com/mql/llx"
-	"go.mondoo.com/mql/providers/opensearch/connection"
 	"go.mondoo.com/mql/types"
 )
 
@@ -31,10 +30,7 @@ func (r *mqlOpensearchCluster) roles() ([]any, error) {
 	conn := osConnection(r.MqlRuntime)
 	var resp map[string]osRole
 	if err := conn.Get("/_plugins/_security/api/roles", &resp); err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, permSecurityAPI)
 	}
 
 	names := make([]string, 0, len(resp))
