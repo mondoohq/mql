@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/os/resources/languages"
 )
 
@@ -112,4 +113,34 @@ func TestJavaDefaultsWalkOnlyArchiveTrees(t *testing.T) {
 	assert.Contains(t, files, "/opt/app.jar")
 	assert.Contains(t, files, "/usr/share/java/log4j/log4j-core.jar")
 	assert.NotContains(t, files, "/opt/someapp/lib/nested.jar")
+}
+
+// One archive in a directory of jars that is not a valid archive is skipped,
+// as before; it must not hide the others. Named on its own it is an error.
+func TestJavaDirSkipsInvalidArchive(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	writeTestJar(t, mem, "/srv/lib/log4j-core-2.14.1.jar", "org.apache.logging.log4j", "log4j-core", "2.14.1")
+	require.NoError(t, afero.WriteFile(mem, "/srv/lib/broken.jar", []byte("not a zip"), 0o644))
+	afs := &afero.Afero{Fs: mem}
+
+	_, _, transitive, _, err := collectJavaPackages(afs, "/srv/lib")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"org.apache.logging.log4j:log4j-core@2.14.1"}, packageNames(transitive))
+
+	_, _, _, _, err = collectJavaPackages(afs, "/srv/lib/broken.jar")
+	assert.ErrorIs(t, err, llx.ErrMalformedData)
+}
+
+// A jar the scan may not read is a refusal, in a directory or on its own.
+func TestJavaUnreadableArchive(t *testing.T) {
+	withStructuredErrors(t, true)
+	mem := afero.NewMemMapFs()
+	jar := "/srv/priv/log4j-core-2.14.1.jar"
+	writeTestJar(t, mem, jar, "org.apache.logging.log4j", "log4j-core", "2.14.1")
+	afs := &afero.Afero{Fs: &unreadableFs{Fs: mem, files: []string{jar}}}
+
+	for _, p := range []string{"/srv/priv", jar} {
+		_, _, _, _, err := collectJavaPackages(afs, p)
+		assert.ErrorIs(t, explicitLockfileError(err), llx.ErrForbidden, p)
+	}
 }
