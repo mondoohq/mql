@@ -71,8 +71,8 @@ const cassandraDaemonPidsCmd = "pgrep -f org.apache.cassandra.service.CassandraD
 // /etc/default/cassandra, or cassandra-env.sh), or "" when no daemon names
 // one.
 func runningCassandraConfig(runtime *plugin.Runtime, afs *afero.Afero) string {
-	conn := runtime.Connection.(shared.Connection)
-	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
+	conn, ok := runtime.Connection.(shared.Connection)
+	if !ok || !conn.Capabilities().Has(shared.Capability_RunCommand) {
 		return ""
 	}
 	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
@@ -144,7 +144,15 @@ func probeCassandraFile(runtime *plugin.Runtime, resource any, state *plugin.TVa
 		// A daemon started with -Dcassandra.config reads that file and no
 		// other. One that does not exist would stop it from starting.
 		if p := runningCassandraConfig(runtime, afs); p != "" {
-			if _, err := afs.Stat(p); !errors.Is(err, fs.ErrNotExist) {
+			_, err := afs.Stat(p)
+			if errors.Is(err, fs.ErrPermission) {
+				if err := cassandraRefusal(resource, err); err != nil {
+					return nil, err
+				}
+				state.State = plugin.StateIsSet | plugin.StateIsNull
+				return nil, nil
+			}
+			if !errors.Is(err, fs.ErrNotExist) {
 				f, err := CreateResource(runtime, "file", map[string]*llx.RawData{
 					"path": llx.StringData(p),
 				})
