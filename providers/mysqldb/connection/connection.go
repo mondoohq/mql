@@ -51,15 +51,12 @@ type MysqldbConnection struct {
 	metaOnce sync.Once
 	serverID string
 	flavor   string
+	version  string
 	metaErr  error
 
 	accessOnce sync.Once
 	access     *CallerAccess
 	accessErr  error
-
-	versionOnce sync.Once
-	version     string
-	versionErr  error
 }
 
 func NewMysqldbConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*MysqldbConnection, error) {
@@ -251,6 +248,7 @@ func (c *MysqldbConnection) resolveMeta() error {
 			return
 		}
 		c.flavor = classifyFlavor(versionComment, version)
+		c.version = version
 
 		var uuid string
 		// @@server_uuid is MySQL/Percona; some MariaDB versions lack it.
