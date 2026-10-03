@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"go.mondoo.com/mql/llx"
-	"go.mondoo.com/mql/providers/elasticsearch/connection"
 	"go.mondoo.com/mql/types"
 )
 
@@ -54,10 +53,7 @@ func (r *mqlElasticsearchCluster) roles() ([]any, error) {
 	conn := esConnection(r.MqlRuntime)
 	var resp map[string]esRole
 	if err := conn.Get("/_security/role", &resp); err != nil {
-		if connection.IsPermissionError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return refusedList(err, "read_security")
 	}
 
 	names := make([]string, 0, len(resp))

@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -192,7 +193,8 @@ func (c *ElasticsearchConnection) Get(path string, out any) error {
 	defer res.Body.Close()
 
 	if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
-		return &PermissionError{Path: path, StatusCode: res.StatusCode}
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
+		return &PermissionError{Path: path, StatusCode: res.StatusCode, Reason: errorReason(body)}
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
@@ -209,14 +211,36 @@ func (c *ElasticsearchConnection) Get(path string, out any) error {
 type PermissionError struct {
 	Path       string
 	StatusCode int
+	// Reason is the cluster's own explanation, which for a 403 names the
+	// privileges that would grant the action.
+	Reason string
 }
 
 func (e *PermissionError) Error() string {
+	if e.Reason != "" {
+		return fmt.Sprintf("elasticsearch GET %s: not authorized (status %d): %s", e.Path, e.StatusCode, e.Reason)
+	}
 	return fmt.Sprintf("elasticsearch GET %s: not authorized (status %d)", e.Path, e.StatusCode)
 }
 
 // IsPermissionError reports whether err is an authorization failure.
 func IsPermissionError(err error) bool {
-	_, ok := err.(*PermissionError)
-	return ok
+	var pe *PermissionError
+	return errors.As(err, &pe)
+}
+
+// errorReason extracts error.reason from an Elasticsearch error body, for
+// example "action [cluster:admin/xpack/security/user/get] is unauthorized for
+// user [monuser] ..., this action is granted by the cluster privileges
+// [read_security,manage_security,all]". It returns "" for any other body.
+func errorReason(body []byte) string {
+	var e struct {
+		Error struct {
+			Reason string `json:"reason"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &e) != nil {
+		return ""
+	}
+	return e.Error.Reason
 }
