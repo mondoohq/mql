@@ -653,3 +653,128 @@ func TestReadGrubUserCfg(t *testing.T) {
 		assert.Nil(t, readGrubUserCfg(afero.NewMemMapFs(), ""))
 	})
 }
+
+// The stock /etc/default/grub and /etc/default/grub.d of a Debian 10 EC2
+// image. 10_cloud_disk_scheduler.cfg appends to GRUB_CMDLINE_LINUX by
+// referencing it, and grub-mkconfig, which sources the files in a shell,
+// boots with console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200
+// scsi_mod.use_blk_mq=Y.
+func debian10CloudGrubDefaultsFs(t *testing.T) afero.Fs {
+	t.Helper()
+	fs := afero.NewMemMapFs()
+	files := map[string]string{
+		"/etc/default/grub": `# If you change this file, run 'update-grub' afterwards to update
+# /boot/grub/grub.cfg.
+# For full documentation of the options in this file, see:
+#   info -f grub -n 'Simple configuration'
+
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=5
+GRUB_DISTRIBUTOR=` + "`lsb_release -i -s 2> /dev/null || echo Debian`" + `
+GRUB_CMDLINE_LINUX_DEFAULT=""
+GRUB_CMDLINE_LINUX="console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200"
+GRUB_TERMINAL="console serial"
+GRUB_SERIAL_COMMAND="serial --speed=115200"
+`,
+		"/etc/default/grub.d/10_cloud.cfg": `# Use PARTUUID instead of UUID for root=
+GRUB_DISABLE_LINUX_UUID=true
+GRUB_DISABLE_LINUX_PARTUUID=
+`,
+		"/etc/default/grub.d/10_cloud_disk_scheduler.cfg": `# Set disk scheduler to noop and request block multiqueue usage
+
+GRUB_CMDLINE_LINUX="$GRUB_CMDLINE_LINUX scsi_mod.use_blk_mq=Y"
+`,
+		"/etc/default/grub.d/15_timeout.cfg": "GRUB_TIMEOUT=0\n",
+	}
+	for name, content := range files {
+		require.NoError(t, afero.WriteFile(fs, name, []byte(content), 0o644))
+	}
+	return fs
+}
+
+func TestLoadGrubDefaultsExpandsVariables(t *testing.T) {
+	t.Run("stock Debian 10 drop-in appends to the defaults file", func(t *testing.T) {
+		fs := debian10CloudGrubDefaultsFs(t)
+		params, err := loadGrubDefaults(fs, "/etc/default/grub", true)
+		require.NoError(t, err)
+		assert.Equal(t, "console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200 scsi_mod.use_blk_mq=Y", params["GRUB_CMDLINE_LINUX"])
+		assert.Equal(t, "0", params["GRUB_TIMEOUT"])
+		assert.Equal(t, "", params["GRUB_DISABLE_LINUX_PARTUUID"])
+		assert.Equal(t, "`lsb_release -i -s 2> /dev/null || echo Debian`", params["GRUB_DISTRIBUTOR"])
+	})
+
+	// kdump-tools ships a drop-in that appends crashkernel= to the defaults.
+	// A parameter set in /etc/default/grub must still be read once it is there.
+	t.Run("kdump-tools drop-in keeps the parameters set before it", func(t *testing.T) {
+		fs := debian10CloudGrubDefaultsFs(t)
+		require.NoError(t, afero.WriteFile(fs, "/etc/default/grub", []byte(
+			"GRUB_CMDLINE_LINUX_DEFAULT=\"quiet\"\nGRUB_CMDLINE_LINUX=\"apparmor=0 console=tty0\"\n"), 0o644))
+		require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/kdump-tools.cfg", []byte(
+			"GRUB_CMDLINE_LINUX_DEFAULT=\"$GRUB_CMDLINE_LINUX_DEFAULT crashkernel=384M-:128M\"\n"), 0o644))
+		params, err := loadGrubDefaults(fs, "/etc/default/grub", true)
+		require.NoError(t, err)
+		assert.Equal(t, "quiet crashkernel=384M-:128M", params["GRUB_CMDLINE_LINUX_DEFAULT"])
+		assert.Equal(t, "apparmor=0 console=tty0 scsi_mod.use_blk_mq=Y", params["GRUB_CMDLINE_LINUX"])
+	})
+
+	// A setting nothing assigned before is empty to the shell.
+	t.Run("unset setting expands to empty", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(fs, "/etc/default/grub", []byte("GRUB_TIMEOUT=5\n"), 0o644))
+		require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/kdump-tools.cfg", []byte(
+			"GRUB_CMDLINE_LINUX_DEFAULT=\"$GRUB_CMDLINE_LINUX_DEFAULT crashkernel=384M-:128M\"\n"), 0o644))
+		params, err := loadGrubDefaults(fs, "/etc/default/grub", true)
+		require.NoError(t, err)
+		// the leading space is the shell's: the empty expansion stays in front
+		// of crashkernel=
+		assert.Equal(t, " crashkernel=384M-:128M", params["GRUB_CMDLINE_LINUX_DEFAULT"])
+	})
+}
+
+func TestParseGrubDefaultsShellSyntax(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		key   string
+		want  string
+	}{
+		{"braced reference", "A=x\nGRUB_CMDLINE_LINUX=\"${A} y\"\n", "GRUB_CMDLINE_LINUX", "x y"},
+		{"unquoted reference", "A=x\nGRUB_CMDLINE_LINUX=$A\n", "GRUB_CMDLINE_LINUX", "x"},
+		{"single quotes are literal", "A=x\nGRUB_CMDLINE_LINUX='$A y'\n", "GRUB_CMDLINE_LINUX", "$A y"},
+		{"escaped dollar is literal", "A=x\nGRUB_CMDLINE_LINUX=\"\\$A y\"\n", "GRUB_CMDLINE_LINUX", "$A y"},
+		{"trailing comment after closing quote", "GRUB_CMDLINE_LINUX_DEFAULT=\"quiet\" # trailing comment\n", "GRUB_CMDLINE_LINUX_DEFAULT", "quiet"},
+		{"trailing comment after unquoted value", "GRUB_TIMEOUT=5 # seconds\n", "GRUB_TIMEOUT", "5"},
+		{"hash inside a word is literal", "GRUB_X=a#b\n", "GRUB_X", "a#b"},
+		{"escaped double quote", "GRUB_X=\"a b\\\"c\"\n", "GRUB_X", "a b\"c"},
+		{"other backslash kept in double quotes", "GRUB_X=\"a\\b\"\n", "GRUB_X", "a\\b"},
+		{"adjacent quoted parts", "GRUB_X=\"a b\"'c d'e\n", "GRUB_X", "a bc de"},
+		{"value continued on the next line", "GRUB_CMDLINE_LINUX=\"audit=1\n  apparmor=1\"\n", "GRUB_CMDLINE_LINUX", "audit=1\n  apparmor=1"},
+		{"command substitution is kept", "GRUB_DISTRIBUTOR=\"$(lsb_release -i -s 2> /dev/null) || echo Debian\"\n", "GRUB_DISTRIBUTOR", "$(lsb_release -i -s 2> /dev/null) || echo Debian"},
+		{"variable grub-mkconfig sets is kept", "GRUB_CMDLINE_LINUX=\"root=$GRUB_DEVICE\"\n", "GRUB_CMDLINE_LINUX", "root=$GRUB_DEVICE"},
+		{"two assignments on one line", "GRUB_A=1; GRUB_B=2\n", "GRUB_B", "2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params, err := ParseGrubDefaults(strings.NewReader(tt.input))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, params[tt.key])
+		})
+	}
+}
+
+// `KEY=value cmd` sets KEY for cmd only, and a line that is not an
+// assignment, like a test, assigns nothing.
+func TestParseGrubDefaultsIgnoresCommands(t *testing.T) {
+	params, err := ParseGrubDefaults(strings.NewReader("GRUB_X=1 true\n[ \"$GRUB_Y\" = 1 ] && GRUB_Z=2\nGRUB_W=3\n"))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"GRUB_W": "3"}, params)
+}
+
+// An unterminated quote is a syntax error to the shell. The line keeps the
+// value as written rather than swallowing the rest of the file.
+func TestParseGrubDefaultsUnterminatedQuote(t *testing.T) {
+	params, err := ParseGrubDefaults(strings.NewReader("GRUB_X=\"abc\nGRUB_Y=1\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "\"abc", params["GRUB_X"])
+	assert.Equal(t, "1", params["GRUB_Y"])
+}
