@@ -245,7 +245,7 @@ func apacheStaticModules(conn shared.Connection, afs *afero.Afero) []string {
 		if ok, _ := afs.Exists(bin); !ok || runnableBinary(conn, bin) == "" {
 			continue
 		}
-		cmd, err := conn.RunCommand(bin + " -l")
+		cmd, err := conn.RunCommand(shellQuote(bin) + " -l")
 		if err != nil || cmd.ExitStatus != 0 {
 			continue
 		}

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -64,7 +65,7 @@ func ResolveTrustedExecutable(conn shared.Connection, p string) (target string, 
 		}
 		// ls exits non-zero when one operand is missing and still lists the
 		// others, so the output is parsed whatever the exit status.
-		return parseLsLong(readCommandOutput(cmd.Stdout))
+		return parseLsLong(readCommandOutput(cmd.Stdout), paths)
 	}
 	target, err := trustedResolution(p, uid, lstat)
 	if err != "" {
@@ -75,9 +76,16 @@ func ResolveTrustedExecutable(conn shared.Connection, p string) (target string, 
 	return target, true
 }
 
+// commandUIDs caches commandUID per connection id: the account commands run
+// as does not change for the life of a connection.
+var commandUIDs sync.Map // uint32 -> int64
+
 // commandUID returns the uid that commands run as on the target: root for a
 // root or sudo scan.
 func commandUID(conn shared.Connection) (int64, bool) {
+	if uid, ok := commandUIDs.Load(conn.ID()); ok {
+		return uid.(int64), true
+	}
 	cmd, err := conn.RunCommand("id -u")
 	if err != nil || cmd.ExitStatus != 0 {
 		return 0, false
@@ -86,6 +94,7 @@ func commandUID(conn shared.Connection) (int64, bool) {
 	if err != nil {
 		return 0, false
 	}
+	commandUIDs.Store(conn.ID(), uid)
 	return uid, true
 }
 
@@ -108,8 +117,11 @@ func (e pathEntry) writableByOthers() bool {
 // (plus " -> target" for a link). The date takes three fields in the C locale.
 var lsLongLine = regexp.MustCompile(`^(\S{10})\S*\s+\d+\s+(\d+)\s+\d+\s+\d+\s+\S+\s+\S+\s+\S+ (.+)$`)
 
-// parseLsLong reads `LC_ALL=C ls -ldn` output, keyed by path as it was passed.
-func parseLsLong(out string) map[string]pathEntry {
+// parseLsLong reads `LC_ALL=C ls -ldn` output for paths, keyed by path as it
+// was passed. A link line reads "<path> -> <target>"; the path is matched
+// against the ones passed, so a " -> " inside a name or a target does not
+// split it in the wrong place.
+func parseLsLong(out string, paths []string) map[string]pathEntry {
 	entries := map[string]pathEntry{}
 	for _, line := range strings.Split(out, "\n") {
 		m := lsLongLine.FindStringSubmatch(strings.TrimRight(line, "\r"))
@@ -123,7 +135,7 @@ func parseLsLong(out string) map[string]pathEntry {
 		e := pathEntry{mode: m[1], uid: uid}
 		name := m[3]
 		if e.isLink() {
-			n, target, found := strings.Cut(name, " -> ")
+			n, target, found := splitLsLink(name, paths)
 			if !found {
 				continue
 			}
@@ -132,6 +144,21 @@ func parseLsLong(out string) map[string]pathEntry {
 		entries[name] = e
 	}
 	return entries
+}
+
+// splitLsLink splits "<path> -> <target>" at the longest of paths it starts
+// with, and at the first " -> " when it starts with none of them.
+func splitLsLink(name string, paths []string) (string, string, bool) {
+	best := ""
+	for _, p := range paths {
+		if len(p) > len(best) && strings.HasPrefix(name, p+" -> ") {
+			best = p
+		}
+	}
+	if best != "" {
+		return best, name[len(best)+len(" -> "):], true
+	}
+	return strings.Cut(name, " -> ")
 }
 
 // maxLinkHops bounds the symbolic links followed, like the kernel's ELOOP.
