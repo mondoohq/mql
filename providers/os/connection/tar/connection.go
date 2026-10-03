@@ -104,25 +104,40 @@ func (p *Connection) FileSystem() afero.Fs {
 	return p.fs
 }
 
+// FileInfo reports on a path the way the local connection does. A symlink is
+// reported with its target's mode and size plus the symlink bit, a dangling
+// symlink exists as the link itself, and a link loop is an error. Using Stat
+// alone reported every link as its target (permissions.isSymlink was always
+// false) and a dangling link as absent.
 func (c *Connection) FileInfo(path string) (shared.FileInfoDetails, error) {
-	fs := c.FileSystem()
-	afs := &afero.Afero{Fs: fs}
-	stat, err := afs.Stat(path)
+	c.EnsureLoaded()
+
+	info, _, err := c.fs.LstatIfPossible(path)
 	if err != nil {
 		return shared.FileInfoDetails{}, err
+	}
+	mode := info.Mode()
+	if mode&os.ModeSymlink != 0 {
+		target, err := c.fs.Stat(path)
+		switch {
+		case err == nil:
+			info = target
+			mode = target.Mode() | os.ModeSymlink
+		case !os.IsNotExist(err):
+			return shared.FileInfoDetails{}, err
+		}
 	}
 
 	uid := int64(-1)
 	gid := int64(-1)
-	if stat, ok := stat.Sys().(*tar.Header); ok {
-		uid = int64(stat.Uid)
-		gid = int64(stat.Gid)
+	if h, ok := info.Sys().(*tar.Header); ok {
+		uid = int64(h.Uid)
+		gid = int64(h.Gid)
 	}
-	mode := stat.Mode()
 
 	return shared.FileInfoDetails{
 		Mode: shared.FileModeDetails{FileMode: mode},
-		Size: stat.Size(),
+		Size: info.Size(),
 		Uid:  uid,
 		Gid:  gid,
 	}, nil
