@@ -149,6 +149,8 @@ Every PR ships unit tests for the pure Go logic it adds: anything that computes,
 
 Skip functions whose whole body is one SDK call plus a `CreateResource`. Decode tests in `resources/decode_test.go`, client tests in `connection/client_test.go`, following `providers/vercel`. Run `go test ./...` inside `providers/<name>/`.
 
+**Where tests go.** A test lives in the `_test.go` file named after the source file it exercises: `jenkins.go` → `jenkins_test.go`, `mycnf/flavor.go` → `mycnf/flavor_test.go`. Create that file if it doesn't exist yet. Never add a test file named after the fix, the bug or the scenario (`plugin_package_ids_test.go`, `refusal_test.go`, `*_longline_test.go`, `suse_docroot_test.go`); a fix to an existing function adds cases to that function's test file. Reuse the package's existing test helpers (`memFSRuntime` in `providers/os/resources/pkg_test.go`) instead of declaring a near copy. Exceptions: `*_integration_test.go` files behind a build tag, and fixtures under `testdata/`.
+
 ### Step 3.7: A test that cannot fail is worse than no test
 
 Name the implementation edit that would make the test fail. Can't? Delete it.
@@ -242,7 +244,7 @@ Hide synthetic `__id` values, don't expose them as `id` fields. When a sub-resou
 - [ ] `make test/lint` and `make test/go/plain` pass; `go test -v ./providers/<provider>/...` if the provider has tests
 - [ ] Verified interactively (`mql shell <provider>`, queries from the ticket)
 - [ ] Every new field naming another resource is a typed accessor (Step 1.5)
-- [ ] Pure Go logic has unit tests (Step 3.6); every test added can fail, any found that couldn't was removed (Step 3.7)
+- [ ] Pure Go logic has unit tests (Step 3.6), in the `_test.go` named after the source file; every test added can fail, any found that couldn't was removed (Step 3.7)
 - [ ] No spelling errors: CI runs `crate-ci/typos` (config `_typos.toml`). Fix real typos, add identifiers and product names to `_typos.toml`
 - [ ] `make race/go` if touching concurrency; `make test/integration` if changing core execution
 
