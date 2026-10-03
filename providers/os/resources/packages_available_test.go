@@ -52,7 +52,7 @@ func (c *rpmUpdateHostConn) RunCommand(command string) (*shared.Command, error) 
 		return out("RPM version 4.16.1.3\n", 0), nil
 	case strings.HasPrefix(command, "rpm -qa"):
 		return out(rpmUpdateHostList, 0), nil
-	case strings.Contains(command, "check-update") || strings.HasPrefix(command, "zypper "):
+	case strings.Contains(command, "check-update") || strings.Contains(command, "zypper -n "):
 		c.mu.Lock()
 		c.updateChecks++
 		c.mu.Unlock()
