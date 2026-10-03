@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/facebookincubator/nvdtools/wfn"
+	"golang.org/x/text/unicode/norm"
 )
 
 // epochRegex matches a version that carries an epoch, e.g. `1:2.3.4`.
@@ -20,13 +23,69 @@ var epochRegex = regexp.MustCompile(`^\d+:(.*)$`)
 // Field names for the WFNize error, positionally matched to the loop below.
 var cpeFieldNames = [...]string{"vendor", "name", "version", "release", "arch"}
 
+// asciiLetters spells the letters that have no decomposition into an ASCII
+// base letter and a mark.
+var asciiLetters = map[rune]string{
+	'ß': "ss", 'ẞ': "ss", 'æ': "ae", 'Æ': "ae", 'œ': "oe", 'Œ': "oe",
+	'ø': "o", 'Ø': "o", 'ł': "l", 'Ł': "l", 'đ': "d", 'Đ': "d",
+	'ð': "d", 'Ð': "d", 'þ': "th", 'Þ': "th", 'ı': "i",
+}
+
+// umlauts spells ä, ö and ü the German way, as the NVD CPE dictionary does
+// for German vendors (Dräger is `draeger`, Hörmann `hoermann`). Decomposing
+// them would leave the bare vowel instead.
+var umlauts = strings.NewReplacer(
+	"ä", "ae", "Ä", "Ae", "ö", "oe", "Ö", "Oe", "ü", "ue", "Ü", "Ue",
+)
+
+// toASCII transliterates s to ASCII: `Vendör` becomes `Vendoer`, `Straße`
+// `Strasse`, `Søftware` `Software`. WFNize keeps only the low byte of a
+// non-ASCII rune, so `ö` (U+00F6) was dropped and `ł` (U+0142) became `B`.
+// A rune with no ASCII spelling (`日本語`) is dropped, along with the spaces
+// it leaves at the ends or doubled, so `日本語 株式会社` is empty rather than
+// ` ` (`_` in a CPE).
+func toASCII(s string) string {
+	ascii := true
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			ascii = false
+			break
+		}
+	}
+	if ascii {
+		return s
+	}
+
+	var b strings.Builder
+	dropped := false
+	// NFC first, so an umlaut that arrives decomposed is still matched
+	for _, r := range norm.NFD.String(umlauts.Replace(norm.NFC.String(s))) {
+		switch {
+		case r < utf8.RuneSelf:
+			b.WriteRune(r)
+		case unicode.Is(unicode.Mn, r):
+			// the accent of a decomposed letter
+		default:
+			spelled, ok := asciiLetters[r]
+			if !ok {
+				dropped = true
+			}
+			b.WriteString(spelled)
+		}
+	}
+	if dropped {
+		return strings.Join(strings.Fields(b.String()), " ")
+	}
+	return b.String()
+}
+
 func NewPackage2Cpe(vendor, name, version, release, arch string) ([]string, error) {
 	cpes := []string{}
-	vendor = strings.ToLower(vendor)
-	name = strings.ToLower(name)
-	version = strings.ToLower(version)
-	release = strings.ToLower(release)
-	arch = strings.ToLower(arch)
+	vendor = strings.ToLower(toASCII(vendor))
+	name = strings.ToLower(toASCII(name))
+	version = strings.ToLower(toASCII(version))
+	release = strings.ToLower(toASCII(release))
+	arch = strings.ToLower(toASCII(arch))
 
 	// Remove epoch when present; otherwise WFNize will only use the epoch as
 	// the version.
