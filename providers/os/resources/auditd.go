@@ -522,6 +522,7 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 		other := [][2]string{}
 
 		positional := false
+	tokens:
 		for line != "" {
 			k, v, idx := parseKeyVal(line)
 			line = line[idx:]
@@ -532,6 +533,7 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 				// option ("parameter passed without an option given"), as when
 				// augenrules runs two rules files' lines together
 				positional = true
+				break tokens
 			case "-a", "-A", "-d":
 				// -A prepends the rule instead of appending it, and -d deletes
 				// the matching rule added earlier
