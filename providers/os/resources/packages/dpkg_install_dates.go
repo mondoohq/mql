@@ -65,9 +65,18 @@ func (d DpkgInstallDates) Get(name, arch, version string) (time.Time, bool) {
 // The install and upgrade actions name the version being moved to in the last
 // field; the `status installed` line is the one dpkg writes once a package is
 // fully configured. Recording both means a run interrupted before configuration
-// still yields a date, and keying on the version means a `status installed`
-// emitted by trigger processing cannot advance the date of a package that did
-// not actually change.
+// still yields a date.
+//
+// dpkg also writes `status installed` when it finishes running a package's
+// triggers, with the version that was already there:
+//
+//	2026-10-03 00:33:07 trigproc libc-bin:amd64 2.36-9+deb12u14 <none>
+//	2026-10-03 00:33:07 status installed libc-bin:amd64 2.36-9+deb12u14
+//
+// libc-bin, man-db and the like are triggered by nearly every other install,
+// so counting those lines dated them to the last unrelated install. A
+// `status installed` therefore counts only when the package's latest action
+// in the stream is not trigproc.
 //
 // Removals, purges, triggers and startup lines carry no version landing and are
 // skipped. Later entries win, so the map holds the most recent time each
@@ -86,6 +95,9 @@ func ParseDpkgInstallDates(r io.Reader, loc *time.Location, into DpkgInstallDate
 		loc = time.UTC
 	}
 
+	// packages whose latest action line is trigproc
+	triggered := map[string]bool{}
+
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(nil, dpkgMaxLine)
 	for scanner.Scan() {
@@ -96,10 +108,17 @@ func ParseDpkgInstallDates(r io.Reader, loc *time.Location, into DpkgInstallDate
 
 		var pkg, version string
 		switch fields[2] {
+		case "trigproc":
+			triggered[fields[3]] = true
+			continue
+		case "configure", "remove", "purge":
+			delete(triggered, fields[3])
+			continue
 		case "install", "upgrade":
+			delete(triggered, fields[3])
 			pkg, version = fields[3], fields[5]
 		case "status":
-			if fields[3] != "installed" {
+			if fields[3] != "installed" || triggered[fields[4]] {
 				continue
 			}
 			pkg, version = fields[4], fields[5]

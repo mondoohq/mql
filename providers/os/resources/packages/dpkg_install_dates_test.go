@@ -152,6 +152,77 @@ func TestParseDpkgInstallDatesCases(t *testing.T) {
 	}
 }
 
+// Trigger processing ends with a `status installed` line for the package whose
+// trigger ran, at the time the trigger ran. These excerpts are from dpkg.log on
+// Debian 9 and Debian 12: libc-bin and man-db were installed when the image was
+// built and have been triggered by every package installed since.
+func TestParseDpkgInstallDatesIgnoresTriggerProcessing(t *testing.T) {
+	t.Run("install then triggers", func(t *testing.T) {
+		log := `2022-07-01 18:21:23 install libc-bin:amd64 <none> 2.24-11+deb9u4
+2022-07-01 18:21:23 status half-installed libc-bin:amd64 2.24-11+deb9u4
+2022-07-01 18:21:23 status unpacked libc-bin:amd64 2.24-11+deb9u4
+2022-07-01 18:21:29 configure libc-bin:amd64 2.24-11+deb9u4 <none>
+2022-07-01 18:21:29 status unpacked libc-bin:amd64 2.24-11+deb9u4
+2022-07-01 18:21:30 status half-configured libc-bin:amd64 2.24-11+deb9u4
+2022-07-01 18:21:30 status installed libc-bin:amd64 2.24-11+deb9u4
+2022-07-01 18:21:32 status installed sysvinit-utils:amd64 2.88dsf-59.9
+2022-07-01 18:21:32 trigproc libc-bin:amd64 2.24-11+deb9u4 <none>
+2022-07-01 18:21:32 status half-configured libc-bin:amd64 2.24-11+deb9u4
+2022-07-01 18:21:32 status installed libc-bin:amd64 2.24-11+deb9u4
+2026-10-03 00:33:06 status triggers-pending libc-bin:amd64 2.24-11+deb9u4
+2026-10-03 00:33:07 trigproc libc-bin:amd64 2.24-11+deb9u4 <none>
+2026-10-03 00:33:07 status half-configured libc-bin:amd64 2.24-11+deb9u4
+2026-10-03 00:33:07 status installed libc-bin:amd64 2.24-11+deb9u4
+`
+		dates, err := ParseDpkgInstallDates(strings.NewReader(log), time.UTC, nil)
+		require.NoError(t, err)
+		got, ok := dates.Get("libc-bin", "amd64", "2.24-11+deb9u4")
+		require.True(t, ok)
+		assert.Equal(t, "2022-07-01T18:21:30Z", got.Format(time.RFC3339))
+	})
+
+	t.Run("only triggers in the retained log", func(t *testing.T) {
+		log := `2026-10-03 00:32:35 status triggers-pending libc-bin:amd64 2.36-9+deb12u14
+2026-10-03 00:32:35 status triggers-pending man-db:amd64 2.11.2-2
+2026-10-03 00:32:51 trigproc libc-bin:amd64 2.36-9+deb12u14 <none>
+2026-10-03 00:32:51 status half-configured libc-bin:amd64 2.36-9+deb12u14
+2026-10-03 00:32:51 status installed libc-bin:amd64 2.36-9+deb12u14
+2026-10-03 00:32:51 trigproc man-db:amd64 2.11.2-2 <none>
+2026-10-03 00:32:51 status half-configured man-db:amd64 2.11.2-2
+2026-10-03 00:32:54 status installed man-db:amd64 2.11.2-2
+2026-10-03 00:32:54 status triggers-pending libc-bin:amd64 2.36-9+deb12u14
+2026-10-03 00:32:54 trigproc libc-bin:amd64 2.36-9+deb12u14 <none>
+2026-10-03 00:32:54 status half-configured libc-bin:amd64 2.36-9+deb12u14
+2026-10-03 00:32:54 status installed libc-bin:amd64 2.36-9+deb12u14
+`
+		dates, err := ParseDpkgInstallDates(strings.NewReader(log), time.UTC, nil)
+		require.NoError(t, err)
+		// Nothing in this log placed either package, so neither has a date
+		// from it and the caller falls back to the file list.
+		_, ok := dates.Get("libc-bin", "amd64", "2.36-9+deb12u14")
+		assert.False(t, ok)
+		_, ok = dates.Get("man-db", "amd64", "2.11.2-2")
+		assert.False(t, ok)
+	})
+
+	t.Run("a later upgrade still counts", func(t *testing.T) {
+		log := `2026-05-01 09:00:00 trigproc man-db:amd64 2.12.0-4build1 <none>
+2026-05-01 09:00:01 status installed man-db:amd64 2.12.0-4build1
+2026-05-02 10:00:00 upgrade man-db:amd64 2.12.0-4build1 2.12.0-4build2
+2026-05-02 10:00:01 status unpacked man-db:amd64 2.12.0-4build2
+2026-05-02 10:00:05 configure man-db:amd64 2.12.0-4build2 <none>
+2026-05-02 10:00:06 status installed man-db:amd64 2.12.0-4build2
+2026-05-03 11:00:00 trigproc man-db:amd64 2.12.0-4build2 <none>
+2026-05-03 11:00:01 status installed man-db:amd64 2.12.0-4build2
+`
+		dates, err := ParseDpkgInstallDates(strings.NewReader(log), time.UTC, nil)
+		require.NoError(t, err)
+		got, ok := dates.Get("man-db", "amd64", "2.12.0-4build2")
+		require.True(t, ok)
+		assert.Equal(t, "2026-05-02T10:00:06Z", got.Format(time.RFC3339))
+	})
+}
+
 // dpkg writes local time with no offset. Reading it in the scanner's zone
 // instead of the asset's shifts every install date by the difference, which on
 // a mounted snapshot is the common case rather than the exotic one.
