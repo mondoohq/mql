@@ -69,7 +69,7 @@ const dnf5HistoryFedora44 = `[
 func TestParseDnf5History(t *testing.T) {
 	t.Run("the newest vendor upgrade transaction", func(t *testing.T) {
 		got, err := ParseDnf5History(strings.NewReader(dnf5HistoryFedora44),
-			vendorSet("grub2-common", "grub2-pc", "rpm-build", "glibc"))
+			vendorSet("grub2-common", "grub2-pc", "rpm-build", "glibc"), nil)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, "2026-10-02T07:29:24Z", got.Time.Format(time.RFC3339))
@@ -79,7 +79,7 @@ func TestParseDnf5History(t *testing.T) {
 	t.Run("installs are no evidence", func(t *testing.T) {
 		// rpm-build and glibc are vendor packages, but only installed
 		got, err := ParseDnf5History(strings.NewReader(dnf5HistoryFedora44),
-			vendorSet("rpm-build", "glibc"))
+			vendorSet("rpm-build", "glibc"), nil)
 		require.NoError(t, err)
 		assert.Nil(t, got)
 	})
@@ -97,24 +97,51 @@ func TestParseDnf5History(t *testing.T) {
     {"nevra":"openssl-libs-1:3.5.2-1.fc44.x86_64","action":"Downgrade"},
     {"nevra":"openssl-libs-1:3.5.3-1.fc44.x86_64","action":"Replaced"}]}
 ]`
-		got, err := ParseDnf5History(strings.NewReader(history), vendorSet("openssl-libs"))
+		got, err := ParseDnf5History(strings.NewReader(history), vendorSet("openssl-libs"), nil)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, int64(1790900000), got.Time.Unix())
 	})
 
 	t.Run("empty history", func(t *testing.T) {
-		got, err := ParseDnf5History(strings.NewReader("[]\n"), vendorSet("glibc"))
+		got, err := ParseDnf5History(strings.NewReader("[]\n"), vendorSet("glibc"), nil)
 		require.NoError(t, err)
 		assert.Nil(t, got)
 
-		got, err = ParseDnf5History(strings.NewReader(""), vendorSet("glibc"))
+		got, err = ParseDnf5History(strings.NewReader(""), vendorSet("glibc"), nil)
 		require.NoError(t, err)
 		assert.Nil(t, got)
 	})
 
 	t.Run("output that isn't JSON is an error", func(t *testing.T) {
-		_, err := ParseDnf5History(strings.NewReader("Unknown argument \"--json\" for command \"info\".\n"), vendorSet("glibc"))
+		_, err := ParseDnf5History(strings.NewReader("Unknown argument \"--json\" for command \"info\".\n"), vendorSet("glibc"), nil)
 		assert.Error(t, err)
 	})
+}
+
+// dnf5 records a new kernel as an Install. Transaction 2 on the Fedora 44
+// sweep host installed kernel-core 7.2.8-200 as the first kernel; transaction
+// 9 is a later kernel next to it.
+func TestParseDnf5HistoryKernelInstall(t *testing.T) {
+	history := `[
+  {"id":9,"end_time":1790990000,"status":"Ok","packages":[
+    {"nevra":"kernel-core-0:7.2.9-200.fc44.x86_64","action":"Install"},
+    {"nevra":"kernel-modules-core-0:7.2.9-200.fc44.x86_64","action":"Install"}]},
+  {"id":2,"end_time":1790839346,"status":"Ok","packages":[
+    {"nevra":"kernel-core-0:7.2.8-200.fc44.x86_64","action":"Install"},
+    {"nevra":"kernel-modules-core-0:7.2.8-200.fc44.x86_64","action":"Install"}]}
+]`
+	vendor := vendorSet("kernel-core", "kernel-modules-core")
+
+	got, err := ParseDnf5History(strings.NewReader(history), vendor, nil)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, int64(1790990000), got.Time.Unix())
+
+	// Only the first kernel: no update.
+	first := `[` + history[strings.Index(history, `{"id":2`):]
+	got, err = ParseDnf5History(strings.NewReader(first), vendor,
+		func(string) []string { return []string{"0:7.2.8-200.fc44"} })
+	require.NoError(t, err)
+	assert.Nil(t, got)
 }
