@@ -33,12 +33,42 @@ func (a *mqlAptConfig) params() (map[string]any, error) {
 	} else if exit.Data != 0 {
 		return nil, fmt.Errorf("apt-config dump failed (exit code %d): %s", exit.Data, strings.TrimSpace(cmd.GetStderr().Data))
 	}
+	if err := aptConfigReadError(cmd.GetStderr().Data); err != nil {
+		return nil, err
+	}
 
 	res := map[string]any{}
 	for k, v := range parseAptConfigDump(cmd.GetStdout().Data) {
 		res[k] = v
 	}
 	return res, nil
+}
+
+// aptConfigReadError reports the configuration files apt-config could not
+// read. apt 1.6 and later only warn about an unreadable apt.conf.d fragment
+// and still exit 0:
+//
+//	W: Unable to read /etc/apt/apt.conf.d/99local - open (13: Permission denied)
+//
+// The dump then lacks every option that file sets, so the accessors would
+// report APT's defaults for a host that overrides them. apt 1.4 fails the
+// same read with exit code 100.
+func aptConfigReadError(stderr string) error {
+	var unread []string
+	for _, line := range strings.Split(stderr, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "W: Unable to read ") || strings.HasPrefix(line, "E: Unable to read ") {
+			unread = append(unread, line[3:])
+		}
+	}
+	if len(unread) == 0 {
+		return nil
+	}
+	err := fmt.Errorf("apt-config could not read its configuration: %s", strings.Join(unread, "; "))
+	if strings.Contains(stderr, "Permission denied") {
+		return llx.Forbidden(err)
+	}
+	return err
 }
 
 // parseAptConfigDump reads the `Key "value";` lines of `apt-config dump`.
