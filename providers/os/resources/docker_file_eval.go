@@ -311,6 +311,8 @@ func parseExposePort(spec string) ([]dockerfilePort, error) {
 		return errors.New("invalid EXPOSE port " + strconv.Quote(spec) + ": " + reason)
 	}
 
+	// the container port is always the last colon-separated part, after any
+	// ip and host port, IPv6 addresses included
 	rest := spec
 	if i := strings.LastIndex(rest, ":"); i >= 0 {
 		rest = rest[i+1:]

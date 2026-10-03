@@ -69,7 +69,8 @@ func lexShell(s string) []shellToken {
 				i++
 				continue
 			}
-			// a comment runs to the end of the line
+			// a comment runs to the end of the line; the newline itself is
+			// left for the next iteration to emit as a command separator
 			for i < n && runes[i] != '\n' {
 				i++
 			}
