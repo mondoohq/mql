@@ -5,8 +5,11 @@ package resources
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
+
+	mysqldriver "github.com/go-sql-driver/mysql"
 )
 
 func TestIsYes(t *testing.T) {
@@ -290,5 +293,15 @@ func TestHasPasswordValue(t *testing.T) {
 				t.Errorf("hasPasswordValue(%+v) = %v, want %v", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestIsSyntaxError(t *testing.T) {
+	// MariaDB 10.3 on SHOW ALL REPLICAS STATUS
+	if !isSyntaxError(&mysqldriver.MySQLError{Number: 1064, Message: "You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'REPLICAS STATUS' at line 1"}) {
+		t.Error("1064 is a syntax error")
+	}
+	if isSyntaxError(&mysqldriver.MySQLError{Number: 1227}) || isSyntaxError(nil) || isSyntaxError(errors.New("i/o timeout")) {
+		t.Error("only 1064 is a syntax error")
 	}
 }
