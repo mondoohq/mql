@@ -4,6 +4,8 @@
 package resources
 
 import (
+	"errors"
+	"io/fs"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -96,7 +98,101 @@ func TestMongodConfigPath(t *testing.T) {
 			for p, content := range tt.files {
 				require.NoError(t, afs.WriteFile(p, []byte(content), 0o644))
 			}
-			assert.Equal(t, tt.want, mongodConfigPath(afs))
+			got, _, err := mongodConfigPath(afs, nil)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// Debian 12, mongod.service stopped and a mongod started by hand with
+// `mongod -f /etc/mongod-manual.conf --fork` (bindIpAll, no auth). The server
+// listening on 0.0.0.0:27017 is that process; the unit's /etc/mongod.conf
+// (127.0.0.1, authorization enabled) describes nothing that runs.
+func TestMongodConfigPathProcessOutsideTheUnit(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	for p, content := range map[string]string{
+		"/lib/systemd/system/mongod.service": debMongodUnit,
+		"/proc/3141/cmdline":                 "/usr/bin/mongod\x00-f\x00/etc/mongod-manual.conf\x00--fork\x00--logpath\x00/tmp/mdb/log\x00",
+		"/proc/2718/cmdline":                 "/usr/bin/python3\x00/usr/bin/mongod-helper\x00",
+	} {
+		require.NoError(t, afs.WriteFile(p, []byte(content), 0o644))
+	}
+	got, _, err := mongodConfigPath(afs, []string{"2718", "3141"})
+	require.NoError(t, err)
+	assert.Equal(t, "/etc/mongod-manual.conf", got)
+}
+
+// The service's own process still wins over another mongod on the host.
+func TestMongodConfigPathServiceBeatsOtherProcesses(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	for p, content := range map[string]string{
+		"/lib/systemd/system/mongod.service":                      debMongodUnit,
+		"/sys/fs/cgroup/system.slice/mongod.service/cgroup.procs": "21279\n",
+		"/proc/21279/cmdline":                                     "/usr/bin/mongod\x00--config\x00/etc/mongod-alt.conf\x00",
+		"/proc/3141/cmdline":                                      "/usr/bin/mongod\x00-f\x00/etc/mongod-manual.conf\x00",
+	} {
+		require.NoError(t, afs.WriteFile(p, []byte(content), 0o644))
+	}
+	got, _, err := mongodConfigPath(afs, []string{"3141", "21279"})
+	require.NoError(t, err)
+	assert.Equal(t, "/etc/mongod-alt.conf", got)
+}
+
+// /proc mounted with hidepid=2: a non-root scan reads the service's pid from
+// its cgroup but not the process's command line. Debian 12 then reported the
+// unit's /etc/mongod.conf for a server running /etc/mongod-alt.conf. That is a
+// refusal, not a server that does not exist.
+func TestMongodConfigPathHiddenProcessIsARefusal(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	for p, content := range map[string]string{
+		"/lib/systemd/system/mongod.service":                      debMongodUnit,
+		"/sys/fs/cgroup/system.slice/mongod.service/cgroup.procs": "21279\n",
+		"/proc/mounts": "sysfs /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0\nproc /proc proc rw,nosuid,nodev,noexec,relatime,hidepid=2 0 0\n",
+	} {
+		require.NoError(t, afs.WriteFile(p, []byte(content), 0o644))
+	}
+	got, _, err := mongodConfigPath(afs, nil)
+	require.Error(t, err)
+	assert.Equal(t, "/etc/mongod.conf", got, "the unit's file is still what v13 reported")
+	assert.True(t, errors.Is(err, fs.ErrNotExist), "the refused read is reported: %v", err)
+
+	// Without hidepid the same missing pid is a process that has exited.
+	require.NoError(t, afs.WriteFile("/proc/mounts", []byte("proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n"), 0o644))
+	got, _, err = mongodConfigPath(afs, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "/etc/mongod.conf", got)
+}
+
+func TestProcMountHidesPids(t *testing.T) {
+	for opts, want := range map[string]bool{
+		"rw,nosuid,nodev,noexec,relatime":                   false,
+		"rw,nosuid,nodev,noexec,relatime,hidepid=0":         false,
+		"rw,nosuid,nodev,noexec,relatime,hidepid=1":         true,
+		"rw,nosuid,nodev,noexec,relatime,hidepid=2":         true,
+		"rw,nosuid,nodev,noexec,relatime,hidepid=invisible": true,
+		"rw,relatime,gid=1001,hidepid=noaccess":             true,
+		"rw,relatime,hidepid=off":                           false,
+	} {
+		mounts := "sysfs /sys sysfs rw 0 0\nproc /proc proc " + opts + " 0 0\n"
+		assert.Equal(t, want, procMountHidesPids(mounts), opts)
+	}
+	assert.False(t, procMountHidesPids("proc /mnt/chroot/proc proc rw,hidepid=2 0 0\n"), "only /proc counts")
+}
+
+// The command line that names the file comes back with it, so its other
+// options can override the file: RHEL 9 with
+// OPTIONS="-f /etc/mongod.conf --bind_ip_all --port 27018".
+func TestMongodConfigPathReturnsTheCommandLine(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	for p, content := range map[string]string{
+		"/usr/lib/systemd/system/mongod.service": rpmMongodUnit,
+		"/etc/sysconfig/mongod":                  `OPTIONS="-f /etc/mongod.conf --bind_ip_all --port 27018"` + "\n",
+	} {
+		require.NoError(t, afs.WriteFile(p, []byte(content), 0o644))
+	}
+	got, argv, err := mongodConfigPath(afs, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "/etc/mongod.conf", got)
+	assert.Equal(t, []string{"-f", "/etc/mongod.conf", "--bind_ip_all", "--port", "27018"}, argv)
 }
