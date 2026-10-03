@@ -49,6 +49,7 @@ func initRedisdbInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	if err != nil {
 		switch {
 		case isNoPerm(err):
+			// an ACL denial leaves configErr nil, so the fields read null
 		case isUnknownCommand(err):
 			// Sentinel has no CONFIG command, and rename-command CONFIG ""
 			// (a common hardening step) removes it. The identity, users, and
@@ -84,8 +85,8 @@ func initRedisdbInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 }
 
 // setConfigFields populates the CONFIG GET-derived posture fields. When the
-// config was not readable they carry configErr, or are null when that is nil
-// (v13), so a denied read is never reported as a posture value.
+// config was not readable they carry configErr, or are null when that is nil,
+// so an unread config is never reported as a posture value.
 func (r *mqlRedisdbInstance) setConfigFields(cfg map[string]string, readable bool) {
 	if !readable {
 		null := plugin.StateIsSet | plugin.StateIsNull

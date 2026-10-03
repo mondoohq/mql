@@ -5,10 +5,9 @@ package resources
 
 // mqlRedisdbInstanceInternal caches the CONFIG GET result fetched during init so
 // the config sub-resource resolves without a second round trip. configReadable
-// is false when the connecting credential was denied CONFIG GET; configErr is
-// then the error the CONFIG-derived fields report (nil with StructuredErrors
-// off, which leaves them null). The code generator embeds this into
-// mqlRedisdbInstance.
+// is false when CONFIG GET could not be read; configErr is then the error the
+// CONFIG-derived fields report, and nil leaves them null. The code generator
+// embeds this into mqlRedisdbInstance.
 type mqlRedisdbInstanceInternal struct {
 	configCache    map[string]string
 	configReadable bool
