@@ -725,6 +725,8 @@ func TestLoadGrubDefaultsExpandsVariables(t *testing.T) {
 			"GRUB_CMDLINE_LINUX_DEFAULT=\"$GRUB_CMDLINE_LINUX_DEFAULT crashkernel=384M-:128M\"\n"), 0o644))
 		params, err := loadGrubDefaults(fs, "/etc/default/grub", true)
 		require.NoError(t, err)
+		// the leading space is the shell's: the empty expansion stays in front
+		// of crashkernel=
 		assert.Equal(t, " crashkernel=384M-:128M", params["GRUB_CMDLINE_LINUX_DEFAULT"])
 	})
 }

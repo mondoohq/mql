@@ -508,10 +508,7 @@ func parseGrubDefaultsInto(r io.Reader, vars map[string]string) error {
 		// A quoted value may run on over several lines.
 		stmt := line
 		end := i
-		for {
-			if !parseGrubShellAssignments(stmt, vars) {
-				break
-			}
+		for parseGrubShellAssignments(stmt, vars) {
 			if end+1 >= len(lines) {
 				// The quote never closes, which the shell rejects. Keep the
 				// line as written and go on with the next one.
@@ -640,10 +637,10 @@ func readGrubShellWord(s string, lookup func(string) (string, bool)) (value stri
 	i := 0
 	for i < len(s) {
 		c := s[i]
-		switch {
-		case c == ' ' || c == '\t' || c == ';':
+		switch c {
+		case ' ', '\t', ';':
 			return b.String(), i, false
-		case c == '\\':
+		case '\\':
 			if i+1 >= len(s) {
 				return "", 0, true
 			}
@@ -651,14 +648,14 @@ func readGrubShellWord(s string, lookup func(string) (string, bool)) (value stri
 				b.WriteByte(s[i+1])
 			}
 			i += 2
-		case c == '\'':
+		case '\'':
 			j := strings.IndexByte(s[i+1:], '\'')
 			if j < 0 {
 				return "", 0, true
 			}
 			b.WriteString(s[i+1 : i+1+j])
 			i += j + 2
-		case c == '"':
+		case '"':
 			i++
 			closed := false
 			for i < len(s) && !closed {
@@ -700,13 +697,13 @@ func readGrubShellWord(s string, lookup func(string) (string, bool)) (value stri
 			if !closed {
 				return "", 0, true
 			}
-		case c == '$':
+		case '$':
 			n, ok := expandGrubShellVar(s[i:], lookup, &b)
 			if !ok {
 				return "", 0, true
 			}
 			i += n
-		case c == '`':
+		case '`':
 			j := strings.IndexByte(s[i+1:], '`')
 			if j < 0 {
 				return "", 0, true
@@ -747,6 +744,9 @@ func expandGrubShellVar(s string, lookup func(string) (string, bool), b *strings
 	}
 	switch s[1] {
 	case '(':
+		// Parentheses are counted without regard to quoting, so a quoted ")"
+		// inside the substitution ends it early. Defaults files do not
+		// carry such substitutions.
 		depth := 0
 		for i := 1; i < len(s); i++ {
 			switch s[i] {
