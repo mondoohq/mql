@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
 	"path"
 	"sort"
 	"strings"
@@ -97,10 +98,31 @@ var espLoaderDirs = []string{"EFI/systemd", "EFI/BOOT"}
 // string when none is visible, which is the case on a legacy-BIOS host and on
 // a scan that cannot see the partition.
 func findEsp(fs afero.Fs) string {
+	esp, _ := findEspChecked(fs)
+	return esp
+}
+
+// findEspChecked is findEsp, and when no ESP is found it also returns the
+// first permission error met on the way. The ESP is mounted 0700 on Debian,
+// Ubuntu and Fedora, so a non-root scan cannot look inside it, and an empty
+// path would read as a legacy BIOS host without systemd-boot.
+func findEspChecked(fs afero.Fs) (string, error) {
+	var refused error
+	isDir := func(p string) bool {
+		info, err := fs.Stat(p)
+		if err != nil {
+			if refused == nil && errors.Is(err, os.ErrPermission) {
+				refused = fmt.Errorf("cannot look for the EFI system partition at %s: %w", p, err)
+			}
+			return false
+		}
+		return info.IsDir()
+	}
+
 	for _, mount := range bootMountpoints {
 		for _, dir := range espLoaderDirs {
-			if bootDirExists(fs, path.Join(mount, dir)) {
-				return mount
+			if isDir(path.Join(mount, dir)) {
+				return mount, nil
 			}
 		}
 	}
@@ -114,11 +136,11 @@ func findEsp(fs afero.Fs) string {
 	uefi := bootDirExists(fs, efiFirmwareDir)
 	for _, mount := range bootMountpoints {
 		efi := path.Join(mount, "EFI")
-		if bootDirExists(fs, efi) && (uefi || holdsEfiBinary(fs, efi)) {
-			return mount
+		if isDir(efi) && (uefi || holdsEfiBinary(fs, efi)) {
+			return mount, nil
 		}
 	}
-	return ""
+	return "", refused
 }
 
 // efiFirmwareDir exists on a running Linux host that UEFI firmware booted.
@@ -152,17 +174,104 @@ func holdsEfiBinary(fs afero.Fs, efiDir string) bool {
 // findBootPath returns what $BOOT resolves to: the extended boot loader
 // partition when the host has one, and the EFI system partition otherwise. It
 // is the directory boot entries are read from.
+//
+// Only a partition of the XBOOTLDR type is $BOOT. The Red Hat family keeps
+// GRUB's Boot Loader Specification entries in /boot/loader/entries on a plain
+// /boot, and with systemd-boot installed beside GRUB, taking that /boot as
+// $BOOT reported GRUB's entries as systemd-boot's, where bootctl finds none.
 func findBootPath(fs afero.Fs, esp string) string {
+	isXbootldr := xbootldrChecker(fs)
 	for _, mount := range bootMountpoints {
 		if mount == esp {
 			continue
 		}
-		if bootDirExists(fs, path.Join(mount, "loader/entries")) ||
-			bootDirExists(fs, path.Join(mount, "EFI/Linux")) {
+		if !bootDirExists(fs, path.Join(mount, "loader/entries")) &&
+			!bootDirExists(fs, path.Join(mount, "EFI/Linux")) {
+			continue
+		}
+		if isXbootldr(mount) {
 			return mount
 		}
 	}
 	return esp
+}
+
+// xbootldrPartitionType is the GPT partition type of an extended boot loader
+// partition, from the Discoverable Partitions Specification.
+const xbootldrPartitionType = "bc13c2ff-59e6-4262-a352-b275fd6f7172"
+
+// xbootldrChecker returns a test for whether the filesystem mounted at a path
+// is an XBOOTLDR partition. It reads the device from the mount table and the
+// partition type udev recorded for it. Without a mount table (an image or a
+// mounted filesystem) there is no device to ask about, and a directory that
+// holds boot entries is taken as $BOOT, the way it was before.
+//
+// The mount table is read once, on the first call, which comes after the
+// directory checks: those can trigger an automounted /boot.
+func xbootldrChecker(fs afero.Fs) func(mount string) bool {
+	read := false
+	mountinfo, noMountinfo := "", false
+	return func(mount string) bool {
+		if !read {
+			read = true
+			data, err := afero.ReadFile(fs, "/proc/self/mountinfo")
+			mountinfo, noMountinfo = string(data), err != nil
+		}
+		if noMountinfo {
+			return true
+		}
+		source, ok := mountinfoSource(mountinfo, mount)
+		if !ok {
+			// not a mount point: a directory on the root filesystem
+			return false
+		}
+		return partitionType(fs, source) == xbootldrPartitionType
+	}
+}
+
+// mountinfoSource returns the mount source of the last filesystem mounted at
+// mountpoint in /proc/self/mountinfo, which is the one in effect.
+func mountinfoSource(mountinfo string, mountpoint string) (string, bool) {
+	source, found := "", false
+	for _, line := range strings.Split(mountinfo, "\n") {
+		// 61 43 0:35 /boot /boot rw,relatime shared:166 - btrfs /dev/nvme0n1p3 rw,...
+		pre, post, ok := strings.Cut(line, " - ")
+		if !ok {
+			continue
+		}
+		fields := strings.Fields(pre)
+		if len(fields) < 5 || fields[4] != mountpoint {
+			continue
+		}
+		rest := strings.Fields(post)
+		if len(rest) < 2 {
+			continue
+		}
+		source, found = rest[1], true
+	}
+	return source, found
+}
+
+// partitionType returns the GPT partition type udev recorded for a block
+// device, lowercased, or "" when it is not known.
+func partitionType(fs afero.Fs, device string) string {
+	if !strings.HasPrefix(device, "/dev/") {
+		return ""
+	}
+	dev, err := afero.ReadFile(fs, path.Join("/sys/class/block", path.Base(device), "dev"))
+	if err != nil {
+		return ""
+	}
+	data, err := afero.ReadFile(fs, "/run/udev/data/b"+strings.TrimSpace(string(dev)))
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "E:ID_PART_ENTRY_TYPE="); ok {
+			return strings.ToLower(strings.TrimSpace(v))
+		}
+	}
+	return ""
 }
 
 // systemdBootInstalled reports whether the systemd-boot binary is present on
@@ -225,6 +334,9 @@ type bootPartitions struct {
 	Boot      string
 	Version   string
 	Installed bool
+	// Refused is set when no ESP was found because the scan may not look
+	// where it would be.
+	Refused error
 }
 
 // readBootPartitions reads what the partitions state. Every field degrades to an
@@ -232,8 +344,9 @@ type bootPartitions struct {
 // read is a host with no boot loader installed on it, which is an answer rather
 // than an error.
 func readBootPartitions(fs afero.Fs) bootPartitions {
-	esp := findEsp(fs)
+	esp, refused := findEspChecked(fs)
 	return bootPartitions{
+		Refused:   refused,
 		Esp:       esp,
 		Boot:      findBootPath(fs, esp),
 		Installed: systemdBootInstalled(fs, esp),
@@ -373,6 +486,19 @@ type mqlSystemdBootInternal struct {
 	// measurement that succeeded.
 	fetchErr  error
 	efiVarErr error
+	// espRefused is a refusal to look for the ESP. With structured errors
+	// the partition fields report it; before, they read as no ESP at all.
+	espRefused error
+}
+
+// espRefusal is the error the partition fields report when the scan was
+// refused a look at the ESP, or nil when it was not or when structured errors
+// are off (v13 read the fields as empty).
+func (s *mqlSystemdBoot) espRefusal() error {
+	if s.espRefused == nil || !plugin.StructuredErrors() {
+		return nil
+	}
+	return llx.Forbidden(s.espRefused)
 }
 
 func (s *mqlSystemdBoot) id() (string, error) {
@@ -395,6 +521,7 @@ func (s *mqlSystemdBoot) fetch() error {
 		}
 
 		parts := readBootPartitions(fs)
+		s.espRefused = parts.Refused
 		s.cachedEsp = parts.Esp
 		s.cachedBootPath = parts.Boot
 		s.cachedInstalled = parts.Installed
@@ -442,11 +569,17 @@ func (s *mqlSystemdBoot) installed() (bool, error) {
 	if err := s.fetch(); err != nil {
 		return false, err
 	}
+	if err := s.espRefusal(); err != nil {
+		return false, err
+	}
 	return s.cachedInstalled, nil
 }
 
 func (s *mqlSystemdBoot) version() (string, error) {
 	if err := s.fetch(); err != nil {
+		return "", err
+	}
+	if err := s.espRefusal(); err != nil {
 		return "", err
 	}
 	return s.cachedVersion, nil
@@ -456,11 +589,17 @@ func (s *mqlSystemdBoot) espPath() (string, error) {
 	if err := s.fetch(); err != nil {
 		return "", err
 	}
+	if err := s.espRefusal(); err != nil {
+		return "", err
+	}
 	return s.cachedEsp, nil
 }
 
 func (s *mqlSystemdBoot) bootPath() (string, error) {
 	if err := s.fetch(); err != nil {
+		return "", err
+	}
+	if err := s.espRefusal(); err != nil {
 		return "", err
 	}
 	return s.cachedBootPath, nil
@@ -486,6 +625,9 @@ func (s *mqlSystemdBoot) entries() ([]any, error) {
 	}
 
 	if !s.cachedInstalled && !s.cachedActive {
+		if err := s.espRefusal(); err != nil {
+			return nil, err
+		}
 		if s.efiVarErr != nil {
 			// systemd-boot is not installed, and whether it booted this host
 			// is unknown, so whose entries these are is unknown too.

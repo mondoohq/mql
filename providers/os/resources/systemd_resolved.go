@@ -35,6 +35,37 @@ type resolvedGlobal struct {
 	multicastDns     string
 	resolvConfMode   string
 	cache            bool
+
+	// dnsOverTlsUnsupported and multicastDnsUnsupported are set when the
+	// running systemd-resolved predates the setting, so it does not apply
+	// whatever the configuration says
+	dnsOverTlsUnsupported   bool
+	multicastDnsUnsupported bool
+}
+
+// resolvedSettingSince is the systemd release that taught systemd-resolved
+// each setting. An older release logs "Unknown lvalue" for it and carries on
+// without it: Ubuntu 18.04 (237) with DNSOverTLS=yes in a drop-in sends DNS in
+// the clear.
+var resolvedSettingSince = map[string]int{
+	"MulticastDNS": 234,
+	"DNSOverTLS":   239,
+}
+
+// applyResolvedRelease drops the settings the systemd release does not have.
+// A release of 0 is unknown, and the settings are taken as configured.
+func applyResolvedRelease(g *resolvedGlobal, release int) {
+	if release <= 0 {
+		return
+	}
+	if release < resolvedSettingSince["DNSOverTLS"] {
+		g.dnsOverTls = ""
+		g.dnsOverTlsUnsupported = true
+	}
+	if release < resolvedSettingSince["MulticastDNS"] {
+		g.multicastDns = ""
+		g.multicastDnsUnsupported = true
+	}
 }
 
 func (r *mqlSystemdResolved) resolveGlobal() (*resolvedGlobal, error) {
@@ -83,6 +114,12 @@ func (r *mqlSystemdResolved) resolveGlobal() (*resolvedGlobal, error) {
 		return nil, err
 	}
 	applyResolvedConf(g, conf)
+
+	release, err := systemdRelease(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	applyResolvedRelease(g, release)
 
 	r.fetched = true
 	r.cachedGlobal = g
@@ -334,6 +371,10 @@ func (r *mqlSystemdResolved) dnsOverTls() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if g.dnsOverTlsUnsupported {
+		r.DnsOverTls.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
 	return g.dnsOverTls, nil
 }
 
@@ -349,6 +390,10 @@ func (r *mqlSystemdResolved) multicastDns() (string, error) {
 	g, err := r.resolveGlobal()
 	if err != nil {
 		return "", err
+	}
+	if g.multicastDnsUnsupported {
+		r.MulticastDns.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
 	}
 	return g.multicastDns, nil
 }

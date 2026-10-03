@@ -143,7 +143,47 @@ func (m *SystemdSocketManager) ShowSocketProperties(name string) (map[string]str
 		return m.fsFallback().ShowSocketProperties(name)
 	}
 
-	return parseShowProperties(cmd.Stdout)
+	props, err := parseShowProperties(cmd.Stdout)
+	if err != nil {
+		return nil, err
+	}
+	foldListenTypeProperties(props)
+	return props, nil
+}
+
+// systemdListenTypes are the per-type listen settings, in the order they are
+// reported, with the type name systemd prints in a Listen= value.
+var systemdListenTypes = []struct{ key, kind string }{
+	{"ListenStream", "Stream"},
+	{"ListenDatagram", "Datagram"},
+	{"ListenSequentialPacket", "SequentialPacket"},
+	{"ListenFIFO", "FIFO"},
+	{"ListenSpecial", "Special"},
+	{"ListenNetlink", "Netlink"},
+	{"ListenMessageQueue", "MessageQueue"},
+	{"ListenUSBFunction", "USBFunction"},
+}
+
+// foldListenTypeProperties builds Listen from the per-type settings when
+// systemctl printed those instead. Asked for --property=Listen, systemd 219
+// (RHEL 7), 232 (Debian 9) and 237 (Ubuntu 18.04) answer with
+// ListenStream=127.0.0.1:7777 and the like, so every socket read as listening
+// nowhere.
+func foldListenTypeProperties(props map[string]string) {
+	if props["Listen"] != "" {
+		return
+	}
+	lines := []string{}
+	for _, t := range systemdListenTypes {
+		for _, addr := range strings.Split(props[t.key], "\n") {
+			if addr = strings.TrimSpace(addr); addr != "" {
+				lines = append(lines, addr+" ("+t.kind+")")
+			}
+		}
+	}
+	if len(lines) > 0 {
+		props["Listen"] = strings.Join(lines, "\n")
+	}
 }
 
 func ParseSystemdSocketUnitFiles(input io.Reader) ([]*SystemdSocket, error) {
