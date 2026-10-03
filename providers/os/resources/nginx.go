@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -517,6 +518,32 @@ func (s *mqlNginxConf) expandNginxGlob(pattern string) ([]string, error) {
 	return paths, nil
 }
 
+func (s *mqlNginxConf) setError(err error) {
+	errSlice := plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	errMap := plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	s.Params = errMap
+	s.HttpParams = errMap
+	s.StreamParams = errMap
+	s.Servers = errSlice
+	s.Upstreams = errSlice
+	s.StreamServers = errSlice
+	s.StreamUpstreams = errSlice
+	s.ListenAddresses = errSlice
+	s.Files = errSlice
+}
+
+// nginxRefusedIncludes returns the includes a parse was refused (a permission
+// error), out of every error it collected.
+func nginxRefusedIncludes(parseErrs []nginx.ParseError) []error {
+	var refused []error
+	for _, e := range parseErrs {
+		if errors.Is(e, fs.ErrPermission) {
+			refused = append(refused, e)
+		}
+	}
+	return refused
+}
+
 // parse is the central method that invokes the nginx parser, then walks
 // the resulting directive tree to populate all fields.
 func (s *mqlNginxConf) parse(file *mqlFile) error {
@@ -543,17 +570,12 @@ func (s *mqlNginxConf) parse(file *mqlFile) error {
 
 	cfg, err := nginx.ParseFiles(file.Path.Data, openFn, globFn)
 	if err != nil {
-		errSlice := plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		errMap := plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		s.Params = errMap
-		s.HttpParams = errMap
-		s.StreamParams = errMap
-		s.Servers = errSlice
-		s.Upstreams = errSlice
-		s.StreamServers = errSlice
-		s.StreamUpstreams = errSlice
-		s.ListenAddresses = errSlice
-		s.Files = errSlice
+		s.setError(err)
+		return err
+	}
+
+	if err := includeRefusal(nginxRefusedIncludes(cfg.Errors)); err != nil {
+		s.setError(err)
 		return err
 	}
 

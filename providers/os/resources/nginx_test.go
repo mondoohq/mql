@@ -4,7 +4,9 @@
 package resources
 
 import (
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"strings"
 	"testing"
@@ -12,6 +14,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/resources/nginx"
 	"go.mondoo.com/mql/utils/syncx"
@@ -760,4 +763,32 @@ func TestNginxLocationReturnDirective(t *testing.T) {
 	plain := res[1].(*mqlNginxConfLocation)
 	assert.Equal(t, "", plain.ReturnDirective.Data)
 	assert.Equal(t, plain.Return.Data, plain.ReturnDirective.Data)
+}
+
+// A non-root scan that may not read an included file reports the refusal
+// instead of a configuration without that file, once structured errors are on.
+func TestNginxIncludeRefusal(t *testing.T) {
+	parseErrs := []nginx.ParseError{
+		{File: "/etc/nginx/nginx.conf", Line: 3, Msg: "unexpected '}'"},
+		{File: "/etc/nginx/nginx.conf", Line: 7, Msg: "open /etc/nginx/missing.conf: file does not exist", Err: fs.ErrNotExist},
+		{File: "/etc/nginx/nginx.conf", Line: 9, Msg: "open /etc/nginx/conf.d/sweep-http.conf: permission denied",
+			Err: &fs.PathError{Op: "open", Path: "/etc/nginx/conf.d/sweep-http.conf", Err: fs.ErrPermission}},
+	}
+	refused := nginxRefusedIncludes(parseErrs)
+	require.Len(t, refused, 1)
+	assert.ErrorContains(t, refused[0], "sweep-http.conf")
+
+	t.Run("before structured errors the parse carries on", func(t *testing.T) {
+		require.False(t, plugin.StructuredErrors())
+		assert.NoError(t, includeRefusal(refused))
+	})
+
+	t.Run("with structured errors it is forbidden", func(t *testing.T) {
+		enableStructuredErrorsForTest(t)
+		err := includeRefusal(refused)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, llx.ErrForbidden))
+		assert.ErrorContains(t, err, "sweep-http.conf")
+		assert.NoError(t, includeRefusal(nil))
+	})
 }
