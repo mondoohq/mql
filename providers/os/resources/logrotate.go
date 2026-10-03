@@ -264,7 +264,11 @@ func logrotateStrictParsing(version, rpmRelease string) bool {
 }
 
 // logrotateFileHasCRLF reports whether a configuration line other than a
-// comment ends in a carriage return.
+// comment ends in a carriage return. logrotate itself only fails on the "{"
+// and "}" lines (a keyword line such as "weekly\r" parses, the carriage
+// return reading as whitespace), so this stands for "the file has CRLF line
+// endings": an editor or a copy from Windows converts every line, the braces
+// included.
 func logrotateFileHasCRLF(content string) bool {
 	for _, line := range strings.Split(content, "\n") {
 		trimmed := strings.TrimLeft(line, " \t")
