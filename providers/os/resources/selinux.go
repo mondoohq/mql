@@ -381,7 +381,7 @@ func ParseSemodule(output string) []SELinuxModule {
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
 		// semodule prints "No modules." for an empty or missing policy store
-		if len(fields) == 0 || strings.Join(fields, " ") == "No modules." {
+		if len(fields) == 0 || (len(fields) == 2 && fields[0] == "No" && fields[1] == "modules.") {
 			continue
 		}
 
