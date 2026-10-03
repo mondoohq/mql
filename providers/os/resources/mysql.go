@@ -271,7 +271,7 @@ func (s *mqlMysqlConf) pluginLoad(serverOptions map[string]any) ([]any, error) {
 }
 
 func (s *mqlMysqlConf) earlyPluginLoad(serverOptions map[string]any) ([]any, error) {
-	return optionList(serverOptions, "early_plugin_load"), nil
+	return optionPluginList(serverOptions, "early_plugin_load"), nil
 }
 
 func (s *mqlMysqlConf) validatePasswordPolicy(serverOptions map[string]any) (string, error) {

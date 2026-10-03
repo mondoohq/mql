@@ -25,8 +25,9 @@ import (
 // Option is a single option assignment from an option file, recorded with the
 // file and line it came from so callers can report provenance.
 type Option struct {
-	// Section is the name of the group the option was declared under, as
-	// written in the file (for example "mysqld" or "mariadb-11.4").
+	// Section is the name of the group the option was declared under,
+	// lowercased (for example "mysqld" or "mariadb-11.4"). See
+	// parseGroupHeader.
 	Section string
 	// Name is the option name after normalization: lowercased, with "-"
 	// folded to "_", any leading "--" removed and any "loose" prefix
@@ -52,7 +53,7 @@ type Option struct {
 // Section is one option group, with the options declared under it across
 // every file that contributed to it.
 type Section struct {
-	// Name is the group name as written, without the surrounding brackets.
+	// Name is the group name without the surrounding brackets, lowercased.
 	Name string
 	// Options are the group's options in read order, duplicates preserved.
 	Options []Option
@@ -222,6 +223,11 @@ func (c *Conf) parseFile(path string, reader FileReader, dirLister DirLister, vi
 		if line[0] == '[' {
 			if name, ok := parseGroupHeader(line); ok {
 				section = name
+				if name == "" {
+					// "[ ]" opens a group no program reads. The options
+					// under it are dropped like those before any header.
+					continue
+				}
 				if !contains(c.groups, name) {
 					c.groups = append(c.groups, name)
 				}
@@ -301,12 +307,16 @@ func (c *Conf) parseDirective(line, baseDir string, reader FileReader, dirLister
 // too, which matters because distributions park templates next to live
 // fragments (MariaDB ships an "enable_encryption.preset" and a
 // "99-enable-encryption.cnf.preset" directory inside its fragment directory).
+//
+// On Unix the extension is compared exactly, as the server compares it with
+// strcmp, so a fragment named "zz.CNF" is not read. Only Windows paths, whose
+// file system ignores case, are compared case-insensitively.
 func isIncludableFile(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	if ext == ".cnf" {
-		return true
+	if !isWindowsPath(path) {
+		return filepath.Ext(path) == ".cnf"
 	}
-	return ext == ".ini" && isWindowsPath(path)
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".cnf" || ext == ".ini"
 }
 
 // isWindowsPath reports whether path is written the Windows way, with a drive
@@ -320,18 +330,21 @@ func isWindowsPath(path string) bool {
 		((path[0] >= 'a' && path[0] <= 'z') || (path[0] >= 'A' && path[0] <= 'Z'))
 }
 
-// parseGroupHeader extracts the group name from a "[name]" line, tolerating
-// whitespace inside the brackets and a trailing comment after them.
+// parseGroupHeader extracts the group name from a "[name]" line, tolerating a
+// trailing comment after the brackets. It reports an empty name for "[ ]".
+//
+// The name is lowercased because the servers look groups up with find_type,
+// which ignores case: a fragment headed [MYSQLD] configures the server like
+// one headed [mysqld]. Only trailing whitespace inside the brackets is
+// dropped, as my_default.c does, so [ mysqld ] names a group " mysqld" that
+// no program reads.
 func parseGroupHeader(line string) (string, bool) {
 	end := strings.IndexByte(line, ']')
 	if end < 0 {
 		return "", false
 	}
-	name := strings.TrimSpace(line[1:end])
-	if name == "" {
-		return "", false
-	}
-	return name, true
+	name := strings.TrimRight(line[1:end], " \t\v\f\r")
+	return strings.ToLower(name), true
 }
 
 // parseOption splits an option line into a normalized name and its resolved
@@ -580,7 +593,8 @@ func (c *Conf) SectionNames() []string {
 
 // Merge resolves the named groups into a single option map using MySQL's
 // last-write-wins semantics, walking options in true read order. Options in
-// cumulativeOptions accumulate into a comma-separated list instead.
+// cumulativeOptions accumulate into a ";"-separated list instead, the
+// separator the plugin load options use (see SplitPluginList).
 //
 // An option written bare, with no value at all, resolves to "ON". The server
 // treats such an option as enabled, so "ON" is its effective value; carrying
@@ -589,8 +603,9 @@ func (c *Conf) SectionNames() []string {
 // option that is in effect as disabled. Flags still reports which options
 // were written that way.
 //
-// Group names match exactly. A version-suffixed group such as [mysqld-8.0] is
-// read only by a server of that version, so a caller that wants it names it;
+// Group names match exactly, and the parser has already lowercased them. A
+// version-suffixed group such as [mysqld-8.0] is read only by a server of
+// that version, so a caller that wants it names it;
 // ServerGroups does that for the server version it is given.
 func Merge(c *Conf, groups ...string) map[string]string {
 	out := map[string]string{}
@@ -604,7 +619,7 @@ func Merge(c *Conf, groups ...string) map[string]string {
 		}
 		if cumulativeOptions[opt.Name] {
 			if prev, ok := out[opt.Name]; ok && prev != "" && value != "" {
-				out[opt.Name] = prev + "," + value
+				out[opt.Name] = prev + ";" + value
 				continue
 			}
 		}
@@ -758,6 +773,35 @@ func SplitList(value string) []string {
 	}
 	fields := strings.FieldsFunc(value, func(r rune) bool {
 		return r == ',' || r == ' ' || r == '\t'
+	})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		f = strings.Trim(strings.TrimSpace(f), `"'`)
+		if f != "" {
+			out = append(out, f)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// SplitPluginList splits the value of plugin_load, plugin_load_add or
+// early_plugin_load into its entries ("name=library" or "library"). The server
+// splits these on ";" and, on Unix, on ":" as well (plugin_load_list in
+// sql_plugin.cc); a Windows path keeps its drive-letter colon. A comma is not
+// a separator.
+func SplitPluginList(value string) []string {
+	v := strings.Trim(strings.TrimSpace(value), `"'`)
+	if v == "" {
+		return nil
+	}
+	// The server picks its separators by platform, never per entry, so a
+	// Windows path anywhere in the value means no entry is split on ":".
+	windows := isWindowsPath(v)
+	fields := strings.FieldsFunc(v, func(r rune) bool {
+		return r == ';' || (r == ':' && !windows)
 	})
 	out := make([]string, 0, len(fields))
 	for _, f := range fields {

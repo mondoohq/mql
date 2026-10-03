@@ -53,7 +53,7 @@ func TestParseGroupHeaders(t *testing.T) {
 	conf := parseString(t, `
 [mysqld]
 port=3306
-[ client ]
+[client ]
 socket=/tmp/x.sock
 [mysqld-8.0]
 port=3307
@@ -63,6 +63,7 @@ bind_address=127.0.0.1
 	// Group names are recorded in first-seen order, deduplicated.
 	assert.Equal(t, []string{"mysqld", "client", "mysqld-8.0"}, conf.SectionNames())
 
+	// A trailing space inside the brackets is dropped, as the server does.
 	// A reopened group accumulates rather than replacing, and a
 	// version-suffixed group stays a group of its own.
 	sections := conf.Sections()
@@ -329,7 +330,7 @@ func TestParseCumulativePluginLoadAdd(t *testing.T) {
 	merged := Merge(conf, "mysqld", "server")
 	assert.ElementsMatch(t,
 		[]string{"provider_bzip2", "provider_lz4", "provider_lzma", "provider_lzo", "provider_snappy"},
-		SplitList(merged["plugin_load_add"]),
+		SplitPluginList(merged["plugin_load_add"]),
 		"every plugin_load_add occurrence must survive the merge")
 }
 
@@ -655,7 +656,7 @@ func TestServerScopeOnModernMariaDB(t *testing.T) {
 // real case cumulative merging exists for.
 func TestRealPluginLoadAddAccumulates(t *testing.T) {
 	conf, _ := parseTree(t, "deb13-mariadb")
-	plugins := SplitList(Merge(conf, ServerGroups(FlavorMariaDB, "")...)["plugin_load_add"])
+	plugins := SplitPluginList(Merge(conf, ServerGroups(FlavorMariaDB, "")...)["plugin_load_add"])
 	assert.ElementsMatch(t,
 		[]string{"provider_bzip2", "provider_lz4", "provider_lzma", "provider_lzo", "provider_snappy"},
 		plugins)
@@ -1023,4 +1024,83 @@ func TestIsSecretOption(t *testing.T) {
 	} {
 		assert.Equal(t, want, IsSecretOption(name), name)
 	}
+}
+
+// The servers look up option groups with find_type, which ignores case:
+// mysqld --verbose --help and my_print_defaults mysqld both apply a fragment
+// written as [MYSQLD] (MySQL 5.7 to 8.4, MariaDB 10.1 to 11.8). The group
+// is reported under its lowercase name, so [MYSQLD] and [mysqld] are one group.
+func TestParseGroupNamesAreCaseInsensitive(t *testing.T) {
+	reader, dirLister := mapFS(map[string]string{
+		"/etc/mysql/my.cnf":                 "[mysqld]\nmax_connections = 120\n!includedir /etc/mysql/mysql.conf.d\n",
+		"/etc/mysql/mysql.conf.d/zz-sc.cnf": "[MYSQLD]\nmax_connections = 225\n",
+		"/etc/mysql/mysql.conf.d/zz-sd.cnf": "[MySQLd]\nlocal-infile=1\n[MariaDB-10.11]\nport=3307\n",
+		"/etc/mysql/mysql.conf.d/zz-se.cnf": "[Client]\nuser = root\n",
+	})
+	conf, err := Parse("/etc/mysql/my.cnf", reader, dirLister)
+	require.NoError(t, err)
+
+	server := Merge(conf, ServerGroups(FlavorMySQL, "8.4.11")...)
+	assert.Equal(t, "225", server["max_connections"])
+	assert.Equal(t, "1", server["local_infile"])
+	assert.Equal(t, "3307", Merge(conf, ServerGroups(FlavorMariaDB, "10.11.14")...)["port"])
+	assert.Equal(t, "root", Merge(conf, ClientGroups(FlavorMySQL)...)["user"])
+	assert.Equal(t, []string{"mysqld", "mariadb-10.11", "client"}, conf.SectionNames())
+	assert.Equal(t, FlavorMariaDB, flavorFromConfig(conf), "[MariaDB-10.11] is a MariaDB server group")
+}
+
+// The server strips only trailing whitespace from a group name (my_default.c),
+// so [ mysqld ] names the group " mysqld", which no program reads. Every
+// release in the sweep kept max_connections at 120 with such a fragment.
+func TestParseGroupNameKeepsLeadingWhitespace(t *testing.T) {
+	conf := parseString(t, "[mysqld]\nmax_connections = 120\n[ mysqld ]\nmax_connections = 228\n[mysqld\t]\nport = 3307\n")
+	merged := Merge(conf, ServerGroups(FlavorMySQL, "")...)
+	assert.Equal(t, "120", merged["max_connections"])
+	assert.Equal(t, "3307", merged["port"], "trailing whitespace is dropped")
+	assert.Contains(t, conf.SectionNames(), " mysqld")
+}
+
+// A header with nothing between the brackets opens a group no program reads,
+// so the options below it must not be credited to the group before it.
+func TestParseEmptyGroupNameEndsThePreviousGroup(t *testing.T) {
+	conf := parseString(t, "[mysqld]\nmax_connections = 120\n[ ]\nmax_connections = 300\n")
+	assert.Equal(t, "120", Merge(conf, "mysqld")["max_connections"])
+}
+
+// !includedir compares the extension with strcmp on Unix: a fragment named
+// zz-upper.CNF is not read (max_connections stayed 120 on every release).
+func TestParseIncludeDirExtensionIsCaseSensitiveOnUnix(t *testing.T) {
+	reader, dirLister := mapFS(map[string]string{
+		"/etc/mysql/my.cnf":                    "[mysqld]\nmax_connections = 120\n!includedir /etc/mysql/mysql.conf.d\n",
+		"/etc/mysql/mysql.conf.d/zz-upper.CNF": "[mysqld]\nmax_connections = 232\n",
+		"/etc/mysql/mysql.conf.d/zz-mixed.Cnf": "[mysqld]\nmax_connections = 233\n",
+	})
+	conf, err := Parse("/etc/mysql/my.cnf", reader, dirLister)
+	require.NoError(t, err)
+	assert.Equal(t, "120", Merge(conf, "mysqld")["max_connections"])
+	assert.Equal(t, []string{"/etc/mysql/my.cnf"}, conf.Files)
+
+	assert.False(t, isIncludableFile("/etc/mysql/conf.d/a.CNF"))
+	assert.True(t, isIncludableFile(`C:\ProgramData\MySQL\conf.d\a.CNF`), "Windows paths are case-insensitive")
+}
+
+// plugin-load, plugin-load-add and early-plugin-load take a list separated by
+// ";" (and ":" on Unix), the separator sql_plugin.cc's plugin_load_list splits
+// on. A comma is not a separator.
+func TestSplitPluginList(t *testing.T) {
+	assert.Equal(t, []string{"keyring_file.so", "keyring_okv.so"}, SplitPluginList("keyring_file.so;keyring_okv.so"))
+	assert.Equal(t, []string{"auth_pam.so", "validate_password.so"}, SplitPluginList(`"auth_pam.so;validate_password.so"`))
+	assert.Equal(t, []string{"auth_pam=auth_pam.so", "validate_password.so"}, SplitPluginList("auth_pam=auth_pam.so:validate_password.so"))
+	assert.Equal(t, []string{"a.so", "b.so"}, SplitPluginList(" a.so ; ;b.so "))
+	assert.Equal(t, []string{`C:\plugins\a.dll`, "b.dll"}, SplitPluginList(`C:\plugins\a.dll;b.dll`), "a drive letter colon is not a separator")
+	assert.Equal(t, []string{"a.so,b.so"}, SplitPluginList("a.so,b.so"))
+	assert.Nil(t, SplitPluginList(""))
+}
+
+// Each plugin_load_add occurrence is a list of its own; the merge joins them
+// with the list separator so a value holding several plugins splits the same
+// way as several occurrences.
+func TestParseCumulativePluginLoadAddKeepsLists(t *testing.T) {
+	conf := parseString(t, "[mysqld]\nplugin_load_add=a.so;b.so\nplugin_load_add=c.so\n")
+	assert.Equal(t, []string{"a.so", "b.so", "c.so"}, SplitPluginList(Merge(conf, "mysqld")["plugin_load_add"]))
 }
