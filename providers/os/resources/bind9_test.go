@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers/os/resources/bind9"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
 )
 
 func TestBind9ResolveZonePath(t *testing.T) {
@@ -361,7 +362,7 @@ func TestBind9LaunchConfig(t *testing.T) {
 			for p, c := range tt.files {
 				require.NoError(t, afs.WriteFile(p, []byte(c), 0o644))
 			}
-			assert.Equal(t, tt.want, bind9LaunchConfig(afs))
+			assert.Equal(t, tt.want, bind9LaunchConfig(afs, systemd.AllDropInDirs))
 		})
 	}
 }

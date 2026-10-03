@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
 )
 
 // TestHaproxyVersionRegex_RuntimeOutput covers the regex used against
@@ -146,7 +147,7 @@ func TestHaproxyServiceLaunch_IgnoresUnpassedConfD(t *testing.T) {
 		"/etc/haproxy/haproxy.cfg":            "global\n",
 		"/etc/haproxy/conf.d/legacy.cfg":      "frontend legacy_unloaded\n\tbind *:9999\n",
 	})
-	got := haproxyServiceLaunch(afs)
+	got := haproxyServiceLaunch(afs, systemd.AllDropInDirs)
 	assert.Equal(t, []string{"/etc/haproxy/haproxy.cfg"}, got.Configs)
 	assert.Equal(t, "/run/haproxy.pid", got.PidFile)
 }
@@ -157,10 +158,10 @@ func TestHaproxyServiceLaunch_DropInAndDefaults(t *testing.T) {
 		"/etc/default/haproxy":                                "EXTRAOPTS=\"-f /etc/haproxy/conf.d\"\n",
 		"/etc/systemd/system/haproxy.service.d/override.conf": "[Service]\nEnvironment=CONFIG=/srv/lb.cfg\n",
 	})
-	got := haproxyServiceLaunch(afs)
+	got := haproxyServiceLaunch(afs, systemd.AllDropInDirs)
 	assert.Equal(t, []string{"/srv/lb.cfg", "/etc/haproxy/conf.d"}, got.Configs)
 
-	assert.Empty(t, haproxyServiceLaunch(writeHaproxyFS(t, nil)).Configs)
+	assert.Empty(t, haproxyServiceLaunch(writeHaproxyFS(t, nil), systemd.AllDropInDirs).Configs)
 }
 
 func TestHaproxyProcessConfigs(t *testing.T) {
@@ -186,4 +187,38 @@ func TestExpandHaproxyConfigArg(t *testing.T) {
 	})
 	assert.Equal(t, []string{"/etc/haproxy/conf.d/10-a.cfg", "/etc/haproxy/conf.d/20-b.cfg"}, expandHaproxyConfigArg(afs, "/etc/haproxy/conf.d"))
 	assert.Equal(t, []string{"/etc/haproxy/haproxy.cfg"}, expandHaproxyConfigArg(afs, "/etc/haproxy/haproxy.cfg"))
+}
+
+// /etc/systemd/system/service.d applies to haproxy.service too, on systemd
+// releases that read type-level drop-ins.
+func TestHaproxyServiceLaunch_TypeLevelDropIn(t *testing.T) {
+	afs := writeHaproxyFS(t, map[string]string{
+		"/lib/systemd/system/haproxy.service":   ubuntu2404HaproxyService,
+		"/etc/systemd/system/service.d/zz.conf": "[Service]\nEnvironment=CONFIG=/srv/lb.cfg\n",
+	})
+	assert.Equal(t, []string{"/srv/lb.cfg"}, haproxyServiceLaunch(afs, systemd.AllDropInDirs).Configs)
+	assert.Equal(t, []string{"/etc/haproxy/haproxy.cfg"}, haproxyServiceLaunch(afs, systemd.DropInDirsForVersion(241, false)).Configs)
+}
+
+func TestDropInDirsOnDisk(t *testing.T) {
+	// RHEL 7: systemd 219, no libsystemd-shared
+	rhel7 := writeHaproxyFS(t, map[string]string{"/usr/lib/systemd/systemd": ""})
+	assert.Equal(t, systemd.DropInDirs{}, dropInDirsOnDisk(rhel7, true))
+
+	// RHEL 8: 239 with the type-level backport
+	rhel8 := writeHaproxyFS(t, map[string]string{
+		"/usr/lib/systemd/systemd":                  "",
+		"/usr/lib/systemd/libsystemd-shared-239.so": "",
+	})
+	assert.Equal(t, systemd.DropInDirs{Prefix: true, TypeLevel: true}, dropInDirsOnDisk(rhel8, true))
+
+	// Debian 10: 241, no backport
+	deb10 := writeHaproxyFS(t, map[string]string{
+		"/lib/systemd/systemd":                  "",
+		"/lib/systemd/libsystemd-shared-241.so": "",
+	})
+	assert.Equal(t, systemd.DropInDirs{Prefix: true}, dropInDirsOnDisk(deb10, false))
+
+	// no systemd on disk reads like a current release
+	assert.Equal(t, systemd.AllDropInDirs, dropInDirsOnDisk(writeHaproxyFS(t, nil), false))
 }
