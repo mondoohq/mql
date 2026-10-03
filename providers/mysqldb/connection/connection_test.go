@@ -3,7 +3,10 @@
 
 package connection
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestClassifyFlavor(t *testing.T) {
 	cases := []struct {
@@ -32,5 +35,27 @@ func TestTLSParamKeyword(t *testing.T) {
 		if got != mode {
 			t.Errorf("tlsParam(%q) = %q, want passthrough", mode, got)
 		}
+	}
+}
+
+func TestDerivedServerID(t *testing.T) {
+	// two MariaDB servers both reached as 127.0.0.1:3306 on different hosts
+	a := derivedServerID("ip-10-0-1-5", "3306", "1", "/var/lib/mysql/")
+	b := derivedServerID("ip-10-0-1-6", "3306", "1", "/var/lib/mysql/")
+	if a == b {
+		t.Errorf("servers on different hosts share id %q", a)
+	}
+	// two instances on one host
+	c := derivedServerID("ip-10-0-1-5", "3307", "2", "/var/lib/mysql2/")
+	if a == c {
+		t.Errorf("instances on one host share id %q", a)
+	}
+	// the id must not depend on the name the server was reached by, and is
+	// used as a platform id segment, so it must not carry a path separator
+	if again := derivedServerID("ip-10-0-1-5", "3306", "1", "/var/lib/mysql/"); again != a {
+		t.Errorf("id not stable: %q vs %q", a, again)
+	}
+	if strings.ContainsAny(a, "/:") || len(a) != 32 {
+		t.Errorf("id %q is not a 32-character hex segment", a)
 	}
 }
