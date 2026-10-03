@@ -576,16 +576,19 @@ type HTTPCheck struct {
 }
 
 // ParseHTTPCheck folds `option httpchk` and `http-check ...` directives
-// into a single structured view.
+// into a single structured view. `option httpchk [[<method>] <uri>
+// [<version>]]` defaults to OPTIONS / HTTP/1.0, and the meth, uri (or
+// uri-lf) and ver of `http-check send` (haproxy 2.2+) override it.
 func ParseHTTPCheck(dirs []Directive) HTTPCheck {
 	var hc HTTPCheck
+	var sendMethod, sendURI, sendVersion string
 	for _, d := range dirs {
 		switch d.Name {
 		case "option":
 			if len(d.Args) >= 1 && d.Args[0] == "httpchk" {
+				hc.Method, hc.URI, hc.Version = "OPTIONS", "/", "HTTP/1.0"
 				switch len(d.Args) {
 				case 1:
-					// bare `option httpchk` — defaults to OPTIONS /
 				case 2:
 					hc.URI = d.Args[1]
 				case 3:
@@ -608,10 +611,35 @@ func ParseHTTPCheck(dirs []Directive) HTTPCheck {
 			switch d.Args[0] {
 			case "send":
 				hc.Send = append(hc.Send, strings.Join(d.Args[1:], " "))
+				args := d.Args[1:]
+				for i := 0; i+1 < len(args); i++ {
+					switch args[i] {
+					case "meth":
+						sendMethod = args[i+1]
+					case "uri", "uri-lf":
+						sendURI = args[i+1]
+					case "ver":
+						sendVersion = args[i+1]
+					case "hdr":
+						// hdr <name> <value>
+						i += 2
+						continue
+					}
+					i++
+				}
 			case "expect":
 				hc.Expect = append(hc.Expect, strings.Join(d.Args[1:], " "))
 			}
 		}
+	}
+	if sendMethod != "" {
+		hc.Method = sendMethod
+	}
+	if sendURI != "" {
+		hc.URI = sendURI
+	}
+	if sendVersion != "" {
+		hc.Version = sendVersion
 	}
 	return hc
 }

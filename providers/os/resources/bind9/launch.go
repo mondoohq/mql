@@ -18,7 +18,22 @@ const namedOptsWithArg = "AcdDEiLMmnNpPStTUuxX"
 // does, so `-c/etc/x.conf`, `-fc /etc/x.conf` and an option argument that
 // happens to be "-c" (as in `-u -c`) are read correctly. The last -c wins.
 func ConfigFromArgs(args []string) string {
-	conf := ""
+	return LaunchFromArgs(args).Config
+}
+
+// Launch is what a named command line says about where its configuration is.
+type Launch struct {
+	// Config is the -c argument, "" for the compiled-in default.
+	Config string
+	// Chroot is the -t argument. named chroots there before it reads its
+	// configuration, so Config is a path inside it.
+	Chroot string
+}
+
+// LaunchFromArgs reads -c and -t from a named command line (without
+// argv[0]), the way ConfigFromArgs reads -c.
+func LaunchFromArgs(args []string) Launch {
+	var l Launch
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--" {
@@ -40,11 +55,14 @@ func ConfigFromArgs(args []string) string {
 				i++
 				val = args[i]
 			}
-			if opt == 'c' {
-				conf = val
+			switch opt {
+			case 'c':
+				l.Config = val
+			case 't':
+				l.Chroot = val
 			}
 			break
 		}
 	}
-	return conf
+	return l
 }

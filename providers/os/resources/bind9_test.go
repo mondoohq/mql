@@ -310,6 +310,46 @@ func TestBind9LaunchConfig(t *testing.T) {
 			want: "/etc/named.conf",
 		},
 		{
+			name: "running named-chroot reads -c inside the -t directory",
+			files: map[string]string{
+				"/usr/lib/systemd/system/named-chroot.service": rhelNamedChrootService,
+				"/var/named/chroot/run/named/named.pid":        "4141\n",
+				"/proc/4141/cmdline":                           "/usr/sbin/named\x00-u\x00named\x00-c\x00/etc/named-alt.conf\x00-t\x00/var/named/chroot\x00",
+				"/var/named/chroot/etc/named-alt.conf":         "options {};\n",
+			},
+			want: "/var/named/chroot/etc/named-alt.conf",
+		},
+		{
+			name: "chroot without the file: bind-chroot's mounted /etc/named.conf",
+			files: map[string]string{
+				"/var/named/chroot/run/named/named.pid": "4141\n",
+				"/proc/4141/cmdline":                    "/usr/sbin/named\x00-u\x00named\x00-c\x00/etc/named.conf\x00-t\x00/var/named/chroot\x00",
+			},
+			want: "/etc/named.conf",
+		},
+		{
+			name: "stopped, named-chroot enabled",
+			files: map[string]string{
+				"/usr/lib/systemd/system/named.service":                            rhelNamedServiceForChroot,
+				"/usr/lib/systemd/system/named-chroot.service":                     rhelNamedChrootService,
+				"/etc/systemd/system/multi-user.target.wants/named-chroot.service": rhelNamedChrootService,
+				"/etc/sysconfig/named":                                             "NAMEDCONF=/etc/named-alt.conf\n",
+				"/var/named/chroot/etc/named-alt.conf":                             "options {};\n",
+			},
+			want: "/var/named/chroot/etc/named-alt.conf",
+		},
+		{
+			name: "stopped, named enabled and named-chroot installed",
+			files: map[string]string{
+				"/usr/lib/systemd/system/named.service":                     rhelNamedServiceForChroot,
+				"/usr/lib/systemd/system/named-chroot.service":              rhelNamedChrootService,
+				"/etc/systemd/system/multi-user.target.wants/named.service": rhelNamedServiceForChroot,
+				"/etc/sysconfig/named":                                      "NAMEDCONF=/etc/named-alt.conf\n",
+				"/var/named/chroot/etc/named-alt.conf":                      "options {};\n",
+			},
+			want: "/etc/named-alt.conf",
+		},
+		{
 			name:  "no process and no unit",
 			files: nil,
 			want:  "",
@@ -376,3 +416,22 @@ view "internal" {
 		"/var/lib/named/vkeys",
 	}, bind9DnssecKeyDirs(stmts))
 }
+
+// The [Service] lines of RHEL 9's named.service and named-chroot.service.
+const rhelNamedServiceForChroot = `[Service]
+Type=forking
+Environment=NAMEDCONF=/etc/named.conf
+EnvironmentFile=-/etc/sysconfig/named
+Environment=KRB5_KTNAME=/etc/named.keytab
+PIDFile=/run/named/named.pid
+ExecStart=/usr/sbin/named -u named -c ${NAMEDCONF} $OPTIONS
+`
+
+const rhelNamedChrootService = `[Service]
+Type=forking
+Environment=NAMEDCONF=/etc/named.conf
+EnvironmentFile=-/etc/sysconfig/named
+Environment=KRB5_KTNAME=/etc/named.keytab
+PIDFile=/var/named/chroot/run/named/named.pid
+ExecStart=/usr/sbin/named -u named -c ${NAMEDCONF} -t /var/named/chroot $OPTIONS
+`
