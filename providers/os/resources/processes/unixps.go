@@ -231,6 +231,9 @@ type UnixProcessManager struct {
 	loaded    bool
 	processes []*OSProcess
 	byPid     map[int64]*OSProcess
+	// hidden is set when hidepid kept other users' processes out of the
+	// list: List refuses, and a pid missing from the list is not absent.
+	hidden error
 }
 
 func (upm *UnixProcessManager) Name() string {
@@ -243,7 +246,14 @@ func (upm *UnixProcessManager) Name() string {
 func (upm *UnixProcessManager) List() ([]*OSProcess, error) {
 	upm.lock.Lock()
 	defer upm.lock.Unlock()
-	return upm.listLocked()
+	ps, err := upm.listLocked()
+	if err != nil {
+		return nil, err
+	}
+	if upm.hidden != nil {
+		return nil, upm.hidden
+	}
+	return ps, nil
 }
 
 // listLocked returns the memoized process list, running `ps` on first use.
@@ -289,6 +299,22 @@ func (upm *UnixProcessManager) runPs(command string) (io.Reader, error) {
 	return c.Stdout, nil
 }
 
+// hiddenProcesses returns a HiddenProcessesError when /proc is mounted with
+// hidepid and the identity that runs ps may not read other users' processes.
+// One cat reads both files, so the status is that identity's (sudo included).
+func (upm *UnixProcessManager) hiddenProcesses() error {
+	c, err := upm.conn.RunCommand("cat " + strings.Join(procSelfFiles, " "))
+	if err != nil || c == nil || c.ExitStatus != 0 {
+		log.Debug().Err(err).Msg("processes> cannot read /proc/self, assuming every process is visible")
+		return nil
+	}
+	data, err := io.ReadAll(c.Stdout)
+	if err != nil {
+		return nil
+	}
+	return procVisibility(string(data))
+}
+
 // runList runs the platform-appropriate `ps` command and parses its output.
 func (upm *UnixProcessManager) runList() ([]*OSProcess, error) {
 	var entries []*ProcessEntry
@@ -309,6 +335,9 @@ func (upm *UnixProcessManager) runList() ([]*OSProcess, error) {
 			return nil, err
 		}
 	case upm.platform.IsFamily("linux"):
+		// ps reads /proc too, and under hidepid lists only the processes
+		// the identity running it may see.
+		upm.hidden = upm.hiddenProcesses()
 		stdout, err := upm.runPs("ps axo pid,pcpu,pmem,vsz,rss,tty,stat,stime,time,uid,command")
 		if err != nil {
 			return nil, err
@@ -524,6 +553,9 @@ func (upm *UnixProcessManager) Exists(pid int64) (bool, error) {
 	}
 
 	_, ok := upm.byPid[pid]
+	if !ok && upm.hidden != nil {
+		return false, upm.hidden
+	}
 	return ok, nil
 }
 
@@ -540,6 +572,9 @@ func (upm *UnixProcessManager) Process(pid int64) (*OSProcess, error) {
 	}
 
 	process, ok := upm.byPid[pid]
+	if !ok && upm.hidden != nil {
+		return nil, upm.hidden
+	}
 	if !ok {
 		return nil, fmt.Errorf("process %d does not exist", pid)
 	}

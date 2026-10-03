@@ -4,8 +4,10 @@
 package processes
 
 import (
+	"bytes"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
@@ -23,7 +25,29 @@ func (lpm *LinuxProcManager) Name() string {
 	return "Linux Process Manager"
 }
 
+// hiddenProcesses returns a HiddenProcessesError when /proc is mounted with
+// hidepid and the scanner may not read other users' processes.
+func (lpm *LinuxProcManager) hiddenProcesses() error {
+	var text strings.Builder
+	for _, path := range procSelfFiles {
+		data, err := afero.ReadFile(lpm.conn.FileSystem(), path)
+		if err != nil {
+			log.Debug().Err(err).Str("path", path).Msg("mql[processes]> cannot read, assuming every process is visible")
+			return nil
+		}
+		text.Write(data)
+		text.WriteByte('\n')
+	}
+	return procVisibility(text.String())
+}
+
 func (lpm *LinuxProcManager) List() ([]*OSProcess, error) {
+	// Under hidepid a non-root scan finds only its own pids in /proc, and
+	// that subset would read as the complete process list.
+	if err := lpm.hiddenProcesses(); err != nil {
+		return nil, err
+	}
+
 	// get all subdirectories of /proc, filter by numbers
 	f, err := lpm.conn.FileSystem().Open("/proc")
 	if err != nil {
@@ -67,13 +91,13 @@ func (lpm *LinuxProcManager) List() ([]*OSProcess, error) {
 // would be a redundant syscall per process. The single-pid entry point
 // (Process) checks existence itself before calling in.
 func (lpm *LinuxProcManager) processInfo(pid int64, pidPath string) (*OSProcess, error) {
-	cmdlinef, err := lpm.conn.FileSystem().Open(filepath.Join(pidPath, "cmdline"))
+	cmdlineData, err := afero.ReadFile(lpm.conn.FileSystem(), filepath.Join(pidPath, "cmdline"))
 	if err != nil {
 		return nil, err
 	}
-	defer cmdlinef.Close()
+	argv := procfs.ParseProcessArgv(cmdlineData)
 
-	cmdline, err := procfs.ParseProcessCmdline(cmdlinef)
+	cmdline, err := procfs.ParseProcessCmdline(bytes.NewReader(cmdlineData))
 	if err != nil {
 		return nil, err
 	}
@@ -107,14 +131,23 @@ func (lpm *LinuxProcManager) processInfo(pid int64, pidPath string) (*OSProcess,
 		Executable: status.Executable,
 		State:      status.State,
 		Command:    cmdline,
+		Argv:       argv,
 	}, nil
 }
 
-// check that the pid directory exists
+// Exists checks that the pid directory exists. A pid that /proc hides from
+// the scanner (hidepid) is reported as a HiddenProcessesError, not as absent.
 func (lpm *LinuxProcManager) Exists(pid int64) (bool, error) {
 	pidPath := filepath.Join("/proc", strconv.FormatInt(pid, 10))
 	afutil := afero.Afero{Fs: lpm.conn.FileSystem()}
-	return afutil.Exists(pidPath)
+	exists, err := afutil.Exists(pidPath)
+	if err != nil || exists {
+		return exists, err
+	}
+	if hidden := lpm.hiddenProcesses(); hidden != nil {
+		return false, hidden
+	}
+	return false, nil
 }
 
 func (lpm *LinuxProcManager) Process(pid int64) (*OSProcess, error) {
@@ -133,6 +166,10 @@ func (lpm *LinuxProcManager) Process(pid int64) (*OSProcess, error) {
 
 	proc, err := lpm.processInfo(pid, pidPath)
 	if err != nil {
+		// hidepid=noaccess lists every pid but refuses its files
+		if hidden := lpm.hiddenProcesses(); hidden != nil {
+			return nil, hidden
+		}
 		return nil, err
 	}
 

@@ -111,3 +111,50 @@ func TestParseProcessCmdline_Direct(t *testing.T) {
 		})
 	}
 }
+
+func TestParseProcessArgv(t *testing.T) {
+	testCases := []struct {
+		name  string
+		input []byte
+		argv  []string
+	}{
+		{
+			// /proc/<pid>/cmdline captured on RHEL 9 for
+			// python3 -c '...' --cfg=/etc/x.conf operand1 -v 2 --name 'two words' --opt='a b'
+			name:  "arguments with spaces stay whole",
+			input: []byte("python3\x00-c\x00import time; time.sleep(100000)\x00--cfg=/etc/x.conf\x00operand1\x00-v\x002\x00--name\x00two words\x00--opt=a b\x00"),
+			argv:  []string{"python3", "-c", "import time; time.sleep(100000)", "--cfg=/etc/x.conf", "operand1", "-v", "2", "--name", "two words", "--opt=a b"},
+		},
+		{
+			// sshd rewrites its title into one NUL-terminated string (RHEL 9)
+			name:  "process title rewritten into one string",
+			input: []byte("sshd: /usr/sbin/sshd -D [listener] 0 of 200-300 startups\x00"),
+			argv:  []string{"sshd: /usr/sbin/sshd -D [listener] 0 of 200-300 startups"},
+		},
+		{
+			name:  "an empty argument in the middle is kept",
+			input: []byte("app\x00--name\x00\x00--x\x00"),
+			argv:  []string{"app", "--name", "", "--x"},
+		},
+		{
+			name:  "padding after a rewritten title is dropped",
+			input: []byte("postgres: checkpointer \x00\x00\x00"),
+			argv:  []string{"postgres: checkpointer "},
+		},
+		{
+			name:  "kernel thread",
+			input: []byte{},
+			argv:  nil,
+		},
+		{
+			name:  "no trailing NUL",
+			input: []byte("/bin/no-null"),
+			argv:  []string{"/bin/no-null"},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.argv, ParseProcessArgv(tc.input))
+		})
+	}
+}
