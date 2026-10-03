@@ -218,7 +218,7 @@ func TestBuildFilesFindCmdPruningMounts(t *testing.T) {
 	// and glob characters are escaped. from is cleaned so that the paths find
 	// prints line up with the mount points.
 	cmd := BuildFilesFindCmdPruningMounts("/srv/", []string{"/srv/a b", "/srv/x*[1]?"}, "file", "", 0o002, "", nil, FindFlavor{GNU: true})
-	assert.Equal(t, `find -L "/srv" \( -type d \( -path '/srv/a b' -o -path '/srv/x\*\[1\]\?' \) -prune -o -true \) \( -xtype l -prune -o -true \) -type f -perm -2 -print`, cmd)
+	assert.Equal(t, `find -L "/srv" \( -type d \( -path '/srv/a b' -o -path '/srv/x\*\[1\]\?' \) -prune -o -true \) \( -path '/srv' -o -xtype l -prune -o -true \) -type f -perm -2 -print`, cmd)
 
 	// no -xdev, and the explicit -print stays when nothing else prunes
 	cmd = BuildFilesFindCmdPruningMounts("/", []string{"/proc"}, "link", "", 0o777, "", nil, FindFlavor{GNU: true})
@@ -226,5 +226,5 @@ func TestBuildFilesFindCmdPruningMounts(t *testing.T) {
 
 	// with nothing to prune it is a plain search without -xdev
 	cmd = BuildFilesFindCmdPruningMounts("/srv/g05files", nil, "file", "", 0o777, "g05-nested-marker", nil, FindFlavor{GNU: true})
-	assert.Equal(t, `find -L "/srv/g05files" \( -xtype l -prune -o -true \) -type f -name 'g05-nested-marker' -print`, cmd)
+	assert.Equal(t, `find -L "/srv/g05files" \( -path '/srv/g05files' -o -xtype l -prune -o -true \) -type f -name 'g05-nested-marker' -print`, cmd)
 }
