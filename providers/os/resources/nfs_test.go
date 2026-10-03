@@ -97,3 +97,19 @@ func mustWrite(t *testing.T, fs afero.Fs, path, content string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+
+// exportfs ignores fragments whose name starts with a dot (exports(5)), such as
+// an editor's or a package manager's hidden copy.
+func TestLoadExports_SkipsDotfileFragments(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	mustWrite(t, fs, "/etc/exports.d/main.exports", "/srv/main host1(ro)\n")
+	mustWrite(t, fs, "/etc/exports.d/.hidden.exports", "/srv/hidden world(rw,no_root_squash)\n")
+
+	got, err := loadExports(fs, nfs.PlatformLinux)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].Path != "/srv/main" {
+		t.Fatalf("got %#v, want only /srv/main", got)
+	}
+}

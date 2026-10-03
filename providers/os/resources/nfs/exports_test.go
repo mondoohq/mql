@@ -309,3 +309,23 @@ func assertEntries(t *testing.T, got, want []ExportEntry) {
 		}
 	}
 }
+
+// exportfs reads an export path in double quotes, and decodes octal escapes
+// in it, so "/srv/nfs/sp ace" and /srv/nfs/sp\040ace both export the
+// directory `exportfs -v` lists as /srv/nfs/sp ace.
+func TestParseLinuxExports_QuotedAndEscapedPaths(t *testing.T) {
+	input := `"/srv/nfs/sp ace" 192.0.2.33(rw,no_root_squash)
+/srv/nfs/sp\040ace2 192.0.2.34(ro)
+"/srv/nfs/q" 192.0.2.35(rw)
+`
+	got, err := ParseExports(strings.NewReader(input), PlatformLinux)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []ExportEntry{
+		{Path: "/srv/nfs/sp ace", Client: "192.0.2.33", Options: []string{"rw", "no_root_squash"}, ReadOnly: false, NoRootSquash: true},
+		{Path: "/srv/nfs/sp ace2", Client: "192.0.2.34", Options: []string{"ro"}, ReadOnly: true, NoRootSquash: false},
+		{Path: "/srv/nfs/q", Client: "192.0.2.35", Options: []string{"rw"}, ReadOnly: false, NoRootSquash: false},
+	}
+	assertEntries(t, got, want)
+}
