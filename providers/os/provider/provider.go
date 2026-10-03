@@ -558,9 +558,9 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 
 		case shared.Type_Tar.String():
 			var tarConn *tar.Connection
-			if container.IsImageTarball(conf.Options[tar.OPTION_FILE]) {
+			if img, ok := container.OpenImageTarball(conf.Options[tar.OPTION_FILE]); ok {
 				// `docker save` output: scan the image's filesystem
-				tarConn, err = container.NewFromTar(connId, conf, asset)
+				tarConn, err = container.NewFromTarImage(connId, conf, asset, img)
 			} else {
 				tarConn, err = tar.NewConnection(connId, conf, asset)
 			}
