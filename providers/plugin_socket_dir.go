@@ -59,8 +59,8 @@ func dirWritable(dir string) bool {
 }
 
 var (
-	tempDirOnce sync.Once
-	tempDirErr  error
+	tempDirMu    sync.Mutex
+	tempDirReady bool
 )
 
 // ensureWritableTempDir makes TMPDIR a writable directory when the default
@@ -68,20 +68,28 @@ var (
 // the provider for its server and mql for the callback broker, so the
 // fallback goes into this process's TMPDIR, which every provider inherits.
 // Windows uses TCP.
+//
+// A directory that was found is kept for the life of the process; a search
+// that found none is not, so the next provider start looks again.
 func ensureWritableTempDir() error {
 	if goruntime.GOOS == "windows" {
 		return nil
 	}
-	tempDirOnce.Do(func() {
-		dir, err := pickPluginSocketDir(os.TempDir(), socketDirFallbacks(), dirWritable)
-		if err != nil {
-			tempDirErr = err
-			return
+	tempDirMu.Lock()
+	defer tempDirMu.Unlock()
+	if tempDirReady {
+		return nil
+	}
+	dir, err := pickPluginSocketDir(os.TempDir(), socketDirFallbacks(), dirWritable)
+	if err != nil {
+		return err
+	}
+	if dir != "" {
+		log.Debug().Str("dir", dir).Str("tmpdir", os.TempDir()).Msg("TMPDIR is not writable, providers use another directory for their sockets")
+		if err := os.Setenv("TMPDIR", dir); err != nil {
+			return err
 		}
-		if dir != "" {
-			log.Debug().Str("dir", dir).Str("tmpdir", os.TempDir()).Msg("TMPDIR is not writable, providers use another directory for their sockets")
-			tempDirErr = os.Setenv("TMPDIR", dir)
-		}
-	})
-	return tempDirErr
+	}
+	tempDirReady = true
+	return nil
 }
