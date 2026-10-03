@@ -280,3 +280,58 @@ func TestSelinuxModeWithoutSelinux(t *testing.T) {
 	require.NoError(t, mode.Error)
 	assert.Equal(t, "disabled", mode.Data)
 }
+
+// semodule --list-modules=full on Rocky 8 lists cockpit at 200 and 100 and a
+// module installed at 400 and 300; each copy is its own selinux.module.
+func TestSelinuxModulesKeepEveryPriority(t *testing.T) {
+	rocky8 := &inventory.Asset{
+		Platform: &inventory.Platform{Name: "rocky", Version: "8.10", Family: []string{"redhat", "linux", "unix"}},
+	}
+	listing := "400 sweeppol          pp          \n" +
+		"300 sweeppol          pp          \n" +
+		"200 cockpit           pp          \n" +
+		"100 cockpit           pp          \n" +
+		"100 zosremote         pp  disabled\n"
+	conn, err := mock.New(0, rocky8, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{semoduleListCmd: {Stdout: listing}},
+	}))
+	require.NoError(t, err)
+	rt := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+	res, err := CreateResource(rt, "selinux", nil)
+	require.NoError(t, err)
+
+	modules := res.(*mqlSelinux).GetModules()
+	require.NoError(t, modules.Error)
+	type module struct {
+		priority     int64
+		name, status string
+	}
+	var got []module
+	for _, m := range modules.Data {
+		mod := m.(*mqlSelinuxModule)
+		got = append(got, module{mod.Priority.Data, mod.Name.Data, mod.Status.Data})
+	}
+	assert.Equal(t, []module{
+		{400, "sweeppol", "enabled"}, {300, "sweeppol", "enabled"},
+		{200, "cockpit", "enabled"}, {100, "cockpit", "enabled"},
+		{100, "zosremote", "disabled"},
+	}, got)
+}
+
+func TestSelinuxModuleIDNullPriority(t *testing.T) {
+	// semodule -l prints no priority; that module must not share an id with
+	// one listed at a priority, 0 included
+	unset := &mqlSelinuxModule{
+		Name:     plugin.TValue[string]{Data: "cockpit", State: plugin.StateIsSet},
+		Priority: plugin.TValue[int64]{State: plugin.StateIsSet | plugin.StateIsNull},
+	}
+	zero := &mqlSelinuxModule{
+		Name:     plugin.TValue[string]{Data: "cockpit", State: plugin.StateIsSet},
+		Priority: plugin.TValue[int64]{Data: 0, State: plugin.StateIsSet},
+	}
+	unsetID, err := unset.id()
+	require.NoError(t, err)
+	zeroID, err := zero.id()
+	require.NoError(t, err)
+	assert.NotEqual(t, unsetID, zeroID)
+}

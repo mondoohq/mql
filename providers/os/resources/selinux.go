@@ -34,8 +34,15 @@ func (s *mqlSelinuxBoolean) id() (string, error) {
 	return "selinux.boolean:" + s.Name.Data, nil
 }
 
+// id keys a module on its name and priority: semodule --list-modules=full
+// lists a module once per priority it is installed at (400 sweeppol and
+// 300 sweeppol), and only the highest is active. A module listed without a
+// priority keeps the bare name, which no listed priority can collide with.
 func (s *mqlSelinuxModule) id() (string, error) {
-	return "selinux.module:" + s.Name.Data, nil
+	if !s.Priority.IsSet() || s.Priority.IsNull() {
+		return "selinux.module:" + s.Name.Data, nil
+	}
+	return fmt.Sprintf("selinux.module:%s:%d", s.Name.Data, s.Priority.Data), nil
 }
 
 // getenforceCmd runs getenforce from /usr/sbin, where libselinux installs it
