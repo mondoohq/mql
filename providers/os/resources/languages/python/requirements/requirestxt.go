@@ -4,7 +4,6 @@
 package requirements
 
 import (
-	"bufio"
 	"io"
 	"regexp"
 	"strings"
@@ -34,7 +33,6 @@ var firstWordRegexp = regexp.MustCompile(`^[a-zA-Z0-9\._-]*`)
 // API used internally for egg-info requires.txt files where only names matter.
 func ParseRequiresTxtDependencies(r io.Reader) ([]string, error) {
 	fileScanner := iox.NewLineScanner(r)
-	fileScanner.Split(bufio.ScanLines)
 
 	dependencies := []string{}
 	for fileScanner.Scan() {
@@ -79,7 +77,7 @@ var requirementLineRegexp = regexp.MustCompile(
 // requirements with names and pinned versions. It handles comments, line
 // continuations, editable installs, and extras.
 func ParseRequirementsTxt(r io.Reader) ([]Requirement, error) {
-	scanner := bufio.NewScanner(r)
+	scanner := iox.NewLineScanner(r)
 	var reqs []Requirement
 	var continuation string
 
