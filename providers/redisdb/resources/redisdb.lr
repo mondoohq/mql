@@ -55,12 +55,17 @@ redisdb.instance @defaults("version isValkey protectedMode requirepassSet") {
   // Whether the server listens on all network interfaces
   //
   // True when no bind address is configured or a wildcard address such as
-  // 0.0.0.0 is present, exposing the server beyond loopback.
+  // 0.0.0.0 is present, with or without the optional "-" prefix, exposing
+  // the server beyond loopback.
   bindsAllInterfaces bool
-  // Whether a password is configured (the requirepass value)
+  // Whether clients must authenticate
   //
-  // The password value itself is never exposed, only whether one is set. A
-  // false value means unauthenticated clients that reach the port are served.
+  // False when the default user is enabled with nopass, so unauthenticated
+  // clients that reach the port are served as that user. True when the
+  // default user has a password or is disabled, whether that comes from
+  // requirepass, an ACL file, or ACL SETUSER. On servers without access
+  // control (before 6.0), or when the credential may not run ACL GETUSER,
+  // this reads whether requirepass is set. No password value is exposed.
   requirepassSet bool
   // TLS port, or 0 when TLS is disabled
   tlsPort int

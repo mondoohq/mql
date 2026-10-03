@@ -69,7 +69,33 @@ func initRedisdbInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	inst.configCache = cfg
 	inst.configReadable = configReadable
 	inst.setConfigFields(cfg, configReadable)
+
+	// Whether a client must authenticate is decided by the default user, not
+	// by requirepass: an ACL file can give the default user a password or turn
+	// it off with requirepass empty, and "ACL SETUSER default nopass" leaves
+	// requirepass at its old value. requirepass stands in only when the server
+	// has no ACLs (before 6.0) or the credential may not run ACL GETUSER.
+	if reply, err := client.Do(ctx, "acl", "getuser", "default").Result(); err == nil {
+		if required, ok := defaultUserRequiresAuth(reply); ok {
+			inst.RequirepassSet = plugin.TValue[bool]{Data: required, State: plugin.StateIsSet}
+		}
+	}
 	return nil, res, nil
+}
+
+// defaultUserRequiresAuth reads an ACL GETUSER default reply. A connection is
+// served as the default user without authenticating only when that user is
+// enabled and has nopass; a disabled default user, or one with passwords,
+// makes every client authenticate. ok is false when the reply is not a user.
+func defaultUserRequiresAuth(reply any) (required bool, ok bool) {
+	if reply == nil {
+		return false, false
+	}
+	u, ok := aclUserFromGetUser("default", reply)
+	if !ok {
+		return false, false
+	}
+	return !(u.enabled && u.nopass), true
 }
 
 // setConfigFields populates the CONFIG GET-derived posture fields. When the
@@ -126,6 +152,9 @@ func bindsAll(bind []string) bool {
 		return true
 	}
 	for _, b := range bind {
+		// A leading "-" marks the address optional (Redis 7.0+): the server
+		// still binds it when it exists, so "-0.0.0.0" and "-::*" are wildcards.
+		b = strings.TrimPrefix(b, "-")
 		if b == "0.0.0.0" || b == "*" || b == "::" || b == "::*" {
 			return true
 		}
