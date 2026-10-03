@@ -65,22 +65,28 @@ func parseCurrentUser(s string) string {
 	return granteeString(s[:i], s[i+1:])
 }
 
+// grantRow is one row of information_schema.USER_PRIVILEGES.
+type grantRow struct {
+	Grantee   string
+	Privilege string
+}
+
 // newCallerAccess derives the caller's visibility from CURRENT_USER() and the
 // rows of information_schema.USER_PRIVILEGES as the caller sees them. Every
 // account has at least one row there (USAGE when it holds no global
 // privilege), and the view filters to the caller's own rows unless it may read
 // the mysql schema, so a second distinct grantee means the view is unfiltered.
 // SCHEMA_PRIVILEGES and TABLE_PRIVILEGES use the same check.
-func newCallerAccess(currentUser string, rows [][2]string) *CallerAccess {
+func newCallerAccess(currentUser string, rows []grantRow) *CallerAccess {
 	a := &CallerAccess{
 		Self:   parseCurrentUser(currentUser),
 		Global: map[string]bool{},
 	}
 	grantees := map[string]struct{}{}
 	for _, row := range rows {
-		grantees[row[0]] = struct{}{}
-		if row[0] == a.Self {
-			a.Global[strings.ToUpper(row[1])] = true
+		grantees[row.Grantee] = struct{}{}
+		if row.Grantee == a.Self {
+			a.Global[strings.ToUpper(row.Privilege)] = true
 		}
 	}
 	a.GrantsVisible = len(grantees) > 1
@@ -111,13 +117,13 @@ func (c *MysqldbConnection) readCallerAccess() (*CallerAccess, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var list [][2]string
+	var list []grantRow
 	for rows.Next() {
-		var g, p string
-		if err := rows.Scan(&g, &p); err != nil {
+		var row grantRow
+		if err := rows.Scan(&row.Grantee, &row.Privilege); err != nil {
 			return nil, err
 		}
-		list = append(list, [2]string{g, p})
+		list = append(list, row)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -139,11 +145,8 @@ func (c *MysqldbConnection) HasRolesAndComponents() (bool, error) {
 	if flavor == "mariadb" {
 		return false, nil
 	}
-	version, err := c.Version()
-	if err != nil {
-		return false, err
-	}
-	return majorVersion(version) >= 8, nil
+	// resolveMeta, which Flavor ran, read @@version
+	return majorVersion(c.version) >= 8, nil
 }
 
 // majorVersion returns the leading number of a server version such as

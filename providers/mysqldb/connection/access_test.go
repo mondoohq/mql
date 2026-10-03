@@ -27,7 +27,7 @@ func TestParseCurrentUser(t *testing.T) {
 func TestCallerAccessFilteredView(t *testing.T) {
 	// PROCESS, REPLICATION CLIENT and SELECT ON mysql.user: the view shows
 	// the caller's own rows only
-	a := newCallerAccess("mqlmid@%", [][2]string{
+	a := newCallerAccess("mqlmid@%", []grantRow{
 		{"'mqlmid'@'%'", "PROCESS"},
 		{"'mqlmid'@'%'", "REPLICATION CLIENT"},
 	})
@@ -42,7 +42,7 @@ func TestCallerAccessFilteredView(t *testing.T) {
 	}
 
 	// USAGE only
-	a = newCallerAccess("mqlnone@%", [][2]string{{"'mqlnone'@'%'", "USAGE"}})
+	a = newCallerAccess("mqlnone@%", []grantRow{{"'mqlnone'@'%'", "USAGE"}})
 	if a.GrantsVisible || a.CanListSchemas() || a.CanListTables() || a.CanListRoutines() {
 		t.Errorf("USAGE-only account reported visibility: %+v", a)
 	}
@@ -50,7 +50,7 @@ func TestCallerAccessFilteredView(t *testing.T) {
 
 func TestCallerAccessUnfilteredView(t *testing.T) {
 	// SELECT, PROCESS, REPLICATION CLIENT ON *.*: every account is listed
-	a := newCallerAccess("mqlmon@%", [][2]string{
+	a := newCallerAccess("mqlmon@%", []grantRow{
 		{"'mariadb.sys'@'localhost'", "USAGE"},
 		{"'mqlapp'@'10.0.0.1'", "PROCESS"},
 		{"'mqlapp'@'10.0.0.1'", "FILE"},
@@ -72,14 +72,14 @@ func TestCallerAccessUnfilteredView(t *testing.T) {
 }
 
 func TestCallerAccessNarrowGlobals(t *testing.T) {
-	a := newCallerAccess("aud@%", [][2]string{{"'aud'@'%'", "SHOW DATABASES"}})
+	a := newCallerAccess("aud@%", []grantRow{{"'aud'@'%'", "SHOW DATABASES"}})
 	if !a.CanListSchemas() {
 		t.Error("SHOW DATABASES must allow listing schemas")
 	}
 	if a.CanListTables() || a.CanListRoutines() {
 		t.Error("SHOW DATABASES alone must not allow listing tables or routines")
 	}
-	a = newCallerAccess("aud@%", [][2]string{{"'aud'@'%'", "SHOW_ROUTINE"}})
+	a = newCallerAccess("aud@%", []grantRow{{"'aud'@'%'", "SHOW_ROUTINE"}})
 	if !a.CanListRoutines() || a.CanListTables() {
 		t.Errorf("SHOW_ROUTINE: routines=%v tables=%v", a.CanListRoutines(), a.CanListTables())
 	}
