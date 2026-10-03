@@ -58,6 +58,13 @@ type MssqlConnection struct {
 	clientOnce sync.Once
 	client     *sql.DB
 	clientErr  error
+
+	// what the scanning login may see in the catalog views, read once
+	accessOnce sync.Once
+	access     *ServerAccess
+	accessErr  error
+	dbAccessMu sync.Mutex
+	dbAccess   map[string]DatabaseAccess
 }
 
 func NewMssqlConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*MssqlConnection, error) {

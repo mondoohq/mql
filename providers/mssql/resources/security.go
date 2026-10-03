@@ -42,6 +42,9 @@ func scanLogin(runtime *plugin.Runtime, rows *sql.Rows) (*mqlMssqlLogin, error) 
 // --- mssql.credential -------------------------------------------------------
 
 func (c *mqlMssqlCredential) mappedLogins() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "credential mapping"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -72,6 +75,9 @@ func (c *mqlMssqlCredential) mappedLogins() ([]any, error) {
 // --- mssql.proxyAccount -----------------------------------------------------
 
 func (c *mqlMssqlProxyAccount) authorizedLogins() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "login"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -84,8 +90,9 @@ func (c *mqlMssqlProxyAccount) authorizedLogins() ([]any, error) {
 		WHERE pr.name = @p1`
 	rows, err := client.QueryContext(mssqlContext(), q, sql.Named("p1", c.Name.Data))
 	if err != nil {
-		// msdb proxy tables require explicit access; treat as none.
-		return []any{}, nil
+		// msdb proxy tables require explicit access; a refusal is not "no
+		// authorized logins".
+		return refusedList(err, "SELECT ON msdb.dbo.sysproxylogin")
 	}
 	defer rows.Close()
 
@@ -103,6 +110,9 @@ func (c *mqlMssqlProxyAccount) authorizedLogins() ([]any, error) {
 // --- mssql.linkedServer -----------------------------------------------------
 
 func (c *mqlMssqlLinkedServer) linkedLogins() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "linked login"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err

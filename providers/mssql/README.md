@@ -23,7 +23,9 @@ Arguments:
 mql shell mssql sql.contoso.com --user sa --ask-pass
 ```
 
-> Prefer a least-privileged login for auditing. `VIEW ANY DEFINITION` (or the `##MS_DefinitionReader##` role on 2022+) lets the provider see all server principals and permissions; without it some principals are invisible rather than causing a failure.
+> Prefer a least-privileged login for auditing. `VIEW ANY DEFINITION` (or the `##MS_DefinitionReader##` role on 2022+) lets the provider see all server principals, permissions, credentials, audits, and every database's principals and keys. SQL Agent proxies (`msdb.dbo.sysproxies`, `sysproxylogin`, `sysproxysubsystem`) additionally need `sysadmin` or an msdb SQLAgent role.
+>
+> SQL Server lists only the catalog rows a login holds a permission on, without raising an error. In mql 14, a login without `VIEW ANY DEFINITION` therefore reads a subset of logins, roles, members, and permissions, and a refused msdb read comes back empty, so a check over them can pass on a server the scanner could not fully read. With the `StructuredErrors` feature enabled (the default from mql 15), those collections error and name the missing permission instead: `VIEW ANY DEFINITION` for the server catalog, `VIEW DEFINITION ON DATABASE::<name>` for a database's catalog, `VIEW ANY DATABASE` for `databases`, and `SELECT ON msdb.dbo.<table>` for proxies and backups.
 
 ## Usage
 
@@ -138,4 +140,4 @@ Confirm the connection with a single query:
 mql shell mssql sql.contoso.com --user sa --ask-pass -c "mssql.server { version edition }"
 ```
 
-If `mssql.server.logins` is missing principals you expect, the login lacks `VIEW ANY DEFINITION`; grant it (or the `##MS_DefinitionReader##` role) and retry.
+If `mssql.server.logins` is missing principals you expect, or errors with a forbidden error, the login lacks `VIEW ANY DEFINITION`; grant it (or the `##MS_DefinitionReader##` role) and retry.

@@ -165,6 +165,9 @@ func databaseUsersMatching(runtime *plugin.Runtime, database string, sidBinary [
 // --- mssql.database collections ---------------------------------------------
 
 func (c *mqlMssqlDatabase) users() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.Name.Data, "database user"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -192,6 +195,9 @@ func (c *mqlMssqlDatabase) users() ([]any, error) {
 }
 
 func (c *mqlMssqlDatabase) roles() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.Name.Data, "database role"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -238,6 +244,9 @@ func (c *mqlMssqlDatabase) roles() ([]any, error) {
 }
 
 func (c *mqlMssqlDatabase) applicationRoles() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.Name.Data, "application role"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -283,10 +292,16 @@ func (c *mqlMssqlDatabase) applicationRoles() ([]any, error) {
 }
 
 func (c *mqlMssqlDatabase) permissions() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.Name.Data, "database permission"); err != nil {
+		return nil, err
+	}
 	return databasePermissionsFor(c.MqlRuntime, c.Name.Data, c.__id, nil)
 }
 
 func (c *mqlMssqlDatabase) scopedCredentials() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.Name.Data, "database scoped credential"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -296,8 +311,9 @@ func (c *mqlMssqlDatabase) scopedCredentials() ([]any, error) {
 		FROM ` + db + `.sys.database_scoped_credentials ORDER BY credential_id`
 	rows, err := client.QueryContext(mssqlContext(), q)
 	if err != nil {
-		// The catalog view is absent before SQL Server 2016 or may be denied.
-		return []any{}, nil
+		// The catalog view is absent before SQL Server 2016, which is no
+		// credentials; a refusal is not.
+		return refusedList(err, "VIEW DEFINITION ON DATABASE::"+db)
 	}
 	defer rows.Close()
 
@@ -324,6 +340,9 @@ func (c *mqlMssqlDatabase) scopedCredentials() ([]any, error) {
 }
 
 func (c *mqlMssqlDatabase) symmetricKeys() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.Name.Data, "symmetric key"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -361,6 +380,9 @@ func (c *mqlMssqlDatabase) symmetricKeys() ([]any, error) {
 }
 
 func (c *mqlMssqlDatabase) asymmetricKeys() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.Name.Data, "asymmetric key"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -396,6 +418,9 @@ func (c *mqlMssqlDatabase) asymmetricKeys() ([]any, error) {
 }
 
 func (c *mqlMssqlDatabase) clrAssemblies() ([]any, error) {
+	if err := requireDatabaseDefinitions(c.MqlRuntime, c.Name.Data, "assembly"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -431,6 +456,9 @@ func (c *mqlMssqlDatabase) clrAssemblies() ([]any, error) {
 }
 
 func (c *mqlMssqlDatabase) auditSpecifications() ([]any, error) {
+	if err := requireDatabaseCatalog(c.MqlRuntime, c.Name.Data, "database audit specification"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -532,8 +560,9 @@ func (c *mqlMssqlDatabase) backups() ([]any, error) {
 		ORDER BY backup_finish_date DESC`
 	rows, err := client.QueryContext(mssqlContext(), q, sql.Named("p1", c.Name.Data))
 	if err != nil {
-		// Backup history lives in msdb and may be denied; treat as no history.
-		return []any{}, nil
+		// Backup history lives in msdb, which may be refused or absent (Azure
+		// SQL Database); a refusal is not "no backups".
+		return refusedList(err, "SELECT ON msdb.dbo.backupset")
 	}
 	defer rows.Close()
 

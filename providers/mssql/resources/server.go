@@ -278,6 +278,9 @@ func (c *mqlMssqlServer) configurations() ([]any, error) {
 }
 
 func (c *mqlMssqlServer) logins() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "login"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -305,6 +308,9 @@ func (c *mqlMssqlServer) logins() ([]any, error) {
 }
 
 func (c *mqlMssqlServer) roles() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "server role"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -346,10 +352,16 @@ func (c *mqlMssqlServer) roles() ([]any, error) {
 }
 
 func (c *mqlMssqlServer) permissions() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "server permission"); err != nil {
+		return nil, err
+	}
 	return serverPermissionsFor(c.MqlRuntime, c.instanceID(), nil)
 }
 
 func (c *mqlMssqlServer) databases() ([]any, error) {
+	if err := requireDatabaseList(c.MqlRuntime); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -408,6 +420,9 @@ func (c *mqlMssqlServer) databases() ([]any, error) {
 }
 
 func (c *mqlMssqlServer) credentials() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "credential"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -444,6 +459,9 @@ func (c *mqlMssqlServer) credentials() ([]any, error) {
 }
 
 func (c *mqlMssqlServer) linkedServers() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "linked server"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -493,7 +511,13 @@ func (c *mqlMssqlServer) proxyAccounts() ([]any, error) {
 	pubRows, err := client.QueryContext(mssqlContext(),
 		`SELECT proxy_id FROM msdb.dbo.sysproxylogin
 		 WHERE sid = (SELECT sid FROM msdb.sys.database_principals WHERE name = 'public')`)
-	if err == nil {
+	if err != nil {
+		// v13 left every proxy unmarked when this read was refused, which
+		// reads as "no proxy is usable by public".
+		if _, err := refusedList(err, "SELECT ON msdb.dbo.sysproxylogin"); err != nil {
+			return nil, err
+		}
+	} else {
 		for pubRows.Next() {
 			var proxyID int64
 			if err := pubRows.Scan(&proxyID); err != nil {
@@ -515,7 +539,11 @@ func (c *mqlMssqlServer) proxyAccounts() ([]any, error) {
 		`SELECT ps.proxy_id, s.subsystem
 		 FROM msdb.dbo.sysproxysubsystem ps
 		 JOIN msdb.dbo.syssubsystems s ON ps.subsystem_id = s.subsystem_id`)
-	if err == nil {
+	if err != nil {
+		if _, err := refusedList(err, "SELECT ON msdb.dbo.sysproxysubsystem"); err != nil {
+			return nil, err
+		}
+	} else {
 		for subRows.Next() {
 			var proxyID int64
 			var subsystem string
@@ -538,9 +566,9 @@ func (c *mqlMssqlServer) proxyAccounts() ([]any, error) {
 		ORDER BY p.proxy_id`
 	rows, err := client.QueryContext(mssqlContext(), q)
 	if err != nil {
-		// msdb proxy tables require explicit access; treat as no proxies rather
-		// than failing the whole query.
-		return []any{}, nil
+		// msdb proxy tables require explicit access (sysadmin or an msdb
+		// SQLAgent role). A refusal is not "no proxies".
+		return refusedList(err, "SELECT ON msdb.dbo.sysproxies")
 	}
 	defer rows.Close()
 
@@ -574,6 +602,9 @@ func (c *mqlMssqlServer) proxyAccounts() ([]any, error) {
 }
 
 func (c *mqlMssqlServer) audits() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "server audit"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -610,6 +641,9 @@ func (c *mqlMssqlServer) audits() ([]any, error) {
 }
 
 func (c *mqlMssqlServer) serverAuditSpecifications() ([]any, error) {
+	if err := requireServerCatalog(c.MqlRuntime, "server audit specification"); err != nil {
+		return nil, err
+	}
 	client, err := mssqlClient(c.MqlRuntime)
 	if err != nil {
 		return nil, err
