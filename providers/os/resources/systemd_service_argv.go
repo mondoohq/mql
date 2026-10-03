@@ -4,7 +4,10 @@
 package resources
 
 import (
+	"errors"
+	"io/fs"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -53,36 +56,92 @@ func dropInDirsOnDisk(afs *afero.Afero, typeLevelBackport bool) systemd.DropInDi
 // <unit>.d (see systemdDropInDirs). It returns nil when none of the units
 // exists.
 func systemdServiceArgv(afs *afero.Afero, dirs systemd.DropInDirs, units ...string) []string {
-	for _, name := range units {
-		var unit string
-		for _, dir := range systemdUnitDirs {
-			data, err := afs.ReadFile(filepath.Join(dir, name))
-			if err == nil {
-				unit = string(data)
-				break
-			}
+	name, aliases, unit, err := systemdServiceUnit(afs, units...)
+	if err != nil || name == "" {
+		return nil
+	}
+
+	// Drop-ins with the same name shadow each other by directory
+	// precedence and apply in file name order.
+	contents := []string{unit}
+	for _, p := range systemd.FindDropIns(afs, name, dirs, aliases...) {
+		if data, err := afs.ReadFile(p); err == nil {
+			contents = append(contents, string(data))
 		}
-		if unit == "" {
+	}
+
+	svc := haproxy.ParseSystemdService(contents...)
+	var envFiles []string
+	for _, p := range svc.EnvironmentFiles {
+		if data, err := afs.ReadFile(p); err == nil {
+			envFiles = append(envFiles, string(data))
+		}
+	}
+	return haproxy.ServiceArgv(svc, envFiles)
+}
+
+// systemdServiceUnit returns the first of the given service units that is
+// installed: the name it was found under, its other names and the unit
+// file's content. The other names are the given units and the unit's Alias=
+// names that are installed as the same unit, which is what systemctl enable
+// does by linking each alias to the unit file (SUSE's apache2.service is also
+// httpd.service and apache.service once enabled). systemd applies the
+// drop-ins of every name. A unit that is not installed gives an empty name;
+// a unit file that cannot be read is an error.
+func systemdServiceUnit(afs *afero.Afero, units ...string) (string, []string, string, error) {
+	name, content, err := readSystemdUnit(afs, units...)
+	if err != nil || name == "" {
+		return "", nil, "", err
+	}
+
+	candidates := append(append([]string{}, units...), systemdUnitAliases(content)...)
+	seen := map[string]bool{name: true}
+	var aliases []string
+	for _, c := range candidates {
+		if seen[c] {
 			continue
 		}
-
-		// Drop-ins with the same name shadow each other by directory
-		// precedence and apply in file name order.
-		contents := []string{unit}
-		for _, p := range systemd.FindDropIns(afs, name, dirs) {
-			if data, err := afs.ReadFile(p); err == nil {
-				contents = append(contents, string(data))
-			}
+		seen[c] = true
+		// an alias reads as the unit it links to; a different file under that
+		// name is another unit
+		if _, other, err := readSystemdUnit(afs, c); err == nil && other == content {
+			aliases = append(aliases, c)
 		}
-
-		svc := haproxy.ParseSystemdService(contents...)
-		var envFiles []string
-		for _, p := range svc.EnvironmentFiles {
-			if data, err := afs.ReadFile(p); err == nil {
-				envFiles = append(envFiles, string(data))
-			}
-		}
-		return haproxy.ServiceArgv(svc, envFiles)
 	}
-	return nil
+	return name, aliases, content, nil
+}
+
+// readSystemdUnit returns the name and content of the first of the given
+// units found in systemdUnitDirs, or an empty name when none is installed.
+func readSystemdUnit(afs *afero.Afero, units ...string) (string, string, error) {
+	for _, name := range units {
+		for _, dir := range systemdUnitDirs {
+			data, err := afs.ReadFile(filepath.Join(dir, name))
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return "", "", err
+			}
+			return name, string(data), nil
+		}
+	}
+	return "", "", nil
+}
+
+// systemdUnitAliases returns the Alias= names of a unit's [Install] section.
+func systemdUnitAliases(content string) []string {
+	var aliases []string
+	install := false
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") {
+			install = line == "[Install]"
+			continue
+		}
+		if v, ok := strings.CutPrefix(line, "Alias="); ok && install {
+			aliases = append(aliases, strings.Fields(v)...)
+		}
+	}
+	return aliases
 }

@@ -986,8 +986,9 @@ func apacheLaunch(afs *afero.Afero, dirs systemd.DropInDirs) (*apache2.Launch, e
 	return apacheUnitLaunch(afs, dirs), nil
 }
 
-// apacheServiceUnits start httpd directly: httpd.service on Red Hat, Fedora
-// and Arch. Debian's apache2.service runs apachectl, which reads envvars.
+// apacheServiceUnits are the units that start httpd: httpd.service on Red
+// Hat, Fedora and Arch, apache2.service on SUSE (through start_apache2) and
+// Debian (through apachectl, which reads envvars).
 var apacheServiceUnits = []string{"httpd.service", "apache2.service"}
 
 // apacheUnitLaunch returns the -f, -d, -C and -c arguments of the httpd
@@ -1060,7 +1061,7 @@ func apacheSUSELaunch(afs *afero.Afero, dirs systemd.DropInDirs) (*apache2.Launc
 		mpm = apacheSUSEMPM(afs)
 	}
 	var unitArgs []string
-	if argv := systemdServiceArgv(afs, dirs, "apache2.service"); len(argv) > 1 {
+	if argv := systemdServiceArgv(afs, dirs, apacheServiceUnits...); len(argv) > 1 {
 		unitArgs = argv[1:]
 	}
 	l := apache2.SUSESysconfig{
@@ -1124,35 +1125,20 @@ func apacheLaunchConfigFile(conn shared.Connection, launch *apache2.Launch) stri
 	return filepath.Join(root, launch.ConfigFile)
 }
 
-// apacheServiceUnitDirs are where systemd looks for the httpd service unit
-// and its httpd.service.d drop-ins, highest priority first.
-var apacheServiceUnitDirs = []string{
-	"/etc/systemd/system",
-	"/run/systemd/system",
-	"/usr/lib/systemd/system",
-	"/lib/systemd/system",
-}
-
 // apacheUnitEnvironment returns the environment systemd starts httpd with
 // (Environment= plus the EnvironmentFile= files, which take precedence) and
 // the -D parameters of its ExecStart line. Apache resolves ${VAR} from that
-// environment. A missing unit or file contributes nothing; one that can't be
-// read is an error. These files are not Apache configuration, so they are
-// read directly rather than listed in files.
+// environment. The unit is httpd.service on Red Hat, Fedora and Arch and
+// apache2.service on SUSE, with the drop-ins of all its names. A missing
+// unit or file contributes nothing; one that can't be read is an error.
+// These files are not Apache configuration, so they are read directly rather
+// than listed in files.
 func apacheUnitEnvironment(afs *afero.Afero, dirs systemd.DropInDirs) (map[string]string, []string, error) {
-	var contents []string
-	for _, dir := range apacheServiceUnitDirs {
-		content, err := afs.ReadFile(dir + "/httpd.service")
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return nil, nil, err
-		}
-		contents = append(contents, string(content))
-		break
+	name, aliases, unitContent, err := systemdServiceUnit(afs, apacheServiceUnits...)
+	if err != nil {
+		return nil, nil, err
 	}
-	if len(contents) == 0 {
+	if name == "" {
 		return nil, nil, nil
 	}
 
@@ -1160,7 +1146,8 @@ func apacheUnitEnvironment(afs *afero.Afero, dirs systemd.DropInDirs) (map[strin
 	// directory hides the same name further down. dirs adds the type-level
 	// service.d that systemd 246 and later (and RHEL 8's 239) apply to every
 	// service.
-	for _, p := range systemd.FindDropIns(afs, "httpd.service", dirs) {
+	contents := []string{unitContent}
+	for _, p := range systemd.FindDropIns(afs, name, dirs, aliases...) {
 		content, err := afs.ReadFile(p)
 		if err != nil {
 			return nil, nil, err
