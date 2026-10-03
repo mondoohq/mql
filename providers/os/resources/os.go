@@ -18,6 +18,7 @@ import (
 	"go.mondoo.com/mql/providers/os/connection/docker"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/connection/tar"
+	"go.mondoo.com/mql/providers/os/detector/containerenv"
 	"go.mondoo.com/mql/providers/os/id/hostname"
 	"go.mondoo.com/mql/providers/os/id/hypervisor"
 	"go.mondoo.com/mql/providers/os/id/platformid"
@@ -36,9 +37,14 @@ func (p *mqlOs) rebootpending() (bool, error) {
 		return false, nil
 	}
 
-	// check photon
 	conn := p.MqlRuntime.Connection.(shared.Connection)
 	asset := conn.Asset()
+
+	if rebootNeverPending(conn, asset.Platform) {
+		return false, nil
+	}
+
+	// check photon
 
 	if asset.Platform.Name == "photon" {
 		// Photon: compare the installed kernel packages with the running kernel.
@@ -387,6 +393,16 @@ func (p *mqlOsBase) id() (string, error) {
 	return "os.base(" + ident + ")", nil
 }
 
+// rebootNeverPending reports whether the asset is a container, where no reboot
+// is ever pending. A container is not booted, it is started from an image, so
+// the checks below have nothing to compare against: needs-restarting and
+// zypper compare package install times with the host's boot time, and the
+// kernel comparison sets an image's kernel package against the host's running
+// kernel.
+func rebootNeverPending(conn shared.Connection, pf *inventory.Platform) bool {
+	return isContainerAsset(conn, pf) || containerenv.InContainer(conn)
+}
+
 func (p *mqlOsBase) rebootpending() (bool, error) {
 	// it is a container image, a reboot is never required
 	switch p.MqlRuntime.Connection.(type) {
@@ -396,9 +412,14 @@ func (p *mqlOsBase) rebootpending() (bool, error) {
 		return false, nil
 	}
 
-	// check photon
 	conn := p.MqlRuntime.Connection.(shared.Connection)
 	platform := conn.Asset().Platform
+
+	if rebootNeverPending(conn, platform) {
+		return false, nil
+	}
+
+	// check photon
 
 	if platform.Name == "photon" {
 		// Photon: compare the installed kernel packages with the running kernel.
