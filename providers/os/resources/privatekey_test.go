@@ -10,7 +10,9 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/pem"
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -229,8 +231,77 @@ func TestPrivatekeyGarbagePEM(t *testing.T) {
 	pk := newPrivatekey("not a valid pem")
 
 	_, err := pk.publicKeyAlgorithm()
-	require.Error(t, err)
+	require.NoError(t, err)
+	require.True(t, pk.PublicKeyAlgorithm.IsNull())
 
 	_, err = pk.publicKeyBits()
-	require.Error(t, err)
+	require.NoError(t, err)
+	require.True(t, pk.PublicKeyBits.IsNull())
+}
+
+// explicitCurvePKCS8 is the shape `openssl genpkey -algorithm EC
+// -pkeyopt ec_paramgen_curve:prime256v1` writes on RHEL 7 (OpenSSL 1.0.2,
+// no named-curve encoding): the curve is spelled out as explicit
+// parameters, which x/crypto and OpenSSH 7.4 both reject with
+// "x509: unknown elliptic curve".
+func explicitCurvePKCS8(t *testing.T) string {
+	t.Helper()
+	type algorithmIdentifier struct {
+		Algorithm  asn1.ObjectIdentifier
+		Parameters asn1.RawValue
+	}
+	type pkcs8 struct {
+		Version    int
+		Algo       algorithmIdentifier
+		PrivateKey []byte
+	}
+	type ecPrivateKey struct {
+		Version    int
+		PrivateKey []byte
+	}
+	// ECParameters ::= SEQUENCE { version, fieldID, curve, base, order, ... }
+	params, err := asn1.Marshal(struct {
+		Version int
+		FieldID struct {
+			FieldType asn1.ObjectIdentifier
+			Prime     *big.Int
+		}
+	}{Version: 1, FieldID: struct {
+		FieldType asn1.ObjectIdentifier
+		Prime     *big.Int
+	}{asn1.ObjectIdentifier{1, 2, 840, 10045, 1, 1}, elliptic.P256().Params().P}})
+	require.NoError(t, err)
+	inner, err := asn1.Marshal(ecPrivateKey{Version: 1, PrivateKey: make([]byte, 32)})
+	require.NoError(t, err)
+	der, err := asn1.Marshal(pkcs8{
+		Algo: algorithmIdentifier{
+			Algorithm:  asn1.ObjectIdentifier{1, 2, 840, 10045, 2, 1},
+			Parameters: asn1.RawValue{FullBytes: params},
+		},
+		PrivateKey: inner,
+	})
+	require.NoError(t, err)
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
+}
+
+func TestPrivatekeyUnparsableKeyIsNull(t *testing.T) {
+	data := []byte(explicitCurvePKCS8(t))
+	_, inspectErr := inspectPrivateKey(data)
+	require.ErrorContains(t, inspectErr, "unknown elliptic curve")
+
+	// as user.sshkeys builds it: inspected once, the result seeded
+	pk := newPrivatekey(string(data))
+	pk.seedParsedKey(inspectPrivateKey(data))
+	_, err := pk.publicKeyAlgorithm()
+	require.NoError(t, err)
+	require.True(t, pk.PublicKeyAlgorithm.IsNull())
+	_, err = pk.publicKeyBits()
+	require.NoError(t, err)
+	require.True(t, pk.PublicKeyBits.IsNull())
+
+	// as privatekey(pem: ...) parses it on demand
+	pk = newPrivatekey(string(data))
+	_, err = pk.publicKeyAlgorithm()
+	require.NoError(t, err)
+	require.True(t, pk.PublicKeyAlgorithm.IsNull())
 }

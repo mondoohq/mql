@@ -6,6 +6,7 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 
@@ -236,30 +237,29 @@ func (s *mqlSudoers) collectSudoersDir(conn shared.Connection, dirPath string, v
 		return
 	}
 
-	// Process each file in the directory
+	paths := make([]string, 0, len(list.Data))
 	for i := range list.Data {
-		file := list.Data[i].(*mqlFile)
-		basename := file.GetBasename()
-		if basename.Error != nil {
-			*errs = append(*errs, fmt.Errorf("failed to get basename for file in %s: %w", dirPath, basename.Error))
-			continue
-		}
-
-		// Skip README files as per sudoers convention
-		if strings.Contains(strings.ToUpper(basename.Data), "README") {
-			continue
-		}
-
-		// Skip names sudo ignores (a '.' or trailing '~') and anything
-		// outside the directory itself
-		if !sudoers.IsIncludedirEntry(dirPath, file.Path.Data, basename.Data) {
-			continue
-		}
-
-		// Recursively process this file (it may have its own includes)
-		filePath := file.Path.Data
+		paths = append(paths, list.Data[i].(*mqlFile).Path.Data)
+	}
+	// Recursively process each file (it may have its own includes)
+	for _, filePath := range sudoersIncludedirFiles(dirPath, paths) {
 		s.collectSudoersFiles(conn, filePath, visited, allFiles, errs)
 	}
+}
+
+// sudoersIncludedirFiles returns the entries of an includedir listing that
+// sudo reads. sudo skips names containing a '.' or ending in '~', and anything
+// outside the directory itself; every other name is read, README included:
+// `visudo -c` reports "/etc/sudoers.d/README: parsed OK" and a grant in it
+// shows up in `sudo -l`.
+func sudoersIncludedirFiles(dir string, paths []string) []string {
+	var res []string
+	for _, p := range paths {
+		if sudoers.IsIncludedirEntry(dir, p, path.Base(p)) {
+			res = append(res, p)
+		}
+	}
+	return res
 }
 
 // content aggregates the content from all sudoers files
