@@ -411,6 +411,9 @@ func (c *coordinator) unsafeStartProvider(id string, update UpdateProvidersConfi
 
 		addColorConfig(pluginCmd)
 		addProxyConfig(pluginCmd)
+		if err := ensureWritableTempDir(); err != nil {
+			return nil, nil, errors.Wrap(err, "failed to start provider "+id)
+		}
 
 		pluginLogger := &hclogger{Logger: log.Logger}
 		pluginLogger.SetLevel(hclog.Warn)
