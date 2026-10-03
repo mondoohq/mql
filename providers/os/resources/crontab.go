@@ -6,6 +6,7 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -66,8 +67,12 @@ func (c *mqlCrontab) entries() ([]any, error) {
 	flavor := cronFlavorOf(conn.Asset())
 
 	// Parse system crontabs (/etc/crontab)
+	systemLabels := cronSELinuxTypes(conn, flavor, systemCrontabPaths)
 	for _, path := range systemCrontabPaths {
 		if cronRefusesFile(conn, path, flavor) {
+			continue
+		}
+		if t, ok := systemLabels[path]; ok && cronieSELinuxRefuses(t) {
 			continue
 		}
 		entries, fileRes, err := c.parseCrontabFile(afs, path, true, "", flavor)
@@ -148,11 +153,16 @@ func cronReadRefusal(path string, err error) error {
 
 // parseCrontabFile parses a single crontab file
 func (c *mqlCrontab) parseCrontabFile(afs *afero.Afero, path string, hasUserField bool, defaultUser string, flavor cronFlavor) ([]any, plugin.Resource, error) {
-	f, err := afs.Open(path)
+	data, err := afs.ReadFile(path)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer f.Close()
+	content, ok := cronFileContent(string(data), flavor)
+	if !ok {
+		// the daemon ignores the whole file
+		return nil, nil, nil
+	}
+	f := strings.NewReader(content)
 
 	var entries []crontab.Entry
 	if flavor == cronFlavorCronie {
@@ -326,6 +336,7 @@ func (c *mqlCrontab) parseCronDir(conn shared.Connection, afs *afero.Afero, dir 
 	var allEntries []any
 	var allFiles []any
 
+	paths := []string{}
 	for _, file := range files {
 		if file.IsDir() {
 			continue
@@ -337,6 +348,14 @@ func (c *mqlCrontab) parseCronDir(conn shared.Connection, afs *afero.Afero, dir 
 
 		path := filepath.Join(dir, name)
 		if cronRefusesFile(conn, path, flavor) {
+			continue
+		}
+		paths = append(paths, path)
+	}
+
+	labels := cronSELinuxTypes(conn, flavor, paths)
+	for _, path := range paths {
+		if t, ok := labels[path]; ok && cronieSELinuxRefuses(t) {
 			continue
 		}
 		entries, fileRes, err := c.parseCrontabFile(afs, path, hasUserField, "", flavor)
@@ -353,6 +372,97 @@ func (c *mqlCrontab) parseCronDir(conn shared.Connection, afs *afero.Afero, dir 
 	}
 
 	return allEntries, allFiles, nil
+}
+
+// cronFileContent returns the part of a crontab the cron daemon reads, and
+// false when it ignores the whole file. A file whose last line has no newline
+// is ignored by Debian's cron ("Missing newline before EOF, this crontab file
+// will be ignored"), while cronie skips only that last line ("missing newline
+// before EOF"). Other crons are taken as they read.
+func cronFileContent(content string, flavor cronFlavor) (string, bool) {
+	if content == "" || strings.HasSuffix(content, "\n") {
+		return content, true
+	}
+	switch flavor {
+	case cronFlavorDebian:
+		return "", false
+	case cronFlavorCronie:
+		if i := strings.LastIndexByte(content, '\n'); i >= 0 {
+			return content[:i+1], true
+		}
+		return "", true
+	default:
+		return content, true
+	}
+}
+
+// cronieSELinuxEntrypointTypes are the file types RHEL 9's targeted policy
+// lets cronie's system_cronjob_t domain enter (`sesearch -A -s
+// system_cronjob_t -c file -p entrypoint`). cifs_t and nfs_t depend on the
+// cron_system_cronjob_use_shares boolean and are taken as allowed.
+var cronieSELinuxEntrypointTypes = map[string]bool{
+	"system_cron_spool_t": true,
+	"anacron_exec_t":      true,
+	"bin_t":               true,
+	"shell_exec_t":        true,
+	"usr_t":               true,
+	"cifs_t":              true,
+	"nfs_t":               true,
+}
+
+// cronieSELinuxRefuses reports whether cronie, with SELinux enforcing,
+// refuses a system crontab of this file type: it logs "Unauthorized SELinux
+// context=... file_context=..." and runs nothing from it.
+func cronieSELinuxRefuses(fileType string) bool {
+	return !cronieSELinuxEntrypointTypes[fileType]
+}
+
+// cronSELinuxTypes returns the SELinux type of each system crontab cronie
+// would load, when cronie checks it: on a host with SELinux enforcing (in
+// permissive mode cronie only logs). The label is the one of the file a
+// symlink points to, which is what cronie opens. A path whose label cannot be
+// read is left out, and the file is reported as before; nil means no check
+// applies.
+func cronSELinuxTypes(conn shared.Connection, flavor cronFlavor, paths []string) map[string]string {
+	if flavor != cronFlavorCronie || len(paths) == 0 || !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return nil
+	}
+	enforce, err := afero.ReadFile(conn.FileSystem(), "/sys/fs/selinux/enforce")
+	if err != nil || strings.TrimSpace(string(enforce)) != "1" {
+		return nil
+	}
+	args := make([]string, 0, len(paths))
+	for _, p := range paths {
+		args = append(args, shared.ShellEscape(p))
+	}
+	cmd, err := conn.RunCommand("stat -L -c '%C\t%n' -- " + strings.Join(args, " "))
+	if err != nil || cmd.Stdout == nil {
+		return nil
+	}
+	// stat exits 1 when one path fails and still prints the others
+	out, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		return nil
+	}
+	return parseCronSELinuxTypes(string(out))
+}
+
+// parseCronSELinuxTypes reads `stat -L -c '%C\t%n'` output into the type
+// field of each file's context. A file without a context ("?") is left out.
+func parseCronSELinuxTypes(out string) map[string]string {
+	types := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		context, name, ok := strings.Cut(line, "\t")
+		if !ok {
+			continue
+		}
+		parts := strings.Split(strings.TrimSpace(context), ":")
+		if len(parts) < 3 || parts[2] == "" {
+			continue
+		}
+		types[name] = parts[2]
+	}
+	return types
 }
 
 // userCrontabFile is one per-user crontab found in a spool directory: the
