@@ -5,6 +5,7 @@ package resources
 
 import (
 	"database/sql"
+	"errors"
 	"slices"
 	"strings"
 
@@ -73,12 +74,18 @@ func initMysqldbInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 		// MySQL 8.4 removed have_ssl. tls_channel_status reports whether the
 		// main channel has TLS (it needs SELECT on the table); otherwise this
 		// session's own TLS version shows that the server offers TLS.
-		_ = db.QueryRowContext(mysqldbContext(),
+		err := db.QueryRowContext(mysqldbContext(),
 			`SELECT VALUE FROM performance_schema.tls_channel_status
 			 WHERE CHANNEL = 'mysql_main' AND PROPERTY = 'Enabled'`).Scan(&channelEnabled)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) && !isMissingTable(err) && !isAccessDenied(err) {
+			return nil, nil, err
+		}
 		if channelEnabled == "" {
 			var name string
-			_ = db.QueryRowContext(mysqldbContext(), "SHOW SESSION STATUS LIKE 'Ssl_version'").Scan(&name, &sessionTLS)
+			err := db.QueryRowContext(mysqldbContext(), "SHOW SESSION STATUS LIKE 'Ssl_version'").Scan(&name, &sessionTLS)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return nil, nil, err
+			}
 		}
 	}
 	args["ssl"] = llx.BoolData(sslAvailable(haveSSL, haveSSLSet, channelEnabled, sessionTLS))

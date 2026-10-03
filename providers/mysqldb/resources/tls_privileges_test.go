@@ -103,3 +103,12 @@ func TestKeyringComponent(t *testing.T) {
 		t.Error("componentName lost the existing naming")
 	}
 }
+
+func TestObjectPrivilegeIDSlashInNames(t *testing.T) {
+	// schema "a/b" table "c" vs schema "a" table "b/c"
+	a := objectPrivilegeID("p", "'u'@'%'", objectPrivilege{scope: "COLUMN", schema: "a/b", table: "c", column: "x", privilegeType: "SELECT"})
+	b := objectPrivilegeID("p", "'u'@'%'", objectPrivilege{scope: "COLUMN", schema: "a", table: "b/c", column: "x", privilegeType: "SELECT"})
+	if a == b {
+		t.Errorf("names containing / collide: %q", a)
+	}
+}

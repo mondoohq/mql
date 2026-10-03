@@ -117,10 +117,12 @@ type objectPrivilege struct {
 	grantable                     bool
 }
 
-// objectPrivilegeID keys an objectPrivilege under its account.
+// objectPrivilegeID keys an objectPrivilege under its account. The parts are
+// joined with NUL, which cannot appear in a MySQL identifier, so a schema,
+// table, or routine name containing '/' cannot collide with another row.
 func objectPrivilegeID(parentID, granteeStr string, p objectPrivilege) string {
-	return parentID + "/priv/" + granteeStr + "/" + p.scope + "/" + p.schema + "/" + p.table + "/" +
-		p.column + "/" + p.routineType + "/" + p.routine + "/" + p.proxied + "/" + p.privilegeType
+	return parentID + "/priv/" + strings.Join([]string{granteeStr, p.scope, p.schema, p.table,
+		p.column, p.routineType, p.routine, p.proxied, p.privilegeType}, "\x00")
 }
 
 func newObjectPrivilege(runtime *plugin.Runtime, parentID, granteeStr string, p objectPrivilege) (*mqlMysqldbPrivilege, error) {
@@ -158,6 +160,10 @@ func routinePrivileges(schema, routine, routineType, procPriv string) []objectPr
 			types = append(types, strings.ToUpper(p))
 		}
 	}
+	// GRANT ... ON PROCEDURE p TO u WITH GRANT OPTION followed by REVOKE
+	// EXECUTE, ALTER ROUTINE leaves a row holding only Grant; the account can
+	// still grant on the routine, which information_schema reports as the
+	// GRANT OPTION privilege type at the other scopes.
 	if len(types) == 0 && grantable {
 		types = []string{"GRANT OPTION"}
 	}
