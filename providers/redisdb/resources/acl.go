@@ -312,10 +312,11 @@ func (r *mqlRedisdbInstance) users() ([]any, error) {
 
 	lines, err := client.ACLList(ctx).Result()
 	if err != nil {
-		// Reading the ACL roster needs the +acl privilege; treat a denial as no
-		// visible users rather than failing the whole asset.
+		// Reading the ACL roster needs ACL LIST. A refusal is not an answer:
+		// an empty list would pass every "no nopass user" check on a server
+		// that has one.
 		if isNoPerm(err) {
-			return []any{}, nil
+			return refusedList(err, "+acl|list")
 		}
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/redisdb/connection"
 )
@@ -27,6 +28,45 @@ func isNoPerm(err error) bool {
 	}
 	msg := err.Error()
 	return strings.Contains(msg, "NOPERM") || strings.Contains(msg, "WRONGPASS")
+}
+
+// classifyRefusal wraps a Redis access-control denial in the error kind it
+// stands for, naming the ACL command the credential lacks. NOPERM is a
+// credential that may not run the command; WRONGPASS is one that did not
+// authenticate. Any other error is returned unchanged.
+func classifyRefusal(err error, permission string) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "NOPERM"):
+		return llx.Forbidden(err, llx.WithPermissions(permission))
+	case strings.Contains(msg, "WRONGPASS"):
+		return llx.Unauthenticated(err)
+	}
+	return err
+}
+
+// refusedList is what a list accessor returns when the server refused its
+// command. v13 returned an empty list, which let a check over the list pass on
+// a server the scanner could not read; with StructuredErrors the refusal is an
+// error naming the ACL command the credential lacks (ADR 046).
+func refusedList(err error, permission string) ([]any, error) {
+	if !plugin.StructuredErrors() {
+		return []any{}, nil
+	}
+	return nil, classifyRefusal(err, permission)
+}
+
+// refusedField is the error a field read from a refused command carries. v13
+// left such fields null, so with StructuredErrors off it is nil and the field
+// stays null; with it on the field errors instead of reading as "not set".
+func refusedField(err error, permission string) error {
+	if !plugin.StructuredErrors() {
+		return nil
+	}
+	return classifyRefusal(err, permission)
 }
 
 func atoiOr(s string, fallback int64) int64 {

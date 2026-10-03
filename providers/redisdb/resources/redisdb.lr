@@ -21,8 +21,8 @@ redisdb @root {
 // (Redis or Valkey), server mode, listening ports, whether protected mode is
 // on, which interfaces it binds, whether a password is set, and the TLS
 // settings. The access-control users and durability configuration are reached
-// from here. Populated from INFO and CONFIG GET; fields the connecting
-// credential is not permitted to read are left null rather than failing.
+// from here. Populated from INFO and CONFIG GET; a field the connecting
+// credential is not permitted to read reports the refusal.
 redisdb.instance @defaults("version isValkey protectedMode requirepassSet") {
   // Server version, for example "7.4.0"
   //

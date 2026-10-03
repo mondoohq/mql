@@ -23,7 +23,13 @@ Arguments:
 mql shell redisdb localhost --ask-pass
 ```
 
-> The auditing credential needs to run `INFO` and `CONFIG GET` (the `default` user, or any user with `+@admin`/`+info`/`+config|get`), which is the common case for a `requirepass`-authenticated connection. Listing access-control users additionally needs the `+acl` privilege; when it is missing, `redisdb.instance.users` returns empty rather than failing the scan.
+> The auditing credential needs to run `INFO` and `CONFIG GET` (the `default` user, or any user with `+@admin`/`+info`/`+config|get`), which is the common case for a `requirepass`-authenticated connection. Listing access-control users additionally needs `ACL LIST` and `ACL GETUSER`. A read-only auditing user needs:
+>
+> ```
+> ACL SETUSER auditor on >password resetkeys resetchannels -@all +info +ping +config|get +acl|list +acl|getuser
+> ```
+>
+> In mql 14, a command the credential may not run leaves its fields null (`CONFIG GET`: the posture fields and `config`) or its list empty (`ACL LIST`: `users`), so a check over them can pass on a server the scanner could not read. With the `StructuredErrors` feature enabled (the default from mql 15), those fields error instead and name the missing command (`+config|get`, `+acl|list`).
 
 ## Usage
 
@@ -127,7 +133,7 @@ Confirm the connection and permissions with a single query:
 mql shell redisdb localhost --ask-pass -c "redisdb.instance { version protectedMode requirepassSet }"
 ```
 
-If `redisdb.instance.users` comes back empty, the connecting credential cannot read the ACL roster; authenticate as the `default` user or a user with the `+acl` privilege and retry.
+If `redisdb.instance.users` comes back empty, or errors with a forbidden error, the connecting credential cannot read the ACL roster; authenticate as the `default` user or a user with `+acl|list` and `+acl|getuser` and retry. A null or forbidden `protectedMode` means the credential cannot run `CONFIG GET`.
 
 ## Notes
 

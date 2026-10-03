@@ -32,16 +32,18 @@ func initRedisdbInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	}
 	info := connection.ParseInfo(infoText)
 
-	// CONFIG GET drives the posture fields. Reading it needs the config ACL
-	// category; when the credential is denied, degrade gracefully by leaving
-	// those fields null rather than failing the whole asset.
+	// CONFIG GET drives the posture fields. Reading it needs CONFIG GET; a
+	// denial fails only those fields, not the INFO-derived identity. They
+	// report the refusal (null in v13) rather than a default posture.
 	configReadable := true
+	var configErr error
 	cfg, err := client.ConfigGet(ctx, "*").Result()
 	if err != nil {
 		if !isNoPerm(err) {
 			return nil, nil, err
 		}
 		configReadable = false
+		configErr = refusedField(err, "+config|get")
 		cfg = map[string]string{}
 	}
 
@@ -68,26 +70,28 @@ func initRedisdbInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	inst := res.(*mqlRedisdbInstance)
 	inst.configCache = cfg
 	inst.configReadable = configReadable
+	inst.configErr = configErr
 	inst.setConfigFields(cfg, configReadable)
 	return nil, res, nil
 }
 
 // setConfigFields populates the CONFIG GET-derived posture fields. When the
-// config was not readable they are set to null so a denied read is never
-// reported as an insecure value.
+// config was not readable they carry configErr, or are null when that is nil,
+// so an unread config is never reported as a posture value.
 func (r *mqlRedisdbInstance) setConfigFields(cfg map[string]string, readable bool) {
 	if !readable {
 		null := plugin.StateIsSet | plugin.StateIsNull
-		r.ProtectedMode = plugin.TValue[bool]{State: null}
-		r.Bind = plugin.TValue[[]any]{State: null}
-		r.BindsAllInterfaces = plugin.TValue[bool]{State: null}
-		r.RequirepassSet = plugin.TValue[bool]{State: null}
-		r.Port = plugin.TValue[int64]{State: null}
-		r.TlsPort = plugin.TValue[int64]{State: null}
-		r.TlsEnabled = plugin.TValue[bool]{State: null}
-		r.TlsAuthClients = plugin.TValue[string]{State: null}
-		r.AclFile = plugin.TValue[string]{State: null}
-		r.AclPubsubDefault = plugin.TValue[string]{State: null}
+		e := r.configErr
+		r.ProtectedMode = plugin.TValue[bool]{State: null, Error: e}
+		r.Bind = plugin.TValue[[]any]{State: null, Error: e}
+		r.BindsAllInterfaces = plugin.TValue[bool]{State: null, Error: e}
+		r.RequirepassSet = plugin.TValue[bool]{State: null, Error: e}
+		r.Port = plugin.TValue[int64]{State: null, Error: e}
+		r.TlsPort = plugin.TValue[int64]{State: null, Error: e}
+		r.TlsEnabled = plugin.TValue[bool]{State: null, Error: e}
+		r.TlsAuthClients = plugin.TValue[string]{State: null, Error: e}
+		r.AclFile = plugin.TValue[string]{State: null, Error: e}
+		r.AclPubsubDefault = plugin.TValue[string]{State: null, Error: e}
 		return
 	}
 
@@ -134,9 +138,12 @@ func bindsAll(bind []string) bool {
 }
 
 func (r *mqlRedisdbInstance) config() (*mqlRedisdbConfig, error) {
-	// When CONFIG GET was denied there is nothing to report; mark the field null
-	// rather than panicking on the nil cache or fabricating zero values.
+	// When CONFIG GET was denied there is nothing to report: the refusal, or
+	// null in v13, rather than fabricated zero values.
 	if !r.configReadable || r.configCache == nil {
+		if r.configErr != nil {
+			return nil, r.configErr
+		}
 		r.Config.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
