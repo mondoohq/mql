@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -29,6 +30,22 @@ func isUnauthorized(err error) bool {
 		return ce.Code == 13
 	}
 	return false
+}
+
+// classifyRefusal wraps a MongoDB authorization failure (code 13) in the error
+// kind it stands for, naming the action the command needed. MongoDB answers an
+// unauthenticated connection with the same code, so the message decides
+// between the two. Any other error is returned unchanged.
+func classifyRefusal(err error, action string) error {
+	if !isUnauthorized(err) {
+		return err
+	}
+	var ce mongo.CommandError
+	errors.As(err, &ce)
+	if strings.Contains(ce.Message, "requires authentication") {
+		return llx.Unauthenticated(err)
+	}
+	return llx.Forbidden(err, llx.WithPermissions(action))
 }
 
 func mongoConnection(runtime *plugin.Runtime) *connection.MongoConnection {

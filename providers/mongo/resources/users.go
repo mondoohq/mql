@@ -5,6 +5,7 @@ package resources
 
 import (
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/types"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -26,14 +27,14 @@ func roleRefsFromDoc(rolesVal any) []roleRef {
 func (r *mqlMongoInstance) users() ([]any, error) {
 	conn := mongoConnection(r.MqlRuntime)
 	var res bson.M
-	// usersInfo with forAllDBs returns every user across databases; it requires
-	// a privilege, so treat an authorization error as no visible users and
-	// propagate everything else.
+	// usersInfo with forAllDBs returns every user across databases and needs
+	// the viewUser action. A refusal is an error: an empty list would pass
+	// every "no privileged users" check on a server that has them.
 	if err := conn.RunAdminCommand(bson.D{{Key: "usersInfo", Value: bson.D{{Key: "forAllDBs", Value: true}}}}, &res); err != nil {
-		if isUnauthorized(err) {
+		if !plugin.StructuredErrors() && isUnauthorized(err) {
 			return []any{}, nil
 		}
-		return nil, err
+		return nil, classifyRefusal(err, "viewUser")
 	}
 
 	users := asArray(res["users"])

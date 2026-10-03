@@ -23,7 +23,21 @@ Arguments:
 mql shell mongo db.contoso.com --user admin --ask-pass
 ```
 
-> Prefer a least-privileged account for auditing. A user with the built-in `clusterMonitor` role plus read on the `admin` database is enough for the resources below; without those privileges the users, roles, and parameters collections return empty rather than failing the scan.
+> Prefer a least-privileged account for auditing. The built-in `clusterMonitor` role covers the server configuration (`getCmdLineOpts`, `getParameter`, `listDatabases`), but it cannot read the user or role catalog. Users and roles also need `viewUser` on the cluster and `viewRole` on every database, which no read-only built-in role grants:
+>
+> ```javascript
+> db.getSiblingDB("admin").createRole({
+>   role: "mondooAuditor",
+>   privileges: [
+>     { resource: { cluster: true }, actions: ["viewUser"] },
+>     { resource: { db: "", collection: "" }, actions: ["viewRole"] },
+>   ],
+>   roles: [{ role: "clusterMonitor", db: "admin" }, { role: "read", db: "admin" }],
+> })
+> db.getSiblingDB("admin").createUser({ user: "auditor", pwd: passwordPrompt(), roles: ["mondooAuditor"] })
+> ```
+>
+> A field the account is not allowed to read reports the refusal as an error. It never falls back to a default, so a missing privilege cannot make the server look unauthenticated or unencrypted.
 
 ## Usage
 
@@ -129,4 +143,4 @@ Confirm the connection and permissions with a single query:
 mql shell mongo db.contoso.com --user admin --ask-pass -c "mongo.instance { version authorizationEnabled }"
 ```
 
-If `mongo.instance.users` comes back empty, the connecting account cannot read the user catalog; grant it `clusterMonitor` (or use a more privileged auditing account) and retry.
+If a field reports `not authorized` or `requires authentication`, the connecting account lacks the action named in the error. Grant the role above, or use a more privileged auditing account, and retry.

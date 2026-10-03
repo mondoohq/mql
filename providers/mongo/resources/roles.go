@@ -5,6 +5,7 @@ package resources
 
 import (
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/mongo/connection"
 	"go.mondoo.com/mql/types"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -37,19 +38,24 @@ func (r *mqlMongoInstance) roles() ([]any, error) {
 	serverID := conn.ServerID()
 	seen := map[string]struct{}{}
 	list := []any{}
+	var refusal error
+	readable := 0
 	for _, db := range dbs {
 		var res bson.M
-		// Custom (non-built-in) roles defined in this database. Requires a
-		// privilege; skip databases we cannot read rather than failing.
+		// Custom (non-built-in) roles defined in this database. Needs the
+		// viewRole action on it; a database the account cannot read is skipped
+		// as long as another one answers.
 		if err := conn.RunCommand(db, bson.D{
 			{Key: "rolesInfo", Value: 1},
 			{Key: "showBuiltinRoles", Value: false},
 		}, &res); err != nil {
 			if isUnauthorized(err) {
+				refusal = err
 				continue
 			}
 			return nil, err
 		}
+		readable++
 		roles := asArray(res["roles"])
 		for _, r0 := range roles {
 			m := asMap(r0)
@@ -69,6 +75,14 @@ func (r *mqlMongoInstance) roles() ([]any, error) {
 			}
 			list = append(list, role)
 		}
+	}
+	// Not a single database answered: the account cannot read roles at all,
+	// and an empty list would pass every check on them.
+	if readable == 0 && refusal != nil {
+		if !plugin.StructuredErrors() {
+			return []any{}, nil
+		}
+		return nil, classifyRefusal(refusal, "viewRole")
 	}
 	return list, nil
 }
