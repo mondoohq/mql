@@ -4,7 +4,9 @@
 package ssh
 
 import (
+	"bytes"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,10 +37,14 @@ func TestVerifyError(t *testing.T) {
 	assert.EqualError(t, verifyError(doas, "sh: doas: not found\n"), "doas command is missing on target")
 	assert.EqualError(t, verifyError(sudo, "sudo: a password is required\n"),
 		"could not establish connection: sudo password is not supported yet, configure password-less sudo")
+	assert.EqualError(t, verifyError(sudo, "sudo: A terminal is required to authenticate\n"),
+		"could not establish connection: sudo password is not supported yet, configure password-less sudo")
 	assert.EqualError(t, verifyError(doas, "doas: Authentication required\n"),
 		"could not establish connection: doas password is not supported yet, configure password-less doas")
 	assert.EqualError(t, verifyError(doas, "doas: a tty is required\n"),
 		"could not establish connection: doas password is not supported yet, configure password-less doas")
+	assert.EqualError(t, verifyError(sudo, "sudo: sorry, you must have a tty to run sudo\n"),
+		"could not establish connection: sudo requires a terminal (Defaults requiretty), which a scan does not have; exempt the login user with Defaults:<user> !requiretty")
 	assert.EqualError(t, verifyError(doas, "doas: Operation not permitted\n"),
 		"could not establish connection: doas: Operation not permitted\n")
 }
@@ -118,4 +124,46 @@ func TestServerSupportsHybridKEX(t *testing.T) {
 func TestServerSupportsHybridKEX_ServerUnreachable(t *testing.T) {
 	_, err := serverSupportsHybridKEX("127.0.0.1:9")
 	require.NotNil(t, err)
+}
+
+// refusingSudo answers like sudo on a host with `Defaults requiretty`, which
+// rejects every command run without a terminal.
+func refusingSudo(command string) (*shared.Command, error) {
+	res := &shared.Command{Command: command, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
+	if strings.Contains(command, "sudo ") {
+		res.ExitStatus = 1
+		res.Stderr = bytes.NewBufferString("sudo: sorry, you must have a tty to run sudo\n")
+	}
+	return res, nil
+}
+
+func TestCheckConnectionFailsWhenSudoRefuses(t *testing.T) {
+	c := &Connection{conf: &inventory.Config{}, rawRunner: refusingSudo}
+	c.Sudo = &inventory.Sudo{Active: true, Executable: "sudo"}
+
+	err := c.checkConnection()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sudo requires a terminal")
+}
+
+func TestCheckConnectionWithoutSudo(t *testing.T) {
+	c := &Connection{conf: &inventory.Config{}, rawRunner: refusingSudo}
+	require.NoError(t, c.checkConnection())
+
+	// without elevation a failed check is only logged: the files and
+	// commands that do not need the check command still work
+	failing := func(command string) (*shared.Command, error) {
+		return &shared.Command{Command: command, ExitStatus: 127, Stdout: &bytes.Buffer{}, Stderr: bytes.NewBufferString("sh: echo: not found\n")}, nil
+	}
+	c = &Connection{conf: &inventory.Config{}, rawRunner: failing}
+	require.NoError(t, c.checkConnection())
+}
+
+func TestCheckConnectionWithWorkingSudo(t *testing.T) {
+	ok := func(command string) (*shared.Command, error) {
+		return &shared.Command{Command: command, Stdout: bytes.NewBufferString("hi\n"), Stderr: &bytes.Buffer{}}, nil
+	}
+	c := &Connection{conf: &inventory.Config{}, rawRunner: ok}
+	c.Sudo = &inventory.Sudo{Active: true, Executable: "sudo"}
+	require.NoError(t, c.checkConnection())
 }
