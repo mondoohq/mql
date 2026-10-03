@@ -131,15 +131,30 @@ func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) (*
 		}
 	}
 
-	// verify connection
-	vErr := res.verify()
-	// NOTE: for now we do not enforce connection verification to ensure we cover edge-cases
-	// TODO: in following minor version bumps, we want to enforce this behavior to ensure proper scans
-	if vErr != nil {
-		log.Warn().Err(vErr).Send()
+	if err := res.checkConnection(); err != nil {
+		res.Close()
+		return nil, err
 	}
 
 	return &res, nil
+}
+
+// checkConnection runs a command over the new connection. With elevation, a
+// failed check ends the connection: every command and file read then goes
+// through sudo or doas, so an executable that refuses (requiretty, a password
+// prompt, a user without a grant) would answer each of them with an empty
+// result, and checks would pass on missing data. Without elevation a failed
+// check is only logged.
+func (c *Connection) checkConnection() error {
+	err := c.verify()
+	if err == nil {
+		return nil
+	}
+	if c.Sudo != nil && c.Sudo.Active {
+		return err
+	}
+	log.Warn().Err(err).Send()
+	return nil
 }
 
 func (c *Connection) Name() string {
@@ -821,11 +836,11 @@ func (c *Connection) verify() error {
 	if c.Sudo != nil {
 		// Wrap sudo command, to see proper error messages. We set /dev/null to disable stdin
 		command := "sh -c '" + shared.BuildSudoCommand(c.Sudo, "echo 'hi'") + " < /dev/null'"
-		out, err = c.runRawCommand(command)
+		out, err = c.runRaw(command)
 	} else if c.isWindowsSSHServer() {
 		out, err = c.verifyWindows()
 	} else {
-		out, err = c.runRawCommand("echo 'hi'")
+		out, err = c.runRaw("echo 'hi'")
 	}
 	if err != nil {
 		return err
@@ -857,7 +872,13 @@ func verifyError(sudo *inventory.Sudo, errMsg string) error {
 	switch {
 	case strings.Contains(errMsg, "not found"):
 		return errors.New(executable + " command is missing on target")
+	case strings.Contains(errMsg, "you must have a tty"):
+		// sudo with `Defaults requiretty`; the connection runs commands
+		// without a terminal
+		return errors.New("could not establish connection: " + executable + " requires a terminal (Defaults requiretty), which a scan does not have; exempt the login user with Defaults:<user> !requiretty")
 	case strings.Contains(errMsg, "a password is required"),
+		// sudo-rs: "sudo: A terminal is required to authenticate"
+		strings.Contains(errMsg, "A terminal is required to authenticate"),
 		strings.Contains(errMsg, "a tty is required"),
 		strings.Contains(errMsg, "Authentication required"):
 		return errors.New("could not establish connection: " + executable + " password is not supported yet, configure password-less " + executable)
