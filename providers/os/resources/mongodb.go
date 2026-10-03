@@ -132,8 +132,10 @@ var mongodUnits = []string{"mongod.service", "mongodb.service"}
 // with what the unit says, which is what v13 reported.
 func mongodConfigPath(afs *afero.Afero, otherPids []string) (string, []string, error) {
 	var refusal error
+	seen := map[string]bool{}
 	for _, unit := range mongodUnits {
 		for _, pid := range systemd.ServicePids(afs, unit) {
+			seen[pid] = true
 			conf, argv, err := mongodConfigOfPid(afs, pid)
 			if err != nil {
 				if refusal == nil && (errors.Is(err, fs.ErrPermission) || (errors.Is(err, fs.ErrNotExist) && procHidesPids(afs))) {
@@ -148,6 +150,9 @@ func mongodConfigPath(afs *afero.Afero, otherPids []string) (string, []string, e
 	}
 
 	for _, pid := range otherPids {
+		if seen[pid] {
+			continue
+		}
 		if conf, argv, err := mongodConfigOfPid(afs, pid); err == nil && conf != "" {
 			return conf, argv, nil
 		}
