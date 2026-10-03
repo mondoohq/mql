@@ -59,9 +59,9 @@ func TestPluginsOfType_EmptyInput(t *testing.T) {
 
 func TestBuildSudoVCommand_SafePaths(t *testing.T) {
 	cases := map[string]string{
-		"/usr/bin/sudo":          "/usr/bin/sudo -V",
-		"/usr/local/bin/sudo":    "/usr/local/bin/sudo -V",
-		"/opt/freeware/bin/sudo": "/opt/freeware/bin/sudo -V",
+		"/usr/bin/sudo":          "env LC_ALL=C /usr/bin/sudo -V",
+		"/usr/local/bin/sudo":    "env LC_ALL=C /usr/local/bin/sudo -V",
+		"/opt/freeware/bin/sudo": "env LC_ALL=C /opt/freeware/bin/sudo -V",
 	}
 	for in, want := range cases {
 		t.Run(in, func(t *testing.T) {
@@ -95,7 +95,7 @@ func TestBuildSudoVCommand_EscapesInjection(t *testing.T) {
 			// The dangerous payload must not appear unquoted: the
 			// escape function wraps strings containing metacharacters
 			// in single quotes.
-			assert.True(t, strings.HasPrefix(cmd, "'"),
+			assert.True(t, strings.HasPrefix(cmd, "env LC_ALL=C '"),
 				"command %q must start with a quote to neutralize injection", cmd)
 		})
 	}
@@ -103,7 +103,7 @@ func TestBuildSudoVCommand_EscapesInjection(t *testing.T) {
 
 func TestBuildSudoVCommand_Empty(t *testing.T) {
 	// Empty path is escaped to '' so the resulting command is harmless.
-	assert.Equal(t, "'' -V", buildSudoVCommand(""))
+	assert.Equal(t, "env LC_ALL=C '' -V", buildSudoVCommand(""))
 }
 
 // sudoTestConn is a minimal shared.Connection that exposes a controllable

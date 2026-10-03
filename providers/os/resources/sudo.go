@@ -38,11 +38,22 @@ var visudoCommonPaths = []string{
 	"/opt/csw/sbin/visudo",      // Solaris CSW
 }
 
+// cLocale runs a command in the C locale. sudo and visudo translate their
+// output, which the parsers match in English: under a German locale
+// `sudo -V` prints `Sudo-Version 1.9.15p5`. The `env` form also works when
+// the command is elevated, where sudo may refuse a leading VAR=value.
+const cLocale = "env LC_ALL=C "
+
 // buildSudoVCommand returns a shell-safe `<path> -V` invocation. The path
 // may originate from `init(path: ...)`, so it must be quoted to prevent
 // shell-metacharacter injection (e.g., `init(path: "/tmp/evil; cat /etc/shadow")`).
 func buildSudoVCommand(path string) string {
-	return shared.ShellEscape(path) + " -V"
+	return cLocale + shared.ShellEscape(path) + " -V"
+}
+
+// buildVisudoCheckCommand returns the shell-safe `<visudo> -c` invocation.
+func buildVisudoCheckCommand(visudo string) string {
+	return cLocale + shared.ShellEscape(visudo) + " -c"
 }
 
 // mqlSudoInternal caches the parsed `sudo -V` result so the binary is
@@ -323,7 +334,7 @@ func (s *mqlSudo) validate() (*mqlSudoValidation, error) {
 		return nil, nil
 	}
 
-	cmd, err := conn.RunCommand(shared.ShellEscape(visudo) + " -c")
+	cmd, err := conn.RunCommand(buildVisudoCheckCommand(visudo))
 	if err != nil {
 		s.Validate = plugin.TValue[*mqlSudoValidation]{State: plugin.StateIsSet | plugin.StateIsNull}
 		return nil, nil
