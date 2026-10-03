@@ -767,6 +767,10 @@ func (s *SystemdFSServiceManager) unitFileExists(unitName string) bool {
 // <name>.target.requires directory on the search path.
 func (s *SystemdFSServiceManager) targetWants() ([]string, error) {
 	var units []string
+	// findDeps reads every search path for a target, so a target with a
+	// .wants directory on two of them is asked once
+	seenTarget := map[string]bool{}
+	seenUnit := map[string]bool{}
 	for _, p := range systemdUnitSearchPath {
 		entries, err := afero.ReadDir(s.Fs, p)
 		if err != nil {
@@ -783,14 +787,20 @@ func (s *SystemdFSServiceManager) targetWants() ([]string, error) {
 			if !ok {
 				target, ok = strings.CutSuffix(e.Name(), ".requires")
 			}
-			if !ok || !strings.HasSuffix(target, ".target") {
+			if !ok || !strings.HasSuffix(target, ".target") || seenTarget[target] {
 				continue
 			}
+			seenTarget[target] = true
 			deps, err := s.findDeps(target)
 			if err != nil {
 				return nil, err
 			}
-			units = append(units, deps...)
+			for _, d := range deps {
+				if !seenUnit[d] {
+					seenUnit[d] = true
+					units = append(units, d)
+				}
+			}
 		}
 	}
 	return units, nil
