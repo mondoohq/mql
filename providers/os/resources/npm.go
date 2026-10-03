@@ -35,6 +35,8 @@ import (
 var defaultNpmPaths = []string{
 	// Linux
 	"/usr/local/lib",
+	// Amazon Linux Node streams installed side by side, e.g. nodejs22
+	nodeStreamPrefixGlob,
 	"/opt/homebrew/lib",
 	"/usr/lib",
 	"/home/*/.npm-global/lib",
@@ -351,7 +353,8 @@ func (r *mqlNpmPackages) getPaths() ([]string, error) {
 	paths = slices.Compact(paths)
 
 	if len(paths) == 0 {
-		paths = defaultNpmPaths
+		conn := r.MqlRuntime.Connection.(shared.Connection)
+		paths = expandNodeStreamPrefixes(conn.FileSystem(), defaultNpmPaths, resolveConnectionPath(conn))
 	}
 	return paths, nil
 }
