@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -17,7 +18,9 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/haproxy"
 	"go.mondoo.com/mql/providers/os/resources/mycnf"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
 	"go.mondoo.com/mql/types"
 )
 
@@ -99,6 +102,10 @@ type mycnfState struct {
 	// and the section resources can hand out the same instances.
 	filesIdx map[string]*mqlFile
 	parseErr error
+	// launch is how the server is started, when a running server process
+	// or its systemd unit says. Its command line options override the
+	// option files.
+	launch mycnf.ServerLaunch
 }
 
 // resolve selects the option file for wantFlavor, parses it together with
@@ -183,6 +190,34 @@ func (st *mycnfState) resolve(runtime *plugin.Runtime, wantFlavor string, candid
 		return nil
 	}
 
+	// How the server is started decides which option files it reads, ahead
+	// of every well-known path.
+	launch, launched := serverLaunch(runtime, afs, wantFlavor)
+	if launched {
+		st.launch = launch
+		if launch.NoDefaults {
+			// The server reads no option file at all. rootPath stays
+			// empty, and only the command line contributes.
+			return nil
+		}
+		// A defaults file that does not exist stops the server from
+		// starting, so it says nothing about the server and the probe
+		// below goes on. One this user cannot stat is still the file,
+		// and parsing it reports the refusal.
+		if p := launchPath(launch.DefaultsFile); p != "" {
+			if _, err := afs.Stat(p); !errors.Is(err, fs.ErrNotExist) {
+				conf, err := mycnf.Parse(p, reader, dirLister)
+				st.rootPath = p
+				st.conf = conf
+				if err != nil {
+					st.parseErr = classifyOptionFileError(err)
+					return st.parseErr
+				}
+				return st.appendExtraFile(reader, dirLister)
+			}
+		}
+	}
+
 	isFile := func(path string) bool {
 		exists, isDir := probe(path)
 		return exists && !isDir
@@ -215,12 +250,162 @@ func (st *mycnfState) resolve(runtime *plugin.Runtime, wantFlavor string, candid
 			st.parseErr = classifyOptionFileError(err)
 			return st.parseErr
 		}
-		return nil
+		return st.appendExtraFile(reader, dirLister)
 	}
 
 	// Nothing on this host belongs to wantFlavor. Leave rootPath empty so
 	// every dependent field reports empty rather than an error.
 	return nil
+}
+
+// appendExtraFile reads the server's --defaults-extra-file after the option
+// files already parsed, which is the order the server reads them in. A file
+// that does not exist stops the server from starting and is skipped.
+func (st *mycnfState) appendExtraFile(reader mycnf.FileReader, dirLister mycnf.DirLister) error {
+	p := launchPath(st.launch.ExtraFile)
+	if p == "" {
+		return nil
+	}
+	extra, err := mycnf.Parse(p, reader, dirLister)
+	if err != nil && len(extra.Files) == 0 && errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	st.conf.Append(extra)
+	if err != nil {
+		st.parseErr = classifyOptionFileError(err)
+		return st.parseErr
+	}
+	return nil
+}
+
+// launchPath resolves a path from a server command line. A relative path is
+// resolved against the root directory, where systemd starts a service that
+// sets no WorkingDirectory=.
+func launchPath(p string) string {
+	if p == "" || path.IsAbs(p) {
+		return p
+	}
+	return path.Join("/", p)
+}
+
+// mysqlServerUnits are the systemd services that start a MySQL or MariaDB
+// server: mariadb.service from MariaDB's packages, mysql.service from MySQL's
+// Debian packages, and mysqld.service from its RPMs. MariaDB's packages
+// install mysql.service and mysqld.service as symlinks to mariadb.service,
+// and systemd reads the drop-ins of the unit's own name, so mariadb.service
+// is resolved first: through an alias the drop-ins in mariadb.service.d would
+// be missed.
+var mysqlServerUnits = []string{"mariadb.service", "mysql.service", "mysqld.service"}
+
+// mysqlServerPidsCmd lists the server processes. pgrep exits 1 when nothing
+// matches.
+const mysqlServerPidsCmd = "pgrep -x 'mysqld|mariadbd'"
+
+// serverLaunch returns the command line the wantFlavor server is started
+// with: a running server's own, read from /proc, or else the ExecStart= of
+// its systemd unit with the unit's environment expanded. It reports false
+// when neither names a server of this product.
+func serverLaunch(runtime *plugin.Runtime, afs *afero.Afero, wantFlavor string) (mycnf.ServerLaunch, bool) {
+	for _, argv := range runningServerArgs(runtime, afs) {
+		if launch, ok := mycnf.ParseServerArgs(argv); ok && launchFlavorMatches(runtime, launch, wantFlavor) {
+			return launch, true
+		}
+	}
+	for _, unit := range mysqlServerUnits {
+		env, ok := systemd.ResolveUnitEnv(afs, unit)
+		if !ok || env.ExecStart == "" {
+			continue
+		}
+		argv := haproxy.ExpandSystemdCommand(env.ExecStart, env.Vars)
+		if launch, ok := mycnf.ParseServerArgs(argv); ok && launchFlavorMatches(runtime, launch, wantFlavor) {
+			return launch, true
+		}
+	}
+	return mycnf.ServerLaunch{}, false
+}
+
+// launchFlavorMatches reports whether a server command line starts the
+// product wantFlavor covers. A binary named mariadbd is MariaDB. One named
+// mysqld is whatever the installed server's banner says, since MariaDB
+// before 10.4 installs its server under that name only; when no banner can
+// be read it is taken to be the product asked about, as a host runs one of
+// the two.
+func launchFlavorMatches(runtime *plugin.Runtime, launch mycnf.ServerLaunch, wantFlavor string) bool {
+	if launch.Binary == "mariadbd" {
+		return wantFlavor == mycnf.FlavorMariaDB
+	}
+	switch installedServerFlavor(runtime) {
+	case mycnf.FlavorMariaDB:
+		return wantFlavor == mycnf.FlavorMariaDB
+	case mycnf.FlavorMySQL, mycnf.FlavorPercona:
+		return wantFlavor == mycnf.FlavorMySQL
+	}
+	return true
+}
+
+// runningServerArgs reads the command line of every running server process
+// from /proc. Where commands run, pgrep narrows the processes to read;
+// otherwise every /proc entry is read. A process whose command line cannot be
+// read is skipped: it may be gone by now.
+func runningServerArgs(runtime *plugin.Runtime, afs *afero.Afero) [][]string {
+	conn, ok := runtime.Connection.(shared.Connection)
+	if !ok {
+		return nil
+	}
+	var pids []string
+	listed := false
+	if conn.Capabilities().Has(shared.Capability_RunCommand) {
+		o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+			"command": llx.StringData(mysqlServerPidsCmd),
+		})
+		if err == nil {
+			cmd := o.(*mqlCommand)
+			switch cmd.GetExitcode().Data {
+			case 0:
+				pids = strings.Fields(cmd.GetStdout().Data)
+				listed = true
+			case 1:
+				return nil
+			}
+		}
+	}
+	if !listed {
+		entries, err := afs.ReadDir("/proc")
+		if err != nil {
+			return nil
+		}
+		for _, e := range entries {
+			pids = append(pids, e.Name())
+		}
+	}
+
+	var out [][]string
+	for _, pid := range pids {
+		if _, err := strconv.Atoi(pid); err != nil {
+			continue
+		}
+		raw, err := afs.ReadFile("/proc/" + pid + "/cmdline")
+		if err != nil || len(raw) == 0 {
+			continue
+		}
+		argv := haproxy.SplitProcCmdline(raw)
+		if len(argv) > 0 && mycnf.IsServerBinary(argv[0]) {
+			out = append(out, argv)
+		}
+	}
+	return out
+}
+
+// serverOptionMap merges the server's option groups, extended by its
+// --defaults-group-suffix, and applies its command line options last.
+func (st *mycnfState) serverOptionMap(groups []string) map[string]any {
+	groups = mycnf.WithGroupSuffix(groups, st.launch.GroupSuffix)
+	merged := mycnf.MergeWithArgs(st.conf, st.launch.Options, groups...)
+	out := make(map[string]any, len(merged))
+	for k, v := range merged {
+		out[k] = v
+	}
+	return out
 }
 
 // classifyOptionFileError marks a failure to read an option file because of
