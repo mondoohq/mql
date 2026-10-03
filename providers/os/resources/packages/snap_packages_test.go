@@ -338,3 +338,89 @@ func TestSnapPkgManagerListFromFS_OnlyTouchesBoundedPaths(t *testing.T) {
 		assert.NotContains(t, access, "/usr/lib/locale")
 	}
 }
+
+// `snap refresh --list` on Ubuntu 20.04 with five snaps behind the store.
+const snapRefreshListUbuntu2004 = `Name              Version         Rev    Size  Publisher    Notes
+amazon-ssm-agent  3.3.4793.0      13349  29MB  aws**        classic
+core20            20260901        2922   66MB  canonical**  base
+core22            20260824        2955   77MB  canonical**  base
+lxd               4.0.14-b6e6806  40953  96MB  canonical**  -
+snapd             2.77.1          28254  46MB  canonical**  snapd
+`
+
+func TestParseSnapRefreshList(t *testing.T) {
+	updates, err := ParseSnapRefreshList(strings.NewReader(snapRefreshListUbuntu2004))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]PackageUpdate{
+		"amazon-ssm-agent": {Name: "amazon-ssm-agent", Available: "3.3.4793.0"},
+		"core20":           {Name: "core20", Available: "20260901"},
+		"core22":           {Name: "core22", Available: "20260824"},
+		"lxd":              {Name: "lxd", Available: "4.0.14-b6e6806"},
+		"snapd":            {Name: "snapd", Available: "2.77.1"},
+	}, updates)
+
+	// nothing to refresh: "All snaps up to date." goes to stderr
+	updates, err = ParseSnapRefreshList(strings.NewReader(""))
+	require.NoError(t, err)
+	assert.Empty(t, updates)
+}
+
+func TestSnapPkgManagerAvailable(t *testing.T) {
+	fs, root := newSnapBasePathFs(t)
+	writeSnapManifest(t, root, "/snap/snapd/current/meta/snap.yaml", "snapd", "2.68.4.1", "snapd", "amd64")
+
+	t.Run("updates", func(t *testing.T) {
+		spm := newSnapPkgManagerForTest(fs, shared.Capability_RunCommand, map[string]snapCommandResult{
+			snapRefreshListCmd: {stdout: snapRefreshListUbuntu2004},
+		})
+		updates, err := spm.Available()
+		require.NoError(t, err)
+		assert.Len(t, updates, 5)
+		// packages match an update by name and arch, so the update carries
+		// the installed snap's arch
+		assert.Equal(t, PackageUpdate{Name: "snapd", Arch: "amd64", Available: "2.77.1"}, updates["snapd"])
+		assert.Equal(t, "", updates["lxd"].Arch, "no manifest to read the arch from")
+	})
+
+	t.Run("all up to date", func(t *testing.T) {
+		spm := newSnapPkgManagerForTest(fs, shared.Capability_RunCommand, map[string]snapCommandResult{
+			snapRefreshListCmd: {stderr: "All snaps up to date.\n"},
+		})
+		updates, err := spm.Available()
+		require.NoError(t, err)
+		assert.NotNil(t, updates)
+		assert.Empty(t, updates)
+	})
+
+	// stderr captured on Ubuntu 24.04 with snapd stopped, and with the store
+	// address blocked
+	for name, stderr := range map[string]string{
+		"snapd down":        `error: cannot list snaps: cannot communicate with server: Get "http://localhost/v2/find?select=refresh": dial unix /run/snapd.socket: connect: connection refused`,
+		"store unreachable": "error: cannot list updates: Post \"https://api.snapcraft.io/v2/snaps/refresh\":\n       dial tcp 127.0.0.1:443: connect: connection refused",
+	} {
+		t.Run(name, func(t *testing.T) {
+			spm := newSnapPkgManagerForTest(fs, shared.Capability_RunCommand, map[string]snapCommandResult{
+				snapRefreshListCmd: {stderr: stderr, exitStatus: 1},
+			})
+			_, err := spm.Available()
+			require.ErrorIs(t, err, ErrUpdateCheckFailed)
+			assert.Contains(t, err.Error(), "connection refused")
+		})
+	}
+
+	t.Run("snap not installed", func(t *testing.T) {
+		spm := newSnapPkgManagerForTest(fs, shared.Capability_RunCommand, map[string]snapCommandResult{
+			snapRefreshListCmd: {stderr: "sh: 1: snap: not found", exitStatus: 127},
+		})
+		updates, err := spm.Available()
+		require.NoError(t, err)
+		assert.Nil(t, updates)
+	})
+
+	t.Run("no command execution", func(t *testing.T) {
+		spm := newSnapPkgManagerForTest(fs, shared.Capability_None, nil)
+		updates, err := spm.Available()
+		require.NoError(t, err)
+		assert.Nil(t, updates)
+	})
+}
