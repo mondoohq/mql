@@ -189,5 +189,6 @@ func TestGeminiSettingsEmptyFile(t *testing.T) {
 
 	var settings map[string]any
 	require.NoError(t, readGeminiSettings(afs, dir, &settings))
+	assert.NotNil(t, settings, "an empty file is an empty map, as a missing one is")
 	assert.Empty(t, settings)
 }

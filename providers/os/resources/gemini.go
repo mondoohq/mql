@@ -170,7 +170,8 @@ func readGeminiSettings(afs *afero.Afero, configDir string, v any) error {
 // unmarshalGeminiJSON parses a Gemini config file that may carry comments.
 func unmarshalGeminiJSON(data []byte, v any) error {
 	if len(bytes.TrimSpace(data)) == 0 {
-		return nil
+		// An empty file reads like a missing one: an empty configuration.
+		data = []byte("{}")
 	}
 	clean, err := hujson.Standardize(data)
 	if err != nil {
