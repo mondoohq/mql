@@ -582,9 +582,9 @@ func TestParseNginxServerBlockTLSAndHeaders(t *testing.T) {
 	assert.Equal(t, int64(443), l.Port)
 
 	assert.Equal(t,
-		[]string{"DENY always", "SAMEORIGIN"},
+		[]string{"DENY", "SAMEORIGIN"},
 		srv.AddHeaders["X-Frame-Options"],
-		"add_header collects every value per name in source order, including trailing flags")
+		"add_header collects every value per name in source order, without the always flag")
 	assert.Equal(t,
 		[]string{"max-age=63072000"},
 		srv.AddHeaders["Strict-Transport-Security"])
@@ -760,4 +760,38 @@ func TestNginxLocationReturnDirective(t *testing.T) {
 	plain := res[1].(*mqlNginxConfLocation)
 	assert.Equal(t, "", plain.ReturnDirective.Data)
 	assert.Equal(t, plain.Return.Data, plain.ReturnDirective.Data)
+}
+
+// Debian 9 to 11 build their packaged modules out of tree (--add-dynamic-module,
+// or not in the configure arguments at all on Debian 11), so nginx -V lists
+// none of them as =dynamic. Every loaded ngx_<name>.so still runs.
+func TestNginxModulesLoadedOutOfTree(t *testing.T) {
+	// nginx -V on Debian 11 (nginx 1.18.0)
+	deb11 := `nginx version: nginx/1.18.0
+built with OpenSSL 1.1.1w  11 Sep 2023
+TLS SNI support enabled
+configure arguments: --with-cc-opt='-g -O2 -ffile-prefix-map=/build/reproducible-path/nginx-1.18.0=. -fstack-protector-strong -Wformat -Werror=format-security -fPIC -Wdate-time -D_FORTIFY_SOURCE=2' --with-ld-opt='-Wl,-z,relro -Wl,-z,now -fPIC' --prefix=/usr/share/nginx --conf-path=/etc/nginx/nginx.conf --http-log-path=/var/log/nginx/access.log --error-log-path=/var/log/nginx/error.log --lock-path=/var/lock/nginx.lock --pid-path=/run/nginx.pid --modules-path=/usr/lib/nginx/modules --http-client-body-temp-path=/var/lib/nginx/body --http-fastcgi-temp-path=/var/lib/nginx/fastcgi --http-proxy-temp-path=/var/lib/nginx/proxy --http-scgi-temp-path=/var/lib/nginx/scgi --http-uwsgi-temp-path=/var/lib/nginx/uwsgi --with-compat --with-debug --with-pcre-jit --with-http_ssl_module --with-http_stub_status_module --with-http_realip_module --with-http_auth_request_module --with-http_v2_module --with-http_dav_module --with-http_slice_module --with-threads --with-http_addition_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_sub_module
+`
+	configured, _ := parseNginxConfigureModules(deb11)
+	mods := nginxModules(configured, []string{
+		"modules/ngx_http_geoip_module.so",
+		"modules/ngx_http_image_filter_module.so",
+		"modules/ngx_http_xslt_filter_module.so",
+		"modules/ngx_mail_module.so",
+		"modules/ngx_stream_module.so",
+		"modules/ngx_stream_geoip_module.so",
+	})
+	for _, m := range []string{"http_ssl_module", "http_v2_module", "http_geoip_module", "http_image_filter_module",
+		"http_xslt_module", "mail_module", "stream_module", "stream_geoip_module"} {
+		assert.Contains(t, mods, m)
+	}
+	assert.NotContains(t, mods, "http_xslt_filter_module")
+
+	// Debian 9's third-party modules (--add-dynamic-module)
+	mods = nginxModules(nil, []string{"modules/ngx_http_auth_pam_module.so", "modules/ngx_http_subs_filter_module.so"})
+	assert.Equal(t, []string{"http_auth_pam_module", "http_subs_filter_module"}, mods)
+
+	// a module both configured and loaded is listed once
+	configured, _ = parseNginxConfigureModules("configure arguments: --with-stream=dynamic --with-stream_ssl_module")
+	assert.Equal(t, []string{"stream_module", "stream_ssl_module"}, nginxModules(configured, []string{"/usr/lib/nginx/modules/ngx_stream_module.so"}))
 }
