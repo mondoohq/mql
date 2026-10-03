@@ -32,7 +32,9 @@ func (f *File) readContent() (*bytes.Buffer, error) {
 	// we need shellquote to escape filenames with spaces
 	catCmd := shellquote.Join("cat", argPath(f.path))
 	if f.useBase64encoding {
-		catCmd = catCmd + " | base64"
+		// base64 reads the file itself, so the exit status reports a file
+		// that cannot be read; in `cat <file> | base64` it is base64's
+		catCmd = "base64 < " + shellquote.Join(argPath(f.path))
 	}
 
 	cmd, err := f.catfs.commandRunner.RunCommand(catCmd)
@@ -43,6 +45,14 @@ func (f *File) readContent() (*bytes.Buffer, error) {
 	data, err := io.ReadAll(cmd.Stdout)
 	if err != nil {
 		return nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		// a file that cannot be read is an error, not an empty file
+		var stderr []byte
+		if cmd.Stderr != nil {
+			stderr, _ = io.ReadAll(cmd.Stderr)
+		}
+		return nil, commandPathError("open", f.path, string(stderr), "could not read file")
 	}
 
 	if f.useBase64encoding {
@@ -184,20 +194,27 @@ func parseDirListing(data []byte) []string {
 // errors.Is recognizes as os.ErrNotExist or os.ErrPermission, matching
 // what the sftp and local filesystems return.
 func listDirError(path string, stderr string) error {
+	return commandPathError("readdir", path, stderr, "could not list directory")
+}
+
+// commandPathError turns the stderr of a command that failed on path into
+// an error that errors.Is recognizes as os.ErrNotExist or os.ErrPermission.
+// dash reports a missing file as "No such file", without "or directory".
+func commandPathError(op, path, stderr, fallback string) error {
 	msg := strings.TrimSpace(stderr)
 	var cause error
 	switch {
-	case strings.Contains(msg, "No such file or directory"):
+	case strings.Contains(msg, "No such file"):
 		cause = os.ErrNotExist
 	case strings.Contains(msg, "Permission denied"):
 		cause = os.ErrPermission
 	default:
 		if msg == "" {
-			msg = "could not list directory"
+			msg = fallback
 		}
 		cause = errors.New(msg)
 	}
-	return &os.PathError{Op: "readdir", Path: path, Err: cause}
+	return &os.PathError{Op: op, Path: path, Err: cause}
 }
 
 func (f *File) Seek(offset int64, whence int) (int64, error) {
