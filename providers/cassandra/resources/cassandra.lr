@@ -88,8 +88,16 @@ cassandra.role @defaults("name isSuperuser canLogin") {
   name string
   // Whether the role can log in (is a login account)
   canLogin bool
-  // Whether the role is a superuser
+  // Whether the role has the superuser flag itself
+  //
+  // The role's own is_superuser setting. A role can also be a superuser
+  // through a granted role, which isEffectiveSuperuser reports.
   isSuperuser bool
+  // Whether the role has superuser status, directly or through a granted role
+  //
+  // Cassandra resolves superuser status over every role granted to a role,
+  // transitively: a member of a superuser role is a superuser too.
+  isEffectiveSuperuser bool
   // Whether the role has a password set
   //
   // A login role with no password cannot authenticate with a password; a

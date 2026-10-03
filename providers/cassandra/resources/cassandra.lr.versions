@@ -28,6 +28,7 @@ cassandra.node.releaseVersion 13.0.0
 cassandra.role 13.0.0
 cassandra.role.canLogin 13.0.0
 cassandra.role.hasPassword 13.0.0
+cassandra.role.isEffectiveSuperuser 14.0.2
 cassandra.role.isSuperuser 13.0.0
 cassandra.role.memberOf 13.0.0
 cassandra.role.name 13.0.0

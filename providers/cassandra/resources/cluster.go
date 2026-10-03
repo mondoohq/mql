@@ -85,8 +85,11 @@ func (r *mqlCassandraCluster) security() (*mqlCassandraSecurity, error) {
 	}
 	if err := iter.Close(); err != nil {
 		if connection.IsUnauthorized(err) {
-			r.Security.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
+			if !plugin.StructuredErrors() {
+				r.Security.State = plugin.StateIsSet | plugin.StateIsNull
+				return nil, nil
+			}
+			return nil, refused(err, "SELECT ON system_views.settings")
 		}
 		return nil, err
 	}
@@ -146,7 +149,10 @@ func (r *mqlCassandraCluster) nodes() ([]any, error) {
 		peers, err = r.scanPeers(session, `SELECT peer, host_id, release_version, data_center, rack FROM system.peers`)
 		if err != nil {
 			if connection.IsUnauthorized(err) {
-				return list, nil
+				if !plugin.StructuredErrors() {
+					return list, nil
+				}
+				return nil, refused(err, "SELECT ON system.peers")
 			}
 			return nil, err
 		}
@@ -215,7 +221,10 @@ func (r *mqlCassandraCluster) keyspaces() ([]any, error) {
 	}
 	if err := iter.Close(); err != nil {
 		if connection.IsUnauthorized(err) {
-			return []any{}, nil
+			if !plugin.StructuredErrors() {
+				return []any{}, nil
+			}
+			return nil, refused(err, "SELECT ON system_schema.keyspaces")
 		}
 		return nil, err
 	}
