@@ -226,16 +226,18 @@ func ParseVersion(output string) (version string, flavor string) {
 //
 // This is the fallback for when the server binary cannot be asked: the list
 // the binary prints (ParseServerHelp) is the authority, since it varies by
-// build. MariaDB from 10.1 reads [galera] whether or not wsrep is on, so it is
-// server scope. MySQL 8.4 reads [mysql_cluster] in every build seen; on 8.0
-// only Oracle's and Percona's builds do, so it is left out there.
+// build. [galera] is left out here. Only a server built with wsrep reads it:
+// the Rocky, SUSE and mariadb.org builds do, Amazon Linux's mariadb118 and
+// mariadb123 do not, and the version says nothing about which build this is.
+// MariaDB also reads its groups suffixed with the major version alone
+// ([mariadb-11], [mariadbd-11]) from 11.8.7 and 12.3.2 on, and in every later
+// series; 11.4 and 12.0 to 12.2 do not. MySQL 8.4 reads [mysql_cluster] in
+// every build seen; on 8.0 only Oracle's and Percona's builds do, so it is
+// left out there.
 func ServerGroups(flavor string, version string) []string {
 	mm := majorMinor(version)
 	if flavor == FlavorMariaDB {
 		groups := []string{"client-server", "mysqld", "server", "mariadb"}
-		if mm == "" || versionAtLeast(mm, 10, 1) {
-			groups = append(groups, "galera")
-		}
 		readsMariadbd := mm == "" || versionAtLeast(mm, 10, 4)
 		if readsMariadbd {
 			groups = append(groups, "mariadbd")
@@ -245,6 +247,9 @@ func ServerGroups(flavor string, version string) []string {
 			if readsMariadbd {
 				groups = append(groups, "mariadbd-"+mm)
 			}
+		}
+		if major, ok := mariadbReadsMajorGroups(version); ok {
+			groups = append(groups, "mariadb-"+major, "mariadbd-"+major)
 		}
 		return groups
 	}
@@ -267,6 +272,36 @@ func majorMinor(version string) string {
 		return ""
 	}
 	return parts[0] + "." + parts[1]
+}
+
+// mariadbReadsMajorGroups reports whether a MariaDB server of the given full
+// version reads [mariadb-<major>] and [mariadbd-<major>], and returns the
+// major version. MariaDB added them (MARIADB_MAJOR_VERSION in
+// mysql_version.h) in 11.8.7 and 12.3.2; 11.8.6, every 11.4 and 12.0 to
+// 12.3.1 read no such group.
+func mariadbReadsMajorGroups(version string) (string, bool) {
+	parts := strings.Split(reSemver.FindString(strings.TrimSpace(version)), ".")
+	if len(parts) < 3 {
+		return "", false
+	}
+	nums := make([]int, 3)
+	for i, p := range parts[:3] {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return "", false
+		}
+		nums[i] = n
+	}
+	at := func(major, minor, patch int) bool {
+		return slices.Compare(nums, []int{major, minor, patch}) >= 0
+	}
+	switch {
+	case nums[0] == 11 && nums[1] == 8:
+		return parts[0], at(11, 8, 7)
+	case nums[0] == 12 && nums[1] == 3:
+		return parts[0], at(12, 3, 2)
+	}
+	return parts[0], at(12, 4, 0)
 }
 
 // versionAtLeast reports whether a "major.minor" version is at least

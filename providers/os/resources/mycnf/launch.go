@@ -109,6 +109,34 @@ func ParseServerArgs(argv []string) (ServerLaunch, bool) {
 	return launch, true
 }
 
+// suseHelperUser is the account mysql-systemd-helper starts the server as.
+const suseHelperUser = "mysql"
+
+// ParseSuseHelperArgs reads the ExecStart= of SUSE's MariaDB units,
+// `/usr/libexec/mysql/mysql-systemd-helper start [instance]` (under
+// /usr/lib/mysql on older releases). The helper execs the server as
+//
+//	/usr/sbin/mysqld --defaults-file=/etc/my<instance>.cnf --user=mysql --socket=...
+//
+// so the server reads that one file and never the service account's
+// ~/.my.cnf. The --socket the helper adds is left out: it comes from what
+// my_print_defaults reports for [mysqld] at start time. It reports false for
+// any other command line.
+func ParseSuseHelperArgs(argv []string) (ServerLaunch, bool) {
+	if len(argv) < 2 || path.Base(argv[0]) != "mysql-systemd-helper" || argv[1] != "start" {
+		return ServerLaunch{}, false
+	}
+	instance := ""
+	if len(argv) > 2 {
+		instance = argv[2]
+	}
+	return ServerLaunch{
+		Binary:       "mysqld",
+		DefaultsFile: "/etc/my" + instance + ".cnf",
+		Options:      []Option{{Name: "user", Value: suseHelperUser, Line: 1}},
+	}, true
+}
+
 // WithGroupSuffix extends a list of option groups with the suffixed form of
 // each, which a server started with --defaults-group-suffix reads as well.
 func WithGroupSuffix(groups []string, suffix string) []string {

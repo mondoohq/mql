@@ -211,7 +211,7 @@ func (st *mycnfState) locate(runtime *plugin.Runtime, afs *afero.Afero, wantFlav
 
 	// How the server is started decides which option files it reads, ahead
 	// of every well-known path.
-	launch, launched := serverLaunch(runtime, afs, wantFlavor)
+	launch, launched := mysqlServerLaunch(runtime, afs, wantFlavor)
 	if launched {
 		st.launch = launch
 		if launch.NoDefaults {
@@ -382,7 +382,7 @@ func productOf(flavor string) string {
 // without User= runs the server as root. It is empty when no unit is found.
 func serverHome(afs *afero.Afero) string {
 	for _, unit := range mysqlServerUnits {
-		env, ok := systemd.ResolveUnitEnv(afs, unit)
+		env, ok := serverUnitEnv(afs, unit)
 		if !ok {
 			continue
 		}
@@ -517,27 +517,51 @@ var mysqlServerUnits = []string{"mariadb.service", "mysql.service", "mysqld.serv
 // matches.
 const mysqlServerPidsCmd = "pgrep -x 'mysqld|mariadbd'"
 
-// serverLaunch returns the command line the wantFlavor server is started
+// mysqlServerLaunch returns the command line the wantFlavor server is started
 // with: a running server's own, read from /proc, or else the ExecStart= of
 // its systemd unit with the unit's environment expanded. It reports false
 // when neither names a server of this product.
-func serverLaunch(runtime *plugin.Runtime, afs *afero.Afero, wantFlavor string) (mycnf.ServerLaunch, bool) {
+func mysqlServerLaunch(runtime *plugin.Runtime, afs *afero.Afero, wantFlavor string) (mycnf.ServerLaunch, bool) {
 	for _, argv := range runningServerArgs(runtime, afs) {
 		if launch, ok := mycnf.ParseServerArgs(argv); ok && launchFlavorMatches(runtime, launch, wantFlavor) {
 			return launch, true
 		}
 	}
 	for _, unit := range mysqlServerUnits {
-		env, ok := systemd.ResolveUnitEnv(afs, unit)
-		if !ok || env.ExecStart == "" {
-			continue
-		}
-		argv := haproxy.ExpandSystemdCommand(env.ExecStart, env.Vars)
-		if launch, ok := mycnf.ParseServerArgs(argv); ok && launchFlavorMatches(runtime, launch, wantFlavor) {
+		if launch, ok := unitLaunch(afs, unit); ok && launchFlavorMatches(runtime, launch, wantFlavor) {
 			return launch, true
 		}
 	}
 	return mycnf.ServerLaunch{}, false
+}
+
+// serverUnitEnv resolves a server unit that starts something. A unit with no
+// ExecStart= does not: that is also what an alias left dangling looks like,
+// such as /etc/systemd/system/mysql.service pointing at the mariadb.service a
+// removed package took with it, which systemd refuses to load. Where a
+// filesystem reports such a link as present it cannot read it, so the unit
+// resolves with no settings at all, and its missing User= would read as root.
+func serverUnitEnv(afs *afero.Afero, unit string) (*systemd.UnitEnv, bool) {
+	env, ok := systemd.ResolveUnitEnv(afs, unit)
+	if !ok || env.ExecStart == "" {
+		return nil, false
+	}
+	return env, true
+}
+
+// unitLaunch returns the server command line a systemd unit starts: its
+// ExecStart= with the unit's environment expanded, or, for SUSE's units, the
+// one mysql-systemd-helper execs.
+func unitLaunch(afs *afero.Afero, unit string) (mycnf.ServerLaunch, bool) {
+	env, ok := serverUnitEnv(afs, unit)
+	if !ok {
+		return mycnf.ServerLaunch{}, false
+	}
+	argv := haproxy.ExpandSystemdCommand(env.ExecStart, env.Vars)
+	if launch, ok := mycnf.ParseServerArgs(argv); ok {
+		return launch, true
+	}
+	return mycnf.ParseSuseHelperArgs(argv)
 }
 
 // launchFlavorMatches reports whether a server command line starts the

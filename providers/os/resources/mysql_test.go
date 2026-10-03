@@ -5,17 +5,20 @@ package resources
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/mycnf"
 	"go.mondoo.com/mql/utils/syncx"
 )
@@ -1104,4 +1107,97 @@ func TestMariadbConf_ReadsTheGroupsTheServerBinaryLists(t *testing.T) {
 	skip := conf.GetSkipGrantTables()
 	require.NoError(t, skip.Error)
 	assert.True(t, skip.Data)
+}
+
+// openSUSE Leap 16 and SLES 16, MariaDB 11.8.8 with the server stopped. The
+// unit starts mysql-systemd-helper, which execs the server with
+// --defaults-file=/etc/my.cnf, so the server never reads the mysql account's
+// ~/.my.cnf even though `mariadbd --verbose --help` lists it: live,
+// max_connections is 120 where --print-defaults reports 199.
+func TestMariadbConf_SuseHelperReadsOnlyEtcMyCnf(t *testing.T) {
+	file := func(p, content string) *mock.MockFileData {
+		return &mock.MockFileData{Path: p, Content: content, StatData: mock.FileInfo{Mode: 0o644}}
+	}
+	data := &mock.TomlData{
+		Files: map[string]*mock.MockFileData{
+			"/usr/sbin/mariadbd": file("/usr/sbin/mariadbd", "ELF"),
+			"/etc/my.cnf":        file("/etc/my.cnf", "[mysqld]\nbind-address = 127.0.0.1\nmax_connections=120\n"),
+			"/usr/lib/systemd/system/mariadb.service": file("/usr/lib/systemd/system/mariadb.service",
+				"[Service]\nExecStartPre=/usr/libexec/mysql/mysql-systemd-helper  install\n"+
+					"ExecStartPre=/usr/libexec/mysql/mysql-systemd-helper  upgrade\n"+
+					"ExecStart=/usr/libexec/mysql/mysql-systemd-helper     start\n"+
+					"Type=notify\nUser=mysql\nGroup=mysql\n"),
+			"/etc/passwd":            file("/etc/passwd", "root:x:0:0:root:/root:/bin/bash\nmysql:x:60:60:MySQL database admin:/var/lib/mysql:/usr/sbin/nologin\n"),
+			"/var/lib/mysql/.my.cnf": file("/var/lib/mysql/.my.cnf", "[mysqld]\nmax_connections=199\nlocal-infile=1\n"),
+		},
+		Commands: map[string]*mock.Command{
+			"mariadbd --version": {Stdout: "/usr/sbin/mariadbd  Ver 11.8.8-MariaDB for Linux on x86_64 (MariaDB package)\n"},
+			"mariadbd --verbose --help": {Stdout: "Default options are read from the following files in the given order:\n" +
+				"/etc/my.cnf ~/.my.cnf \n" +
+				"The following groups are read: mysqld server mysqld-11.8 mariadb mariadb-11.8 mariadb-11 mariadbd mariadbd-11.8 mariadbd-11 client-server galera\n"},
+		},
+	}
+	conn, err := mock.New(0, &inventory.Asset{Platform: &inventory.Platform{Name: "opensuse-leap", Family: []string{"suse", "linux", "unix"}}}, mock.WithData(data))
+	require.NoError(t, err)
+	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+
+	raw, err := CreateResource(runtime, "mariadb.conf", nil)
+	require.NoError(t, err)
+	conf := raw.(*mqlMariadbConf)
+	opts := conf.GetServerOptions()
+	require.NoError(t, opts.Error)
+	assert.Equal(t, "120", opts.Data["max_connections"])
+	assert.NotContains(t, opts.Data, "local_infile")
+	assert.Equal(t, "mysql", opts.Data["user"], "the helper passes --user=mysql")
+
+	files := conf.GetFiles()
+	require.NoError(t, files.Error)
+	var paths []string
+	for _, x := range files.Data {
+		paths = append(paths, x.(*mqlFile).Path.Data)
+	}
+	assert.Equal(t, []string{"/etc/my.cnf"}, paths)
+}
+
+// SLES 16 after the mariadb package was removed and Oracle MySQL 8.4.11
+// installed: /etc/systemd/system/mysql.service is still an alias to the
+// mariadb.service that went with the package, and systemd refuses to load
+// mysql.service. The local and sudo filesystems report the dangling link as
+// absent and fall through to Oracle's unit in /usr/lib. A filesystem that
+// reports it as present cannot read it, and the unit then resolves with no
+// User= at all, which must not make root's home the server account's.
+func TestServerHome_SkipsDanglingUnitAlias(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	write := func(p, content string) {
+		require.NoError(t, afero.WriteFile(mem, p, []byte(content), 0o644))
+	}
+	write("/usr/lib/systemd/system/mysql.service", "[Service]\nUser=mysql\nExecStart=/usr/sbin/mysqld $MYSQLD_OPTS\n")
+	write("/etc/passwd", "root:x:0:0:root:/root:/bin/bash\nmysql:x:60:60:MySQL database admin:/var/lib/mysql:/usr/sbin/nologin\n")
+	afs := &afero.Afero{Fs: danglingLinkFs{Fs: mem, link: "/etc/systemd/system/mysql.service"}}
+
+	assert.Equal(t, "", serverHome(afs))
+
+	// Without the alias the unit's own account counts.
+	assert.Equal(t, "/var/lib/mysql", serverHome(&afero.Afero{Fs: mem}))
+}
+
+// danglingLinkFs reports link as present, the way `stat` falls back to the
+// link itself, and fails to open it, the way reading through it does.
+type danglingLinkFs struct {
+	afero.Fs
+	link string
+}
+
+func (d danglingLinkFs) Stat(name string) (os.FileInfo, error) {
+	if name == d.link {
+		return &shared.FileInfo{FName: path.Base(name), FMode: os.ModeSymlink | 0o777}, nil
+	}
+	return d.Fs.Stat(name)
+}
+
+func (d danglingLinkFs) Open(name string) (afero.File, error) {
+	if name == d.link {
+		return nil, os.ErrNotExist
+	}
+	return d.Fs.Open(name)
 }

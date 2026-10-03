@@ -779,8 +779,9 @@ func TestParseVersionNoMatch(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // The expected sets are the "The following groups are read" line that
-// `mysqld --verbose --help` prints on each server, minus [galera], which
-// ServerGroups keeps out of server scope on purpose.
+// `mysqld --verbose --help` prints on each server, minus [galera], which only
+// a server built with wsrep reads: Amazon Linux's mariadb118 and mariadb123
+// builds do not, and the version cannot tell the builds apart.
 func TestServerGroupsMatchWhatEachServerReads(t *testing.T) {
 	for _, tc := range []struct {
 		flavor, version string
@@ -789,19 +790,29 @@ func TestServerGroupsMatchWhatEachServerReads(t *testing.T) {
 		// Ubuntu 16.04: mysqld server mysqld-10.0 mariadb mariadb-10.0 client-server
 		{FlavorMariaDB, "10.0.38", []string{"mysqld", "server", "mysqld-10.0", "mariadb", "mariadb-10.0", "client-server"}},
 		// Ubuntu 20.04: mysqld server mysqld-10.3 mariadb mariadb-10.3 client-server galera
-		{FlavorMariaDB, "10.3.39", []string{"mysqld", "server", "mysqld-10.3", "mariadb", "mariadb-10.3", "client-server", "galera"}},
+		{FlavorMariaDB, "10.3.39", []string{"mysqld", "server", "mysqld-10.3", "mariadb", "mariadb-10.3", "client-server"}},
 		// Ubuntu 22.04: mysqld server mysqld-10.6 mariadb mariadb-10.6 mariadbd mariadbd-10.6 client-server galera
-		{FlavorMariaDB, "10.6.23", []string{"mysqld", "server", "mysqld-10.6", "mariadb", "mariadb-10.6", "mariadbd", "mariadbd-10.6", "client-server", "galera"}},
+		{FlavorMariaDB, "10.6.23", []string{"mysqld", "server", "mysqld-10.6", "mariadb", "mariadb-10.6", "mariadbd", "mariadbd-10.6", "client-server"}},
 		// Ubuntu 24.04, two-digit minor
-		{FlavorMariaDB, "10.11.14", []string{"mysqld", "server", "mysqld-10.11", "mariadb", "mariadb-10.11", "mariadbd", "mariadbd-10.11", "client-server", "galera"}},
-		// Ubuntu 26.04
-		{FlavorMariaDB, "11.8.6", []string{"mysqld", "server", "mysqld-11.8", "mariadb", "mariadb-11.8", "mariadbd", "mariadbd-11.8", "client-server", "galera"}},
-		// Unknown version: no suffixed group, and [mariadbd] and [galera],
-		// which every supported series reads.
-		{FlavorMariaDB, "", []string{"mysqld", "server", "mariadb", "mariadbd", "client-server", "galera"}},
+		{FlavorMariaDB, "10.11.14", []string{"mysqld", "server", "mysqld-10.11", "mariadb", "mariadb-10.11", "mariadbd", "mariadbd-10.11", "client-server"}},
+		// Ubuntu 26.04, 11.8.6: no major-only group yet
+		{FlavorMariaDB, "11.8.6", []string{"mysqld", "server", "mysqld-11.8", "mariadb", "mariadb-11.8", "mariadbd", "mariadbd-11.8", "client-server"}},
+		// Amazon Linux 2027 mariadb118 11.8.8: mysqld server mysqld-11.8 mariadb
+		// mariadb-11.8 mariadb-11 mariadbd mariadbd-11.8 mariadbd-11 client-server
+		{FlavorMariaDB, "11.8.8", []string{"mysqld", "server", "mysqld-11.8", "mariadb", "mariadb-11.8", "mariadb-11", "mariadbd", "mariadbd-11.8", "mariadbd-11", "client-server"}},
+		// Amazon Linux 2023 mariadb123 12.3.2: the same with 12 and 12.3
+		{FlavorMariaDB, "12.3.2", []string{"mysqld", "server", "mysqld-12.3", "mariadb", "mariadb-12.3", "mariadb-12", "mariadbd", "mariadbd-12.3", "mariadbd-12", "client-server"}},
+		// 11.4 and 12.0 to 12.3.1 have no MARIADB_MAJOR_VERSION.
+		{FlavorMariaDB, "11.4.13", []string{"mysqld", "server", "mysqld-11.4", "mariadb", "mariadb-11.4", "mariadbd", "mariadbd-11.4", "client-server"}},
+		{FlavorMariaDB, "12.3.1", []string{"mysqld", "server", "mysqld-12.3", "mariadb", "mariadb-12.3", "mariadbd", "mariadbd-12.3", "client-server"}},
+		// Unknown version: no suffixed group, and [mariadbd], which every
+		// supported series reads.
+		{FlavorMariaDB, "", []string{"mysqld", "server", "mariadb", "mariadbd", "client-server"}},
 
 		// Debian 12, Oracle 8.4.11: mysql_cluster mysqld server mysqld-8.4
 		{FlavorMySQL, "8.4.11", []string{"mysql_cluster", "mysqld", "server", "mysqld-8.4"}},
+		// openSUSE Leap 16, Oracle 26.7.0 innovation: mysql_cluster mysqld server mysqld-26.7
+		{FlavorMySQL, "26.7.0", []string{"mysql_cluster", "mysqld", "server", "mysqld-26.7"}},
 		{FlavorMySQL, "8.0.46", []string{"mysqld", "server", "mysqld-8.0"}},
 		{FlavorMySQL, "5.7.42", []string{"mysqld", "server", "mysqld-5.7"}},
 		{FlavorMySQL, "", []string{"mysqld", "server"}},

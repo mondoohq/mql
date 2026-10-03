@@ -127,3 +127,27 @@ func TestMergeWithArgsKeepsFileOptionsOutOfTheCommandLine(t *testing.T) {
 	assert.NotContains(t, merged, "local_infile")
 	assert.Equal(t, "3307", merged["port"])
 }
+
+// ExecStart= of mariadb.service on openSUSE Leap 16 and SLES 16
+// (MariaDB 11.8.8), and of an instance of mariadb@.service. The helper execs
+// /usr/sbin/mysqld --defaults-file=/etc/my<instance>.cnf --user=mysql.
+func TestParseSuseHelperArgs(t *testing.T) {
+	launch, ok := ParseSuseHelperArgs([]string{"/usr/libexec/mysql/mysql-systemd-helper", "start"})
+	require.True(t, ok)
+	assert.Equal(t, "mysqld", launch.Binary)
+	assert.Equal(t, "/etc/my.cnf", launch.DefaultsFile)
+	assert.Equal(t, []Option{{Name: "user", Value: "mysql", Line: 1}}, launch.Options)
+
+	launch, ok = ParseSuseHelperArgs([]string{"/usr/lib/mysql/mysql-systemd-helper", "start", "eu"})
+	require.True(t, ok)
+	assert.Equal(t, "/etc/myeu.cnf", launch.DefaultsFile)
+
+	for _, argv := range [][]string{
+		{"/usr/libexec/mysql/mysql-systemd-helper", "install"},
+		{"/usr/libexec/mysql/mysql-systemd-helper"},
+		{"/usr/sbin/mysqld", "start"},
+	} {
+		_, ok := ParseSuseHelperArgs(argv)
+		assert.False(t, ok, argv)
+	}
+}

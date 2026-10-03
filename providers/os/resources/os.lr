@@ -5481,9 +5481,10 @@ mariadb {
 // Options stay grouped as the server reads them. `sections` holds every
 // option group and `serverOptions` merges the groups mariadbd reads:
 // `[mysqld]`, `[server]`, `[mariadb]`, `[mariadbd]` (from 10.4),
-// `[client-server]`, `[galera]` (from 10.1, whether or not wsrep is on), and
-// the version-suffixed groups for the installed server version, such as
-// `[mariadb-11.4]` on 11.4, or `[mariadb-11]` where the build reads it. That
+// `[client-server]`, `[galera]` on a server built with wsrep (from 10.1,
+// whether or not wsrep is on), and the version-suffixed groups for the
+// installed server version, such as `[mariadb-11.4]` on 11.4, or
+// `[mariadb-11]` from 11.8.7 and 12.3.2 on. That
 // set is not an extension of MySQL's, because packaged fragments since 11.0
 // configure the server under `[mariadbd]` and ship no `[mysqld]` group at
 // all. `galeraOptions` also breaks out `[galera]` on its own so cluster

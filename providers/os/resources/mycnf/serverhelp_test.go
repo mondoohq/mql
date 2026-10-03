@@ -28,6 +28,24 @@ func TestParseServerHelp(t *testing.T) {
 			groups: []string{"mysqld", "server", "mysqld-11.8", "mariadb", "mariadb-11.8", "mariadb-11", "mariadbd", "mariadbd-11.8", "mariadbd-11", "client-server", "galera"},
 		},
 		{
+			// Built without wsrep: no [galera].
+			name: "Amazon Linux 2023, mariadb123 12.3.2",
+			output: "Default options are read from the following files in the given order:\n" +
+				"/etc/my.cnf ~/.my.cnf \n" +
+				"The following groups are read: mysqld server mysqld-12.3 mariadb mariadb-12.3 mariadb-12 mariadbd mariadbd-12.3 mariadbd-12 client-server\n",
+			files:  []string{"/etc/my.cnf", "~/.my.cnf"},
+			groups: []string{"mysqld", "server", "mysqld-12.3", "mariadb", "mariadb-12.3", "mariadb-12", "mariadbd", "mariadbd-12.3", "mariadbd-12", "client-server"},
+		},
+		{
+			name: "openSUSE Leap 16, Oracle MySQL 26.7.0",
+			output: "/usr/sbin/mysqld  Ver 26.7.0 for Linux on x86_64 (MySQL Community Server - GPL)\n" +
+				"Default options are read from the following files in the given order:\n" +
+				"/etc/my.cnf /etc/mysql/my.cnf /usr/etc/my.cnf ~/.my.cnf \n" +
+				"The following groups are read: mysql_cluster mysqld server mysqld-26.7\n",
+			files:  []string{"/etc/my.cnf", "/etc/mysql/my.cnf", "/usr/etc/my.cnf", "~/.my.cnf"},
+			groups: []string{"mysql_cluster", "mysqld", "server", "mysqld-26.7"},
+		},
+		{
 			name: "CentOS Stream 9, Percona Server 8.0.46",
 			output: "Default options are read from the following files in the given order:\r\n" +
 				"/etc/my.cnf /etc/mysql/my.cnf /usr/etc/my.cnf ~/.my.cnf \r\n" +
