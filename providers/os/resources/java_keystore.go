@@ -280,6 +280,16 @@ var javaHomeRoots = []string{
 	"/Library/Java/JavaVirtualMachines",
 }
 
+// javaHomeGlobs match JVM homes themselves, rather than directories holding
+// them: a JDK or JRE tarball extracts to a directory named for its version,
+// such as /opt/jdk-21.0.4+7 or /opt/openjdk-17, which no fixed root covers.
+var javaHomeGlobs = []string{
+	"/opt/jdk*",
+	"/opt/*jdk*",
+	"/opt/*jre*",
+	"/usr/local/jdk*",
+}
+
 // javaTruststoreFiles are absolute paths that hold a trust store in their own
 // right: a distribution-managed store, or a JVM installed at a fixed location.
 var javaTruststoreFiles = []string{
@@ -299,6 +309,25 @@ func (s *mqlJavaTruststores) paths() ([]any, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 
+	candidates := javaTruststoreCandidates(afs)
+
+	// Distributions point every JVM's cacerts at one shared store (RHEL links
+	// all of them to /etc/pki/ca-trust/extracted/java/cacerts, Debian to
+	// /etc/ssl/certs/java/cacerts), and version aliases such as
+	// /usr/lib/jvm/java-21 link to a JDK directory that is listed as well.
+	// Reporting each name would audit one file many times over.
+	out := dedupeByRealPath(candidates, resolveTruststorePaths(conn, candidates))
+
+	res := make([]any, 0, len(out))
+	for _, p := range out {
+		res = append(res, p)
+	}
+	return res, nil
+}
+
+// javaTruststoreCandidates returns every trust store found in the known
+// distribution locations and JVM homes, in no particular order.
+func javaTruststoreCandidates(afs *afero.Afero) []string {
 	found := map[string]struct{}{}
 
 	add := func(p string) {
@@ -332,23 +361,23 @@ func (s *mqlJavaTruststores) paths() ([]any, error) {
 		}
 	}
 
+	for _, pattern := range javaHomeGlobs {
+		homes, err := afero.Glob(afs.Fs, pattern)
+		if err != nil {
+			continue
+		}
+		for _, home := range homes {
+			for _, dir := range javaTruststoreDirs {
+				add(path.Join(home, dir, "cacerts"))
+			}
+		}
+	}
+
 	candidates := make([]string, 0, len(found))
 	for p := range found {
 		candidates = append(candidates, p)
 	}
-
-	// Distributions point every JVM's cacerts at one shared store (RHEL links
-	// all of them to /etc/pki/ca-trust/extracted/java/cacerts, Debian to
-	// /etc/ssl/certs/java/cacerts), and version aliases such as
-	// /usr/lib/jvm/java-21 link to a JDK directory that is listed as well.
-	// Reporting each name would audit one file many times over.
-	out := dedupeByRealPath(candidates, resolveTruststorePaths(conn, candidates))
-
-	res := make([]any, 0, len(out))
-	for _, p := range out {
-		res = append(res, p)
-	}
-	return res, nil
+	return candidates
 }
 
 // maxSymlinkHops bounds symlink resolution, as the kernel's own limit does, so
