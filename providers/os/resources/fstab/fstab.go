@@ -15,7 +15,6 @@
 package fstab
 
 import (
-	"bufio"
 	"errors"
 	"io"
 	"strconv"
@@ -37,7 +36,6 @@ type Entry struct {
 // Parse reads an fstab file into its entries.
 func Parse(file io.Reader) ([]Entry, error) {
 	scanner := iox.NewLineScanner(file)
-	scanner.Split(bufio.ScanLines)
 
 	var entries []Entry
 	for scanner.Scan() {

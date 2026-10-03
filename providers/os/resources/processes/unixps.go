@@ -431,6 +431,11 @@ func ParseFreeBSDComms(input io.Reader) map[int64]string {
 			res[pid] = comm
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		// best effort: a process missing here keeps the executable taken
+		// from the command column
+		log.Debug().Err(err).Msg("processes> could not read ps comm output")
+	}
 	return res
 }
 
