@@ -58,7 +58,7 @@ postgresdb.instance @defaults("versionBanner") {
   databases() []postgresdb.database
   // Tablespaces defined on the server
   tablespaces() []postgresdb.tablespace
-  // Host-based authentication rules (pg_hba_file_rules)
+  // Host-based authentication rules (pg_hba_file_rules), in evaluation order
   hbaRules() []postgresdb.hbaRule
   // Replication slots on the server
   replicationSlots() []postgresdb.replicationSlot
@@ -301,7 +301,12 @@ postgresdb.setting @defaults("name setting") {
 // authenticate. `authMethod` is the security-relevant field: a value of
 // `trust` allows connections with no authentication.
 postgresdb.hbaRule @defaults("type authMethod") {
-  // Line number of the rule in the configuration file
+  // Configuration file the rule was read from
+  //
+  // pg_hba.conf or a file it includes. Empty on servers before PostgreSQL 16,
+  // which report no file.
+  file string
+  // Line number of the rule in its configuration file
   lineNumber int
   // Connection type: local, host, hostssl, or hostnossl
   type string
