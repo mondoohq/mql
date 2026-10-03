@@ -106,6 +106,12 @@ type mycnfState struct {
 	// or its systemd unit says. Its command line options override the
 	// option files.
 	launch mycnf.ServerLaunch
+	// groups are the option groups the server binary says it reads, empty
+	// when it could not be asked and the static per-product list applies.
+	groups []string
+	// persisted are the options a MySQL server applies from
+	// <datadir>/mysqld-auto.cnf (SET PERSIST), after its command line.
+	persisted []mycnf.Option
 }
 
 // resolve selects the option file for wantFlavor, parses it together with
@@ -133,6 +139,18 @@ func (st *mycnfState) resolve(runtime *plugin.Runtime, wantFlavor string, candid
 		return st.parseErr
 	}
 	afs := &afero.Afero{Fs: conn.FileSystem()}
+
+	if err := st.locate(runtime, afs, wantFlavor, candidates, explicitPath); err != nil {
+		return err
+	}
+	if explicitPath == "" && st.rootPath != "" && wantFlavor == mycnf.FlavorMySQL {
+		return st.loadPersisted(runtime, afs)
+	}
+	return nil
+}
+
+// locate is resolve's search for the option files, run under its lock.
+func (st *mycnfState) locate(runtime *plugin.Runtime, afs *afero.Afero, wantFlavor string, candidates []string, explicitPath string) error {
 
 	reader := func(path string) (string, error) {
 		f, ok := st.filesIdx[path]
@@ -218,6 +236,12 @@ func (st *mycnfState) resolve(runtime *plugin.Runtime, wantFlavor string, candid
 		}
 	}
 
+	// Without option file arguments the server reads every default option
+	// file it names, in its order, and the groups it names.
+	if done, err := st.readServerDefaults(runtime, afs, wantFlavor, reader, dirLister, probe); done {
+		return err
+	}
+
 	isFile := func(path string) bool {
 		exists, isDir := probe(path)
 		return exists && !isDir
@@ -256,6 +280,197 @@ func (st *mycnfState) resolve(runtime *plugin.Runtime, wantFlavor string, candid
 	// Nothing on this host belongs to wantFlavor. Leave rootPath empty so
 	// every dependent field reports empty rather than an error.
 	return nil
+}
+
+// readServerDefaults reads the default option files the installed server
+// binary lists (`mysqld --verbose --help`), every one of them in its order,
+// the way the server merges them: /etc/my.cnf, /etc/mysql/my.cnf, on Oracle
+// and Percona builds /usr/etc/my.cnf, and the server account's ~/.my.cnf.
+// It also keeps the groups the binary lists for serverOptions.
+//
+// It reports false when it decided nothing and the probe of well-known paths
+// goes on: the binary could not be asked, it is the other product's, or,
+// without structured errors, one of the global files was refused, which v13
+// handled through the probe. A refused ~/.my.cnf is skipped then, as v13 never
+// read it.
+func (st *mycnfState) readServerDefaults(runtime *plugin.Runtime, afs *afero.Afero, wantFlavor string, reader mycnf.FileReader, dirLister mycnf.DirLister, probe mycnf.FileProbe) (bool, error) {
+	raw, err := CreateResource(runtime, "mysql", nil)
+	if err != nil {
+		return false, nil
+	}
+	m, ok := raw.(*mqlMysql)
+	if !ok {
+		return false, nil
+	}
+	defaults, ok := m.serverDefaults()
+	if !ok || productOf(m.bannerFlavor) != wantFlavor {
+		return false, nil
+	}
+
+	home := serverHome(afs)
+	conf := &mycnf.Conf{}
+	root := ""
+	var partial error
+	for _, p := range defaults.Files {
+		optional := false
+		if rest, ok := strings.CutPrefix(p, "~/"); ok {
+			if home == "" {
+				continue
+			}
+			p = path.Join(home, rest)
+			optional = true
+		}
+		_, err := afs.Stat(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		var c *mycnf.Conf
+		if err == nil {
+			c, err = mycnf.Parse(p, reader, dirLister)
+		}
+		if err != nil && (c == nil || len(c.Files) == 0) {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if errors.Is(err, fs.ErrPermission) && !plugin.StructuredErrors() {
+				if optional {
+					continue
+				}
+				return false, nil
+			}
+			st.parseErr = classifyOptionFileError(err)
+			return true, st.parseErr
+		}
+		if root == "" {
+			root = p
+		}
+		conf.Append(c)
+		if err != nil && partial == nil {
+			partial = err
+		}
+	}
+	if root == "" {
+		// No option file at all: the server runs on its built-in
+		// defaults, and this resource reports no file.
+		return true, nil
+	}
+	banner := func() string { return installedServerFlavor(runtime) }
+	if mycnf.DetectFlavor(conf, probe, banner) != wantFlavor {
+		return true, nil
+	}
+	st.rootPath = root
+	st.conf = conf
+	st.groups = defaults.Groups
+	if partial != nil {
+		st.parseErr = classifyOptionFileError(partial)
+		return true, st.parseErr
+	}
+	return true, st.appendExtraFile(reader, dirLister)
+}
+
+// productOf maps a banner flavor to the product a conf resource covers.
+func productOf(flavor string) string {
+	if flavor == mycnf.FlavorPercona {
+		return mycnf.FlavorMySQL
+	}
+	return flavor
+}
+
+// serverHome returns the home directory of the account the server's systemd
+// unit runs it as, which is the HOME the server expands ~/.my.cnf with. A unit
+// without User= runs the server as root. It is empty when no unit is found.
+func serverHome(afs *afero.Afero) string {
+	for _, unit := range mysqlServerUnits {
+		env, ok := systemd.ResolveUnitEnv(afs, unit)
+		if !ok {
+			continue
+		}
+		user := env.User
+		if user == "" {
+			user = "root"
+		}
+		return passwdHome(afs, user)
+	}
+	return ""
+}
+
+// passwdHome returns an account's home directory from /etc/passwd.
+func passwdHome(afs *afero.Afero, user string) string {
+	data, err := afs.ReadFile("/etc/passwd")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Split(line, ":")
+		if len(fields) >= 6 && fields[0] == user {
+			return fields[5]
+		}
+	}
+	return ""
+}
+
+// loadPersisted reads <datadir>/mysqld-auto.cnf, where a MySQL 8.0 or later
+// server keeps what SET PERSIST and SET PERSIST_ONLY wrote, and applies it at
+// startup after its option files and command line unless
+// persisted_globals_load is off. A missing file persists nothing. A refused
+// one is reported with structured errors and skipped without them, as v13
+// never read it; Debian keeps the data directory at 0750.
+func (st *mycnfState) loadPersisted(runtime *plugin.Runtime, afs *afero.Afero) error {
+	version := installedServerVersion(runtime, "mysql")
+	if major, err := strconv.Atoi(strings.SplitN(version, ".", 2)[0]); err != nil || major < 8 {
+		// SET PERSIST arrived in 8.0.
+		return nil
+	}
+	merged := mycnf.MergeWithArgs(st.conf, st.launch.Options, st.effectiveGroups(mycnf.ServerGroups(mycnf.FlavorMySQL, version))...)
+	if v, ok := merged["persisted_globals_load"]; ok && !mycnf.IsTruthy(v, false) {
+		return nil
+	}
+	datadir := strings.TrimSpace(merged["datadir"])
+	if datadir == "" {
+		datadir = "/var/lib/mysql"
+	}
+	p := path.Join(datadir, "mysqld-auto.cnf")
+	raw, err := CreateResource(runtime, "file", map[string]*llx.RawData{"path": llx.StringData(p)})
+	if err != nil {
+		return nil
+	}
+	f := raw.(*mqlFile)
+	if exists := f.GetExists(); exists.Error == nil && !exists.Data {
+		return nil
+	}
+	content := f.GetContent()
+	if content.Error != nil {
+		if errors.Is(content.Error, fs.ErrNotExist) {
+			return nil
+		}
+		if errors.Is(content.Error, fs.ErrPermission) && !plugin.StructuredErrors() {
+			return nil
+		}
+		st.parseErr = classifyOptionFileError(content.Error)
+		return st.parseErr
+	}
+	if strings.TrimSpace(content.Data) == "" {
+		return nil
+	}
+	opts, err := mycnf.ParsePersisted(content.Data)
+	if err != nil {
+		st.parseErr = llx.MalformedData(err)
+		return st.parseErr
+	}
+	st.persisted = opts
+	st.filesIdx[p] = f
+	st.conf.Files = append(st.conf.Files, p)
+	return nil
+}
+
+// effectiveGroups returns the groups the server binary listed, or else the
+// static list, extended by the server's --defaults-group-suffix.
+func (st *mycnfState) effectiveGroups(static []string) []string {
+	groups := static
+	if len(st.groups) > 0 {
+		groups = st.groups
+	}
+	return mycnf.WithGroupSuffix(groups, st.launch.GroupSuffix)
 }
 
 // appendExtraFile reads the server's --defaults-extra-file after the option
@@ -396,11 +611,13 @@ func runningServerArgs(runtime *plugin.Runtime, afs *afero.Afero) [][]string {
 	return out
 }
 
-// serverOptionMap merges the server's option groups, extended by its
-// --defaults-group-suffix, and applies its command line options last.
+// serverOptionMap merges the server's option groups (the binary's list, or
+// else groups), extended by its --defaults-group-suffix, then applies its
+// command line options and, last, its persisted options.
 func (st *mycnfState) serverOptionMap(groups []string) map[string]any {
-	groups = mycnf.WithGroupSuffix(groups, st.launch.GroupSuffix)
-	merged := mycnf.MergeWithArgs(st.conf, st.launch.Options, groups...)
+	// The server applies its persisted options after its command line.
+	args := append(slices.Clone(st.launch.Options), st.persisted...)
+	merged := mycnf.MergeWithArgs(st.conf, args, st.effectiveGroups(groups)...)
 	out := make(map[string]any, len(merged))
 	for k, v := range merged {
 		out[k] = v
@@ -675,9 +892,16 @@ func userOptionFileSections(runtime *plugin.Runtime, resourceName, format string
 // /usr/local/libexec on FreeBSD), so after the bare names fail the known
 // install paths that exist on the target are run directly.
 func detectServerVersion(runtime *plugin.Runtime) (version string, flavor string) {
+	version, flavor, _ = detectServer(runtime)
+	return version, flavor
+}
+
+// detectServer is detectServerVersion that also returns the binary that
+// answered.
+func detectServer(runtime *plugin.Runtime) (version string, flavor string, bin string) {
 	conn, ok := runtime.Connection.(shared.Connection)
 	if !ok {
-		return "", ""
+		return "", "", ""
 	}
 
 	bins := []string{"mariadbd", "mysqld"}
@@ -698,11 +922,11 @@ func detectServerVersion(runtime *plugin.Runtime) (version string, flavor string
 			continue
 		}
 		if v, f := mycnf.ParseVersion(string(data)); v != "" {
-			return v, f
+			return v, f, bin
 		}
 	}
 
-	return "", ""
+	return "", "", ""
 }
 
 // ---------------------------------------------------------------------------
