@@ -102,12 +102,14 @@ func NewContainerConnection(id uint32, conf *inventory.Config, asset *inventory.
 			imageArch = imageRes.Architecture
 		}
 	}
-	serverVersionRes, err := dockerClient.ServerVersion(context.Background(), client.ServerVersionOptions{})
-	if err != nil {
-		log.Debug().Err(err).Msg("docker> cannot get server version")
-	} else {
-		log.Debug().Interface("serverVersion", serverVersionRes).Msg("docker> server version")
-		daemonArch = serverVersionRes.Arch
+	if manifestArch == "" && imageArch == "" {
+		serverVersionRes, err := dockerClient.ServerVersion(context.Background(), client.ServerVersionOptions{})
+		if err != nil {
+			log.Debug().Err(err).Msg("docker> cannot get server version")
+		} else {
+			log.Debug().Interface("serverVersion", serverVersionRes).Msg("docker> server version")
+			daemonArch = serverVersionRes.Arch
+		}
 	}
 	conn.PlatformArchitecture = containerArchitecture(manifestArch, imageArch, daemonArch)
 
