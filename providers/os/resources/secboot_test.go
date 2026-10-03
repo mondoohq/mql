@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 )
 
 const secbootFixtureRoot = "testdata/secboot/host/files"
@@ -259,4 +260,39 @@ func TestSecbootImageReaderWithoutReadAt(t *testing.T) {
 	assert.Equal(t, seekable.Signed, buffered.Signed)
 	assert.Equal(t, "1", buffered.Parameters["audit"])
 	assert.NotEmpty(t, buffered.Cmdline, "the image was not read at all")
+}
+
+// A config.json that exists but cannot be read is refused, not absent: the
+// defaults would describe a configuration the host does not have.
+func TestReadSecbootConfigRefused(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(mem, "/etc/secboot/config.json", []byte(`{"kernel-params": "audit=1"}`), 0o600))
+	refused := &bootDirDeniedFs{Fs: mem, dirs: []string{"/etc/secboot/config.json"}}
+
+	t.Run("structured errors", func(t *testing.T) {
+		withStructuredErrors(t, true)
+		_, err := readSecbootConfig(refused, "/etc/secboot/config.json")
+		assert.ErrorIs(t, err, llx.ErrForbidden)
+	})
+
+	t.Run("v13 behavior", func(t *testing.T) {
+		withStructuredErrors(t, false)
+		cfg, err := readSecbootConfig(refused, "/etc/secboot/config.json")
+		require.NoError(t, err)
+		assert.Equal(t, secbootDefaults.KernelParams, cfg.KernelParams)
+	})
+
+	t.Run("absent", func(t *testing.T) {
+		withStructuredErrors(t, true)
+		cfg, err := readSecbootConfig(afero.NewMemMapFs(), "/etc/secboot/config.json")
+		require.NoError(t, err)
+		assert.Equal(t, secbootDefaults.KernelParams, cfg.KernelParams)
+	})
+
+	t.Run("readable", func(t *testing.T) {
+		withStructuredErrors(t, true)
+		cfg, err := readSecbootConfig(mem, "/etc/secboot/config.json")
+		require.NoError(t, err)
+		assert.Equal(t, "audit=1", cfg.KernelParams)
+	})
 }

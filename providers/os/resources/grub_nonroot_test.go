@@ -315,3 +315,46 @@ func TestBLSEntriesFromTheGrubCfgFilesystemFirst(t *testing.T) {
 	require.Len(t, entries, 1)
 	assert.Equal(t, "/boot/loader/entries/rhel.conf", entries[0].Source)
 }
+
+// /etc/default/grub made 0600 is refused to a non-root scan. It must not read
+// as a host without the file, whose params are {}, since a check that a
+// parameter is absent then passes.
+func TestGrubDefaultsRefused(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(mem, "/etc/default/grub", []byte("GRUB_CMDLINE_LINUX=\"apparmor=0\"\n"), 0o600))
+	refused := &bootDirDeniedFs{Fs: mem, dirs: []string{"/etc/default/grub"}}
+
+	assert.Equal(t, "/etc/default/grub", findGrubDefaultsPath(refused))
+	assert.Equal(t, "", findGrubDefaultsPath(afero.NewMemMapFs()))
+
+	t.Run("structured errors", func(t *testing.T) {
+		withStructuredErrors(t, true)
+		_, err := grubDefaultsParams(refused, "/etc/default/grub", true)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, llx.ErrForbidden)
+		assert.Contains(t, err.Error(), "/etc/default/grub")
+	})
+
+	t.Run("v13 behavior", func(t *testing.T) {
+		withStructuredErrors(t, false)
+		params, err := grubDefaultsParams(refused, "/etc/default/grub", true)
+		require.NoError(t, err)
+		assert.Empty(t, params)
+	})
+
+	// a drop-in directory that cannot be listed hides settings as well
+	t.Run("refused drop-in directory", func(t *testing.T) {
+		withStructuredErrors(t, true)
+		dropIns := &bootDirDeniedFs{Fs: mem, dirs: []string{"/etc/default/grub.d"}}
+		require.NoError(t, mem.MkdirAll("/etc/default/grub.d", 0o700))
+		_, err := grubDefaultsParams(dropIns, "/etc/default/grub", true)
+		assert.ErrorIs(t, err, llx.ErrForbidden)
+	})
+
+	t.Run("readable", func(t *testing.T) {
+		withStructuredErrors(t, true)
+		params, err := grubDefaultsParams(mem, "/etc/default/grub", true)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"GRUB_CMDLINE_LINUX": "apparmor=0"}, params)
+	})
+}

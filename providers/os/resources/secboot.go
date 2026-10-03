@@ -8,6 +8,7 @@ import (
 	"debug/pe"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"path"
 	"sort"
@@ -226,24 +227,32 @@ func (s *mqlSecbootConfig) fetch() error {
 		return errors.New("filesystem not available")
 	}
 
-	s.cachedConfig = secbootDefaults
-	f, err := fs.Open(s.Path.Data)
-	if err != nil {
-		// A host that does not run secboot has no configuration. The settings
-		// report the defaults the tool would use, and images reports null
-		// rather than describing a host that has none.
-		s.fetched.Store(true)
-		return nil
-	}
-	defer f.Close()
-
-	cfg, err := ParseSecbootConfig(f)
+	cfg, err := readSecbootConfig(fs, s.Path.Data)
 	if err != nil {
 		return err
 	}
 	s.cachedConfig = cfg
 	s.fetched.Store(true)
 	return nil
+}
+
+// readSecbootConfig reads the configuration at p. A host that does not run
+// secboot has no configuration; the settings then report the defaults the tool
+// would use, and images reports null rather than describing a host that has
+// none. A configuration that exists but refuses to be read is a forbidden
+// error, since the defaults would describe settings the host may not have. v13
+// reported it as absent; that stays until structured errors are the default
+// (ADR 046 §9).
+func readSecbootConfig(fs afero.Fs, p string) (SecbootConfig, error) {
+	f, err := fs.Open(p)
+	if err != nil {
+		if isReadRefused(err) && plugin.StructuredErrors() {
+			return SecbootConfig{}, llx.Forbidden(fmt.Errorf("cannot read the secboot configuration: %w", err))
+		}
+		return secbootDefaults, nil
+	}
+	defer f.Close()
+	return ParseSecbootConfig(f)
 }
 
 func (s *mqlSecbootConfig) kernelParams() (string, error) {

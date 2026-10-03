@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"os"
@@ -124,10 +125,10 @@ func initGrubConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	if x, ok := args["defaultsPath"]; ok {
 		path, ok := x.Value.(string)
 		if !ok || path == "" {
-			args["defaultsPath"] = llx.StringData(findExistingPath(fs, grubDefaultsPaths))
+			args["defaultsPath"] = llx.StringData(findGrubDefaultsPath(fs))
 		}
 	} else {
-		args["defaultsPath"] = llx.StringData(findExistingPath(fs, grubDefaultsPaths))
+		args["defaultsPath"] = llx.StringData(findGrubDefaultsPath(fs))
 	}
 
 	// Resolve grubPath
@@ -150,6 +151,23 @@ func findExistingPath(fs afero.Fs, candidates []string) string {
 		f, err := fs.Open(path)
 		if err == nil {
 			f.Close()
+			return path
+		}
+	}
+	return ""
+}
+
+// findGrubDefaultsPath returns the defaults file grub-mkconfig sources, or ""
+// when there is none. A file that exists but may not be read is returned, so
+// that params reports the refusal instead of describing a host without one.
+func findGrubDefaultsPath(fs afero.Fs) string {
+	for _, path := range grubDefaultsPaths {
+		f, err := fs.Open(path)
+		if err == nil {
+			f.Close()
+			return path
+		}
+		if isReadRefused(err) {
 			return path
 		}
 	}
@@ -221,9 +239,24 @@ func (g *mqlGrubConfig) params() (map[string]any, error) {
 
 	asset := conn.Asset()
 	readDropIns := asset != nil && grubMkconfigReadsDropIns(asset.Platform)
-	params, err := loadGrubDefaults(fs, defaultsPath, readDropIns)
+	return grubDefaultsParams(fs, defaultsPath, readDropIns)
+}
+
+// grubDefaultsParams returns the settings of the defaults file at
+// defaultsPath and, with dropIns set, its drop-ins. A file or drop-in
+// directory that refuses to be read is a forbidden error. v13 reported a
+// refused /etc/default/grub as no settings at all; that stays until structured
+// errors are the default (ADR 046 §9).
+func grubDefaultsParams(fs afero.Fs, defaultsPath string, dropIns bool) (map[string]any, error) {
+	params, err := loadGrubDefaults(fs, defaultsPath, dropIns)
 	if err != nil {
-		return nil, err
+		if !isReadRefused(err) {
+			return nil, err
+		}
+		if !plugin.StructuredErrors() {
+			return map[string]any{}, nil
+		}
+		return nil, llx.Forbidden(fmt.Errorf("cannot read the GRUB defaults: %w", err))
 	}
 
 	result := make(map[string]any, len(params))
