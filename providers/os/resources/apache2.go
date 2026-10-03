@@ -6,6 +6,7 @@ package resources
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -364,6 +365,9 @@ type mqlApache2ConfInternal struct {
 	// defaultFile is set when file() chose the configuration file, rather
 	// than apache2.conf(path) naming it.
 	defaultFile bool
+	// noConfig is set when parse found no configuration to read, so httpd's
+	// compiled-in directive defaults do not apply.
+	noConfig bool
 	// launch is how httpd is started (see apacheLaunch), read once.
 	launchOnce sync.Once
 	launch     *apache2.Launch
@@ -535,7 +539,11 @@ func (s *mqlApache2Conf) file() (*mqlFile, error) {
 	}
 	if launch != nil && launch.ConfigFile != "" {
 		path := apacheLaunchConfigFile(conn, launch)
-		if ok, _ := (&afero.Afero{Fs: conn.FileSystem()}).Exists(path); ok {
+		ok, err := apacheConfigExists(&afero.Afero{Fs: conn.FileSystem()}, path)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
 				"path": llx.StringData(path),
 			})
@@ -557,7 +565,11 @@ func (s *mqlApache2Conf) file() (*mqlFile, error) {
 
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 	for _, path := range candidates {
-		if ok, _ := afs.Exists(path); ok {
+		ok, err := apacheConfigExists(afs, path)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
 				"path": llx.StringData(path),
 			})
@@ -574,7 +586,11 @@ func (s *mqlApache2Conf) file() (*mqlFile, error) {
 	// paths are still tried first, so a packaged install is unaffected by this.
 	if layout := apacheDiscoverLayout(conn, afs); layout.confPath() != "" {
 		path := layout.confPath()
-		if ok, _ := afs.Exists(path); ok {
+		ok, err := apacheConfigExists(afs, path)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			// Relative Include paths resolve against HTTPD_ROOT. The platform
 			// default would be wrong for a custom prefix, and the config's own
 			// ServerRoot directive (which takes precedence) is not read yet.
@@ -595,6 +611,25 @@ func (s *mqlApache2Conf) file() (*mqlFile, error) {
 	// return empty data instead of bubbling up "file does not exist" errors.
 	s.File.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
+}
+
+// apacheConfigExists reports whether the configuration file at path exists. A
+// path the scan may not stat, such as a non-root scan of a 0700 /etc/httpd/conf,
+// is a refusal rather than an absence: reading it as absent reported Apache as
+// not installed. That is returned as an error only with structured errors on
+// (ADR 046), since v13 read it as absent.
+func apacheConfigExists(afs *afero.Afero, path string) (bool, error) {
+	_, err := afs.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, fs.ErrNotExist) || !plugin.StructuredErrors() {
+		return false, nil
+	}
+	if errors.Is(err, fs.ErrPermission) {
+		return false, llx.Forbidden(fmt.Errorf("cannot read the Apache configuration %s: %w", path, err))
+	}
+	return false, err
 }
 
 var reApacheGlob = regexp.MustCompile(`[*?\[]`)
@@ -678,6 +713,17 @@ func (s *mqlApache2Conf) setEmpty() {
 	s.Locations = plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
 	s.SecurityHeaders = plugin.TValue[map[string]any]{Data: map[string]any{}, State: plugin.StateIsSet}
 	s.Files = plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
+	s.noConfig = true
+}
+
+func (s *mqlApache2Conf) setError(err error) {
+	s.Params = plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	s.Modules = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	s.VirtualHosts = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	s.Directories = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	s.Locations = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	s.SecurityHeaders = plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	s.Files = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
 }
 
 func (s *mqlApache2Conf) parse(file *mqlFile) error {
@@ -693,11 +739,26 @@ func (s *mqlApache2Conf) parse(file *mqlFile) error {
 		return nil
 	}
 
-	// When the config file doesn't exist (e.g. Apache is not installed),
-	// return empty data instead of cascading errors.
-	if exists := file.GetExists(); exists.Error != nil || !exists.Data {
-		s.setEmpty()
-		return nil
+	// A default location that does not exist means Apache is not installed,
+	// which reads as empty. A path named with apache2.conf(path) must exist,
+	// as with nginx.conf, haproxy.config and snmpd.config.
+	exists := file.GetExists()
+	if exists.Error != nil {
+		if !plugin.StructuredErrors() {
+			s.setEmpty()
+			return nil
+		}
+		s.setError(exists.Error)
+		return exists.Error
+	}
+	if !exists.Data {
+		if s.defaultFile {
+			s.setEmpty()
+			return nil
+		}
+		err := fmt.Errorf("could not read %q: no such file", file.Path.Data)
+		s.setError(err)
+		return err
 	}
 
 	// Pre-scan root file for ServerRoot directive so that relative Include
@@ -798,14 +859,7 @@ func (s *mqlApache2Conf) parse(file *mqlFile) error {
 	}
 
 	if err != nil {
-		errState := plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		s.Params = errState
-		s.Modules = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		s.VirtualHosts = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		s.Directories = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		s.Locations = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		s.SecurityHeaders = plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		s.Files = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+		s.setError(err)
 	} else {
 		s.Params = plugin.TValue[map[string]any]{Data: cfg.Params, State: plugin.StateIsSet}
 
@@ -883,17 +937,31 @@ func (s *mqlApache2Conf) securityHeaders(file *mqlFile) (map[string]any, error) 
 // They take params() as input so the .lr-declared dependency is correct.
 // When the config does not set the directive, httpd runs with its compiled-in
 // default (https://httpd.apache.org/docs/2.4/mod/core.html), so that is what
-// these report rather than an empty string.
+// these report rather than an empty string. With no configuration read there
+// is no server to describe, and they are null.
 func (s *mqlApache2Conf) serverTokens(params map[string]any) (string, error) {
-	return apacheParamScalarOr(params, "ServerTokens", "Full"), nil
+	return s.directiveOrDefault(&s.ServerTokens, params, "ServerTokens", "Full"), nil
 }
 
 func (s *mqlApache2Conf) serverSignature(params map[string]any) (string, error) {
-	return apacheParamScalarOr(params, "ServerSignature", "Off"), nil
+	return s.directiveOrDefault(&s.ServerSignature, params, "ServerSignature", "Off"), nil
 }
 
 func (s *mqlApache2Conf) traceEnable(params map[string]any) (string, error) {
-	return apacheParamScalarOr(params, "TraceEnable", "On"), nil
+	return s.directiveOrDefault(&s.TraceEnable, params, "TraceEnable", "On"), nil
+}
+
+// directiveOrDefault is apacheParamScalarOr, except that the field is null when
+// parse read no configuration.
+func (s *mqlApache2Conf) directiveOrDefault(field *plugin.TValue[string], params map[string]any, name string, def string) string {
+	s.lock.Lock()
+	noConfig := s.noConfig
+	s.lock.Unlock()
+	if noConfig {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return ""
+	}
+	return apacheParamScalarOr(params, name, def)
 }
 
 // apacheParamScalarOr is apacheParamScalar with a default for a directive the
