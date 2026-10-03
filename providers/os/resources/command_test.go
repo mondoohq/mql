@@ -273,18 +273,14 @@ func fsConnWithFiles(t *testing.T, files map[string]string) *fs.FileSystemConnec
 }
 
 // noCommandRuntimeWithFiles is noCommandRuntime over the given files.
-
 func noCommandRuntimeWithFiles(t *testing.T, files map[string]string) *plugin.Runtime {
 	t.Helper()
 	return testRuntime(t, fsConnWithFiles(t, files))
 }
 
 // failingCommandConn advertises command execution, like a local connection
-
 // inside an image that ships no shell, and fails every command it is asked to
-
 // run.
-
 type failingCommandConn struct {
 	*fs.FileSystemConnection
 }
@@ -307,28 +303,6 @@ func failingCommandRuntime(t *testing.T) *plugin.Runtime {
 	t.Helper()
 	return testRuntime(t, &failingCommandConn{fsConnWithFiles(t, nil)})
 }
-
-// Before the fix, an fs or snapshot scan, and a local scan inside a shell-less
-
-// image, read `systemctl is-active`'s errored exit code as 0 and reported both
-
-// daemons as running.
-
-// Without command execution resolved is never asked over D-Bus, so the
-
-// settings come from resolved.conf alone, as for a daemon that is not running.
-
-// A command that advertises execution but fails to run is not "resolved is
-
-// stopped": nothing was measured, so the settings that depend on the live
-
-// daemon error instead of falling back to the file.
-
-// runShellCmd backs ovs and sriov. A command that never ran used to come back
-
-// as a successful empty run: ovs reported itself installed and sriov reported
-
-// no physical functions.
 
 // A list accessor cannot express "unknown" by returning a nil slice: the
 // runtime writes StateIsSet with no StateIsNull, and TValue.ToDataRes then
