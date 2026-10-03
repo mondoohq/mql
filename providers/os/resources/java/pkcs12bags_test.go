@@ -100,30 +100,78 @@ func TestParsePKCS12ReadsKeytoolAliasesAndTrust(t *testing.T) {
 
 // A keystore OpenSSL writes for a key and its chain: the leaf carries a
 // localKeyId and friendlyName, the issuing CA carries no attributes at all.
-// The CA is part of the key's chain, which is how Java reads the store, not a
-// trust anchor the store vouches for.
+// The CA is part of the key's chain, which is how Java reads the store
+// (`keytool -list -v`: one PrivateKeyEntry "leaf", chain length 2), not an
+// entry of its own and not a trust anchor the store vouches for.
 func TestParsePKCS12ChainCertificateIsNotATrustAnchor(t *testing.T) {
 	data, err := os.ReadFile("testdata/openssl-chain.p12")
 	require.NoError(t, err)
 
 	ks, err := java.Parse(data, "changeit")
 	require.NoError(t, err)
-	require.Len(t, ks.Entries, 2)
+	require.Len(t, ks.Entries, 1)
 
-	subjects := map[string]java.Entry{}
-	for _, entry := range ks.Entries {
-		cert, err := x509.ParseCertificate(entry.Certs[0])
-		require.NoError(t, err)
-		subjects[cert.Subject.CommonName] = entry
-	}
-
-	leaf := subjects["leaf.example.com"]
+	leaf := ks.Entries[0]
 	assert.Equal(t, "leaf", leaf.Alias)
 	assert.False(t, leaf.Trusted)
+	assert.Equal(t, []string{
+		normalizeFingerprint("A1:0E:22:0A:16:2C:66:58:5E:12:AB:AB:61:05:3C:EE:92:AC:BD:9A:8D:16:8F:B7:B9:CD:9D:BD:A4:91:63:2C"),
+		normalizeFingerprint("D6:CC:3C:CD:24:35:09:1F:6A:37:37:11:F0:FE:41:E2:0F:AD:5D:34:F3:15:2A:46:DD:A7:F5:2A:27:4A:E9:32"),
+	}, fingerprints(leaf.Certs))
+}
 
-	ca := subjects["Example Chain CA"]
-	assert.Equal(t, "", ca.Alias)
-	assert.False(t, ca.Trusted, "a chain certificate in a store holding a key is not a trust anchor")
+func fingerprints(certs [][]byte) []string {
+	out := make([]string, 0, len(certs))
+	for _, c := range certs {
+		out = append(out, fingerprint(c))
+	}
+	return out
+}
+
+// keytool's PKCS#12 store for a private key with a two-certificate chain
+// beside a trusted copy of the root: the chain's root is a bag of its own
+// (friendlyName "CN=g09 Root CA", no localKeyId), and was reported as a third,
+// untrusted entry while "server" carried only its leaf. Expectations are
+// `keytool -list -v` on the same file. Fails if chain certificates become
+// entries again, or the chain is not ordered leaf first.
+func TestParsePKCS12AttachesTheChainToItsKey(t *testing.T) {
+	data, err := os.ReadFile("testdata/keytool-key-chain.p12")
+	require.NoError(t, err)
+
+	ks, err := java.Parse(data, "changeit")
+	require.NoError(t, err)
+
+	const root = "DF:2C:0D:86:1B:25:84:0A:BD:66:A4:2A:D3:48:BC:13:75:57:1E:8F:84:53:22:7F:EB:A2:3F:5C:67:11:F8:02"
+	const server = "B7:E7:A7:AE:17:77:C7:7B:4B:00:14:E6:69:6C:73:7B:FA:BB:51:34:13:9A:D3:21:8B:95:98:B9:B9:C7:15:34"
+	got := map[string]java.Entry{}
+	for _, e := range ks.Entries {
+		got[e.Alias] = e
+	}
+	require.Len(t, got, 2)
+	require.Len(t, ks.Entries, 2)
+
+	assert.True(t, got["rootca"].Trusted)
+	assert.Equal(t, []string{normalizeFingerprint(root)}, fingerprints(got["rootca"].Certs))
+
+	assert.False(t, got["server"].Trusted)
+	assert.Equal(t, []string{normalizeFingerprint(server), normalizeFingerprint(root)}, fingerprints(got["server"].Certs))
+}
+
+// openssl pkcs12 -export -certfile ca.crt -caname ossl-ca for a self-signed
+// leaf: the CA certificate is not in the key's chain and carries neither a
+// localKeyId nor the trusted attribute. Java does not read it as an entry
+// (`keytool -list -v`: only "ossl-key", chain length 1); it was reported as an
+// untrusted "ossl-ca".
+func TestParsePKCS12DropsACertificateOutsideEveryChain(t *testing.T) {
+	data, err := os.ReadFile("testdata/openssl-unrelated-ca.p12")
+	require.NoError(t, err)
+
+	ks, err := java.Parse(data, "changeit")
+	require.NoError(t, err)
+	require.Len(t, ks.Entries, 1)
+	assert.Equal(t, "ossl-key", ks.Entries[0].Alias)
+	assert.False(t, ks.Entries[0].Trusted)
+	assert.Equal(t, []string{normalizeFingerprint("5E:58:D7:3A:C1:27:56:9B:73:6B:7A:3D:06:47:08:5F:EE:6C:31:D7:A8:69:60:66:23:37:7B:72:B2:65:A6:BF")}, fingerprints(ks.Entries[0].Certs))
 }
 
 // The trusted-certificate fixture keytool wrote for the existing trust store

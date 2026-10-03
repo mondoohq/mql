@@ -308,10 +308,10 @@ func ParsePKCS12(data []byte, password string) (*Keystore, error) {
 			// cannot read (an encryption scheme it does not implement) keeps
 			// what the entry points returned.
 			//
-			// The two can differ in count: the walk reports every X.509
-			// certificate bag, including a store's extra chain certificates
-			// that DecodeChain folds into one list. That is logged rather
-			// than hidden, so a divergence nobody expected is visible.
+			// The two can differ in count: the walk attaches a key's chain
+			// certificates to the key's entry, as Java does, where the entry
+			// points report each certificate on its own. That is logged
+			// rather than hidden, so a divergence nobody expected is visible.
 			bagEntries, bagErr := readPKCS12Bags(data, candidate)
 			switch {
 			case bagErr != nil:
