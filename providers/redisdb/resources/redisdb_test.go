@@ -128,3 +128,23 @@ func TestDefaultUserRequiresAuth(t *testing.T) {
 		})
 	}
 }
+
+// The reply Valkey 9.0 with rename-command CONFIG "" and a Redis 7.2 Sentinel
+// both give CONFIG GET *.
+var errConfigRenamed = errors.New("ERR unknown command 'config', with args beginning with: 'get' '*' ")
+
+func TestIsUnknownCommand(t *testing.T) {
+	if !isUnknownCommand(errConfigRenamed) {
+		t.Error("a renamed CONFIG is an unknown command")
+	}
+	for _, err := range []error{
+		errors.New("NOPERM User noconf has no permissions to run the 'config|get' command"),
+		errors.New("ERR wrong number of arguments for 'config|get' command"),
+		errors.New("dial tcp 192.0.2.1:6379: connect: connection refused"),
+		nil,
+	} {
+		if isUnknownCommand(err) {
+			t.Errorf("isUnknownCommand(%v) = true", err)
+		}
+	}
+}
