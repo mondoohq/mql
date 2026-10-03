@@ -153,7 +153,7 @@ func (s *mqlMysqlConf) serverOptions(file *mqlFile) (map[string]any, error) {
 		return nil, err
 	}
 	version := installedServerVersion(s.MqlRuntime, "mysql")
-	return s.optionMap(mycnf.ServerGroups(mycnf.FlavorMySQL, version)...), nil
+	return s.serverOptionMap(mycnf.ServerGroups(mycnf.FlavorMySQL, version)), nil
 }
 
 func (s *mqlMysqlConf) clientOptions(file *mqlFile) (map[string]any, error) {

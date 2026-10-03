@@ -131,7 +131,7 @@ func (s *mqlMariadbConf) serverOptions(file *mqlFile) (map[string]any, error) {
 		return nil, err
 	}
 	version := installedServerVersion(s.MqlRuntime, "mariadb")
-	return s.optionMap(mycnf.ServerGroups(mycnf.FlavorMariaDB, version)...), nil
+	return s.serverOptionMap(mycnf.ServerGroups(mycnf.FlavorMariaDB, version)), nil
 }
 
 func (s *mqlMariadbConf) clientOptions(file *mqlFile) (map[string]any, error) {
