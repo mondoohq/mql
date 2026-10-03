@@ -351,7 +351,10 @@ func (n *neti) getLinuxCmdInterfaces() ([]Interface, error) {
 			// from sysfs by getLinuxSysfsVirtual below -- one source of truth
 			// for the field however the interfaces were discovered.
 			currentInterface = &Interface{
-				Name:        matches[1],
+				// iproute2 appends the link's parent or peer after "@"
+				// (eth0@if29 for a veth, eth0.100@eth0 for a VLAN,
+				// gre0@NONE), which is not part of the name
+				Name:        baseInterfaceName(matches[1]),
 				MTU:         mtu,
 				Flags:       flags,
 				Active:      &active,

@@ -311,12 +311,13 @@ func TestInterfacesLinuxPeerInterface(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, interfaces, 2)
 
-	// The interface is named eth0@if104 (peer interface) but the routing table
-	// uses the base name eth0. Verify that the gateway is correctly assigned.
-	index := subject.FindInterface(interfaces, subject.Interface{Name: "eth0@if104"})
+	// `ip addr` prints a veth as eth0@if104: the interface is eth0, @if104
+	// names its peer's index in the other namespace. The routing table, sysfs
+	// and every other tool call it eth0, and so does the interface name.
+	index := subject.FindInterface(interfaces, subject.Interface{Name: "eth0"})
 	if assert.NotEqual(t, -1, index) {
 		eth0 := interfaces[index]
-		assert.Equal(t, "eth0@if104", eth0.Name)
+		assert.Equal(t, "eth0", eth0.Name)
 		assert.Equal(t, "02:42:ac:11:00:04", eth0.MACAddress)
 		assert.Equal(t, 1500, eth0.MTU)
 		if assert.NotNil(t, eth0.Active) {
@@ -335,9 +336,9 @@ func TestInterfacesLinuxPeerInterface(t *testing.T) {
 		}
 	}
 
-	// Also verify that FindInterface can locate the peer interface by its base name
-	index = subject.FindInterface(interfaces, subject.Interface{Name: "eth0"})
-	assert.NotEqual(t, -1, index)
+	for _, i := range interfaces {
+		assert.NotContains(t, i.Name, "@")
+	}
 }
 
 func TestInterfacesLinuxFallbackSysNetFilesystem(t *testing.T) {
