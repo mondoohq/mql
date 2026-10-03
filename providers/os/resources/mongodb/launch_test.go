@@ -27,3 +27,30 @@ func TestConfigFromArgs(t *testing.T) {
 	assert.Equal(t, "", ConfigFromArgs([]string{"-f"}))
 	assert.Equal(t, "", ConfigFromArgs([]string{"--config", ""}))
 }
+
+// RHEL 9, /etc/sysconfig/mongod with
+// OPTIONS="-f /etc/mongod.conf --bind_ip_all --port 27018": the server listens
+// on 0.0.0.0:27018 whatever the file says.
+func TestArgOverrides(t *testing.T) {
+	argv := []string{"-f", "/etc/mongod.conf", "--bind_ip_all", "--port", "27018", "--noauth",
+		"--setParameter", "enableLocalhostAuthBypass=true", "--tlsMode=disabled", "--bind_ip", "0.0.0.0,::", "--unknown", "x"}
+	params := map[string]any{
+		"net":      map[string]any{"bindIp": "127.0.0.1,127.0.0.2", "port": int64(27017)},
+		"security": map[string]any{"authorization": "enabled", "keyFile": "/etc/mongo.key"},
+	}
+	got := ApplyArgOverrides(params, ArgOverrides(argv))
+
+	assert.Equal(t, true, Bool(got, false, "net", "bindIpAll"))
+	assert.Equal(t, int64(27018), Int(got, 0, "net", "port"))
+	assert.Equal(t, []string{"0.0.0.0", "::"}, List(got, "net", "bindIp"))
+	assert.Equal(t, "disabled", String(got, "security", "authorization"))
+	assert.Equal(t, "/etc/mongo.key", String(got, "security", "keyFile"), "settings the command line does not give stay")
+	assert.Equal(t, "disabled", String(got, "net", "tls", "mode"))
+	assert.Equal(t, true, Bool(got, false, "setParameter", "enableLocalhostAuthBypass"))
+	assert.NotContains(t, got, "unknown")
+}
+
+func TestArgOverridesConfigOnly(t *testing.T) {
+	assert.Empty(t, ArgOverrides([]string{"--config", "/etc/mongod.conf"}))
+	assert.Empty(t, ArgOverrides([]string{"--port"}), "a value missing at the end is skipped")
+}

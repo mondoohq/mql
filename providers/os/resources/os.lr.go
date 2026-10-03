@@ -59467,7 +59467,7 @@ func (c *mqlMongodb) GetVersion() *plugin.TValue[string] {
 type mqlMongodbConf struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlMongodbConfInternal it will be used here
+	mqlMongodbConfInternal
 	File                                   plugin.TValue[*mqlFile]
 	Params                                 plugin.TValue[any]
 	Port                                   plugin.TValue[int64]

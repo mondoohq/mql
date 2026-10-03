@@ -9,6 +9,8 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
@@ -92,14 +94,21 @@ func initMongodbConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 }
 
 func (s *mqlMongodbConf) id() (string, error) {
+	// A refusal to locate the file is reported on the fields, where its error
+	// keeps its kind. Failing here would fail the resource's creation, and
+	// that error reaches the caller as an unclassified RPC error.
 	file := s.GetFile()
-	if file.Error != nil {
-		return "", file.Error
-	}
-	if file.Data == nil {
+	if file.Error != nil || file.Data == nil {
 		return "mongodb.conf", nil
 	}
 	return file.Data.Path.Data, nil
+}
+
+type mqlMongodbConfInternal struct {
+	// launchArgs is the command line, without the program name, of the
+	// mongod that named the configuration file, when file() found it from a
+	// process or the unit. Empty for an explicit path.
+	launchArgs []string
 }
 
 // mongodUnits are the systemd services that start mongod: mongod.service from
@@ -107,24 +116,45 @@ func (s *mqlMongodbConf) id() (string, error) {
 var mongodUnits = []string{"mongod.service", "mongodb.service"}
 
 // mongodConfigPath returns the configuration file mongod is started with, from
-// the -f or --config argument of the running service's process, or else of the
+// the -f or --config argument of the running service's process, then of any
+// other running mongod (one started by hand, outside its unit), or else of the
 // service's ExecStart= with its environment expanded. MongoDB's rpm unit runs
 // `mongod $OPTIONS` and takes OPTIONS from /etc/sysconfig/mongod, so the file
-// can be anywhere. It is empty when no service names a file.
-func mongodConfigPath(afs *afero.Afero) string {
+// can be anywhere. It is empty when nothing names a file. otherPids are the
+// pids of the mongod processes on the host (see mongodPids). The command line
+// that named the file comes back with it: its other options override the
+// file (see mongodb.ArgOverrides).
+//
+// A service process whose command line the scan cannot read, because /proc is
+// mounted with hidepid and the scan does not run as root, is a refusal: the
+// unit only says how the next start would run, not how the running server
+// did. The error is returned when no readable process names a file, together
+// with what the unit says, which is what v13 reported.
+func mongodConfigPath(afs *afero.Afero, otherPids []string) (string, []string, error) {
+	var refusal error
+	seen := map[string]bool{}
 	for _, unit := range mongodUnits {
 		for _, pid := range systemd.ServicePids(afs, unit) {
-			raw, err := afs.ReadFile(path.Join("/proc", pid, "cmdline"))
+			seen[pid] = true
+			conf, argv, err := mongodConfigOfPid(afs, pid)
 			if err != nil {
+				if refusal == nil && (errors.Is(err, fs.ErrPermission) || (errors.Is(err, fs.ErrNotExist) && procHidesPids(afs))) {
+					refusal = err
+				}
 				continue
 			}
-			argv := haproxy.SplitProcCmdline(raw)
-			if len(argv) == 0 || path.Base(argv[0]) != "mongod" {
-				continue
+			if conf != "" {
+				return conf, argv, nil
 			}
-			if conf := mongodb.ConfigFromArgs(argv[1:]); conf != "" {
-				return conf
-			}
+		}
+	}
+
+	for _, pid := range otherPids {
+		if seen[pid] {
+			continue
+		}
+		if conf, argv, err := mongodConfigOfPid(afs, pid); err == nil && conf != "" {
+			return conf, argv, nil
 		}
 	}
 
@@ -138,10 +168,89 @@ func mongodConfigPath(afs *afero.Afero) string {
 			continue
 		}
 		if conf := mongodb.ConfigFromArgs(argv[1:]); conf != "" {
-			return conf
+			return conf, argv[1:], refusal
 		}
 	}
-	return ""
+	return "", nil, refusal
+}
+
+// mongodConfigOfPid returns the configuration file the mongod process pid was
+// started with, and its arguments, empty when the process is not mongod or
+// names no file.
+func mongodConfigOfPid(afs *afero.Afero, pid string) (string, []string, error) {
+	raw, err := afs.ReadFile(path.Join("/proc", pid, "cmdline"))
+	if err != nil {
+		return "", nil, err
+	}
+	argv := haproxy.SplitProcCmdline(raw)
+	if len(argv) == 0 || path.Base(argv[0]) != "mongod" {
+		return "", nil, nil
+	}
+	return mongodb.ConfigFromArgs(argv[1:]), argv[1:], nil
+}
+
+// procHidesPids reports whether /proc is mounted with hidepid, which hides
+// other users' processes from a scan that does not run as root.
+func procHidesPids(afs *afero.Afero) bool {
+	raw, err := afs.ReadFile("/proc/mounts")
+	if err != nil {
+		return false
+	}
+	return procMountHidesPids(string(raw))
+}
+
+// procMountHidesPids reports whether the /proc entry of a mounts table sets
+// hidepid to anything but 0 ("off"): 1 or "noaccess", 2 or "invisible", and 4
+// or "ptraceable" all keep a process's command line from other users.
+func procMountHidesPids(mounts string) bool {
+	for _, line := range strings.Split(mounts, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 || fields[1] != "/proc" || fields[2] != "proc" {
+			continue
+		}
+		for _, opt := range strings.Split(fields[3], ",") {
+			if v, ok := strings.CutPrefix(opt, "hidepid="); ok {
+				return v != "0" && v != "off"
+			}
+		}
+	}
+	return false
+}
+
+// mongodPidsCmd lists the processes named mongod. pgrep exits 1 when nothing
+// matches.
+const mongodPidsCmd = "pgrep -x mongod"
+
+// mongodPids returns the pids of the running mongod processes. Where commands
+// run, pgrep lists them; otherwise every /proc entry is a candidate, and
+// mongodConfigOfPid skips those that are not mongod.
+func mongodPids(runtime *plugin.Runtime, afs *afero.Afero) []string {
+	conn := runtime.Connection.(shared.Connection)
+	if conn.Capabilities().Has(shared.Capability_RunCommand) {
+		o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+			"command": llx.StringData(mongodPidsCmd),
+		})
+		if err == nil {
+			cmd := o.(*mqlCommand)
+			switch cmd.GetExitcode().Data {
+			case 0:
+				return strings.Fields(cmd.GetStdout().Data)
+			case 1:
+				return nil
+			}
+		}
+	}
+	entries, err := afs.ReadDir("/proc")
+	if err != nil {
+		return nil
+	}
+	var pids []string
+	for _, e := range entries {
+		if _, err := strconv.Atoi(e.Name()); err == nil {
+			pids = append(pids, e.Name())
+		}
+	}
+	return pids
 }
 
 // file locates the configuration file. It is only reached when the resource
@@ -151,7 +260,12 @@ func (s *mqlMongodbConf) file() (*mqlFile, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 
-	if path := mongodConfigPath(afs); path != "" {
+	path, argv, err := mongodConfigPath(afs, mongodPids(s.MqlRuntime, afs))
+	if err != nil && plugin.StructuredErrors() {
+		return nil, llx.Forbidden(err)
+	}
+	if path != "" {
+		s.launchArgs = argv
 		// A file that does not exist would stop mongod from starting, so it
 		// says nothing about the server; one this user cannot stat is still
 		// the right file, and reading it reports the refusal.
@@ -202,7 +316,8 @@ func (s *mqlMongodbConf) params(file *mqlFile) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cfg.Params, nil
+	// The options mongod was started with besides -f override the file.
+	return mongodb.ApplyArgOverrides(cfg.Params, mongodb.ArgOverrides(s.launchArgs)), nil
 }
 
 // mongoParams narrows the dict the accessors depend on back to a tree.
