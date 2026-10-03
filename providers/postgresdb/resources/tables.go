@@ -102,7 +102,7 @@ func (r *mqlPostgresdbTable) privileges() ([]any, error) {
 	}
 	return aclPrivileges(r.MqlRuntime, pool, r.__id,
 		`SELECT COALESCE(gr.rolname, 'PUBLIC'), a.privilege_type, a.is_grantable
-		 FROM pg_class c, aclexplode(c.relacl) a
+		 FROM pg_class c, aclexplode(COALESCE(c.relacl, acldefault('r', c.relowner))) a
 		 LEFT JOIN pg_roles gr ON gr.oid = a.grantee
 		 WHERE c.oid = $1::oid`, r.Oid.Data)
 }

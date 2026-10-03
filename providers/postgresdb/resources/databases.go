@@ -130,7 +130,7 @@ func (r *mqlPostgresdbDatabase) privileges() ([]any, error) {
 	}
 	return aclPrivileges(r.MqlRuntime, pool, r.__id,
 		`SELECT COALESCE(gr.rolname, 'PUBLIC'), a.privilege_type, a.is_grantable
-		 FROM pg_database d, aclexplode(d.datacl) a
+		 FROM pg_database d, aclexplode(COALESCE(d.datacl, acldefault('d', d.datdba))) a
 		 LEFT JOIN pg_roles gr ON gr.oid = a.grantee
 		 WHERE d.datname = $1`, r.Name.Data)
 }
@@ -272,7 +272,7 @@ func (r *mqlPostgresdbSchema) privileges() ([]any, error) {
 	}
 	return aclPrivileges(r.MqlRuntime, pool, r.__id,
 		`SELECT COALESCE(gr.rolname, 'PUBLIC'), a.privilege_type, a.is_grantable
-		 FROM pg_namespace n, aclexplode(n.nspacl) a
+		 FROM pg_namespace n, aclexplode(COALESCE(n.nspacl, acldefault('n', n.nspowner))) a
 		 LEFT JOIN pg_roles gr ON gr.oid = a.grantee
 		 WHERE n.nspname = $1`, r.Name.Data)
 }
@@ -290,7 +290,7 @@ func (r *mqlPostgresdbFunction) privileges() ([]any, error) {
 	}
 	return aclPrivileges(r.MqlRuntime, pool, r.__id,
 		`SELECT COALESCE(gr.rolname, 'PUBLIC'), a.privilege_type, a.is_grantable
-		 FROM pg_proc p, aclexplode(p.proacl) a
+		 FROM pg_proc p, aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
 		 LEFT JOIN pg_roles gr ON gr.oid = a.grantee
 		 WHERE p.oid = $1::oid`, r.Oid.Data)
 }

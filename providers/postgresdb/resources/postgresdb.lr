@@ -138,7 +138,7 @@ postgresdb.database @defaults("name") {
   allowConnections bool
   // Maximum number of concurrent connections, or -1 for no limit
   connectionLimit int
-  // Access privileges granted on the database (from the datacl)
+  // Access privileges on the database, including the built-in default grants when datacl is null
   privileges() []postgresdb.privilege
   // Schemas in the database
   schemas() []postgresdb.schema
@@ -173,7 +173,7 @@ postgresdb.schema @defaults("name") {
   oid int
   // Role that owns the schema
   owner() postgresdb.role
-  // Access privileges granted on the schema (from the nspacl)
+  // Access privileges on the schema, including the built-in default grants when nspacl is null
   privileges() []postgresdb.privilege
   // Tables, views, and other relations in the schema
   tables() []postgresdb.table
@@ -201,7 +201,7 @@ postgresdb.table @defaults("schema name kind") {
   rowSecurityEnabled bool
   // Whether row-level security is forced for the relation's owner
   rowSecurityForced bool
-  // Access privileges granted on the relation (from the relacl)
+  // Access privileges on the relation, including the built-in default grants when relacl is null
   privileges() []postgresdb.privilege
   // Row-level security policies attached to the relation
   policies() []postgresdb.rlsPolicy
@@ -248,7 +248,7 @@ postgresdb.function @defaults("name schema") {
   isSecurityDefiner bool
   // Role that owns the function
   owner() postgresdb.role
-  // Access privileges granted on the function (from the proacl)
+  // Access privileges on the function, including the built-in default grants when proacl is null
   privileges() []postgresdb.privilege
 }
 
@@ -355,7 +355,7 @@ postgresdb.tablespace @defaults("name") {
   owner() postgresdb.role
   // Filesystem location of the tablespace
   location string
-  // Access privileges granted on the tablespace (from the spcacl)
+  // Access privileges on the tablespace, including the built-in default grants when spcacl is null
   privileges() []postgresdb.privilege
 }
 

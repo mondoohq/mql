@@ -343,3 +343,144 @@ func TestIntegrationHbaRulesMatchServer(t *testing.T) {
 		t.Error("fixture needs an invalid pg_hba.conf line; none reported")
 	}
 }
+
+// privilegeSet returns the privileges as "grantee:TYPE" strings.
+func privilegeSet(t *testing.T, label string, tv *plugin.TValue[[]any]) map[string]bool {
+	t.Helper()
+	out := map[string]bool{}
+	for _, x := range resolveList(t, label, tv) {
+		p := x.(*mqlPostgresdbPrivilege)
+		out[p.GetGrantee().Data+":"+p.GetPrivilegeType().Data] = true
+	}
+	return out
+}
+
+func requirePrivileges(t *testing.T, label string, got map[string]bool, want ...string) {
+	t.Helper()
+	for _, w := range want {
+		if !got[w] {
+			t.Errorf("%s: missing privilege %s (got %v)", label, w, got)
+		}
+	}
+}
+
+func requireNoPublic(t *testing.T, label string, got map[string]bool) {
+	t.Helper()
+	for k := range got {
+		if strings.HasPrefix(k, "PUBLIC:") {
+			t.Errorf("%s: unexpected PUBLIC privilege %s", label, k)
+		}
+	}
+}
+
+// TestIntegrationNullACLReportsDefaultGrants creates objects that were never
+// GRANTed or REVOKEd on, so their ACL column is NULL. PostgreSQL then applies
+// the built-in default privileges (acldefault), which for databases and
+// functions include PUBLIC. A NULL ACL must not read as "no privileges".
+func TestIntegrationNullACLReportsDefaultGrants(t *testing.T) {
+	runtime := newIntegrationRuntime(t)
+	pool, err := pgPool(runtime, "")
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	var user string
+	if err := pool.QueryRow(pgContext(), "SELECT current_user").Scan(&user); err != nil {
+		t.Fatalf("current_user: %v", err)
+	}
+	exec := func(sql string) {
+		t.Helper()
+		if _, err := pool.Exec(pgContext(), sql); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+	}
+	cleanup := func() {
+		for _, sql := range []string{
+			"DROP DATABASE IF EXISTS mql_acl_db",
+			"DROP SCHEMA IF EXISTS mql_acl_s CASCADE",
+		} {
+			_, _ = pool.Exec(pgContext(), sql)
+		}
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+	exec("CREATE DATABASE mql_acl_db TEMPLATE template0")
+	exec("CREATE SCHEMA mql_acl_s")
+	exec("CREATE TABLE mql_acl_s.t (id int)")
+	exec("CREATE FUNCTION mql_acl_s.f() RETURNS int LANGUAGE sql AS 'SELECT 1'")
+
+	inst := mustInstance(t, runtime)
+	var serverDB, aclDB *mqlPostgresdbDatabase
+	for _, x := range resolveList(t, "databases", inst.GetDatabases()) {
+		d := x.(*mqlPostgresdbDatabase)
+		switch d.GetName().Data {
+		case "mql_acl_db":
+			aclDB = d
+		case "postgres":
+			serverDB = d
+		}
+	}
+	if aclDB == nil || serverDB == nil {
+		t.Fatalf("databases mql_acl_db/postgres not found")
+	}
+
+	// acldefault('d'): PUBLIC gets CONNECT and TEMPORARY, the owner everything.
+	dbPrivs := privilegeSet(t, "database privileges", aclDB.GetPrivileges())
+	requirePrivileges(t, "database", dbPrivs, "PUBLIC:CONNECT", "PUBLIC:TEMPORARY", user+":CREATE")
+
+	var schema *mqlPostgresdbSchema
+	for _, x := range resolveList(t, "schemas", serverDB.GetSchemas()) {
+		if s := x.(*mqlPostgresdbSchema); s.GetName().Data == "mql_acl_s" {
+			schema = s
+		}
+	}
+	if schema == nil {
+		t.Fatal("schema mql_acl_s not found")
+	}
+	// acldefault('n'): owner only, no PUBLIC.
+	schemaPrivs := privilegeSet(t, "schema privileges", schema.GetPrivileges())
+	requirePrivileges(t, "schema", schemaPrivs, user+":USAGE", user+":CREATE")
+	requireNoPublic(t, "schema", schemaPrivs)
+
+	var table *mqlPostgresdbTable
+	for _, x := range resolveList(t, "tables", schema.GetTables()) {
+		if tb := x.(*mqlPostgresdbTable); tb.GetName().Data == "t" {
+			table = tb
+		}
+	}
+	if table == nil {
+		t.Fatal("table mql_acl_s.t not found")
+	}
+	// acldefault('r'): owner only, no PUBLIC.
+	tablePrivs := privilegeSet(t, "table privileges", table.GetPrivileges())
+	requirePrivileges(t, "table", tablePrivs, user+":SELECT", user+":INSERT")
+	requireNoPublic(t, "table", tablePrivs)
+
+	var fn *mqlPostgresdbFunction
+	for _, x := range resolveList(t, "functions", serverDB.GetFunctions()) {
+		if f := x.(*mqlPostgresdbFunction); f.GetName().Data == "f" && f.GetSchema().Data == "mql_acl_s" {
+			fn = f
+		}
+	}
+	if fn == nil {
+		t.Fatal("function mql_acl_s.f not found")
+	}
+	// acldefault('f'): PUBLIC gets EXECUTE.
+	requirePrivileges(t, "function", privilegeSet(t, "function privileges", fn.GetPrivileges()),
+		"PUBLIC:EXECUTE", user+":EXECUTE")
+
+	// pg_default has spcacl NULL; acldefault('t') grants the owner CREATE only.
+	for _, x := range resolveList(t, "tablespaces", inst.GetTablespaces()) {
+		ts := x.(*mqlPostgresdbTablespace)
+		if ts.GetName().Data != "pg_default" {
+			continue
+		}
+		var owner string
+		if err := pool.QueryRow(pgContext(),
+			"SELECT pg_get_userbyid(spcowner) FROM pg_tablespace WHERE spcname = 'pg_default'").Scan(&owner); err != nil {
+			t.Fatalf("pg_default owner: %v", err)
+		}
+		tsPrivs := privilegeSet(t, "tablespace privileges", ts.GetPrivileges())
+		requirePrivileges(t, "tablespace", tsPrivs, owner+":CREATE")
+		requireNoPublic(t, "tablespace", tsPrivs)
+	}
+}
