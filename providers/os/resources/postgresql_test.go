@@ -658,3 +658,12 @@ func TestPostgresqlRefusalSurvivesResourceCreation(t *testing.T) {
 	file := raw.(*mqlPostgresqlConf).GetFile()
 	assert.True(t, errors.Is(file.Error, llx.ErrForbidden), "file: %v", file.Error)
 }
+
+func TestRunningPostmasters_PgrepCannotRun(t *testing.T) {
+	rt := testRuntime(t, &failingCommandConn{fsConnWithFiles(t, map[string]string{
+		"/proc/4242/cmdline": "/usr/lib/postgresql/16/bin/postgres\x00-D\x00/var/lib/postgresql/16/main\x00",
+	})})
+
+	insts := runningPostmasters(rt)
+	require.Len(t, insts, 1)
+}
