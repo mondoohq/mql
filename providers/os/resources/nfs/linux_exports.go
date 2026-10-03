@@ -6,6 +6,8 @@ package nfs
 import (
 	"io"
 	"strings"
+
+	"go.mondoo.com/mql/providers/os/resources/fstab"
 )
 
 // parseLinuxExports parses /etc/exports in the syntax used by the
@@ -27,7 +29,7 @@ import (
 func parseLinuxExports(r io.Reader) ([]ExportEntry, error) {
 	var entries []ExportEntry
 	err := scanExportLines(r, func(line string) error {
-		path, rest := splitFirstField(line)
+		path, rest := splitExportPath(line)
 		if path == "" || !strings.HasPrefix(path, "/") {
 			return nil
 		}
@@ -140,6 +142,21 @@ func splitOptionList(s string) []string {
 		}
 	}
 	return out
+}
+
+// splitExportPath returns the export path that opens a line of the Linux
+// exports file and the rest of the line. As exportfs reads it, the path may
+// be put in double quotes to hold blanks, and octal escapes (\040 for a
+// space) are decoded.
+func splitExportPath(line string) (string, string) {
+	line = strings.TrimSpace(line)
+	if strings.HasPrefix(line, `"`) {
+		if end := strings.IndexByte(line[1:], '"'); end >= 0 {
+			return fstab.UnescapeOctal(line[1 : end+1]), strings.TrimSpace(line[end+2:])
+		}
+	}
+	path, rest := splitFirstField(line)
+	return fstab.UnescapeOctal(path), rest
 }
 
 // splitFirstField returns the first whitespace-separated field and

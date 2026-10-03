@@ -186,7 +186,8 @@ func listExportsFragments(afs afero.Fs, dir string) ([]string, error) {
 	}
 	names := make([]string, 0, len(all))
 	for _, n := range all {
-		if strings.HasSuffix(n, nfsFragmentSuffix) {
+		// exportfs ignores hidden files (exports(5))
+		if strings.HasSuffix(n, nfsFragmentSuffix) && !strings.HasPrefix(n, ".") {
 			names = append(names, n)
 		}
 	}
