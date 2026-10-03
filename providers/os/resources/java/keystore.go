@@ -337,6 +337,21 @@ func ParsePKCS12(data []byte, password string) (*Keystore, error) {
 		if errors.As(err, &notImplemented) {
 			return nil, fmt.Errorf("%w: %v", ErrUnsupportedPKCS12, err)
 		}
+
+		// Any other error than a wrong password comes after go-pkcs12 verified
+		// the integrity MAC: the password is right and the store has a shape
+		// none of the entry points take, such as the CA bundle `openssl pkcs12
+		// -export -nokeys` writes (one safe, no key). The bag walk reads it.
+		// Should it fail too, or find no certificate (what -nocerts writes,
+		// which must not read as an empty store), that is what the store is,
+		// not a password problem.
+		if !errors.Is(err, pkcs12.ErrIncorrectPassword) {
+			bagEntries, bagErr := readPKCS12Bags(data, candidate)
+			if bagErr == nil && len(bagEntries) > 0 {
+				return &Keystore{Format: FormatPKCS12, Entries: bagEntries}, nil
+			}
+			return nil, fmt.Errorf("%w: %v", ErrUnsupportedPKCS12, err)
+		}
 	}
 
 	return nil, fmt.Errorf("%w: %v", ErrPasswordRequired, lastErr)
