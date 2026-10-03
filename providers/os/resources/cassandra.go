@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/spf13/afero"
@@ -15,6 +16,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/cassandraconf"
+	"go.mondoo.com/mql/providers/os/resources/haproxy"
 	"go.mondoo.com/mql/providers/os/resources/yamlconf"
 )
 
@@ -30,14 +32,69 @@ var cassandraConfDirs = []string{
 	"/usr/local/etc/cassandra",    // Homebrew on Intel
 }
 
+// cassandraTarballConfGlob matches the conf directory of a tarball unpacked
+// under its versioned name, without the /opt/cassandra symlink.
+const cassandraTarballConfGlob = "/opt/apache-cassandra-*/conf"
+
+// cassandraConfDirsOn returns the probe directories, followed by the conf
+// directory of every versioned tarball under /opt, newest name first.
+func cassandraConfDirsOn(afs *afero.Afero) []string {
+	dirs := append([]string{}, cassandraConfDirs...)
+	if afs == nil {
+		return dirs
+	}
+	matches, err := afero.Glob(afs, cassandraTarballConfGlob)
+	if err != nil {
+		return dirs
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
+	return append(dirs, matches...)
+}
+
 // cassandraConfPaths expands the probe directories into candidate paths for
 // one configuration file.
-func cassandraConfPaths(name string) []string {
-	paths := make([]string, 0, len(cassandraConfDirs))
-	for _, dir := range cassandraConfDirs {
+func cassandraConfPaths(afs *afero.Afero, name string) []string {
+	dirs := cassandraConfDirsOn(afs)
+	paths := make([]string, 0, len(dirs))
+	for _, dir := range dirs {
 		paths = append(paths, path.Join(dir, name))
 	}
 	return paths
+}
+
+// cassandraDaemonPidsCmd lists the running Cassandra daemons, whose program is
+// java. pgrep exits 1 when nothing matches.
+const cassandraDaemonPidsCmd = "pgrep -f org.apache.cassandra.service.CassandraDaemon"
+
+// runningCassandraConfig returns the cassandra.yaml a running Cassandra
+// daemon was started with through -Dcassandra.config (JVM_EXTRA_OPTS in
+// /etc/default/cassandra, or cassandra-env.sh), or "" when no daemon names
+// one.
+func runningCassandraConfig(runtime *plugin.Runtime, afs *afero.Afero) string {
+	conn := runtime.Connection.(shared.Connection)
+	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return ""
+	}
+	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+		"command": llx.StringData(cassandraDaemonPidsCmd),
+	})
+	if err != nil {
+		return ""
+	}
+	cmd := o.(*mqlCommand)
+	if cmd.GetExitcode().Data != 0 {
+		return ""
+	}
+	for _, pid := range strings.Fields(cmd.GetStdout().Data) {
+		raw, err := afs.ReadFile(path.Join("/proc", pid, "cmdline"))
+		if err != nil {
+			continue
+		}
+		if conf, ok := cassandraconf.ConfigFromJVMArgs(haproxy.SplitProcCmdline(raw)); ok && conf != "" {
+			return conf
+		}
+	}
+	return ""
 }
 
 // resolveCassandraPathArg resolves the optional `path` argument shared by the three
@@ -83,7 +140,23 @@ func probeCassandraFile(runtime *plugin.Runtime, resource any, state *plugin.TVa
 	}
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 
-	for _, p := range cassandraConfPaths(name) {
+	if name == "cassandra.yaml" {
+		// A daemon started with -Dcassandra.config reads that file and no
+		// other. One that does not exist would stop it from starting.
+		if p := runningCassandraConfig(runtime, afs); p != "" {
+			if _, err := afs.Stat(p); !errors.Is(err, fs.ErrNotExist) {
+				f, err := CreateResource(runtime, "file", map[string]*llx.RawData{
+					"path": llx.StringData(p),
+				})
+				if err != nil {
+					return nil, err
+				}
+				return f.(*mqlFile), nil
+			}
+		}
+	}
+
+	for _, p := range cassandraConfPaths(afs, name) {
 		ok, err := afs.Exists(p)
 		if err != nil && errors.Is(err, fs.ErrPermission) {
 			if err := cassandraRefusal(resource, err); err != nil {
@@ -193,7 +266,7 @@ func (c *mqlCassandra) version() (string, error) {
 		return version, nil
 	}
 	afs := &afero.Afero{Fs: conn.FileSystem()}
-	for _, bin := range cassandraBinaries(cassandraConfDirs) {
+	for _, bin := range cassandraBinaries(cassandraConfDirsOn(afs)) {
 		if ok, _ := afs.Exists(bin); !ok {
 			continue
 		}
