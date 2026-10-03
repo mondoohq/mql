@@ -17,6 +17,7 @@ import (
 
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -89,17 +90,12 @@ func (n *mqlNginx) modules() ([]any, error) {
 
 	configured, _ := parseNginxConfigureModules(string(data))
 
-	// a dynamic module only runs when the configuration loads it
-	var loaded []string
-	for _, m := range configured {
-		if !m.dynamic {
-			continue
-		}
-		loaded, err = n.loadedNginxModules(n.launchInfo().conf)
-		if err != nil {
-			return nil, err
-		}
-		break
+	// A dynamic module only runs when the configuration loads it. Debian 9
+	// to 11 build theirs out of tree, so nginx -V does not list them as
+	// =dynamic, and only load_module names them.
+	loaded, err := n.loadedNginxModules(n.launchInfo().conf)
+	if err != nil {
+		return nil, err
 	}
 
 	modules := nginxModules(configured, loaded)
@@ -182,16 +178,33 @@ var nginxDynamicModuleFiles = map[string]string{
 	"http_xslt_module": "http_xslt_filter_module",
 }
 
+// nginxDynamicModuleFlags is nginxDynamicModuleFiles reversed: the module
+// name of an ngx_*.so file.
+var nginxDynamicModuleFlags = func() map[string]string {
+	m := make(map[string]string, len(nginxDynamicModuleFiles))
+	for flag, file := range nginxDynamicModuleFiles {
+		m[file] = flag
+	}
+	return m
+}()
+
 // nginxModules returns the modules nginx runs with: every module compiled
-// into the binary, and each dynamic module whose ngx_<name>.so file one of
-// the loaded paths names. When stream or mail is dynamic, their stream_* and
-// mail_* submodules are built into that .so and run only when it is loaded.
+// into the binary, each dynamic module whose ngx_<name>.so file one of the
+// loaded paths names, and each loaded module the configure arguments do not
+// name (built out of tree). When stream or mail is dynamic, their stream_*
+// and mail_* submodules are built into that .so and run only when it is
+// loaded.
 func nginxModules(configured []nginxConfigureModule, loaded []string) []string {
 	loadedSet := map[string]bool{}
+	var loadedNames []string
 	for _, path := range loaded {
 		name := filepath.Base(strings.Trim(path, `'"`))
 		name = strings.TrimSuffix(name, ".so")
-		loadedSet[strings.TrimPrefix(name, "ngx_")] = true
+		name = strings.TrimPrefix(name, "ngx_")
+		if !loadedSet[name] {
+			loadedSet[name] = true
+			loadedNames = append(loadedNames, name)
+		}
 	}
 	isLoaded := func(name string) bool {
 		if file, ok := nginxDynamicModuleFiles[name]; ok {
@@ -224,6 +237,27 @@ func nginxModules(configured []nginxConfigureModule, loaded []string) []string {
 			}
 		}
 		modules = append(modules, m.name)
+	}
+
+	listed := map[string]bool{}
+	for _, m := range modules {
+		listed[m] = true
+		if file, ok := nginxDynamicModuleFiles[m]; ok {
+			listed[file] = true
+		}
+	}
+	for _, name := range loadedNames {
+		if listed[name] {
+			continue
+		}
+		if flag, ok := nginxDynamicModuleFlags[name]; ok {
+			if listed[flag] {
+				continue
+			}
+			name = flag
+		}
+		listed[name] = true
+		modules = append(modules, name)
 	}
 	return modules
 }
@@ -562,7 +596,7 @@ func (s *mqlNginxConf) parse(file *mqlFile) error {
 		directives = append(nginxGlobalDirectives(nx.launchInfo(), file.Path.Data), directives...)
 	}
 
-	w := walkNginxConfig(directives, s.nginxVersion())
+	w := walkNginxConfig(directives, nginxDefaultSSLProtocols(s.nginxVersion(), nginxRedHatTLS13Default(conn.Asset().GetPlatform())))
 	s.loadModules = nginxLoadModules(directives)
 
 	s.Params = plugin.TValue[map[string]any]{Data: w.params, State: plugin.StateIsSet}
@@ -656,8 +690,8 @@ type nginxWalk struct {
 // expanded) into params, servers and upstreams. The typed fields of each
 // server and location report what nginx runs with: the directives the block
 // sets, those it inherits from the blocks around it, and nginx's defaults
-// (for ssl_protocols, the default of the given nginx version).
-func walkNginxConfig(directives []nginx.Directive, version string) nginxWalk {
+// (sslProtocols, from nginxDefaultSSLProtocols, when ssl_protocols is unset).
+func walkNginxConfig(directives []nginx.Directive, sslProtocols string) nginxWalk {
 	mainParams := map[string]any{}
 	w := nginxWalk{
 		httpParams:   map[string]any{},
@@ -686,7 +720,6 @@ func walkNginxConfig(directives []nginx.Directive, version string) nginxWalk {
 		}
 	}
 
-	sslProtocols := nginxDefaultSSLProtocols(version)
 	for i := range w.servers {
 		resolveNginxServer(&w.servers[i], httpScope, sslProtocols, true)
 	}
@@ -747,7 +780,7 @@ func nginxBlockScope(directives []nginx.Directive) nginxScope {
 				sc.addHeaders = map[string][]string{}
 			}
 			if len(d.Args) >= 2 {
-				sc.addHeaders[d.Args[0]] = append(sc.addHeaders[d.Args[0]], strings.Join(d.Args[1:], " "))
+				sc.addHeaders[d.Args[0]] = append(sc.addHeaders[d.Args[0]], nginxAddHeaderValue(d.Args))
 			}
 		}
 	}
@@ -830,13 +863,42 @@ func nginxValueOr(values map[string]string, name, def string) string {
 	return def
 }
 
+// nginxAddHeaderValue returns the value of `add_header NAME VALUE [always]`.
+// always says the header is sent with every response code; it is not part
+// of the value.
+func nginxAddHeaderValue(args []string) string {
+	if len(args) >= 3 && args[len(args)-1] == "always" {
+		return strings.Join(args[1:len(args)-1], " ")
+	}
+	return strings.Join(args[1:], " ")
+}
+
+// nginxRedHatTLS13Default reports a platform whose nginx package Red Hat
+// patched to enable TLSv1.3 by default ("enable TLS 1.3 by default
+// (#1643647)"): RHEL 8 and 9 and their rebuilds. EPEL's nginx for RHEL 7
+// has no such patch, and Fedora and Amazon Linux build their own packages.
+func nginxRedHatTLS13Default(p *inventory.Platform) bool {
+	if p == nil || !p.IsFamily("redhat") {
+		return false
+	}
+	switch p.Name {
+	case "fedora", "amazonlinux":
+		return false
+	}
+	major, _, _ := strings.Cut(p.Version, ".")
+	n, err := strconv.Atoi(major)
+	return err == nil && n >= 8
+}
+
 // nginxDefaultSSLProtocols returns the protocols nginx enables when the
 // configuration sets no ssl_protocols (src/http/modules/ngx_http_ssl_module.c
 // and the stream counterpart). 1.9.1 disabled SSLv3, 1.23.4 enabled TLSv1.3,
-// and 1.27.3 disabled TLSv1 and TLSv1.1. When the version is not known this
-// returns every protocol a release from 1.9.1 on may enable, so a check that
-// an old protocol is off does not pass on a guess.
-func nginxDefaultSSLProtocols(version string) string {
+// and 1.27.3 disabled TLSv1 and TLSv1.1. redHatTLS13 adds TLSv1.3 from 1.13.0
+// on, which first knew it, for Red Hat's patched builds (see
+// nginxRedHatTLS13Default). When the version is not known this returns every
+// protocol a release from 1.9.1 on may enable, so a check that an old
+// protocol is off does not pass on a guess.
+func nginxDefaultSSLProtocols(version string, redHatTLS13 bool) string {
 	const unknown = "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3"
 	v, ok := parseNginxVersion(version)
 	if !ok {
@@ -846,6 +908,9 @@ func nginxDefaultSSLProtocols(version string) string {
 	case nginxVersionLess(v, [3]int{1, 9, 1}):
 		return "SSLv3 TLSv1 TLSv1.1 TLSv1.2"
 	case nginxVersionLess(v, [3]int{1, 23, 4}):
+		if redHatTLS13 && !nginxVersionLess(v, [3]int{1, 13, 0}) {
+			return "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3"
+		}
 		return "TLSv1 TLSv1.1 TLSv1.2"
 	case nginxVersionLess(v, [3]int{1, 27, 3}):
 		return "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3"
@@ -1115,8 +1180,7 @@ func parseNginxServerBlock(directives []nginx.Directive) nginxServer {
 		case "add_header":
 			if len(d.Args) >= 2 {
 				name := d.Args[0]
-				value := strings.Join(d.Args[1:], " ")
-				srv.AddHeaders[name] = append(srv.AddHeaders[name], value)
+				srv.AddHeaders[name] = append(srv.AddHeaders[name], nginxAddHeaderValue(d.Args))
 			}
 			setNginxParam(srv.Params, d.Name, args)
 		case "location":

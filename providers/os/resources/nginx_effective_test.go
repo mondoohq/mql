@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/resources/nginx"
 )
 
@@ -82,7 +83,7 @@ func TestNginxServerInheritsHTTPDebian13(t *testing.T) {
 		"/etc/nginx/conf.d/zz-sweep-tls.conf": sweepTLSConf,
 		"/etc/nginx/mime.types":               "",
 	})
-	w := walkNginxConfig(dirs, "1.26.3")
+	w := walkNginxConfig(dirs, nginxDefaultSSLProtocols("1.26.3", false))
 
 	tls := nginxServerByName(t, w.servers, "tls.example.test")
 	assert.Equal(t, "TLSv1.2 TLSv1.3", tls.SSLProtocols)
@@ -112,7 +113,7 @@ func TestNginxServerInheritsHTTPUbuntu2404(t *testing.T) {
 	})
 	// an unknown version would also give TLSv1.1 by default, so use one
 	// whose default does not
-	w := walkNginxConfig(dirs, "1.27.3")
+	w := walkNginxConfig(dirs, nginxDefaultSSLProtocols("1.27.3", false))
 
 	tls := nginxServerByName(t, w.servers, "tls.example.test")
 	assert.Equal(t, "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3", tls.SSLProtocols)
@@ -135,15 +136,15 @@ http {
     server { server_name off; add_header_inherit off; }
 }`)
 	require.NoError(t, err)
-	w := walkNginxConfig(dirs, "1.29.3")
+	w := walkNginxConfig(dirs, nginxDefaultSSLProtocols("1.29.3", false))
 
 	assert.Equal(t, map[string][]string{
-		"X-Frame-Options":        {"DENY always"},
+		"X-Frame-Options":        {"DENY"},
 		"X-Content-Type-Options": {"nosniff"},
 	}, nginxServerByName(t, w.servers, "inherits").AddHeaders)
 	assert.Equal(t, map[string][]string{"X-Own": {"yes"}}, nginxServerByName(t, w.servers, "own").AddHeaders)
 	assert.Equal(t, map[string][]string{
-		"X-Frame-Options":        {"DENY always"},
+		"X-Frame-Options":        {"DENY"},
 		"X-Content-Type-Options": {"nosniff"},
 		"X-Own":                  {"yes"},
 	}, nginxServerByName(t, w.servers, "merge").AddHeaders)
@@ -174,7 +175,7 @@ http {
     ssl_session_timeout 1d;
 }`)
 	require.NoError(t, err)
-	w := walkNginxConfig(dirs, "1.24.0")
+	w := walkNginxConfig(dirs, nginxDefaultSSLProtocols("1.24.0", false))
 
 	o := nginxServerByName(t, w.servers, "override")
 	assert.Equal(t, "TLSv1.3", o.SSLProtocols)
@@ -205,7 +206,7 @@ stream {
     server { listen 5433 ssl; ssl_protocols TLSv1.2 TLSv1.3; proxy_pass db; }
 }`)
 	require.NoError(t, err)
-	w := walkNginxConfig(dirs, "1.26.3")
+	w := walkNginxConfig(dirs, nginxDefaultSSLProtocols("1.26.3", false))
 
 	require.Len(t, w.streamServers, 2)
 	assert.Equal(t, "TLSv1.3", w.streamServers[0].SSLProtocols)
@@ -232,7 +233,7 @@ func TestNginxServerDefaultsStock(t *testing.T) {
 				"/etc/nginx/conf.d/zz-sweep-tls.conf": sweepTLSConf,
 				"/etc/nginx/mime.types":               "",
 			})
-			w := walkNginxConfig(dirs, tc.version)
+			w := walkNginxConfig(dirs, nginxDefaultSSLProtocols(tc.version, false))
 			tls := nginxServerByName(t, w.servers, "tls.example.test")
 			assert.Equal(t, tc.protocols, tls.SSLProtocols)
 			assert.Equal(t, "on", tls.ServerTokens)
@@ -240,7 +241,7 @@ func TestNginxServerDefaultsStock(t *testing.T) {
 			assert.Equal(t, "5m", tls.SSLSessionTimeout)
 			assert.False(t, tls.SSLPreferServerCiphers)
 			assert.Equal(t, "", tls.SSLCiphers)
-			assert.Equal(t, map[string][]string{"X-Frame-Options": {"DENY always"}}, tls.AddHeaders)
+			assert.Equal(t, map[string][]string{"X-Frame-Options": {"DENY"}}, tls.AddHeaders)
 
 			own := nginxServerByName(t, w.servers, "own-header.example.test")
 			assert.Equal(t, map[string][]string{"X-Own": {"yes"}}, own.AddHeaders)
@@ -267,7 +268,7 @@ func TestNginxDefaultSSLProtocols(t *testing.T) {
 		"unknown": "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3",
 		"1.24":    "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3",
 	} {
-		assert.Equal(t, want, nginxDefaultSSLProtocols(version), version)
+		assert.Equal(t, want, nginxDefaultSSLProtocols(version, false), version)
 	}
 }
 
@@ -292,7 +293,7 @@ func TestNginxGlobalDirectives(t *testing.T) {
 	dirs := parseNginxFixture(t, "/etc/nginx/nginx.conf", map[string]string{
 		"/etc/nginx/nginx.conf": "testdata:sles16-nginx.conf",
 	})
-	w := walkNginxConfig(append(globals, dirs...), "1.27.2")
+	w := walkNginxConfig(append(globals, dirs...), nginxDefaultSSLProtocols("1.27.2", false))
 	assert.Equal(t, "3", w.params["worker_processes"])
 
 	assert.Nil(t, nginxGlobalDirectives(launch, "/etc/nginx-alt/nginx.conf"))
@@ -371,4 +372,64 @@ func TestResolveNginxLaunch(t *testing.T) {
 		}, platformDefault)
 		assert.Equal(t, "/opt/nginx/conf/nginx.conf", got.conf)
 	})
+}
+
+// Red Hat patches nginx to enable TLSv1.3 by default ("enable TLS 1.3 by
+// default (#1643647)" in the RHEL 8 changelog). On RHEL 8 (1.14.1) and RHEL 9
+// (1.20.1) a server without ssl_protocols completes a TLSv1.3 handshake.
+func TestNginxDefaultSSLProtocolsRedHat(t *testing.T) {
+	assert.Equal(t, "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3", nginxDefaultSSLProtocols("1.14.1", true))
+	assert.Equal(t, "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3", nginxDefaultSSLProtocols("1.20.1", true))
+	assert.Equal(t, "TLSv1 TLSv1.1 TLSv1.2 TLSv1.3", nginxDefaultSSLProtocols("1.26.3", true))
+	assert.Equal(t, "TLSv1.2 TLSv1.3", nginxDefaultSSLProtocols("1.30.5", true))
+	// TLSv1.3 needs nginx 1.13.0
+	assert.Equal(t, "TLSv1 TLSv1.1 TLSv1.2", nginxDefaultSSLProtocols("1.12.2", true))
+
+	for _, tc := range []struct {
+		name, version string
+		family        []string
+		want          bool
+	}{
+		{"rhel", "8.10", []string{"redhat", "linux"}, true},
+		{"almalinux", "8.10", []string{"redhat", "linux"}, true},
+		{"rhel", "9.6", []string{"redhat", "linux"}, true},
+		{"centos", "9", []string{"redhat", "linux"}, true},
+		{"rocky", "9.5", []string{"redhat", "linux"}, true},
+		// EPEL's nginx on RHEL 7 has no such patch, and OpenSSL 1.0.2 no TLSv1.3
+		{"rhel", "7.9", []string{"redhat", "linux"}, false},
+		{"fedora", "44", []string{"redhat", "linux"}, false},
+		{"amazonlinux", "2", []string{"redhat", "linux"}, false},
+		{"ubuntu", "22.04", []string{"debian", "linux"}, false},
+	} {
+		p := &inventory.Platform{Name: tc.name, Version: tc.version, Family: tc.family}
+		assert.Equal(t, tc.want, nginxRedHatTLS13Default(p), "%s %s", tc.name, tc.version)
+	}
+	assert.False(t, nginxRedHatTLS13Default(nil))
+}
+
+// add_header NAME VALUE [always]: the flag says when the header is sent and is
+// not part of the value.
+func TestNginxAddHeaderAlways(t *testing.T) {
+	dirs, err := nginx.Parse(`http {
+    add_header X-Content-Type-Options nosniff always;
+    server {
+        listen 8449 ssl;
+        add_header X-Frame-Options DENY always;
+        add_header Content-Security-Policy "default-src 'self'; frame-ancestors 'none'" always;
+        add_header X-Plain plain;
+        add_header X-Words two words always;
+    }
+    server {
+        listen 8450;
+    }
+}`)
+	require.NoError(t, err)
+	w := walkNginxConfig(dirs, nginxDefaultSSLProtocols("1.20.1", false))
+	require.Len(t, w.servers, 2)
+	assert.Equal(t, []string{"DENY"}, w.servers[0].AddHeaders["X-Frame-Options"])
+	assert.Equal(t, []string{"default-src 'self'; frame-ancestors 'none'"}, w.servers[0].AddHeaders["Content-Security-Policy"])
+	assert.Equal(t, []string{"plain"}, w.servers[0].AddHeaders["X-Plain"])
+	assert.Equal(t, []string{"two words"}, w.servers[0].AddHeaders["X-Words"])
+	// inherited from http{}
+	assert.Equal(t, []string{"nosniff"}, w.servers[1].AddHeaders["X-Content-Type-Options"])
 }
