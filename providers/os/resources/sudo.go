@@ -186,6 +186,10 @@ func runSudoVersion(s *mqlSudo) (sudopkg.VersionInfo, bool, error) {
 	if exists, err := afs.Exists(p.Data); err != nil || !exists {
 		return sudopkg.VersionInfo{}, false, nil
 	}
+	// Nor run one another account can replace (see runnableBinary).
+	if runnableBinary(conn, p.Data) == "" {
+		return sudopkg.VersionInfo{}, false, nil
+	}
 
 	cmd, err := conn.RunCommand(buildSudoVCommand(p.Data))
 	if err != nil {

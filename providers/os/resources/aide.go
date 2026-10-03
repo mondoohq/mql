@@ -312,6 +312,12 @@ func (a *mqlAide) runIncludeScript(conn shared.Connection, canRun bool, filePath
 		log.Debug().Str("file", filePath).Msg("aide> executable include is not root-owned or is writable by others, AIDE does not run it")
 		return aideIncludeFile{}, false, true
 	}
+	// A root-owned script in a directory another account can write to can be
+	// swapped for another file, so the whole path is checked as well.
+	if runnableBinary(conn, filePath) == "" {
+		log.Debug().Str("file", filePath).Msg("aide> executable include sits in a directory another account can replace it in, not running it")
+		return aideIncludeFile{}, false, true
+	}
 
 	o, err := CreateResource(a.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(aideScriptCommand(filePath, env)),

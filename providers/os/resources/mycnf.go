@@ -503,8 +503,13 @@ func detectServerVersion(runtime *plugin.Runtime) (version string, flavor string
 		}
 	}
 
-	for _, bin := range bins {
-		res, err := conn.RunCommand(bin + " --version")
+	for _, name := range bins {
+		// Run only a server binary no other account can replace.
+		bin := runnableBinary(conn, name)
+		if bin == "" {
+			continue
+		}
+		res, err := conn.RunCommand(shellQuote(bin) + " --version")
 		if err != nil || res.ExitStatus != 0 {
 			continue
 		}

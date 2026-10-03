@@ -6,6 +6,7 @@ package cat
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -160,4 +161,37 @@ func TestReadContentQuotesPath(t *testing.T) {
 	args, err := shellquote.Split(run.commands[0])
 	require.NoError(t, err)
 	assert.Equal(t, []string{"cat", "./-rf"}, args)
+}
+
+// A file cat cannot read is an error, not an empty file: a script whose
+// first line could not be read must not pass for a binary.
+func TestReadContentFailedRead(t *testing.T) {
+	// stderr on Rocky 9, read as an unprivileged account
+	denied := &fakeRun{stderr: "cat: /usr/bin/sudo: Permission denied\n", exit: 1}
+	_, err := io.ReadAll(NewFile(&Fs{commandRunner: denied}, "/usr/bin/sudo", false))
+	assert.True(t, errors.Is(err, os.ErrPermission))
+
+	// with base64, the redirect fails in the shell
+	denied = &fakeRun{stderr: "sh: line 1: /usr/bin/sudo: Permission denied\n", exit: 1}
+	_, err = io.ReadAll(NewFile(&Fs{commandRunner: denied}, "/usr/bin/sudo", true))
+	assert.True(t, errors.Is(err, os.ErrPermission))
+	assert.Equal(t, []string{"base64 < /usr/bin/sudo"}, denied.commands)
+
+	// dash reports a missing file without "or directory"
+	missing := &fakeRun{stderr: "sh: 1: cannot open /nope: No such file\n", exit: 2}
+	_, err = io.ReadAll(NewFile(&Fs{commandRunner: missing}, "/nope", true))
+	assert.True(t, errors.Is(err, os.ErrNotExist))
+
+	// any other failure is an error too
+	eio := &fakeRun{stderr: "base64: read error: Input/output error\n", exit: 1}
+	_, err = io.ReadAll(NewFile(&Fs{commandRunner: eio}, "/mnt/x", true))
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, os.ErrPermission))
+	assert.Contains(t, err.Error(), "Input/output error")
+
+	// a read that succeeds returns the content
+	ok := &fakeRun{stdout: "IyEvYmluL3NoCg==\n"}
+	b, err := io.ReadAll(NewFile(&Fs{commandRunner: ok}, "/usr/bin/x", true))
+	require.NoError(t, err)
+	assert.Equal(t, "#!/bin/sh\n", string(b))
 }
