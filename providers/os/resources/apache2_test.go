@@ -321,6 +321,58 @@ func TestApacheUnitEnvironment(t *testing.T) {
 		assert.NotContains(t, env, "SWEEPTOK2")
 	})
 
+	// SUSE ships apache2.service with Alias=httpd.service apache.service.
+	// systemctl enable links both aliases to it, and systemd then applies the
+	// drop-ins of every name: `systemctl show apache2 -p DropInPaths` lists
+	// apache2.service.d, httpd.service.d and apache.service.d files. A
+	// disabled apache2 has no aliases and only apache2.service.d applies.
+	suseUnit := "[Unit]\nDescription=The Apache Webserver\n[Service]\nType=notify\nPrivateTmp=true\n" +
+		"ExecStart=/usr/sbin/start_apache2 -DSYSTEMD -DFOREGROUND -k start\n" +
+		"[Install]\nWantedBy=multi-user.target\nAlias=httpd.service apache.service\n"
+	t.Run("SUSE's apache2.service drop-ins, unit disabled", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/apache2.service", suseUnit)
+		write(fs, "/etc/systemd/system/apache2.service.d/zz-sweep.conf", "[Service]\nEnvironment=SWEEPTOK=On\n")
+		write(fs, "/etc/systemd/system/httpd.service.d/zz-h.conf", "[Service]\nEnvironment=NOTALIAS=On\n")
+		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
+		require.NoError(t, err)
+		assert.Equal(t, "On", env["SWEEPTOK"])
+		assert.NotContains(t, env, "NOTALIAS")
+		assert.Equal(t, []string{"SYSTEMD", "FOREGROUND"}, defines)
+	})
+
+	t.Run("SUSE's apache2.service enabled applies the drop-ins of every alias", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/apache2.service", suseUnit)
+		// the alias symlinks systemctl enable creates read as the same unit
+		write(fs, "/etc/systemd/system/httpd.service", suseUnit)
+		write(fs, "/etc/systemd/system/apache.service", suseUnit)
+		write(fs, "/etc/systemd/system/apache2.service.d/zz-b.conf", "[Service]\nEnvironment=A1=x TOK=apache2\n")
+		write(fs, "/etc/systemd/system/httpd.service.d/zz-a.conf", "[Service]\nEnvironment=H1=x TOK=httpd\n")
+		write(fs, "/etc/systemd/system/apache.service.d/zz-p.conf", "[Service]\nEnvironment=P1=x\n")
+		write(fs, "/etc/systemd/system/service.d/zz-t.conf", "[Service]\nEnvironment=T1=x\n")
+		env, _, err := apacheUnitEnvironment(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
+		require.NoError(t, err)
+		for _, k := range []string{"A1", "H1", "P1", "T1"} {
+			assert.Equal(t, "x", env[k], k)
+		}
+		// drop-ins of all names apply together in file-name order: zz-a.conf,
+		// then zz-b.conf
+		assert.Equal(t, "apache2", env["TOK"])
+	})
+
+	t.Run("a separate apache2.service does not lend httpd.service its drop-ins", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/httpd.service",
+			"[Service]\nEnvironment=LANG=C\nExecStart=/usr/sbin/httpd $OPTIONS -DFOREGROUND\n")
+		write(fs, "/usr/lib/systemd/system/apache2.service", suseUnit)
+		write(fs, "/etc/systemd/system/apache2.service.d/zz.conf", "[Service]\nEnvironment=OTHER=x\n")
+		env, _, err := apacheUnitEnvironment(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
+		require.NoError(t, err)
+		assert.Equal(t, "C", env["LANG"])
+		assert.NotContains(t, env, "OTHER")
+	})
+
 	t.Run("a missing EnvironmentFile contributes nothing", func(t *testing.T) {
 		fs := afero.NewMemMapFs()
 		write(fs, "/usr/lib/systemd/system/httpd.service", rhel7Unit)
@@ -375,6 +427,17 @@ func TestApacheLaunch(t *testing.T) {
 			"LoadModule info_module /usr/lib64/apache2-prefork/mod_info.so",
 			"ServerTokens OS",
 		}, l.PreDirectives)
+	})
+
+	t.Run("SUSE applies the httpd.service alias drop-ins to the unit's arguments", func(t *testing.T) {
+		fs := suseHost()
+		write(fs, "/etc/systemd/system/httpd.service", suseUnit)
+		write(fs, "/etc/systemd/system/httpd.service.d/zz.conf",
+			"[Service]\nExecStart=\nExecStart=/usr/sbin/start_apache2 -DSYSTEMD -DFOREGROUND -DSWEEP -k start\n")
+		l, err := apacheLaunch(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
+		require.NoError(t, err)
+		require.NotNil(t, l)
+		assert.Contains(t, l.Defines, "SWEEP")
 	})
 
 	// /run/httpd is 0710 root:apache on Red Hat, so a non-root scan cannot
