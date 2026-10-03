@@ -104,6 +104,7 @@ func ParseSystemdListUnits(input io.Reader) (map[string]*Service, error) {
 	}
 
 	services := map[string]*Service{}
+	jobCol := systemdListUnitsJobColumn(string(content))
 	matches := SYSTEMD_LIST_UNITS_REGEX.FindAllStringSubmatch(string(content), -1)
 	for _, match := range matches {
 		unitName := match[1]
@@ -114,7 +115,7 @@ func ParseSystemdListUnits(input io.Reader) (map[string]*Service, error) {
 		name := normalizeSystemdServiceName(unitName)
 		services[name] = &Service{
 			Name:        name,
-			Description: strings.TrimSpace(match[5]),
+			Description: systemdListUnitsDescription(match, jobCol),
 			Running:     match[3] == "active",
 			Installed:   match[2] != "not-found",
 			Type:        "systemd",

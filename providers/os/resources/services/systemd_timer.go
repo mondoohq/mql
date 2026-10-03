@@ -247,6 +247,7 @@ func ParseSystemdTimerListUnits(input io.Reader) (map[string]*SystemdTimer, erro
 	}
 
 	timers := map[string]*SystemdTimer{}
+	jobCol := systemdListUnitsJobColumn(string(content))
 	matches := SYSTEMD_LIST_UNITS_REGEX.FindAllStringSubmatch(string(content), -1)
 	for _, match := range matches {
 		unitName := match[1]
@@ -257,7 +258,7 @@ func ParseSystemdTimerListUnits(input io.Reader) (map[string]*SystemdTimer, erro
 		name := normalizeSystemdTimerName(unitName)
 		timers[name] = &SystemdTimer{
 			Name:        name,
-			Description: strings.TrimSpace(match[5]),
+			Description: systemdListUnitsDescription(match, jobCol),
 			Running:     match[3] == "active",
 			Installed:   match[2] != "not-found",
 		}
