@@ -318,6 +318,32 @@ func TestReadUfwState(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "not installed", st.status)
 	})
+
+	t.Run("upstream tarball in /usr/local", func(t *testing.T) {
+		// `python3 setup.py install` of ufw 0.36.2 on Amazon Linux 2023
+		st, err := readUfwState(newFs(map[string]string{
+			ufwConfPath: enabledConf, ufwDefaultsPath: defaults,
+			"/usr/local/sbin/ufw": "#!/usr/bin/python3\n", "/lib/ufw/ufw-init": "#!/bin/sh\n",
+		}))
+		require.NoError(t, err)
+		assert.Equal(t, "active", st.status)
+		assert.Equal(t, "/usr/local/sbin/ufw", st.binary)
+		assert.Equal(t, "deny", st.defIncoming)
+		assert.Equal(t, "low", st.logging)
+	})
+
+	t.Run("ufw-init without a known command", func(t *testing.T) {
+		// a tarball installed with another prefix keeps ufw-init in /lib/ufw
+		for _, initScript := range []string{"/lib/ufw/ufw-init", "/usr/libexec/ufw/ufw-init"} {
+			st, err := readUfwState(newFs(map[string]string{
+				ufwConfPath: enabledConf, ufwDefaultsPath: defaults, initScript: "#!/bin/sh\n",
+			}))
+			require.NoError(t, err)
+			assert.Equal(t, "active", st.status, initScript)
+			assert.Empty(t, st.binary, initScript)
+			assert.Equal(t, "deny", st.defIncoming, initScript)
+		}
+	})
 }
 
 func TestReadUfwRules(t *testing.T) {
@@ -453,6 +479,26 @@ func TestUfwStatusWithoutUfw(t *testing.T) {
 		_, err := ufwStatusWithoutUfw("active", perr, unit("active\n", 0))
 		require.Error(t, err)
 	})
+}
+
+func TestUfwStatusFromUnit(t *testing.T) {
+	// ufw-init is installed and the ufw command is not in ufwBinaryPaths, so
+	// ufw cannot be asked; that is not a refusal
+	noCommand := errors.New("cannot determine whether ufw is active: no ufw command")
+	unit := func(stdout string, exit int64) func() (string, int64, error) {
+		return func() (string, int64, error) { return stdout, exit, nil }
+	}
+
+	st, err := ufwStatusFromUnit("inactive", noCommand, unit("inactive\n", 3))
+	require.NoError(t, err)
+	assert.Equal(t, "inactive", st)
+
+	st, err = ufwStatusFromUnit("active", noCommand, unit("active\n", 0))
+	require.NoError(t, err)
+	assert.Equal(t, "active", st)
+
+	_, err = ufwStatusFromUnit("active", noCommand, unit("inactive\n", 3))
+	require.ErrorIs(t, err, noCommand)
 }
 
 func TestUfwStatusCommandIgnoresLanguage(t *testing.T) {

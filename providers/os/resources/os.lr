@@ -8536,8 +8536,10 @@ private nftables.set @defaults("family table name") {
 ufw @defaults("status rules") {
   // Whether UFW is active ("active", "inactive", "not installed")
   //
-  // "not installed" when the ufw command is missing, including a package
-  // that was removed but not purged and left /etc/ufw/ufw.conf behind.
+  // "not installed" when neither the ufw command nor ufw-init is present,
+  // including a package that was removed but not purged and left
+  // /etc/ufw/ufw.conf behind. The command is looked up in /usr/sbin, /sbin,
+  // and /usr/local/sbin, where the upstream tarball installs it.
   // Where commands can run, "active" means the ufw rules are loaded, as
   // `ufw status` reports, not only that ufw.conf sets ENABLED=yes. Fedora and
   // EPEL ship ENABLED=yes on a firewall that was never enabled. Asking ufw

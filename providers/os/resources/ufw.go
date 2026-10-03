@@ -80,12 +80,35 @@ func (u *mqlUfw) fetchStatus() error {
 	return nil
 }
 
-// ufwBinaryPaths are where the ufw package installs its command. /sbin/ufw
-// is the same file on usrmerged systems.
-var ufwBinaryPaths = []string{"/usr/sbin/ufw", "/sbin/ufw"}
+// ufwBinaryPaths are where ufw installs its command: the distribution
+// packages use /usr/sbin (/sbin/ufw is the same file on usrmerged systems),
+// and `python3 setup.py install` from the upstream tarball uses
+// /usr/local/sbin.
+var ufwBinaryPaths = []string{"/usr/sbin/ufw", "/sbin/ufw", "/usr/local/sbin/ufw"}
+
+// ufwInitPaths are where ufw installs ufw-init, the script its systemd unit
+// runs to load the rules at boot. The upstream tarball and the Debian, Ubuntu
+// and SUSE packages use /lib/ufw; Fedora and EPEL use /usr/libexec/ufw.
+// Removing the package deletes it along with the command.
+var ufwInitPaths = []string{"/lib/ufw/ufw-init", "/usr/lib/ufw/ufw-init", "/usr/libexec/ufw/ufw-init"}
+
+// ufwFirstExisting returns the first of paths that exists, or "".
+func ufwFirstExisting(afs afero.Afero, paths []string) (string, error) {
+	for _, p := range paths {
+		ok, err := afs.Exists(p)
+		if err != nil {
+			return "", err
+		}
+		if ok {
+			return p, nil
+		}
+	}
+	return "", nil
+}
 
 type ufwState struct {
-	// binary is the ufw command that was found, empty when ufw is not installed
+	// binary is the ufw command that was found. It is empty when ufw is not
+	// installed, or when only ufw-init was found.
 	binary      string
 	status      string
 	logging     string
@@ -95,9 +118,10 @@ type ufwState struct {
 }
 
 // readUfwState reads the UFW configuration. Removing the ufw package without
-// purging it (dpkg state "rc") deletes the ufw command and unloads its rules
-// but keeps /etc/ufw/ufw.conf, often with ENABLED=yes, so the configuration
-// alone is not proof that UFW is installed.
+// purging it (dpkg state "rc") deletes the ufw command and ufw-init and
+// unloads its rules but keeps /etc/ufw/ufw.conf, often with ENABLED=yes, so
+// the configuration alone is not proof that UFW is installed. UFW reads as
+// installed when either the command or ufw-init is present.
 func readUfwState(afs afero.Afero) (ufwState, error) {
 	var st ufwState
 
@@ -111,19 +135,19 @@ func readUfwState(afs afero.Afero) (ufwState, error) {
 		return st, err
 	}
 
-	for _, p := range ufwBinaryPaths {
-		ok, err := afs.Exists(p)
+	st.binary, err = ufwFirstExisting(afs, ufwBinaryPaths)
+	if err != nil {
+		return st, err
+	}
+	if st.binary == "" {
+		initScript, err := ufwFirstExisting(afs, ufwInitPaths)
 		if err != nil {
 			return st, err
 		}
-		if ok {
-			st.binary = p
-			break
+		if initScript == "" {
+			st.status = "not installed"
+			return st, nil
 		}
-	}
-	if st.binary == "" {
-		st.status = "not installed"
-		return st, nil
 	}
 
 	conf := parseUfwKeyValue(string(confData))
@@ -201,7 +225,7 @@ func (u *mqlUfw) status() (string, error) {
 	if err := u.fetchStatus(); err != nil {
 		return "", err
 	}
-	if u.cacheBinary == "" {
+	if u.cacheStatus == "not installed" {
 		return u.cacheStatus, nil
 	}
 
@@ -214,6 +238,11 @@ func (u *mqlUfw) status() (string, error) {
 	conn, ok := u.MqlRuntime.Connection.(shared.Connection)
 	if !ok || !conn.Capabilities().Has(shared.Capability_RunCommand) {
 		return u.cacheStatus, nil
+	}
+	if u.cacheBinary == "" {
+		// ufw-init is installed but the ufw command is somewhere else, such
+		// as a tarball installed with another prefix
+		return ufwStatusFromUnit(u.cacheStatus, fmt.Errorf("cannot determine whether ufw is active: no ufw command in %s", strings.Join(ufwBinaryPaths, ", ")), u.unitState)
 	}
 	status, err := u.runtimeStatus(u.cacheBinary)
 	if err != nil {
@@ -245,20 +274,25 @@ func (u *mqlUfw) unitState() (string, int64, error) {
 	return cmd.GetStdout().Data, exit.Data, nil
 }
 
-// ufwStatusWithoutUfw answers ufw.status when ufw itself refused to, from
-// the configured state (confStatus, read from ENABLED in ufw.conf) and the
-// output of `systemctl is-active ufw` (unitState). ENABLED=no means
+// ufwStatusWithoutUfw answers ufw.status when ufw itself refused to, through
+// ufwStatusFromUnit. Any ufwErr that is not a refusal is returned as is.
+func ufwStatusWithoutUfw(confStatus string, ufwErr error, unitState func() (string, int64, error)) (string, error) {
+	if !errors.Is(ufwErr, llx.ErrForbidden) {
+		return "", ufwErr
+	}
+	return ufwStatusFromUnit(confStatus, ufwErr, unitState)
+}
+
+// ufwStatusFromUnit answers ufw.status without asking ufw, from the
+// configured state (confStatus, read from ENABLED in ufw.conf) and the output of `systemctl is-active ufw` (unitState). ENABLED=no means
 // `ufw disable` ran, which also unloads the chains. ENABLED=yes reads active
 // only while the unit that loads the chains at boot is running:
 // `systemctl stop ufw` unloads them without touching ufw.conf, and the
 // Fedora and EPEL packages ship ENABLED=yes on a unit that was never
 // started. An inactive unit does not prove the reverse, since `ufw enable`
 // loads the chains without starting the unit, so every other case returns
-// ufwErr. So does any ufwErr that is not a refusal.
-func ufwStatusWithoutUfw(confStatus string, ufwErr error, unitState func() (string, int64, error)) (string, error) {
-	if !errors.Is(ufwErr, llx.ErrForbidden) {
-		return "", ufwErr
-	}
+// ufwErr, the reason ufw could not be asked.
+func ufwStatusFromUnit(confStatus string, ufwErr error, unitState func() (string, int64, error)) (string, error) {
 	if confStatus == "inactive" {
 		return "inactive", nil
 	}
