@@ -488,7 +488,8 @@ func splitDefine(s string) (string, string, bool) {
 func (st *parseState) expandInclude(cfg *Config, pattern string, optional bool) {
 	paths, err := st.globExpand(pattern)
 	if err != nil {
-		// IncludeOptional only tolerates a pattern that matches nothing
+		// A refusal is recorded for Include and IncludeOptional alike:
+		// IncludeOptional only tolerates a pattern that matches nothing.
 		if errors.Is(err, fs.ErrPermission) {
 			cfg.Unreadable = append(cfg.Unreadable, fmt.Errorf("cannot expand Include %s: %w", pattern, err))
 			return
