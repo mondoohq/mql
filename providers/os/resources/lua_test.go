@@ -5,6 +5,7 @@ package resources
 
 import (
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -168,15 +169,31 @@ func TestCollectLuaPackagesRHELPathForms(t *testing.T) {
 	assert.Empty(t, pkgs)
 }
 
-// readDirCounter records every directory opened through it.
+// readDirCounter records every directory opened through it, and every
+// directory whose entries (not just names) were read.
 type readDirCounter struct {
 	afero.Fs
-	opened map[string]int
+	opened  map[string]int
+	entries map[string]int
 }
 
 func (c *readDirCounter) Open(name string) (afero.File, error) {
 	c.opened[name]++
-	return c.Fs.Open(name)
+	f, err := c.Fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return &readDirCountingFile{File: f, counter: c}, nil
+}
+
+type readDirCountingFile struct {
+	afero.File
+	counter *readDirCounter
+}
+
+func (f *readDirCountingFile) Readdir(n int) ([]os.FileInfo, error) {
+	f.counter.entries[f.Name()]++
+	return f.File.Readdir(n)
 }
 
 // A rock tree such as /usr must be read through its lib/luarocks directory,
@@ -196,7 +213,7 @@ func TestCollectLuaPackagesRockTreeSkipsUnrelatedDirectories(t *testing.T) {
 	} {
 		require.NoError(t, afero.WriteFile(mem, p, nil, 0o644))
 	}
-	counter := &readDirCounter{Fs: mem, opened: map[string]int{}}
+	counter := &readDirCounter{Fs: mem, opened: map[string]int{}, entries: map[string]int{}}
 	afs := &afero.Afero{Fs: counter}
 
 	pkgs, _ := collectLuaPackages(afs, "/usr")
@@ -212,4 +229,49 @@ func TestCollectLuaPackagesRockTreeSkipsUnrelatedDirectories(t *testing.T) {
 	require.NoError(t, afero.WriteFile(mem, "/opt/myrocks/serpent/0.30-2/rock_manifest", nil, 0o644))
 	pkgs, _ = collectLuaPackages(&afero.Afero{Fs: mem}, "/opt/myrocks")
 	assert.Equal(t, []string{"serpent@0.30-2"}, names(pkgs))
+}
+
+// Amazon Linux 2023 has no /usr/lib/luarocks: LuaRocks is built into
+// /usr/local. A search of /usr then fell through to reading /usr as a rocks
+// directory under another name, which read every directory two levels down
+// and took 9 to 12 minutes over SSH with --sudo. Fails if collectLuaPackages
+// reads past the first directory of /usr that is not a rock.
+func TestCollectLuaPackagesRockTreeWithoutLuaRocksIsNotARocksDir(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	for _, p := range []string{
+		"/usr/bin/lua",
+		"/usr/bin/luarocks",
+		"/usr/include/openssl/ssl.h",
+		"/usr/lib/python3.9/site-packages/dnf/__init__.py",
+		"/usr/lib64/lua/5.4/lpeg.so",
+		"/usr/share/doc/lua/README",
+		"/usr/local/lib/luarocks/rocks-5.4/manifest",
+		"/usr/local/lib/luarocks/rocks-5.4/argparse/0.7.1-1/argparse-0.7.1-1.rockspec",
+		"/usr/local/lib/luarocks/rocks-5.4/argparse/0.7.1-1/rock_manifest",
+	} {
+		require.NoError(t, afero.WriteFile(mem, p, nil, 0o644))
+	}
+	require.NoError(t, mem.MkdirAll("/usr/games", 0o755))
+	counter := &readDirCounter{Fs: mem, opened: map[string]int{}, entries: map[string]int{}}
+
+	pkgs, _ := collectLuaPackages(&afero.Afero{Fs: counter}, "/usr")
+	assert.Empty(t, pkgs)
+	for _, dir := range []string{"/usr/games", "/usr/include", "/usr/include/openssl", "/usr/lib", "/usr/lib64", "/usr/share", "/usr/local"} {
+		assert.Zero(t, counter.opened[dir], dir)
+	}
+	// over SSH with --sudo, reading the entries of /usr/bin stats every program
+	assert.Zero(t, counter.entries["/usr/bin"], "/usr/bin entries read")
+
+	// the rock tree and its rocks directory are still read
+	pkgs, _ = collectLuaPackages(&afero.Afero{Fs: mem}, "/usr/local")
+	assert.Equal(t, []string{"argparse@0.7.1-1"}, names(pkgs))
+	// a copy of a rocks directory under a name of its own, with its manifest
+	for _, p := range []string{
+		"/srv/rocks-copy/manifest",
+		"/srv/rocks-copy/argparse/0.7.1-1/rock_manifest",
+	} {
+		require.NoError(t, afero.WriteFile(mem, p, nil, 0o644))
+	}
+	pkgs, _ = collectLuaPackages(&afero.Afero{Fs: mem}, "/srv/rocks-copy")
+	assert.Equal(t, []string{"argparse@0.7.1-1"}, names(pkgs))
 }
