@@ -454,6 +454,9 @@ func (c *mqlMssqlDatabase) auditSpecifications() ([]any, error) {
 			if details[specID] == nil {
 				details[specID] = map[string]any{}
 			}
+			// actionGroups is keyed by action name, so an action audited on
+			// several objects keeps one entry (the last row's result);
+			// auditedActions carries one entry per row.
 			details[specID][action] = result
 			actions[specID] = append(actions[specID], auditedAction(action, class, securable, principal, isGroup))
 		}
