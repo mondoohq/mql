@@ -358,6 +358,12 @@ func (r *mqlSystemdResolved) resolvConfMode() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// systemd before 240 does not report the mode, and a resolved that is not
+	// running is not asked for it
+	if g.resolvConfMode == "" {
+		r.ResolvConfMode.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
 	return g.resolvConfMode, nil
 }
 

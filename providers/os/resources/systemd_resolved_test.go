@@ -447,5 +447,52 @@ func TestSystemdResolved_NotRunningIsNotQueried(t *testing.T) {
 	dns := r.GetDns()
 	require.NoError(t, dns.Error)
 	assert.Equal(t, []any{"198.51.100.53"}, dns.Data)
-	assert.Empty(t, r.GetResolvConfMode().Data)
+	mode := r.GetResolvConfMode()
+	require.NoError(t, mode.Error)
+	assert.True(t, mode.IsNull(), "resolvConfMode is null when resolved is not running")
+}
+
+// `resolvectl status` on Rocky Linux 8 (systemd 239) has no "resolv.conf
+// mode" line, so the mode is not known.
+func TestSystemdResolved_Systemd239HasNoResolvConfMode(t *testing.T) {
+	runtime := resolvedMockRuntime(t, map[string]*mock.Command{
+		"systemctl is-active -- systemd-resolved": {},
+		"resolvectl status --no-pager": {Stdout: `Global
+       LLMNR setting: no
+MulticastDNS setting: no
+  DNSOverTLS setting: opportunistic
+      DNSSEC setting: allow-downgrade
+    DNSSEC supported: yes
+         DNS Servers: 192.0.2.53
+          DNS Domain: g04.example
+`},
+	}, map[string]*mock.MockFileData{
+		"/etc/systemd/resolved.conf": resolvedFile("[Resolve]\nDNS=192.0.2.53\n"),
+	})
+
+	raw, err := CreateResource(runtime, "systemd.resolved", nil)
+	require.NoError(t, err)
+	r := raw.(*mqlSystemdResolved)
+
+	assert.Equal(t, "opportunistic", r.GetDnsOverTls().Data)
+	mode := r.GetResolvConfMode()
+	require.NoError(t, mode.Error)
+	assert.True(t, mode.IsNull(), "resolvConfMode is null when systemd does not report it")
+}
+
+// A reported mode is kept.
+func TestSystemdResolved_ResolvConfModeReported(t *testing.T) {
+	runtime := resolvedMockRuntime(t, map[string]*mock.Command{
+		"systemctl is-active -- systemd-resolved": {},
+		"resolvectl status --no-pager":            {Stdout: debian12ResolvectlStatus},
+	}, map[string]*mock.MockFileData{})
+
+	raw, err := CreateResource(runtime, "systemd.resolved", nil)
+	require.NoError(t, err)
+	r := raw.(*mqlSystemdResolved)
+
+	mode := r.GetResolvConfMode()
+	require.NoError(t, mode.Error)
+	assert.False(t, mode.IsNull())
+	assert.Equal(t, "uplink", mode.Data)
 }
