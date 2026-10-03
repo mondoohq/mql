@@ -237,3 +237,29 @@ func TestOpenEulerRebootKernel(t *testing.T) {
 		assert.False(t, required)
 	})
 }
+
+// Fedora 41 and later run dnf5, which has no needs-restarting binary; the
+// check is `dnf needs-restarting -r` from dnf5-plugins. Output of dnf5 5.4.6
+// (dnf5-plugins needs_restarting.cpp), which exits 1 when a reboot is
+// required.
+func TestRhelRebootDnf5NeedsRestarting(t *testing.T) {
+	commands := map[string]*mock.Command{
+		rpmNeedsRestartingCmd: {Stderr: "sh: line 1: needs-restarting: command not found\n", ExitStatus: 127},
+		dnfNeedsRestartingCmd: {
+			Stdout:     "Core libraries or services have been updated since boot-up:\n  * glibc\n\nReboot is required to fully utilize these updates.\nMore information: https://access.redhat.com/solutions/27943\n",
+			Stderr:     "Updating and loading repositories:\nRepositories loaded.\n",
+			ExitStatus: 1,
+		},
+		rpmQueryKernelCmd: {Stdout: "kernel-core 0:7.2.8-200.fc44 x86_64__Fedora Project__The Linux kernel__GPL-2.0-only__1790837000\n"},
+		"uname -r":        {Stdout: "7.2.8-200.fc44.x86_64\n"},
+	}
+	required, err := rhelRebootMock(t, commands).RebootPending()
+	require.NoError(t, err)
+	assert.True(t, required)
+
+	// The binary's verdict is used when there is one; dnf is not asked.
+	commands[rpmNeedsRestartingCmd] = &mock.Command{Stdout: "No core libraries or services have been updated since boot-up.\nReboot should not be necessary.\n"}
+	required, err = rhelRebootMock(t, commands).RebootPending()
+	require.NoError(t, err)
+	assert.False(t, required)
+}
