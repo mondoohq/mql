@@ -39,3 +39,21 @@ func TestSudoersIncludedirRefusal(t *testing.T) {
 		assert.NoError(t, sudoersIncludedirRefusal(fsys, "/etc/sudoers.d"))
 	})
 }
+
+func TestSudoersIncludedirFiles(t *testing.T) {
+	// /etc/sudoers.d on RHEL 9 after the sweep's fixtures; `visudo -c` parsed
+	// README, mqltest, mqlnew and mqllink and none of the others
+	listing := []string{
+		"/etc/sudoers.d/README",
+		"/etc/sudoers.d/mqltest",
+		"/etc/sudoers.d/mql.ignored",
+		"/etc/sudoers.d/mqlbackup~",
+		"/etc/sudoers.d/mqlnew",
+		"/etc/sudoers.d/mqllink",
+		"/etc/sudoers.d/mqlsub/inner",
+	}
+	assert.Equal(t,
+		[]string{"/etc/sudoers.d/README", "/etc/sudoers.d/mqltest", "/etc/sudoers.d/mqlnew", "/etc/sudoers.d/mqllink"},
+		sudoersIncludedirFiles("/etc/sudoers.d", listing))
+	assert.Empty(t, sudoersIncludedirFiles("/etc/sudoers.d", nil))
+}

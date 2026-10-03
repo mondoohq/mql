@@ -13,6 +13,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"golang.org/x/crypto/ssh"
@@ -202,7 +203,7 @@ func (r *mqlPrivatekey) parseKey() (privateKeyInfo, error) {
 		if pemData.Data == "" {
 			return
 		}
-		r.parsed, r.parseErr = inspectPrivateKey([]byte(pemData.Data))
+		r.parsed = unknownIfUnparsable(inspectPrivateKey([]byte(pemData.Data)))
 	})
 	return r.parsed, r.parseErr
 }
@@ -211,8 +212,20 @@ func (r *mqlPrivatekey) parseKey() (privateKeyInfo, error) {
 // already made on this resource's PEM, so parseKey does not parse it again.
 func (r *mqlPrivatekey) seedParsedKey(info privateKeyInfo, err error) {
 	r.parseOnce.Do(func() {
-		r.parsed, r.parseErr = info, err
+		r.parsed = unknownIfUnparsable(info, err)
 	})
+}
+
+// unknownIfUnparsable turns a key that cannot be decoded into one whose
+// algorithm and size are unknown (null), instead of an error. One such file,
+// for example an explicit-curve EC key from OpenSSL 1.0.2 that OpenSSH
+// rejects too, must not fail publicKeyAlgorithm for every key in ~/.ssh.
+func unknownIfUnparsable(info privateKeyInfo, err error) privateKeyInfo {
+	if err != nil {
+		log.Debug().Err(err).Msg("privatekey> cannot decode key, algorithm and size are unknown")
+		return privateKeyInfo{}
+	}
+	return info
 }
 
 func (r *mqlPrivatekey) publicKeyAlgorithm() (string, error) {
