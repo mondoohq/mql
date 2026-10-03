@@ -341,3 +341,25 @@ func TestShowTimerPropertiesMonotonicOnOldSystemd(t *testing.T) {
 	assert.NotContains(t, props, "OnCalendar")
 	assert.Equal(t, "dnf-makecache.service", props["Unit"])
 }
+
+func TestParseSystemdTimerAndSocketListUnitsJobColumn(t *testing.T) {
+	timers, err := ParseSystemdTimerListUnits(strings.NewReader(strings.Join([]string{
+		"  UNIT             LOAD   ACTIVE   SUB     JOB  DESCRIPTION",
+		"  g04-cal.timer    loaded active   waiting      g04 calendar timer",
+		"  g04-mono.timer   loaded inactive dead    stop g04 monotonic timer",
+		"",
+	}, "\n")))
+	require.NoError(t, err)
+	assert.Equal(t, "g04 calendar timer", timers["g04-cal"].Description)
+	assert.Equal(t, "g04 monotonic timer", timers["g04-mono"].Description)
+
+	sockets, err := ParseSystemdSocketListUnits(strings.NewReader(strings.Join([]string{
+		"  UNIT             LOAD   ACTIVE     SUB       JOB   DESCRIPTION",
+		"  g04.socket       loaded activating listening start g04 socket",
+		"● g04-svc.socket   loaded failed     failed          g04 socket activating other service",
+		"",
+	}, "\n")))
+	require.NoError(t, err)
+	assert.Equal(t, "g04 socket", sockets["g04"].Description)
+	assert.Equal(t, "g04 socket activating other service", sockets["g04-svc"].Description)
+}

@@ -5,6 +5,7 @@ package services
 
 import (
 	"errors"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -544,4 +545,29 @@ func TestParseServiceSystemDUnitFilesErrorKinds(t *testing.T) {
 			"a broken stdout must not be mistaken for systemd being absent")
 		assert.ErrorIs(t, err, readErr, "the underlying read error stays inspectable")
 	})
+}
+
+// `systemctl list-units --type service --all` on Rocky Linux 9 (systemd 252)
+// while g04-slow.service has a queued start job, which adds a JOB column.
+func TestParseSystemdListUnitsJobColumn(t *testing.T) {
+	data, err := os.ReadFile("testdata/rocky9-list-units-job-column.txt")
+	require.NoError(t, err)
+
+	services, err := ParseSystemdListUnits(strings.NewReader(string(data)))
+	require.NoError(t, err)
+
+	require.Contains(t, services, "g04-slow")
+	assert.Equal(t, "g04 slow start job", services["g04-slow"].Description)
+	assert.False(t, services["g04-slow"].Running)
+	// rows without a job, and failed rows marked with "●", keep their whole
+	// description
+	assert.Equal(t, "g04 denylist unit", services["g04-deny"].Description)
+	assert.Equal(t, "g04 failing unit", services["g04-fail"].Description)
+	assert.Equal(t, "dnf makecache", services["dnf-makecache"].Description)
+}
+
+func TestSystemdListUnitsJobColumn(t *testing.T) {
+	assert.Equal(t, -1, systemdListUnitsJobColumn("  UNIT          LOAD   ACTIVE SUB     DESCRIPTION\n  a.service     loaded active running start job\n"))
+	assert.Equal(t, -1, systemdListUnitsJobColumn(""))
+	assert.Equal(t, 48, systemdListUnitsJobColumn("  UNIT                LOAD   ACTIVE     SUB     JOB   DESCRIPTION\n"))
 }
