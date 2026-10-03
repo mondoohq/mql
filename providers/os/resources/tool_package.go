@@ -4,10 +4,13 @@
 package resources
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/afero"
 
@@ -254,7 +257,7 @@ func resolveToolPackage(runtime *plugin.Runtime, configPath string, spec toolPac
 	// (c) Not attributable to any manager — detect presence and, where
 	// possible, a version, then synthesize an abstract package. An installed
 	// editor extension is both a presence signal and the version source.
-	configFound := configPresent(runtime, configPath, spec.configIsFile)
+	configFound, configErr := configPresent(runtime, configPath, spec.configIsFile)
 	installed := configFound && !spec.configShared
 	version := ""
 	if len(spec.vscodeExtensionIDs) > 0 {
@@ -285,6 +288,11 @@ func resolveToolPackage(runtime *plugin.Runtime, configPath string, spec toolPac
 			dirs = append(dirs, u.home)
 		}
 		installed = findHomeBinary(connectionAfs(runtime), dirs, spec.homeBinaries) != ""
+	}
+	if !installed && configErr != nil {
+		// Nothing else showed the tool installed, and the config path could
+		// not be read: "not installed" would be a guess.
+		return nil, configErr
 	}
 	if (installed || configFound) && version == "" && spec.inferVersion != nil {
 		v, err := spec.inferVersion(runtime, configPath)
@@ -377,6 +385,9 @@ func resolveOSRuntimePackage(runtime *plugin.Runtime) (*mqlPackage, error) {
 		return nil, nil // host undeterminable; runtime is optional
 	}
 	pf := conn.Asset().Platform
+	if pf.Name == "" {
+		return nil, errPlatformUnknown
+	}
 	purlStr, err := purl.NewPlatformPurl(pf)
 	if err != nil {
 		purlStr = ""
@@ -525,20 +536,45 @@ func firstSemverToken(out string) string {
 	return ""
 }
 
+// errPlatformUnknown is returned for an OS runtime when the asset's platform
+// was not detected: a package named "" with the purl "pkg:platform/" would
+// identify no operating system.
+var errPlatformUnknown = errors.New("cannot report the operating system as the runtime: the asset's platform is not known")
+
 // configPresent reports whether configPath exists on the target as a directory,
-// or as a regular file when isFile is set.
-func configPresent(runtime *plugin.Runtime, configPath string, isFile bool) bool {
+// or as a regular file when isFile is set. Only an absent path is an absent
+// config; a stat that failed otherwise is returned (see configStatError).
+func configPresent(runtime *plugin.Runtime, configPath string, isFile bool) (bool, error) {
 	if configPath == "" {
-		return false
+		return false, nil
 	}
 	info, err := connectionAfs(runtime).Stat(configPath)
 	if err != nil {
-		return false
+		return false, configStatError(err)
 	}
 	if isFile {
-		return info.Mode().IsRegular()
+		return info.Mode().IsRegular(), nil
 	}
-	return info.IsDir()
+	return info.IsDir(), nil
+}
+
+// configStatError turns the error of a stat on a tool's config path into the
+// error the package lookup returns: nil when the path is absent (or sits
+// under a file), so the tool reads as not installed. A refused stat is a
+// refusal (ADR 046), returned only with structured errors on, since v13 read
+// it as absent. Anything else, such as a transport that stalled, is returned
+// as is: "not installed" would be a confident answer nobody measured.
+func configStatError(err error) error {
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+		return nil
+	}
+	if errors.Is(err, fs.ErrPermission) {
+		if !plugin.StructuredErrors() {
+			return nil
+		}
+		return llx.Forbidden(err)
+	}
+	return err
 }
 
 // findVSCodeExtension looks for an installed VS Code-family extension with one
