@@ -211,41 +211,48 @@ func (j *mqlJboss) fs() afero.Fs {
 	return conn.FileSystem()
 }
 
-// jbossUnitScans caches the systemd unit scan per runtime (one per
-// connection): every
-// jboss(home:) instance asks the same question of the same unit files. The
-// os provider has no Disconnect hook, so entries live as long as the
-// process, which is one scan.
-var jbossUnitScans sync.Map // map[*plugin.Runtime][]jboss.Unit
+// jbossUnitScans caches the systemd unit scan per runtime, which is one per
+// connection: every jboss(home:) instance asks the same question of the same
+// unit files. It is keyed by the runtime rather than the connection ID, which
+// is not unique across connections in every setup (the mock connections of
+// the tests all have ID 0). The os provider has no Disconnect hook, so
+// entries live as long as the process, which is one scan.
+var jbossUnitScans sync.Map // map[*plugin.Runtime]*jbossUnitScan
+
+type jbossUnitScan struct {
+	once  sync.Once
+	units []jboss.Unit
+}
 
 // systemdUnits returns the units that start JBoss on the target, read once
-// per connection. Where commands run, one grep names the candidate unit
-// files, so the others are never read.
+// per connection, also when several fields ask at the same time. Where
+// commands run, one grep names the candidate unit files, so the others are
+// never read.
 func (j *mqlJboss) systemdUnits() []jboss.Unit {
 	conn, ok := j.MqlRuntime.Connection.(shared.Connection)
 	if !ok {
 		return jboss.SystemdUnits(j.fs(), nil)
 	}
-	if v, ok := jbossUnitScans.Load(j.MqlRuntime); ok {
-		return v.([]jboss.Unit)
-	}
-	var filter jboss.UnitFilter
-	if conn.Capabilities().Has(shared.Capability_RunCommand) {
-		filter = func() ([]string, bool) {
-			cmd, err := conn.RunCommand(jboss.UnitGrepCommand)
-			if err != nil || cmd.ExitStatus != 0 {
-				return nil, false
+	v, _ := jbossUnitScans.LoadOrStore(j.MqlRuntime, &jbossUnitScan{})
+	scan := v.(*jbossUnitScan)
+	scan.once.Do(func() {
+		var filter jboss.UnitFilter
+		if conn.Capabilities().Has(shared.Capability_RunCommand) {
+			filter = func() ([]string, bool) {
+				cmd, err := conn.RunCommand(jboss.UnitGrepCommand)
+				if err != nil || cmd.ExitStatus != 0 {
+					return nil, false
+				}
+				out, err := io.ReadAll(cmd.Stdout)
+				if err != nil {
+					return nil, false
+				}
+				return jboss.ParseUnitGrepOutput(string(out))
 			}
-			out, err := io.ReadAll(cmd.Stdout)
-			if err != nil {
-				return nil, false
-			}
-			return jboss.ParseUnitGrepOutput(string(out))
 		}
-	}
-	units := jboss.SystemdUnits(j.fs(), filter)
-	jbossUnitScans.Store(j.MqlRuntime, units)
-	return units
+		scan.units = jboss.SystemdUnits(j.fs(), filter)
+	})
+	return scan.units
 }
 
 // discover walks the discovery order: the running JBoss process, then the

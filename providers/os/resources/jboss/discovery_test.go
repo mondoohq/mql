@@ -379,7 +379,7 @@ type countingFs struct {
 }
 
 func (c *countingFs) Open(name string) (afero.File, error) {
-	if fi, err := c.Fs.Stat(name); err == nil && !fi.IsDir() {
+	if fi, err := c.Stat(name); err == nil && !fi.IsDir() {
 		c.reads++
 	}
 	return c.Fs.Open(name)

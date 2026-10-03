@@ -312,9 +312,9 @@ func ParseUnitGrepOutput(out string) ([]string, bool) {
 	done := false
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
-		switch {
-		case line == "":
-		case line == UnitGrepDone:
+		switch line {
+		case "":
+		case UnitGrepDone:
 			done = true
 		default:
 			paths = append(paths, line)
