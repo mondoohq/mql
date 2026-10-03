@@ -5,6 +5,8 @@ package apache2
 
 import (
 	"path"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -93,6 +95,13 @@ type ParseOptions struct {
 	// sysconfig settings this way.
 	PreDirectives  []string
 	PostDirectives []string
+	// Version is the httpd version ("2.4.62") that <IfVersion> is evaluated
+	// against. When empty, <IfVersion> contents always apply.
+	Version string
+	// FileExists reports whether a path exists, for <IfFile>. A relative path
+	// is relative to ServerRoot and left to FileExists to resolve. When nil,
+	// <IfFile> contents always apply.
+	FileExists func(string) bool
 }
 
 // parseState is the evaluation state threaded through a parse: what has been
@@ -108,6 +117,9 @@ type parseState struct {
 	// modules holds every name <IfModule> accepts for a loaded module: the
 	// module identifier ("ssl_module") and its source file ("mod_ssl.c").
 	modules map[string]bool
+	// version is ParseOptions.Version, and fileExists ParseOptions.FileExists.
+	version    string
+	fileExists func(string) bool
 	// visited guards against include cycles (a file that includes itself, or
 	// a loop across files), which would otherwise recurse until the stack
 	// overflows.
@@ -127,6 +139,8 @@ func newParseState(fileContent fileContentFunc, globExpand globExpandFunc, vars 
 		defines:     map[string]bool{},
 		modules:     map[string]bool{},
 		visited:     map[string]bool{},
+		version:     opts.Version,
+		fileExists:  opts.FileExists,
 	}
 	for _, d := range opts.Defines {
 		st.defines[d] = true
@@ -199,8 +213,9 @@ func moduleIdentifierFromSource(src string) string {
 // holds reports whether a conditional container's contents apply. Apache
 // decides <IfModule> and <IfDefine> when it reads the container, against what
 // has been loaded and defined up to that point; names are case-sensitive and
-// a leading "!" negates the test. The other containers are not evaluated and
-// their contents always apply.
+// a leading "!" negates the test. <IfVersion> is decided against the httpd
+// version and <IfFile> against the filesystem, when those are known. The
+// other containers are not evaluated and their contents always apply.
 func (st *parseState) holds(tag, arg string) bool {
 	if st == nil {
 		return true
@@ -212,8 +227,123 @@ func (st *parseState) holds(tag, arg string) bool {
 	case "ifdefine":
 		name, negate := conditionArg(arg)
 		return st.defines[name] != negate
+	case "ifversion":
+		return st.versionHolds(arg)
+	case "iffile":
+		if st.fileExists == nil {
+			return true
+		}
+		name, negate := conditionArg(arg)
+		name = strings.Trim(name, `"`)
+		return st.fileExists(name) != negate
 	}
 	return true
+}
+
+// versionHolds evaluates <IfVersion [[!]operator] version> the way mod_version
+// does: the operator defaults to "=", a version given as major or major.minor
+// reads the missing parts as 0, "=" with /regex/ and "~" with regex match the
+// version string, and "!" negates. An argument httpd would reject, or an
+// unknown httpd version, leaves the contents applying.
+func (st *parseState) versionHolds(arg string) bool {
+	if st.version == "" {
+		return true
+	}
+	fields := strings.Fields(arg)
+	op, want := "=", ""
+	switch len(fields) {
+	case 1:
+		want = fields[0]
+	case 2:
+		op, want = fields[0], fields[1]
+	default:
+		return true
+	}
+	negate := false
+	if rest, ok := strings.CutPrefix(op, "!"); ok && rest != "" {
+		negate, op = true, rest
+	}
+
+	var result bool
+	switch op {
+	case "=", "==":
+		if len(want) >= 2 && want[0] == '/' && want[len(want)-1] == '/' {
+			re, err := regexp.Compile(want[1 : len(want)-1])
+			if err != nil {
+				return true
+			}
+			result = re.MatchString(st.version)
+			break
+		}
+		cmp, ok := compareVersion(st.version, want)
+		if !ok {
+			return true
+		}
+		result = cmp == 0
+	case "~":
+		re, err := regexp.Compile(want)
+		if err != nil {
+			return true
+		}
+		result = re.MatchString(st.version)
+	case "<", "<=", ">", ">=":
+		cmp, ok := compareVersion(st.version, want)
+		if !ok {
+			return true
+		}
+		switch op {
+		case "<":
+			result = cmp < 0
+		case "<=":
+			result = cmp <= 0
+		case ">":
+			result = cmp > 0
+		case ">=":
+			result = cmp >= 0
+		}
+	default:
+		return true
+	}
+	return result != negate
+}
+
+// compareVersion compares the httpd version have with want, both
+// major[.minor[.patch]] with missing parts read as 0. It reports false when
+// either is not of that form.
+func compareVersion(have, want string) (int, bool) {
+	h, ok := versionTriple(have)
+	if !ok {
+		return 0, false
+	}
+	w, ok := versionTriple(want)
+	if !ok {
+		return 0, false
+	}
+	for i := range h {
+		if h[i] != w[i] {
+			if h[i] > w[i] {
+				return 1, true
+			}
+			return -1, true
+		}
+	}
+	return 0, true
+}
+
+func versionTriple(v string) ([3]int, bool) {
+	var out [3]int
+	parts := strings.Split(v, ".")
+	if len(parts) == 0 || len(parts) > 3 {
+		return out, false
+	}
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 || p == "" || p[0] == '+' {
+			return out, false
+		}
+		out[i] = n
+	}
+	return out, true
 }
 
 func conditionArg(arg string) (string, bool) {
@@ -801,9 +931,10 @@ func parseBlockOpen(line string) (string, string) {
 // transparentContainers are block directives whose contents belong to the
 // enclosing scope rather than introducing a scope of their own.
 //
-// <IfModule> and <IfDefine> are evaluated (see parseState.holds); a container
-// whose test fails contributes nothing. <IfVersion>, <IfFile>, <IfDirective>
-// and <IfSection> are not evaluated and their contents always apply.
+// <IfModule>, <IfDefine>, <IfVersion> and <IfFile> are evaluated (see
+// parseState.holds); a container whose test fails contributes nothing.
+// <IfDirective> and <IfSection> are not evaluated and their contents always
+// apply.
 //
 // The Require containers group access-control directives; the grants inside
 // them are the access-control answer, so they are hoisted into the parent

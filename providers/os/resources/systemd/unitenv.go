@@ -231,6 +231,12 @@ func DropInDirsForVersion(systemdVersion int, typeLevelBackport bool) DropInDirs
 	}
 }
 
+// FindDropIns returns the *.conf drop-ins systemd applies to a unit, in the
+// order it applies them (see findDropIns).
+func FindDropIns(afs *afero.Afero, unitName string, dirs DropInDirs) []string {
+	return findDropIns(afs, unitName, dirs)
+}
+
 // findDropIns collects the *.conf drop-ins systemd applies to a unit, as
 // systemd.unit(5) describes and `systemctl show -p DropInPaths` reports them.
 //

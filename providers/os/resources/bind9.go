@@ -17,6 +17,7 @@ import (
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/bind9"
 	"go.mondoo.com/mql/providers/os/resources/haproxy"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
 	"go.mondoo.com/mql/types"
 )
 
@@ -142,10 +143,10 @@ var bind9ServiceUnits = []string{"named.service", "bind9.service"}
 // default. The command line comes from the running named when there is one,
 // otherwise from the systemd service that starts it, with OPTIONS from
 // /etc/default/named, /etc/default/bind9 or /etc/sysconfig/named expanded.
-func bind9LaunchConfig(afs *afero.Afero) string {
+func bind9LaunchConfig(afs *afero.Afero, dirs systemd.DropInDirs) string {
 	conf, running := bind9ProcessConfig(afs, bind9PidFile)
 	if !running {
-		if argv := systemdServiceArgv(afs, bind9ServiceUnits...); len(argv) > 0 {
+		if argv := systemdServiceArgv(afs, dirs, bind9ServiceUnits...); len(argv) > 0 {
 			conf = bind9.ConfigFromArgs(argv[1:])
 		}
 	}
@@ -185,7 +186,8 @@ func bind9ProcessConfig(afs *afero.Afero, pidFile string) (conf string, running 
 func (b *mqlBind9) file() (*mqlFile, error) {
 	conn := b.MqlRuntime.Connection.(shared.Connection)
 	path := bind9ConfPath(conn)
-	if launched := bind9LaunchConfig(&afero.Afero{Fs: conn.FileSystem()}); launched != "" {
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	if launched := bind9LaunchConfig(afs, systemdDropInDirs(b.MqlRuntime, afs)); launched != "" {
 		path = launched
 	}
 	f, err := CreateResource(b.MqlRuntime, "file", map[string]*llx.RawData{
