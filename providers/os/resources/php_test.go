@@ -6,6 +6,8 @@ package resources
 import (
 	"testing"
 
+	"github.com/spf13/afero"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/resources/languages"
@@ -57,4 +59,30 @@ func TestPhpPackageWithoutLicenseIsEmpty(t *testing.T) {
 	require.Empty(t, pkg.License.Data)
 	require.Empty(t, pkg.Description.Data)
 	require.True(t, pkg.License.IsSet(), "the field must be set, so a query reads \"\" rather than erroring")
+}
+
+// Fails if /srv/www/htdocs is dropped from defaultPhpPaths: a composer.lock in
+// SUSE's document root was never read by the default scan.
+func TestPhpDefaultsSUSEDocroot(t *testing.T) {
+	mockFS := afero.NewMemMapFs()
+	// trimmed from the composer.lock in /srv/www/htdocs on a SLES 15 SP7 host
+	require.NoError(t, afero.WriteFile(mockFS, "/srv/www/htdocs/composer.lock", []byte(`{
+    "content-hash": "af8e842d49ff6d4bd3a16a4c5114ab90",
+    "packages": [
+        {
+            "name": "composer/ca-bundle",
+            "version": "1.5.14"
+        }
+    ],
+    "packages-dev": []
+}`), 0o644))
+
+	r := &mqlPhpPackages{MqlRuntime: memFSRuntime(t, mockFS)}
+	require.NoError(t, r.gatherData())
+	require.Len(t, r.List.Data, 1)
+	pkg := r.List.Data[0].(*mqlPhpPackage)
+	assert.Equal(t, "composer/ca-bundle", pkg.Name.Data)
+	assert.Equal(t, "1.5.14", pkg.Version.Data)
+	require.Len(t, r.Files.Data, 1)
+	assert.Equal(t, "/srv/www/htdocs/composer.lock", r.Files.Data[0].(*mqlPkgFileInfo).Path.Data)
 }
