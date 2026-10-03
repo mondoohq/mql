@@ -279,7 +279,9 @@ func (f *mqlFirefox) addons() ([]any, error) {
 				continue
 			}
 
-			for _, file := range fileList.Data {
+			// Profiles registered with an absolute path live outside browserDir.
+			profileFiles := append(append([]any{}, fileList.Data...), firefoxAbsoluteProfileFiles(f.MqlRuntime, afs, browserDir, fileList.Data)...)
+			for _, file := range profileFiles {
 				f := file.(*mqlFile)
 				extensionsPath := f.GetPath()
 				if extensionsPath.Error != nil {
@@ -310,7 +312,7 @@ func (f *mqlFirefox) addons() ([]any, error) {
 					}
 
 					// Create unique key including user and browser to avoid deduplication across users
-					uniqueKey := u.name + "|" + browserCfg.name + "|" + profileName + "|" + addon.ID
+					uniqueKey := firefoxAddonKey(u.name, browserCfg.name, filepath.Dir(extensionsPath.Data), addon.ID)
 					if seen[uniqueKey] {
 						continue
 					}
