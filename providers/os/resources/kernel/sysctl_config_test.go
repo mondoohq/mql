@@ -196,3 +196,114 @@ net.ipv4.conf.*.rp_filter = 3
 
 	assert.Equal(t, []string{"net.ipv4.conf.*.rp_filter", "net.ipv4.conf.e*.rp_filter"}, cfg.Names())
 }
+
+// The configuration file from the RHEL 7 and RHEL 8 reproductions, after an
+// explicit kernel.kptr_restrict = 1 in an earlier file.
+var legacySysctlFiles = []sysctlFile{
+	{"/etc/sysctl.d/90-g01.conf", "kernel.kptr_restrict = 1\n"},
+	{"/etc/sysctl.d/91-g01dash.conf", `-kernel.kptr_restrict = 2
+net.ipv4.conf.*.log_martians = 1
+-net.ipv4.conf.lo.log_martians
+`},
+}
+
+func parseSysctlFilesWith(t *testing.T, features SysctlFeatures, files ...sysctlFile) *SysctlConfig {
+	t.Helper()
+	cfg := NewSysctlConfig()
+	cfg.Features = features
+	for _, f := range files {
+		require.NoError(t, cfg.Parse(strings.NewReader(f.content), f.path))
+	}
+	return cfg
+}
+
+// systemd 219 (RHEL 7) knows neither a "-" prefix nor globs. It wrote "2" to
+// /proc/sys/-kernel/kptr_restrict and "1" to the literal path
+// net/ipv4/conf/*/log_martians, both failed, and the live values stayed 1
+// and 0.
+func TestSysctlConfigSystemd219(t *testing.T) {
+	cfg := parseSysctlFilesWith(t, SysctlFeatures{}, legacySysctlFiles...)
+
+	v, ok := effectiveValue(cfg, "kernel.kptr_restrict")
+	assert.True(t, ok)
+	assert.Equal(t, "1", v)
+
+	_, ok = effectiveValue(cfg, "net.ipv4.conf.eth0.log_martians")
+	assert.False(t, ok)
+
+	// The dashed key is a parameter of its own, which no kernel has.
+	settings, i := cfg.Lookup("-kernel.kptr_restrict")
+	require.Equal(t, 0, i)
+	assert.Equal(t, "-kernel.kptr_restrict", settings[0].Key)
+	assert.False(t, settings[0].IgnoreErrors)
+
+	// The glob is a literal name too, listed on its own, and the exclusion
+	// line is not an assignment.
+	assert.False(t, cfg.IsGlob("net.ipv4.conf.*.log_martians"))
+	v, ok = effectiveValue(cfg, "net.ipv4.conf.*.log_martians")
+	assert.True(t, ok)
+	assert.Equal(t, "1", v)
+	assert.Empty(t, cfg.Exclusions)
+}
+
+// systemd 239 on RHEL 8 has the "-" prefix backported, not globs: it set
+// kernel.kptr_restrict to 2 and logged "Couldn't write '1' to
+// 'net/ipv4/conf/*/log_martians', ignoring".
+func TestSysctlConfigSystemdDashWithoutGlobs(t *testing.T) {
+	cfg := parseSysctlFilesWith(t, SysctlFeatures{IgnoreErrorsPrefix: true}, legacySysctlFiles...)
+
+	v, ok := effectiveValue(cfg, "kernel.kptr_restrict")
+	assert.True(t, ok)
+	assert.Equal(t, "2", v)
+	settings, i := cfg.Lookup("kernel.kptr_restrict")
+	assert.True(t, settings[i].IgnoreErrors)
+
+	_, ok = effectiveValue(cfg, "net.ipv4.conf.eth0.log_martians")
+	assert.False(t, ok)
+	assert.Empty(t, cfg.Exclusions)
+}
+
+func TestSysctlConfigSystemdModern(t *testing.T) {
+	cfg := parseSysctlFiles(t, legacySysctlFiles...)
+
+	v, _ := effectiveValue(cfg, "kernel.kptr_restrict")
+	assert.Equal(t, "2", v)
+	v, ok := effectiveValue(cfg, "net.ipv4.conf.eth0.log_martians")
+	assert.True(t, ok)
+	assert.Equal(t, "1", v)
+	_, ok = effectiveValue(cfg, "net.ipv4.conf.lo.log_martians")
+	assert.False(t, ok)
+}
+
+func TestParseSystemdSysctlFeatures(t *testing.T) {
+	none := SysctlFeatures{}
+	dash := SysctlFeatures{IgnoreErrorsPrefix: true}
+	all := SysctlFeatures{IgnoreErrorsPrefix: true, Globs: true}
+	for out, want := range map[string]SysctlFeatures{
+		// RHEL 7
+		"systemd 219\n+PAM +AUDIT +SELINUX +IMA -APPARMOR +SMACK +SYSVINIT\n": none,
+		// Debian 9, Ubuntu 18.04, Debian 10
+		"systemd 232\n+PAM +AUDIT\n":          none,
+		"systemd 237\n+PAM +AUDIT +SELINUX\n": none,
+		"systemd 241 (241)\n+PAM +AUDIT\n":    none,
+		"systemd 242\n":                       none,
+		// RHEL 8 before and after the backport of the "-" prefix
+		"systemd 239 (239-51.el8_5.2)\n+PAM\n":    none,
+		"systemd 239 (239-57.el8)\n+PAM\n":        dash,
+		"systemd 239 (239-82.el8_10.17)\n+PAM\n":  dash,
+		"systemd 243\n":                           dash,
+		"systemd 244 (244.1-1)\n":                 dash,
+		"systemd 245 (245.4-4ubuntu3.24)\n+PAM\n": all,
+		"systemd 252 (252-51.el9_6.1)\n":          all,
+		"systemd 258 (258.2-1.fc44)\n":            all,
+	} {
+		got, ok := ParseSystemdSysctlFeatures(out)
+		assert.True(t, ok, out)
+		assert.Equal(t, want, got, out)
+	}
+
+	for _, out := range []string{"", "bash: systemd-sysctl: command not found\n", "systemd\n"} {
+		_, ok := ParseSystemdSysctlFeatures(out)
+		assert.False(t, ok, out)
+	}
+}

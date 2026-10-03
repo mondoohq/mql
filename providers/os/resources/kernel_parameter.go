@@ -5,14 +5,18 @@ package resources
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"sort"
 	"strconv"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/kernel"
+	"go.mondoo.com/mql/types"
 )
 
 // kernelSysctls is the live and configured state of every kernel parameter,
@@ -26,7 +30,14 @@ type kernelSysctls struct {
 	// an image scan. live is empty then, and every parameter's `active` is
 	// null rather than false.
 	observable bool
-	config     *kernel.SysctlConfig
+	// denied holds the parameters the running kernel has but the scan was
+	// not permitted to read.
+	denied map[string]bool
+	config *kernel.SysctlConfig
+	// exists reports whether the running kernel has a parameter that is
+	// neither live nor denied, such as one sysctl could not read for
+	// another reason.
+	exists func(name string) bool
 }
 
 type mqlKernelParameterSettingInternal struct {
@@ -37,7 +48,7 @@ func (k *mqlKernel) loadSysctls() (*kernelSysctls, error) {
 	k.sysctlOnce.Do(func() {
 		conn := k.MqlRuntime.Connection.(shared.Connection)
 
-		live, observable, err := readLiveSysctls(conn)
+		live, denied, observable, err := readLiveSysctls(conn)
 		if err != nil {
 			k.sysctlErr = err
 			return
@@ -47,7 +58,13 @@ func (k *mqlKernel) loadSysctls() (*kernelSysctls, error) {
 			k.sysctlErr = err
 			return
 		}
-		k.sysctlState = &kernelSysctls{live: live, observable: observable, config: config}
+		k.sysctlState = &kernelSysctls{
+			live:       live,
+			denied:     denied,
+			observable: observable,
+			config:     config,
+			exists:     procSysExists(conn),
+		}
 	})
 	return k.sysctlState, k.sysctlErr
 }
@@ -61,31 +78,81 @@ func (k *mqlKernel) loadSysctls() (*kernelSysctls, error) {
 // rather than reported as "no kernel". A running Linux, macOS or BSD kernel
 // exposes hundreds of parameters, so an empty result also means nothing was
 // read: on Linux the /proc/sys walk skips entries it can't read rather than
-// failing.
-func readLiveSysctls(conn shared.Connection) (map[string]string, bool, error) {
+// failing. Those it was not permitted to read are returned as denied.
+func readLiveSysctls(conn shared.Connection) (map[string]string, map[string]bool, bool, error) {
 	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
 		if _, err := conn.FileSystem().Stat("/proc/sys"); err != nil {
-			return map[string]string{}, false, nil
+			return map[string]string{}, nil, false, nil
 		}
 	}
 
 	mm, err := kernel.ResolveManager(conn)
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
-	params, err := mm.Parameters()
+
+	var params map[string]string
+	var deniedNames []string
+	if lm, ok := mm.(*kernel.LinuxKernelManager); ok {
+		params, deniedNames, err = lm.ParametersWithDenied()
+	} else {
+		params, err = mm.Parameters()
+	}
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 	if len(params) == 0 {
-		return map[string]string{}, false, nil
+		return map[string]string{}, nil, false, nil
 	}
 
 	live := make(map[string]string, len(params))
 	for name, value := range params {
 		live[name] = kernel.NormalizeSysctlValue(value)
 	}
-	return live, true, nil
+	denied := make(map[string]bool, len(deniedNames))
+	for _, name := range deniedNames {
+		denied[kernel.NormalizeSysctlName(name)] = true
+	}
+	return live, denied, true, nil
+}
+
+// procSysExists returns a function that reports whether a Linux kernel has
+// a parameter, from its file under /proc/sys. On other platforms every
+// parameter the kernel has is live, and it reports false.
+func procSysExists(conn shared.Connection) func(string) bool {
+	if !conn.Asset().Platform.IsFamily("linux") {
+		return func(string) bool { return false }
+	}
+	fs := conn.FileSystem()
+	return func(name string) bool {
+		fi, err := fs.Stat(kernel.SysctlPath(name))
+		return err == nil && !fi.IsDir()
+	}
+}
+
+// systemdSysctlFeatures returns the sysctl.d syntax the target's
+// systemd-sysctl understands, from its version. systemd before 245 reads no
+// globs and no exclusions, and before 243 a leading "-" is part of the key.
+// When the version can't be read, the current syntax is assumed.
+func systemdSysctlFeatures(conn shared.Connection, binary string) kernel.SysctlFeatures {
+	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return kernel.ModernSysctlFeatures
+	}
+	cmd, err := conn.RunCommand(binary + " --version")
+	if err != nil || cmd.ExitStatus != 0 {
+		log.Debug().Err(err).Str("binary", binary).Msg("could not read the systemd-sysctl version, assuming current syntax")
+		return kernel.ModernSysctlFeatures
+	}
+	out, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		return kernel.ModernSysctlFeatures
+	}
+	features, ok := kernel.ParseSystemdSysctlFeatures(string(out))
+	if !ok {
+		log.Debug().Str("binary", binary).Msg("could not parse the systemd-sysctl version, assuming current syntax")
+		return kernel.ModernSysctlFeatures
+	}
+	return features
 }
 
 // readSysctlConfig parses the configuration files the platform applies, in
@@ -105,6 +172,11 @@ func readSysctlConfig(runtime *plugin.Runtime, conn shared.Connection) (*kernel.
 
 	fs := conn.FileSystem()
 	config := kernel.NewSysctlConfig()
+	if conn.Asset().Platform.IsFamily("linux") {
+		if bins := existingRegularFiles(fs, kernel.SystemdSysctlBinaries...); len(bins) > 0 {
+			config.Features = systemdSysctlFeatures(conn, bins[0])
+		}
+	}
 	for _, path := range files {
 		f, err := fs.Open(path)
 		if err != nil {
@@ -184,7 +256,7 @@ func (k *mqlKernel) sysctls() ([]any, error) {
 		// A glob takes part through the live parameters it matches. Only
 		// one that matches none is listed under its pattern, so that no
 		// configured setting goes missing from the list.
-		if kernel.IsSysctlGlob(name) && globMatchesAny(name, state.live) {
+		if state.config.IsGlob(name) && globMatchesAny(name, state.live) {
 			continue
 		}
 		names[name] = struct{}{}
@@ -259,11 +331,7 @@ func kernelParameterArgs(runtime *plugin.Runtime, state *kernelSysctls, name str
 	}
 
 	if state.observable {
-		value, ok := state.live[name]
-		args["active"] = llx.BoolData(ok)
-		if ok {
-			args["value"] = llx.StringData(value)
-		}
+		args["active"], args["value"] = liveParameter(state, name)
 	}
 
 	assignments, effective := state.config.Lookup(name)
@@ -291,6 +359,26 @@ func kernelParameterArgs(runtime *plugin.Runtime, state *kernelSysctls, name str
 	args["settings"] = llx.ArrayData(settings, "kernel.parameter.setting")
 
 	return args, nil
+}
+
+// liveParameter returns the active and value fields of a parameter on a
+// running kernel. A parameter the scan was not permitted to read is active,
+// and its value is a Forbidden error. One that exists but whose value could
+// not be read for another reason is active with a null value.
+func liveParameter(state *kernelSysctls, name string) (*llx.RawData, *llx.RawData) {
+	if value, ok := state.live[name]; ok {
+		return llx.BoolData(true), llx.StringData(value)
+	}
+	if state.denied[name] {
+		return llx.BoolData(true), &llx.RawData{
+			Type:  types.String,
+			Error: llx.Forbidden(fmt.Errorf("permission denied reading kernel parameter %s", name)),
+		}
+	}
+	if !kernel.IsSysctlGlob(name) && state.exists != nil && state.exists(name) {
+		return llx.BoolData(true), llx.NilData
+	}
+	return llx.BoolData(false), llx.NilData
 }
 
 func (s *mqlKernelParameterSetting) file() (*mqlFile, error) {
