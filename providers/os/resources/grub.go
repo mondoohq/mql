@@ -1047,9 +1047,21 @@ func blsEntriesDirsFor(cfgPath string) []string {
 // readBLSEntryDirs returns the entries of the first directory that holds any.
 // A refusal is returned only when no directory yielded an entry, as the
 // refused one may be where the entries are.
+//
+// A directory under an automount point that nothing has triggered yet, such as
+// the /efi that systemd's gpt-auto-generator sets up for the EFI system
+// partition, is skipped: looking inside would mount the partition on the
+// scanned host.
 func readBLSEntryDirs(fs afero.Fs, dirs []string, vars map[string]string) ([]BootEntry, error) {
 	var refused error
+	var untriggered map[string]bool
+	if mountinfo, err := afero.ReadFile(fs, "/proc/self/mountinfo"); err == nil {
+		untriggered = parseUntriggeredAutomounts(mountinfo)
+	}
 	for _, dir := range dirs {
+		if underUntriggeredAutomount(untriggered, dir) {
+			continue
+		}
 		entries, err := readBLSEntries(fs, dir, vars)
 		if len(entries) > 0 {
 			return entries, err
@@ -1059,6 +1071,43 @@ func readBLSEntryDirs(fs afero.Fs, dirs []string, vars map[string]string) ([]Boo
 		}
 	}
 	return nil, refused
+}
+
+// parseUntriggeredAutomounts returns the mount points in a mountinfo table whose
+// topmost mount is autofs, which is an automount nothing has accessed yet.
+// Once accessed, the real filesystem is mounted on top and listed after it.
+func parseUntriggeredAutomounts(mountinfo []byte) map[string]bool {
+	top := map[string]string{}
+	for line := range strings.SplitSeq(string(mountinfo), "\n") {
+		fields, rest, ok := strings.Cut(line, " - ")
+		if !ok {
+			continue
+		}
+		f := strings.Fields(fields)
+		r := strings.Fields(rest)
+		if len(f) < 5 || len(r) < 1 {
+			continue
+		}
+		top[f[4]] = r[0]
+	}
+	res := map[string]bool{}
+	for mountpoint, fstype := range top {
+		if fstype == "autofs" {
+			res[mountpoint] = true
+		}
+	}
+	return res
+}
+
+// underUntriggeredAutomount reports whether dir lies under one of the
+// untriggered automount points.
+func underUntriggeredAutomount(untriggered map[string]bool, dir string) bool {
+	for p := dir; p != "/" && p != "." && p != ""; p = path.Dir(p) {
+		if untriggered[p] {
+			return true
+		}
+	}
+	return false
 }
 
 // menuEntryClasses returns the --class values declared on a menuentry line.

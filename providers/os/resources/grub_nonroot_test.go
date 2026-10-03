@@ -358,3 +358,68 @@ func TestGrubDefaultsRefused(t *testing.T) {
 		assert.Equal(t, map[string]any{"GRUB_CMDLINE_LINUX": "apparmor=0"}, params)
 	})
 }
+
+// /proc/self/mountinfo of a CentOS Stream 9 host, where systemd's
+// gpt-auto-generator puts the EFI system partition behind efi.automount at
+// /efi, also mounted at /boot/efi by fstab. Reading anything under /efi mounts
+// the partition, so the scan stays out of it until something else has.
+const cs9MountinfoUntriggered = `22 1 259:4 / / rw,relatime shared:1 - xfs /dev/nvme0n1p4 rw,seclabel,attr2,inode64,logbufs=8,logbsize=32k,noquota
+41 70 0:36 / /efi rw,relatime shared:23 - autofs systemd-1 rw,fd=38,pgrp=1,timeout=120,minproto=5,maxproto=5,direct,pipe_ino=21040
+91 70 259:6 / /boot rw,relatime shared:42 - xfs /dev/nvme0n1p3 rw,seclabel,attr2,inode64,logbufs=8,logbsize=32k,noquota
+100 91 259:5 / /boot/efi rw,relatime shared:50 - vfat /dev/nvme0n1p2 rw,fmask=0077,dmask=0077,codepage=437,iocharset=ascii,shortname=winnt,errors=remount-ro
+`
+
+const cs9MountinfoTriggered = cs9MountinfoUntriggered +
+	`744 41 259:5 / /efi rw,relatime shared:400 - vfat /dev/nvme0n1p2 rw,fmask=0077,dmask=0077,codepage=437,iocharset=ascii,shortname=winnt,errors=remount-ro
+`
+
+func TestUntriggeredAutomount(t *testing.T) {
+	untriggered := parseUntriggeredAutomounts([]byte(cs9MountinfoUntriggered))
+	assert.True(t, underUntriggeredAutomount(untriggered, "/efi/loader/entries"))
+	assert.False(t, underUntriggeredAutomount(untriggered, "/boot/efi/loader/entries"))
+	assert.False(t, underUntriggeredAutomount(untriggered, "/boot/loader/entries"))
+	// /efix is not under /efi
+	assert.False(t, underUntriggeredAutomount(untriggered, "/efix/loader/entries"))
+
+	triggered := parseUntriggeredAutomounts([]byte(cs9MountinfoTriggered))
+	assert.False(t, underUntriggeredAutomount(triggered, "/efi/loader/entries"))
+}
+
+// A non-root scan of CentOS Stream 9 is refused /boot/loader/entries and must
+// not go on to read /efi/loader/entries while /efi is an untriggered automount.
+func TestReadBLSEntryDirsSkipsUntriggeredAutomount(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(mem, "/proc/self/mountinfo", []byte(cs9MountinfoUntriggered), 0o444))
+	writeEntryFile(t, mem, "/boot/loader/entries/cs9.conf", rhel9BLSEntry)
+	writeEntryFile(t, mem, "/efi/loader/entries/esp.conf", rhel9BLSEntry)
+	opened := []string{}
+	fs := &recordingFs{Fs: &bootDirDeniedFs{Fs: mem, dirs: []string{"/boot/loader/entries"}}, opened: &opened}
+
+	entries, err := readBLSEntryDirs(fs, blsEntriesDirs, map[string]string{})
+	assert.Empty(t, entries)
+	assert.ErrorIs(t, err, os.ErrPermission)
+	for _, name := range opened {
+		assert.False(t, strings.HasPrefix(name, "/efi/"), "opened %s under the automount", name)
+	}
+
+	// once the partition is mounted the entries there are read as before
+	require.NoError(t, afero.WriteFile(mem, "/proc/self/mountinfo", []byte(cs9MountinfoTriggered), 0o444))
+	entries, err = readBLSEntryDirs(fs, blsEntriesDirs, map[string]string{})
+	require.NoError(t, err)
+	assert.Len(t, entries, 1)
+}
+
+type recordingFs struct {
+	afero.Fs
+	opened *[]string
+}
+
+func (f *recordingFs) Open(name string) (afero.File, error) {
+	*f.opened = append(*f.opened, name)
+	return f.Fs.Open(name)
+}
+
+func (f *recordingFs) Stat(name string) (os.FileInfo, error) {
+	*f.opened = append(*f.opened, name)
+	return f.Fs.Stat(name)
+}
