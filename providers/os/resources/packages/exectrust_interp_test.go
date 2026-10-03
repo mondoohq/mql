@@ -21,6 +21,7 @@ lrwxrwxrwx.  1    0    0         8 Jul 14 00:00 /sbin -> usr/sbin
 drwxr-xr-x. 11    0    0       144 Sep 29 19:50 /usr
 dr-xr-xr-x.  2    0    0     32768 Oct  3 08:19 /usr/bin
 -rwxr-xr-x.  1    0    0     49640 Jul 31 00:00 /usr/bin/env
+lrwxrwxrwx.  1    0    0         3 Oct  3 16:30 /usr/bin/genv -> env
 lrwxrwxrwx.  1    0    0         4 Jul 23  2025 /usr/bin/sh -> bash
 -rwxr-xr-x.  1    0    0   1446024 Jul 23  2025 /usr/bin/bash
 drwxr-xr-x. 11    0    0       183 Oct  3 08:25 /usr/local
@@ -177,6 +178,8 @@ func TestTrustedExecutableEnvArguments(t *testing.T) {
 		run("#!/usr/bin/env /usr/local/bin/node\n"))
 	assert.Equal(t, "interpreter bin/node is not absolute", run("#!/usr/bin/env bin/node\n"))
 	assert.Equal(t, "interpreter node is not absolute", run("#!node\n"))
+	// a link to env under another name is env too
+	assert.Equal(t, "interpreter node: node is not found on PATH", run("#!/usr/bin/genv node\n"))
 	assert.Equal(t, "the file names no interpreter", run("#!\n"))
 }
 
