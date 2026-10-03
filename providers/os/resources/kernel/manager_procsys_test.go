@@ -5,6 +5,7 @@ package kernel
 
 import (
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -110,4 +111,38 @@ func TestWalkProcSys_NoProcSys(t *testing.T) {
 	params, err := walkProcSys(afero.NewMemMapFs())
 	require.NoError(t, err)
 	assert.Empty(t, params)
+}
+
+// The walk reports the knobs it could not read, so a parameter that exists
+// is not mistaken for one the kernel does not have.
+func TestWalkProcSys_ReportsDeniedParameters(t *testing.T) {
+	fs := &denyOpenFs{
+		Fs:   procSysFs(t),
+		deny: map[string]bool{"/proc/sys/kernel/usermodehelper/bset": true},
+	}
+
+	params, denied, err := walkProcSysDenied(fs)
+	require.NoError(t, err)
+	assert.Len(t, params, 5)
+	assert.Equal(t, []string{"kernel.usermodehelper.bset"}, denied)
+}
+
+// stderr of `sysctl -a` as a user that is not root, procps-ng 3.3.17 on
+// RHEL 9. sysctl exits 0.
+const sysctlDeniedStderr = `sysctl: permission denied on key 'fs.protected_fifos'
+sysctl: permission denied on key 'fs.protected_hardlinks'
+sysctl: permission denied on key 'kernel.usermodehelper.bset'
+sysctl: permission denied on key 'net.ipv6.conf.br-g01.stable_secret'
+sysctl: permission denied on key 'vm.mmap_rnd_bits'
+`
+
+func TestParseSysctlDenied(t *testing.T) {
+	assert.Equal(t, []string{
+		"fs.protected_fifos",
+		"fs.protected_hardlinks",
+		"kernel.usermodehelper.bset",
+		"net.ipv6.conf.br-g01.stable_secret",
+		"vm.mmap_rnd_bits",
+	}, ParseSysctlDenied(strings.NewReader(sysctlDeniedStderr)))
+	assert.Empty(t, ParseSysctlDenied(strings.NewReader("")))
 }
