@@ -503,6 +503,21 @@ func InstanceFor(confPath string, running, units []Instance) *Instance {
 	return out
 }
 
+// DataDirectory returns the data directory of the server that loads the
+// postgresql.conf at confPath: data_directory when set (relative to the
+// file's directory), otherwise the directory holding postgresql.conf.
+func DataDirectory(confPath string, params map[string]string) string {
+	confDir := path.Dir(confPath)
+	dd := params["data_directory"]
+	if dd == "" {
+		return confDir
+	}
+	if path.IsAbs(dd) {
+		return path.Clean(dd)
+	}
+	return path.Join(confDir, dd)
+}
+
 // AuxFilePath returns the pg_hba.conf or pg_ident.conf the server loads for
 // the postgresql.conf at confPath: the value of param (hba_file, ident_file)
 // when set, otherwise defaultName in the data directory. Relative paths
@@ -510,15 +525,7 @@ func InstanceFor(confPath string, running, units []Instance) *Instance {
 // directory. The data directory is data_directory when set, otherwise the
 // directory holding postgresql.conf.
 func AuxFilePath(confPath string, params map[string]string, param, defaultName string) string {
-	confDir := path.Dir(confPath)
-	dataDir := confDir
-	if dd := params["data_directory"]; dd != "" {
-		if path.IsAbs(dd) {
-			dataDir = path.Clean(dd)
-		} else {
-			dataDir = path.Join(confDir, dd)
-		}
-	}
+	dataDir := DataDirectory(confPath, params)
 	if v := params[param]; v != "" {
 		if path.IsAbs(v) {
 			return path.Clean(v)

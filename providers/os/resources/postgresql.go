@@ -534,7 +534,7 @@ func (s *mqlPostgresqlConf) instanceFor(confPath string, fileParams map[string]s
 	}
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 	afs := &afero.Afero{Fs: conn.FileSystem()}
-	dataDir := path.Dir(postgresql.AuxFilePath(confPath, fileParams, "", "postmaster.pid"))
+	dataDir := postgresql.DataDirectory(confPath, fileParams)
 	raw, err := afs.ReadFile(path.Join(dataDir, "postmaster.pid"))
 	if err != nil {
 		return nil

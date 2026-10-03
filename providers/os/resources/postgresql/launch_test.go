@@ -315,3 +315,9 @@ func TestRunningByPid(t *testing.T) {
 	assert.Equal(t, "on", RunningByPid(running, 1).Settings["log_connections"])
 	assert.Nil(t, RunningByPid(running, 2))
 }
+
+func TestDataDirectory(t *testing.T) {
+	assert.Equal(t, "/var/lib/postgresql/data", DataDirectory("/var/lib/postgresql/data/postgresql.conf", nil))
+	assert.Equal(t, "/var/lib/postgresql/17/main", DataDirectory("/etc/postgresql/17/main/postgresql.conf", map[string]string{"data_directory": "/var/lib/postgresql/17/main/"}))
+	assert.Equal(t, "/etc/pg/data", DataDirectory("/etc/pg/postgresql.conf", map[string]string{"data_directory": "data"}), "relative to the file's directory")
+}
