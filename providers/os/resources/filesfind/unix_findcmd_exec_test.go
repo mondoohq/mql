@@ -22,7 +22,7 @@ import (
 func requireGNUFind(t *testing.T) {
 	t.Helper()
 	out, err := exec.Command("find", "--version").CombinedOutput()
-	if err != nil || !(strings.Contains(string(out), "GNU findutils") || strings.Contains(string(out), "bfs")) {
+	if err != nil || (!strings.Contains(string(out), "GNU findutils") && !strings.Contains(string(out), "bfs")) {
 		t.Skip("needs GNU-compatible find")
 	}
 }
