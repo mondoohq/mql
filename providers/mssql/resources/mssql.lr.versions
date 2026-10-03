@@ -23,6 +23,7 @@ mssql.audit.onFailure 13.0.0
 mssql.auditSpecification 13.0.0
 mssql.auditSpecification.actionGroups 13.0.0
 mssql.auditSpecification.auditName 13.0.0
+mssql.auditSpecification.auditedActions 14.0.2
 mssql.auditSpecification.isEnabled 13.0.0
 mssql.auditSpecification.name 13.0.0
 mssql.backup 13.0.0
@@ -134,8 +135,10 @@ mssql.login.sid 13.0.0
 mssql.login.type 13.0.0
 mssql.permission 13.0.0
 mssql.permission.class 13.0.0
+mssql.permission.columnName 14.0.2
 mssql.permission.granteeName 13.0.0
 mssql.permission.permissionName 13.0.0
+mssql.permission.securableName 14.0.2
 mssql.permission.state 13.0.0
 mssql.proxyAccount 13.0.0
 mssql.proxyAccount.authorizedLogins 13.0.0
@@ -173,6 +176,7 @@ mssql.server.name 13.0.0
 mssql.server.permissions 13.0.0
 mssql.server.port 13.0.0
 mssql.server.productLevel 13.0.0
+mssql.server.productUpdateLevel 14.0.2
 mssql.server.productVersion 13.0.0
 mssql.server.proxyAccounts 13.0.0
 mssql.server.roles 13.0.0

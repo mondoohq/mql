@@ -35,15 +35,16 @@ func initMssqlServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 			CAST(SERVERPROPERTY('InstanceName') AS NVARCHAR(256)),
 			CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(128)),
 			CAST(SERVERPROPERTY('ProductLevel') AS NVARCHAR(128)),
+			CAST(SERVERPROPERTY('ProductUpdateLevel') AS NVARCHAR(128)),
 			CAST(SERVERPROPERTY('Edition') AS NVARCHAR(128)),
 			CAST(SERVERPROPERTY('IsClustered') AS INT),
 			CAST(SERVERPROPERTY('IsIntegratedSecurityOnly') AS INT),
 			@@VERSION`
 
-	var name, machine, instance, productVersion, productLevel, edition, version sql.NullString
+	var name, machine, instance, productVersion, productLevel, productUpdateLevel, edition, version sql.NullString
 	var isClustered, integratedOnly sql.NullInt64
 	err = client.QueryRowContext(mssqlContext(), query).Scan(
-		&name, &machine, &instance, &productVersion, &productLevel, &edition,
+		&name, &machine, &instance, &productVersion, &productLevel, &productUpdateLevel, &edition,
 		&isClustered, &integratedOnly, &version)
 	if err != nil {
 		return nil, nil, err
@@ -62,6 +63,7 @@ func initMssqlServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 	args["versionBanner"] = llx.StringData(version.String)
 	args["productVersion"] = llx.StringData(productVersion.String)
 	args["productLevel"] = llx.StringData(productLevel.String)
+	args["productUpdateLevel"] = nullString(productUpdateLevel)
 	args["edition"] = llx.StringData(edition.String)
 	args["isClustered"] = llx.BoolData(isClustered.Int64 == 1)
 	// IsIntegratedSecurityOnly == 1 means Windows-only auth; mixed mode is the negation.
@@ -328,15 +330,7 @@ func (c *mqlMssqlServer) roles() ([]any, error) {
 		if err := rows.Scan(&principalID, &name, &isFixedRole, &owningPid, &createDate, &modifyDate); err != nil {
 			return nil, err
 		}
-		res, err := CreateResource(c.MqlRuntime, "mssql.serverRole", map[string]*llx.RawData{
-			"__id":              llx.StringData(serverPrincipalID(instanceID, name)),
-			"name":              llx.StringData(name),
-			"principalId":       llx.IntData(principalID),
-			"isFixedRole":       llx.BoolData(isFixedRole),
-			"owningPrincipalId": llx.IntData(owningPid),
-			"createDate":        llx.TimeDataPtr(nullTime(createDate)),
-			"modifyDate":        llx.TimeDataPtr(nullTime(modifyDate)),
-		})
+		res, err := newMssqlServerRole(c.MqlRuntime, instanceID, principalID, name, isFixedRole, owningPid, createDate, modifyDate)
 		if err != nil {
 			return nil, err
 		}
@@ -360,7 +354,7 @@ func (c *mqlMssqlServer) databases() ([]any, error) {
 		d.create_date, d.compatibility_level, ISNULL(d.collation_name, ''),
 		d.is_read_only, d.is_trustworthy_on, d.is_encrypted, d.is_auto_close_on,
 		d.containment_desc, d.state_desc, d.is_broker_enabled
-		FROM sys.databases d WHERE d.state = 0 ORDER BY d.database_id`
+		FROM sys.databases d ORDER BY d.database_id`
 	rows, err := client.QueryContext(mssqlContext(), q)
 	if err != nil {
 		return nil, err
@@ -387,7 +381,7 @@ func (c *mqlMssqlServer) databases() ([]any, error) {
 			"databaseId":         llx.IntData(databaseID),
 			"ownerName":          llx.StringData(ownerName),
 			"ownerSid":           llx.StringData(sidString(ownerSid)),
-			"ownerPrincipalId":   llx.IntData(ownerPrincipalID.Int64),
+			"ownerPrincipalId":   nullInt(ownerPrincipalID),
 			"createDate":         llx.TimeDataPtr(nullTime(createDate)),
 			"compatibilityLevel": llx.IntData(compatLevel),
 			"collation":          llx.StringData(collation),
@@ -617,14 +611,18 @@ func (c *mqlMssqlServer) serverAuditSpecifications() ([]any, error) {
 
 	// Action groups per specification, gathered first.
 	details := map[int64]map[string]any{}
+	actions := map[int64][]any{}
 	detailRows, err := client.QueryContext(mssqlContext(),
-		`SELECT server_specification_id, audit_action_name, ISNULL(audited_result, '')
-		 FROM sys.server_audit_specification_details`)
+		`SELECT server_specification_id, audit_action_name, ISNULL(audited_result, ''),
+			class_desc, is_group
+		 FROM sys.server_audit_specification_details
+		 ORDER BY server_specification_id, audit_action_name`)
 	if err == nil {
 		for detailRows.Next() {
 			var specID int64
-			var action, result string
-			if err := detailRows.Scan(&specID, &action, &result); err != nil {
+			var action, result, class string
+			var isGroup bool
+			if err := detailRows.Scan(&specID, &action, &result, &class, &isGroup); err != nil {
 				detailRows.Close()
 				return nil, err
 			}
@@ -632,6 +630,7 @@ func (c *mqlMssqlServer) serverAuditSpecifications() ([]any, error) {
 				details[specID] = map[string]any{}
 			}
 			details[specID][action] = result
+			actions[specID] = append(actions[specID], auditedAction(action, class, "", "", isGroup))
 		}
 		err = detailRows.Err()
 		detailRows.Close()
@@ -663,12 +662,17 @@ func (c *mqlMssqlServer) serverAuditSpecifications() ([]any, error) {
 		if groups == nil {
 			groups = map[string]any{}
 		}
+		audited := actions[specID]
+		if audited == nil {
+			audited = []any{}
+		}
 		res, err := CreateResource(c.MqlRuntime, "mssql.auditSpecification", map[string]*llx.RawData{
-			"__id":         llx.StringData(instanceID + "/serverAuditSpec/" + name),
-			"name":         llx.StringData(name),
-			"isEnabled":    llx.BoolData(isEnabled),
-			"auditName":    llx.StringData(auditName),
-			"actionGroups": llx.MapData(groups, types.String),
+			"__id":           llx.StringData(instanceID + "/serverAuditSpec/" + name),
+			"name":           llx.StringData(name),
+			"isEnabled":      llx.BoolData(isEnabled),
+			"auditName":      llx.StringData(auditName),
+			"actionGroups":   llx.MapData(groups, types.String),
+			"auditedActions": llx.ArrayData(audited, types.String),
 		})
 		if err != nil {
 			return nil, err

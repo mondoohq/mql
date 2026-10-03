@@ -222,6 +222,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mssql.server.productLevel": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMssqlServer).GetProductLevel()).ToDataRes(types.String)
 	},
+	"mssql.server.productUpdateLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMssqlServer).GetProductUpdateLevel()).ToDataRes(types.String)
+	},
 	"mssql.server.edition": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMssqlServer).GetEdition()).ToDataRes(types.String)
 	},
@@ -401,6 +404,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mssql.permission.granteeName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMssqlPermission).GetGranteeName()).ToDataRes(types.String)
+	},
+	"mssql.permission.securableName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMssqlPermission).GetSecurableName()).ToDataRes(types.String)
+	},
+	"mssql.permission.columnName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMssqlPermission).GetColumnName()).ToDataRes(types.String)
 	},
 	"mssql.database.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMssqlDatabase).GetName()).ToDataRes(types.String)
@@ -669,6 +678,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mssql.auditSpecification.actionGroups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMssqlAuditSpecification).GetActionGroups()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"mssql.auditSpecification.auditedActions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMssqlAuditSpecification).GetAuditedActions()).ToDataRes(types.Array(types.String))
+	},
 	"mssql.symmetricKey.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMssqlSymmetricKey).GetName()).ToDataRes(types.String)
 	},
@@ -773,6 +785,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mssql.server.productLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMssqlServer).ProductLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mssql.server.productUpdateLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMssqlServer).ProductUpdateLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"mssql.server.edition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1029,6 +1045,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mssql.permission.granteeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMssqlPermission).GranteeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mssql.permission.securableName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMssqlPermission).SecurableName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mssql.permission.columnName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMssqlPermission).ColumnName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"mssql.database.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1431,6 +1455,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMssqlAuditSpecification).ActionGroups, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"mssql.auditSpecification.auditedActions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMssqlAuditSpecification).AuditedActions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"mssql.symmetricKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMssqlSymmetricKey).__id, ok = v.Value.(string)
 		return
@@ -1600,6 +1628,7 @@ type mqlMssqlServer struct {
 	VersionBanner             plugin.TValue[string]
 	ProductVersion            plugin.TValue[string]
 	ProductLevel              plugin.TValue[string]
+	ProductUpdateLevel        plugin.TValue[string]
 	Edition                   plugin.TValue[string]
 	IsClustered               plugin.TValue[bool]
 	IsMixedModeAuthEnabled    plugin.TValue[bool]
@@ -1687,6 +1716,10 @@ func (c *mqlMssqlServer) GetProductVersion() *plugin.TValue[string] {
 
 func (c *mqlMssqlServer) GetProductLevel() *plugin.TValue[string] {
 	return &c.ProductLevel
+}
+
+func (c *mqlMssqlServer) GetProductUpdateLevel() *plugin.TValue[string] {
+	return &c.ProductUpdateLevel
 }
 
 func (c *mqlMssqlServer) GetEdition() *plugin.TValue[string] {
@@ -2282,6 +2315,8 @@ type mqlMssqlPermission struct {
 	State          plugin.TValue[string]
 	Class          plugin.TValue[string]
 	GranteeName    plugin.TValue[string]
+	SecurableName  plugin.TValue[string]
+	ColumnName     plugin.TValue[string]
 }
 
 // createMssqlPermission creates a new instance of this resource
@@ -2330,6 +2365,14 @@ func (c *mqlMssqlPermission) GetClass() *plugin.TValue[string] {
 
 func (c *mqlMssqlPermission) GetGranteeName() *plugin.TValue[string] {
 	return &c.GranteeName
+}
+
+func (c *mqlMssqlPermission) GetSecurableName() *plugin.TValue[string] {
+	return &c.SecurableName
+}
+
+func (c *mqlMssqlPermission) GetColumnName() *plugin.TValue[string] {
+	return &c.ColumnName
 }
 
 // mqlMssqlDatabase for the mssql.database resource
@@ -3404,10 +3447,11 @@ type mqlMssqlAuditSpecification struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMssqlAuditSpecificationInternal it will be used here
-	Name         plugin.TValue[string]
-	IsEnabled    plugin.TValue[bool]
-	AuditName    plugin.TValue[string]
-	ActionGroups plugin.TValue[map[string]any]
+	Name           plugin.TValue[string]
+	IsEnabled      plugin.TValue[bool]
+	AuditName      plugin.TValue[string]
+	ActionGroups   plugin.TValue[map[string]any]
+	AuditedActions plugin.TValue[[]any]
 }
 
 // createMssqlAuditSpecification creates a new instance of this resource
@@ -3456,6 +3500,10 @@ func (c *mqlMssqlAuditSpecification) GetAuditName() *plugin.TValue[string] {
 
 func (c *mqlMssqlAuditSpecification) GetActionGroups() *plugin.TValue[map[string]any] {
 	return &c.ActionGroups
+}
+
+func (c *mqlMssqlAuditSpecification) GetAuditedActions() *plugin.TValue[[]any] {
+	return &c.AuditedActions
 }
 
 // mqlMssqlSymmetricKey for the mssql.symmetricKey resource
