@@ -974,6 +974,41 @@ func TestParseAideConfig_TermsPerRelease(t *testing.T) {
 	}
 }
 
+// AIDE 0.17 and later compare @@ifhost and @@ifnhost against the kernel's full
+// node name, 0.16 and earlier against the name up to the first dot. Every
+// release sets the HOSTNAME macro to the full node name. Measured with
+// `unshare --uts` and `hostname fixhost.example.internal` against AIDE 0.15.1
+// (RHEL 7), 0.16 (Ubuntu 18.04, Debian 10, RHEL 8), 0.17.3 (Debian 11), 0.18.3
+// (Debian 12) and 0.19.2 (RHEL 9).
+func TestAideHostnameByRelease(t *testing.T) {
+	const fqdn = "fixhost.example.internal"
+	tests := []struct {
+		version   string
+		shortHost aideBranch
+		fullHost  aideBranch
+	}{
+		{"0.15.1", aideBranchKeep, aideBranchSkip},
+		{"0.16", aideBranchKeep, aideBranchSkip},
+		{"0.17.3", aideBranchSkip, aideBranchKeep},
+		{"0.18.3", aideBranchSkip, aideBranchKeep},
+		{"0.19.2", aideBranchSkip, aideBranchKeep},
+		// an unknown release is read as a current one
+		{"", aideBranchSkip, aideBranchKeep},
+	}
+	for _, tt := range tests {
+		t.Run(tt.version, func(t *testing.T) {
+			cfg := newAideConfig()
+			cfg.Version = tt.version
+			cfg.Host = aideHost{Hostname: fqdn}
+			cfg.defineBuiltinMacros()
+
+			assert.Equal(t, tt.shortHost, evalAideCondition(cfg, "hostname fixhost"))
+			assert.Equal(t, tt.fullHost, evalAideCondition(cfg, "hostname "+fqdn))
+			assert.Equal(t, fqdn, cfg.Macros["HOSTNAME"])
+		})
+	}
+}
+
 // AIDE checks a group definition where it is written, used or not, and a
 // group used before its definition is not defined yet.
 func TestParseAideConfig_UndefinedGroupInDefinition(t *testing.T) {
@@ -1004,4 +1039,11 @@ func TestParseAideConfig_UndefinedGroupUnknownRelease(t *testing.T) {
 
 	cfg = parseAideString("/x R+H+sha3_256+growing+caps\n")
 	assert.NoError(t, cfg.Invalid)
+}
+
+func TestAideHostnameFromProc(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	assert.Equal(t, "", aideHostname(fs))
+	require.NoError(t, afero.WriteFile(fs, "/proc/sys/kernel/hostname", []byte("ip-172-31-2-253.us-west-2.compute.internal\n"), 0o444))
+	assert.Equal(t, "ip-172-31-2-253.us-west-2.compute.internal", aideHostname(fs))
 }

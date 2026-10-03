@@ -206,7 +206,7 @@ func (a *mqlAide) readConfig() (*aideConfig, []*mqlFile, error) {
 
 	// what @@if hostname and @@if exists ask about
 	cfg.Host = aideHost{
-		Hostname: aideShortHostname(fs),
+		Hostname: aideHostname(fs),
 		Exists: func(p string) (bool, bool) {
 			exists, err := afero.Exists(fs, p)
 			if err != nil {
@@ -361,16 +361,15 @@ func aideScriptCommand(filePath string, env []aideEnvVar) string {
 // aideEnvNameRegex is what AIDE accepts as an @@x_include_setenv name.
 var aideEnvNameRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// aideShortHostname returns the host name AIDE's hostname predicate and
-// HOSTNAME macro use, the kernel's node name up to the first dot, or "" when
-// it cannot be read (for example in an image scan).
-func aideShortHostname(fs afero.Fs) string {
+// aideHostname returns the kernel's node name, which AIDE's HOSTNAME macro
+// and hostname predicate use, or "" when it cannot be read (for example in an
+// image scan).
+func aideHostname(fs afero.Fs) string {
 	data, err := afero.ReadFile(fs, "/proc/sys/kernel/hostname")
 	if err != nil {
 		return ""
 	}
-	name, _, _ := strings.Cut(strings.TrimSpace(string(data)), ".")
-	return name
+	return strings.TrimSpace(string(data))
 }
 
 // installed reports whether an AIDE binary is present. A configuration file

@@ -43,8 +43,7 @@ type aideSelectionRule struct {
 // aideHost answers the questions an @@if expression asks about the system.
 // A nil Exists, or an empty Hostname, means the answer is not known.
 type aideHost struct {
-	// Hostname is the short host name AIDE compares against (without the
-	// domain), or "" when unknown.
+	// Hostname is the kernel's full node name, or "" when unknown.
 	Hostname string
 	// Exists reports whether a path exists, and whether that could be found out.
 	Exists func(path string) (exists bool, known bool)
@@ -141,7 +140,7 @@ func newAideConfig() *aideConfig {
 }
 
 // defineBuiltinMacros defines the macros AIDE itself provides before it reads
-// the configuration: HOSTNAME (the host name without its domain) and, from
+// the configuration: HOSTNAME (the full node name) and, from
 // 0.19 on, AIDE_VERSION. Version and Host must be set first.
 func (cfg *aideConfig) defineBuiltinMacros() {
 	if cfg.Host.Hostname != "" {
@@ -173,6 +172,17 @@ func (cfg *aideConfig) readsNonRecursiveNegativeRules() bool {
 		return true
 	}
 	return aideVersionAtLeast(cfg.Version, 0, 19)
+}
+
+// predicateHostname is the name @@ifhost and @@ifnhost compare against: the
+// full node name from AIDE 0.17 on, the name up to the first dot before. An
+// unknown release is treated as a current one.
+func (cfg *aideConfig) predicateHostname() string {
+	if _, _, ok := aideReleaseNumbers(cfg.Version); ok && !aideVersionAtLeast(cfg.Version, 0, 17) {
+		short, _, _ := strings.Cut(cfg.Host.Hostname, ".")
+		return short
+	}
+	return cfg.Host.Hostname
 }
 
 // aideIncludeFile is one file an include target expanded to.
@@ -520,7 +530,7 @@ func evalAideCondition(cfg *aideConfig, expression string) aideBranch {
 		if cfg.Host.Hostname == "" {
 			return aideBranchUnknown
 		}
-		return aideBranchOf(arg == cfg.Host.Hostname)
+		return aideBranchOf(arg == cfg.predicateHostname())
 
 	case "exists":
 		if cfg.Host.Exists == nil {
