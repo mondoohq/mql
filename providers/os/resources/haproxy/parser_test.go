@@ -471,3 +471,35 @@ peers modern
 	assert.Equal(t, "remote", modern[1].Name)
 	assert.Equal(t, int64(10002), modern[1].Port)
 }
+
+// option httpchk defaults to OPTIONS / HTTP/1.0, and haproxy 2.2+'s
+// http-check send overrides the method, URI and version it names.
+func TestParseHTTPCheckDefaultsAndSend(t *testing.T) {
+	parse := func(body string) HTTPCheck {
+		cfg, err := Parse("test.cfg", strings.NewReader("backend app\n"+body))
+		require.NoError(t, err)
+		return ParseHTTPCheck(cfg.Sections[0].Directives)
+	}
+	for _, tt := range []struct {
+		body             string
+		method, uri, ver string
+	}{
+		{"    option httpchk\n", "OPTIONS", "/", "HTTP/1.0"},
+		{"    option httpchk /health\n", "OPTIONS", "/health", "HTTP/1.0"},
+		{"    option httpchk GET /health\n", "GET", "/health", "HTTP/1.0"},
+		{"    option httpchk\n    http-check send meth GET uri /ping\n    http-check expect status 204\n", "GET", "/ping", "HTTP/1.0"},
+		{"    option httpchk\n    http-check send meth HEAD uri /ready ver HTTP/1.1 hdr Host www.example.com\n", "HEAD", "/ready", "HTTP/1.1"},
+		{"    option httpchk\n    http-check send uri-lf /%[env(P)] body-lf x\n", "OPTIONS", "/%[env(P)]", "HTTP/1.0"},
+		{"    option httpchk POST /x HTTP/1.1\n    http-check send ver HTTP/2\n", "POST", "/x", "HTTP/2"},
+	} {
+		hc := parse(tt.body)
+		assert.Equal(t, tt.method, hc.Method, tt.body)
+		assert.Equal(t, tt.uri, hc.URI, tt.body)
+		assert.Equal(t, tt.ver, hc.Version, tt.body)
+	}
+
+	// no HTTP check configured
+	hc := parse("    server s1 10.0.0.1:80 check\n")
+	assert.Equal(t, "", hc.Method)
+	assert.Equal(t, "", hc.URI)
+}

@@ -4,6 +4,7 @@
 package bind9
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,5 +35,21 @@ func TestConfigFromArgs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, ConfigFromArgs(tt.args))
 		})
+	}
+}
+
+func TestLaunchFromArgsChroot(t *testing.T) {
+	for _, tt := range []struct {
+		args         string
+		conf, chroot string
+	}{
+		{"-u named -c /etc/named.conf -t /var/named/chroot", "/etc/named.conf", "/var/named/chroot"},
+		{"-t/var/named/chroot -c/etc/x.conf", "/etc/x.conf", "/var/named/chroot"},
+		{"-u named -c /etc/named.conf", "/etc/named.conf", ""},
+		{"-ft /srv/chroot", "", "/srv/chroot"},
+	} {
+		l := LaunchFromArgs(strings.Fields(tt.args))
+		assert.Equal(t, tt.conf, l.Config, tt.args)
+		assert.Equal(t, tt.chroot, l.Chroot, tt.args)
 	}
 }

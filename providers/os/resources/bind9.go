@@ -132,6 +132,13 @@ func bind9ConfPath(conn shared.Connection) string {
 // moves it, on Debian and Red Hat alike.
 const bind9PidFile = "/run/named/named.pid"
 
+// bind9ChrootPidFile is where Red Hat's named-chroot.service (bind-chroot)
+// records it, inside the -t directory.
+const bind9ChrootPidFile = "/var/named/chroot/run/named/named.pid"
+
+// bind9ChrootUnit starts named chrooted to /var/named/chroot on Red Hat.
+const bind9ChrootUnit = "named-chroot.service"
+
 // bind9ServiceUnits are the systemd units that start named, in the order to
 // try them: named.service on Red Hat and on Debian 11 and later (where
 // bind9.service is an alias of it), bind9.service on Debian 9 and 10.
@@ -143,43 +150,78 @@ var bind9ServiceUnits = []string{"named.service", "bind9.service"}
 // otherwise from the systemd service that starts it, with OPTIONS from
 // /etc/default/named, /etc/default/bind9 or /etc/sysconfig/named expanded.
 func bind9LaunchConfig(afs *afero.Afero) string {
-	conf, running := bind9ProcessConfig(afs, bind9PidFile)
+	launch, running := bind9ProcessLaunch(afs, bind9PidFile)
 	if !running {
-		if argv := systemdServiceArgv(afs, bind9ServiceUnits...); len(argv) > 0 {
-			conf = bind9.ConfigFromArgs(argv[1:])
+		launch, running = bind9ProcessLaunch(afs, bind9ChrootPidFile)
+	}
+	if !running {
+		units := bind9ServiceUnits
+		if bind9ChrootEnabled(afs) {
+			units = append([]string{bind9ChrootUnit}, units...)
+		}
+		if argv := systemdServiceArgv(afs, units...); len(argv) > 0 {
+			launch = bind9.LaunchFromArgs(argv[1:])
 		}
 	}
-	if conf != "" && !filepath.IsAbs(conf) {
-		// named resolves -c against its working directory, which is /
-		// under systemd.
+	return bind9ChrootPath(afs, launch)
+}
+
+// bind9ChrootEnabled reports whether named-chroot.service, rather than
+// named.service, starts named at boot.
+func bind9ChrootEnabled(afs *afero.Afero) bool {
+	for _, target := range []string{"multi-user.target.wants", "default.target.wants"} {
+		if ok, _ := afs.Exists(filepath.Join("/etc/systemd/system", target, bind9ChrootUnit)); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// bind9ChrootPath returns the -c file of launch, resolved inside its -t
+// chroot. named resolves a relative -c against its working directory, which
+// is / under systemd. bind-chroot bind-mounts /etc/named.conf and friends
+// into the chroot while named runs, so a file that is not in the chroot
+// (named stopped) is read from the same path outside it.
+func bind9ChrootPath(afs *afero.Afero, launch bind9.Launch) string {
+	conf := launch.Config
+	if conf == "" {
+		return ""
+	}
+	if !filepath.IsAbs(conf) {
 		conf = filepath.Join("/", conf)
+	}
+	if launch.Chroot != "" {
+		inChroot := filepath.Join(launch.Chroot, conf)
+		if ok, _ := afs.Exists(inChroot); ok {
+			return inChroot
+		}
 	}
 	return conf
 }
 
-// bind9ProcessConfig reads the -c argument of the named process recorded in
-// pidFile. running is false when the pid file is missing or stale, or the
-// command line cannot be read.
-func bind9ProcessConfig(afs *afero.Afero, pidFile string) (conf string, running bool) {
+// bind9ProcessLaunch reads the -c and -t arguments of the named process
+// recorded in pidFile. running is false when the pid file is missing or
+// stale, or the command line cannot be read.
+func bind9ProcessLaunch(afs *afero.Afero, pidFile string) (launch bind9.Launch, running bool) {
 	data, err := afs.ReadFile(pidFile)
 	if err != nil {
-		return "", false
+		return bind9.Launch{}, false
 	}
 	pid := strings.TrimSpace(string(data))
 	if _, err := strconv.Atoi(pid); err != nil {
-		return "", false
+		return bind9.Launch{}, false
 	}
 	raw, err := afs.ReadFile(filepath.Join("/proc", pid, "cmdline"))
 	if err != nil {
-		return "", false
+		return bind9.Launch{}, false
 	}
 	argv := haproxy.SplitProcCmdline(raw)
 	// A stale pid file can point at an unrelated process. RHEL 7 runs
 	// named-pkcs11.
 	if len(argv) == 0 || !strings.HasPrefix(filepath.Base(argv[0]), "named") {
-		return "", false
+		return bind9.Launch{}, false
 	}
-	return bind9.ConfigFromArgs(argv[1:]), true
+	return bind9.LaunchFromArgs(argv[1:]), true
 }
 
 func (b *mqlBind9) file() (*mqlFile, error) {
