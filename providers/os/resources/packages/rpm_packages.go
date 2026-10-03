@@ -256,12 +256,22 @@ func newRpmPackage(pf *inventory.Platform, name, version, arch, epoch, vendor, d
 		CPEs:        cpes,
 		Vendor:      vendor,
 		License:     license,
-		PUrl:        purl.NewPackageURL(pf, purl.TypeRPM, name, version, purlModifiers...).String(),
+		PUrl:        purl.NewPackageURL(pf, purl.TypeRPM, name, rpmPurlVersion(version, epoch), purlModifiers...).String(),
 	}
 	if installTime > 0 {
 		pkg.InstallDate = time.Unix(installTime, 0).UTC()
 	}
 	return pkg
+}
+
+// rpmPurlVersion is the version as the purl spec for rpm writes it:
+// version-release, with the epoch carried by the epoch qualifier alone.
+// Package.Version keeps the epoch.
+func rpmPurlVersion(version, epoch string) string {
+	if epoch == "" {
+		return version
+	}
+	return strings.TrimPrefix(version, epoch+":")
 }
 
 // matches a closed pair of angle brackets with any number of characters inside.
