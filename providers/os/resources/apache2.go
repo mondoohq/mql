@@ -359,6 +359,10 @@ type mqlApache2ConfInternal struct {
 	launchOnce sync.Once
 	launch     *apache2.Launch
 	launchErr  error
+	// processLaunch is the httpd master found without a pid file, or the
+	// httpd a scanned image starts (see effectiveLaunch), read once.
+	processLaunchOnce sync.Once
+	processLaunch     *apache2.Launch
 }
 
 // apacheConfByFamily maps platform families (and a few standalone platform
@@ -516,7 +520,7 @@ func (s *mqlApache2Conf) file() (*mqlFile, error) {
 
 	// A configuration file named on httpd's command line (-f) is the one it
 	// loads.
-	launch, err := s.launchArgs()
+	launch, err := s.effectiveLaunch()
 	if err != nil {
 		return nil, err
 	}
@@ -747,7 +751,7 @@ func (s *mqlApache2Conf) parse(file *mqlFile) error {
 	// start_apache2 builds from /etc/sysconfig/apache2. It applies to the
 	// file httpd loads, not to another file named with apache2.conf(path).
 	var preDirectives, postDirectives []string
-	launch, launchErr := s.launchArgs()
+	launch, launchErr := s.effectiveLaunch()
 	if launch != nil && (s.defaultFile || (launch.ConfigFile != "" && apacheLaunchConfigFile(conn, launch) == file.Path.Data)) {
 		defines = append(defines, launch.Defines...)
 		preDirectives = launch.PreDirectives
@@ -927,7 +931,7 @@ func (s *mqlApache2Conf) loadEnvvars(fileContent func(string) (string, error)) m
 // apachePidFiles are where httpd records its master's pid: SUSE's
 // start_apache2 passes -C "PidFile /run/httpd.pid", Red Hat's httpd.conf
 // sets /run/httpd/httpd.pid and Debian's envvars /run/apache2/apache2.pid.
-var apachePidFiles = []string{"/run/httpd.pid", "/run/httpd/httpd.pid", "/run/apache2/apache2.pid"}
+var apachePidFiles = []string{"/run/httpd.pid", "/run/httpd/httpd.pid", "/run/apache2/apache2.pid", apacheImagePidFile}
 
 const (
 	// apacheSUSEStartScript is the wrapper SUSE's apache2.service runs. It
