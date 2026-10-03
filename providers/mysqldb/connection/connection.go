@@ -8,14 +8,18 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	mysqldriver "github.com/go-sql-driver/mysql"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
@@ -40,6 +44,9 @@ type MysqldbConnection struct {
 	tlsCA    string
 	tlsCert  string
 	tlsKey   string
+	// tlsServerName is the name verified in the server certificate, when it
+	// differs from host (for example when connecting by IP address).
+	tlsServerName string
 
 	// scopedDatabase is set when the asset is a single discovered schema.
 	scopedDatabase string
@@ -81,6 +88,7 @@ func NewMysqldbConnection(id uint32, asset *inventory.Asset, conf *inventory.Con
 	conn.tlsCA = conf.Options[OptionTLSCA]
 	conn.tlsCert = conf.Options[OptionTLSCert]
 	conn.tlsKey = conf.Options[OptionTLSKey]
+	conn.tlsServerName = conf.Options[OptionTLSServerName]
 
 	conn.port = 3306
 	if p := conf.Options[OptionPort]; p != "" {
@@ -145,38 +153,74 @@ func (c *MysqldbConnection) Close() {
 	}
 }
 
-// tlsParam resolves the go-sql-driver `tls` DSN parameter, registering a custom
-// TLS config when CA or client-certificate material is supplied.
-func (c *MysqldbConnection) tlsParam() (string, error) {
-	if c.tlsCA == "" && c.tlsCert == "" && c.tlsKey == "" {
-		// keyword modes handled by the driver directly
-		return c.tlsMode, nil
-	}
+// Connection timeouts. dialTimeout bounds the TCP connect, so an unreachable
+// host fails in seconds rather than after the operating system's SYN retries
+// (over two minutes on Linux). ioTimeout bounds each read and write, so a
+// server that stops answering mid-query cannot hang the scan.
+const (
+	dialTimeout = 15 * time.Second
+	ioTimeout   = 5 * time.Minute
+)
 
-	cfg := &tls.Config{InsecureSkipVerify: c.tlsMode == "skip-verify"}
-	if c.tlsCA != "" {
+// tlsConfig resolves the TLS settings for a connection. It returns a nil
+// config for plaintext, and whether the driver may fall back to plaintext when
+// the server does not offer TLS.
+//
+//   - false: plaintext, whatever certificate flags are given.
+//   - preferred: TLS when the server offers it, plaintext otherwise. The
+//     server is verified against --tls-ca when one is given, and not
+//     verified otherwise. The fallback covers a server that does not offer
+//     TLS; a server that offers TLS but fails verification or the handshake
+//     is an error, not a plaintext connection.
+//   - skip-verify: TLS required, server not verified.
+//   - true: TLS required, server verified against --tls-ca or the system
+//     roots, by --tls-server-name or the host name.
+//
+// Client certificate material is presented in every TLS mode.
+func (c *MysqldbConnection) tlsConfig() (*tls.Config, bool, error) {
+	mode := strings.ToLower(c.tlsMode)
+	// the driver's boolean spellings
+	switch mode {
+	case "0":
+		mode = "false"
+	case "1":
+		mode = "true"
+	}
+	switch mode {
+	case "false":
+		return nil, false, nil
+	case "preferred", "skip-verify", "true":
+	default:
+		return nil, false, fmt.Errorf("invalid tls-mode %q: use false, preferred, skip-verify, or true", c.tlsMode)
+	}
+	fallback := mode == "preferred"
+	// skip-verify, and preferred without a CA to verify against, encrypt
+	// without authenticating the server, as their names say
+	skipVerify := mode == "skip-verify" || (mode == "preferred" && c.tlsCA == "")
+	cfg := &tls.Config{ServerName: c.tlsServerName, InsecureSkipVerify: skipVerify}
+
+	if c.tlsCA != "" && !skipVerify {
 		pem, err := os.ReadFile(c.tlsCA)
 		if err != nil {
-			return "", fmt.Errorf("failed to read tls-ca: %w", err)
+			return nil, false, fmt.Errorf("failed to read tls-ca: %w", err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(pem) {
-			return "", fmt.Errorf("failed to parse tls-ca %q", c.tlsCA)
+			return nil, false, fmt.Errorf("failed to parse tls-ca %q", c.tlsCA)
 		}
 		cfg.RootCAs = pool
 	}
-	if c.tlsCert != "" && c.tlsKey != "" {
+	if (c.tlsCert == "") != (c.tlsKey == "") {
+		return nil, false, errors.New("tls-cert and tls-key must be given together")
+	}
+	if c.tlsCert != "" {
 		cert, err := tls.LoadX509KeyPair(c.tlsCert, c.tlsKey)
 		if err != nil {
-			return "", fmt.Errorf("failed to load client certificate: %w", err)
+			return nil, false, fmt.Errorf("failed to load client certificate: %w", err)
 		}
 		cfg.Certificates = []tls.Certificate{cert}
 	}
-	name := fmt.Sprintf("mysqldb-%d", c.ID())
-	if err := mysqldriver.RegisterTLSConfig(name, cfg); err != nil {
-		return "", err
-	}
-	return name, nil
+	return cfg, fallback, nil
 }
 
 // Client returns the shared database handle, dialing on first use.
@@ -187,8 +231,9 @@ func (c *MysqldbConnection) Client() (*sql.DB, error) {
 	return c.client, c.clientErr
 }
 
-func (c *MysqldbConnection) dial() (*sql.DB, error) {
-	tlsName, err := c.tlsParam()
+// driverConfig builds the driver configuration for the connection.
+func (c *MysqldbConnection) driverConfig() (*mysqldriver.Config, error) {
+	tlsCfg, fallback, err := c.tlsConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -199,16 +244,58 @@ func (c *MysqldbConnection) dial() (*sql.DB, error) {
 	cfg.Net = "tcp"
 	cfg.Addr = net.JoinHostPort(c.host, strconv.Itoa(c.port))
 	cfg.DBName = c.database
-	cfg.TLSConfig = tlsName
+	cfg.TLS = tlsCfg
+	cfg.AllowFallbackToPlaintext = fallback
 	cfg.ParseTime = true
+	cfg.Timeout = dialTimeout
+	cfg.ReadTimeout = ioTimeout
+	cfg.WriteTimeout = ioTimeout
+	return cfg, nil
+}
 
-	db, err := sql.Open("mysql", cfg.FormatDSN())
+func (c *MysqldbConnection) dial() (*sql.DB, error) {
+	cfg, err := c.driverConfig()
 	if err != nil {
 		return nil, err
 	}
+	connector, err := mysqldriver.NewConnector(cfg)
+	if err != nil {
+		return nil, err
+	}
+	db := sql.OpenDB(connector)
 	db.SetMaxOpenConns(5)
 	db.SetMaxIdleConns(2)
 	return db, nil
+}
+
+// classifyConnectError gives a failure to reach or log in to the server its
+// ADR 046 kind. Anything else is returned as is.
+func classifyConnectError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var myErr *mysqldriver.MySQLError
+	if errors.As(err, &myErr) {
+		switch myErr.Number {
+		case 1045: // access denied: unknown user or wrong password
+			return llx.Unauthenticated(err)
+		case 1044, // access denied to the --database schema
+			1130, // host is not allowed to connect
+			3118, // account is locked
+			1862, // password expired, client cannot change it
+			3159: // insecure transport prohibited (require_secure_transport)
+			return llx.Forbidden(err)
+		}
+		return err
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return llx.Unavailable(err)
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EHOSTUNREACH) || errors.Is(err, syscall.ENETUNREACH) {
+		return llx.Unavailable(err)
+	}
+	return err
 }
 
 // ServerID returns a stable identifier for the server (@@server_uuid, falling
@@ -232,14 +319,14 @@ func (c *MysqldbConnection) resolveMeta() error {
 	c.metaOnce.Do(func() {
 		db, err := c.Client()
 		if err != nil {
-			c.metaErr = err
+			c.metaErr = classifyConnectError(err)
 			return
 		}
 
 		var versionComment, version string
 		if err := db.QueryRowContext(context.Background(),
 			"SELECT @@version_comment, @@version").Scan(&versionComment, &version); err != nil {
-			c.metaErr = err
+			c.metaErr = classifyConnectError(err)
 			return
 		}
 		c.flavor = classifyFlavor(versionComment, version)

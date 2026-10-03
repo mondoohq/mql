@@ -15,8 +15,15 @@ Arguments:
 - `--user` (`-u`) - the user to authenticate as.
 - `--password` (`-p`) - the password, or `--ask-pass` to be prompted.
 - `--database` - an optional default schema for the connection.
-- `--tls-mode` - `false`, `skip-verify`, `preferred` (default), or `true`.
+- `--tls-mode`:
+  - `false` - plaintext, even when certificate flags are given.
+  - `preferred` (default) - TLS when the server offers it, plaintext otherwise. The server is verified against `--tls-ca` when one is given. A server that offers TLS but fails the handshake (for example a YaSSL-built server limited to TLSv1.0) is an error; use `false` for such a server.
+  - `skip-verify` - TLS required, server certificate not verified.
+  - `true` - TLS required, server certificate verified against `--tls-ca` (or the system roots).
 - `--tls-ca`, `--tls-cert`, `--tls-key` - paths to CA and client-certificate material for verified or mutual TLS.
+- `--tls-server-name` - the name to verify in the server certificate when it differs from the host, for example when connecting by IP address.
+
+The provider gives up on an unreachable server after 15 seconds and on an unresponsive one after 5 minutes per read.
 
 ```shell
 mql shell mysqldb db.contoso.com --user root --ask-pass
@@ -40,19 +47,20 @@ mql shell mysqldb db.contoso.com --user auditor --ask-pass --tls-mode true --tls
 
 ## Discovery
 
-By default the provider discovers each schema (database) on the server as its own `mysqldb-database` asset, alongside the server asset. The `--discover` targets control which child assets are emitted:
+By default the provider returns the server alone, the asset the benchmarks apply to. The `--discover` targets control whether each schema (database) is also emitted as its own `mysqldb-database` asset:
 
-- `auto` (default) - also emit one asset per schema. Same as `all`.
-- `all` - also emit one asset per schema.
-- `databases` - also emit one asset per schema.
-- `none` - the server only, without per-schema assets.
+- `auto` (default) - the server only.
+- `instance` - the server only.
+- `none` - the server only.
+- `all` - the server plus one asset per schema.
+- `databases` - the server plus one asset per schema.
 
 ```shell
-# Scan the server and every schema
+# Scan the server
 cnspec scan mysqldb db.contoso.com --user auditor --ask-pass
 
-# Scan the server only
-cnspec scan mysqldb db.contoso.com --user auditor --ask-pass --discover none
+# Scan the server and every schema
+cnspec scan mysqldb db.contoso.com --user auditor --ask-pass --discover all
 ```
 
 ## Examples

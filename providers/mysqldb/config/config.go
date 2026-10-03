@@ -33,7 +33,8 @@ information_schema, performance_schema, and the system catalogs to inventory
 users, roles, privileges, schemas, routines, plugins, components, and
 configuration variables.
 
-By default the provider discovers every schema on the server as its own asset.
+By default the provider returns the server as one asset. Use --discover all
+or --discover databases to also return every schema as its own asset.
 
 Examples:
   cnspec shell mysqldb db.contoso.com --user root --ask-pass
@@ -92,7 +93,7 @@ Examples:
 					Long:    "tls-mode",
 					Type:    plugin.FlagType_String,
 					Default: "preferred",
-					Desc:    "TLS mode: false, skip-verify, preferred, or true",
+					Desc:    "TLS mode: false (plaintext), preferred (TLS when offered, plaintext otherwise), skip-verify (TLS without verifying the server), or true (verified TLS)",
 				},
 				{
 					Long:    "tls-ca",
@@ -111,6 +112,12 @@ Examples:
 					Type:    plugin.FlagType_String,
 					Default: "",
 					Desc:    "Path to the client private key for TLS client authentication",
+				},
+				{
+					Long:    "tls-server-name",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Name to verify in the server certificate, when it differs from the host (for example when connecting by IP address)",
 				},
 			},
 		},

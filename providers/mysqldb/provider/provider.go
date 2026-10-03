@@ -56,7 +56,7 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 		conf.Host = h
 	}
 
-	for _, name := range []string{"database", "tls-mode", "tls-ca", "tls-cert", "tls-key"} {
+	for _, name := range []string{"database", "tls-mode", "tls-ca", "tls-cert", "tls-key", "tls-server-name"} {
 		if v := flagString(name); v != "" {
 			conf.Options[name] = v
 		}

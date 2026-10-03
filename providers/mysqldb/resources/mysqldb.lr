@@ -80,7 +80,10 @@ mysqldb.user @defaults("user host") {
   hasPassword bool
   // Whether the account is anonymous (empty user name)
   isAnonymous bool
-  // Whether the account host is a wildcard (%)
+  // Whether the account host is the bare % wildcard
+  //
+  // True only for the host %, which matches every client. Patterns such as
+  // 192.168.% or %.example.com are false; read host to audit them.
   isWildcardHost bool
   // Whether the account is locked
   accountLocked bool
@@ -92,9 +95,15 @@ mysqldb.user @defaults("user host") {
   passwordLastChanged time
   // TLS requirement for the account: empty, ANY, X509, or SPECIFIED
   sslType string
-  // Maximum concurrent connections for the account, or 0 for the server default
+  // Maximum connections per hour for the account, or 0 for no limit
+  //
+  // The MAX_CONNECTIONS_PER_HOUR resource limit. maxUserConnections is the
+  // limit on simultaneous connections.
   maxConnections int
-  // Maximum concurrent user connections, or 0 for the server default
+  // Maximum simultaneous connections for the account, or 0 for the server default
+  //
+  // The MAX_USER_CONNECTIONS resource limit; 0 applies the server's
+  // max_user_connections.
   maxUserConnections int
   // Roles granted to this account
   grantedRoles() []mysqldb.user

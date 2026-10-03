@@ -39,6 +39,8 @@ const (
 	OptionTLSCert = "tls-cert"
 	// OptionTLSKey is the path to the client private key.
 	OptionTLSKey = "tls-key"
+	// OptionTLSServerName is the name to verify in the server certificate.
+	OptionTLSServerName = "tls-server-name"
 	// OptionScopedDatabase marks a connection as scoped to a single discovered
 	// schema, making the asset a mysqldb-database rather than the server.
 	OptionScopedDatabase = "scoped-database"
