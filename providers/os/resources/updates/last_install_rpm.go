@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/afero"
+	"go.mondoo.com/mql/providers/core/resources/versions/rpm"
 	"go.mondoo.com/mql/providers/os/resources/logrotate"
 )
 
@@ -28,9 +29,10 @@ const dnfRpmLogPath = "/var/log/dnf.rpm.log"
 // dnfUpgradeActions are the transaction actions that record a package moving
 // to a newer build. Upgrade names the incoming build and Upgraded the one it
 // replaced; both are written when the element completes, so either is
-// evidence of a completed upgrade. Installed is deliberately absent (it is
-// written for first-time installs), and so are Downgrade/Downgraded and
-// Reinstall/Reinstalled, which do not move the asset forward.
+// evidence of a completed upgrade. Installed is absent (it is written for
+// first-time installs, and for a new kernel; see isKernelUpdate), and so are
+// Downgrade/Downgraded and Reinstall/Reinstalled, which do not move the asset
+// forward.
 var dnfUpgradeActions = map[string]struct{}{
 	"Upgrade":  {},
 	"Upgraded": {},
@@ -65,28 +67,82 @@ func DnfRpmLogPresent(fs afero.Fs) bool {
 // without transaction evidence there is no way to tell an update from an
 // install, and inferring one from install times is exactly the mistake this
 // log exists to avoid.
-func LastInstalledRpm(fs afero.Fs, isVendorPackage func(name string) bool) (*LastInstalledUpdate, error) {
+//
+// installedVersions returns the versions of a package the rpm database holds,
+// which tells a new kernel from a first install; see isKernelUpdate.
+func LastInstalledRpm(fs afero.Fs, isVendorPackage func(name string) bool, installedVersions func(name string) []string) (*LastInstalledUpdate, error) {
 	if isVendorPackage == nil {
 		return nil, nil
 	}
 	return walkRotatedLogs(fs, dnfRpmLogPath, func(r io.Reader) (*LastInstalledUpdate, bool, error) {
-		update, err := ParseDnfRpmLog(r, isVendorPackage)
+		update, err := ParseDnfRpmLog(r, isVendorPackage, installedVersions)
 		return update, false, err
 	})
+}
+
+// isKernelPackage reports whether a package is one of the kernel's, which
+// dnf installs side by side (installonlypkgs) instead of upgrading.
+func isKernelPackage(name string) bool {
+	return name == "kernel" || strings.HasPrefix(name, "kernel-")
+}
+
+// isKernelUpdate reports whether installing version evr of the package name
+// is a kernel update. dnf installs a new kernel next to the running one and
+// logs it as Installed, never as Upgrade, so a kernel update has to be told
+// from a first install some other way: an older version of the same package
+// was installed, either still in the rpm database or named elsewhere in the
+// transaction record (others). A package that can't be installed twice never
+// has an older version next to it, so its installs never count.
+func isKernelUpdate(name, evr string, others []string, installedVersions func(name string) []string) bool {
+	if !isKernelPackage(name) || evr == "" {
+		return false
+	}
+	if installedVersions != nil {
+		others = append(others, installedVersions(name)...)
+	}
+	var parser rpm.Parser
+	for _, other := range others {
+		if cmp, err := parser.Compare(evr, other); err == nil && cmp > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// rpmNevraEVR returns the [epoch:]version-release of a NEVRA whose name is
+// name.
+func rpmNevraEVR(nevra, name string) string {
+	evra := strings.TrimPrefix(nevra, name+"-")
+	if evra == nevra {
+		return ""
+	}
+	if dot := strings.LastIndex(evra, "."); dot > 0 {
+		return evra[:dot]
+	}
+	return evra
 }
 
 // ParseDnfRpmLog returns the newest completed package upgrade recorded in a
 // dnf rpm transaction log whose package isVendorPackage attributes to the
 // operating system vendor.
 //
-// Only Upgrade/Upgraded lines count. An Installed line is an operator adding
-// a package (`dnf install vim` on a vendor rpm must not advance the machine's
-// patch date), and a line whose timestamp cannot be read cannot be evidence:
+// Only Upgrade/Upgraded lines count, and an Installed line of a new kernel
+// (isKernelUpdate). Any other Installed line is an operator adding a package
+// (`dnf install vim` on a vendor rpm must not advance the machine's patch
+// date), and a line whose timestamp cannot be read cannot be evidence:
 // ancient dnf wrote local time with no offset, and reading that as UTC would
 // shift the answer by the zone, so such lines are skipped instead of guessed
 // at.
-func ParseDnfRpmLog(r io.Reader, isVendorPackage func(name string) bool) (*LastInstalledUpdate, error) {
-	var newest time.Time
+func ParseDnfRpmLog(r io.Reader, isVendorPackage func(name string) bool, installedVersions func(name string) []string) (*LastInstalledUpdate, error) {
+	type entry struct {
+		time   time.Time
+		action string
+		name   string
+		evr    string
+	}
+	var entries []entry
+	// every version of a package the log names, for isKernelUpdate
+	versions := map[string][]string{}
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
@@ -102,25 +158,41 @@ func ParseDnfRpmLog(r io.Reader, isVendorPackage func(name string) bool) (*LastI
 		if !ok {
 			continue
 		}
-		if _, ok := dnfUpgradeActions[action]; !ok {
+		nevra = strings.TrimSpace(nevra)
+		name := rpmNevraName(nevra)
+		if name == "" {
 			continue
 		}
-		name := rpmNevraName(strings.TrimSpace(nevra))
-		if name == "" || !isVendorPackage(name) {
+		evr := rpmNevraEVR(nevra, name)
+		if isKernelPackage(name) && evr != "" {
+			versions[name] = append(versions[name], evr)
+		}
+		if _, ok := dnfUpgradeActions[action]; !ok && action != "Installed" {
+			continue
+		}
+		if !isVendorPackage(name) {
 			continue
 		}
 		t, err := parseDnfTime(timestamp)
 		if err != nil {
 			continue
 		}
-		if t.After(newest) {
-			newest = t
-		}
+		entries = append(entries, entry{time: t, action: action, name: name, evr: evr})
 	}
 	if err := scanner.Err(); err != nil {
 		// A line past the scanner's cap or a read failure mid-file means the
 		// rest of the log is lost, and with it possibly the newest upgrade.
 		return nil, err
+	}
+
+	var newest time.Time
+	for _, e := range entries {
+		if e.action == "Installed" && !isKernelUpdate(e.name, e.evr, versions[e.name], installedVersions) {
+			continue
+		}
+		if e.time.After(newest) {
+			newest = e.time
+		}
 	}
 
 	if newest.IsZero() {

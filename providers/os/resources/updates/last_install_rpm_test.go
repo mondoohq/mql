@@ -33,7 +33,7 @@ func TestParseDnfRpmLog(t *testing.T) {
 			"2026-03-01T10:00:00+0000 SUBDEBUG Installed: vim-enhanced-2:9.1.083-1.el9.x86_64\n"
 
 		got, err := ParseDnfRpmLog(strings.NewReader(log),
-			vendorSet("kernel-core", "openssl-libs", "vim-enhanced"))
+			vendorSet("kernel-core", "openssl-libs", "vim-enhanced"), nil)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, "2026-02-14T09:30:14Z", got.Time.Format(time.RFC3339))
@@ -43,7 +43,7 @@ func TestParseDnfRpmLog(t *testing.T) {
 	t.Run("install-only log is no evidence", func(t *testing.T) {
 		log := "2026-03-01T10:00:00+0000 SUBDEBUG Installed: vim-enhanced-2:9.1.083-1.el9.x86_64\n"
 
-		got, err := ParseDnfRpmLog(strings.NewReader(log), vendorSet("vim-enhanced"))
+		got, err := ParseDnfRpmLog(strings.NewReader(log), vendorSet("vim-enhanced"), nil)
 		require.NoError(t, err)
 		assert.Nil(t, got, "an install is not an update, even of a vendor rpm")
 	})
@@ -54,12 +54,12 @@ func TestParseDnfRpmLog(t *testing.T) {
 		log := "2026-02-14T09:30:14+0000 SUBDEBUG Upgraded: openssl-libs-1:3.0.7-27.el9.x86_64\n" +
 			"2026-08-01T12:00:00+0000 SUBDEBUG Upgraded: docker-ce-3:27.1.1-1.el9.x86_64\n"
 
-		got, err := ParseDnfRpmLog(strings.NewReader(log), vendorSet("openssl-libs"))
+		got, err := ParseDnfRpmLog(strings.NewReader(log), vendorSet("openssl-libs"), nil)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, "2026-02-14T09:30:14Z", got.Time.Format(time.RFC3339))
 
-		got, err = ParseDnfRpmLog(strings.NewReader(log), vendorSet("nothing"))
+		got, err = ParseDnfRpmLog(strings.NewReader(log), vendorSet("nothing"), nil)
 		require.NoError(t, err)
 		assert.Nil(t, got, "an upgrade that cannot be attributed to the vendor is no evidence")
 	})
@@ -71,7 +71,7 @@ func TestParseDnfRpmLog(t *testing.T) {
 			"2026-02-17T09:30:14+0000 SUBDEBUG Erased: telnet-1:0.17-85.el9.x86_64\n" +
 			"2026-02-18T09:30:14+0000 SUBDEBUG Cleanup: bash-5.1.8-8.el9.x86_64\n"
 
-		got, err := ParseDnfRpmLog(strings.NewReader(log), vendorSet("openssl-libs", "bash", "telnet"))
+		got, err := ParseDnfRpmLog(strings.NewReader(log), vendorSet("openssl-libs", "bash", "telnet"), nil)
 		require.NoError(t, err)
 		assert.Nil(t, got)
 	})
@@ -105,7 +105,7 @@ func TestParseDnfRpmLog(t *testing.T) {
 		}
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				got, err := ParseDnfRpmLog(strings.NewReader(test.line), vendorSet("bash"))
+				got, err := ParseDnfRpmLog(strings.NewReader(test.line), vendorSet("bash"), nil)
 				require.NoError(t, err)
 				require.NotNil(t, got)
 				assert.Equal(t, test.want, got.Time.Format(time.RFC3339))
@@ -118,7 +118,7 @@ func TestParseDnfRpmLog(t *testing.T) {
 		// shift the answer by the asset's zone, so the line is not evidence.
 		log := "2019-02-14T09:30:14 SUBDEBUG Upgraded: bash-4.4.19-14.el8.x86_64\n"
 
-		got, err := ParseDnfRpmLog(strings.NewReader(log), vendorSet("bash"))
+		got, err := ParseDnfRpmLog(strings.NewReader(log), vendorSet("bash"), nil)
 		require.NoError(t, err)
 		assert.Nil(t, got)
 	})
@@ -129,13 +129,13 @@ func TestParseDnfRpmLog(t *testing.T) {
 			"2026-02-14T09:30:14+0000 SUBDEBUG\n" +
 			"2026-02-14T09:30:14+0000 SUBDEBUG Upgraded: nonevra\n"
 
-		got, err := ParseDnfRpmLog(strings.NewReader(log), vendorSet("bash"))
+		got, err := ParseDnfRpmLog(strings.NewReader(log), vendorSet("bash"), nil)
 		require.NoError(t, err)
 		assert.Nil(t, got)
 	})
 
 	t.Run("empty log", func(t *testing.T) {
-		got, err := ParseDnfRpmLog(strings.NewReader(""), vendorSet("bash"))
+		got, err := ParseDnfRpmLog(strings.NewReader(""), vendorSet("bash"), nil)
 		require.NoError(t, err)
 		assert.Nil(t, got)
 	})
@@ -147,7 +147,7 @@ func TestParseDnfRpmLogScannerError(t *testing.T) {
 	log := "2026-02-14T09:30:14+0000 SUBDEBUG Upgraded: bash-5.1.8-9.el9.x86_64\n" +
 		strings.Repeat("a", 128*1024) + "\n"
 
-	got, err := ParseDnfRpmLog(strings.NewReader(log), vendorSet("bash"))
+	got, err := ParseDnfRpmLog(strings.NewReader(log), vendorSet("bash"), nil)
 	assert.Error(t, err)
 	assert.Nil(t, got)
 }
@@ -192,7 +192,7 @@ func TestLastInstalledRpm(t *testing.T) {
 		fs := afero.NewMemMapFs()
 		require.NoError(t, afero.WriteFile(fs, dnfRpmLogPath, []byte(upgraded), 0o644))
 
-		got, err := LastInstalledRpm(fs, vendorSet("openssl-libs"))
+		got, err := LastInstalledRpm(fs, vendorSet("openssl-libs"), nil)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, "2026-02-14T09:30:14Z", got.Time.Format(time.RFC3339))
@@ -203,7 +203,7 @@ func TestLastInstalledRpm(t *testing.T) {
 		// The rpm database still lists every package with an install time, but
 		// without the log there is nothing that distinguishes an update from
 		// an install, and inferring one is exactly what this field refuses.
-		got, err := LastInstalledRpm(afero.NewMemMapFs(), vendorSet("openssl-libs"))
+		got, err := LastInstalledRpm(afero.NewMemMapFs(), vendorSet("openssl-libs"), nil)
 		require.NoError(t, err)
 		assert.Nil(t, got)
 	})
@@ -212,7 +212,7 @@ func TestLastInstalledRpm(t *testing.T) {
 		fs := afero.NewMemMapFs()
 		require.NoError(t, afero.WriteFile(fs, dnfRpmLogPath, []byte(upgraded), 0o644))
 
-		got, err := LastInstalledRpm(fs, nil)
+		got, err := LastInstalledRpm(fs, nil, nil)
 		require.NoError(t, err)
 		assert.Nil(t, got)
 	})
@@ -223,7 +223,7 @@ func TestLastInstalledRpm(t *testing.T) {
 		require.NoError(t, afero.WriteFile(fs, dnfRpmLogPath, []byte(installOnly), 0o644))
 		require.NoError(t, afero.WriteFile(fs, dnfRpmLogPath+".1", []byte(upgraded), 0o644))
 
-		got, err := LastInstalledRpm(fs, vendorSet("openssl-libs", "vim-enhanced"))
+		got, err := LastInstalledRpm(fs, vendorSet("openssl-libs", "vim-enhanced"), nil)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, "2026-02-14T09:30:14Z", got.Time.Format(time.RFC3339))
@@ -234,8 +234,68 @@ func TestLastInstalledRpm(t *testing.T) {
 		require.NoError(t, afero.WriteFile(fs, dnfRpmLogPath+".1.gz", []byte("not gzip"), 0o644))
 		require.NoError(t, afero.WriteFile(fs, dnfRpmLogPath+".2", []byte(upgraded), 0o644))
 
-		got, err := LastInstalledRpm(fs, vendorSet("openssl-libs"))
+		got, err := LastInstalledRpm(fs, vendorSet("openssl-libs"), nil)
 		require.NoError(t, err)
 		assert.Nil(t, got, "a corrupt newest rotation must not surface an older answer")
 	})
+}
+
+// dnf installs a new kernel next to the running one and logs it as
+// Installed. On RHEL 9, `dnf upgrade` brought kernel 5.14.0-687.54.1 at 00:45
+// while 5.14.0-570.141.1 was installed, and lastUpdate stayed at the 00:31
+// upgrade. Lines from the sweep host's /var/log/dnf.rpm.log.
+func TestParseDnfRpmLogKernelInstall(t *testing.T) {
+	log := "2026-10-03T00:30:55+0000 INFO --- logging initialized ---\n" +
+		"2026-10-03T00:31:51+0000 SUBDEBUG Upgrade: openssl-libs-1:3.5.8-1.el9_8.x86_64\n" +
+		"2026-10-03T00:31:53+0000 SUBDEBUG Upgrade: python3-3.9.25-7.el9_8.3.x86_64\n" +
+		"2026-10-03T00:44:53+0000 SUBDEBUG Installed: kernel-modules-core-5.14.0-687.54.1.el9_8.x86_64\n" +
+		"2026-10-03T00:44:55+0000 SUBDEBUG Installed: kernel-core-5.14.0-687.54.1.el9_8.x86_64\n" +
+		"2026-10-03T00:44:58+0000 SUBDEBUG Installed: kernel-modules-5.14.0-687.54.1.el9_8.x86_64\n" +
+		"2026-10-03T00:45:07+0000 SUBDEBUG Installed: kernel-5.14.0-687.54.1.el9_8.x86_64\n"
+	vendor := vendorSet("openssl-libs", "python3", "kernel", "kernel-core", "kernel-modules", "kernel-modules-core")
+	installed := func(name string) []string {
+		if isKernelPackage(name) {
+			return []string{"5.14.0-570.141.1.el9_6", "5.14.0-687.54.1.el9_8"}
+		}
+		return nil
+	}
+
+	got, err := ParseDnfRpmLog(strings.NewReader(log), vendor, installed)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "2026-10-03T00:45:07Z", got.Time.Format(time.RFC3339))
+
+	// The only kernel installed is the one the line installs: a first
+	// install, not an update.
+	only := func(name string) []string {
+		if isKernelPackage(name) {
+			return []string{"5.14.0-687.54.1.el9_8"}
+		}
+		return nil
+	}
+	got, err = ParseDnfRpmLog(strings.NewReader(log), vendor, only)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "2026-10-03T00:31:53Z", got.Time.Format(time.RFC3339))
+
+	// An older kernel named earlier in the log counts as well, after it was
+	// removed from the rpm database.
+	withOld := "2026-01-10T08:00:02+0000 SUBDEBUG Installed: kernel-core-5.14.0-503.el9.x86_64\n" + log
+	got, err = ParseDnfRpmLog(strings.NewReader(withOld), vendor, only)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "2026-10-03T00:44:55Z", got.Time.Format(time.RFC3339))
+
+	// Installing an older kernel is not an update.
+	got, err = ParseDnfRpmLog(strings.NewReader(
+		"2026-10-03T00:44:55+0000 SUBDEBUG Installed: kernel-core-5.14.0-503.el9.x86_64\n"),
+		vendor, installed)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestRpmNevraEVR(t *testing.T) {
+	assert.Equal(t, "5.14.0-687.54.1.el9_8", rpmNevraEVR("kernel-core-5.14.0-687.54.1.el9_8.x86_64", "kernel-core"))
+	assert.Equal(t, "0:7.2.8-200.fc44", rpmNevraEVR("kernel-core-0:7.2.8-200.fc44.x86_64", "kernel-core"))
+	assert.Equal(t, "", rpmNevraEVR("kernel-core-5.14.0-687.54.1.el9_8.x86_64", "other"))
 }
