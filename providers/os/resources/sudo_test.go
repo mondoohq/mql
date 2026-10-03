@@ -244,6 +244,21 @@ func (c *germanLocaleConn) RunCommand(command string) (*shared.Command, error) {
 	res := &shared.Command{Command: command, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
 	cLocale := strings.HasPrefix(command, "env LC_ALL=C ")
 	switch {
+	// runnableBinary checks that no other account can replace sudo or visudo
+	case command == "id -u":
+		res.Stdout = bytes.NewBufferString("1000\n")
+	case command == "LC_ALL=C ls -ldn -- '/' '/usr' '/usr/bin' '/usr/bin/sudo'":
+		res.Stdout = bytes.NewBufferString(`dr-xr-xr-x. 17    0    0       224 Oct  2 23:58 /
+drwxr-xr-x. 13    0    0       155 Sep 30  2024 /usr
+dr-xr-xr-x.  2    0    0     40960 Oct  2 16:55 /usr/bin
+---s--x--x.  1    0    0    262256 Oct  2 16:55 /usr/bin/sudo
+`)
+	case command == "LC_ALL=C ls -ldn -- '/' '/usr' '/usr/sbin' '/usr/sbin/visudo'":
+		res.Stdout = bytes.NewBufferString(`dr-xr-xr-x. 17    0    0       224 Oct  2 23:58 /
+drwxr-xr-x. 13    0    0       155 Sep 30  2024 /usr
+dr-xr-xr-x.  2    0    0     20480 Oct  2 16:55 /usr/sbin
+-rwxr-xr-x.  1    0    0    232928 Oct  2 16:55 /usr/sbin/visudo
+`)
 	case strings.HasSuffix(command, "/usr/bin/sudo -V"):
 		out := sudoVOutputDE
 		if cLocale {
