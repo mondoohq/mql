@@ -95,6 +95,28 @@ func (m *SystemdTimerManager) listViaSystemctl() ([]*SystemdTimer, error) {
 		}
 	}
 
+	// Step 4: Add the units only list-units names, such as the instances of a
+	// template. A failed show keeps what list-units told about them.
+	listed := make(map[string]bool, len(timers))
+	for _, timer := range timers {
+		listed[ensureSystemdTimerUnit(timer.Name)] = true
+	}
+	loaded := make(map[string]bool, len(unitStates))
+	for name, unitState := range unitStates {
+		loaded[ensureSystemdTimerUnit(name)] = unitState.Installed
+	}
+	unlisted := systemdUnitsNotListed(loaded, listed)
+	shown := showSystemdUnitStates(m.conn, unlisted)
+	for _, unit := range unlisted {
+		timer := unitStates[normalizeSystemdTimerName(unit)]
+		if record, ok := shown[unit]; ok {
+			timer.Description = record["Description"]
+			timer.Running = record["ActiveState"] == "active"
+			applyUnitFileState(&timer.Enabled, &timer.Masked, &timer.Static, record["UnitFileState"])
+		}
+		timers = append(timers, timer)
+	}
+
 	return timers, nil
 }
 

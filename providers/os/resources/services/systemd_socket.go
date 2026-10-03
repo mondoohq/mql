@@ -91,6 +91,28 @@ func (m *SystemdSocketManager) listViaSystemctl() ([]*SystemdSocket, error) {
 		}
 	}
 
+	// Step 4: Add the units only list-units names, such as the instances of a
+	// template. A failed show keeps what list-units told about them.
+	listed := make(map[string]bool, len(sockets))
+	for _, socket := range sockets {
+		listed[ensureSystemdSocketUnit(socket.Name)] = true
+	}
+	loaded := make(map[string]bool, len(unitStates))
+	for name, unitState := range unitStates {
+		loaded[ensureSystemdSocketUnit(name)] = unitState.Installed
+	}
+	unlisted := systemdUnitsNotListed(loaded, listed)
+	shown := showSystemdUnitStates(m.conn, unlisted)
+	for _, unit := range unlisted {
+		socket := unitStates[normalizeSystemdSocketName(unit)]
+		if record, ok := shown[unit]; ok {
+			socket.Description = record["Description"]
+			socket.Running = record["ActiveState"] == "active"
+			applyUnitFileState(&socket.Enabled, &socket.Masked, &socket.Static, record["UnitFileState"])
+		}
+		sockets = append(sockets, socket)
+	}
+
 	return sockets, nil
 }
 
