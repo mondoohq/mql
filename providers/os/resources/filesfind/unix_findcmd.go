@@ -39,7 +39,7 @@ func globEscape(s string) string {
 	var b strings.Builder
 	for _, r := range s {
 		switch r {
-		case '\\', '*', '?', '[':
+		case '\\', '*', '?', '[', ']':
 			b.WriteRune('\\')
 		}
 		b.WriteRune(r)
@@ -197,20 +197,6 @@ func depthPrunePattern(from string, depth int64) string {
 	// ?* rather than *: a component is never empty, and /* would match the
 	// root itself
 	return escaped.String() + strings.Repeat("/?*", int(depth)+1)
-}
-
-// globEscape escapes the characters find's -path treats as a pattern, so a
-// mount point is matched literally.
-func globEscape(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		switch r {
-		case '*', '?', '[', ']', '\\':
-			b.WriteByte('\\')
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }
 
 // Filesystems whose subvolumes each carry a device number of their own,
