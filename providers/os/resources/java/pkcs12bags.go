@@ -22,6 +22,8 @@ import (
 	"hash"
 	"math/bits"
 	"unicode/utf16"
+
+	"github.com/rs/zerolog/log"
 )
 
 // The PKCS#12 reader in go-pkcs12 verifies the integrity MAC and decrypts the
@@ -255,9 +257,13 @@ func classifyBags(bags []p12SafeBag) ([]Entry, error) {
 			return nil, err
 		}
 		_, belongsToAKey := keyIDs[id]
-		// a certificate that does not parse cannot be placed in a chain; it is
-		// still reported, and fails where its fields are read
-		cert, _ := x509.ParseCertificate(cb.Data)
+		// a certificate that does not parse cannot be placed in a chain, so a
+		// key's chain may end before it; it is logged, and as a trusted entry
+		// still reported, failing where its fields are read
+		cert, parseErr := x509.ParseCertificate(cb.Data)
+		if parseErr != nil {
+			log.Debug().Err(parseErr).Str("alias", alias).Msg("java> PKCS#12 certificate does not parse, it cannot be placed in a chain")
+		}
 		certs = append(certs, certBag{
 			alias:   alias,
 			der:     cb.Data,
