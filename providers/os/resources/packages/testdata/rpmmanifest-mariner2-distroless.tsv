@@ -1,0 +1,12 @@
+filesystem	1.1-20.cm2	1773277176	1706035940	Microsoft Corporation	(none)	7756	aarch64	0	filesystem-1.1-20.cm2.src.rpm
+mariner-release	2.0-85.cm2	1773277177	1772643867	Microsoft Corporation	(none)	565	noarch	0	mariner-release-2.0-85.cm2.src.rpm
+glibc	2.35-10.cm2	1773277177	1772592322	Microsoft Corporation	(none)	7822034	aarch64	0	glibc-2.35-10.cm2.src.rpm
+openssl-libs	1.1.1k-39.cm2	1773277177	1773267485	Microsoft Corporation	(none)	4166488	aarch64	0	openssl-1.1.1k-39.cm2.src.rpm
+tzdata	2025c-1.cm2	1773277177	1767371916	Microsoft Corporation	(none)	1392103	noarch	0	tzdata-2025c-1.cm2.src.rpm
+distroless-packages-minimal	0.1-4.cm2	1773277177	1714062475	Microsoft Corporation	(none)	0	aarch64	0	distroless-packages-0.1-4.cm2.src.rpm
+libgcc	11.2.0-9.cm2	1773277177	1764986185	Microsoft Corporation	(none)	87064	aarch64	0	gcc-11.2.0-9.cm2.src.rpm
+openssl	1.1.1k-39.cm2	1773277177	1773267485	Microsoft Corporation	(none)	1274027	aarch64	0	openssl-1.1.1k-39.cm2.src.rpm
+glibc-iconv	2.35-10.cm2	1773277177	1772592322	Microsoft Corporation	(none)	7087734	aarch64	0	glibc-2.35-10.cm2.src.rpm
+iana-etc	20211115-2.cm2	1773277177	1665435226	Microsoft Corporation	(none)	566707	noarch	0	iana-etc-20211115-2.cm2.src.rpm
+distroless-packages-base	0.1-4.cm2	1773277177	1714062475	Microsoft Corporation	(none)	0	aarch64	0	distroless-packages-0.1-4.cm2.src.rpm
+prebuilt-ca-certificates	2.0.0-25.cm2	1773277177	1764990400	Microsoft Corporation	(none)	2179050	noarch	1	prebuilt-ca-certificates-2.0.0-25.cm2.src.rpm

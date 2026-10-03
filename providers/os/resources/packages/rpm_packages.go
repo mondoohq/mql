@@ -24,6 +24,7 @@ import (
 	rpmdb "github.com/knqyf263/go-rpmdb/pkg"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 )
@@ -514,7 +515,16 @@ func (rpm *RpmPkgManager) staticList() ([]Package, error) {
 	}
 
 	if len(detectedPath) == 0 {
-		return nil, errors.Wrap(err, "could not find rpm packages location on : "+rpm.platform.Name)
+		// Azure Linux and CBL-Mariner distroless images drop the rpm
+		// database and keep a manifest of what they installed.
+		if f, err := fs.Open(rpmManifestPath); err == nil {
+			defer f.Close()
+			log.Debug().Str("path", rpmManifestPath).Msg("found rpm manifest")
+			return parseRpmManifest(rpm.platform, f)
+		}
+		// err was nil here, so errors.Wrap returned nil and an image without
+		// an rpm database listed no packages and no error
+		return nil, llx.NotFound(fmt.Errorf("could not find an rpm database on %s", rpm.platform.Name))
 	}
 	log.Debug().Str("path", detectedPath).Msg("found rpm packages location")
 
