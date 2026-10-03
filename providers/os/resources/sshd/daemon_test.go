@@ -90,3 +90,23 @@ func TestParseDaemonCommandLine_NotSshd(t *testing.T) {
 		assert.False(t, ok, "%q", cmdline)
 	}
 }
+
+func TestParseDaemonCommandLine_ListenerTitleSpaceForm(t *testing.T) {
+	// Fedora 44 with `-o "Ciphers aes128-cbc,aes256-ctr,aes128-ctr"` added to
+	// the EC2 Instance Connect ExecStart: in the title the keyword and its
+	// list are separate fields.
+	res, ok := ParseDaemonCommandLine(readCmdline(t, "cmdline-fed44-space.bin"))
+	require.True(t, ok)
+	assert.Equal(t, []string{"Ciphers=aes128-cbc,aes256-ctr,aes128-ctr"}, res.Options)
+
+	// the keyword glued to -o, any case, and a list that removes algorithms
+	title := "sshd: /usr/sbin/sshd -D -oMACs hmac-sha1 -o kexalgorithms -diffie-hellman-group1-sha1 -o Banner /etc/issue [listener] 0 of 10-100 startups\x00"
+	res, ok = ParseDaemonCommandLine([]byte(title))
+	require.True(t, ok)
+	assert.Equal(t, []string{"MACs=hmac-sha1", "kexalgorithms=-diffie-hellman-group1-sha1"}, res.Options)
+
+	// a keyword at the very end of the title has no list to join
+	res, ok = ParseDaemonCommandLine([]byte("sshd: /usr/sbin/sshd -D -o Ciphers [listener] 0 of 10-100 startups\x00"))
+	require.True(t, ok)
+	assert.Empty(t, res.Options)
+}

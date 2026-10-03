@@ -53,6 +53,7 @@ var algorithmListKeywords = map[string]struct{}{
 // title, "sshd: /usr/sbin/sshd -D -o ... [listener] 0 of 10-100 startups",
 // and the boundaries between arguments are lost. From such a title only
 // algorithm-list options are taken, since their values cannot hold spaces.
+// Both the "-oKeyword=list" and the "-o 'Keyword list'" form are recognized.
 func ParseDaemonCommandLine(cmdline []byte) (DaemonCommandLine, bool) {
 	args := strings.Split(strings.TrimRight(string(cmdline), "\x00"), "\x00")
 	exact := true
@@ -99,6 +100,14 @@ func ParseDaemonCommandLine(cmdline []byte) (DaemonCommandLine, bool) {
 			case 'f':
 				res.ConfigFile = value
 			case 'o':
+				// In a title, `-o "Ciphers aes128-cbc,aes256-ctr"` arrives as
+				// the keyword and its list in two fields. sshd refuses to start
+				// with a keyword that has no value, so the next field is the
+				// list, even when it starts with "-" (removal syntax).
+				if !exact && isAlgorithmListKeyword(value) && i+1 < len(args) {
+					i++
+					value += "=" + args[i]
+				}
 				if exact || isAlgorithmListOption(value) {
 					res.Options = append(res.Options, value)
 				}
@@ -114,6 +123,10 @@ func isAlgorithmListOption(opt string) bool {
 	if !ok || value == "" {
 		return false
 	}
-	_, known := algorithmListKeywords[strings.ToLower(strings.TrimSpace(keyword))]
+	return isAlgorithmListKeyword(strings.TrimSpace(keyword))
+}
+
+func isAlgorithmListKeyword(keyword string) bool {
+	_, known := algorithmListKeywords[strings.ToLower(keyword)]
 	return known
 }
