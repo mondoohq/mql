@@ -18,6 +18,11 @@ const (
 	OptionTLS = "tls"
 	// OptionTLSCA is the path to the trusted CA certificate.
 	OptionTLSCA = "tls-ca"
+	// OptionTLSCert is the path to the client certificate presented to a
+	// server that requires one (tls-auth-clients yes).
+	OptionTLSCert = "tls-cert"
+	// OptionTLSKey is the path to the private key of OptionTLSCert.
+	OptionTLSKey = "tls-key"
 	// OptionTLSInsecure skips TLS certificate validation when "true".
 	OptionTLSInsecure = "tls-insecure"
 )

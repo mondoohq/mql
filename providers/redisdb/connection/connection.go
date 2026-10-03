@@ -35,6 +35,8 @@ type RedisdbConnection struct {
 	database    int
 	tls         bool
 	tlsCA       string
+	tlsCert     string
+	tlsKey      string
 	tlsInsecure bool
 
 	mu        sync.Mutex
@@ -60,8 +62,10 @@ func NewRedisdbConnection(id uint32, asset *inventory.Asset, conf *inventory.Con
 	}
 	conn.tls = conf.Options[OptionTLS] == "true"
 	conn.tlsCA = conf.Options[OptionTLSCA]
+	conn.tlsCert = conf.Options[OptionTLSCert]
+	conn.tlsKey = conf.Options[OptionTLSKey]
 	conn.tlsInsecure = conf.Options[OptionTLSInsecure] == "true"
-	if conn.tlsCA != "" || conn.tlsInsecure {
+	if conn.tlsCA != "" || conn.tlsCert != "" || conn.tlsKey != "" || conn.tlsInsecure {
 		conn.tls = true
 	}
 
@@ -130,6 +134,18 @@ func (c *RedisdbConnection) tlsConfig() (*tls.Config, error) {
 			return nil, status.Errorf(codes.InvalidArgument, "no certificates found in tls-ca %q", c.tlsCA)
 		}
 		cfg.RootCAs = pool
+	}
+	// A server with tls-auth-clients yes refuses the handshake without a
+	// client certificate ("tls: certificate required").
+	if c.tlsCert != "" || c.tlsKey != "" {
+		if c.tlsCert == "" || c.tlsKey == "" {
+			return nil, status.Error(codes.InvalidArgument, "tls-cert and tls-key must be set together")
+		}
+		pair, err := tls.LoadX509KeyPair(c.tlsCert, c.tlsKey)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "failed to load the client certificate %q and key %q: %v", c.tlsCert, c.tlsKey, err)
+		}
+		cfg.Certificates = []tls.Certificate{pair}
 	}
 	return cfg, nil
 }
