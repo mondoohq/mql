@@ -73,7 +73,14 @@ func ParseApkDbPackages(pf *inventory.Platform, input io.Reader) []Package {
 			purl.WithArch(pkg.Arch),
 		).String()
 
-		cpes, _ := cpe2.NewPackage2Cpe(pkg.Vendor, pkg.Name, pkg.Version, "", pf.Arch)
+		// The architecture apk recorded for the package, as in the purl. The
+		// platform's is named differently by transport (arm64 from an image
+		// config, aarch64 from uname), so the same image gave different CPEs.
+		cpeArch := pkg.Arch
+		if cpeArch == "" {
+			cpeArch = pf.Arch
+		}
+		cpes, _ := cpe2.NewPackage2Cpe(pkg.Vendor, pkg.Name, pkg.Version, "", cpeArch)
 		pkg.CPEs = cpes
 
 		pkg.FilesAvailable = PkgFilesIncluded

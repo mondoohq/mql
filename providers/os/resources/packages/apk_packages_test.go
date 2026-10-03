@@ -483,3 +483,22 @@ func TestAlpinePkgManagerListReadsWorldPins(t *testing.T) {
 	}
 	assert.Equal(t, map[string]bool{"busybox": true, "zlib": true, "musl": false}, pinned)
 }
+
+// An image scan reports the platform in the image config's naming (arm64),
+// an in-container scan in uname's (aarch64). The package CPE has to carry the
+// architecture apk recorded for the package, as the purl already does, so the
+// same image yields the same CPEs on every transport.
+func TestApkCpeUsesThePackageArchitecture(t *testing.T) {
+	db := "P:musl\nV:1.2.5-r10\nA:aarch64\nL:MIT\no:musl\n\n" +
+		"P:alpine-baselayout-data\nV:3.6.8-r1\nA:aarch64\n\n" +
+		"P:noarch-pkg\nV:1.0-r0\n\n"
+	for _, platformArch := range []string{"arm64", "aarch64"} {
+		pf := &inventory.Platform{Name: "alpine", Version: "3.22.1", Arch: platformArch, Family: []string{"linux", "unix", "os"}}
+		pkgs := ParseApkDbPackages(pf, strings.NewReader(db))
+		require.Len(t, pkgs, 3)
+		assert.Equal(t, []string{"cpe:2.3:a:*:musl:1.2.5-r10:*:*:*:*:*:aarch64:*"}, pkgs[0].CPEs, platformArch)
+		assert.Contains(t, pkgs[0].PUrl, "arch=aarch64")
+		assert.Equal(t, []string{"cpe:2.3:a:*:noarch-pkg:1.0-r0:*:*:*:*:*:" + platformArch + ":*"}, pkgs[2].CPEs,
+			"a package with no recorded architecture falls back to the platform's")
+	}
+}

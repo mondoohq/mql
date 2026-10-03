@@ -333,3 +333,27 @@ func TestPacmanLicenseExpression(t *testing.T) {
 	// no %INSTALLDATE%: no date, not 1970
 	assert.True(t, one[0].InstallDate.IsZero())
 }
+
+// An amd64 image reports its platform as amd64 on an image scan and as x86_64
+// from uname inside the container. The purl has to carry the architecture
+// pacman recorded for the package, as the rpm and dpkg purls do, so the same
+// filesystem gives the same purl on every transport.
+func TestPacmanPurlUsesThePackageArchitecture(t *testing.T) {
+	desc := "%NAME%\nbash\n\n%VERSION%\n5.3.20-1\n\n%ARCH%\nx86_64\n\n" +
+		"%NAME%\nca-certificates\n\n%VERSION%\n20240618-1\n\n%ARCH%\nany\n\n"
+	for _, platformArch := range []string{"amd64", "x86_64"} {
+		pf := &inventory.Platform{Name: "arch", Version: "rolling", Arch: platformArch,
+			Family: []string{"arch", "linux", "unix", "os"}, Labels: map[string]string{"distro-id": "arch"}}
+		pkgs := packages.ParsePacmanDescStream(pf, strings.NewReader(desc))
+		require.Len(t, pkgs, 2)
+		assert.Contains(t, pkgs[0].PUrl, "arch=x86_64", platformArch)
+		assert.Contains(t, pkgs[1].PUrl, "arch="+platformArch, "an architecture-independent package keeps the platform's")
+	}
+
+	// pacman -Q does not print an architecture, so the platform's stays
+	pf := &inventory.Platform{Name: "arch", Version: "rolling", Arch: "x86_64",
+		Family: []string{"arch", "linux", "unix", "os"}, Labels: map[string]string{"distro-id": "arch"}}
+	pkgs := packages.ParsePacmanPackages(pf, strings.NewReader("bash 5.3.20-1\n"))
+	require.Len(t, pkgs, 1)
+	assert.Contains(t, pkgs[0].PUrl, "arch=x86_64")
+}

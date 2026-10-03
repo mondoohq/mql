@@ -83,14 +83,35 @@ func NewContainerConnection(id uint32, conf *inventory.Config, asset *inventory.
 		runtime:    "docker",
 	}
 
-	// this can later be used for containers build from scratch
-	serverVersionRes, err := dockerClient.ServerVersion(context.Background(), client.ServerVersionOptions{})
-	if err != nil {
-		log.Debug().Err(err).Msg("docker> cannot get server version")
-	} else {
-		log.Debug().Interface("serverVersion", serverVersionRes).Msg("docker> server version")
-		conn.PlatformArchitecture = serverVersionRes.Arch
+	// The container runs its image's architecture, which is not the daemon's
+	// when the image was pulled for another platform (an amd64 image under
+	// emulation on an arm64 host). The daemon's is only the fallback.
+	//
+	// The platform-specific manifest the container was created from names it
+	// exactly. With the containerd image store an image can be a multi-platform
+	// index, and inspecting the image then reports no architecture at all.
+	var manifestArch, imageArch, daemonArch string
+	if d := data.ImageManifestDescriptor; d != nil && d.Platform != nil {
+		manifestArch = d.Platform.Architecture
 	}
+	if manifestArch == "" {
+		imageRes, err := dockerClient.ImageInspect(context.Background(), data.Image)
+		if err != nil {
+			log.Debug().Err(err).Str("image", data.Image).Msg("docker> cannot inspect the container's image")
+		} else {
+			imageArch = imageRes.Architecture
+		}
+	}
+	if manifestArch == "" && imageArch == "" {
+		serverVersionRes, err := dockerClient.ServerVersion(context.Background(), client.ServerVersionOptions{})
+		if err != nil {
+			log.Debug().Err(err).Msg("docker> cannot get server version")
+		} else {
+			log.Debug().Interface("serverVersion", serverVersionRes).Msg("docker> server version")
+			daemonArch = serverVersionRes.Arch
+		}
+	}
+	conn.PlatformArchitecture = containerArchitecture(manifestArch, imageArch, daemonArch)
 
 	conn.Fs = &FS{
 		dockerClient: conn.Client,
@@ -99,6 +120,18 @@ func NewContainerConnection(id uint32, conf *inventory.Config, asset *inventory.
 		catFS:        cat.New(conn),
 	}
 	return conn, nil
+}
+
+// containerArchitecture picks the architecture a container runs: the one of
+// the manifest it was created from, else its image's, else the daemon's. All
+// three are in the OCI naming (amd64, arm64) that the image scan paths report.
+func containerArchitecture(manifestArch, imageArch, daemonArch string) string {
+	for _, arch := range []string{manifestArch, imageArch, daemonArch} {
+		if arch != "" {
+			return arch
+		}
+	}
+	return ""
 }
 
 func GetDockerClient() (*client.Client, error) {
