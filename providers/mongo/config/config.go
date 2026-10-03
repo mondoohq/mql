@@ -39,9 +39,11 @@ Examples:
   cnspec shell mongo db.contoso.com --user admin --ask-pass
   cnspec scan mongo mongodb://admin@db.contoso.com:27017 --ask-pass
 `,
+			// The positional host; without MaxArgs the CLI rejects it as an
+			// unknown command.
+			MaxArgs: 1,
+			// auto and all are added by the CLI for every connector.
 			Discovery: []string{
-				connection.DiscoveryAuto,
-				connection.DiscoveryAll,
 				connection.DiscoveryInstance,
 				connection.DiscoveryDatabases,
 				connection.DiscoveryNone,

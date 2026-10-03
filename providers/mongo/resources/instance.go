@@ -107,7 +107,7 @@ func (r *mqlMongoInstance) parameters() ([]any, error) {
 		p, err := CreateResource(r.MqlRuntime, "mongo.parameter", map[string]*llx.RawData{
 			"__id":  llx.StringData(serverID + "/param/" + name),
 			"name":  llx.StringData(name),
-			"value": llx.StringData(toStr(res[name])),
+			"value": llx.StringData(parameterValue(res[name])),
 		})
 		if err != nil {
 			return nil, err

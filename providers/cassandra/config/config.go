@@ -26,6 +26,9 @@ var Config = plugin.Provider{
 			Name:  "cassandra",
 			Use:   "cassandra [host]",
 			Short: "an Apache Cassandra cluster",
+			// The positional host; without MaxArgs the CLI rejects it as an
+			// unknown command.
+			MaxArgs: 1,
 			Long: `Use the cassandra provider to query an Apache Cassandra cluster.
 
 The provider connects over CQL and runs read-only queries against the system

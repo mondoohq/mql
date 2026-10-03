@@ -2,7 +2,7 @@
 
 The `mongo` provider connects to a self-hosted MongoDB server and inventories it through read-only administrative commands (`buildInfo`, `getCmdLineOpts`, `getParameter`, `usersInfo`, `rolesInfo`, `listDatabases`). It exposes the server configuration, users, roles and their privileges, and databases, so you can audit the server's security posture (the CIS MongoDB benchmark) without touching the data.
 
-This is the provider for MongoDB servers you run yourself. For MongoDB Atlas (the managed SaaS) use the `mongodbatlas` provider, and for local `mongod.conf` file analysis use the `os` provider's `mongodb` resource.
+It supports MongoDB 4.4 and later (the minimum the Go driver speaks); an older server fails to connect with a wire-version error. This is the provider for MongoDB servers you run yourself. For MongoDB Atlas (the managed SaaS) use the `mongodbatlas` provider, and for local `mongod.conf` file analysis use the `os` provider's `mongodb` resource.
 
 ## Authentication
 
@@ -41,20 +41,22 @@ mql shell mongo db.contoso.com --user auditor --ask-pass --tls --tls-ca ca.pem
 
 ## Discovery
 
-By default the provider discovers each database on the server as its own `mongo-database` asset, alongside the server asset. The `--discover` targets control which child assets are emitted:
+By default the provider emits the server as its only asset. The `--discover` targets control whether each database also becomes its own `mongo-database` asset:
 
-- `auto` (default) - also emit one asset per database. Same as `all`.
-- `all` - also emit one asset per database.
-- `databases` - also emit one asset per database.
+- `auto` (default) - the server asset only.
+- `all` - the server plus one asset per database.
+- `databases` - the server plus one asset per database.
 - `instance` - the server asset only.
-- `none` - the server only, without per-database assets.
+- `none` - the server asset only.
+
+A database asset is a scope on the same server connection: `mongo.instance` on it still describes the whole server.
 
 ```shell
-# Scan the server and every database
+# Scan the server only
 cnspec scan mongo db.contoso.com --user auditor --ask-pass
 
-# Scan the server only
-cnspec scan mongo db.contoso.com --user auditor --ask-pass --discover none
+# Scan the server and every database
+cnspec scan mongo db.contoso.com --user auditor --ask-pass --discover all
 ```
 
 ## Examples
