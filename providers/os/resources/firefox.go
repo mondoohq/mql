@@ -5,6 +5,8 @@ package resources
 
 import (
 	"encoding/json"
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -181,8 +183,9 @@ func (f *mqlFirefox) id() (string, error) {
 	return "firefox", nil
 }
 
-// mqlFirefoxInternal carries the count of addon entries the decoder skipped,
-// which is known only once addons() has walked every profile. unreadableAddons
+// mqlFirefoxInternal carries the count of addon entries the decoder skipped
+// and of profiles the scan was refused, which is known only once addons() has
+// walked every profile. unreadableAddons
 // forces that walk and then reads it.
 type mqlFirefoxInternal struct {
 	unreadableAddons int
@@ -240,6 +243,9 @@ func (f *mqlFirefox) addons() ([]any, error) {
 	for _, u := range users {
 		homeDir := u.home
 		uid := u.uid
+		// A home the scan may not enter refuses every browser directory in
+		// it; it counts once, as one user whose profiles could not be read.
+		homeDenied := false
 
 		// Check each browser for this user
 		for _, browserCfg := range configs {
@@ -251,7 +257,11 @@ func (f *mqlFirefox) addons() ([]any, error) {
 			// (user x browser) combinations would pay a process start-up just to
 			// learn the directory is absent.
 			// See https://github.com/mondoohq/mql/issues/9104
-			if !firefoxBrowserDirExists(afs, browserDir) {
+			exists, denied := firefoxBrowserDir(afs, browserDir)
+			if denied {
+				homeDenied = true
+			}
+			if !exists {
 				continue
 			}
 
@@ -301,6 +311,9 @@ func (f *mqlFirefox) addons() ([]any, error) {
 				extensionsData, err := readFirefoxExtensionsJSON(afs, extensionsPath.Data)
 				if err != nil {
 					log.Debug().Err(err).Str("path", extensionsPath.Data).Msg("could not read extensions.json")
+					if errors.Is(err, os.ErrPermission) {
+						unreadable++
+					}
 					continue
 				}
 				unreadable += extensionsData.Unreadable
@@ -387,26 +400,40 @@ func (f *mqlFirefox) addons() ([]any, error) {
 				}
 			}
 		}
+		if homeDenied {
+			unreadable++
+		}
 	}
 
 	f.mqlFirefoxInternal.unreadableAddons = unreadable
 	if unreadable > 0 {
-		log.Warn().Int("count", unreadable).Msg("some Firefox addon records could not be read, addons is an incomplete inventory")
+		log.Warn().Int("count", unreadable).Msg("some Firefox addon records or profiles could not be read, addons is an incomplete inventory")
 	}
 
 	return addons, nil
 }
 
-// firefoxBrowserDirExists reports whether a browser's profile directory is
-// present, treating an unreadable path or a non-directory as absent so the
-// caller skips the search rather than failing the whole resource.
-func firefoxBrowserDirExists(afs *afero.Afero, dir string) bool {
+// firefoxBrowserDir reports whether a browser's profile directory is present.
+// A non-directory or an absent path is not a browser. A path the scan is not
+// allowed to look at is reported as denied: it may hold profiles, and their
+// addons are missing from the list. Other errors count as absent so one odd
+// path does not fail the whole resource.
+func firefoxBrowserDir(afs *afero.Afero, dir string) (exists bool, denied bool) {
 	exists, err := afs.DirExists(dir)
 	if err != nil {
 		log.Debug().Err(err).Str("path", dir).Msg("could not check browser directory")
-		return false
+		return false, errors.Is(err, os.ErrPermission)
 	}
-	return exists
+	if !exists {
+		return false, false
+	}
+	// Firefox creates the directory 0700. Another user's can be found when
+	// its parent is traversable but not listed, and the profile search below
+	// it then finds nothing rather than failing.
+	if _, err := afs.ReadDir(dir); err != nil && errors.Is(err, os.ErrPermission) {
+		return false, true
+	}
+	return true, false
 }
 
 // readFirefoxExtensionsJSON reads one Firefox extensions.json.

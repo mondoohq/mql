@@ -4,11 +4,14 @@
 package resources
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/afero"
+	"github.com/tailscale/hujson"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -28,7 +31,7 @@ func (r *mqlGemini) id() (string, error) {
 func (r *mqlGemini) authType() (string, error) {
 	afs := connectionAfs(r.MqlRuntime)
 	var settings geminiSettings
-	err := readJSONFileAfero(afs, r.ConfigPath.Data, "settings.json", &settings)
+	err := readGeminiSettings(afs, r.ConfigPath.Data, &settings)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", nil
@@ -41,7 +44,7 @@ func (r *mqlGemini) authType() (string, error) {
 func (r *mqlGemini) model() (string, error) {
 	afs := connectionAfs(r.MqlRuntime)
 	var settings geminiSettings
-	err := readJSONFileAfero(afs, r.ConfigPath.Data, "settings.json", &settings)
+	err := readGeminiSettings(afs, r.ConfigPath.Data, &settings)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", nil
@@ -54,7 +57,7 @@ func (r *mqlGemini) model() (string, error) {
 func (r *mqlGemini) settings() (interface{}, error) {
 	afs := connectionAfs(r.MqlRuntime)
 	var settings map[string]interface{}
-	err := readJSONFileAfero(afs, r.ConfigPath.Data, "settings.json", &settings)
+	err := readGeminiSettings(afs, r.ConfigPath.Data, &settings)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]interface{}{}, nil
@@ -143,7 +146,7 @@ func geminiMCPServers(afs *afero.Afero, configDir string) (map[string]geminiMCPS
 			return nil, err
 		}
 		var config geminiMCPConfig
-		if err := unmarshalJSONConfig(data, &config); err != nil {
+		if err := unmarshalGeminiJSON(data, &config); err != nil {
 			return nil, fmt.Errorf("failed to parse gemini %s: %w", rel, err)
 		}
 		for name, server := range config.McpServers {
@@ -151,6 +154,30 @@ func geminiMCPServers(afs *afero.Afero, configDir string) (map[string]geminiMCPS
 		}
 	}
 	return servers, nil
+}
+
+// readGeminiSettings reads settings.json. gemini-cli strips // and /* */
+// comments before parsing it, so a commented file is a valid configuration
+// and must not read as malformed.
+func readGeminiSettings(afs *afero.Afero, configDir string, v any) error {
+	data, err := afs.ReadFile(filepath.Join(configDir, "settings.json"))
+	if err != nil {
+		return err
+	}
+	return unmarshalGeminiJSON(data, v)
+}
+
+// unmarshalGeminiJSON parses a Gemini config file that may carry comments.
+func unmarshalGeminiJSON(data []byte, v any) error {
+	if len(bytes.TrimSpace(data)) == 0 {
+		// An empty file reads like a missing one: an empty configuration.
+		data = []byte("{}")
+	}
+	clean, err := hujson.Standardize(data)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(clean, v)
 }
 
 // Helper types

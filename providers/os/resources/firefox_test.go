@@ -5,6 +5,9 @@ package resources
 
 import (
 	"encoding/json"
+	"os"
+	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -213,9 +216,70 @@ func TestFirefoxBrowserDirExists(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.exists, firefoxBrowserDirExists(afs, tt.dir))
+			exists, denied := firefoxBrowserDir(afs, tt.dir)
+			assert.Equal(t, tt.exists, exists)
+			assert.False(t, denied)
 		})
 	}
+}
+
+// firefoxDeniedFs refuses every path under one prefix, the way a non-root scan sees
+// another user's 0750 home on Ubuntu 21.04 and later.
+type firefoxDeniedFs struct {
+	afero.Fs
+	prefix string
+	// unlistable is a directory that can be found but not listed, like
+	// ~/.config/mozilla/firefox (0700) under a traversable ~/.config.
+	unlistable string
+}
+
+func (d firefoxDeniedFs) Stat(name string) (os.FileInfo, error) {
+	if strings.HasPrefix(name, d.prefix) {
+		return nil, &os.PathError{Op: "stat", Path: name, Err: syscall.EACCES}
+	}
+	return d.Fs.Stat(name)
+}
+
+func (d firefoxDeniedFs) Open(name string) (afero.File, error) {
+	if strings.HasPrefix(name, d.prefix) || (d.unlistable != "" && strings.HasPrefix(name, d.unlistable)) {
+		return nil, &os.PathError{Op: "open", Path: name, Err: syscall.EACCES}
+	}
+	return d.Fs.Open(name)
+}
+
+// A profile directory the scan may not enter is not an absent browser: it is
+// a profile whose addons cannot be listed, and unreadableAddons must say so
+// rather than let addons.none(...) pass on a list that skipped it.
+func TestFirefoxBrowserDirDenied(t *testing.T) {
+	base := afero.NewMemMapFs()
+	require.NoError(t, base.MkdirAll("/home/alice/.mozilla/firefox", 0o755))
+	afs := &afero.Afero{Fs: firefoxDeniedFs{Fs: base, prefix: "/home/alice/"}}
+
+	exists, denied := firefoxBrowserDir(afs, "/home/alice/.mozilla/firefox")
+	assert.False(t, exists)
+	assert.True(t, denied)
+
+	exists, denied = firefoxBrowserDir(afs, "/home/bob/.mozilla/firefox")
+	assert.False(t, exists)
+	assert.False(t, denied, "a missing directory is absence, not a refusal")
+}
+
+// Firefox creates its profile root 0700, so on Debian 12's XDG layout another
+// user's ~/.config/mozilla/firefox is found but cannot be listed, and the
+// profile search beneath it comes back empty without an error.
+func TestFirefoxBrowserDirUnlistable(t *testing.T) {
+	base := afero.NewMemMapFs()
+	require.NoError(t, base.MkdirAll("/home/alice/.config/mozilla/firefox/abc.default-esr", 0o755))
+	require.NoError(t, base.MkdirAll("/home/admin/.config/mozilla/firefox/def.default-esr", 0o755))
+	afs := &afero.Afero{Fs: firefoxDeniedFs{Fs: base, prefix: "/nowhere/", unlistable: "/home/alice/.config/mozilla/firefox"}}
+
+	exists, denied := firefoxBrowserDir(afs, "/home/alice/.config/mozilla/firefox")
+	assert.False(t, exists)
+	assert.True(t, denied)
+
+	exists, denied = firefoxBrowserDir(afs, "/home/admin/.config/mozilla/firefox")
+	assert.True(t, exists)
+	assert.False(t, denied)
 }
 
 // The shape here was captured from a live macOS Firefox profile whose

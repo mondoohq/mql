@@ -149,3 +149,46 @@ func keysOf[V any](m map[string]V) []string {
 	}
 	return out
 }
+
+// gemini-cli strips comments from settings.json before parsing it, so a file
+// with // and /* */ comments is a valid configuration (written as the sweep
+// fixture that gemini-cli accepted).
+const geminiSettingsWithComments = "{\n  // auth\n  \"security\": {\"auth\": {\"selectedType\": \"oauth-personal\"}},\n  \"model\": {\"name\": \"m-gem\"} /* trailing */,\n  \"mcpServers\": {\"memory\": {\"command\": \"npx\"}}\n}\n"
+
+func TestGeminiSettingsWithComments(t *testing.T) {
+	afs := testAfero()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "settings.json", geminiSettingsWithComments)
+
+	var settings geminiSettings
+	require.NoError(t, readGeminiSettings(afs, dir, &settings))
+	assert.Equal(t, "oauth-personal", settings.authType())
+	assert.Equal(t, "m-gem", settings.Model.Name)
+
+	servers, err := geminiMCPServers(afs, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "npx", servers["memory"].Command)
+}
+
+func TestGeminiSettingsMalformedStillErrors(t *testing.T) {
+	afs := testAfero()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "settings.json", `{"model": {"name": `)
+
+	var settings geminiSettings
+	assert.Error(t, readGeminiSettings(afs, dir, &settings))
+	_, err := geminiMCPServers(afs, dir)
+	assert.Error(t, err)
+}
+
+// An empty settings.json is an empty configuration, as for the other tools.
+func TestGeminiSettingsEmptyFile(t *testing.T) {
+	afs := testAfero()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "settings.json", "")
+
+	var settings map[string]any
+	require.NoError(t, readGeminiSettings(afs, dir, &settings))
+	assert.NotNil(t, settings, "an empty file is an empty map, as a missing one is")
+	assert.Empty(t, settings)
+}

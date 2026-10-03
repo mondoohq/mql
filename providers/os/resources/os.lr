@@ -17616,9 +17616,11 @@ firefox {
   //
   // Counts the entries skipped while decoding every profile's
   // extensions.json, for example an entry holding a value of a type the
-  // record does not describe. Those entries are left out of addons rather
-  // than failing the profile they belong to, so any value above zero means
-  // addons is an incomplete view of what is installed.
+  // record does not describe, plus one for each extensions.json and each
+  // user's home the scan was not permitted to read (another user's home on a
+  // non-root scan). Those are left out of addons rather than failing the
+  // whole list, so any value above zero means addons is an incomplete view of
+  // what is installed.
   unreadableAddons() int
 }
 

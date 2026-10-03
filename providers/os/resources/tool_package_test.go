@@ -4,11 +4,14 @@
 package resources
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseOllamaVersion(t *testing.T) {
@@ -212,4 +215,61 @@ func TestVersionCommand(t *testing.T) {
 	assert.Equal(t, "claude --version", versionCommand("claude"))
 	// a path the shell would split is quoted
 	assert.Equal(t, "'/opt/ollama app/bin/ollama' --version", versionCommand("/opt/ollama app/bin/ollama"))
+}
+
+// The native installer puts the launcher at ~/.local/bin/claude, a symlink to
+// ~/.local/share/claude/versions/<version>. The active version is the link
+// target, not the highest one kept on disk (layout from a native 2.1.288
+// install on Ubuntu 26.04).
+func TestClaudeNativeVersionFromLauncherLink(t *testing.T) {
+	home := t.TempDir()
+	versions := filepath.Join(home, ".local", "share", "claude", "versions")
+	require.NoError(t, os.MkdirAll(versions, 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".local", "bin"), 0o755))
+	for _, v := range []string{"2.1.288", "2.1.290"} {
+		require.NoError(t, os.WriteFile(filepath.Join(versions, v), []byte("bin"), 0o755))
+	}
+	require.NoError(t, os.Symlink(filepath.Join(versions, "2.1.288"), filepath.Join(home, ".local", "bin", "claude")))
+
+	afs := &afero.Afero{Fs: afero.NewOsFs()}
+	assert.Equal(t, "2.1.288", claudeNativeVersion(afs, filepath.Join(home, ".claude")))
+	// A config dir that is not ~/.claude names no home to look in.
+	assert.Equal(t, "", claudeNativeVersion(afs, filepath.Join(home, "custom-claude")))
+}
+
+// A launcher that points somewhere else (an npm install linked into
+// ~/.local/bin) is not the native installer, so its versions dir says nothing.
+func TestClaudeNativeVersionLauncherElsewhere(t *testing.T) {
+	home := t.TempDir()
+	versions := filepath.Join(home, ".local", "share", "claude", "versions")
+	require.NoError(t, os.MkdirAll(versions, 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".local", "bin"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(versions, "2.1.288"), []byte("bin"), 0o755))
+	other := filepath.Join(home, "npm-claude")
+	require.NoError(t, os.WriteFile(other, []byte("bin"), 0o755))
+	require.NoError(t, os.Symlink(other, filepath.Join(home, ".local", "bin", "claude")))
+
+	afs := &afero.Afero{Fs: afero.NewOsFs()}
+	assert.Equal(t, "", claudeNativeVersion(afs, filepath.Join(home, ".claude")))
+}
+
+// Where links cannot be read (an SFTP-style filesystem), the highest version
+// in the versions dir stands in, and only while the launcher exists.
+func TestClaudeNativeVersionWithoutLinkReader(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	afs := &afero.Afero{Fs: fs}
+	home := "/home/alice"
+	versions := home + "/.local/share/claude/versions"
+	for _, v := range []string{"2.1.9", "2.1.288", "not-a-version"} {
+		require.NoError(t, afs.WriteFile(versions+"/"+v, []byte("bin"), 0o755))
+	}
+	assert.Equal(t, "", claudeNativeVersion(afs, home+"/.claude"), "no launcher, no install")
+
+	require.NoError(t, afs.WriteFile(home+"/.local/bin/claude", []byte("bin"), 0o755))
+	assert.Equal(t, "2.1.288", claudeNativeVersion(afs, home+"/.claude"))
+}
+
+func TestClaudeNativeVersionAbsent(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	assert.Equal(t, "", claudeNativeVersion(afs, "/root/.claude"))
 }
