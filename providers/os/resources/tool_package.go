@@ -184,7 +184,7 @@ func resolveToolPackage(runtime *plugin.Runtime, configPath string, spec toolPac
 	// (c) Not attributable to any manager — detect presence and, where
 	// possible, a version, then synthesize an abstract package. An installed
 	// editor extension is both a presence signal and the version source.
-	installed := configPresent(runtime, configPath, spec.configIsFile)
+	installed, configErr := configPresent(runtime, configPath, spec.configIsFile)
 	version := ""
 	if len(spec.vscodeExtensionIDs) > 0 {
 		if homes, err := targetUserHomes(runtime); err == nil {
@@ -197,6 +197,11 @@ func resolveToolPackage(runtime *plugin.Runtime, configPath string, spec toolPac
 				version = v
 			}
 		}
+	}
+	if !installed && configErr != nil {
+		// Nothing else showed the tool installed, and the config path could
+		// not be read: "not installed" would be a guess.
+		return nil, configErr
 	}
 	if installed && version == "" && spec.inferVersion != nil {
 		v, err := spec.inferVersion(runtime, configPath)
@@ -285,6 +290,9 @@ func resolveOSRuntimePackage(runtime *plugin.Runtime) (*mqlPackage, error) {
 		return nil, nil // host undeterminable; runtime is optional
 	}
 	pf := conn.Asset().Platform
+	if pf.Name == "" {
+		return nil, errPlatformUnknown
+	}
 	purlStr, err := purl.NewPlatformPurl(pf)
 	if err != nil {
 		purlStr = ""
@@ -360,29 +368,6 @@ func lookupInstalledPackage(runtime *plugin.Runtime, name string) (*mqlPackage, 
 		return pkg, nil
 	}
 	return nil, nil
-}
-
-// configDirPresent is the presence signal for the abstract-package fallback:
-// the tool's configPath directory exists on the target. Best-effort — used only
-// when binary ownership and name candidates both come up empty.
-func configDirPresent(runtime *plugin.Runtime, configPath string) bool {
-	return configPresent(runtime, configPath, false)
-}
-
-// configPresent reports whether configPath exists on the target as a directory,
-// or as a regular file when isFile is set.
-func configPresent(runtime *plugin.Runtime, configPath string, isFile bool) bool {
-	if configPath == "" {
-		return false
-	}
-	info, err := connectionAfs(runtime).Stat(configPath)
-	if err != nil {
-		return false
-	}
-	if isFile {
-		return info.Mode().IsRegular()
-	}
-	return info.IsDir()
 }
 
 // findVSCodeExtension looks for an installed VS Code-family extension with one
