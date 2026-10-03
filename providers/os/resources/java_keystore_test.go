@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -251,4 +252,31 @@ func TestDedupeTruststoresSUSE(t *testing.T) {
 		real[p] = r
 	}
 	assert.Equal(t, []string{"/var/lib/ca-certificates/java-cacerts"}, dedupeByRealPath(candidates, real))
+}
+
+// A JDK or JRE tarball extracts to a directory named for its version, which
+// no fixed root covers: Temurin 21 in /opt/jdk-21.0.12.1+1 ships its own
+// cacerts, and java.truststores listed only the distribution store, so a
+// check over every trust store never read that JVM's. Fails if javaHomeGlobs
+// is dropped or a pattern is narrowed.
+func TestJavaTruststoreCandidatesFindTarballJVMs(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	for _, p := range []string{
+		"/etc/ssl/certs/java/cacerts",
+		"/opt/jdk-21.0.12.1+1/lib/security/cacerts",
+		"/opt/openjdk-17/lib/security/cacerts",
+		"/opt/zulu8-jre/jre/lib/security/cacerts",
+		"/usr/local/jdk-25/lib/security/cacerts",
+		"/opt/myapp/lib/security/cacerts",
+	} {
+		require.NoError(t, afero.WriteFile(fs, p, []byte("x"), 0o644))
+	}
+	got := javaTruststoreCandidates(&afero.Afero{Fs: fs})
+	assert.ElementsMatch(t, []string{
+		"/etc/ssl/certs/java/cacerts",
+		"/opt/jdk-21.0.12.1+1/lib/security/cacerts",
+		"/opt/openjdk-17/lib/security/cacerts",
+		"/opt/zulu8-jre/jre/lib/security/cacerts",
+		"/usr/local/jdk-25/lib/security/cacerts",
+	}, got)
 }
