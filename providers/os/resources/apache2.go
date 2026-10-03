@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +22,7 @@ import (
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/apache2"
 	"go.mondoo.com/mql/providers/os/resources/haproxy"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
 	"go.mondoo.com/mql/types"
 )
 
@@ -56,13 +56,25 @@ var apacheVersionTag = []byte("Apache/")
 
 func (s *mqlApache2) version() (string, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
+	if v := apacheInstalledVersion(conn); v != "" {
+		return v, nil
+	}
+
+	// Apache is likely not installed; return nil rather than an error.
+	s.Version = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+	return "", nil
+}
+
+// apacheInstalledVersion returns the installed httpd's version ("2.4.62"), or
+// "" when none is found.
+func apacheInstalledVersion(conn shared.Connection) string {
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 
 	// Prefer file-based detection: scan the httpd binary for the embedded
 	// "Apache/x.y.z" version string without loading the full binary into memory.
 	for _, bin := range apacheBinaries {
 		if v := scanBinaryForTag(afs, bin, apacheVersionTag, isFullApacheVersion); v != "" {
-			return v, nil
+			return v
 		}
 	}
 
@@ -82,13 +94,10 @@ func (s *mqlApache2) version() (string, error) {
 		}
 		// Output looks like: "Server version: Apache/2.4.62 (Ubuntu)"
 		if m := reApacheVersion.FindSubmatch(data); m != nil {
-			return string(m[1]), nil
+			return string(m[1])
 		}
 	}
-
-	// Apache is likely not installed; return nil rather than an error.
-	s.Version = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
-	return "", nil
+	return ""
 }
 
 var reApacheVersion = regexp.MustCompile(`Apache/(\S+)`)
@@ -586,21 +595,27 @@ func (s *mqlApache2Conf) file() (*mqlFile, error) {
 
 var reApacheGlob = regexp.MustCompile(`[*?\[]`)
 
+// resolvePath resolves a relative path against ServerRoot: the directive in
+// the config wins, then the server's compiled-in HTTPD_ROOT, then the
+// platform default.
+func (s *mqlApache2Conf) resolvePath(p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	serverRoot := s.serverRoot
+	if serverRoot == "" {
+		serverRoot = s.binaryServerRoot
+	}
+	if serverRoot == "" {
+		serverRoot = apacheServerRoot(s.MqlRuntime.Connection.(shared.Connection))
+	}
+	return filepath.Join(serverRoot, p)
+}
+
 func (s *mqlApache2Conf) expandGlob(pattern string) ([]string, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 
-	// Resolve relative paths against ServerRoot: the directive in the config
-	// wins, then the server's compiled-in HTTPD_ROOT, then the platform default.
-	if !filepath.IsAbs(pattern) {
-		serverRoot := s.serverRoot
-		if serverRoot == "" {
-			serverRoot = s.binaryServerRoot
-		}
-		if serverRoot == "" {
-			serverRoot = apacheServerRoot(conn)
-		}
-		pattern = filepath.Join(serverRoot, pattern)
-	}
+	pattern = s.resolvePath(pattern)
 
 	// SUSE's start_apache2 passes "Include /etc/apache2/sysconfig.d//global.conf"
 	pattern = filepath.Clean(pattern)
@@ -736,7 +751,7 @@ func (s *mqlApache2Conf) parse(file *mqlFile) error {
 	if apacheEnvvarsPath(conn) == "" {
 		var unitEnv map[string]string
 		var unitDefines []string
-		unitEnv, unitDefines, unitErr = apacheUnitEnvironment(afs)
+		unitEnv, unitDefines, unitErr = apacheUnitEnvironment(afs, systemdDropInDirs(s.MqlRuntime, afs))
 		if len(unitEnv) > 0 {
 			envvars = unitEnv
 		}
@@ -762,6 +777,11 @@ func (s *mqlApache2Conf) parse(file *mqlFile) error {
 		Defines:        defines,
 		PreDirectives:  preDirectives,
 		PostDirectives: postDirectives,
+		Version:        apacheInstalledVersion(conn),
+		FileExists: func(p string) bool {
+			ok, _ := afs.Exists(s.resolvePath(p))
+			return ok
+		},
 	}
 
 	var cfg *apache2.Config
@@ -940,20 +960,52 @@ const (
 func (s *mqlApache2Conf) launchArgs() (*apache2.Launch, error) {
 	s.launchOnce.Do(func() {
 		conn := s.MqlRuntime.Connection.(shared.Connection)
-		s.launch, s.launchErr = apacheLaunch(&afero.Afero{Fs: conn.FileSystem()})
+		afs := &afero.Afero{Fs: conn.FileSystem()}
+		s.launch, s.launchErr = apacheLaunch(afs, systemdDropInDirs(s.MqlRuntime, afs))
 	})
 	return s.launch, s.launchErr
 }
 
 // apacheLaunch returns the command line httpd runs with: the running
-// master's, found through its pid file, or when no httpd runs on SUSE the one
-// start_apache2 builds from /etc/sysconfig/apache2. It returns nil when
-// neither applies, and httpd then reads its configuration file as is.
-func apacheLaunch(afs *afero.Afero) (*apache2.Launch, error) {
+// master's, found through its pid file; when that cannot be read (no httpd
+// runs, or a non-root scan of Red Hat's 0710 /run/httpd), on SUSE the one
+// start_apache2 builds from /etc/sysconfig/apache2, elsewhere the one the
+// systemd unit starts. It returns nil when none applies, and httpd then reads
+// its configuration file as is.
+func apacheLaunch(afs *afero.Afero, dirs systemd.DropInDirs) (*apache2.Launch, error) {
 	if l := apacheRunningLaunch(afs); l != nil {
 		return l, nil
 	}
-	return apacheSUSELaunch(afs)
+	if ok, _ := afs.Exists(apacheSUSEStartScript); ok {
+		return apacheSUSELaunch(afs, dirs)
+	}
+	return apacheUnitLaunch(afs, dirs), nil
+}
+
+// apacheServiceUnits are the units that start httpd: httpd.service on Red
+// Hat, Fedora and Arch, apache2.service on SUSE (through start_apache2) and
+// Debian (through apachectl, which reads envvars).
+var apacheServiceUnits = []string{"httpd.service", "apache2.service"}
+
+// apacheUnitLaunch returns the -f, -d, -C and -c arguments of the httpd
+// command line the systemd unit starts, after $OPTIONS and the unit's other
+// variables are expanded, or nil when the unit starts httpd without them.
+// Its -D parameters come from apacheUnitEnvironment.
+func apacheUnitLaunch(afs *afero.Afero, dirs systemd.DropInDirs) *apache2.Launch {
+	argv := systemdServiceArgv(afs, dirs, apacheServiceUnits...)
+	if len(argv) == 0 {
+		return nil
+	}
+	base := filepath.Base(argv[0])
+	if !strings.HasPrefix(base, "httpd") && !strings.HasPrefix(base, "apache2") {
+		return nil
+	}
+	l := apache2.ParseLaunchArgs(argv[1:])
+	if l.ConfigFile == "" && l.ServerRoot == "" && len(l.PreDirectives) == 0 && len(l.PostDirectives) == 0 {
+		return nil
+	}
+	l.Defines = nil
+	return &l
 }
 
 // apacheRunningLaunch reads the command line of the httpd master recorded in
@@ -989,10 +1041,7 @@ func apacheRunningLaunch(afs *afero.Afero) *apache2.Launch {
 
 // apacheSUSELaunch returns the command line SUSE's start_apache2 runs httpd
 // with, built from /etc/sysconfig/apache2, or nil on any other layout.
-func apacheSUSELaunch(afs *afero.Afero) (*apache2.Launch, error) {
-	if ok, _ := afs.Exists(apacheSUSEStartScript); !ok {
-		return nil, nil
-	}
+func apacheSUSELaunch(afs *afero.Afero, dirs systemd.DropInDirs) (*apache2.Launch, error) {
 	data, err := afs.ReadFile(apacheSUSESysconfig)
 	if errors.Is(err, fs.ErrNotExist) {
 		// start_apache2 then leaves out -DSYSCONFIG, and httpd.conf loads
@@ -1008,7 +1057,7 @@ func apacheSUSELaunch(afs *afero.Afero) (*apache2.Launch, error) {
 		mpm = apacheSUSEMPM(afs)
 	}
 	var unitArgs []string
-	if argv := systemdServiceArgv(afs, "apache2.service"); len(argv) > 1 {
+	if argv := systemdServiceArgv(afs, dirs, apacheServiceUnits...); len(argv) > 1 {
 		unitArgs = argv[1:]
 	}
 	l := apache2.SUSESysconfig{
@@ -1072,63 +1121,30 @@ func apacheLaunchConfigFile(conn shared.Connection, launch *apache2.Launch) stri
 	return filepath.Join(root, launch.ConfigFile)
 }
 
-// apacheServiceUnitDirs are where systemd looks for the httpd service unit
-// and its httpd.service.d drop-ins, highest priority first.
-var apacheServiceUnitDirs = []string{
-	"/etc/systemd/system",
-	"/run/systemd/system",
-	"/usr/lib/systemd/system",
-	"/lib/systemd/system",
-}
-
 // apacheUnitEnvironment returns the environment systemd starts httpd with
 // (Environment= plus the EnvironmentFile= files, which take precedence) and
 // the -D parameters of its ExecStart line. Apache resolves ${VAR} from that
-// environment. A missing unit or file contributes nothing; one that can't be
-// read is an error. These files are not Apache configuration, so they are
-// read directly rather than listed in files.
-func apacheUnitEnvironment(afs *afero.Afero) (map[string]string, []string, error) {
-	var contents []string
-	for _, dir := range apacheServiceUnitDirs {
-		content, err := afs.ReadFile(dir + "/httpd.service")
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return nil, nil, err
-		}
-		contents = append(contents, string(content))
-		break
+// environment. The unit is httpd.service on Red Hat, Fedora and Arch and
+// apache2.service on SUSE, with the drop-ins of all its names. A missing
+// unit or file contributes nothing; one that can't be read is an error.
+// These files are not Apache configuration, so they are read directly rather
+// than listed in files.
+func apacheUnitEnvironment(afs *afero.Afero, dirs systemd.DropInDirs) (map[string]string, []string, error) {
+	name, aliases, unitContent, err := systemdServiceUnit(afs, apacheServiceUnits...)
+	if err != nil {
+		return nil, nil, err
 	}
-	if len(contents) == 0 {
+	if name == "" {
 		return nil, nil, nil
 	}
 
 	// drop-ins apply in file-name order; a name in a higher-priority
-	// directory hides the same name further down
-	dropIns := map[string]string{}
-	for i := len(apacheServiceUnitDirs) - 1; i >= 0; i-- {
-		dir := apacheServiceUnitDirs[i] + "/httpd.service.d"
-		entries, err := afs.ReadDir(dir)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return nil, nil, err
-		}
-		for _, e := range entries {
-			if !e.IsDir() && strings.HasSuffix(e.Name(), ".conf") {
-				dropIns[e.Name()] = dir + "/" + e.Name()
-			}
-		}
-	}
-	names := make([]string, 0, len(dropIns))
-	for name := range dropIns {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		content, err := afs.ReadFile(dropIns[name])
+	// directory hides the same name further down. dirs adds the type-level
+	// service.d that systemd 246 and later (and RHEL 8's 239) apply to every
+	// service.
+	contents := []string{unitContent}
+	for _, p := range systemd.FindDropIns(afs, name, dirs, aliases...) {
+		content, err := afs.ReadFile(p)
 		if err != nil {
 			return nil, nil, err
 		}

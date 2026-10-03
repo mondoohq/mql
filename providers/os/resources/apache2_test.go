@@ -15,6 +15,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
 	"go.mondoo.com/mql/utils/syncx"
 )
 
@@ -278,7 +279,7 @@ func TestApacheUnitEnvironment(t *testing.T) {
 		fs := afero.NewMemMapFs()
 		write(fs, "/usr/lib/systemd/system/httpd.service", rhel7Unit)
 		write(fs, "/etc/sysconfig/httpd", "#OPTIONS=\nLANG=C\nSWEEPTOK=Full\nOPTIONS=-DSSL\n")
-		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: fs})
+		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
 		require.NoError(t, err)
 		assert.Equal(t, "Full", env["SWEEPTOK"])
 		assert.Equal(t, []string{"SSL", "FOREGROUND"}, defines)
@@ -291,23 +292,91 @@ func TestApacheUnitEnvironment(t *testing.T) {
 		write(fs, "/usr/lib/systemd/system/httpd.service.d/override.conf", "[Service]\nEnvironment=OPTIONS=-DPACKAGED\n")
 		write(fs, "/etc/systemd/system/httpd.service.d/override.conf", "[Service]\nEnvironment=OPTIONS=-DLOCAL\n")
 		write(fs, "/etc/systemd/system/httpd.service.d/zz.conf", "[Service]\nEnvironment=TOKENS=Prod\n")
-		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: fs})
+		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
 		require.NoError(t, err)
 		assert.Equal(t, "Prod", env["TOKENS"])
 		assert.Equal(t, []string{"LOCAL", "FOREGROUND"}, defines)
 	})
 
 	t.Run("no unit", func(t *testing.T) {
-		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: afero.NewMemMapFs()})
+		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: afero.NewMemMapFs()}, systemd.AllDropInDirs)
 		require.NoError(t, err)
 		assert.Nil(t, env)
 		assert.Nil(t, defines)
 	})
 
+	// systemd 246 and later (and RHEL 8's 239) apply /etc/systemd/system/service.d
+	// to every service; RHEL 7's 219 does not.
+	t.Run("type-level drop-ins apply where systemd reads them", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/httpd.service",
+			"[Service]\nEnvironment=LANG=C\nExecStart=/usr/sbin/httpd $OPTIONS -DFOREGROUND\n")
+		write(fs, "/etc/systemd/system/service.d/zz.conf", "[Service]\nEnvironment=SWEEPTOK2=Full\n")
+		env, _, err := apacheUnitEnvironment(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
+		require.NoError(t, err)
+		assert.Equal(t, "Full", env["SWEEPTOK2"])
+
+		env, _, err = apacheUnitEnvironment(&afero.Afero{Fs: fs}, systemd.DropInDirsForVersion(219, true))
+		require.NoError(t, err)
+		assert.NotContains(t, env, "SWEEPTOK2")
+	})
+
+	// SUSE ships apache2.service with Alias=httpd.service apache.service.
+	// systemctl enable links both aliases to it, and systemd then applies the
+	// drop-ins of every name: `systemctl show apache2 -p DropInPaths` lists
+	// apache2.service.d, httpd.service.d and apache.service.d files. A
+	// disabled apache2 has no aliases and only apache2.service.d applies.
+	suseUnit := "[Unit]\nDescription=The Apache Webserver\n[Service]\nType=notify\nPrivateTmp=true\n" +
+		"ExecStart=/usr/sbin/start_apache2 -DSYSTEMD -DFOREGROUND -k start\n" +
+		"[Install]\nWantedBy=multi-user.target\nAlias=httpd.service apache.service\n"
+	t.Run("SUSE's apache2.service drop-ins, unit disabled", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/apache2.service", suseUnit)
+		write(fs, "/etc/systemd/system/apache2.service.d/zz-sweep.conf", "[Service]\nEnvironment=SWEEPTOK=On\n")
+		write(fs, "/etc/systemd/system/httpd.service.d/zz-h.conf", "[Service]\nEnvironment=NOTALIAS=On\n")
+		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
+		require.NoError(t, err)
+		assert.Equal(t, "On", env["SWEEPTOK"])
+		assert.NotContains(t, env, "NOTALIAS")
+		assert.Equal(t, []string{"SYSTEMD", "FOREGROUND"}, defines)
+	})
+
+	t.Run("SUSE's apache2.service enabled applies the drop-ins of every alias", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/apache2.service", suseUnit)
+		// the alias symlinks systemctl enable creates read as the same unit
+		write(fs, "/etc/systemd/system/httpd.service", suseUnit)
+		write(fs, "/etc/systemd/system/apache.service", suseUnit)
+		write(fs, "/etc/systemd/system/apache2.service.d/zz-b.conf", "[Service]\nEnvironment=A1=x TOK=apache2\n")
+		write(fs, "/etc/systemd/system/httpd.service.d/zz-a.conf", "[Service]\nEnvironment=H1=x TOK=httpd\n")
+		write(fs, "/etc/systemd/system/apache.service.d/zz-p.conf", "[Service]\nEnvironment=P1=x\n")
+		write(fs, "/etc/systemd/system/service.d/zz-t.conf", "[Service]\nEnvironment=T1=x\n")
+		env, _, err := apacheUnitEnvironment(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
+		require.NoError(t, err)
+		for _, k := range []string{"A1", "H1", "P1", "T1"} {
+			assert.Equal(t, "x", env[k], k)
+		}
+		// drop-ins of all names apply together in file-name order: zz-a.conf,
+		// then zz-b.conf
+		assert.Equal(t, "apache2", env["TOK"])
+	})
+
+	t.Run("a separate apache2.service does not lend httpd.service its drop-ins", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/httpd.service",
+			"[Service]\nEnvironment=LANG=C\nExecStart=/usr/sbin/httpd $OPTIONS -DFOREGROUND\n")
+		write(fs, "/usr/lib/systemd/system/apache2.service", suseUnit)
+		write(fs, "/etc/systemd/system/apache2.service.d/zz.conf", "[Service]\nEnvironment=OTHER=x\n")
+		env, _, err := apacheUnitEnvironment(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
+		require.NoError(t, err)
+		assert.Equal(t, "C", env["LANG"])
+		assert.NotContains(t, env, "OTHER")
+	})
+
 	t.Run("a missing EnvironmentFile contributes nothing", func(t *testing.T) {
 		fs := afero.NewMemMapFs()
 		write(fs, "/usr/lib/systemd/system/httpd.service", rhel7Unit)
-		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: fs})
+		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
 		require.NoError(t, err)
 		assert.Empty(t, env)
 		assert.Equal(t, []string{"FOREGROUND"}, defines)
@@ -337,7 +406,7 @@ func TestApacheLaunch(t *testing.T) {
 		fs := suseHost()
 		write(fs, "/run/httpd.pid", "20045\n")
 		write(fs, "/proc/20045/cmdline", suseCmdline)
-		l, err := apacheLaunch(&afero.Afero{Fs: fs})
+		l, err := apacheLaunch(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
 		require.NoError(t, err)
 		require.NotNil(t, l)
 		assert.Equal(t, []string{"SYSCONFIG", "SYSTEMD", "FOREGROUND"}, l.Defines)
@@ -349,7 +418,7 @@ func TestApacheLaunch(t *testing.T) {
 		// a stale pid file pointing at another process is ignored
 		write(fs, "/run/httpd.pid", "20045\n")
 		write(fs, "/proc/20045/cmdline", "/usr/bin/bash\x00")
-		l, err := apacheLaunch(&afero.Afero{Fs: fs})
+		l, err := apacheLaunch(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
 		require.NoError(t, err)
 		require.NotNil(t, l)
 		assert.Equal(t, []string{"SYSCONFIG", "SYSTEMD", "FOREGROUND"}, l.Defines)
@@ -360,10 +429,77 @@ func TestApacheLaunch(t *testing.T) {
 		}, l.PreDirectives)
 	})
 
+	t.Run("SUSE applies the httpd.service alias drop-ins to the unit's arguments", func(t *testing.T) {
+		fs := suseHost()
+		write(fs, "/etc/systemd/system/httpd.service", suseUnit)
+		write(fs, "/etc/systemd/system/httpd.service.d/zz.conf",
+			"[Service]\nExecStart=\nExecStart=/usr/sbin/start_apache2 -DSYSTEMD -DFOREGROUND -DSWEEP -k start\n")
+		l, err := apacheLaunch(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
+		require.NoError(t, err)
+		require.NotNil(t, l)
+		assert.Contains(t, l.Defines, "SWEEP")
+	})
+
+	// /run/httpd is 0710 root:apache on Red Hat, so a non-root scan cannot
+	// read the running master's pid file; a stopped httpd has none. The unit
+	// then says how httpd starts.
+	rhelUnit := "[Service]\nType=notify\nEnvironment=LANG=C\nExecStart=/usr/sbin/httpd $OPTIONS -DFOREGROUND\n"
+	t.Run("the unit's -f, -d and -C when the master cannot be read", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/httpd.service", rhelUnit)
+		write(fs, "/etc/systemd/system/httpd.service.d/zz-sweep.conf",
+			"[Service]\nEnvironment=OPTIONS=\"-f /etc/httpd/conf/httpd-alt.conf -d /srv/httpd\"\n")
+		write(fs, "/etc/systemd/system/httpd.service.d/zz-tokens.conf",
+			"[Service]\nExecStart=\nExecStart=/usr/sbin/httpd $OPTIONS -C \"ServerTokens OS\" -DFOREGROUND\n")
+		l, err := apacheLaunch(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
+		require.NoError(t, err)
+		require.NotNil(t, l)
+		assert.Equal(t, "/etc/httpd/conf/httpd-alt.conf", l.ConfigFile)
+		assert.Equal(t, "/srv/httpd", l.ServerRoot)
+		assert.Equal(t, []string{"ServerTokens OS"}, l.PreDirectives)
+	})
+
+	t.Run("a type-level drop-in's OPTIONS", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/httpd.service", rhelUnit)
+		write(fs, "/etc/systemd/system/service.d/zz.conf",
+			"[Service]\nEnvironment=OPTIONS=\"-f /etc/httpd/conf/httpd-alt.conf\"\n")
+		l, err := apacheLaunch(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
+		require.NoError(t, err)
+		require.NotNil(t, l)
+		assert.Equal(t, "/etc/httpd/conf/httpd-alt.conf", l.ConfigFile)
+
+		l, err = apacheLaunch(&afero.Afero{Fs: fs}, systemd.DropInDirsForVersion(219, true))
+		require.NoError(t, err)
+		assert.Nil(t, l)
+	})
+
+	t.Run("the running master wins over the unit", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/httpd.service", rhelUnit)
+		write(fs, "/etc/systemd/system/httpd.service.d/zz-sweep.conf",
+			"[Service]\nEnvironment=OPTIONS=\"-f /etc/httpd/conf/httpd-alt.conf\"\n")
+		write(fs, "/run/httpd/httpd.pid", "4242\n")
+		write(fs, "/proc/4242/cmdline", "/usr/sbin/httpd\x00-DFOREGROUND\x00")
+		l, err := apacheLaunch(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
+		require.NoError(t, err)
+		require.NotNil(t, l)
+		assert.Equal(t, "", l.ConfigFile)
+	})
+
+	t.Run("Debian's apachectl unit adds nothing", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/apache2.service",
+			"[Service]\nType=forking\nEnvironment=APACHE_STARTED_BY_SYSTEMD=true\nExecStart=/usr/sbin/apachectl start\n")
+		l, err := apacheLaunch(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
+		require.NoError(t, err)
+		assert.Nil(t, l)
+	})
+
 	t.Run("other layouts have nothing to add when httpd is not running", func(t *testing.T) {
 		fs := afero.NewMemMapFs()
 		write(fs, "/usr/lib/systemd/system/httpd.service", "[Service]\nExecStart=/usr/sbin/httpd $OPTIONS -DFOREGROUND\n")
-		l, err := apacheLaunch(&afero.Afero{Fs: fs})
+		l, err := apacheLaunch(&afero.Afero{Fs: fs}, systemd.AllDropInDirs)
 		require.NoError(t, err)
 		assert.Nil(t, l)
 	})

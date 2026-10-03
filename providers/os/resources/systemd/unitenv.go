@@ -233,6 +233,14 @@ func DropInDirsForVersion(systemdVersion int, typeLevelBackport bool) DropInDirs
 	}
 }
 
+// FindDropIns returns the *.conf drop-ins systemd applies to a unit, in the
+// order it applies them (see findDropIns). aliases are the unit's other
+// names (the symlinks systemctl enable creates for Alias=); systemd applies
+// their <alias>.d drop-ins too, sorted together with the unit's own.
+func FindDropIns(afs *afero.Afero, unitName string, dirs DropInDirs, aliases ...string) []string {
+	return findDropIns(afs, unitName, dirs, aliases...)
+}
+
 // findDropIns collects the *.conf drop-ins systemd applies to a unit, as
 // systemd.unit(5) describes and `systemctl show -p DropInPaths` reports them.
 //
@@ -249,10 +257,13 @@ func DropInDirsForVersion(systemdVersion int, typeLevelBackport bool) DropInDirs
 // the copy from the highest-precedence directory is the one applied. dirs
 // leaves out the prefix or type-level directories for releases that ignore
 // them.
-func findDropIns(afs *afero.Afero, unitName string, dirs DropInDirs) []string {
-	names := []string{unitName}
-	if dirs.Prefix {
-		names = append(names, unitNamePrefixes(unitName)...)
+func findDropIns(afs *afero.Afero, unitName string, dirs DropInDirs, aliases ...string) []string {
+	var names []string
+	for _, n := range append([]string{unitName}, aliases...) {
+		names = append(names, n)
+		if dirs.Prefix {
+			names = append(names, unitNamePrefixes(n)...)
+		}
 	}
 
 	var searched []string

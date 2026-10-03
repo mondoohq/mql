@@ -20,6 +20,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/haproxy"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
 	"go.mondoo.com/mql/types"
 )
 
@@ -293,7 +294,7 @@ func (s *mqlHaproxyConfig) loadedConfigFiles() []string {
 		conn := s.MqlRuntime.Connection.(shared.Connection)
 		afs := &afero.Afero{Fs: conn.FileSystem()}
 
-		unit := haproxyServiceLaunch(afs)
+		unit := haproxyServiceLaunch(afs, systemdDropInDirs(s.MqlRuntime, afs))
 		pidFile := unit.PidFile
 		if pidFile == "" {
 			pidFile = defaultHaproxyPidFile
@@ -322,8 +323,8 @@ func (s *mqlHaproxyConfig) loadedConfigFiles() []string {
 
 // haproxyServiceLaunch reads haproxy.service, its drop-ins and its
 // environment files and returns the arguments ExecStart= passes.
-func haproxyServiceLaunch(afs *afero.Afero) haproxy.LaunchArgs {
-	argv := systemdServiceArgv(afs, "haproxy.service")
+func haproxyServiceLaunch(afs *afero.Afero, dirs systemd.DropInDirs) haproxy.LaunchArgs {
+	argv := systemdServiceArgv(afs, dirs, "haproxy.service")
 	if len(argv) == 0 {
 		return haproxy.LaunchArgs{}
 	}
