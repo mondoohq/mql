@@ -515,3 +515,55 @@ func TestParseSystemctlRelease(t *testing.T) {
 	assert.Equal(t, 252, parseSystemctlRelease("systemd 252 (252.39-1~deb12u2)\n+PAM\n"))
 	assert.Equal(t, 0, parseSystemctlRelease("bash: systemctl: command not found\n"))
 }
+
+// systemdRelease takes the release from libsystemd-shared without running
+// anything, and confirms a release before 231 (read from the manager binary,
+// or the stand-in when the binary does not say) with systemctl.
+func TestSystemdRelease(t *testing.T) {
+	rhel7Manager := "ignoring: %m\x00\x00\x00\x00systemd 219 running in %ssystem mode. (+PAM +AUDIT +SELINUX"
+	tests := map[string]struct {
+		files map[string]*mock.MockFileData
+		cmds  map[string]*mock.Command
+		want  int
+	}{
+		"shared library wins without asking systemctl": {
+			files: map[string]*mock.MockFileData{
+				"/lib/systemd":                          {StatData: mock.FileInfo{Mode: os.ModeDir | 0o755, IsDir: true}},
+				"/lib/systemd/libsystemd-shared-252.so": resolvedFile(""),
+			},
+			cmds: map[string]*mock.Command{"systemctl --version": {Stdout: "systemd 999\n"}},
+			want: 252,
+		},
+		"manager binary release confirmed by systemctl": {
+			files: map[string]*mock.MockFileData{"/usr/lib/systemd/systemd": resolvedFile(rhel7Manager)},
+			cmds:  map[string]*mock.Command{"systemctl --version": {Stdout: "systemd 219\n+PAM +AUDIT\n"}},
+			want:  219,
+		},
+		"stand-in refined by systemctl": {
+			files: map[string]*mock.MockFileData{"/lib/systemd/systemd": resolvedFile("\x7fELF")},
+			cmds:  map[string]*mock.Command{"systemctl --version": {Stdout: "systemd 229\n"}},
+			want:  229,
+		},
+		"stand-in kept when systemctl fails": {
+			files: map[string]*mock.MockFileData{"/lib/systemd/systemd": resolvedFile("\x7fELF")},
+			cmds:  map[string]*mock.Command{"systemctl --version": {Stderr: "systemctl: command not found", ExitStatus: 127}},
+			want:  230,
+		},
+		"manager binary release kept when systemctl fails": {
+			files: map[string]*mock.MockFileData{"/usr/lib/systemd/systemd": resolvedFile(rhel7Manager)},
+			cmds:  map[string]*mock.Command{"systemctl --version": {ExitStatus: 1}},
+			want:  219,
+		},
+		"no systemd on disk, systemctl answers": {
+			cmds: map[string]*mock.Command{"systemctl --version": {Stdout: "systemd 237\n"}},
+			want: 237,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := systemdRelease(resolvedMockRuntime(t, tc.cmds, tc.files))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}

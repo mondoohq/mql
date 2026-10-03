@@ -14,27 +14,31 @@ import (
 )
 
 // systemdRelease is the release of the host's systemd, or 0 when it cannot be
-// told. It reads the release from the name of libsystemd-shared, which works
-// without running anything, and asks `systemctl --version` for a release
-// before 231, which did not ship that library.
+// told. systemd.InstalledVersion reads it without running anything: exactly
+// from the name of libsystemd-shared since 231, and before that from the
+// manager binary, or as a stand-in below 231 when the binary does not say.
+// A release before 231 is confirmed with `systemctl --version` when commands
+// can run, so the stand-in only answers for offline scans.
 func systemdRelease(runtime *plugin.Runtime) (int, error) {
 	conn, ok := runtime.Connection.(shared.Connection)
 	if !ok {
 		return 0, nil
 	}
+	installed := 0
 	if fs := conn.FileSystem(); fs != nil {
-		if v := systemd.InstalledVersion(&afero.Afero{Fs: fs}); v > 0 {
-			return v, nil
-		}
+		installed = systemd.InstalledVersion(&afero.Afero{Fs: fs})
 	}
-	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
-		return 0, nil
+	if installed >= 231 || !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return installed, nil
 	}
 	stdout, ok, err := runSystemctl(runtime, "systemctl --version")
-	if err != nil || !ok {
+	if err != nil {
 		return 0, err
 	}
-	return parseSystemctlRelease(stdout), nil
+	if v := parseSystemctlRelease(stdout); ok && v > 0 {
+		return v, nil
+	}
+	return installed, nil
 }
 
 // parseSystemctlRelease reads the release number from `systemctl --version`,
