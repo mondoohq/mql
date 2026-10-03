@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	mysqldriver "github.com/go-sql-driver/mysql"
@@ -66,6 +67,38 @@ func isMissingTable(err error) bool {
 func isSyntaxError(err error) bool {
 	var myErr *mysqldriver.MySQLError
 	return errors.As(err, &myErr) && myErr.Number == 1064
+}
+
+// refusedList is what a list accessor returns when the server refused its
+// query. v13 returned an empty list, which let a check over the list pass on a
+// server the scanner could not read; with StructuredErrors the refusal is an
+// error naming the privilege the scanner lacks (ADR 046).
+func refusedList(err error, permissions ...string) ([]any, error) {
+	if !plugin.StructuredErrors() {
+		return []any{}, nil
+	}
+	return nil, llx.Forbidden(err, llx.WithPermissions(permissions...))
+}
+
+// requireVisibility guards a read from an information_schema view that the
+// server filters by the caller's privileges without raising an error. When
+// the caller would see only part of the view, the read is refused instead of
+// returning the partial list as if it were complete. v13 returned the partial
+// list, so the check only runs with StructuredErrors.
+func requireVisibility(runtime *plugin.Runtime, visible func(*connection.CallerAccess) bool, what string, permissions ...string) error {
+	if !plugin.StructuredErrors() {
+		return nil
+	}
+	access, err := mysqldbConnection(runtime).CallerAccess()
+	if err != nil {
+		return err
+	}
+	if visible(access) {
+		return nil
+	}
+	return llx.Forbidden(
+		fmt.Errorf("%s cannot see every %s: information_schema lists only the rows it holds privileges on", access.Self, what),
+		llx.WithPermissions(permissions...))
 }
 
 // grantee formats an account as the 'user'@'host' string information_schema uses.

@@ -8,9 +8,17 @@ import (
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/mysqldb/connection"
 )
 
+func grantsVisible(a *connection.CallerAccess) bool {
+	return a.GrantsVisible
+}
+
 func (r *mqlMysqldbInstance) schemas() ([]any, error) {
+	if err := requireVisibility(r.MqlRuntime, (*connection.CallerAccess).CanListSchemas, "schema", "SHOW DATABASES ON *.*"); err != nil {
+		return nil, err
+	}
 	db, err := mysqldbClient(r.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -45,10 +53,16 @@ func (r *mqlMysqldbInstance) schemas() ([]any, error) {
 }
 
 func (r *mqlMysqldbSchema) privileges() ([]any, error) {
+	if err := requireVisibility(r.MqlRuntime, grantsVisible, "account's schema privileges", "SELECT ON mysql.*"); err != nil {
+		return nil, err
+	}
 	return privilegesForSchema(r.MqlRuntime, r.__id, r.Name.Data)
 }
 
 func (r *mqlMysqldbSchema) routines() ([]any, error) {
+	if err := requireVisibility(r.MqlRuntime, (*connection.CallerAccess).CanListRoutines, "routine", "SELECT ON *.*"); err != nil {
+		return nil, err
+	}
 	db, err := mysqldbClient(r.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -85,6 +99,9 @@ func (r *mqlMysqldbSchema) routines() ([]any, error) {
 }
 
 func (r *mqlMysqldbSchema) tables() ([]any, error) {
+	if err := requireVisibility(r.MqlRuntime, (*connection.CallerAccess).CanListTables, "table", "SELECT ON *.*"); err != nil {
+		return nil, err
+	}
 	db, err := mysqldbClient(r.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -153,5 +170,8 @@ func createOptionsEncrypted(createOptions string) bool {
 }
 
 func (r *mqlMysqldbTable) privileges() ([]any, error) {
+	if err := requireVisibility(r.MqlRuntime, grantsVisible, "account's table privileges", "SELECT ON mysql.*"); err != nil {
+		return nil, err
+	}
 	return privilegesForTable(r.MqlRuntime, r.__id, r.Schema.Data, r.Name.Data)
 }

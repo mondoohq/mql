@@ -29,7 +29,15 @@ The provider gives up on an unreachable server after 15 seconds and on an unresp
 mql shell mysqldb db.contoso.com --user root --ask-pass
 ```
 
-> Prefer a least-privileged account for auditing. Read access to `mysql.user`, `information_schema`, and `performance_schema` is enough for the resources below; without it those collections return empty rather than failing the scan.
+> Prefer a least-privileged account for auditing. A read-only auditing account needs:
+>
+> ```sql
+> GRANT SELECT, SHOW DATABASES, PROCESS, REPLICATION CLIENT ON *.* TO 'auditor'@'%';
+> ```
+>
+> `SELECT` on `*.*` lets the account read `mysql.user`, the role and component tables, and `performance_schema`, and makes `information_schema` list every account's privileges and every schema, table, and routine. MySQL and MariaDB filter those `information_schema` views to the caller's own objects without raising an error, so a narrower account sees only part of the server.
+>
+> In mql 14, a collection the account cannot read comes back empty, so a check over it can pass on a server the scanner could not read. With the `StructuredErrors` feature enabled (the default from mql 15), it errors and names the missing privilege instead: `users` (`SELECT ON mysql.user`), `grantedRoles`, `components`, `replicationChannels`, account, schema, and table `privileges` (`SELECT ON mysql.*`), and `schemas`, `tables`, and `routines` when `information_schema` would list only part of them.
 
 ## Usage
 
@@ -146,4 +154,4 @@ Confirm the connection and permissions with a single query:
 mql shell mysqldb db.contoso.com --user root --ask-pass -c "mysqldb.instance { version flavor }"
 ```
 
-If `mysqldb.instance.users` comes back empty, the connecting account cannot read `mysql.user`; grant it read access (or use a more privileged auditing account) and retry.
+If `mysqldb.instance.users` comes back empty, or errors with a forbidden error, the connecting account cannot read `mysql.user`; grant it the privileges above (or use a more privileged auditing account) and retry.

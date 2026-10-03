@@ -165,16 +165,25 @@ func (r *mqlMysqldbInstance) plugins() ([]any, error) {
 }
 
 func (r *mqlMysqldbInstance) components() ([]any, error) {
-	db, err := mysqldbClient(r.MqlRuntime)
+	conn := mysqldbConnection(r.MqlRuntime)
+	if ok, err := conn.HasRolesAndComponents(); err != nil {
+		return nil, err
+	} else if !ok {
+		return []any{}, nil
+	}
+	db, err := conn.Client()
 	if err != nil {
 		return nil, err
 	}
-	// mysql.component is MySQL 8+ only; MariaDB has no such table. Treat a
-	// missing table or access-denied as no components, but surface real errors.
+	// mysql.component is MySQL 8+ only; MariaDB has no such table, so a
+	// missing table means no components. A refusal is not an answer.
 	rows, err := db.QueryContext(mysqldbContext(), "SELECT component_urn FROM mysql.component")
 	if err != nil {
-		if isMissingTable(err) || isAccessDenied(err) {
+		if isMissingTable(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return refusedList(err, "SELECT ON mysql.component")
 		}
 		return nil, err
 	}
@@ -224,14 +233,17 @@ func (r *mqlMysqldbInstance) replicationChannels() ([]any, error) {
 		return nil, err
 	}
 	// performance_schema.replication_connection_configuration is MySQL/Percona;
-	// MariaDB exposes replication state differently. Treat a missing table or
-	// access-denied as no channels, but surface real errors.
+	// MariaDB exposes replication state differently. A missing table means no
+	// channels. A refusal is not an answer.
 	rows, err := db.QueryContext(mysqldbContext(),
 		`SELECT CHANNEL_NAME, HOST, SSL_ALLOWED, SSL_VERIFY_SERVER_CERTIFICATE
 		 FROM performance_schema.replication_connection_configuration`)
 	if err != nil {
-		if isMissingTable(err) || isAccessDenied(err) {
+		if isMissingTable(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return refusedList(err, "SELECT ON performance_schema.replication_connection_configuration")
 		}
 		return nil, err
 	}
