@@ -4,7 +4,6 @@
 package resources
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/iox"
 )
 
 // sysrcPaths lists the rc.conf file paths to check on FreeBSD systems.
@@ -216,7 +216,7 @@ func ParseSysrc(content string) []SysrcEntry {
 	seen := map[string]int{} // name -> index in entries
 	var entries []SysrcEntry
 
-	scanner := bufio.NewScanner(strings.NewReader(content))
+	scanner := iox.NewLineScanner(strings.NewReader(content))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 

@@ -20,6 +20,8 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"go.mondoo.com/mql/utils/iox"
 )
 
 // Entry is one row of an fstab file.
@@ -34,7 +36,7 @@ type Entry struct {
 
 // Parse reads an fstab file into its entries.
 func Parse(file io.Reader) ([]Entry, error) {
-	scanner := bufio.NewScanner(file)
+	scanner := iox.NewLineScanner(file)
 	scanner.Split(bufio.ScanLines)
 
 	var entries []Entry
@@ -77,6 +79,9 @@ func Parse(file io.Reader) ([]Entry, error) {
 			Dump:       dump,
 			Fsck:       fsck,
 		})
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
 
 	return entries, nil

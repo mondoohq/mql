@@ -24,6 +24,8 @@ import (
 	"io"
 	"regexp"
 	"strings"
+
+	"go.mondoo.com/mql/utils/iox"
 )
 
 const (
@@ -169,7 +171,7 @@ func ParseRepos(r io.Reader) ([]*YumRepo, error) {
 	}
 	// lastKey is the key of the previous line, which a continuation extends
 	lastKey := ""
-	scanner := bufio.NewScanner(r)
+	scanner := iox.NewLineScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
 		m := yumrepoline.FindStringSubmatch(line)
@@ -224,6 +226,10 @@ func ParseRepos(r io.Reader) ([]*YumRepo, error) {
 				entry.Filename = value
 			}
 		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
 
 	// add last entry
