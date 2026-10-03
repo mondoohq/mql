@@ -219,6 +219,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"clickhousedb.user.grants": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClickhousedbUser).GetGrants()).ToDataRes(types.Array(types.String))
 	},
+	"clickhousedb.user.roles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClickhousedbUser).GetRoles()).ToDataRes(types.Array(types.Resource("clickhousedb.role")))
+	},
 	"clickhousedb.role.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClickhousedbRole).GetName()).ToDataRes(types.String)
 	},
@@ -227,6 +230,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"clickhousedb.role.grants": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClickhousedbRole).GetGrants()).ToDataRes(types.Array(types.String))
+	},
+	"clickhousedb.role.roles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClickhousedbRole).GetRoles()).ToDataRes(types.Array(types.Resource("clickhousedb.role")))
 	},
 	"clickhousedb.settingsProfile.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClickhousedbSettingsProfile).GetName()).ToDataRes(types.String)
@@ -422,6 +428,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClickhousedbUser).Grants, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"clickhousedb.user.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClickhousedbUser).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"clickhousedb.role.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClickhousedbRole).__id, ok = v.Value.(string)
 		return
@@ -436,6 +446,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"clickhousedb.role.grants": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClickhousedbRole).Grants, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"clickhousedb.role.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClickhousedbRole).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"clickhousedb.settingsProfile.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -598,7 +612,7 @@ func (c *mqlClickhousedb) MqlID() string {
 type mqlClickhousedbInstance struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlClickhousedbInstanceInternal it will be used here
+	mqlClickhousedbInstanceInternal
 	Version          plugin.TValue[string]
 	Users            plugin.TValue[[]any]
 	Roles            plugin.TValue[[]any]
@@ -779,7 +793,7 @@ func (c *mqlClickhousedbInstance) GetTlsEnabled() *plugin.TValue[bool] {
 type mqlClickhousedbUser struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlClickhousedbUserInternal it will be used here
+	mqlClickhousedbUserInternal
 	Name               plugin.TValue[string]
 	AuthTypes          plugin.TValue[[]any]
 	HasPassword        plugin.TValue[bool]
@@ -797,6 +811,7 @@ type mqlClickhousedbUser struct {
 	GranteesList       plugin.TValue[[]any]
 	GranteesExcept     plugin.TValue[[]any]
 	Grants             plugin.TValue[[]any]
+	Roles              plugin.TValue[[]any]
 }
 
 // createClickhousedbUser creates a new instance of this resource
@@ -901,14 +916,31 @@ func (c *mqlClickhousedbUser) GetGrants() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlClickhousedbUser) GetRoles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Roles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("clickhousedb.user", c.__id, "roles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roles()
+	})
+}
+
 // mqlClickhousedbRole for the clickhousedb.role resource
 type mqlClickhousedbRole struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlClickhousedbRoleInternal it will be used here
+	mqlClickhousedbRoleInternal
 	Name    plugin.TValue[string]
 	Storage plugin.TValue[string]
 	Grants  plugin.TValue[[]any]
+	Roles   plugin.TValue[[]any]
 }
 
 // createClickhousedbRole creates a new instance of this resource
@@ -954,6 +986,22 @@ func (c *mqlClickhousedbRole) GetStorage() *plugin.TValue[string] {
 func (c *mqlClickhousedbRole) GetGrants() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Grants, func() ([]any, error) {
 		return c.grants()
+	})
+}
+
+func (c *mqlClickhousedbRole) GetRoles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Roles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("clickhousedb.role", c.__id, "roles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roles()
 	})
 }
 

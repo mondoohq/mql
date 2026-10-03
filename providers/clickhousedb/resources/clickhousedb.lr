@@ -79,7 +79,11 @@ clickhousedb.user @defaults("name") {
   // False when any authentication method is "no_password". Because ClickHouse
   // admits a login if any method matches, the presence of a "no_password" method
   // means the account is reachable without a credential even if it also has a
-  // real one.
+  // real one. Null for a user defined in an XML users file with a plaintext
+  // password: the server reports an empty <password></password> exactly like a
+  // real one, so whether it requires a credential cannot be read from SQL.
+  // Check those users in the users file, or write the check as
+  // hasPassword == true so an unknown answer fails it.
   hasPassword bool
   // Whether the user may connect from any host
   //
@@ -133,8 +137,15 @@ clickhousedb.user @defaults("name") {
   granteesList []string
   // Users and roles the user may not pass its own grants on to
   granteesExcept []string
-  // Privileges granted to the user, each rendered as "<privilege> ON <scope>"
+  // Privileges granted directly to the user, each rendered as "<privilege> ON <scope>"
+  //
+  // Privileges the user holds through a role are listed on the role, see roles.
+  // A partial revoke reads "REVOKE <privilege> ON <scope>", and a revoked grant
+  // option reads "REVOKE GRANT OPTION FOR <privilege> ON <scope>", which leaves
+  // the privilege itself in place.
   grants() []string
+  // Roles granted to the user, whether or not they are applied by default
+  roles() []clickhousedb.role
 }
 
 // ClickHouse role
@@ -148,8 +159,13 @@ clickhousedb.role @defaults("name") {
   name string
   // Where the role is defined: "local_directory" (SQL-managed) or "users_xml" (config file)
   storage string
-  // Privileges granted to the role, each rendered as "<privilege> ON <scope>"
+  // Privileges granted directly to the role, each rendered as "<privilege> ON <scope>"
+  //
+  // Privileges the role holds through another role are listed on that role,
+  // see roles. Partial revokes are rendered as on clickhousedb.user.grants.
   grants() []string
+  // Roles granted to the role
+  roles() []clickhousedb.role
 }
 
 // ClickHouse settings profile

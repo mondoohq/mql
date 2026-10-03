@@ -52,11 +52,15 @@ func (r *mqlClickhousedbInstance) users() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		hasPassword := llx.NilData
+		if needs, known := credentialRequirement(authTypes, storage); known {
+			hasPassword = llx.BoolData(needs)
+		}
 		res, err := CreateResource(r.MqlRuntime, "clickhousedb.user", map[string]*llx.RawData{
 			"__id":               llx.StringData(serverID + "/user/" + name),
 			"name":               llx.StringData(name),
 			"authTypes":          llx.ArrayData(toAnySlice(authTypes), "string"),
-			"hasPassword":        llx.BoolData(requiresCredential(authTypes)),
+			"hasPassword":        hasPassword,
 			"anyHost":            llx.BoolData(allowsAnyHost(hostIps, hostNamesRegexp, hostNamesLike)),
 			"storage":            llx.StringData(storage),
 			"hostIps":            llx.ArrayData(toAnySlice(hostIps), "string"),
@@ -74,9 +78,28 @@ func (r *mqlClickhousedbInstance) users() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		list = append(list, res)
+		user := res.(*mqlClickhousedbUser)
+		user.cacheInstance = r
+		list = append(list, user)
 	}
 	return list, rows.Err()
+}
+
+// credentialRequirement reports whether a user needs a credential, and whether
+// that can be known from system.users at all. A user from an XML users file
+// with a plaintext password cannot be judged: ClickHouse reports
+// <password></password> (no credential needed) and a real password the same
+// way, auth_type plaintext_password with empty auth_params. A no_password
+// method still decides it, since any matching method admits the login.
+func credentialRequirement(authTypes []string, storage string) (needs bool, known bool) {
+	needs = requiresCredential(authTypes)
+	if !needs {
+		return false, true
+	}
+	if storage == "users_xml" && slices.Contains(authTypes, "plaintext_password") {
+		return false, false
+	}
+	return true, true
 }
 
 // grants renders the privileges granted directly to the user.

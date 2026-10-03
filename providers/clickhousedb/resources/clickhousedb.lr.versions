@@ -28,6 +28,7 @@ clickhousedb.quota.storage 13.0.0
 clickhousedb.role 13.0.0
 clickhousedb.role.grants 13.0.0
 clickhousedb.role.name 13.0.0
+clickhousedb.role.roles 14.0.2
 clickhousedb.role.storage 13.0.0
 clickhousedb.serverSetting 13.0.0
 clickhousedb.serverSetting.changed 13.0.0
@@ -58,4 +59,5 @@ clickhousedb.user.hostNames 13.0.0
 clickhousedb.user.hostNamesLike 13.0.2
 clickhousedb.user.hostNamesRegexp 13.0.2
 clickhousedb.user.name 13.0.0
+clickhousedb.user.roles 14.0.2
 clickhousedb.user.storage 13.0.0
