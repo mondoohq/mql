@@ -38,12 +38,20 @@ var versionlockPlugins = []struct{ conf, list string }{
 	{"/etc/yum/pluginconf.d/versionlock.conf", "/etc/yum/pluginconf.d/versionlock.list"},
 }
 
-// zypperLocksPath is where zypper records `zypper addlock`.
-const zypperLocksPath = "/etc/zypp/locks"
-
 // lockedNames is the set of package names a lock store holds. A nil or empty
 // set means nothing is locked, which is the normal state of most hosts.
 type lockedNames map[string]struct{}
+
+// lockSet reports whether a lock store holds an installed package.
+type lockSet interface {
+	holds(pkg Package) bool
+}
+
+// holds matches a versionlock store on the name alone, see
+// parseVersionlockTOML.
+func (l lockedNames) holds(pkg Package) bool {
+	return l.has(pkg.Name)
+}
 
 func (l lockedNames) has(name string) bool {
 	if len(l) == 0 || name == "" {
@@ -310,65 +318,11 @@ func parseVersionlockTOML(raw []byte) lockedNames {
 	return out
 }
 
-// readZypperLocks returns the package names locked with `zypper addlock`. The
-// store is a paragraph per lock:
-//
-//	type: package
-//	match_type: glob
-//	case_sensitive: on
-//	solvable_name: vim
-//
-// A lock may target something other than a package (a pattern, a product), and
-// those are skipped: they do not hold an installed package at its version.
-func readZypperLocks(fs afero.Fs) lockedNames {
-	f, err := fs.Open(zypperLocksPath)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-
-	raw, err := io.ReadAll(f)
-	if err != nil {
-		log.Debug().Err(err).Msg("could not read the zypper lock store")
-		return nil
-	}
-	return parseZypperLocks(string(raw))
-}
-
-func parseZypperLocks(content string) lockedNames {
-	out := lockedNames{}
-
-	// Paragraphs are separated by blank lines. A lock with no explicit type is
-	// a package lock, which is what zypper writes by default.
-	for _, block := range strings.Split(content, "\n\n") {
-		name := ""
-		isPackage := true
-		for _, line := range strings.Split(block, "\n") {
-			key, value, found := strings.Cut(line, ":")
-			if !found {
-				continue
-			}
-			key = strings.TrimSpace(key)
-			value = strings.TrimSpace(value)
-			switch key {
-			case "solvable_name":
-				name = value
-			case "type":
-				isPackage = value == "package"
-			}
-		}
-		if name != "" && isPackage {
-			out[name] = struct{}{}
-		}
-	}
-	return out
-}
-
 // markPinned flags the packages a lock store holds. Called once per listing,
 // so the store is read once rather than once per package. readErr is why the
 // store could not be read: with StructuredErrors every package's pinned is
 // that error; v13 reported nothing pinned.
-func markPinned(pkgs []Package, locks lockedNames, readErr error) []Package {
+func markPinned(pkgs []Package, locks lockSet, readErr error) []Package {
 	if readErr != nil {
 		if !plugin.StructuredErrors() {
 			log.Warn().Err(readErr).Msg("could not read the package lock store, packages report not pinned")
@@ -384,11 +338,11 @@ func markPinned(pkgs []Package, locks lockedNames, readErr error) []Package {
 		}
 		return pkgs
 	}
-	if len(locks) == 0 {
+	if locks == nil {
 		return pkgs
 	}
 	for i := range pkgs {
-		if locks.has(pkgs[i].Name) {
+		if locks.holds(pkgs[i]) {
 			pkgs[i].Pinned = true
 		}
 	}
