@@ -71,7 +71,9 @@ func initPostgresdbDatabase(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	}
 	nameRaw, ok := args["name"]
 	if !ok {
-		return args, nil, nil
+		// Without a name there is no database to read; a bare resource would
+		// report every field unset.
+		return nil, nil, errors.New("postgresdb.database requires a name; query postgresdb.instance.databases, or scan a database asset (--discover databases)")
 	}
 	name, _ := nameRaw.Value.(string)
 	if name == "" {

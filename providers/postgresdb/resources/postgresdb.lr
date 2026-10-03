@@ -382,11 +382,17 @@ postgresdb.foreignServer @defaults("name") {
 // against a foreign server. `options` may contain a remote user name; secret
 // values are not exposed.
 postgresdb.userMapping @defaults("role") {
-  // Local role the mapping applies to, or PUBLIC
+  // Local role the mapping applies to
+  //
+  // A role name, or `public` for a mapping that applies to every role.
   role string
   // Foreign server the mapping targets
   server string
   // Non-secret options of the mapping
+  //
+  // PostgreSQL shows a mapping's options only to the mapped role, to the
+  // server owner for a `public` mapping, and to superusers. For any other role
+  // the list is empty, the same as a mapping without options.
   options []string
 }
 

@@ -164,3 +164,43 @@ func resolveRoleRef(runtime *plugin.Runtime, name string, field *plugin.TValue[*
 func intToStr(i int64) string {
 	return strconv.FormatInt(i, 10)
 }
+
+// --- version-dependent catalog columns ---------------------------------------
+
+// Releases that added the catalog columns and views selected below.
+const (
+	pgVersion94 = 90400  // pg_replication_slots
+	pgVersion95 = 90500  // pg_settings.pending_restart, row-level security
+	pgVersion10 = 100000 // logical replication, pg_hba_file_rules, pg_policy.polpermissive, pg_replication_slots.temporary
+	pgVersion11 = 110000 // pg_publication.pubtruncate
+)
+
+// columnForVersion returns column when the server is at least minVersion,
+// and otherwise fallback: a SQL literal with the value the column would hold
+// on that server (an older server has no restrictive policies, so
+// polpermissive falls back to true). A server whose version is unknown (0)
+// gets the column, so a newer server is never silently given the fallback.
+func columnForVersion(serverVersionNum, minVersion int, column, fallback string) string {
+	if serverVersionNum == 0 || serverVersionNum >= minVersion {
+		return column
+	}
+	return fallback + " AS " + column[strings.LastIndex(column, ".")+1:]
+}
+
+// pgColumn is columnForVersion for the runtime's server. If the version
+// cannot be read the column is used as is, and the query reports the real
+// error.
+func pgColumn(runtime *plugin.Runtime, minVersion int, column, fallback string) string {
+	v, err := pgConnection(runtime).ServerVersionNum()
+	if err != nil {
+		v = 0
+	}
+	return columnForVersion(v, minVersion, column, fallback)
+}
+
+// pgAtLeast reports whether the runtime's server is at least minVersion. An
+// unreadable version reads as current.
+func pgAtLeast(runtime *plugin.Runtime, minVersion int) bool {
+	v, err := pgConnection(runtime).ServerVersionNum()
+	return err != nil || v >= minVersion
+}

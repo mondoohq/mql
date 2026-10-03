@@ -79,7 +79,7 @@ func (r *mqlPostgresdbInstance) settings() ([]any, error) {
 	}
 	rows, err := pool.Query(pgContext(),
 		`SELECT name, setting, COALESCE(unit, ''), COALESCE(category, ''),
-			context, source, COALESCE(boot_val, ''), COALESCE(reset_val, ''), pending_restart
+			context, source, COALESCE(boot_val, ''), COALESCE(reset_val, ''), `+pgColumn(r.MqlRuntime, pgVersion95, "pending_restart", "false")+`
 		 FROM pg_settings ORDER BY name`)
 	if err != nil {
 		return nil, err

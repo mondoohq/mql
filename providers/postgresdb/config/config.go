@@ -23,9 +23,10 @@ var Config = plugin.Provider{
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{
 		{
-			Name:  "postgresdb",
-			Use:   "postgresdb [host]",
-			Short: "a PostgreSQL server",
+			Name:    "postgresdb",
+			Use:     "postgresdb [host]",
+			Short:   "a PostgreSQL server",
+			MaxArgs: 1,
 			Long: `Use the postgresdb provider to query a PostgreSQL server.
 
 The provider connects to a PostgreSQL server and runs read-only catalog
@@ -33,8 +34,8 @@ queries (pg_catalog and information_schema) to inventory roles, databases,
 schemas, privileges, settings, host-based authentication rules, extensions,
 foreign servers, and replication configuration.
 
-By default the provider discovers every connectable database on the server as
-its own asset.
+By default the provider scans the server alone. Use --discover databases (or
+all) to also scan every connectable database as its own asset.
 
 Examples:
   cnspec shell postgresdb db.contoso.com --user postgres --ask-pass

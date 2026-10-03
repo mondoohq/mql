@@ -51,7 +51,8 @@ func (r *mqlPostgresdbSchema) tables() ([]any, error) {
 	}
 	rows, err := pool.Query(pgContext(),
 		`SELECT c.relname, c.oid::bigint, c.relkind, COALESCE(o.rolname, ''),
-			c.relrowsecurity, c.relforcerowsecurity
+			`+pgColumn(r.MqlRuntime, pgVersion95, "c.relrowsecurity", "false")+`,
+			`+pgColumn(r.MqlRuntime, pgVersion95, "c.relforcerowsecurity", "false")+`
 		 FROM pg_class c
 		 JOIN pg_namespace n ON c.relnamespace = n.oid
 		 LEFT JOIN pg_roles o ON c.relowner = o.oid
@@ -107,12 +108,16 @@ func (r *mqlPostgresdbTable) privileges() ([]any, error) {
 }
 
 func (r *mqlPostgresdbTable) policies() ([]any, error) {
+	// Row-level security arrived in 9.5; an older server has no policies.
+	if !pgAtLeast(r.MqlRuntime, pgVersion95) {
+		return []any{}, nil
+	}
 	pool, err := pgPool(r.MqlRuntime, r.cacheDatabase)
 	if err != nil {
 		return nil, err
 	}
 	rows, err := pool.Query(pgContext(),
-		`SELECT pol.polname, pol.polcmd, pol.polpermissive,
+		`SELECT pol.polname, pol.polcmd, `+pgColumn(r.MqlRuntime, pgVersion10, "pol.polpermissive", "true")+`,
 			COALESCE((SELECT array_agg(CASE WHEN x = 0 THEN 'PUBLIC'
 				ELSE (SELECT rolname FROM pg_roles WHERE oid = x) END)
 				FROM unnest(pol.polroles) AS x), '{}'),

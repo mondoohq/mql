@@ -5,6 +5,8 @@ package connection
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net"
 	"net/url"
 	"strconv"
@@ -45,6 +47,10 @@ type PostgresdbConnection struct {
 	systemIDOnce sync.Once
 	systemID     string
 	systemIDErr  error
+
+	versionOnce sync.Once
+	versionNum  int
+	versionErr  error
 }
 
 func NewPostgresdbConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*PostgresdbConnection, error) {
@@ -173,13 +179,64 @@ func (c *PostgresdbConnection) Close() {
 	c.pools = map[string]*pgxpool.Pool{}
 }
 
+// ServerVersionNum returns the server's server_version_num (for example
+// 90224 for 9.2.24, 170004 for 17.4). It is resolved once and shared, so
+// queries can select only the catalog columns the server has.
+func (c *PostgresdbConnection) ServerVersionNum() (int, error) {
+	c.versionOnce.Do(func() {
+		pool, err := c.Client("")
+		if err != nil {
+			c.versionErr = err
+			return
+		}
+		c.versionErr = pool.QueryRow(context.Background(),
+			"SELECT current_setting('server_version_num')::int").Scan(&c.versionNum)
+	})
+	return c.versionNum, c.versionErr
+}
+
+// minVersionControlSystem is the first release with pg_control_system().
+const minVersionControlSystem = 90600
+
+// usesLegacySystemID reports whether the server is too old to report its
+// system identifier through SQL.
+func usesLegacySystemID(serverVersionNum int) bool {
+	return serverVersionNum < minVersionControlSystem
+}
+
+// legacySystemID derives a stable identifier for a server that cannot report
+// its system identifier (before 9.6, pg_control_system() does not exist and
+// pg_control is only readable from the file system). It hashes the host the
+// server was reached at and the port the server itself listens on: both
+// survive a restart, and two clusters on one host always differ in port.
+// The value is the same for every role that connects, since neither input
+// needs a privilege to read.
+func legacySystemID(host string, serverPort string) string {
+	sum := sha256.Sum256([]byte(host + "\x00" + serverPort))
+	return "legacy-" + hex.EncodeToString(sum[:16])
+}
+
 // SystemID returns the cluster system identifier, used to build stable asset
 // platform ids. It is resolved once and shared.
 func (c *PostgresdbConnection) SystemID() (string, error) {
 	c.systemIDOnce.Do(func() {
+		version, err := c.ServerVersionNum()
+		if err != nil {
+			c.systemIDErr = err
+			return
+		}
 		pool, err := c.Client("")
 		if err != nil {
 			c.systemIDErr = err
+			return
+		}
+		if usesLegacySystemID(version) {
+			var port string
+			if err := pool.QueryRow(context.Background(), "SELECT current_setting('port')").Scan(&port); err != nil {
+				c.systemIDErr = err
+				return
+			}
+			c.systemID = legacySystemID(c.host, port)
 			return
 		}
 		c.systemIDErr = pool.QueryRow(context.Background(),

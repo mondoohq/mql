@@ -20,7 +20,11 @@ Arguments:
 mql shell postgresdb db.contoso.com --user postgres --ask-pass
 ```
 
-> Prefer a least-privileged role for auditing. Some fields (a role's `passwordType`, and the `hbaRules`) require superuser or a `pg_read_all_settings`/`pg_read_all_stats` membership; without it those degrade to null or empty rather than failing the scan.
+> Prefer a least-privileged role for auditing. Some fields need more: a role's `passwordType` and the `hbaRules` require superuser, and the superuser-only `settings` require superuser or `pg_read_all_settings` membership. Without the privilege, `hbaRules` and `subscriptions` return a permission error, and `passwordType` reads null.
+
+The host may also be a unix-socket directory, for example `--host /var/run/postgresql`, to connect over the local socket.
+
+The provider supports PostgreSQL 9.2 and later. Catalog fields that a release does not have read their implied value (for example, every row-level security policy is permissive before PostgreSQL 10), and features a release does not have (replication slots before 9.4, row-level security before 9.5) read as empty. Before 9.6 the server cannot report its system identifier, so the asset id is derived from the host and port instead. On 9.2, `privileges` returns an error.
 
 ## Usage
 
@@ -38,19 +42,20 @@ mql shell postgresdb db.contoso.com --user auditor --ask-pass --sslmode verify-f
 
 ## Discovery
 
-Because PostgreSQL cannot query across databases, the provider connects per database. By default it discovers each connectable database as its own `postgres-database` asset, alongside the server asset. The `--discover` targets control which child assets are emitted:
+Because PostgreSQL cannot query across databases, the provider connects per database. By default it scans the server asset alone. The `--discover` targets control which child assets are emitted:
 
-- `auto` (default) - also emit one asset per database. Same as `all`.
-- `all` - also emit one asset per database.
-- `databases` - also emit one asset per database.
+- `auto` (default) - the server only.
+- `instance` - the server only.
+- `all` - the server plus one `postgresdb-database` asset per connectable database.
+- `databases` - one asset per connectable database, alongside the server.
 - `none` - the server only, without per-database assets.
 
 ```shell
-# Scan the server and every database
+# Scan the server only
 cnspec scan postgresdb db.contoso.com --user auditor --ask-pass
 
-# Scan the server only
-cnspec scan postgresdb db.contoso.com --user auditor --ask-pass --discover none
+# Scan the server and every database
+cnspec scan postgresdb db.contoso.com --user auditor --ask-pass --discover all
 ```
 
 ## Examples
@@ -146,4 +151,4 @@ Confirm the connection with a single query:
 mql shell postgresdb db.contoso.com --user postgres --ask-pass -c "postgresdb.instance { version }"
 ```
 
-If a role's `passwordType` or the `hbaRules` come back null/empty, the connecting role lacks the privilege to read `pg_authid` / `pg_hba_file_rules`; use a more privileged auditing role and retry.
+If a role's `passwordType` reads null, or `hbaRules` returns a permission error, the connecting role lacks the privilege to read `pg_authid` / `pg_hba_file_rules` (both superuser-only); use a more privileged auditing role and retry.

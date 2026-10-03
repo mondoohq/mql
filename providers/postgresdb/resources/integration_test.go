@@ -98,7 +98,13 @@ func TestIntegrationResolveAll(t *testing.T) {
 		}
 	}
 	resolveList(t, "settings", inst.GetSettings())
-	resolveList(t, "hbaRules", inst.GetHbaRules())
+	// pg_hba_file_rules arrived in 10: an older server answers with an error,
+	// since its rules exist but cannot be listed.
+	if pgAtLeast(inst.MqlRuntime, pgVersion10) {
+		resolveList(t, "hbaRules", inst.GetHbaRules())
+	} else if inst.GetHbaRules().Error == nil {
+		t.Error("hbaRules before PostgreSQL 10 must be an error, not a list")
+	}
 	resolveList(t, "replicationSlots", inst.GetReplicationSlots())
 	resolveList(t, "subscriptions", inst.GetSubscriptions())
 
