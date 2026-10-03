@@ -31,10 +31,8 @@ drwxr-xr-x.  2    0    0       133 Oct  3 01:00 /usr/local/bin
 		"command -v 'kubelet'": {ExitStatus: 1},
 		"LC_ALL=C ls -ldn -- '/' '/usr' '/usr/local' '/usr/local/bin' '/usr/local/bin/claude'": {Stdout: lsPrefix +
 			"lrwxrwxrwx.  1    0    0        60 Oct  3 01:00 /usr/local/bin/claude -> ../lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe\n"},
-		"LC_ALL=C ls -ldn -- '/' '/usr' '/usr/local' '/usr/local/lib' '/usr/local/lib/node_modules' '/usr/local/lib/node_modules/@anthropic-ai' '/usr/local/lib/node_modules/@anthropic-ai/claude-code' '/usr/local/lib/node_modules/@anthropic-ai/claude-code/bin' '/usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe'": {Stdout: `dr-xr-xr-x. 17    0    0       224 Oct  2 23:58 /
-drwxr-xr-x. 13    0    0       155 Sep 30  2024 /usr
-drwxr-xr-x. 12    0    0       183 Oct  3 01:00 /usr/local
-drwxr-xr-x.  4 1000 1000        40 Oct  3 01:01 /usr/local/lib
+		// the link's target, from the directory it leads back to
+		"LC_ALL=C ls -ldn -- '/usr/local/lib' '/usr/local/lib/node_modules' '/usr/local/lib/node_modules/@anthropic-ai' '/usr/local/lib/node_modules/@anthropic-ai/claude-code' '/usr/local/lib/node_modules/@anthropic-ai/claude-code/bin' '/usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe'": {Stdout: `drwxr-xr-x.  4 1000 1000        40 Oct  3 01:01 /usr/local/lib
 drwxr-xr-x.  8 1000 1000       102 Oct  3 02:05 /usr/local/lib/node_modules
 drwxr-xr-x.  3    0    0        25 Oct  3 01:00 /usr/local/lib/node_modules/@anthropic-ai
 drwxr-xr-x.  4    0    0       156 Oct  3 01:00 /usr/local/lib/node_modules/@anthropic-ai/claude-code

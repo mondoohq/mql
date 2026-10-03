@@ -5,7 +5,9 @@ package packages
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"io/fs"
 	"path"
 	"regexp"
 	"strconv"
@@ -63,14 +65,14 @@ func ResolveTrustedExecutable(conn shared.Connection, p string) (target string, 
 	if !ok {
 		return "", false
 	}
-	lstat := func(paths []string) map[string]pathEntry {
+	lstat := func(paths []string) lsResult {
 		cmd, err := conn.RunCommand("LC_ALL=C ls -ldn -- " + shellQuoteAll(paths))
 		if err != nil {
-			return nil
+			return lsResult{}
 		}
 		// ls exits non-zero when one operand is missing and still lists the
 		// others, so the output is parsed whatever the exit status.
-		return parseLsLong(readCommandOutput(cmd.Stdout), paths)
+		return parseLs(readCommandOutput(cmd.Stdout), readCommandOutput(cmd.Stderr), paths)
 	}
 	x := execProbe{
 		uid:   uid,
@@ -78,12 +80,12 @@ func ResolveTrustedExecutable(conn shared.Connection, p string) (target string, 
 		head: func(p string) ([]byte, error) {
 			f, err := conn.FileSystem().Open(p)
 			if err != nil {
-				return nil, errors.New("cannot read " + p)
+				return nil, fmt.Errorf("cannot read %s: %w", p, err)
 			}
 			defer f.Close()
 			b, err := io.ReadAll(io.LimitReader(f, shebangLen))
 			if err != nil {
-				return nil, errors.New("cannot read " + p)
+				return nil, fmt.Errorf("cannot read %s: %w", p, err)
 			}
 			return b, nil
 		},
@@ -145,7 +147,45 @@ func commandPath(conn shared.Connection) (string, bool) {
 type pathEntry struct {
 	mode string // the 10-character mode, e.g. "drwxr-xr-x"
 	uid  int64
+	size int64
 	link string // the link's target, for a symbolic link
+}
+
+// lsResult is what one `ls -ldn` call reports for the paths it was given.
+// A path in neither map could not be listed: ls failed, did not run, or
+// printed something that is not understood. That is not the same as absent.
+type lsResult struct {
+	entries map[string]pathEntry
+	// absent holds the paths ls reported as not existing.
+	absent map[string]bool
+}
+
+// parseLs reads the stdout and stderr of `LC_ALL=C ls -ldn` for paths.
+func parseLs(stdout, stderr string, paths []string) lsResult {
+	return lsResult{entries: parseLsLong(stdout, paths), absent: parseLsAbsent(stderr, paths)}
+}
+
+// parseLsAbsent returns the paths that ls reported as not existing, from
+// lines such as GNU's "ls: cannot access '/x': No such file or directory"
+// (in double quotes for a name holding a single quote, unquoted before
+// coreutils 8.25), and busybox's and macOS's "ls: /x: No such file or
+// directory". A path whose name ls escapes in any other way is not matched,
+// and so reads as unlisted rather than absent.
+func parseLsAbsent(stderr string, paths []string) map[string]bool {
+	absent := map[string]bool{}
+	for _, line := range strings.Split(stderr, "\n") {
+		body, ok := strings.CutSuffix(strings.TrimRight(line, "\r"), ": No such file or directory")
+		if !ok {
+			continue
+		}
+		for _, p := range paths {
+			switch body {
+			case "ls: " + p, "ls: cannot access " + p, "ls: cannot access '" + p + "'", `ls: cannot access "` + p + `"`:
+				absent[p] = true
+			}
+		}
+	}
+	return absent
 }
 
 func (e pathEntry) isLink() bool { return strings.HasPrefix(e.mode, "l") }
@@ -161,9 +201,10 @@ func (e pathEntry) writableByOthers() bool {
 	return len(e.mode) >= 10 && (e.mode[5] == 'w' || e.mode[8] == 'w')
 }
 
-// lsLongLine splits an `LC_ALL=C ls -ldn` line into mode, uid and the name
-// (plus " -> target" for a link). The date takes three fields in the C locale.
-var lsLongLine = regexp.MustCompile(`^(\S{10})\S*\s+\d+\s+(\d+)\s+\d+\s+\d+\s+\S+\s+\S+\s+\S+ (.+)$`)
+// lsLongLine splits an `LC_ALL=C ls -ldn` line into mode, uid, size and the
+// name (plus " -> target" for a link). The date takes three
+// fields in the C locale.
+var lsLongLine = regexp.MustCompile(`^(\S{10})\S*\s+\d+\s+(\d+)\s+\d+\s+(\d+)\s+\S+\s+\S+\s+\S+ (.+)$`)
 
 // parseLsLong reads `LC_ALL=C ls -ldn` output for paths, keyed by path as it
 // was passed. A link line reads "<path> -> <target>"; the path is matched
@@ -180,8 +221,12 @@ func parseLsLong(out string, paths []string) map[string]pathEntry {
 		if err != nil {
 			continue
 		}
-		e := pathEntry{mode: m[1], uid: uid}
-		name := m[3]
+		size, err := strconv.ParseInt(m[3], 10, 64)
+		if err != nil {
+			continue
+		}
+		e := pathEntry{mode: m[1], uid: uid, size: size}
+		name := m[4]
 		if e.isLink() {
 			n, target, found := splitLsLink(name, paths)
 			if !found {
@@ -217,73 +262,129 @@ const maxLinkHops = 40
 // the file it ends at: each must be owned by root or by uid and must not be
 // writable by group or others. Links are not checked themselves (a link
 // cannot be changed in place, only replaced by whoever may write to its
-// directory, which was checked), but the walk restarts at their target.
-// lstat reports paths without following them; it is called with every prefix
-// of the path being walked at once, so a resolution costs one call per link.
-// It returns the resolved path, and the reason it is untrusted (empty when it
-// is trusted). An untrusted component does not stop the walk, so the resolved
-// path is still known for reading files next to the binary; a component that
-// cannot be read does, and the resolved path is then empty.
-func trustedResolution(p string, uid int64, lstat func([]string) map[string]pathEntry) (string, string) {
-	target, reason, _ := resolveTrusted(p, uid, lstat, false)
+// directory, which was checked), but the walk continues at their target.
+// lstat reports paths without following them; it is called with every
+// component up to the next link or "..", so a resolution costs about one
+// call per link. It returns the resolved path, and the reason it is
+// untrusted (empty when it is trusted). An untrusted component does not stop
+// the walk, so the resolved path is still known for reading files next to the
+// binary; a component that cannot be listed does, and the resolved path is
+// then empty.
+func trustedResolution(p string, uid int64, lstat func([]string) lsResult) (string, string) {
+	target, _, reason, _ := resolveTrusted(p, uid, lstat, false)
 	return target, reason
 }
 
 // resolveTrusted is trustedResolution for a file (wantDir false) or a
-// directory (wantDir true). missing reports that a component does not exist
+// directory (wantDir true), and also returns what ls reported for the
+// resolved path. missing reports that ls found a component does not exist
 // while every component before it is trusted: nobody but root or uid can
-// create it then.
-func resolveTrusted(p string, uid int64, lstat func([]string) map[string]pathEntry, wantDir bool) (target, reason string, missing bool) {
+// create it then. A component ls could not list is never missing.
+//
+// ".." is applied to the directory the walk has reached, links resolved, as
+// the kernel does, not to the text of the path: in "sub/../bin" where sub is
+// a link, ".." leaves the link's target.
+func resolveTrusted(p string, uid int64, lstat func([]string) lsResult, wantDir bool) (target string, entry pathEntry, reason string, missing bool) {
 	trusted := func(e pathEntry) bool {
 		return (e.uid == 0 || e.uid == uid) && !e.writableByOthers()
 	}
+	if !strings.HasPrefix(p, "/") {
+		return "", pathEntry{}, p + " is not absolute", false
+	}
 
+	// dir is where the walk is: every directory up to it was checked, and
+	// seen holds what ls reported for them. "" until / is checked.
+	dir := ""
+	seen := map[string]pathEntry{}
+	comps := pathComponents(p)
 	hops := 0
-	cur := path.Clean(p)
 	for {
-		prefixes := pathPrefixes(cur)
-		entries := lstat(prefixes)
+		// list dir's components up to the next ".." in one call
+		var batch []string
+		var at []int // index in comps of each batch entry, -1 for /
+		next := dir
+		if next == "" {
+			next = "/"
+			batch, at = append(batch, "/"), append(at, -1)
+		}
+		n := 0
+		for n < len(comps) && comps[n] != ".." {
+			next = path.Join(next, comps[n])
+			batch, at = append(batch, next), append(at, n)
+			n++
+		}
 		restarted := false
-		for i, prefix := range prefixes {
-			e, ok := entries[prefix]
-			if !ok {
-				if reason != "" {
-					return "", reason, false
+		if len(batch) > 0 {
+			res := lstat(batch)
+			for i, q := range batch {
+				e, ok := res.entries[q]
+				if !ok {
+					if reason != "" {
+						return "", pathEntry{}, reason, false
+					}
+					if res.absent[q] {
+						return "", pathEntry{}, q + " does not exist", true
+					}
+					return "", pathEntry{}, q + " cannot be listed", false
 				}
-				return "", prefix + " cannot be read", true
-			}
-			if e.isLink() {
-				hops++
-				if hops > maxLinkHops {
-					return "", "too many symbolic links at " + prefix, false
+				rest := comps[at[i]+1:]
+				if e.isLink() && at[i] >= 0 {
+					hops++
+					if hops > maxLinkHops {
+						return "", pathEntry{}, "too many symbolic links at " + q, false
+					}
+					// continue at the link's target, from / or from the
+					// directory holding the link, both checked already
+					if strings.HasPrefix(e.link, "/") {
+						dir = "/"
+					} else {
+						dir = path.Dir(q)
+					}
+					comps = append(pathComponents(e.link), rest...)
+					restarted = true
+					break
 				}
-				target := e.link
-				if !strings.HasPrefix(target, "/") {
-					target = path.Join(path.Dir(prefix), target)
+				if !trusted(e) && reason == "" {
+					reason = q + " is owned by uid " + strconv.FormatInt(e.uid, 10) + " with mode " + e.mode
 				}
-				rest := strings.TrimPrefix(cur, prefix)
-				cur = path.Clean(target + rest)
-				restarted = true
-				break
-			}
-			if !trusted(e) && reason == "" {
-				reason = prefix + " is owned by uid " + strconv.FormatInt(e.uid, 10) + " with mode " + e.mode
-			}
-			last := i == len(prefixes)-1
-			if !last && !e.isDir() {
-				return "", prefix + " is not a directory", false
-			}
-			if last && e.isDir() != wantDir {
-				if wantDir {
-					return "", prefix + " is not a directory", false
+				if len(rest) > 0 && !e.isDir() {
+					return "", pathEntry{}, q + " is not a directory", false
 				}
-				return "", prefix + " is a directory", false
+				dir, seen[q] = q, e
 			}
 		}
-		if !restarted {
-			return cur, reason, false
+		if restarted {
+			continue
+		}
+		comps = comps[n:]
+		if len(comps) == 0 {
+			break
+		}
+		// comps[0] is "..": dir is a checked directory, and so is its parent
+		dir = path.Dir(dir)
+		comps = comps[1:]
+	}
+
+	entry = seen[dir]
+	if entry.isDir() != wantDir {
+		if wantDir {
+			return "", pathEntry{}, dir + " is not a directory", false
+		}
+		return "", pathEntry{}, dir + " is a directory", false
+	}
+	return dir, entry, reason, false
+}
+
+// pathComponents splits a path into its names, dropping empty ones and "."
+// and keeping "..": "/usr//bin/./../x" gives "usr", "bin", "..", "x".
+func pathComponents(p string) []string {
+	var out []string
+	for _, c := range strings.Split(p, "/") {
+		if c != "" && c != "." {
+			out = append(out, c)
 		}
 	}
+	return out
 }
 
 // execProbe is what trustedExecutable reads from the target.
@@ -291,7 +392,7 @@ type execProbe struct {
 	// uid is the account commands run as.
 	uid int64
 	// lstat reports paths without following them (see trustedResolution).
-	lstat func([]string) map[string]pathEntry
+	lstat func([]string) lsResult
 	// head returns the first bytes of a file.
 	head func(path string) ([]byte, error)
 	// path returns the PATH commands run with, false when it is unknown.
@@ -315,20 +416,28 @@ const shebangLen = 256
 // another account can write to lets that account put its own <name> first.
 // depth counts the scripts followed so far.
 func trustedExecutable(p string, x execProbe, depth int) (string, string) {
-	target, reason := trustedResolution(p, x.uid, x.lstat)
+	target, entry, reason, _ := resolveTrusted(p, x.uid, x.lstat, false)
 	if reason != "" {
 		return target, reason
 	}
 	head, err := x.head(target)
 	if err != nil {
 		// root reads every file, so a file root cannot read is refused. An
-		// unprivileged account cannot read some binaries it may execute
-		// (RHEL ships sudo as mode 4111); whatever such a file starts, it
-		// starts with that account's privileges, which are the scan's own.
-		if x.uid != 0 {
+		// unprivileged account may be denied reading a file it may execute
+		// (RHEL ships sudo as mode 4111). The file and its directories passed
+		// the check above, so only root or the scan's account can replace it.
+		// Its #! line goes unchecked: if it were a script, the kernel would
+		// ignore a setuid bit on it and run the interpreter with the scan
+		// account's privileges. Any other read error is refused.
+		if x.uid != 0 && errors.Is(err, fs.ErrPermission) {
 			return target, ""
 		}
 		return target, err.Error()
+	}
+	if len(head) == 0 && entry.size > 0 {
+		// a read that returned nothing from a file that is not empty cannot
+		// tell a script from a binary
+		return target, "read nothing from " + target + ", which holds " + strconv.FormatInt(entry.size, 10) + " bytes"
 	}
 	interp, arg, ok := parseShebang(head)
 	if !ok {
@@ -376,7 +485,8 @@ func trustedExecutable(p string, x execProbe, depth int) (string, string) {
 
 // trustedPathLookup checks the program env runs for name: it walks the PATH
 // in order, like env does, and every directory up to the one that holds an
-// executable name must pass the check, then that file must.
+// executable name must pass the check, then that file must. A directory or
+// file is skipped as absent only when ls reported it does not exist.
 func trustedPathLookup(name string, x execProbe, depth int) string {
 	pathEnv, ok := x.path()
 	if !ok {
@@ -387,7 +497,7 @@ func trustedPathLookup(name string, x execProbe, depth int) string {
 			// an empty entry is the working directory
 			return "PATH entry " + dir + " is not absolute"
 		}
-		resolved, reason, missing := resolveTrusted(dir, x.uid, x.lstat, true)
+		resolved, _, reason, missing := resolveTrusted(dir, x.uid, x.lstat, true)
 		if missing {
 			continue
 		}
@@ -395,8 +505,15 @@ func trustedPathLookup(name string, x execProbe, depth int) string {
 			return "PATH entry " + dir + ": " + reason
 		}
 		candidate := path.Join(resolved, name)
-		e, found := x.lstat([]string{candidate})[candidate]
-		if !found || e.isDir() || (!e.isLink() && !e.executable()) {
+		res := x.lstat([]string{candidate})
+		e, found := res.entries[candidate]
+		if !found {
+			if res.absent[candidate] {
+				continue
+			}
+			return "PATH entry " + dir + ": " + candidate + " cannot be listed"
+		}
+		if e.isDir() || (!e.isLink() && !e.executable()) {
 			continue
 		}
 		if _, r := trustedExecutable(candidate, x, depth); r != "" {
@@ -429,16 +546,22 @@ func parseShebang(head []byte) (interp, arg string, ok bool) {
 // Linux hands the rest of the #! line to env as one argument and macOS splits
 // it; splitting it here finds the program either way. Variable assignments
 // are skipped, but one to PATH changes where env looks, and an option other
-// than -S may change it too, so both are refused.
+// than -S may change it too, so both are refused. With -S, env itself splits
+// the string and gives quotes, backslashes, $ and a leading # their own
+// meaning; a word holding one of them is refused rather than guessed at.
 func envProgram(arg string) (string, string) {
+	split := false
 	for _, f := range strings.Fields(arg) {
 		switch {
 		case f == "-S" || f == "--split-string":
+			split = true
 			continue
 		case strings.HasPrefix(f, "-"):
 			return "", "env option " + f + " is not understood"
-		case strings.HasPrefix(f, "PATH="):
+		case strings.HasPrefix(strings.TrimLeft(f, `"'`), "PATH="):
 			return "", "env changes PATH"
+		case split && (strings.ContainsAny(f, `"'\$`) || strings.HasPrefix(f, "#")):
+			return "", "env -S word " + f + " is not understood"
 		case strings.Contains(f, "="):
 			continue
 		default:
@@ -446,21 +569,6 @@ func envProgram(arg string) (string, string) {
 		}
 	}
 	return "", "env names no program"
-}
-
-// pathPrefixes returns "/" and every prefix of the clean absolute path p, p
-// itself last: "/usr/bin/x" gives "/", "/usr", "/usr/bin", "/usr/bin/x".
-func pathPrefixes(p string) []string {
-	out := []string{"/"}
-	if p == "/" {
-		return out
-	}
-	for i := 1; i < len(p); i++ {
-		if p[i] == '/' {
-			out = append(out, p[:i])
-		}
-	}
-	return append(out, p)
 }
 
 // shellQuoteAll single-quotes each path and joins them with spaces.
