@@ -438,6 +438,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"postgresdb.setting.pendingRestart": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPostgresdbSetting).GetPendingRestart()).ToDataRes(types.Bool)
 	},
+	"postgresdb.hbaRule.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPostgresdbHbaRule).GetFile()).ToDataRes(types.String)
+	},
 	"postgresdb.hbaRule.lineNumber": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPostgresdbHbaRule).GetLineNumber()).ToDataRes(types.Int)
 	},
@@ -964,6 +967,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"postgresdb.hbaRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPostgresdbHbaRule).__id, ok = v.Value.(string)
+		return
+	},
+	"postgresdb.hbaRule.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPostgresdbHbaRule).File, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"postgresdb.hbaRule.lineNumber": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2309,6 +2316,7 @@ type mqlPostgresdbHbaRule struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlPostgresdbHbaRuleInternal it will be used here
+	File       plugin.TValue[string]
 	LineNumber plugin.TValue[int64]
 	Type       plugin.TValue[string]
 	Databases  plugin.TValue[[]any]
@@ -2350,6 +2358,10 @@ func (c *mqlPostgresdbHbaRule) MqlName() string {
 
 func (c *mqlPostgresdbHbaRule) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlPostgresdbHbaRule) GetFile() *plugin.TValue[string] {
+	return &c.File
 }
 
 func (c *mqlPostgresdbHbaRule) GetLineNumber() *plugin.TValue[int64] {

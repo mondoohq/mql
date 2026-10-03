@@ -45,6 +45,7 @@ postgresdb.hbaRule.address 13.0.0
 postgresdb.hbaRule.authMethod 13.0.0
 postgresdb.hbaRule.databases 13.0.0
 postgresdb.hbaRule.error 13.0.0
+postgresdb.hbaRule.file 14.0.2
 postgresdb.hbaRule.lineNumber 13.0.0
 postgresdb.hbaRule.netmask 13.0.0
 postgresdb.hbaRule.options 13.0.0

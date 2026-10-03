@@ -114,18 +114,46 @@ func (r *mqlPostgresdbInstance) settings() ([]any, error) {
 	return list, rows.Err()
 }
 
+// hbaRulesQuery selects pg_hba_file_rules for a server version. PostgreSQL 16
+// added include directives together with file_name and rule_number: from then
+// on line_number is relative to file_name, and rule_number is the order in
+// which the server evaluates the rules. An invalid line is reported with NULL
+// type, database, user_name and rule_number and a message in error, so every
+// column is coalesced to keep that row (and the rest of the list) readable.
+func hbaRulesQuery(serverVersionNum int64) string {
+	const cols = `COALESCE(line_number, 0), COALESCE(type, ''), COALESCE(database, '{}'),
+			COALESCE(user_name, '{}'), COALESCE(address, ''), COALESCE(netmask, ''),
+			COALESCE(auth_method, ''), COALESCE(options, '{}'), COALESCE(error, '')`
+	if serverVersionNum >= 160000 {
+		return `SELECT COALESCE(file_name, ''), ` + cols + `
+		 FROM pg_hba_file_rules ORDER BY rule_number NULLS LAST, file_name, line_number`
+	}
+	return `SELECT '', ` + cols + `
+		 FROM pg_hba_file_rules ORDER BY line_number`
+}
+
+// hbaRuleResourceID keys a rule by its file and line. Servers before 16 report
+// no file, and their ids keep the line-only form.
+func hbaRuleResourceID(systemID, file string, lineNumber int64) string {
+	if file == "" {
+		return systemID + "/hba/" + intToStr(lineNumber)
+	}
+	return systemID + "/hba/" + file + ":" + intToStr(lineNumber)
+}
+
 func (r *mqlPostgresdbInstance) hbaRules() ([]any, error) {
 	pool, err := pgPool(r.MqlRuntime, "")
 	if err != nil {
 		return nil, err
 	}
+	var versionNum int64
+	if err := pool.QueryRow(pgContext(),
+		"SELECT current_setting('server_version_num')::bigint").Scan(&versionNum); err != nil {
+		return nil, err
+	}
 	// pg_hba_file_rules is restricted to superusers / pg_read_all_settings;
 	// treat only a permission error as no visible rules, and propagate the rest.
-	rows, err := pool.Query(pgContext(),
-		`SELECT line_number, type, COALESCE(database, '{}'),
-			COALESCE(user_name, '{}'), COALESCE(address, ''), COALESCE(netmask, ''),
-			COALESCE(auth_method, ''), COALESCE(options, '{}'), COALESCE(error, '')
-		 FROM pg_hba_file_rules ORDER BY line_number`)
+	rows, err := pool.Query(pgContext(), hbaRulesQuery(versionNum))
 	if err != nil {
 		if isPermissionDenied(err) {
 			return []any{}, nil
@@ -137,14 +165,15 @@ func (r *mqlPostgresdbInstance) hbaRules() ([]any, error) {
 	list := []any{}
 	for rows.Next() {
 		var lineNumber int64
-		var typ, address, netmask, authMethod, ruleError string
+		var file, typ, address, netmask, authMethod, ruleError string
 		var databases, userNames, options []string
-		if err := rows.Scan(&lineNumber, &typ, &databases, &userNames, &address,
+		if err := rows.Scan(&file, &lineNumber, &typ, &databases, &userNames, &address,
 			&netmask, &authMethod, &options, &ruleError); err != nil {
 			return nil, err
 		}
 		res, err := CreateResource(r.MqlRuntime, "postgresdb.hbaRule", map[string]*llx.RawData{
-			"__id":       llx.StringData(r.SystemIdentifier.Data + "/hba/" + intToStr(lineNumber)),
+			"__id":       llx.StringData(hbaRuleResourceID(r.SystemIdentifier.Data, file, lineNumber)),
+			"file":       llx.StringData(file),
 			"lineNumber": llx.IntData(lineNumber),
 			"type":       llx.StringData(typ),
 			"databases":  llx.ArrayData(strSliceToAny(databases), types.String),
