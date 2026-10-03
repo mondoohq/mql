@@ -300,6 +300,10 @@ func (s *mqlHaproxyConfig) loadedConfigFiles() []string {
 		}
 		configs := haproxyProcessConfigs(afs, pidFile)
 		if len(configs) == 0 {
+			// No pid file: haproxy -db (the official image) writes none.
+			configs = haproxyLaunchConfigs(s.MqlRuntime)
+		}
+		if len(configs) == 0 {
 			configs = unit.Configs
 		}
 
@@ -353,6 +357,32 @@ func haproxyProcessConfigs(afs *afero.Afero, pidFile string) []string {
 		if configs := haproxy.ParseLaunchArgs(argv[1:]).Configs; len(configs) > 0 {
 			return configs
 		}
+	}
+	return nil
+}
+
+// haproxyLaunch recognizes haproxy's processes: the program is named
+// haproxy (or a versioned build such as haproxy27).
+var haproxyLaunch = serverLaunchSpec{
+	Names: []string{"haproxy"},
+	IsServer: func(argv []string) bool {
+		return strings.Contains(filepath.Base(argv[0]), "haproxy")
+	},
+}
+
+// haproxyLaunchConfigs returns the `-f` arguments, made absolute, of the
+// running haproxy master found in /proc, or of the haproxy a scanned image
+// starts. It returns nil when neither names a configuration.
+func haproxyLaunchConfigs(runtime *plugin.Runtime) []string {
+	for _, l := range findServerLaunches(runtime, haproxyLaunch) {
+		configs := haproxy.ParseLaunchArgs(l.Argv[1:]).Configs
+		if len(configs) == 0 {
+			continue
+		}
+		for i := range configs {
+			configs[i] = l.resolve(configs[i])
+		}
+		return configs
 	}
 	return nil
 }

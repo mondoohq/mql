@@ -325,6 +325,7 @@ func NewContainerImageConnection(id uint32, conf *inventory.Config, asset *inven
 			// This runs before platform detection reads the field back.
 			if imgConfig, cfgErr := img.ConfigFile(); cfgErr == nil && imgConfig != nil {
 				tarConn.PlatformArchitecture = imgConfig.Architecture
+				tarConn.ImageConfig = tar.ImageConfigFrom(imgConfig)
 			}
 
 			err = tar.StreamToTmpFile(mutate.Extract(img), tmpFile)

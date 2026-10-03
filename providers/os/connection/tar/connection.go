@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -43,6 +44,9 @@ type Connection struct {
 	PlatformRuntime      string
 	PlatformIdentifier   string
 	PlatformArchitecture string
+	// ImageConfig is the process the scanned container image starts, nil
+	// when the tar is not an image (an exported filesystem, a rootfs).
+	ImageConfig *ImageConfig
 	// optional metadata to store additional information
 	Metadata struct {
 		Name   string
@@ -97,6 +101,25 @@ func (p *Connection) EnsureLoaded() {
 			}
 		})
 	}
+}
+
+// ImageConfig is what a container image's configuration says about the
+// process a container runs when started without a command.
+type ImageConfig struct {
+	Entrypoint []string
+	Cmd        []string
+	// Env holds NAME=value entries.
+	Env        []string
+	WorkingDir string
+	User       string
+}
+
+// LaunchConfig returns the process the scanned image starts, nil when the
+// tar is not an image. Some image connections read the configuration only
+// when they fetch the image, so this fetches it first.
+func (p *Connection) LaunchConfig() *ImageConfig {
+	p.EnsureLoaded()
+	return p.ImageConfig
 }
 
 func (p *Connection) FileSystem() afero.Fs {
@@ -246,4 +269,19 @@ func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset, op
 
 	c.PlatformIdentifier = identifier
 	return c, nil
+}
+
+// ImageConfigFrom copies what an image configuration says about the process
+// it starts. It returns nil for a nil configuration.
+func ImageConfigFrom(cfg *v1.ConfigFile) *ImageConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &ImageConfig{
+		Entrypoint: cfg.Config.Entrypoint,
+		Cmd:        cfg.Config.Cmd,
+		Env:        cfg.Config.Env,
+		WorkingDir: cfg.Config.WorkingDir,
+		User:       cfg.Config.User,
+	}
 }

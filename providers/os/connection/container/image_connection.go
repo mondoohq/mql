@@ -183,6 +183,7 @@ func NewRegistryImage(id uint32, conf *inventory.Config, asset *inventory.Asset)
 	imgConfig, err := img.ConfigFile()
 	if err == nil {
 		conn.PlatformArchitecture = imgConfig.Architecture
+		conn.ImageConfig = tar.ImageConfigFrom(imgConfig)
 	}
 
 	labels := map[string]string{}
@@ -235,5 +236,8 @@ func NewFromTar(id uint32, conf *inventory.Config, asset *inventory.Asset) (*tar
 	}
 
 	conn.PlatformIdentifier = containerid.MondooContainerImageID(hash.String())
+	if imgConfig, err := img.ConfigFile(); err == nil {
+		conn.ImageConfig = tar.ImageConfigFrom(imgConfig)
+	}
 	return conn, nil
 }
