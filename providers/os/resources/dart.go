@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -71,7 +70,10 @@ func (r *mqlDartPackages) gatherData() error {
 	var filePaths []string
 
 	if path != "" {
-		_, d, t, f := collectDartPackages(afs, fs, path)
+		_, d, t, f, err := collectDartPackages(afs, fs, path)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 		directDeps = append(directDeps, d...)
 		transitiveDeps = append(transitiveDeps, t...)
 		filePaths = append(filePaths, f...)
@@ -88,7 +90,8 @@ func (r *mqlDartPackages) gatherData() error {
 				matches = []string{searchPath}
 			}
 			for _, match := range matches {
-				_, d, t, f := collectDartPackages(afs, fs, match)
+				_, d, t, f, err := collectDartPackages(afs, fs, match)
+				skipLockfileError(match, err)
 				directDeps = append(directDeps, d...)
 				transitiveDeps = append(transitiveDeps, t...)
 				filePaths = append(filePaths, f...)
@@ -133,44 +136,34 @@ func (r *mqlDartPackages) gatherData() error {
 	return nil
 }
 
-func collectDartPackages(afs *afero.Afero, fs afero.Fs, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectDartPackages(afs *afero.Afero, fs afero.Fs, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check Dart path")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, err
 	}
 
 	if isDir {
 		lockPath := filepath.Join(path, "pubspec.lock")
-		if exists, _ := afs.Exists(lockPath); exists {
-			return collectFromPubspecLock(afs, lockPath)
+		exists, err := lockfileExists(afs, lockPath)
+		if err != nil || !exists {
+			return nil, nil, nil, nil, err
 		}
-		return nil, nil, nil, nil
+		return collectFromPubspecLock(afs, lockPath)
 	}
 
 	if strings.HasSuffix(path, "pubspec.lock") {
 		return collectFromPubspecLock(afs, path)
 	}
 
-	return nil, nil, nil, nil
+	return nil, nil, nil, nil, nil
 }
 
-func collectFromPubspecLock(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	f, err := afs.Open(path)
+func collectFromPubspecLock(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, &pubspeclock.Extractor{})
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open pubspec.lock")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, err
 	}
-	defer f.Close()
-
-	extractor := &pubspeclock.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse pubspec.lock")
-		return nil, nil, nil, nil
-	}
-
-	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}
+	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}, nil
 }
 
 func (r *mqlDartPackages) root() (*mqlDartPackage, error) {

@@ -42,6 +42,7 @@ func (e *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 func parsePodfileLock(r io.Reader) (*podfileLock, error) {
 	pl := &podfileLock{}
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	inPods := false
 
 	for scanner.Scan() {

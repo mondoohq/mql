@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -71,7 +70,10 @@ func (r *mqlHaskellPackages) gatherData() error {
 	var filePaths []string
 
 	if path != "" {
-		t, f := collectHaskellPackages(afs, fs, path)
+		t, f, err := collectHaskellPackages(afs, fs, path)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 		transitiveDeps = append(transitiveDeps, t...)
 		filePaths = append(filePaths, f...)
 	} else {
@@ -88,7 +90,8 @@ func (r *mqlHaskellPackages) gatherData() error {
 				matches = []string{searchPath}
 			}
 			for _, match := range matches {
-				t, f := collectHaskellPackages(afs, fs, match)
+				t, f, err := collectHaskellPackages(afs, fs, match)
+				skipLockfileError(match, err)
 				transitiveDeps = append(transitiveDeps, t...)
 				filePaths = append(filePaths, f...)
 			}
@@ -121,53 +124,48 @@ func (r *mqlHaskellPackages) gatherData() error {
 	return nil
 }
 
-func collectHaskellPackages(afs *afero.Afero, fs afero.Fs, path string) ([]*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectHaskellPackages(afs *afero.Afero, fs afero.Fs, path string) ([]*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check Haskell path")
-		return nil, nil
+		return nil, nil, err
 	}
 
 	if isDir {
 		// Prefer stack.yaml.lock over cabal.project.freeze when both exist,
 		// since Stack lock files have richer metadata (pantry tree hashes).
 		stackPath := filepath.Join(path, "stack.yaml.lock")
-		if exists, _ := afs.Exists(stackPath); exists {
-			return collectFromFile(afs, stackPath, &stacklock.Extractor{})
+		exists, err := lockfileExists(afs, stackPath)
+		if err != nil {
+			return nil, nil, err
+		}
+		if exists {
+			return collectHaskellFromFile(afs, stackPath, &stacklock.Extractor{})
 		}
 		// Fall back to cabal.project.freeze
 		cabalPath := filepath.Join(path, "cabal.project.freeze")
-		if exists, _ := afs.Exists(cabalPath); exists {
-			return collectFromFile(afs, cabalPath, &cabalfreeze.Extractor{})
+		exists, err = lockfileExists(afs, cabalPath)
+		if err != nil || !exists {
+			return nil, nil, err
 		}
-		return nil, nil
+		return collectHaskellFromFile(afs, cabalPath, &cabalfreeze.Extractor{})
 	}
 
 	if strings.HasSuffix(path, "stack.yaml.lock") {
-		return collectFromFile(afs, path, &stacklock.Extractor{})
+		return collectHaskellFromFile(afs, path, &stacklock.Extractor{})
 	}
 	if strings.HasSuffix(path, "cabal.project.freeze") {
-		return collectFromFile(afs, path, &cabalfreeze.Extractor{})
+		return collectHaskellFromFile(afs, path, &cabalfreeze.Extractor{})
 	}
 
-	return nil, nil
+	return nil, nil, nil
 }
 
-func collectFromFile(afs *afero.Afero, path string, extractor languages.Extractor) ([]*languages.Package, []string) {
-	f, err := afs.Open(path)
+func collectHaskellFromFile(afs *afero.Afero, path string, extractor languages.Extractor) ([]*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, extractor)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open Haskell file")
-		return nil, nil
+		return nil, nil, err
 	}
-	defer f.Close()
-
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse Haskell file")
-		return nil, nil
-	}
-
-	return bom.Transitive(), []string{path}
+	return bom.Transitive(), []string{path}, nil
 }
 
 func (r *mqlHaskellPackages) list() ([]any, error) {

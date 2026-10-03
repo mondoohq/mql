@@ -5,6 +5,7 @@ package gomod
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"strings"
 
@@ -44,6 +45,7 @@ func parseGoMod(r io.Reader) (*goMod, error) {
 	}
 
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	inRequireBlock := false
 	inReplaceBlock := false
 
@@ -116,6 +118,18 @@ func parseGoMod(r io.Reader) (*goMod, error) {
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
+	}
+
+	// go rejects a go.mod without a module directive, and one whose block is
+	// still open at the end, which is a truncated file
+	if mod.Module == "" {
+		return nil, errors.New("no module directive")
+	}
+	if inRequireBlock {
+		return nil, errors.New("require block is not closed")
+	}
+	if inReplaceBlock {
+		return nil, errors.New("replace block is not closed")
 	}
 
 	return mod, nil

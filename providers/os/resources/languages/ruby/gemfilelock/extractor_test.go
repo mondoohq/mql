@@ -6,6 +6,7 @@ package gemfilelock
 import (
 	"os"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -201,4 +202,23 @@ func TestGemfileLockPathSourceAndRubyVersion(t *testing.T) {
 	assert.False(t, lock.DirectDeps["ruby"], "the RUBY VERSION line is not a dependency")
 	assert.Equal(t, []string{"pkg:gem/money@6.19.0"}, lock.Transitive().Find("billing").DependsOn)
 	assert.Equal(t, "2.4.22", lock.BundledWith)
+}
+
+// bufio.Scanner stops at a line over 64 KiB, and the collector then reported
+// no gems at all. Fails if the scanner's buffer is not raised again.
+func TestGemfileLockLongLine(t *testing.T) {
+	lock := "GEM\n  remote: https://rubygems.org/" + strings.Repeat("x", 70*1024) + "\n  specs:\n    nokogiri (1.15.4)\n\nDEPENDENCIES\n  nokogiri\n"
+	bom, err := (&Extractor{}).Parse(strings.NewReader(lock), "Gemfile.lock")
+	require.NoError(t, err)
+	require.Len(t, bom.Transitive(), 1)
+	assert.Equal(t, "nokogiri", bom.Transitive()[0].Name)
+}
+
+// A file of text with no Bundler section is not a lockfile without gems.
+func TestGemfileLockGarbage(t *testing.T) {
+	_, err := (&Extractor{}).Parse(strings.NewReader("this is { not a [ valid lockfile\n"), "Gemfile.lock")
+	assert.Error(t, err)
+	bom, err := (&Extractor{}).Parse(strings.NewReader(""), "Gemfile.lock")
+	require.NoError(t, err)
+	assert.Empty(t, bom.Transitive())
 }

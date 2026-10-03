@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -74,7 +73,10 @@ func (r *mqlRubyPackages) gatherData() error {
 	var filePaths []string
 
 	if path != "" {
-		collectedRoot, d, t, f := collectRubyPackages(afs, fs, path)
+		collectedRoot, d, t, f, err := collectRubyPackages(afs, fs, path)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 		if collectedRoot != nil {
 			root = collectedRoot
 		}
@@ -95,7 +97,8 @@ func (r *mqlRubyPackages) gatherData() error {
 				matches = []string{searchPath}
 			}
 			for _, match := range matches {
-				collectedRoot, d, t, f := collectRubyPackages(afs, fs, match)
+				collectedRoot, d, t, f, err := collectRubyPackages(afs, fs, match)
+				skipLockfileError(match, err)
 				if collectedRoot != nil && root == nil {
 					root = collectedRoot
 				}
@@ -151,79 +154,55 @@ func (r *mqlRubyPackages) gatherData() error {
 	return nil
 }
 
-func collectRubyPackages(afs *afero.Afero, fs afero.Fs, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectRubyPackages(afs *afero.Afero, fs afero.Fs, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check Ruby path")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, err
 	}
 
 	if isDir {
 		// Prefer Gemfile.lock or gems.locked (resolved versions)
 		for _, lockName := range []string{"Gemfile.lock", "gems.locked"} {
 			lockPath := filepath.Join(path, lockName)
-			if exists, _ := afs.Exists(lockPath); exists {
-				return collectFromGemfileLock(afs, lockPath)
+			exists, err := lockfileExists(afs, lockPath)
+			if err != nil {
+				return nil, nil, nil, nil, err
+			}
+			if exists {
+				return collectRubyFromFile(afs, lockPath, &gemfilelock.Extractor{})
 			}
 		}
 
 		// Fall back to .gemspec files
 		entries, err := afs.ReadDir(path)
-		if err == nil {
-			for _, entry := range entries {
-				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".gemspec") {
-					return collectFromGemspec(afs, filepath.Join(path, entry.Name()))
-				}
+		if err != nil {
+			return nil, nil, nil, nil, lockfileReadError(path, err)
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".gemspec") {
+				return collectRubyFromFile(afs, filepath.Join(path, entry.Name()), &gemspec.Extractor{})
 			}
 		}
 
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 
 	if strings.HasSuffix(path, "Gemfile.lock") || strings.HasSuffix(path, "gems.locked") {
-		return collectFromGemfileLock(afs, path)
+		return collectRubyFromFile(afs, path, &gemfilelock.Extractor{})
 	}
 	if strings.HasSuffix(path, ".gemspec") {
-		return collectFromGemspec(afs, path)
+		return collectRubyFromFile(afs, path, &gemspec.Extractor{})
 	}
 
-	return nil, nil, nil, nil
+	return nil, nil, nil, nil, nil
 }
 
-func collectFromGemfileLock(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	f, err := afs.Open(path)
+func collectRubyFromFile(afs *afero.Afero, path string, extractor languages.Extractor) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, extractor)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open Gemfile.lock")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, err
 	}
-	defer f.Close()
-
-	extractor := &gemfilelock.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse Gemfile.lock")
-		return nil, nil, nil, nil
-	}
-
-	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}
-}
-
-func collectFromGemspec(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	f, err := afs.Open(path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open gemspec")
-		return nil, nil, nil, nil
-	}
-	defer f.Close()
-
-	extractor := &gemspec.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse gemspec")
-		return nil, nil, nil, nil
-	}
-
-	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}
+	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}, nil
 }
 
 func (r *mqlRubyPackages) root() (*mqlRubyPackage, error) {
