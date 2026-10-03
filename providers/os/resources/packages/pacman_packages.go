@@ -9,7 +9,9 @@ import (
 	"io"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
@@ -271,21 +273,52 @@ func packageFromPacmanFields(pf *inventory.Platform, fields map[string]string) *
 	epoch := epochFromVersion(version)
 
 	return &Package{
-		Name:        name,
-		Version:     version,
-		Epoch:       epoch,
-		Arch:        fields["%ARCH%"],
-		Description: fields["%DESC%"],
-		// Pacman desc files carry %LICENSE% as a multi-line block, one
-		// SPDX identifier per line; parsePacmanDescSections keeps only
-		// the first which is correct for most packages.
-		License:        fields["%LICENSE%"],
+		Name:           name,
+		Version:        version,
+		Epoch:          epoch,
+		Arch:           fields["%ARCH%"],
+		Description:    fields["%DESC%"],
+		License:        pacmanLicense(fields["%LICENSE%"]),
+		InstallDate:    pacmanInstallDate(fields["%INSTALLDATE%"]),
 		Format:         PacmanPkgFormat,
 		FilesAvailable: PkgFilesAsync,
 		PUrl: purl.NewPackageURL(pf, purl.TypeAlpm, name, version,
 			purl.WithEpoch(epoch),
 		).String(),
 	}
+}
+
+// pacmanLicense joins the %LICENSE% lines of a desc record into one SPDX
+// expression. The lines are the PKGBUILD's license array, every entry of
+// which applies, so they are joined with AND; an entry that is itself a
+// compound expression ("MIT OR Apache-2.0") is parenthesised to keep its
+// meaning.
+func pacmanLicense(block string) string {
+	var licenses []string
+	for _, l := range strings.Split(block, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			licenses = append(licenses, l)
+		}
+	}
+	if len(licenses) <= 1 {
+		return strings.Join(licenses, "")
+	}
+	for i, l := range licenses {
+		if strings.ContainsRune(l, ' ') {
+			licenses[i] = "(" + l + ")"
+		}
+	}
+	return strings.Join(licenses, " AND ")
+}
+
+// pacmanInstallDate reads %INSTALLDATE%, seconds since the epoch. An absent
+// or unreadable value is the zero time, which reports as no date.
+func pacmanInstallDate(v string) time.Time {
+	secs, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+	if err != nil || secs <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(secs, 0)
 }
 
 // parsePacmanDescSections reads a desc file and returns a map of section key to value.
@@ -310,8 +343,12 @@ func parsePacmanDescSections(r io.Reader) map[string]string {
 		}
 
 		// Value line — only keep the first value line per section
-		// (multi-value sections like %DEPENDS% are not needed for SBOM)
-		if currentKey != "" && fields[currentKey] == "" {
+		// (multi-value sections like %DEPENDS% are not needed for SBOM).
+		// %LICENSE% lists one license per line and every line counts, so its
+		// lines are kept, newline separated.
+		if currentKey == "%LICENSE%" && fields[currentKey] != "" {
+			fields[currentKey] += "\n" + line
+		} else if currentKey != "" && fields[currentKey] == "" {
 			fields[currentKey] = line
 		}
 	}

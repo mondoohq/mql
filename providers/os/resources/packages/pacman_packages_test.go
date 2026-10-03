@@ -4,8 +4,10 @@
 package packages_test
 
 import (
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
@@ -293,4 +295,41 @@ func TestPacmanEpoch(t *testing.T) {
 		assert.Empty(t, pkgs[1].Epoch)
 		assert.NotContains(t, pkgs[1].PUrl, "epoch=")
 	})
+}
+
+// From archlinux:latest. installDate was null on every package although
+// %INSTALLDATE% is in desc, and license kept only the first %LICENSE% line
+// (audit read "GPL-2.0-or-later" while pacman -Qi lists both).
+func TestPacmanDescInstallDateAndLicenses(t *testing.T) {
+	pf := &inventory.Platform{Name: "arch", Version: "rolling", Family: []string{"arch", "linux", "unix", "os"}}
+	raw, err := os.ReadFile("./testdata/pacman-desc/audit-desc")
+	require.NoError(t, err)
+
+	pkgs := packages.ParsePacmanDescStream(pf, strings.NewReader(string(raw)))
+	require.Len(t, pkgs, 1)
+	assert.Equal(t, "GPL-2.0-or-later AND LGPL-2.0-or-later", pkgs[0].License)
+	assert.Equal(t, time.Unix(1790467200, 0).UTC(), pkgs[0].InstallDate.UTC())
+
+	// the same record read from the database on disk
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/var/lib/pacman/local/audit-4.2.1-1/desc", raw, 0o644))
+	fromFS, err := packages.ParsePacmanDB(pf, &afero.Afero{Fs: fs}, "/var/lib/pacman/local")
+	require.NoError(t, err)
+	require.Len(t, fromFS, 1)
+	assert.Equal(t, pkgs[0].License, fromFS[0].License)
+	assert.Equal(t, pkgs[0].InstallDate, fromFS[0].InstallDate)
+}
+
+func TestPacmanLicenseExpression(t *testing.T) {
+	desc := func(lines ...string) string {
+		return "%NAME%\nx\n\n%VERSION%\n1-1\n\n%LICENSE%\n" + strings.Join(lines, "\n") + "\n\n"
+	}
+	pf := &inventory.Platform{Name: "arch"}
+	one := packages.ParsePacmanDescStream(pf, strings.NewReader(desc("MIT")))
+	assert.Equal(t, "MIT", one[0].License)
+	// a compound expression on one line keeps its meaning when joined
+	compound := packages.ParsePacmanDescStream(pf, strings.NewReader(desc("MIT OR Apache-2.0", "Unicode-3.0")))
+	assert.Equal(t, "(MIT OR Apache-2.0) AND Unicode-3.0", compound[0].License)
+	// no %INSTALLDATE%: no date, not 1970
+	assert.True(t, one[0].InstallDate.IsZero())
 }

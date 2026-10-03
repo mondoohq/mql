@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"strings"
 
@@ -189,10 +190,61 @@ func (apm *AlpinePkgManager) List() ([]Package, error) {
 
 		pkgs := ParseApkDbPackages(apm.platform, fr)
 		fr.Close()
+		pins := apm.worldPins()
+		for i := range pkgs {
+			pkgs[i].Pinned = pins[pkgs[i].Name]
+		}
 		return pkgs, nil
 	}
 
 	return nil, fmt.Errorf("could not read apk package list")
+}
+
+// ApkWorld lists the packages the system was asked to have, with any version
+// constraint they were added with.
+const ApkWorld = "/etc/apk/world"
+
+// worldPins reads which packages /etc/apk/world holds at their version.
+func (apm *AlpinePkgManager) worldPins() map[string]bool {
+	f, err := apm.conn.FileSystem().Open(ApkWorld)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Warn().Err(err).Str("path", ApkWorld).Msg("mql[packages]> could not read apk world, package pins are not reported")
+		}
+		return nil
+	}
+	defer f.Close()
+	return parseApkWorldPins(f)
+}
+
+// parseApkWorldPins reads /etc/apk/world. A package added as "name=1.2-r0"
+// (exact), "name~1.2" (fuzzy) or "name<2" / "name<=2" (upper bound) is held
+// back: apk upgrade keeps it within the constraint. That is how Alpine
+// documents holding a package back. A lower bound, a repository tag
+// ("name@edge") and a conflict ("!name") do not hold the version.
+func parseApkWorldPins(r io.Reader) map[string]bool {
+	pins := map[string]bool{}
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		for _, dep := range strings.Fields(scanner.Text()) {
+			if strings.HasPrefix(dep, "!") {
+				continue
+			}
+			i := strings.IndexAny(dep, "=<>~")
+			if i <= 0 {
+				continue
+			}
+			name, op := dep[:i], dep[i:]
+			if j := strings.IndexByte(name, '@'); j >= 0 {
+				name = name[:j]
+			}
+			switch {
+			case strings.HasPrefix(op, "<"), strings.HasPrefix(op, "="), strings.HasPrefix(op, "~"):
+				pins[name] = true
+			}
+		}
+	}
+	return pins
 }
 
 func (apm *AlpinePkgManager) Available() (map[string]PackageUpdate, error) {

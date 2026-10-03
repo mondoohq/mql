@@ -451,3 +451,35 @@ func TestApkUpdateCheck(t *testing.T) {
 		assert.NotErrorIs(t, err, ErrUpdateCheckFailed)
 	})
 }
+
+// /etc/apk/world from an alpine:3.23 container after
+// `apk add busybox=1.37.0-r30 "musl-utils<2" "zlib~1.3"`. package.pinned read
+// false for all three: the world constraints were never read.
+func TestParseApkWorldPins(t *testing.T) {
+	world := "alpine-baselayout\nalpine-keys\nalpine-release\napk-tools\nbusybox=1.37.0-r30\nmusl-utils<2\nzlib~1.3\n" +
+		"openssl>3\nfoo@edge\n!bar\n"
+	pins := parseApkWorldPins(strings.NewReader(world))
+	assert.True(t, pins["busybox"])
+	assert.True(t, pins["musl-utils"])
+	assert.True(t, pins["zlib"])
+	assert.False(t, pins["apk-tools"], "an unversioned entry is not a pin")
+	assert.False(t, pins["openssl"], "a lower bound lets the package upgrade")
+	assert.False(t, pins["foo"], "a repository tag is not a version hold")
+	assert.False(t, pins["bar"])
+}
+
+func TestAlpinePkgManagerListReadsWorldPins(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{Files: map[string]*mock.MockFileData{
+		ApkDbInstalled:   {Content: "P:busybox\nV:1.37.0-r30\nA:aarch64\n\nP:zlib\nV:1.3.2-r0\nA:aarch64\n\nP:musl\nV:1.2.5-r23\nA:aarch64\n\n"},
+		"/etc/apk/world": {Content: "busybox=1.37.0-r30\nzlib~1.3\nmusl\n"},
+	}}))
+	require.NoError(t, err)
+	apm := &AlpinePkgManager{conn: conn, platform: &inventory.Platform{Name: "alpine", Version: "3.23.6"}}
+	pkgs, err := apm.List()
+	require.NoError(t, err)
+	pinned := map[string]bool{}
+	for _, p := range pkgs {
+		pinned[p.Name] = p.Pinned
+	}
+	assert.Equal(t, map[string]bool{"busybox": true, "zlib": true, "musl": false}, pinned)
+}
