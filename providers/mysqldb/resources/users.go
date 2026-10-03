@@ -77,6 +77,8 @@ func mariadbUserSchema(version string) userSchema {
 
 // majorMinor returns the first two numbers of a version such as
 // 10.3.39-MariaDB-0ubuntu0.20.04.2.
+// It is only given @@version of a server already identified as MariaDB,
+// which always starts with digits; anything else reads as 0.0.
 func majorMinor(v string) (int, int) {
 	var nums [2]int
 	i := 0
