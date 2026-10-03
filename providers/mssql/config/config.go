@@ -33,8 +33,8 @@ catalog queries (sys.* and msdb.*) to inventory server principals, databases,
 permissions, credentials, linked servers, audit settings, and encryption keys.
 
 Authentication supports SQL logins, Windows (NTLM) integrated auth, and
-Microsoft Entra ID (Azure AD) access tokens. By default the provider discovers
-every online database on the instance as its own asset.
+Microsoft Entra ID (Azure AD) access tokens. By default the provider scans the
+instance alone; --discover all adds every online database as its own asset.
 
 Examples:
   cnspec shell mssql sql.contoso.com --user sa --ask-pass
@@ -48,6 +48,8 @@ Examples:
 				connection.DiscoveryDatabases,
 				connection.DiscoveryNone,
 			},
+			// The host may be given as the positional argument instead of --host.
+			MaxArgs: 1,
 			Flags: []plugin.Flag{
 				{
 					Long:    "host",

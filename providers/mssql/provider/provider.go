@@ -5,7 +5,9 @@ package provider
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"strconv"
 
 	"go.mondoo.com/mql/llx"
@@ -198,6 +200,9 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.MssqlConnectio
 	// A database-scoped connection is a single-database asset discovered under
 	// the instance; otherwise the asset is the instance itself.
 	if db := conn.Database(); db != "" {
+		if err := checkScopedDatabase(conn, db); err != nil {
+			return err
+		}
 		id := connection.NewMssqlDatabaseIdentifier(instanceID, db)
 		asset.Id = id
 		asset.Name = db
@@ -223,6 +228,38 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.MssqlConnectio
 	asset.Platform = connection.NewMssqlInstancePlatform(instanceID)
 	asset.Platform.Version = version
 	asset.PlatformIds = []string{id}
+	return nil
+}
+
+// checkScopedDatabase confirms a --database scope names a database the scan
+// can open. Without it the connection is never dialed until the first query,
+// so a missing or OFFLINE database failed every field separately and the run
+// still exited 0.
+func checkScopedDatabase(conn *connection.MssqlConnection, db string) error {
+	client, err := conn.Client()
+	if err != nil {
+		return err
+	}
+	// DATABASEPROPERTYEX reads the state without needing VIEW ANY DATABASE,
+	// and is NULL for a database that does not exist.
+	var state sql.NullString
+	err = client.QueryRowContext(context.Background(),
+		"SELECT CAST(DATABASEPROPERTYEX(@p1, 'Status') AS NVARCHAR(60))", sql.Named("p1", db)).Scan(&state)
+	if err != nil {
+		return fmt.Errorf("cannot open database %q: %w", db, err)
+	}
+	return scopedDatabaseState(db, state)
+}
+
+// scopedDatabaseState turns the status of the scoped database into an error
+// unless the database exists and is ONLINE.
+func scopedDatabaseState(db string, state sql.NullString) error {
+	if !state.Valid {
+		return fmt.Errorf("database %q not found on the instance", db)
+	}
+	if state.String != "ONLINE" {
+		return fmt.Errorf("database %q is %s, not ONLINE", db, state.String)
+	}
 	return nil
 }
 

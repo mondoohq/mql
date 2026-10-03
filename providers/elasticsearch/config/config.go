@@ -37,6 +37,8 @@ Examples:
   cnspec shell elasticsearch localhost --user elastic --ask-pass
   cnspec scan elasticsearch es.contoso.com --api-key API_KEY
 `,
+			// The host may be given as the positional argument instead of --host.
+			MaxArgs: 1,
 			Flags: []plugin.Flag{
 				{
 					Long:    "host",

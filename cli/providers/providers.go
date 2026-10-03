@@ -304,6 +304,9 @@ func attachConnectorCmd(provider *plugin.Provider, connector *plugin.Connector, 
 func genBuiltinFlags(discoveries ...string) []plugin.Flag {
 	supportedDiscoveries := append([]string{"all", "auto"}, discoveries...)
 	slices.Sort(supportedDiscoveries)
+	// Providers that declare all and auto themselves would otherwise list
+	// them twice ("all, all, auto, auto, ...").
+	supportedDiscoveries = slices.Compact(supportedDiscoveries)
 
 	return []plugin.Flag{
 		// flags for providers:

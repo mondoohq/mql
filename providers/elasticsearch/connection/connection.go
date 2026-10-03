@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -143,6 +144,19 @@ func (c *ElasticsearchConnection) transport() (*http.Transport, error) {
 	return &http.Transport{TLSClientConfig: cfg}, nil
 }
 
+// retryOnError decides whether the transport retries a failed request. The
+// connection has a single address, so retrying a failed dial reaches the same
+// unreachable host again: with the default three retries a blackholed host
+// took four 30 s dial timeouts (2 minutes) to fail. Errors after the
+// connection was made are still retried.
+func retryOnError(_ *http.Request, err error) bool {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && opErr.Op == "dial" {
+		return false
+	}
+	return true
+}
+
 // Client returns the shared Elasticsearch client, dialing on first use.
 func (c *ElasticsearchConnection) Client() (*elasticsearch.Client, error) {
 	c.clientOnce.Do(func() {
@@ -161,6 +175,7 @@ func (c *ElasticsearchConnection) Client() (*elasticsearch.Client, error) {
 		if tr != nil {
 			opts = append(opts, elasticsearch.WithTransportOptions(elastictransport.WithTransport(tr)))
 		}
+		opts = append(opts, elasticsearch.WithTransportOptions(elastictransport.WithRetryOnError(retryOnError)))
 		client, err := elasticsearch.New(opts...)
 		if err != nil {
 			c.clientErr = err

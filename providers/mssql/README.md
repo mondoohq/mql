@@ -42,19 +42,19 @@ mql shell mssql sql.contoso.com --auth azure --user auditor@contoso.com --token 
 
 ## Discovery
 
-By default the provider discovers each online database as its own `mssql-database` asset, alongside the instance asset. The `--discover` targets control which child assets are emitted:
+By default the provider scans the instance alone, because that is the asset the benchmarks and most policies apply to. Per-database `mssql-database` assets are opt-in. The `--discover` targets control which child assets are emitted:
 
-- `auto` (default) - also emit one asset per online database. Same as `all`.
-- `all` - also emit one asset per online database.
-- `databases` - also emit one asset per online database.
-- `instance` / `none` - the instance only, without per-database assets.
+- `auto` (default) - the instance only.
+- `all` - the instance plus one asset per online database.
+- `databases` - the instance plus one asset per online database.
+- `instance` / `none` - the instance only.
 
 ```shell
-# Scan the instance and every database
+# Scan the instance only
 cnspec scan mssql sql.contoso.com --user auditor --ask-pass
 
-# Scan the instance only
-cnspec scan mssql sql.contoso.com --user auditor --ask-pass --discover none
+# Scan the instance and every online database
+cnspec scan mssql sql.contoso.com --user auditor --ask-pass --discover all
 ```
 
 ## Examples
