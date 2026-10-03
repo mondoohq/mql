@@ -157,12 +157,16 @@ func (c *mqlCassandra) version() (string, error) {
 		return "", nil
 	}
 
-	if version := cassandraVersionFrom(conn, "cassandra"); version != "" {
-		return version, nil
+	// The launch script is run as the scan's account, so only one no other
+	// account can replace is run (see runnableBinary).
+	if bin := runnableBinary(conn, "cassandra"); bin != "" {
+		if version := cassandraVersionFrom(conn, bin); version != "" {
+			return version, nil
+		}
 	}
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 	for _, bin := range cassandraBinaries(cassandraConfDirs) {
-		if ok, _ := afs.Exists(bin); !ok {
+		if ok, _ := afs.Exists(bin); !ok || runnableBinary(conn, bin) == "" {
 			continue
 		}
 		if version := cassandraVersionFrom(conn, bin); version != "" {

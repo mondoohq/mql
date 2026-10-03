@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 
@@ -456,19 +457,53 @@ func setStrOrNull(t *plugin.TValue[string], val string) {
 	}
 }
 
-// toolVersionCommand returns the command line that asks binaryName for its
-// version. On Unix targets the binary is called by its absolute path (see
-// packages.FindBinary), because the scan's PATH can miss it: sudo's secure_path
-// on RHEL-family hosts leaves out /usr/local/bin, where npm -g and the Ollama
-// installer put their binaries, so a root scan read no version where a user
-// scan read one. Windows targets, and binaries found nowhere, keep the bare name.
-func toolVersionCommand(runtime *plugin.Runtime, binaryName string) string {
+// toolBinaryVersion reads the version of the tool installed as binaryName.
+// On Unix targets the binary is located by absolute path (see
+// packages.FindBinary), because the scan's PATH can miss it: sudo's
+// secure_path on RHEL-family hosts leaves out /usr/local/bin, where npm -g and
+// the Ollama installer put their binaries.
+//
+// Reading comes before running. A binary that resolves into an npm package
+// named npmPackage reports that package's version from its package.json. Only
+// otherwise is `<binary> --version` run, and only for a binary no other
+// account can replace (see packages.ResolveTrustedExecutable): a root scan
+// would otherwise run another account's code as root. parse turns the
+// command's output into a version. Windows targets keep the bare name.
+// Best-effort: empty when the version is unknown.
+func toolBinaryVersion(runtime *plugin.Runtime, binaryName, npmPackage string, parse func(stdout string) string) string {
+	cmdline := versionCommand(binaryName)
 	if conn, ok := runtime.Connection.(shared.Connection); ok && !isWindowsAsset(conn) {
-		if path := packages.FindBinary(conn, binaryName); path != "" {
-			return versionCommand(path)
+		bin, found := packages.LocateBinary(conn, binaryName)
+		if !found {
+			return ""
 		}
+		if npmPackage != "" && bin.Target != "" {
+			if v := npmPackageVersion(connectionAfs(runtime), bin.Target, npmPackage); v != "" {
+				return v
+			}
+		}
+		if !bin.Trusted {
+			return ""
+		}
+		cmdline = versionCommand(bin.Path)
 	}
-	return versionCommand(binaryName)
+	return runVersionCommand(runtime, cmdline, parse)
+}
+
+// runVersionCommand runs a `--version` command line through the command
+// resource and parses its output. Empty when it fails.
+func runVersionCommand(runtime *plugin.Runtime, cmdline string, parse func(stdout string) string) string {
+	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+		"command": llx.StringData(cmdline),
+	})
+	if err != nil {
+		return ""
+	}
+	cmd := o.(*mqlCommand)
+	if exit := cmd.GetExitcode(); exit.Error != nil || exit.Data != 0 {
+		return ""
+	}
+	return parse(cmd.GetStdout().Data)
 }
 
 // versionCommand is the `--version` command line for a binary name or path.
@@ -476,62 +511,81 @@ func versionCommand(binary string) string {
 	return shellQuote(binary) + " --version"
 }
 
-// inferCodexVersion runs `codex --version` through the command resource. Codex
-// writes no authoritative version file (its version.json only records the latest
-// release seen during an update check, which goes stale and is not the installed
-// version), so we probe the binary. The output is e.g. "codex-cli 0.44.0"; we
-// keep the first token MQL's semver parser recognizes. Best-effort: unknown when
-// the binary is absent or the output carries no recognizable version.
-func inferCodexVersion(runtime *plugin.Runtime, configPath string) (string, error) {
-	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
-		"command": llx.StringData(toolVersionCommand(runtime, "codex")),
-	})
+// npmPackageVersion returns the version from the package.json of the npm
+// package named pkgName that holds target, the resolved path of the binary
+// npm linked onto the PATH (for example
+// /usr/local/lib/node_modules/@openai/codex/bin/codex.js). npm, pnpm and bun
+// all keep a package in node_modules/<name>. Empty when target is not inside
+// that package. It runs nothing, so it is safe whoever owns the files.
+func npmPackageVersion(afs *afero.Afero, target, pkgName string) string {
+	marker := "/node_modules/" + pkgName + "/"
+	i := strings.LastIndex(target, marker)
+	if i < 0 {
+		return ""
+	}
+	data, err := afs.ReadFile(target[:i+len(marker)] + "package.json")
 	if err != nil {
-		return "", nil
+		return ""
 	}
-	cmd := o.(*mqlCommand)
-	if cmd.GetExitcode().Data != 0 {
-		return "", nil
+	var pkg struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
 	}
-	for _, field := range strings.Fields(cmd.GetStdout().Data) {
-		// Validate with MQL's semver parser instead of a bespoke regex. The
-		// parser exposes only Compare, so we parse by self-compare: a valid
-		// version compares against itself without error.
-		if _, err := (semver.Parser{}).Compare(field, field); err == nil {
-			return field, nil
-		}
+	if json.Unmarshal(data, &pkg) != nil || pkg.Name != pkgName || !isSemver(pkg.Version) {
+		return ""
 	}
-	return "", nil
+	return pkg.Version
 }
 
-// inferClaudeVersion runs `claude --version` through the command resource
-// (Claude Code writes no version file, so we probe the binary). The output is
-// e.g. "2.1.191 (Claude Code)"; we take the leading token and keep it only if
-// MQL's semver parser recognizes it. Best-effort: unknown when the binary is
-// absent or the output carries no recognizable version.
+// isSemver reports whether MQL's semver parser recognizes v. The parser
+// exposes only Compare, so it parses by self-compare: a valid version compares
+// against itself without error.
+func isSemver(v string) bool {
+	if v == "" {
+		return false
+	}
+	_, err := (semver.Parser{}).Compare(v, v)
+	return err == nil
+}
+
+// inferCodexVersion reads the version of the codex CLI. npm installs it as
+// @openai/codex, whose package.json carries the version. Otherwise the binary
+// is asked: Codex writes no authoritative version file (its version.json only
+// records the latest release seen during an update check, which goes stale
+// and is not the installed version). The output is e.g. "codex-cli 0.44.0"; we
+// keep the first token MQL's semver parser recognizes. Best-effort: unknown
+// when the binary is absent or the output carries no recognizable version.
+func inferCodexVersion(runtime *plugin.Runtime, configPath string) (string, error) {
+	return toolBinaryVersion(runtime, "codex", "@openai/codex", parseCodexVersion), nil
+}
+
+// parseCodexVersion pulls the version out of `codex --version`.
+func parseCodexVersion(stdout string) string {
+	for _, field := range strings.Fields(stdout) {
+		if isSemver(field) {
+			return field
+		}
+	}
+	return ""
+}
+
+// inferClaudeVersion reads the version of the claude CLI. npm installs it as
+// @anthropic-ai/claude-code, whose package.json carries the version. Otherwise
+// the binary is asked (Claude Code writes no version file). The output is e.g.
+// "2.1.191 (Claude Code)"; we take the leading token and keep it only if MQL's
+// semver parser recognizes it. Best-effort: unknown when the binary is absent
+// or the output carries no recognizable version.
 func inferClaudeVersion(runtime *plugin.Runtime, configPath string) (string, error) {
-	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
-		"command": llx.StringData(toolVersionCommand(runtime, "claude")),
-	})
-	if err != nil {
-		return "", nil
+	return toolBinaryVersion(runtime, "claude", "@anthropic-ai/claude-code", parseClaudeVersion), nil
+}
+
+// parseClaudeVersion pulls the version out of `claude --version`.
+func parseClaudeVersion(stdout string) string {
+	fields := strings.Fields(stdout)
+	if len(fields) == 0 || !isSemver(fields[0]) {
+		return ""
 	}
-	cmd := o.(*mqlCommand)
-	if cmd.GetExitcode().Data != 0 {
-		return "", nil
-	}
-	fields := strings.Fields(cmd.GetStdout().Data)
-	if len(fields) == 0 {
-		return "", nil
-	}
-	version := fields[0]
-	// Validate with MQL's semver parser instead of a bespoke regex. The parser
-	// exposes only Compare, so we parse by self-compare: a valid version
-	// compares against itself without error; an invalid one returns an error.
-	if _, err := (semver.Parser{}).Compare(version, version); err != nil {
-		return "", nil
-	}
-	return version, nil
+	return fields[0]
 }
 
 // compute_package accessors — one per tool resource. Each delegates to the
@@ -768,27 +822,12 @@ func (r *mqlAider) runtime() (*mqlExtensionRuntime, error) {
 	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["aider"])
 }
 
-// inferOllamaVersion runs `ollama --version` through the command resource, for
-// an installation no package manager owns (the official install script drops a
-// binary into /usr/local/bin without registering it anywhere). Best-effort:
-// unknown when the binary is absent or the output carries no version.
+// inferOllamaVersion runs `ollama --version`, for an installation no package
+// manager owns (the official install script drops a binary into
+// /usr/local/bin without registering it anywhere). Best-effort: unknown when
+// the binary is absent, may not be run, or the output carries no version.
 func inferOllamaVersion(runtime *plugin.Runtime, configPath string) (string, error) {
-	return probeOllamaVersion(runtime, toolVersionCommand(runtime, "ollama"))
-}
-
-// probeOllamaVersion runs an `ollama --version` command line and parses it.
-func probeOllamaVersion(runtime *plugin.Runtime, command string) (string, error) {
-	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
-		"command": llx.StringData(command),
-	})
-	if err != nil {
-		return "", nil
-	}
-	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Error != nil || exit.Data != 0 {
-		return "", nil
-	}
-	return parseOllamaVersion(cmd.GetStdout().Data), nil
+	return toolBinaryVersion(runtime, "ollama", "", parseOllamaVersion), nil
 }
 
 // parseOllamaVersion pulls the version out of `ollama --version`. The command
