@@ -4,8 +4,10 @@
 package resources
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"sync"
 
@@ -14,13 +16,29 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/processes"
+	"go.mondoo.com/mql/providers/os/resources/procfs"
 )
 
 type mqlProcessInternal struct {
 	SocketInodesError error
 	SocketInodes      plugin.TValue[[]int64]
 	processInfoError  error
-	lock              sync.Mutex
+	// argv is the kernel's argv when the process manager read it, nil when
+	// it only has the space-joined command
+	argv []string
+	lock sync.Mutex
+}
+
+// processesError attaches the refusal kind to a hidepid refusal when
+// structured errors are on. Without them it stays a plain error: v13 returned
+// the scanner's own processes as if they were the full list, which is the
+// fail-open this error replaces.
+func processesError(err error) error {
+	var hidden *processes.HiddenProcessesError
+	if errors.As(err, &hidden) && plugin.StructuredErrors() {
+		return llx.Forbidden(err)
+	}
+	return err
 }
 
 func initProcess(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -46,6 +64,10 @@ func initProcess(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 
 		// check that the PID exists
 		exists, err := opm.Exists(pid)
+		var hidden *processes.HiddenProcessesError
+		if errors.As(err, &hidden) {
+			return nil, nil, processesError(err)
+		}
 		if err != nil || !exists {
 			return nil, nil, errors.New("process " + strconv.FormatInt(pid, 10) + " does not exist")
 		}
@@ -75,9 +97,20 @@ func (p *mqlProcess) flags() (map[string]any, error) {
 		return nil, cmd.Error
 	}
 
+	p.lock.Lock()
+	argv := p.argv
+	p.lock.Unlock()
+
+	conn := p.MqlRuntime.Connection.(shared.Connection)
+	if argv == nil && isLinuxAsset(conn) {
+		argv = readProcArgv(conn, p.Pid.Data, cmd.Data)
+	}
+
 	fs := processes.FlagSet{}
 	var err error
-	if isWindowsAsset(p.MqlRuntime.Connection.(shared.Connection)) {
+	if argv != nil {
+		err = fs.ParseArgv(argv)
+	} else if isWindowsAsset(conn) {
 		// executable is only a hint for finding the end of an unquoted
 		// program path, so a failure to read it is not a failure of flags
 		exe := p.GetExecutable()
@@ -98,6 +131,42 @@ func (p *mqlProcess) flags() (map[string]any, error) {
 		res[k] = flags[k]
 	}
 	return res, nil
+}
+
+// readProcArgv reads a process's argv from /proc/<pid>/cmdline, for process
+// managers that only have the space-joined command from ps (SSH). It runs cat
+// rather than going through the file system, whose stat of a /proc file
+// fails over SSH on some targets (RHEL 9). It returns nil when the file
+// cannot be read.
+func readProcArgv(conn shared.Connection, pid int64, command string) []string {
+	c, err := conn.RunCommand("cat /proc/" + strconv.FormatInt(pid, 10) + "/cmdline")
+	if err != nil || c == nil || c.ExitStatus != 0 {
+		return nil
+	}
+	data, err := io.ReadAll(c.Stdout)
+	if err != nil {
+		return nil
+	}
+	return argvForCommand(data, command)
+}
+
+// argvForCommand splits a /proc/<pid>/cmdline into argv, or returns nil when
+// it is empty or no longer belongs to the process whose command was listed
+// (the pid was reused).
+func argvForCommand(data []byte, command string) []string {
+	if len(data) == 0 {
+		return nil
+	}
+	joined, err := procfs.ParseProcessCmdline(bytes.NewReader(data))
+	if err != nil || joined != command {
+		return nil
+	}
+	return procfs.ParseProcessArgv(data)
+}
+
+func isLinuxAsset(conn shared.Connection) bool {
+	asset := conn.Asset()
+	return asset != nil && asset.Platform != nil && asset.Platform.IsFamily("linux")
 }
 
 func isWindowsAsset(conn shared.Connection) bool {
@@ -124,7 +193,7 @@ func (p *mqlProcess) gatherProcessInfo() error {
 
 	process, err := opm.Process(p.Pid.Data)
 	if err != nil {
-		p.processInfoError = fmt.Errorf("cannot gather process details: %w", err)
+		p.processInfoError = processesError(fmt.Errorf("cannot gather process details: %w", err))
 		return p.processInfoError
 	}
 	// A manager may report a pid it cannot find without an error. Guard the
@@ -139,6 +208,7 @@ func (p *mqlProcess) gatherProcessInfo() error {
 	p.Executable = plugin.TValue[string]{Data: process.Executable, State: plugin.StateIsSet}
 	p.Command = plugin.TValue[string]{Data: process.Command, State: plugin.StateIsSet}
 	p.SocketInodes = plugin.TValue[[]int64]{Data: process.SocketInodes, State: plugin.StateIsSet}
+	p.argv = process.Argv
 
 	return nil
 }
@@ -160,6 +230,10 @@ func (p *mqlProcesses) list() ([]any, error) {
 	procs, err := opm.List()
 	if err != nil {
 		log.Warn().Err(err).Msg("mql[processes]> could not retrieve process list")
+		var hidden *processes.HiddenProcessesError
+		if errors.As(err, &hidden) {
+			return nil, processesError(err)
+		}
 		return nil, fmt.Errorf("could not retrieve process list")
 	}
 	log.Debug().Int("processes", len(procs)).Msg("mql[processes]> running processes")
@@ -197,6 +271,7 @@ func (p *mqlProcesses) list() ([]any, error) {
 			}
 		}
 		process := o.(*mqlProcess)
+		process.argv = proc.Argv
 		process.SocketInodes = plugin.TValue[[]int64]{
 			Data:  socketInodes,
 			Error: socketInodesErr,

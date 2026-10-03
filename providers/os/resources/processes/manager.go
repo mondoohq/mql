@@ -13,8 +13,11 @@ import (
 )
 
 type OSProcess struct {
-	Pid               int64
-	Command           string
+	Pid     int64
+	Command string
+	// Argv is the process's argv split where the kernel separates it, or nil
+	// when the manager only has the space-joined Command.
+	Argv              []string
 	Executable        string
 	State             string
 	Uid               int64
