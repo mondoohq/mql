@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/detector/containerenv"
 )
 
 const (
@@ -124,6 +125,10 @@ func DetectDeviceType(pf *inventory.Platform, conn shared.Connection) {
 func classifyDeviceType(pf *inventory.Platform, conn shared.Connection) string {
 	// Containers and container images.
 	if pf.Kind == "container" || pf.Kind == "container-image" {
+		return DeviceTypeContainer
+	}
+	// A local scan started inside a container sees an ordinary Linux.
+	if pf.IsFamily("linux") && containerenv.InContainer(conn) {
 		return DeviceTypeContainer
 	}
 

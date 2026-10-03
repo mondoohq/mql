@@ -13,6 +13,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/detector"
+	"go.mondoo.com/mql/providers/os/detector/containerenv"
 	"go.mondoo.com/mql/providers/os/detector/crowdstrike"
 	win "go.mondoo.com/mql/providers/os/detector/windows"
 	"go.mondoo.com/mql/providers/os/id/awsec2"
@@ -126,6 +127,14 @@ func IdentifyPlatform(conn shared.Connection, req *plugin.ConnectReq, p *invento
 			PlatformIDs: []string{v},
 			Name:        GatherNameForPlatformId(v),
 		})
+	}
+
+	// A local scan started inside a container, or an SSH session into one,
+	// sees an ordinary Linux. It runs on a VM as often as not, so this comes
+	// before the hypervisor fallback.
+	if p.Kind == "" && p.IsFamily("linux") && containerenv.InContainer(conn) {
+		log.Debug().Msg("setting platform kind to container")
+		p.Kind = "container"
 	}
 
 	// If at this point we couldn't detect the platform kind, use the hypervisor

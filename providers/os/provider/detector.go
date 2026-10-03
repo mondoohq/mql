@@ -12,6 +12,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/detector"
+	"go.mondoo.com/mql/providers/os/detector/containerenv"
 	"go.mondoo.com/mql/providers/os/id"
 	"go.mondoo.com/mql/providers/os/id/clouddetect"
 	"go.mondoo.com/mql/providers/os/id/hostname"
@@ -51,6 +52,14 @@ func (s *Service) detect(asset *inventory.Asset, conn shared.Connection) error {
 	}
 	asset.MergePlatform(pf)
 
+	// A local scan started inside a container, or an SSH session into one,
+	// reaches a container even though the connection doesn't say so. connect
+	// has already defaulted an unset kind to baremetal by now.
+	inContainer := (asset.Platform.Kind == "" || asset.Platform.Kind == inventory.AssetKindBaremetal) &&
+		asset.Platform.IsFamily("linux") && containerenv.InContainer(conn)
+	if inContainer {
+		asset.Platform.Kind = "container"
+	}
 	if asset.Platform.Kind == "" {
 		asset.Platform.Kind = inventory.AssetKindBaremetal
 	}
@@ -59,8 +68,10 @@ func (s *Service) detect(asset *inventory.Asset, conn shared.Connection) error {
 		asset.Platform.Kind = inventory.AssetKindCloudVM
 	}
 
+	// Container connections bring their own platform id. A container found
+	// by looking from the inside has none, so it keeps the id detectors.
 	var detectors map[string]struct{}
-	if !slices.Contains([]string{"container-image", "container"}, asset.Platform.Kind) {
+	if inContainer || !slices.Contains([]string{"container-image", "container"}, asset.Platform.Kind) {
 		detectors = mapDetectors(asset.IdDetector)
 	}
 
