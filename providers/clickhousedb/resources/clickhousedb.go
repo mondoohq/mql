@@ -6,6 +6,7 @@ package resources
 import (
 	"fmt"
 
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/clickhousedb/connection"
 )
@@ -18,7 +19,31 @@ func clickhousedbConnection(runtime *plugin.Runtime) *connection.ClickhousedbCon
 	return runtime.Connection.(*connection.ClickhousedbConnection)
 }
 
-// toAnySlice converts a string slice to []any for llx.
+// refusedList is what a list accessor returns for a failed catalog query. v13
+// read a refusal as an empty list, which let a check over the list pass on a
+// server the scanner could not read; with StructuredErrors it is an error
+// naming the grant the scanner lacks (ADR 046). Any other error is returned
+// unchanged.
+func refusedList(err error, permissions ...string) ([]any, error) {
+	if !connection.IsPermissionError(err) {
+		return nil, err
+	}
+	if !plugin.StructuredErrors() {
+		return []any{}, nil
+	}
+	return nil, refusal(err, permissions...)
+}
+
+// refusal classifies a permission error. ACCESS_DENIED (497) is a refusal
+// naming the missing grant; UNKNOWN_ACCESS_ENTITY (492) is not one, so it is
+// returned unclassified.
+func refusal(err error, permissions ...string) error {
+	if !connection.IsAccessDenied(err) {
+		return err
+	}
+	return llx.Forbidden(err, llx.WithPermissions(permissions...))
+}
+
 // stringList normalizes a column whose arity changed between ClickHouse
 // releases into the list the resources expose.
 //
@@ -72,6 +97,7 @@ func stringList(column string, v any) ([]string, error) {
 	}
 }
 
+// toAnySlice converts a string slice to []any for llx.
 func toAnySlice(in []string) []any {
 	out := make([]any, 0, len(in))
 	for _, s := range in {
