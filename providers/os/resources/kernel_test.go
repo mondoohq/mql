@@ -997,6 +997,37 @@ func TestKernelFilters(t *testing.T) {
 		},
 
 		{
+			// Amazon Linux 2023 names the kernel for its series, epoch 1
+			name:          "redhat: amazonlinux kernel6.12",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel6.12", Version: "1:6.12.110-135.202.amzn2023", Arch: "x86_64"},
+			runningKernel: "6.12.110-135.202.amzn2023.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel6.12", Version: "1:6.12.110-135.202.amzn2023", Running: true},
+		},
+		{
+			name:          "redhat: amazonlinux 2027 kernel7.2",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel7.2", Version: "1:7.2.4-4.107.amzn2027", Arch: "x86_64"},
+			runningKernel: "7.2.4-4.107.amzn2027.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel7.2", Version: "1:7.2.4-4.107.amzn2027", Running: true},
+		},
+		{
+			name:          "redhat: amazonlinux kernel6.12-tools is not a kernel",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel6.12-tools", Version: "6.12.110-135.202.amzn2023", Arch: "x86_64"},
+			runningKernel: "6.12.110-135.202.amzn2023.x86_64",
+			wantOK:        false,
+		},
+		{
+			name:          "redhat: kernel-srpm-macros is not a kernel",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-srpm-macros", Version: "1.0-14.amzn2023.0.3", Arch: "noarch"},
+			runningKernel: "6.12.110-135.202.amzn2023.x86_64",
+			wantOK:        false,
+		},
+		{
 			name:          "redhat: kernel-core without the kernel metapackage (Fedora Cloud 44)",
 			filter:        redhatKernelVersion,
 			pkg:           kernelPackage{Name: "kernel-core", Version: "7.2.8-200.fc44", Arch: "x86_64"},

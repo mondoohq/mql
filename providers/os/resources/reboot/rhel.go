@@ -110,7 +110,7 @@ func (s *RpmNewestKernel) RebootPending() (bool, error) {
 	var parser rpm.Parser
 
 	for i := range pkgs {
-		cmp, err := parser.Compare(pkgs[i].Version, kernelVersion)
+		cmp, err := parser.Compare(kernelReleaseOf(pkgs[i].Version, pkgs[i].Arch, kernelVersion), kernelVersion)
 		if err != nil {
 			return false, err
 		}
@@ -119,4 +119,21 @@ func (s *RpmNewestKernel) RebootPending() (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// kernelReleaseOf turns a kernel package version into the shape uname -r
+// reports, so the two compare release to release. uname -r never carries the
+// rpm epoch, which Amazon Linux 2023 and 2027 kernels have (epoch 1 sorts
+// above any running kernel), and on RHEL, Fedora and Amazon Linux it ends
+// in the arch, which the package version doesn't. The arch is only appended
+// when the running release has it, so a kernel built without it (linuxkit)
+// is compared as is.
+func kernelReleaseOf(pkgVersion, pkgArch, running string) string {
+	if i := strings.IndexByte(pkgVersion, ':'); i >= 0 {
+		pkgVersion = pkgVersion[i+1:]
+	}
+	if pkgArch != "" && strings.HasSuffix(running, "."+pkgArch) {
+		pkgVersion += "." + pkgArch
+	}
+	return pkgVersion
 }

@@ -149,3 +149,54 @@ func TestRhelRebootNewerKernelOverridesNeedsRestarting(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, required)
 }
+
+func amznRebootMock(t *testing.T, commands map[string]*mock.Command) *RpmNewestKernel {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:    "amazonlinux",
+			Version: "2023",
+			Family:  []string{"linux", "unix", "os"},
+		},
+	}, mock.WithData(&mock.TomlData{Commands: commands}))
+	require.NoError(t, err)
+	return &RpmNewestKernel{conn: conn}
+}
+
+// Amazon Linux 2023 and 2027 ship the kernel as kernel<major.minor> with epoch
+// 1, output captured on the sweep hosts. uname -r carries no epoch, so
+// comparing "1:6.12.110-..." to it read every running kernel as an older one
+// and reported a reboot on every fully patched host.
+func TestAmznRebootKernelEpoch(t *testing.T) {
+	notNeeded := &mock.Command{Stdout: "No core libraries or services have been updated since boot-up.\nReboot should not be necessary.\n"}
+
+	t.Run("al2023 running its only kernel", func(t *testing.T) {
+		required, err := amznRebootMock(t, map[string]*mock.Command{
+			rpmNeedsRestartingCmd: notNeeded,
+			rpmQueryKernelCmd:     {Stdout: "kernel6.12 1:6.12.110-135.202.amzn2023 x86_64__Amazon Linux__The Linux kernel__GPLv2 and Redistributable, no modification permitted__1790638652\n"},
+			"uname -r":            {Stdout: "6.12.110-135.202.amzn2023.x86_64\n"},
+		}).RebootPending()
+		require.NoError(t, err)
+		assert.False(t, required)
+	})
+
+	t.Run("al2027 running its only kernel", func(t *testing.T) {
+		required, err := amznRebootMock(t, map[string]*mock.Command{
+			rpmNeedsRestartingCmd: notNeeded,
+			rpmQueryKernelCmd:     {Stdout: "kernel7.2 1:7.2.4-4.107.amzn2027 x86_64__Amazon Linux__The Linux kernel__GPLv2 and Redistributable, no modification permitted__1790711423\n"},
+			"uname -r":            {Stdout: "7.2.4-4.107.amzn2027.x86_64\n"},
+		}).RebootPending()
+		require.NoError(t, err)
+		assert.False(t, required)
+	})
+
+	t.Run("al2023 with a newer kernel installed", func(t *testing.T) {
+		required, err := amznRebootMock(t, map[string]*mock.Command{
+			rpmNeedsRestartingCmd: notNeeded,
+			rpmQueryKernelCmd: {Stdout: "kernel6.12 1:6.12.110-135.202.amzn2023 x86_64__Amazon Linux__The Linux kernel__GPLv2 and Redistributable, no modification permitted__1790638652\n" +
+				"kernel6.12 1:6.12.112-136.204.amzn2023 x86_64__Amazon Linux__The Linux kernel__GPLv2 and Redistributable, no modification permitted__1790938652\n"},
+			"uname -r": {Stdout: "6.12.110-135.202.amzn2023.x86_64\n"},
+		}).RebootPending()
+		require.NoError(t, err)
+		assert.True(t, required)
+	})
+}

@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"regexp"
 	"strings"
 	"sync"
 
@@ -357,6 +358,12 @@ func oracleKernelVersion(pkg kernelPackage, runningKernelVersion string) (Kernel
 	}, true
 }
 
+// amazonSeriesKernelPkg matches the kernel packages Amazon Linux 2023 and 2027
+// name for their kernel series (kernel6.12, kernel7.2), next to the plain
+// "kernel" of the 6.1 series. Their subpackages (kernel6.12-tools) don't
+// match.
+var amazonSeriesKernelPkg = regexp.MustCompile(`^kernel\d+\.\d+$`)
+
 // redhatKernelVersion reads an rpm kernel package.
 //
 // kernel version is "3.10.0-1160.11.1.el7.x86_64", carried by packages
@@ -377,7 +384,7 @@ func oracleKernelVersion(pkg kernelPackage, runningKernelVersion string) (Kernel
 //		version: "3.10.0-1127.19.1.el7"
 //	}]
 func redhatKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool) {
-	if pkg.Name != "kernel" && pkg.Name != "kernel-core" {
+	if pkg.Name != "kernel" && pkg.Name != "kernel-core" && !amazonSeriesKernelPkg.MatchString(pkg.Name) {
 		return KernelVersion{}, false
 	}
 
