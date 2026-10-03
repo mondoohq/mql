@@ -127,7 +127,9 @@ func classifyDeviceType(pf *inventory.Platform, conn shared.Connection) string {
 	if pf.Kind == "container" || pf.Kind == "container-image" {
 		return DeviceTypeContainer
 	}
-	// A local scan started inside a container sees an ordinary Linux.
+	// A local scan started inside a container sees an ordinary Linux. The
+	// kind check above doesn't catch it: DetectOS classifies the device
+	// before IdentifyPlatform or detect set the kind.
 	if pf.IsFamily("linux") && containerenv.InContainer(conn) {
 		return DeviceTypeContainer
 	}
