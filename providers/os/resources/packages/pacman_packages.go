@@ -272,6 +272,16 @@ func packageFromPacmanFields(pf *inventory.Platform, fields map[string]string) *
 	// value on its own, which is the pairing the rpm and dpkg readers produce.
 	epoch := epochFromVersion(version)
 
+	// The architecture pacman recorded for the package, as the rpm purls
+	// carry theirs. The platform's is named differently by transport (amd64
+	// from an image config, x86_64 from uname). An architecture-independent
+	// package ("any") keeps the platform's, which is also what the pacman -Q
+	// reader, which sees no architecture, reports for it.
+	purlOpts := []purl.Modifier{purl.WithEpoch(epoch)}
+	if arch := fields["%ARCH%"]; arch != "" && arch != "any" {
+		purlOpts = append(purlOpts, purl.WithArch(arch))
+	}
+
 	return &Package{
 		Name:           name,
 		Version:        version,
@@ -282,9 +292,7 @@ func packageFromPacmanFields(pf *inventory.Platform, fields map[string]string) *
 		InstallDate:    pacmanInstallDate(fields["%INSTALLDATE%"]),
 		Format:         PacmanPkgFormat,
 		FilesAvailable: PkgFilesAsync,
-		PUrl: purl.NewPackageURL(pf, purl.TypeAlpm, name, version,
-			purl.WithEpoch(epoch),
-		).String(),
+		PUrl:           purl.NewPackageURL(pf, purl.TypeAlpm, name, version, purlOpts...).String(),
 	}
 }
 
