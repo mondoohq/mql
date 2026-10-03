@@ -490,8 +490,9 @@ func TestSystemDServiceManagerListUsesListUnits(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, services, 4)
 	// list-unit-files + list-units, then one show for the unit file that is
-	// not loaded (gamma); the template is never shown
-	assert.Equal(t, []string{listFilesCmd, listUnitsCmd, showGammaCmd}, conn.commands)
+	// not loaded (gamma); the template is never shown; the release decides
+	// whether SysV init scripts need listing
+	assert.Equal(t, []string{listFilesCmd, listUnitsCmd, showGammaCmd, "systemctl --version"}, conn.commands)
 
 	servicesMap := map[string]*Service{}
 	for _, service := range services {
