@@ -348,7 +348,7 @@ func matchesFindType(types []byte, entry *tar.Header, target *tar.Header) bool {
 		case 'l':
 			ok = entry.Typeflag == tar.TypeSymlink
 		case 'f':
-			ok = target.Typeflag == tar.TypeReg || target.Typeflag == tar.TypeRegA
+			ok = target.Typeflag == tar.TypeReg
 		case 'd':
 			ok = target.Typeflag == tar.TypeDir
 		case 'b':
