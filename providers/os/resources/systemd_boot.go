@@ -205,13 +205,22 @@ const xbootldrPartitionType = "bc13c2ff-59e6-4262-a352-b275fd6f7172"
 // partition type udev recorded for it. Without a mount table (an image or a
 // mounted filesystem) there is no device to ask about, and a directory that
 // holds boot entries is taken as $BOOT, the way it was before.
+//
+// The mount table is read once, on the first call, which comes after the
+// directory checks: those can trigger an automounted /boot.
 func xbootldrChecker(fs afero.Fs) func(mount string) bool {
+	read := false
+	mountinfo, noMountinfo := "", false
 	return func(mount string) bool {
-		data, err := afero.ReadFile(fs, "/proc/self/mountinfo")
-		if err != nil {
+		if !read {
+			read = true
+			data, err := afero.ReadFile(fs, "/proc/self/mountinfo")
+			mountinfo, noMountinfo = string(data), err != nil
+		}
+		if noMountinfo {
 			return true
 		}
-		source, ok := mountinfoSource(string(data), mount)
+		source, ok := mountinfoSource(mountinfo, mount)
 		if !ok {
 			// not a mount point: a directory on the root filesystem
 			return false
