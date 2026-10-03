@@ -5177,8 +5177,9 @@ mysql {
 //
 // Options stay grouped as the server reads them. `sections` holds every
 // option group, `serverOptions` merges the groups mysqld itself reads
-// (`[mysqld]`, `[server]`, and the version-suffixed group for the installed
-// server version, such as `[mysqld-8.0]` on 8.0), and `clientOptions`
+// (`[mysqld]`, `[server]`, the version-suffixed group for the installed
+// server version, such as `[mysqld-8.0]` on 8.0, and `[mysql_cluster]` where
+// the build reads it), and `clientOptions`
 // merges `[client]`, `[mysql]`, and `[client-server]`, where a
 // `password` option means credentials are stored in the file.
 // Convenience views cover networking, TLS, authentication and password
@@ -5186,18 +5187,27 @@ mysql {
 // and encryption at rest. `userFiles` reports the per-user option files
 // under home directories.
 //
-// By default the file is located by probing the well-known paths for
-// Debian/Ubuntu and RPM installations, and returns nothing when the host
-// runs MariaDB rather than MySQL, or runs no database server at all. The
-// installed server binary decides, so option files that a client library
-// ships (such as `[client-mariadb]` on a RHEL host running MySQL) do not.
-// Pass an explicit path with `mysql.conf("/etc/mysql/my.cnf")` to parse a
-// file regardless of which product it belongs to.
+// By default the option files are the ones the server reads: those named
+// with `--defaults-file` or `--defaults-extra-file` on the command line of
+// the running server or of its systemd unit, or else every default option
+// file the installed server binary lists, in its order, including the
+// server account's `~/.my.cnf`. Where the binary cannot be run, the
+// well-known paths for Debian/Ubuntu and RPM installations are probed. The
+// resource returns nothing when the host runs MariaDB rather than MySQL, or
+// runs no database server at all. The installed server binary decides, so
+// option files that a client library ships (such as `[client-mariadb]` on a
+// RHEL host running MySQL) do not. Pass an explicit path with
+// `mysql.conf("/etc/mysql/my.cnf")` to parse a file regardless of which
+// product it belongs to.
 //
-// Values come from the option files. A setting given on the
-// command line, which is how a container usually configures MySQL,
-// is not visible here, and an option no file sets reads null rather
-// than zero.
+// `serverOptions` applies the options on that command line over the files,
+// and then the settings `SET PERSIST` wrote to `mysqld-auto.cnf` in the data
+// directory, which the server applies last. A setting made at runtime with
+// `SET GLOBAL` is not visible here, and an option nothing sets reads null
+// rather than zero. An option belonging to a plugin or component the server
+// does not load (`validate_password.*` without the component, `audit_log_*`
+// on a server without the audit plugin, a `loose-` option the version does
+// not know) is reported as written but has no effect on the server.
 mysql.conf {
   init(path? string)
   // Primary option file
@@ -5208,8 +5218,9 @@ mysql.conf {
   sections(file) []mysql.conf.section
   // Options mysqld reads, merged last-write-wins
   //
-  // A version-suffixed group is included only when it names the installed
-  // server's major.minor version, and no such group is included when the
+  // The groups are the ones the installed server binary lists as read. When
+  // it cannot be run, a version-suffixed group is included only when it
+  // names the installed server's major.minor version, and none when the
   // version cannot be detected.
   serverOptions(file) map[string]string
   // Options the client programs read, merged last-write-wins
@@ -5470,26 +5481,32 @@ mariadb {
 // Options stay grouped as the server reads them. `sections` holds every
 // option group and `serverOptions` merges the groups mariadbd reads:
 // `[mysqld]`, `[server]`, `[mariadb]`, `[mariadbd]` (from 10.4),
-// `[client-server]`, and the version-suffixed groups for the installed server
-// version, such as `[mariadb-11.4]` on 11.4. That set is not an
-// extension of MySQL's, because packaged fragments since 11.0 configure the
-// server under `[mariadbd]` and ship no `[mysqld]` group at all.
-// `galeraOptions` breaks out `[galera]` so cluster transport settings stay
-// separable, and `clientOptions` merges the client groups, where a
+// `[client-server]`, `[galera]` (from 10.1, whether or not wsrep is on), and
+// the version-suffixed groups for the installed server version, such as
+// `[mariadb-11.4]` on 11.4, or `[mariadb-11]` where the build reads it. That
+// set is not an extension of MySQL's, because packaged fragments since 11.0
+// configure the server under `[mariadbd]` and ship no `[mysqld]` group at
+// all. `galeraOptions` also breaks out `[galera]` on its own so cluster
+// transport settings stay separable, and `clientOptions` merges the client
+// groups, where a
 // `password` option means credentials are stored in the file.
 //
-// By default the file is located by probing the well-known paths for
-// Debian/Ubuntu and RPM installations, and returns nothing when the host
-// runs MySQL rather than MariaDB, or runs no database server at all. The
-// installed server binary decides, so option files that a client library
-// ships (such as `[client-mariadb]` on a RHEL host running MySQL) do not.
-// Pass an explicit path with `mariadb.conf("/etc/mysql/mariadb.cnf")` to
-// parse a file regardless of which product it belongs to.
+// By default the option files are the ones the server reads: those named
+// with `--defaults-file` or `--defaults-extra-file` on the command line of
+// the running server or of its systemd unit, or else every default option
+// file the installed server binary lists, in its order, including the
+// server account's `~/.my.cnf`. Where the binary cannot be run, the
+// well-known paths for Debian/Ubuntu and RPM installations are probed. The
+// resource returns nothing when the host runs MySQL rather than MariaDB, or
+// runs no database server at all. The installed server binary decides, so
+// option files that a client library ships (such as `[client-mariadb]` on a
+// RHEL host running MySQL) do not. Pass an explicit path with
+// `mariadb.conf("/etc/mysql/mariadb.cnf")` to parse a file regardless of
+// which product it belongs to.
 //
-// Values come from the option files. A setting given on the
-// command line, which is how a container usually configures MariaDB,
-// is not visible here, and an option no file sets reads null rather
-// than zero.
+// `serverOptions` applies the options on that command line over the files.
+// A setting made at runtime with `SET GLOBAL` is not visible here, and an
+// option nothing sets reads null rather than zero.
 mariadb.conf {
   init(path? string)
   // Primary option file
@@ -5500,8 +5517,9 @@ mariadb.conf {
   sections(file) []mariadb.conf.section
   // Options mariadbd reads, merged last-write-wins
   //
-  // A version-suffixed group is included only when it names the installed
-  // server's major.minor version, and no such group is included when the
+  // The groups are the ones the installed server binary lists as read. When
+  // it cannot be run, a version-suffixed group is included only when it
+  // names the installed server's major.minor version, and none when the
   // version cannot be detected.
   serverOptions(file) map[string]string
   // Options the client programs read, merged last-write-wins

@@ -5,10 +5,12 @@ package resources
 
 import (
 	"errors"
+	"io"
 	"sync"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/mycnf"
 )
 
@@ -27,6 +29,13 @@ type mqlMysqlInternal struct {
 	// even when it is MariaDB so the option file flavor gate can tell a
 	// mysqld that is MariaDB's from MySQL's.
 	bannerFlavor string
+	// bannerBin is the server binary the banner came from, which is also
+	// asked for its default option files and groups (serverDefaults).
+	bannerBin string
+
+	helpRead   bool
+	defaults   mycnf.ServerDefaults
+	defaultsOK bool
 }
 
 func (m *mqlMysql) id() (string, error) {
@@ -48,13 +57,46 @@ func (m *mqlMysql) detect() {
 	}
 	m.detected = true
 
-	version, flavor := detectServerVersion(m.MqlRuntime)
+	version, flavor, bin := detectServer(m.MqlRuntime)
 	m.bannerFlavor = flavor
+	m.bannerBin = bin
 	if flavor == mycnf.FlavorMariaDB {
 		return
 	}
 	m.cachedVersion = version
 	m.cachedFlavor = flavor
+}
+
+// serverDefaults asks the installed server binary, once, which option files
+// it reads and in which order, and which option groups. It reports false when
+// no binary could be run or its help output carries neither list.
+func (m *mqlMysql) serverDefaults() (mycnf.ServerDefaults, bool) {
+	m.detect()
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if m.helpRead {
+		return m.defaults, m.defaultsOK
+	}
+	m.helpRead = true
+	if m.bannerBin == "" {
+		return m.defaults, false
+	}
+	conn, ok := m.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return m.defaults, false
+	}
+	// The header lines are printed by --verbose --help only. The server
+	// prints them and exits without touching its data directory.
+	res, err := conn.RunCommand(m.bannerBin + " --verbose --help")
+	if err != nil || res.ExitStatus != 0 {
+		return m.defaults, false
+	}
+	data, err := io.ReadAll(res.Stdout)
+	if err != nil {
+		return m.defaults, false
+	}
+	m.defaults, m.defaultsOK = mycnf.ParseServerHelp(string(data))
+	return m.defaults, m.defaultsOK
 }
 
 func (m *mqlMysql) version() (string, error) {
@@ -153,7 +195,7 @@ func (s *mqlMysqlConf) serverOptions(file *mqlFile) (map[string]any, error) {
 		return nil, err
 	}
 	version := installedServerVersion(s.MqlRuntime, "mysql")
-	return s.optionMap(mycnf.ServerGroups(mycnf.FlavorMySQL, version)...), nil
+	return s.serverOptionMap(mycnf.ServerGroups(mycnf.FlavorMySQL, version)), nil
 }
 
 func (s *mqlMysqlConf) clientOptions(file *mqlFile) (map[string]any, error) {
