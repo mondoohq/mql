@@ -251,7 +251,7 @@ var apacheMinimalStaticModules = []string{"core.c", "mod_so.c", "http_core.c"}
 // filesystem scan) it falls back to the platform's known set.
 func apacheStaticModules(conn shared.Connection, afs *afero.Afero) []string {
 	for _, bin := range apacheBinaries {
-		if ok, _ := afs.Exists(bin); !ok {
+		if ok, _ := afs.Exists(bin); !ok || runnableBinary(conn, bin) == "" {
 			continue
 		}
 		cmd, err := conn.RunCommand(bin + " -l")

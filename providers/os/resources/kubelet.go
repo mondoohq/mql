@@ -18,6 +18,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 const defaultKubeletConfig = "/var/lib/kubelet/config.yaml"
@@ -343,10 +344,22 @@ func (m *mqlKubelet) version() (string, error) {
 		return "", nil
 	}
 
+	// The executable is the process name, which the process sets itself, so
+	// any local account can name a process after a path it controls. A path
+	// is run only when no other account can replace it.
+	conn, ok := m.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return "", nil
+	}
+	bin := runnableBinary(conn, exe.Data)
+	if bin == "" {
+		return "", errors.New("failed to determine kubelet version: not running a kubelet binary another account can replace: " + exe.Data)
+	}
+
 	// Single-quote the executable path so paths with spaces or shell
 	// metacharacters are passed through unchanged; embedded single quotes
 	// are escaped the POSIX way ('\'').
-	quotedExe := "'" + strings.ReplaceAll(exe.Data, "'", `'\''`) + "'"
+	quotedExe := "'" + strings.ReplaceAll(bin, "'", `'\''`) + "'"
 	o, err := CreateResource(m.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(quotedExe + " --version"),
 	})

@@ -309,7 +309,13 @@ func (n *mqlNginx) launchInfo() nginxLaunch {
 }
 
 // nginxBuildOutput returns the output of `<bin> -V`, or "" when it can't run.
+// The binary is the one on the PATH or the one a running master names, which
+// a process can name itself, so it is run only when no other account can
+// replace it (see runnableBinary).
 func nginxBuildOutput(conn shared.Connection, bin string) string {
+	if bin = runnableBinary(conn, bin); bin == "" {
+		return ""
+	}
 	cmd, err := conn.RunCommand(shellQuote(bin) + " -V 2>&1")
 	if err != nil || cmd.ExitStatus != 0 {
 		return ""
