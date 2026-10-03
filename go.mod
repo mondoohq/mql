@@ -120,6 +120,7 @@ require (
 )
 
 require (
+	github.com/cyphar/filepath-securejoin v0.7.0
 	github.com/microsoft/wmi v0.44.0
 	github.com/moby/moby/api v1.56.0
 	github.com/moby/moby/client v0.6.0
@@ -184,7 +185,6 @@ require (
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/typeurl/v2 v2.3.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
-	github.com/cyphar/filepath-securejoin v0.7.0 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.6.0 // indirect
