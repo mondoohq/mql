@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"errors"
 	"os"
 	"path"
 	"path/filepath"
@@ -1200,4 +1201,54 @@ func (d danglingLinkFs) Open(name string) (afero.File, error) {
 		return nil, os.ErrNotExist
 	}
 	return d.Fs.Open(name)
+}
+
+// Debian 12 with Oracle MySQL 8.4 and /etc/mysql at 0750 root:mysql. As
+// non-root, v13 reported no option file and then bindAddress ["*"], port
+// 3306 and skipNameResolve false, while mysql.version was set.
+func mysqlDeniedRuntime(t *testing.T) *plugin.Runtime {
+	return newDeniedDirRuntime(t, &mock.TomlData{
+		Files: map[string]*mock.MockFileData{
+			"/usr/sbin/mysqld":  fileEntry("/usr/sbin/mysqld", "ELF"),
+			"/etc/mysql":        dirEntry("/etc/mysql"),
+			"/etc/mysql/my.cnf": fileEntry("/etc/mysql/my.cnf", "[mysqld]\nbind-address = 127.0.0.1\nskip-name-resolve\n"),
+		},
+		Commands: map[string]*mock.Command{
+			"mysqld --version": {Command: "mysqld --version", Stdout: "/usr/sbin/mysqld  Ver 8.4.11 for Linux on x86_64 (MySQL Community Server - GPL)\n"},
+		},
+	}, "/etc/mysql")
+}
+
+func TestMysqlRefusedDirReportsNullWithoutStructuredErrors(t *testing.T) {
+	withStructuredErrors(t, false)
+	raw, err := CreateResource(mysqlDeniedRuntime(t), "mysql.conf", nil)
+	require.NoError(t, err)
+	conf := raw.(*mqlMysqlConf)
+	file := conf.GetFile()
+	require.NoError(t, file.Error)
+	assert.Nil(t, file.Data)
+	require.NoError(t, conf.GetBindAddress().Error)
+	assert.True(t, conf.GetBindAddress().IsNull(), "bindAddress must be null, not [*]: %v", conf.GetBindAddress().Data)
+	assert.True(t, conf.GetPort().IsNull(), "port must be null, not 3306")
+	assert.True(t, conf.GetSkipNameResolve().IsNull(), "skipNameResolve must be null, not false")
+}
+
+func TestMysqlRefusedDirIsForbiddenWithStructuredErrors(t *testing.T) {
+	withStructuredErrors(t, true)
+	raw, err := CreateResource(mysqlDeniedRuntime(t), "mysql.conf", nil)
+	require.NoError(t, err, "id() must not fail the resource")
+	conf := raw.(*mqlMysqlConf)
+	assert.True(t, errors.Is(conf.GetFile().Error, llx.ErrForbidden), "file: %v", conf.GetFile().Error)
+	assert.True(t, errors.Is(conf.GetBindAddress().Error, llx.ErrForbidden))
+}
+
+// The refused /etc/mysql belongs to MySQL here, so mariadb.conf, whose
+// server is not installed, still reads as absent.
+func TestMysqlRefusalDoesNotSpillIntoMariadb(t *testing.T) {
+	withStructuredErrors(t, true)
+	raw, err := CreateResource(mysqlDeniedRuntime(t), "mariadb.conf", nil)
+	require.NoError(t, err)
+	file := raw.(*mqlMariadbConf).GetFile()
+	require.NoError(t, file.Error)
+	assert.Nil(t, file.Data)
 }

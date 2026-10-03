@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"syscall"
@@ -637,4 +638,23 @@ func TestPostgresqlConfWithoutAutoConf(t *testing.T) {
 	require.NoError(t, ssl.Error)
 	assert.True(t, ssl.Data)
 	assert.Len(t, conf.GetFiles().Data, 1)
+}
+
+// Debian 12, PostgreSQL 15, /etc/postgresql/15/main at 0750 postgres. The
+// refusal was already a Forbidden error under structured errors, but it was
+// raised while the resource was created, and an error there reaches the
+// caller as "rpc error: code = Unknown", without its kind.
+func TestPostgresqlRefusalSurvivesResourceCreation(t *testing.T) {
+	withStructuredErrors(t, true)
+	runtime := newDeniedDirRuntime(t, &mock.TomlData{Files: map[string]*mock.MockFileData{
+		"/etc/postgresql":                         dirEntry("/etc/postgresql"),
+		"/etc/postgresql/15":                      dirEntry("/etc/postgresql/15"),
+		"/etc/postgresql/15/main":                 dirEntry("/etc/postgresql/15/main"),
+		"/etc/postgresql/15/main/postgresql.conf": fileEntry("/etc/postgresql/15/main/postgresql.conf", "port = 5432\n"),
+	}}, "/etc/postgresql/15/main")
+
+	raw, err := CreateResource(runtime, "postgresql.conf", nil)
+	require.NoError(t, err)
+	file := raw.(*mqlPostgresqlConf).GetFile()
+	assert.True(t, errors.Is(file.Error, llx.ErrForbidden), "file: %v", file.Error)
 }

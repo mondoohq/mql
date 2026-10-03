@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -14,7 +15,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 // unlistableFs refuses to open the given directories, the way a non-root
@@ -166,4 +171,70 @@ func TestSSHKeyCandidatesUnlistableDir(t *testing.T) {
 	got, err = sshKeyCandidates(newUnlistableFs(t, files, "/home/alice/.ssh"), "/home/alice/.ssh")
 	require.NoError(t, err)
 	assert.Empty(t, got)
+}
+
+// deniedDirFs refuses everything below the given directories, the way a
+// non-root user sees /etc/cassandra or /etc/mysql at 0750 root:<service>:
+// stat on any path inside fails with EACCES, so the scan cannot even tell
+// whether a configuration file is there.
+type deniedDirFs struct {
+	afero.Fs
+	dirs []string
+}
+
+func (f *deniedDirFs) denied(name string) error {
+	for _, d := range f.dirs {
+		if strings.HasPrefix(name, d+"/") {
+			return &fs.PathError{Op: "stat", Path: name, Err: os.ErrPermission}
+		}
+	}
+	return nil
+}
+
+func (f *deniedDirFs) Stat(name string) (os.FileInfo, error) {
+	if err := f.denied(name); err != nil {
+		return nil, err
+	}
+	return f.Fs.Stat(name)
+}
+
+func (f *deniedDirFs) Open(name string) (afero.File, error) {
+	if err := f.denied(name); err != nil {
+		return nil, err
+	}
+	return f.Fs.Open(name)
+}
+
+type deniedDirConn struct {
+	*mock.Connection
+	fs afero.Fs
+}
+
+func (c *deniedDirConn) FileSystem() afero.Fs { return c.fs }
+
+func (c *deniedDirConn) FileInfo(path string) (shared.FileInfoDetails, error) {
+	if err := c.fs.(*deniedDirFs).denied(path); err != nil {
+		return shared.FileInfoDetails{}, err
+	}
+	return c.Connection.FileInfo(path)
+}
+
+func newDeniedDirRuntime(t *testing.T, data *mock.TomlData, dirs ...string) *plugin.Runtime {
+	t.Helper()
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "debian", Family: []string{"debian", "linux"}},
+	}, mock.WithData(data))
+	require.NoError(t, err)
+	return &plugin.Runtime{
+		Connection: &deniedDirConn{Connection: conn, fs: &deniedDirFs{Fs: conn.FileSystem(), dirs: dirs}},
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}
+}
+
+func dirEntry(path string) *mock.MockFileData {
+	return &mock.MockFileData{Path: path, StatData: mock.FileInfo{Mode: os.ModeDir | 0o750, IsDir: true}}
+}
+
+func fileEntry(path, content string) *mock.MockFileData {
+	return &mock.MockFileData{Path: path, Content: content, StatData: mock.FileInfo{Mode: 0o644}}
 }
