@@ -106,7 +106,8 @@ func TestParseZypperLocksFixture(t *testing.T) {
 	require.NoError(t, err)
 
 	locks := parseZypperLocks(string(raw))
-	assert.True(t, locks.has("vim"), "written by zypper al on opensuse/leap:15")
+	assert.True(t, locks.holds(Package{Name: "vim"}), "written by zypper al on opensuse/leap:15")
+	assert.False(t, locks.holds(Package{Name: "gvim"}), "zypper al writes a glob, not a substring")
 	assert.Len(t, locks, 1)
 }
 
@@ -123,8 +124,8 @@ match_type: glob
 case_sensitive: on
 solvable_name: devel_basis
 `)
-	assert.True(t, locks.has("vim"))
-	assert.False(t, locks.has("devel_basis"), "a pattern lock is not a package lock")
+	assert.True(t, locks.holds(Package{Name: "vim"}))
+	assert.False(t, locks.holds(Package{Name: "devel_basis"}), "a pattern lock is not a package lock")
 	assert.Len(t, locks, 1)
 }
 
@@ -135,7 +136,9 @@ func TestReadLocksWithNoStore(t *testing.T) {
 	locks, err := readVersionlock(fs)
 	require.NoError(t, err)
 	assert.Empty(t, locks)
-	assert.Empty(t, readZypperLocks(fs))
+	zlocks, err := readZypperLocks(fs)
+	require.NoError(t, err)
+	assert.Empty(t, zlocks)
 }
 
 func TestReadVersionlockPrefersTheNewestStore(t *testing.T) {

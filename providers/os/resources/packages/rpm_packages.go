@@ -362,7 +362,7 @@ func (rpm *RpmPkgManager) lockedPackages() (lockedNames, error) {
 
 // lockedPackages reads zypper's lock store. SUSE has no versionlock plugin, so
 // reading the dnf paths there would always come back empty.
-func (spm *SusePkgManager) lockedPackages() lockedNames {
+func (spm *SusePkgManager) lockedPackages() (zypperLocks, error) {
 	return readZypperLocks(spm.conn.FileSystem())
 }
 
@@ -381,7 +381,8 @@ func (spm *SusePkgManager) List() ([]Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	return markPinned(pkgs, spm.lockedPackages(), nil), nil
+	locks, lockErr := spm.lockedPackages()
+	return markPinned(pkgs, locks, lockErr), nil
 }
 
 func (rpm *RpmPkgManager) Available() (map[string]PackageUpdate, error) {

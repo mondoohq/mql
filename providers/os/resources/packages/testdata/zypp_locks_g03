@@ -1,0 +1,18 @@
+
+type: package
+match_type: glob
+case_sensitive: on
+solvable_name: g03-globlock*
+
+
+type: package
+match_type: glob
+case_sensitive: on
+solvable_name: g03-lock
+
+
+type: package
+match_type: glob
+case_sensitive: on
+solvable_name: plymouth*
+
