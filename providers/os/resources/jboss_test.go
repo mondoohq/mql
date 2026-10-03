@@ -415,3 +415,21 @@ func TestJbossExplicitHomeIgnoresOtherInstallations(t *testing.T) {
 	configFile := missing.GetConfigFile()
 	requireResolvedNullScalar(t, configFile.State, configFile.Error, "jboss.configFile")
 }
+
+// The install directory's name is only a version when the directory is there.
+func TestJbossVersionNeedsAnInstallDir(t *testing.T) {
+	rt := jbossMockRuntime(t, map[string]*mock.MockFileData{})
+	raw, err := CreateResource(rt, "jboss", map[string]*llx.RawData{"home": llx.StringData("/opt/wildfly-99.0.0.Final")})
+	require.NoError(t, err)
+	v := raw.(*mqlJboss).GetVersion()
+	require.NoError(t, v.Error)
+	assert.True(t, v.IsNull(), "got %q", v.Data)
+
+	rt = jbossMockRuntime(t, map[string]*mock.MockFileData{
+		"/opt/wildfly-26.1.3.Final":                   jbossDir(),
+		"/opt/wildfly-26.1.3.Final/jboss-modules.jar": jbossFile("jar"),
+	})
+	raw, err = CreateResource(rt, "jboss", map[string]*llx.RawData{"home": llx.StringData("/opt/wildfly-26.1.3.Final")})
+	require.NoError(t, err)
+	assert.Equal(t, "26.1.3.Final", raw.(*mqlJboss).GetVersion().Data)
+}

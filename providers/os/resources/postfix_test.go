@@ -8,7 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestPostfixConfigDir(t *testing.T) {
@@ -148,4 +150,30 @@ func TestParseMasterCfOptionsAfterComment(t *testing.T) {
 	require.Len(t, got, 2)
 	assert.Equal(t, "smtpd -o smtpd_tls_wrappermode=yes -o smtpd_tls_security_level=none -o smtpd_sasl_auth_enable=no", got[0].Command)
 	assert.Equal(t, "pickup", got[1].Command)
+}
+
+// A path named explicitly must exist, as with snmpd.config, nginx.conf and
+// haproxy.config: reading it as an empty configuration let
+// localInterfaces.all(_ == "127.0.0.1") and acls.none(...) pass on a file
+// that is not there. A missing default location still means not installed.
+func TestPostfixExplicitMissingConfigPaths(t *testing.T) {
+	t.Run("postfix", func(t *testing.T) {
+		rt := missingPathRuntime(t, rhel9Platform, map[string]*mock.MockFileData{}, map[string]*mock.Command{
+			"postconf -c /nonexistent": {ExitStatus: 1, Stderr: "postconf: fatal: open /nonexistent/main.cf: No such file or directory"},
+		})
+		res, err := NewResource(rt, "postfix", map[string]*llx.RawData{"path": llx.StringData("/nonexistent/main.cf")})
+		require.NoError(t, err)
+		p := res.(*mqlPostfix)
+		assert.ErrorContains(t, p.GetInetInterfaces().Error, "/nonexistent/main.cf")
+		assert.Error(t, p.GetServices().Error)
+
+		rt = missingPathRuntime(t, rhel9Platform, map[string]*mock.MockFileData{}, map[string]*mock.Command{
+			"postconf -c /etc/postfix": {ExitStatus: 127},
+		})
+		res, err = NewResource(rt, "postfix", nil)
+		require.NoError(t, err)
+		params := res.(*mqlPostfix).GetParams()
+		require.NoError(t, params.Error)
+		assert.Empty(t, params.Data)
+	})
 }

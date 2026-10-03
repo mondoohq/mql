@@ -259,3 +259,26 @@ func TestIsWebappDirFollowsSymlinks(t *testing.T) {
 		"dangling": false,
 	}, got)
 }
+
+// A path named explicitly must exist, as with snmpd.config, nginx.conf and
+// haproxy.config: reading it as an empty configuration let
+// localInterfaces.all(_ == "127.0.0.1") and acls.none(...) pass on a file
+// that is not there. A missing default location still means not installed.
+func TestTomcatExplicitMissingConfigPaths(t *testing.T) {
+	t.Run("tomcat home", func(t *testing.T) {
+		rt := tomcatMockRuntime(t, map[string]*mock.MockFileData{})
+		raw, err := CreateResource(rt, "tomcat", map[string]*llx.RawData{"home": llx.StringData("/nonexistent")})
+		require.NoError(t, err)
+		tc := raw.(*mqlTomcat)
+		assert.ErrorContains(t, tc.GetUsers().Error, "/nonexistent")
+		assert.Error(t, tc.GetServer().Error)
+		assert.Error(t, tc.GetProperties().Error)
+	})
+
+	t.Run("tomcat home that exists", func(t *testing.T) {
+		tc := tomcatMockInstallation(t, nil)
+		users := tc.GetUsers()
+		require.NoError(t, users.Error)
+		assert.Empty(t, users.Data)
+	})
+}

@@ -11,7 +11,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 	"go.mondoo.com/mql/providers/os/resources/haproxy"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 // mustParseEximConfig parses a config that tests no built-in macro.
@@ -633,3 +638,33 @@ func TestParseEximConfigIncludes(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+// A path named explicitly must exist, as with snmpd.config, nginx.conf and
+// haproxy.config: reading it as an empty configuration let
+// localInterfaces.all(_ == "127.0.0.1") and acls.none(...) pass on a file
+// that is not there. A missing default location still means not installed.
+func TestEximExplicitMissingConfigPaths(t *testing.T) {
+	t.Run("exim", func(t *testing.T) {
+		rt := missingPathRuntime(t, rhel9Platform, map[string]*mock.MockFileData{}, nil)
+		res, err := NewResource(rt, "exim", map[string]*llx.RawData{"path": llx.StringData("/nonexistent/exim.conf")})
+		require.NoError(t, err)
+		e := res.(*mqlExim)
+		assert.ErrorContains(t, e.GetParams().Error, "/nonexistent/exim.conf")
+		assert.Error(t, e.GetLocalInterfaces().Error)
+	})
+}
+
+func missingPathRuntime(t *testing.T, platform *inventory.Platform, files map[string]*mock.MockFileData, commands map[string]*mock.Command) *plugin.Runtime {
+	t.Helper()
+	for p, f := range files {
+		f.Path = p
+	}
+	if commands == nil {
+		commands = map[string]*mock.Command{}
+	}
+	conn, err := mock.New(0, &inventory.Asset{Platform: platform}, mock.WithData(&mock.TomlData{Files: files, Commands: commands}))
+	require.NoError(t, err)
+	return &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+}
+
+var rhel9Platform = &inventory.Platform{Name: "rhel", Version: "9.6", Family: []string{"redhat", "linux", "unix", "os"}}
