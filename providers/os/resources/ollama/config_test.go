@@ -54,6 +54,10 @@ func TestResolveHost(t *testing.T) {
 		{"0.0.0.0:11434", "http://0.0.0.0:11434", "0.0.0.0", 11434, false, true},
 		{"::", "http://[::]:11434", "::", 11434, false, true},
 		{"[::]:11434", "http://[::]:11434", "::", 11434, false, true},
+		// An empty host is Go's wildcard listen address, so ":PORT" binds
+		// every interface just like 0.0.0.0 does.
+		{":11500", "http://:11500", "", 11500, false, true},
+		{"http://:11500", "http://:11500", "", 11500, false, true},
 		{"127.0.0.1", "http://127.0.0.1:11434", "127.0.0.1", 11434, false, false},
 		{"192.168.1.10:11434", "http://192.168.1.10:11434", "192.168.1.10", 11434, false, false},
 		// A scheme changes the default port, so an https host with no port is
