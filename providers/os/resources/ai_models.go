@@ -64,7 +64,7 @@ func newAiModelResource(rt *plugin.Runtime, m aimodel.ModelInfo) (*mqlAiModel, e
 	}
 
 	res, err := NewResource(rt, "ai.model", map[string]*llx.RawData{
-		"__id":          llx.StringData("ai.model/" + m.Source + "/" + m.Name),
+		"__id":          llx.StringData(aiModelID(m)),
 		"name":          llx.StringData(m.Name),
 		"source":        llx.StringData(m.Source),
 		"vendor":        llx.StringData(m.Vendor),
@@ -88,5 +88,13 @@ func newAiModelResource(rt *plugin.Runtime, m aimodel.ModelInfo) (*mqlAiModel, e
 }
 
 func (a *mqlAiModel) id() (string, error) {
-	return "ai.model/" + a.Source.Data + "/" + a.Name.Data, nil
+	return aiModelID(aimodel.ModelInfo{Source: a.Source.Data, Path: a.Path.Data}), nil
+}
+
+// aiModelID keys a model on where it is stored. The name is not unique: the
+// PyTorch and Keras detectors strip the hash suffix and the extension, so
+// resnet50-0676ba61.pth and resnet50-11ad3fa6.pth are both "resnet50", and a
+// name-keyed id would collapse them into whichever was read first.
+func aiModelID(m aimodel.ModelInfo) string {
+	return "ai.model/" + m.Source + "/" + m.Path
 }
