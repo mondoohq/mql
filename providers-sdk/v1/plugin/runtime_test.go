@@ -12,15 +12,6 @@ import (
 	"go.mondoo.com/mql/types"
 )
 
-// fakeResource is a minimal plugin.Resource for the cache.
-type fakeResource struct {
-	id   string
-	name string
-}
-
-func (f *fakeResource) MqlID() string   { return f.id }
-func (f *fakeResource) MqlName() string { return f.name }
-
 // mapResources is an in-memory Resources[Resource].
 type mapResources map[string]Resource
 
@@ -40,7 +31,7 @@ func resourceArg(name, id string) *llx.RawData {
 // A reference present in the cache is swapped for the real resource, which is
 // what the generated resource-typed setters require.
 func TestResolveResourceArgsResolvesACachedReference(t *testing.T) {
-	want := &fakeResource{id: "/etc/passwd", name: "file"}
+	want := &plainResource{id: "/etc/passwd", name: "file"}
 	runtime := &Runtime{Resources: mapResources{"file\x00/etc/passwd": want}}
 
 	args := map[string]*llx.RawData{"file": resourceArg("file", "/etc/passwd")}
@@ -64,7 +55,7 @@ func TestResolveResourceArgsLeavesAnUncachedReference(t *testing.T) {
 
 // A miss on one reference must not stop the others from resolving.
 func TestResolveResourceArgsResolvesAroundAMiss(t *testing.T) {
-	hit := &fakeResource{id: "/etc/passwd", name: "file"}
+	hit := &plainResource{id: "/etc/passwd", name: "file"}
 	runtime := &Runtime{Resources: mapResources{"file\x00/etc/passwd": hit}}
 
 	args := map[string]*llx.RawData{
