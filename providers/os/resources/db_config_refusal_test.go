@@ -241,3 +241,16 @@ func TestPostgresqlRefusalSurvivesResourceCreation(t *testing.T) {
 	file := raw.(*mqlPostgresqlConf).GetFile()
 	assert.True(t, errors.Is(file.Error, llx.ErrForbidden), "file: %v", file.Error)
 }
+
+// RHEL 7 with Cassandra 4.1.10 unpacked under its versioned name and no
+// /opt/cassandra symlink.
+func TestCassandraFindsVersionedTarball(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	for _, p := range []string{"/opt/apache-cassandra-4.1.10/conf/cassandra.yaml", "/opt/apache-cassandra-4.0.1/conf/cassandra.yaml"} {
+		require.NoError(t, afs.WriteFile(p, []byte("x"), 0o644))
+	}
+	paths := cassandraConfPaths(afs, "cassandra.yaml")
+	assert.Equal(t, "/opt/apache-cassandra-4.1.10/conf/cassandra.yaml", paths[len(paths)-2])
+	assert.Equal(t, "/opt/apache-cassandra-4.0.1/conf/cassandra.yaml", paths[len(paths)-1])
+	assert.Contains(t, cassandraBinaries(cassandraConfDirsOn(afs)), "/opt/apache-cassandra-4.1.10/bin/cassandra")
+}
