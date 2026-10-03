@@ -86,6 +86,10 @@ func initMongoInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	// source; absent means the server default, which replaces the log file.
 	args["logAppend"] = llx.BoolData(toBool(deepGet(parsed, "systemLog", "logAppend")))
 
+	// Not gated on plugin.StructuredErrors: the opt-in keeps a v13 null or
+	// empty, and these fields never were one. They reported the defaults
+	// above as facts, which states the opposite of a hardened server's
+	// posture, so there is no v13 answer worth keeping.
 	if cmdLineErr != nil {
 		setCmdLineError(args, classifyRefusal(cmdLineErr, "getCmdLineOpts"))
 	}
