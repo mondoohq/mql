@@ -29,6 +29,12 @@ type aptRepo struct {
 	SignedBy     string
 	Enabled      bool
 	SourceFile   string
+	// per-source trust options, nil when the entry does not set them
+	AllowInsecure            *bool
+	AllowWeak                *bool
+	AllowDowngradeToInsecure *bool
+	CheckValidUntil          *bool
+	CheckDate                *bool
 }
 
 func (a *mqlApt) id() (string, error) {
@@ -150,6 +156,12 @@ func (a *mqlApt) newRepo(file *mqlFile, idx int, repo aptRepo) (*mqlAptRepo, err
 		"signedBy":     llx.StringData(repo.SignedBy),
 		"enabled":      llx.BoolData(repo.Enabled),
 		"file":         llx.ResourceData(file, "file"),
+
+		"allowInsecure":            llx.BoolDataPtr(repo.AllowInsecure),
+		"allowWeak":                llx.BoolDataPtr(repo.AllowWeak),
+		"allowDowngradeToInsecure": llx.BoolDataPtr(repo.AllowDowngradeToInsecure),
+		"checkValidUntil":          llx.BoolDataPtr(repo.CheckValidUntil),
+		"checkDate":                llx.BoolDataPtr(repo.CheckDate),
 	})
 	if err != nil {
 		return nil, err
@@ -222,8 +234,8 @@ func parseAptOneLine(content string) []aptRepo {
 	return res
 }
 
-// applyAptOptions interprets one-line `key=value` options, of which
-// `trusted` and `signed-by` carry security meaning.
+// applyAptOptions interprets one-line `key=value` options: `trusted`,
+// `signed-by` and the per-source trust options.
 func applyAptOptions(repo *aptRepo, opts []string) {
 	for _, opt := range opts {
 		kv := strings.SplitN(opt, "=", 2)
@@ -237,9 +249,33 @@ func applyAptOptions(repo *aptRepo, opts []string) {
 			repo.Trusted = aptBool(val)
 		case "signed-by":
 			repo.SignedBy = val
+		default:
+			repo.setTrustOption(key, val)
 		}
 	}
 }
+
+// setTrustOption records one of the per-source trust options, named as the
+// one-line format writes it or as a lower-cased deb822 field. apt reads a
+// set option as a boolean that defaults to false.
+func (repo *aptRepo) setTrustOption(key string, val string) {
+	b := aptBool(val)
+	switch key {
+	case "allow-insecure":
+		repo.AllowInsecure = &b
+	case "allow-weak":
+		repo.AllowWeak = &b
+	case "allow-downgrade-to-insecure":
+		repo.AllowDowngradeToInsecure = &b
+	case "check-valid-until":
+		repo.CheckValidUntil = &b
+	case "check-date":
+		repo.CheckDate = &b
+	}
+}
+
+// aptTrustOptions are the per-source trust options, as deb822 field names.
+var aptTrustOptions = []string{"allow-insecure", "allow-weak", "allow-downgrade-to-insecure", "check-valid-until", "check-date"}
 
 // parseAptDeb822 parses the deb822 multi-line `.sources` format. Stanzas
 // are separated by blank lines; Types, URIs, and Suites may each list
@@ -271,6 +307,13 @@ func parseAptDeb822(content string) []aptRepo {
 			enabled = aptBool(v)
 		}
 
+		var opts aptRepo
+		for _, key := range aptTrustOptions {
+			if v, ok := fields[key]; ok {
+				opts.setTrustOption(key, v)
+			}
+		}
+
 		for _, t := range types {
 			for _, u := range uris {
 				for _, s := range suites {
@@ -282,6 +325,12 @@ func parseAptDeb822(content string) []aptRepo {
 						Trusted:      trusted,
 						SignedBy:     signedBy,
 						Enabled:      enabled,
+
+						AllowInsecure:            opts.AllowInsecure,
+						AllowWeak:                opts.AllowWeak,
+						AllowDowngradeToInsecure: opts.AllowDowngradeToInsecure,
+						CheckValidUntil:          opts.CheckValidUntil,
+						CheckDate:                opts.CheckDate,
 					})
 				}
 			}

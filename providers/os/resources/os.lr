@@ -10845,9 +10845,12 @@ apt.config {
 // and the `file` that declares it. The security-relevant fields are
 // `trusted`, true when the entry carries `[trusted=yes]`, which disables
 // signature verification, and `signedBy`, the keyring path pinning which
-// key may sign the repository. `enabled` is false for entries commented
-// out in a one-line sources file or marked `Enabled: no` in a deb822
-// file.
+// key may sign the repository. `allowInsecure`, `allowWeak`,
+// `allowDowngradeToInsecure`, `checkValidUntil` and `checkDate` are the
+// entry's own trust options, which override the matching apt.config option
+// for this repository; each is null when the entry does not set it.
+// `enabled` is false for entries commented out in a one-line sources file
+// or marked `Enabled: no` in a deb822 file.
 private apt.repo @defaults("type url distribution") {
   // Package type: `deb` (binary) or `deb-src` (source)
   type string
@@ -10861,6 +10864,33 @@ private apt.repo @defaults("type url distribution") {
   trusted bool
   // Keyring path pinning the signing key (`signed-by`), empty when unset
   signedBy string
+  // Whether apt uses this repository when it is unsigned
+  //
+  // The `allow-insecure` option (`Allow-Insecure` in deb822), null when the
+  // entry does not set it and apt.config.allowInsecureRepositories applies.
+  allowInsecure bool
+  // Whether apt uses this repository when it is signed only with weak algorithms
+  //
+  // The `allow-weak` option (`Allow-Weak` in deb822), null when the entry does
+  // not set it and apt.config.allowWeakRepositories applies.
+  allowWeak bool
+  // Whether this repository may go from signed to unsigned
+  //
+  // The `allow-downgrade-to-insecure` option (`Allow-Downgrade-To-Insecure` in
+  // deb822), null when the entry does not set it and
+  // apt.config.allowDowngradeToInsecureRepositories applies.
+  allowDowngradeToInsecure bool
+  // Whether apt rejects this repository's metadata once its Valid-Until date has passed
+  //
+  // The `check-valid-until` option (`Check-Valid-Until` in deb822), null when
+  // the entry does not set it and APT's Acquire::Check-Valid-Until (default
+  // true) applies. False lets a stale or replayed index be used.
+  checkValidUntil bool
+  // Whether apt rejects this repository's metadata when its Date is in the future
+  //
+  // The `check-date` option (`Check-Date` in deb822), null when the entry does
+  // not set it and apt.config.checkDate applies.
+  checkDate bool
   // Whether the repository entry is active
   enabled bool
   // Source list file that declares this repository

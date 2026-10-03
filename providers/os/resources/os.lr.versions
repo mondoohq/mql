@@ -130,6 +130,11 @@ apt.config.installRecommends 14.8.1
 apt.config.installSuggests 14.8.1
 apt.config.params 14.8.1
 apt.repo 13.22.2
+apt.repo.allowDowngradeToInsecure 14.14.1
+apt.repo.allowInsecure 14.14.1
+apt.repo.allowWeak 14.14.1
+apt.repo.checkDate 14.14.1
+apt.repo.checkValidUntil 14.14.1
 apt.repo.components 13.22.2
 apt.repo.distribution 13.22.2
 apt.repo.enabled 13.22.2

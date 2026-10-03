@@ -11192,6 +11192,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"apt.repo.signedBy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAptRepo).GetSignedBy()).ToDataRes(types.String)
 	},
+	"apt.repo.allowInsecure": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptRepo).GetAllowInsecure()).ToDataRes(types.Bool)
+	},
+	"apt.repo.allowWeak": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptRepo).GetAllowWeak()).ToDataRes(types.Bool)
+	},
+	"apt.repo.allowDowngradeToInsecure": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptRepo).GetAllowDowngradeToInsecure()).ToDataRes(types.Bool)
+	},
+	"apt.repo.checkValidUntil": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptRepo).GetCheckValidUntil()).ToDataRes(types.Bool)
+	},
+	"apt.repo.checkDate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptRepo).GetCheckDate()).ToDataRes(types.Bool)
+	},
 	"apt.repo.enabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAptRepo).GetEnabled()).ToDataRes(types.Bool)
 	},
@@ -30040,6 +30055,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"apt.repo.signedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAptRepo).SignedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"apt.repo.allowInsecure": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptRepo).AllowInsecure, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.repo.allowWeak": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptRepo).AllowWeak, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.repo.allowDowngradeToInsecure": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptRepo).AllowDowngradeToInsecure, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.repo.checkValidUntil": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptRepo).CheckValidUntil, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.repo.checkDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptRepo).CheckDate, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"apt.repo.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -75369,14 +75404,19 @@ type mqlAptRepo struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAptRepoInternal it will be used here
-	Type         plugin.TValue[string]
-	Url          plugin.TValue[string]
-	Distribution plugin.TValue[string]
-	Components   plugin.TValue[[]any]
-	Trusted      plugin.TValue[bool]
-	SignedBy     plugin.TValue[string]
-	Enabled      plugin.TValue[bool]
-	File         plugin.TValue[*mqlFile]
+	Type                     plugin.TValue[string]
+	Url                      plugin.TValue[string]
+	Distribution             plugin.TValue[string]
+	Components               plugin.TValue[[]any]
+	Trusted                  plugin.TValue[bool]
+	SignedBy                 plugin.TValue[string]
+	AllowInsecure            plugin.TValue[bool]
+	AllowWeak                plugin.TValue[bool]
+	AllowDowngradeToInsecure plugin.TValue[bool]
+	CheckValidUntil          plugin.TValue[bool]
+	CheckDate                plugin.TValue[bool]
+	Enabled                  plugin.TValue[bool]
+	File                     plugin.TValue[*mqlFile]
 }
 
 // createAptRepo creates a new instance of this resource
@@ -75433,6 +75473,26 @@ func (c *mqlAptRepo) GetTrusted() *plugin.TValue[bool] {
 
 func (c *mqlAptRepo) GetSignedBy() *plugin.TValue[string] {
 	return &c.SignedBy
+}
+
+func (c *mqlAptRepo) GetAllowInsecure() *plugin.TValue[bool] {
+	return &c.AllowInsecure
+}
+
+func (c *mqlAptRepo) GetAllowWeak() *plugin.TValue[bool] {
+	return &c.AllowWeak
+}
+
+func (c *mqlAptRepo) GetAllowDowngradeToInsecure() *plugin.TValue[bool] {
+	return &c.AllowDowngradeToInsecure
+}
+
+func (c *mqlAptRepo) GetCheckValidUntil() *plugin.TValue[bool] {
+	return &c.CheckValidUntil
+}
+
+func (c *mqlAptRepo) GetCheckDate() *plugin.TValue[bool] {
+	return &c.CheckDate
 }
 
 func (c *mqlAptRepo) GetEnabled() *plugin.TValue[bool] {
