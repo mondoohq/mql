@@ -316,3 +316,63 @@ func TestFoldListenTypeProperties(t *testing.T) {
 	foldListenTypeProperties(props)
 	assert.Equal(t, "/run/dbus/system_bus_socket (Stream)", props["Listen"])
 }
+
+func TestSystemdSocketManagerListAddsTemplateInstances(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "amazonlinux", Family: []string{"linux"}},
+	}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"systemctl list-unit-files --type socket --all": {
+				Stdout: strings.Join([]string{
+					"UNIT FILE                        STATE    PRESET",
+					"g04-sk@.socket                   indirect disabled",
+					"g04.socket                       enabled  disabled",
+					"systemd-journald@.socket         static   -",
+					"",
+					"3 unit files listed.",
+					"",
+				}, "\n"),
+			},
+			"systemctl list-units --type socket --all": {
+				Stdout: strings.Join([]string{
+					"  UNIT                            LOAD   ACTIVE   SUB       DESCRIPTION",
+					"  g04-sk@a.socket                 loaded active   listening g04 templated socket a",
+					"  g04.socket                      loaded active   listening g04 socket",
+					"  gone@b.socket                   not-found inactive dead   gone@b.socket",
+					"",
+					"LOAD   = Reflects whether the unit definition was properly loaded.",
+					"3 loaded units listed.",
+					"",
+				}, "\n"),
+			},
+			"systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description g04-sk@a.socket": {
+				Stdout: strings.Join([]string{
+					"Id=g04-sk@a.socket",
+					"Description=g04 templated socket a",
+					"LoadState=loaded",
+					"ActiveState=active",
+					"UnitFileState=enabled",
+					"",
+				}, "\n"),
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	sockets, err := (&SystemdSocketManager{conn: mockConn}).List()
+	require.NoError(t, err)
+	byName := map[string]*SystemdSocket{}
+	for _, socket := range sockets {
+		byName[socket.Name] = socket
+	}
+	require.Len(t, byName, 4)
+
+	a := byName["g04-sk@a"]
+	require.NotNil(t, a)
+	assert.True(t, a.Installed)
+	assert.True(t, a.Enabled)
+	assert.True(t, a.Running)
+	assert.Equal(t, "g04 templated socket a", a.Description)
+	// an instance that does not load is not a socket on this host
+	assert.Nil(t, byName["gone@b"])
+}

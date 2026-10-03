@@ -363,3 +363,110 @@ func TestParseSystemdTimerAndSocketListUnitsJobColumn(t *testing.T) {
 	assert.Equal(t, "g04 socket", sockets["g04"].Description)
 	assert.Equal(t, "g04 socket activating other service", sockets["g04-svc"].Description)
 }
+
+// Amazon Linux 2023 (systemd 252): list-unit-files names the templates
+// g04-ttpl@.timer and refresh-policy-routes@.timer; only list-units names
+// their running instances.
+func TestSystemdTimerManagerListAddsTemplateInstances(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "amazonlinux", Family: []string{"linux"}},
+	}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"systemctl list-unit-files --type timer --all": {
+				Stdout: strings.Join([]string{
+					"UNIT FILE                      STATE    PRESET",
+					"fstrim.timer                   enabled  enabled",
+					"g04-ttpl@.timer                indirect disabled",
+					"refresh-policy-routes@.timer   static   -",
+					"",
+					"3 unit files listed.",
+					"",
+				}, "\n"),
+			},
+			"systemctl list-units --type timer --all": {
+				Stdout: strings.Join([]string{
+					"  UNIT                             LOAD   ACTIVE   SUB     DESCRIPTION",
+					"  fstrim.timer                     loaded active   waiting Discard unused blocks once a week",
+					"  g04-ttpl@x.timer                 loaded active   waiting g04 templated timer x",
+					"  refresh-policy-routes@ens5.timer loaded active   waiting refresh-policy-routes@ens5.timer",
+					"",
+					"LOAD   = Reflects whether the unit definition was properly loaded.",
+					"3 loaded units listed.",
+					"",
+				}, "\n"),
+			},
+			"systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description g04-ttpl@x.timer refresh-policy-routes@ens5.timer": {
+				Stdout: strings.Join([]string{
+					"Id=g04-ttpl@x.timer",
+					"Description=g04 templated timer x",
+					"LoadState=loaded",
+					"ActiveState=active",
+					"UnitFileState=enabled",
+					"",
+					"Id=refresh-policy-routes@ens5.timer",
+					"Description=refresh-policy-routes@ens5.timer",
+					"LoadState=loaded",
+					"ActiveState=active",
+					"UnitFileState=static",
+					"",
+				}, "\n"),
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	timers, err := (&SystemdTimerManager{conn: mockConn}).List()
+	require.NoError(t, err)
+	byName := map[string]*SystemdTimer{}
+	for _, timer := range timers {
+		byName[timer.Name] = timer
+	}
+	require.Len(t, byName, 5)
+
+	x := byName["g04-ttpl@x"]
+	require.NotNil(t, x)
+	assert.True(t, x.Installed)
+	assert.True(t, x.Enabled)
+	assert.True(t, x.Running)
+	assert.False(t, x.Static)
+	assert.Equal(t, "g04 templated timer x", x.Description)
+
+	ens5 := byName["refresh-policy-routes@ens5"]
+	require.NotNil(t, ens5)
+	assert.True(t, ens5.Static)
+	assert.False(t, ens5.Enabled)
+	assert.True(t, ens5.Running)
+
+	// the templates stay as list-unit-files reports them
+	require.NotNil(t, byName["g04-ttpl@"])
+	assert.False(t, byName["g04-ttpl@"].Running)
+}
+
+// A show that fails keeps the instance with what list-units reported.
+func TestSystemdTimerManagerListKeepsInstanceWhenShowFails(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "amazonlinux", Family: []string{"linux"}},
+	}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"systemctl list-unit-files --type timer --all": {
+				Stdout: "UNIT FILE                      STATE    PRESET\nrefresh-policy-routes@.timer   static   -\n\n1 unit files listed.\n",
+			},
+			"systemctl list-units --type timer --all": {
+				Stdout: "  UNIT                             LOAD   ACTIVE   SUB     DESCRIPTION\n" +
+					"  refresh-policy-routes@ens5.timer loaded active   waiting refresh-policy-routes@ens5.timer\n\n1 loaded units listed.\n",
+			},
+			"systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description refresh-policy-routes@ens5.timer": {
+				ExitStatus: 1,
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	timers, err := (&SystemdTimerManager{conn: mockConn}).List()
+	require.NoError(t, err)
+	require.Len(t, timers, 2)
+	ens5 := timers[1]
+	assert.Equal(t, "refresh-policy-routes@ens5", ens5.Name)
+	assert.True(t, ens5.Installed)
+	assert.True(t, ens5.Running)
+}
