@@ -183,3 +183,31 @@ func TestStringList(t *testing.T) {
 		}
 	}
 }
+
+// system.users rows read live from ClickHouse 26.9: an XML user with
+// <password></password> and the XML default user with a real password both
+// read auth_type ['plaintext_password'], storage users_xml.
+func TestCredentialRequirement(t *testing.T) {
+	cases := []struct {
+		name      string
+		authTypes []string
+		storage   string
+		want      bool
+		known     bool
+	}{
+		{"xml plaintext, empty or real", []string{"plaintext_password"}, "users_xml", false, false},
+		{"sql plaintext", []string{"plaintext_password"}, "local_directory", true, true},
+		{"xml sha256", []string{"sha256_password"}, "users_xml", true, true},
+		{"xml no_password", []string{"no_password"}, "users_xml", false, true},
+		{"sql no_password", []string{"no_password"}, "local_directory", false, true},
+		// a no_password method decides it whatever else the user has
+		{"xml plaintext plus no_password", []string{"plaintext_password", "no_password"}, "users_xml", false, true},
+		{"sql sha256", []string{"sha256_password"}, "local_directory", true, true},
+	}
+	for _, c := range cases {
+		got, known := credentialRequirement(c.authTypes, c.storage)
+		if known != c.known || (known && got != c.want) {
+			t.Errorf("%s: credentialRequirement = %v, known=%v; want %v, known=%v", c.name, got, known, c.want, c.known)
+		}
+	}
+}
