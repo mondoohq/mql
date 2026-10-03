@@ -298,4 +298,26 @@ func TestIsCtrNotInstalled(t *testing.T) {
 	assert.False(t, isCtrNotInstalled("ctr", 1, `ctr: failed to dial "/run/containerd/containerd.sock": connection error: desc = "transport: error while dialing: dial unix /run/containerd/containerd.sock: connect: permission denied"`+"\n"))
 	// the bundled containerd refuses a non-root user (Debian 10)
 	assert.False(t, isCtrNotInstalled("docker-containerd-ctr", 1, `ctr: failed to dial "/run/docker/containerd/containerd.sock": context deadline exceeded`+"\n"))
+
+	// sudo's "not found" in the remote's language (de_DE.UTF-8, RHEL 9)
+	assert.True(t, isCtrNotInstalled("docker-containerd-ctr", 1, "sudo: docker-containerd-ctr: Befehl nicht gefunden\n"))
+	assert.True(t, isCtrNotInstalled("containerd-ctr", 1, "sudo: containerd-ctr: commande introuvable\n"))
+	// sudo has no separate message for a binary it may not execute: with mode
+	// 0644 it says the same "command not found" (sudo 1.8.27 on Debian 10 and
+	// 1.9.5 on RHEL 9), which the English check already treated as missing
+	assert.True(t, isCtrNotInstalled("/usr/local/bin/ctr", 1, "sudo: /usr/local/bin/ctr: command not found\n"))
+	// sudo refusing to run anything is not a missing binary
+	assert.False(t, isCtrNotInstalled("ctr", 1, "sudo: sorry, you must have a tty to run sudo\n"))
+	assert.False(t, isCtrNotInstalled("ctr", 1, "sudo: a password is required\n"))
+}
+
+// A tarball or static-bundle containerd puts ctr in /usr/local/bin, which
+// RHEL's sudo secure_path leaves off root's PATH.
+func TestCtrCLIsIncludeUsrLocalBin(t *testing.T) {
+	var bins []string
+	for _, cli := range ctrCLIs(nil) {
+		bins = append(bins, cli[0])
+	}
+	assert.Contains(t, bins, "/usr/local/bin/ctr")
+	assert.Equal(t, "ctr", bins[0], "the PATH lookup stays first")
 }

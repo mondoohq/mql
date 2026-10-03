@@ -90,8 +90,10 @@ func parseContainerInfo(jsonData []byte) (*containerInfo, error) {
 
 // ctrBinaries are the containerd CLIs to try, in order. SUSE packages ctr as
 // containerd-ctr in /usr/sbin, which is not on a non-root PATH. Docker 18.09
-// and older bundle their own CLI as docker-containerd-ctr.
-var ctrBinaries = []string{"ctr", "containerd-ctr", "/usr/sbin/containerd-ctr", "docker-containerd-ctr"}
+// and older bundle their own CLI as docker-containerd-ctr. A tarball or static
+// bundle install puts ctr in /usr/local/bin, which RHEL's sudo secure_path
+// leaves off root's PATH.
+var ctrBinaries = []string{"ctr", "containerd-ctr", "/usr/sbin/containerd-ctr", "docker-containerd-ctr", "/usr/local/bin/ctr"}
 
 const (
 	// containerdSocket is where a standalone containerd listens by default.
@@ -186,12 +188,14 @@ func (p *mqlContainerd) listContainerdNamespaces() ([]string, []string, error) {
 // isCtrNotInstalled reports whether a ctr call failed because the binary is
 // missing, rather than because containerd refused or is down. Shells exit with
 // 127 for a command they cannot find, but sudo exits with 1 and says so on
-// stderr.
+// stderr as "sudo: <bin>: " followed by "command not found" in the remote's
+// language.
 func isCtrNotInstalled(bin string, exitCode int64, stderr string) bool {
 	if exitCode == 127 {
 		return true
 	}
-	return strings.Contains(stderr, bin+": command not found") ||
+	return strings.HasPrefix(strings.TrimSpace(stderr), "sudo: "+bin+": ") ||
+		strings.Contains(stderr, bin+": command not found") ||
 		strings.Contains(stderr, bin+": not found")
 }
 
