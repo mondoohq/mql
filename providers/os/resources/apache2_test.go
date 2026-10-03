@@ -5,6 +5,7 @@ package resources
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
@@ -366,5 +368,83 @@ func TestApacheLaunch(t *testing.T) {
 		l, err := apacheLaunch(&afero.Afero{Fs: fs})
 		require.NoError(t, err)
 		assert.Nil(t, l)
+	})
+}
+
+// The compiled-in defaults describe a server whose configuration was read. With
+// no configuration read there is nothing to report, so ServerTokens,
+// ServerSignature and TraceEnable are null rather than Full, Off and On.
+func TestApache2ConfDefaultsNeedAConfig(t *testing.T) {
+	rhel := &inventory.Platform{Name: "rhel", Version: "9.6", Family: []string{"redhat", "linux", "unix", "os"}}
+
+	t.Run("httpd not installed", func(t *testing.T) {
+		conf := newApache2Conf(t, rhel, map[string]string{"/etc/os-release": "ID=rhel\n"})
+		params := conf.GetParams()
+		require.NoError(t, params.Error)
+		assert.Empty(t, params.Data)
+		for name, v := range map[string]*plugin.TValue[string]{
+			"serverTokens":    conf.GetServerTokens(),
+			"serverSignature": conf.GetServerSignature(),
+			"traceEnable":     conf.GetTraceEnable(),
+		} {
+			require.NoError(t, v.Error, name)
+			assert.True(t, v.IsNull(), "%s should be null, got %q", name, v.Data)
+		}
+	})
+
+	t.Run("a config that sets nothing still gets the defaults", func(t *testing.T) {
+		conf := newApache2Conf(t, rhel, map[string]string{"/etc/httpd/conf/httpd.conf": "ServerRoot \"/etc/httpd\"\nListen 80\n"})
+		tokens := conf.GetServerTokens()
+		require.NoError(t, tokens.Error)
+		assert.False(t, tokens.IsNull())
+		assert.Equal(t, "Full", tokens.Data)
+		assert.Equal(t, "On", conf.GetTraceEnable().Data)
+	})
+
+	t.Run("an explicit path that does not exist is an error", func(t *testing.T) {
+		conn, err := mock.New(0, &inventory.Asset{Platform: rhel}, mock.WithData(&mock.TomlData{Files: map[string]*mock.MockFileData{
+			"/etc/httpd/conf/httpd.conf": {Path: "/etc/httpd/conf/httpd.conf", Content: "ServerTokens Prod\n"},
+		}}))
+		require.NoError(t, err)
+		rt := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+		res, err := NewResource(rt, "apache2.conf", map[string]*llx.RawData{"path": llx.StringData("/nonexistent/httpd.conf")})
+		require.NoError(t, err)
+		conf := res.(*mqlApache2Conf)
+		assert.ErrorContains(t, conf.GetParams().Error, "/nonexistent/httpd.conf")
+		assert.Error(t, conf.GetServerTokens().Error)
+	})
+}
+
+// A non-root scan that cannot stat the configuration (/etc/httpd/conf at 0700)
+// was told Apache is not installed.
+func TestApacheConfigExists(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(mem, "/etc/httpd/conf/httpd.conf", []byte("ServerTokens Prod\n"), 0o644))
+	afs := &afero.Afero{Fs: &denyFs{Fs: mem, deny: "/etc/httpd/conf"}}
+
+	t.Run("a missing file is absent", func(t *testing.T) {
+		ok, err := apacheConfigExists(afs, "/etc/apache2/apache2.conf")
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
+
+	t.Run("a readable file exists", func(t *testing.T) {
+		ok, err := apacheConfigExists(&afero.Afero{Fs: mem}, "/etc/httpd/conf/httpd.conf")
+		require.NoError(t, err)
+		assert.True(t, ok)
+	})
+
+	t.Run("a refused stat is absent before structured errors", func(t *testing.T) {
+		require.False(t, plugin.StructuredErrors())
+		ok, err := apacheConfigExists(afs, "/etc/httpd/conf/httpd.conf")
+		require.NoError(t, err)
+		assert.False(t, ok)
+	})
+
+	t.Run("a refused stat is forbidden with structured errors", func(t *testing.T) {
+		enableStructuredErrorsForTest(t)
+		_, err := apacheConfigExists(afs, "/etc/httpd/conf/httpd.conf")
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, llx.ErrForbidden))
 	})
 }
