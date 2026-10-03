@@ -603,6 +603,12 @@ func optionList(options map[string]any, key string) []any {
 	return toAnySlice(mycnf.SplitList(optionString(options, key)))
 }
 
+// optionPluginList resolves an option whose value is a plugin list, separated
+// by ";" rather than the comma/space form (see mycnf.SplitPluginList).
+func optionPluginList(options map[string]any, key string) []any {
+	return toAnySlice(mycnf.SplitPluginList(optionString(options, key)))
+}
+
 // optionPathList resolves an option whose value is a list of directories.
 // These use ":" (Unix) or ";" (Windows) rather than the comma/space form.
 func optionPathList(options map[string]any, key string) []any {
@@ -625,7 +631,7 @@ func bindAddressList(options map[string]any) []any {
 func pluginLoadList(options map[string]any) []any {
 	var names []string
 	for _, key := range []string{"plugin_load", "plugin_load_add"} {
-		for _, entry := range mycnf.SplitList(optionString(options, key)) {
+		for _, entry := range mycnf.SplitPluginList(optionString(options, key)) {
 			// Entries may be written as "name=library.so"; the plugin name
 			// is what identifies it.
 			name, _, _ := strings.Cut(entry, "=")

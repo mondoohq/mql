@@ -5404,7 +5404,7 @@ mysql.conf {
 // `files` lists every contributor and `options` holds the merged,
 // last-write-wins result.
 private mysql.conf.section @defaults("name") {
-  // Group name as written, without the brackets (e.g., "mysqld", "client", "mysqld-8.0")
+  // Group name without the brackets, lowercased (e.g., "mysqld", "client", "mysqld-8.0")
   name string
   // Options in this group, merged last-write-wins
   //
@@ -5693,7 +5693,7 @@ mariadb.conf {
 // `files` lists every contributor and `options` holds the merged,
 // last-write-wins result.
 private mariadb.conf.section @defaults("name") {
-  // Group name as written, without the brackets (e.g., "mariadbd", "galera", "mariadb-11.4")
+  // Group name without the brackets, lowercased (e.g., "mariadbd", "galera", "mariadb-11.4")
   name string
   // Options in this group, merged last-write-wins
   //

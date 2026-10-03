@@ -156,7 +156,7 @@ func flavorFromConfig(c *Conf) string {
 // [client-mariadb], and RHEL and Fedora install that package alongside
 // mysql-server, so a client group says nothing about which server runs.
 func isMariadbServerGroup(name string) bool {
-	name = strings.ToLower(strings.TrimSpace(name))
+	name = strings.ToLower(name)
 	return MatchesGroup(name, "mariadb") ||
 		MatchesGroup(name, "mariadbd") ||
 		name == "galera"
