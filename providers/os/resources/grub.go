@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"maps"
 	"os"
 	"path"
 	"regexp"
@@ -425,8 +424,11 @@ func grubMkconfigReadsDropIns(platform *inventory.Platform) bool {
 // overrides an earlier one. Ubuntu cloud images set
 // GRUB_CMDLINE_LINUX_DEFAULT in such a drop-in.
 func loadGrubDefaults(fs afero.Fs, defaultsPath string, dropIns bool) (map[string]string, error) {
-	params, err := readGrubDefaultsFile(fs, defaultsPath)
-	if err != nil {
+	// One map carries the settings from file to file, so that a drop-in
+	// appending to a setting, as in GRUB_CMDLINE_LINUX="$GRUB_CMDLINE_LINUX x",
+	// sees what the files before it assigned.
+	params := map[string]string{}
+	if err := readGrubDefaultsFile(fs, defaultsPath, params); err != nil {
 		return nil, err
 	}
 	if !dropIns {
@@ -438,22 +440,20 @@ func loadGrubDefaults(fs afero.Fs, defaultsPath string, dropIns bool) (map[strin
 		return nil, err
 	}
 	for _, name := range files {
-		vars, err := readGrubDefaultsFile(fs, name)
-		if err != nil {
+		if err := readGrubDefaultsFile(fs, name, params); err != nil {
 			return nil, err
 		}
-		maps.Copy(params, vars)
 	}
 	return params, nil
 }
 
-func readGrubDefaultsFile(fs afero.Fs, name string) (map[string]string, error) {
+func readGrubDefaultsFile(fs afero.Fs, name string, vars map[string]string) error {
 	f, err := fs.Open(name)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer f.Close()
-	return ParseGrubDefaults(f)
+	return parseGrubDefaultsInto(f, vars)
 }
 
 // grubDefaultsDropIns lists the files grub-mkconfig's `for x in
@@ -482,29 +482,305 @@ func grubDefaultsDropIns(fs afero.Fs, dir string) ([]string, error) {
 // ParseGrubDefaults parses /etc/default/grub which is a shell-style key=value file.
 func ParseGrubDefaults(r io.Reader) (map[string]string, error) {
 	params := map[string]string{}
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		// Skip comments and empty lines
+	if err := parseGrubDefaultsInto(r, params); err != nil {
+		return nil, err
+	}
+	return params, nil
+}
+
+// parseGrubDefaultsInto reads the assignments of a defaults file the way
+// grub-mkconfig's shell does when it sources the file, and stores them in
+// vars. A reference to a variable ($VAR or ${VAR}) outside single quotes is
+// replaced by what vars holds for it, so a file can extend a setting an
+// earlier file made.
+func parseGrubDefaultsInto(r io.Reader, vars map[string]string) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(data), "\n")
+	for i := 0; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
 		if line == "" || line[0] == '#' {
 			continue
 		}
-		// Parse KEY=VALUE (shell-style, with optional quoting)
-		idx := strings.IndexByte(line, '=')
-		if idx < 0 {
+
+		// A quoted value may run on over several lines.
+		stmt := line
+		end := i
+		for {
+			if !parseGrubShellAssignments(stmt, vars) {
+				break
+			}
+			if end+1 >= len(lines) {
+				// The quote never closes, which the shell rejects. Keep the
+				// line as written and go on with the next one.
+				parseGrubDefaultsLineLiteral(line, vars)
+				end = i
+				break
+			}
+			end++
+			stmt += "\n" + strings.TrimRight(lines[end], "\r")
+		}
+		i = end
+	}
+	return nil
+}
+
+// parseGrubDefaultsLineLiteral stores KEY=VALUE without interpreting the
+// value beyond removing the quotes around it.
+func parseGrubDefaultsLineLiteral(line string, vars map[string]string) {
+	idx := strings.IndexByte(line, '=')
+	if idx < 0 {
+		return
+	}
+	key := strings.TrimSpace(line[:idx])
+	if fields := strings.Fields(key); len(fields) == 2 && fields[0] == "export" {
+		key = fields[1]
+	}
+	vars[key] = stripQuotes(strings.TrimSpace(line[idx+1:]))
+}
+
+// grubMkconfigComputedVars are the variables grub-mkconfig sets itself
+// before it sources the defaults files. A reference to one of them keeps
+// its $NAME form, since its value depends on the host's disks.
+var grubMkconfigComputedVars = map[string]bool{
+	"GRUB_DEVICE":           true,
+	"GRUB_DEVICE_UUID":      true,
+	"GRUB_DEVICE_PARTUUID":  true,
+	"GRUB_DEVICE_BOOT":      true,
+	"GRUB_DEVICE_BOOT_UUID": true,
+	"GRUB_FS":               true,
+}
+
+// parseGrubShellAssignments interprets one shell statement made of
+// assignments separated by blanks or semicolons, which may end in a comment,
+// and stores them in vars. A statement that runs a command assigns nothing
+// to the shell (`KEY=value cmd` sets KEY for cmd alone), so it is skipped.
+// The result reports an unterminated quote, in which case vars is untouched
+// and the caller retries with the next line appended.
+func parseGrubShellAssignments(stmt string, vars map[string]string) (unterminated bool) {
+	type assignment struct{ key, value string }
+	var pending []assignment
+	lookup := func(name string) (string, bool) {
+		for i := len(pending) - 1; i >= 0; i-- {
+			if pending[i].key == name {
+				return pending[i].value, true
+			}
+		}
+		v, ok := vars[name]
+		return v, ok
+	}
+
+	commit := func() {
+		for _, a := range pending {
+			vars[a.key] = a.value
+		}
+		pending = nil
+	}
+
+	pos := 0
+	for {
+		for pos < len(stmt) && (stmt[pos] == ' ' || stmt[pos] == '\t') {
+			pos++
+		}
+		if pos >= len(stmt) || stmt[pos] == '#' {
+			commit()
+			return false
+		}
+		if stmt[pos] == ';' {
+			commit()
+			pos++
 			continue
 		}
-		key := strings.TrimSpace(line[:idx])
-		// The file is sourced by a shell, where `export KEY=value` assigns KEY.
-		if fields := strings.Fields(key); len(fields) == 2 && fields[0] == "export" {
-			key = fields[1]
+
+		rest := stmt[pos:]
+		if after, ok := strings.CutPrefix(rest, "export"); ok && after != "" && (after[0] == ' ' || after[0] == '\t') {
+			pos += len("export")
+			for pos < len(stmt) && (stmt[pos] == ' ' || stmt[pos] == '\t') {
+				pos++
+			}
+			rest = stmt[pos:]
 		}
-		value := strings.TrimSpace(line[idx+1:])
-		// Strip surrounding quotes
-		value = stripQuotes(value)
-		params[key] = value
+
+		n := shellNameLen(rest)
+		if n == 0 || n >= len(rest) || rest[n] != '=' {
+			// A command, not an assignment.
+			return false
+		}
+		key := rest[:n]
+		value, used, open := readGrubShellWord(rest[n+1:], lookup)
+		if open {
+			return true
+		}
+		pending = append(pending, assignment{key, value})
+		pos += n + 1 + used
 	}
-	return params, scanner.Err()
+}
+
+// shellNameLen returns the length of the shell variable name s starts with.
+func shellNameLen(s string) int {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (i > 0 && c >= '0' && c <= '9') {
+			continue
+		}
+		return i
+	}
+	return len(s)
+}
+
+// readGrubShellWord reads the value of an assignment up to the first
+// unquoted blank or semicolon and returns it with quotes removed and
+// variables expanded, as the shell assigns it. Command substitutions are
+// not run: they are kept as written. open reports a quote that does not
+// close within s.
+func readGrubShellWord(s string, lookup func(string) (string, bool)) (value string, used int, open bool) {
+	var b strings.Builder
+	i := 0
+	for i < len(s) {
+		c := s[i]
+		switch {
+		case c == ' ' || c == '\t' || c == ';':
+			return b.String(), i, false
+		case c == '\\':
+			if i+1 >= len(s) {
+				return "", 0, true
+			}
+			if s[i+1] != '\n' {
+				b.WriteByte(s[i+1])
+			}
+			i += 2
+		case c == '\'':
+			j := strings.IndexByte(s[i+1:], '\'')
+			if j < 0 {
+				return "", 0, true
+			}
+			b.WriteString(s[i+1 : i+1+j])
+			i += j + 2
+		case c == '"':
+			i++
+			closed := false
+			for i < len(s) && !closed {
+				switch c := s[i]; c {
+				case '"':
+					closed = true
+					i++
+				case '\\':
+					if i+1 >= len(s) {
+						return "", 0, true
+					}
+					switch next := s[i+1]; next {
+					case '$', '`', '"', '\\':
+						b.WriteByte(next)
+					case '\n':
+					default:
+						b.WriteByte(c)
+						b.WriteByte(next)
+					}
+					i += 2
+				case '$':
+					n, ok := expandGrubShellVar(s[i:], lookup, &b)
+					if !ok {
+						return "", 0, true
+					}
+					i += n
+				case '`':
+					j := strings.IndexByte(s[i+1:], '`')
+					if j < 0 {
+						return "", 0, true
+					}
+					b.WriteString(s[i : i+j+2])
+					i += j + 2
+				default:
+					b.WriteByte(c)
+					i++
+				}
+			}
+			if !closed {
+				return "", 0, true
+			}
+		case c == '$':
+			n, ok := expandGrubShellVar(s[i:], lookup, &b)
+			if !ok {
+				return "", 0, true
+			}
+			i += n
+		case c == '`':
+			j := strings.IndexByte(s[i+1:], '`')
+			if j < 0 {
+				return "", 0, true
+			}
+			b.WriteString(s[i : i+j+2])
+			i += j + 2
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	return b.String(), i, false
+}
+
+// expandGrubShellVar writes the expansion of the $ expression s starts with
+// to b and returns how much of s it consumed. ok is false when a $( or ${
+// does not close within s.
+//
+// A variable the files assigned expands to its value. One they never
+// assigned expands to nothing, as in the shell, unless grub-mkconfig sets it
+// itself or it is not a GRUB_ setting: those keep their $NAME form, since
+// their value is not in the files. Command substitutions and parameter
+// expansions with operators are kept as written.
+func expandGrubShellVar(s string, lookup func(string) (string, bool), b *strings.Builder) (used int, ok bool) {
+	resolve := func(name, written string) {
+		if v, ok := lookup(name); ok {
+			b.WriteString(v)
+			return
+		}
+		if grubMkconfigComputedVars[name] || !strings.HasPrefix(name, "GRUB_") {
+			b.WriteString(written)
+		}
+	}
+
+	if len(s) < 2 {
+		b.WriteByte('$')
+		return 1, true
+	}
+	switch s[1] {
+	case '(':
+		depth := 0
+		for i := 1; i < len(s); i++ {
+			switch s[i] {
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 {
+					b.WriteString(s[:i+1])
+					return i + 1, true
+				}
+			}
+		}
+		return 0, false
+	case '{':
+		j := strings.IndexByte(s, '}')
+		if j < 0 {
+			return 0, false
+		}
+		name := s[2:j]
+		if n := shellNameLen(name); n > 0 && n == len(name) && (name[0] < '0' || name[0] > '9') {
+			resolve(name, s[:j+1])
+		} else {
+			b.WriteString(s[:j+1])
+		}
+		return j + 1, true
+	}
+	n := shellNameLen(s[1:])
+	if n == 0 || (s[1] >= '0' && s[1] <= '9') {
+		b.WriteByte('$')
+		return 1, true
+	}
+	resolve(s[1:1+n], s[:1+n])
+	return 1 + n, true
 }
 
 // stripQuotes removes surrounding single or double quotes from a string.
