@@ -73,7 +73,7 @@ func initMssqlDatabase(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 		"databaseId":         llx.IntData(databaseID),
 		"ownerName":          llx.StringData(ownerName),
 		"ownerSid":           llx.StringData(sidString(ownerSid)),
-		"ownerPrincipalId":   llx.IntData(ownerPrincipalID.Int64),
+		"ownerPrincipalId":   nullInt(ownerPrincipalID),
 		"createDate":         llx.TimeDataPtr(nullTime(createDate)),
 		"compatibilityLevel": llx.IntData(compatLevel),
 		"collation":          llx.StringData(collation),
@@ -119,10 +119,7 @@ func scanDatabaseUser(runtime *plugin.Runtime, database string, rows *sql.Rows) 
 		"createDate":                 llx.TimeDataPtr(nullTime(createDate)),
 		"modifyDate":                 llx.TimeDataPtr(nullTime(modifyDate)),
 	}
-	if isAD {
-		fields["activeDirectoryPrincipal"] = llx.StringData(name)
-		fields["activeDirectorySid"] = llx.StringData(canonicalSid)
-	}
+	setActiveDirectoryFields(fields, isAD, name, canonicalSid)
 	res, err := CreateResource(runtime, "mssql.databaseUser", fields)
 	if err != nil {
 		return nil, err
@@ -218,20 +215,10 @@ func (c *mqlMssqlDatabase) roles() ([]any, error) {
 		if err := rows.Scan(&pid, &name, &isFixedRole, &owningPid, &createDate, &modifyDate); err != nil {
 			return nil, err
 		}
-		res, err := CreateResource(c.MqlRuntime, "mssql.databaseRole", map[string]*llx.RawData{
-			"__id":              llx.StringData(databasePrincipalID(dbID, name)),
-			"name":              llx.StringData(name),
-			"principalId":       llx.IntData(pid),
-			"isFixedRole":       llx.BoolData(isFixedRole),
-			"owningPrincipalId": llx.IntData(owningPid),
-			"createDate":        llx.TimeDataPtr(nullTime(createDate)),
-			"modifyDate":        llx.TimeDataPtr(nullTime(modifyDate)),
-		})
+		role, err := newMssqlDatabaseRole(c.MqlRuntime, c.Name.Data, dbID, pid, name, isFixedRole, owningPid, createDate, modifyDate)
 		if err != nil {
 			return nil, err
 		}
-		role := res.(*mqlMssqlDatabaseRole)
-		role.cacheDatabase = c.Name.Data
 		list = append(list, role)
 	}
 	return list, rows.Err()
@@ -438,21 +425,40 @@ func (c *mqlMssqlDatabase) auditSpecifications() ([]any, error) {
 	db := quoteName(c.Name.Data)
 
 	details := map[int64]map[string]any{}
+	actions := map[int64][]any{}
 	detailRows, err := client.QueryContext(mssqlContext(),
-		`SELECT database_specification_id, audit_action_name, ISNULL(audited_result, '')
-		 FROM `+db+`.sys.database_audit_specification_details`)
+		`SELECT d.database_specification_id, d.audit_action_name, ISNULL(d.audited_result, ''),
+			d.class_desc, d.is_group,
+			ISNULL(CASE d.class
+				WHEN 0 THEN @p1
+				WHEN 1 THEN os.name + '.' + o.name
+				WHEN 3 THEN s.name
+			END, ''),
+			ISNULL(pr.name, '')
+		 FROM `+db+`.sys.database_audit_specification_details d
+		 LEFT JOIN `+db+`.sys.all_objects o ON d.class = 1 AND d.major_id = o.object_id
+		 LEFT JOIN `+db+`.sys.schemas os ON o.schema_id = os.schema_id
+		 LEFT JOIN `+db+`.sys.schemas s ON d.class = 3 AND d.major_id = s.schema_id
+		 LEFT JOIN `+db+`.sys.database_principals pr ON d.audited_principal_id = pr.principal_id
+		 ORDER BY d.database_specification_id, d.audit_action_name, d.class, d.major_id, d.minor_id`,
+		sql.Named("p1", c.Name.Data))
 	if err == nil {
 		for detailRows.Next() {
 			var specID int64
-			var action, result string
-			if err := detailRows.Scan(&specID, &action, &result); err != nil {
+			var action, result, class, securable, principal string
+			var isGroup bool
+			if err := detailRows.Scan(&specID, &action, &result, &class, &isGroup, &securable, &principal); err != nil {
 				detailRows.Close()
 				return nil, err
 			}
 			if details[specID] == nil {
 				details[specID] = map[string]any{}
 			}
+			// actionGroups is keyed by action name, so an action audited on
+			// several objects keeps one entry (the last row's result);
+			// auditedActions carries one entry per row.
 			details[specID][action] = result
+			actions[specID] = append(actions[specID], auditedAction(action, class, securable, principal, isGroup))
 		}
 		err = detailRows.Err()
 		detailRows.Close()
@@ -483,12 +489,17 @@ func (c *mqlMssqlDatabase) auditSpecifications() ([]any, error) {
 		if groups == nil {
 			groups = map[string]any{}
 		}
+		audited := actions[specID]
+		if audited == nil {
+			audited = []any{}
+		}
 		res, err := CreateResource(c.MqlRuntime, "mssql.auditSpecification", map[string]*llx.RawData{
-			"__id":         llx.StringData(c.__id + "/dbAuditSpec/" + name),
-			"name":         llx.StringData(name),
-			"isEnabled":    llx.BoolData(isEnabled),
-			"auditName":    llx.StringData(auditName),
-			"actionGroups": llx.MapData(groups, types.String),
+			"__id":           llx.StringData(c.__id + "/dbAuditSpec/" + name),
+			"name":           llx.StringData(name),
+			"isEnabled":      llx.BoolData(isEnabled),
+			"auditName":      llx.StringData(auditName),
+			"actionGroups":   llx.MapData(groups, types.String),
+			"auditedActions": llx.ArrayData(audited, types.String),
 		})
 		if err != nil {
 			return nil, err

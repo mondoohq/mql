@@ -77,19 +77,7 @@ func newMssqlLogin(runtime *plugin.Runtime, principalID int64, name, typeDesc, d
 		"isActiveDirectoryPrincipal": llx.BoolData(isAD),
 		"passwordLastSetTime":        llx.TimeDataPtr(nullTime(passwordLastSet)),
 	}
-	if isAD {
-		fields["activeDirectoryPrincipal"] = llx.StringData(name)
-		fields["activeDirectorySid"] = llx.StringData(canonicalSid)
-	}
-	if isPolicyChecked.Valid {
-		fields["isPolicyChecked"] = llx.BoolData(isPolicyChecked.Bool)
-	}
-	if isExpirationChecked.Valid {
-		fields["isExpirationChecked"] = llx.BoolData(isExpirationChecked.Bool)
-	}
-	if mustChange.Valid {
-		fields["mustChange"] = llx.BoolData(mustChange.Int64 == 1)
-	}
+	setLoginOptionalFields(fields, isAD, name, canonicalSid, isPolicyChecked, isExpirationChecked, mustChange)
 
 	res, err := CreateResource(runtime, "mssql.login", fields)
 	if err != nil {
@@ -100,20 +88,84 @@ func newMssqlLogin(runtime *plugin.Runtime, principalID int64, name, typeDesc, d
 	return login, nil
 }
 
-// newMssqlServerRoleRef builds a server-role resource with the fields available
-// from a role-membership join; unfetched scalars resolve to null.
-func newMssqlServerRoleRef(runtime *plugin.Runtime, principalID int64, name string, isFixedRole bool) (*mqlMssqlServerRole, error) {
-	instanceID := mssqlConnection(runtime).InstanceID()
+// setActiveDirectoryFields sets the AD identity of a login or database user,
+// or null for a principal that is not an Active Directory one. Every field is
+// set either way, so none is left unset for the runtime to report as a
+// provider bug.
+func setActiveDirectoryFields(fields map[string]*llx.RawData, isAD bool, name, canonicalSid string) {
+	if isAD {
+		fields["activeDirectoryPrincipal"] = llx.StringData(name)
+		fields["activeDirectorySid"] = llx.StringData(canonicalSid)
+		return
+	}
+	fields["activeDirectoryPrincipal"] = llx.NilData
+	fields["activeDirectorySid"] = llx.NilData
+}
+
+// setLoginOptionalFields sets the fields of a login that only some login types
+// carry: the AD identity, and the password policy of a SQL login (NULL in
+// sys.sql_logins for any other type), as null where they do not apply.
+func setLoginOptionalFields(fields map[string]*llx.RawData, isAD bool, name, canonicalSid string,
+	isPolicyChecked, isExpirationChecked sql.NullBool, mustChange sql.NullInt64) {
+	setActiveDirectoryFields(fields, isAD, name, canonicalSid)
+	fields["isPolicyChecked"] = llx.NilData
+	if isPolicyChecked.Valid {
+		fields["isPolicyChecked"] = llx.BoolData(isPolicyChecked.Bool)
+	}
+	fields["isExpirationChecked"] = llx.NilData
+	if isExpirationChecked.Valid {
+		fields["isExpirationChecked"] = llx.BoolData(isExpirationChecked.Bool)
+	}
+	fields["mustChange"] = llx.NilData
+	if mustChange.Valid {
+		fields["mustChange"] = llx.BoolData(mustChange.Int64 == 1)
+	}
+}
+
+// roleColumns is the role column list shared by every query that builds a
+// server or database role, so a role reached through membership is as complete
+// as one from the listing; both share one cache entry.
+const roleColumns = `r.principal_id, r.name, r.is_fixed_role, ISNULL(r.owning_principal_id, 0),
+	r.create_date, r.modify_date`
+
+// newMssqlServerRole builds a server-role resource from a row selected with
+// roleColumns.
+func newMssqlServerRole(runtime *plugin.Runtime, instanceID string, principalID int64, name string, isFixedRole bool,
+	owningPid int64, createDate, modifyDate sql.NullTime) (*mqlMssqlServerRole, error) {
 	res, err := CreateResource(runtime, "mssql.serverRole", map[string]*llx.RawData{
-		"__id":        llx.StringData(serverPrincipalID(instanceID, name)),
-		"name":        llx.StringData(name),
-		"principalId": llx.IntData(principalID),
-		"isFixedRole": llx.BoolData(isFixedRole),
+		"__id":              llx.StringData(serverPrincipalID(instanceID, name)),
+		"name":              llx.StringData(name),
+		"principalId":       llx.IntData(principalID),
+		"isFixedRole":       llx.BoolData(isFixedRole),
+		"owningPrincipalId": llx.IntData(owningPid),
+		"createDate":        llx.TimeDataPtr(nullTime(createDate)),
+		"modifyDate":        llx.TimeDataPtr(nullTime(modifyDate)),
 	})
 	if err != nil {
 		return nil, err
 	}
 	return res.(*mqlMssqlServerRole), nil
+}
+
+// newMssqlDatabaseRole builds a database-role resource from a row selected
+// with roleColumns.
+func newMssqlDatabaseRole(runtime *plugin.Runtime, database, dbID string, principalID int64, name string, isFixedRole bool,
+	owningPid int64, createDate, modifyDate sql.NullTime) (*mqlMssqlDatabaseRole, error) {
+	res, err := CreateResource(runtime, "mssql.databaseRole", map[string]*llx.RawData{
+		"__id":              llx.StringData(databasePrincipalID(dbID, name)),
+		"name":              llx.StringData(name),
+		"principalId":       llx.IntData(principalID),
+		"isFixedRole":       llx.BoolData(isFixedRole),
+		"owningPrincipalId": llx.IntData(owningPid),
+		"createDate":        llx.TimeDataPtr(nullTime(createDate)),
+		"modifyDate":        llx.TimeDataPtr(nullTime(modifyDate)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	role := res.(*mqlMssqlDatabaseRole)
+	role.cacheDatabase = database
+	return role, nil
 }
 
 // --- mssql.login ------------------------------------------------------------
@@ -173,7 +225,7 @@ func serverRolesForMember(runtime *plugin.Runtime, memberPrincipalID int64) ([]a
 	if err != nil {
 		return nil, err
 	}
-	const q = `SELECT r.principal_id, r.name, r.is_fixed_role
+	const q = `SELECT ` + roleColumns + `
 		FROM sys.server_role_members rm
 		JOIN sys.server_principals r ON rm.role_principal_id = r.principal_id
 		WHERE rm.member_principal_id = @p1`
@@ -183,15 +235,17 @@ func serverRolesForMember(runtime *plugin.Runtime, memberPrincipalID int64) ([]a
 	}
 	defer rows.Close()
 
+	instanceID := mssqlConnection(runtime).InstanceID()
 	list := []any{}
 	for rows.Next() {
-		var pid int64
+		var pid, owningPid int64
 		var name string
 		var isFixedRole bool
-		if err := rows.Scan(&pid, &name, &isFixedRole); err != nil {
+		var createDate, modifyDate sql.NullTime
+		if err := rows.Scan(&pid, &name, &isFixedRole, &owningPid, &createDate, &modifyDate); err != nil {
 			return nil, err
 		}
-		role, err := newMssqlServerRoleRef(runtime, pid, name, isFixedRole)
+		role, err := newMssqlServerRole(runtime, instanceID, pid, name, isFixedRole, owningPid, createDate, modifyDate)
 		if err != nil {
 			return nil, err
 		}
@@ -317,7 +371,7 @@ func databaseRolesForMember(runtime *plugin.Runtime, database string, memberPrin
 		return nil, err
 	}
 	db := quoteName(database)
-	q := `SELECT r.principal_id, r.name, r.is_fixed_role
+	q := `SELECT ` + roleColumns + `
 		FROM ` + db + `.sys.database_role_members rm
 		JOIN ` + db + `.sys.database_principals r ON rm.role_principal_id = r.principal_id
 		WHERE rm.member_principal_id = @p1`
@@ -331,23 +385,17 @@ func databaseRolesForMember(runtime *plugin.Runtime, database string, memberPrin
 	dbID := databaseIdentifier(instanceID, database)
 	list := []any{}
 	for rows.Next() {
-		var pid int64
+		var pid, owningPid int64
 		var name string
 		var isFixedRole bool
-		if err := rows.Scan(&pid, &name, &isFixedRole); err != nil {
+		var createDate, modifyDate sql.NullTime
+		if err := rows.Scan(&pid, &name, &isFixedRole, &owningPid, &createDate, &modifyDate); err != nil {
 			return nil, err
 		}
-		res, err := CreateResource(runtime, "mssql.databaseRole", map[string]*llx.RawData{
-			"__id":        llx.StringData(databasePrincipalID(dbID, name)),
-			"name":        llx.StringData(name),
-			"principalId": llx.IntData(pid),
-			"isFixedRole": llx.BoolData(isFixedRole),
-		})
+		role, err := newMssqlDatabaseRole(runtime, database, dbID, pid, name, isFixedRole, owningPid, createDate, modifyDate)
 		if err != nil {
 			return nil, err
 		}
-		role := res.(*mqlMssqlDatabaseRole)
-		role.cacheDatabase = database
 		list = append(list, role)
 	}
 	return list, rows.Err()

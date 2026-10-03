@@ -52,8 +52,15 @@ mssql.server @defaults("name version edition") {
   versionBanner string
   // Product version number, for example 16.0.1000.6
   productVersion @maturity("deprecated") @replaced_by("asset.version") string
-  // Service pack or cumulative update level
+  // Service pack level, for example RTM or SP1
+  //
+  // The release level without the cumulative update, so an RTM-CU27 build
+  // reads RTM. Read productUpdateLevel for the cumulative update.
   productLevel string
+  // Cumulative update level, for example CU27
+  //
+  // Null when no cumulative update is installed on the release level.
+  productUpdateLevel string
   // Product edition, for example Enterprise or Developer
   edition string
   // Whether the instance is part of a failover cluster
@@ -240,18 +247,28 @@ mssql.serverRole @defaults("name") {
 //
 // A single row from sys.server_permissions or sys.database_permissions
 // describing a permission granted or denied to a principal. `state` is GRANT,
-// DENY, or GRANT_WITH_GRANT, `permissionName` is the permission (for example
-// CONTROL SERVER or CONNECT), and `class` names the securable class the
-// permission applies to.
+// DENY, or GRANT_WITH_GRANT_OPTION, `permissionName` is the permission (for
+// example CONTROL SERVER or CONNECT), `class` names the securable class the
+// permission applies to, and `securableName` the securable itself, for example
+// the login an IMPERSONATE applies to.
 mssql.permission @defaults("permissionName state") {
   // Permission name, for example CONTROL SERVER, IMPERSONATE, or CONNECT
   permissionName string
-  // Grant state: GRANT, DENY, or GRANT_WITH_GRANT
+  // Grant state: GRANT, DENY, or GRANT_WITH_GRANT_OPTION
   state string
   // Securable class, for example SERVER, DATABASE, or OBJECT_OR_COLUMN
   class string
-  // Name of the principal the permission applies to
+  // Name of the principal the permission is granted or denied to
   granteeName string
+  // Name of the securable the permission applies to
+  //
+  // Empty for the server itself, the database name for a DATABASE-class
+  // permission, schema.object for an object, and the principal, endpoint,
+  // schema, assembly, type, or key name for those classes, for example "sa"
+  // for IMPERSONATE ON LOGIN::sa.
+  securableName string
+  // Column a column-level permission applies to, empty otherwise
+  columnName string
 }
 
 // SQL Server database
@@ -273,6 +290,8 @@ mssql.database @defaults("name") {
   // Canonical SID (S-1-5-...) of the database owner
   ownerSid string
   // Principal id of the database owner within the instance
+  //
+  // Null when the owner is not visible to the scanning login.
   ownerPrincipalId int
   // When the database was created
   createDate time
@@ -295,6 +314,10 @@ mssql.database @defaults("name") {
   // Containment mode: NONE or PARTIAL
   containment string
   // Database state, for example ONLINE or OFFLINE
+  //
+  // The principals, permissions, keys, and other catalog collections of a
+  // database that is not ONLINE cannot be read and return an error; filter on
+  // stateDesc == "ONLINE" to leave such databases out.
   stateDesc string
   // Whether Service Broker is enabled
   isBrokerEnabled bool
@@ -535,7 +558,7 @@ mssql.audit @defaults("name isEnabled") {
 // A server-level or database-level specification (sys.server_audit_specifications
 // or sys.database_audit_specifications) that binds a set of audited actions to
 // an audit. `auditName` names the parent audit, `isEnabled` reports whether the
-// specification is active, and `details` lists the audited action groups.
+// specification is active, and `actionGroups` and `auditedActions` list what it audits.
 mssql.auditSpecification @defaults("name isEnabled") {
   // Specification name
   name string
@@ -546,8 +569,16 @@ mssql.auditSpecification @defaults("name isEnabled") {
   // Audited action groups mapped to their state
   //
   // Keys are audited action group names (for example SUCCESSFUL_LOGIN_GROUP or
-  // FAILED_LOGIN_GROUP) and values are the recorded audit-action state.
+  // FAILED_LOGIN_GROUP) and values are the recorded audit-action state. An
+  // action audited on several objects appears once, with the state of only
+  // one of those rows; read auditedActions for the per-object entries.
   actionGroups map[string]string
+  // Audited actions, one entry per row of the specification
+  //
+  // An action group by name, for example FAILED_LOGIN_GROUP, and an
+  // object-level action as written in the specification, for example
+  // "SELECT ON OBJECT::dbo.t1 BY public".
+  auditedActions []string
 }
 
 // SQL Server symmetric key

@@ -98,9 +98,9 @@ func TestIdentifierBuilders(t *testing.T) {
 	if got := databasePrincipalID(dbID, "guest"); got != "guest@h:1433\\CM_CAS" {
 		t.Errorf("databasePrincipalID = %q", got)
 	}
-	// composite permission id must be unique per (class, permission, state, grantee)
-	a := permissionResourceID("p", "SERVER", "CONTROL SERVER", "GRANT", "sa")
-	b := permissionResourceID("p", "SERVER", "CONTROL SERVER", "DENY", "sa")
+	// composite permission id must be unique per (class, securable, permission, state, grantee)
+	a := permissionResourceID("p", "SERVER", 0, 0, "CONTROL SERVER", "GRANT", "sa")
+	b := permissionResourceID("p", "SERVER", 0, 0, "CONTROL SERVER", "DENY", "sa")
 	if a == b {
 		t.Errorf("permissionResourceID collides across state: %q", a)
 	}
