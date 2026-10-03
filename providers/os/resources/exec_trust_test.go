@@ -16,7 +16,7 @@ import (
 // rhel7ExecConn mocks RHEL 7.9 with Node unpacked from the official tarball as
 // root (tar kept the archive's uid 1000 on /usr/local/lib), Claude Code from
 // `npm install -g`, and Ollama in /usr/bin. Commands run as uid.
-func rhel7ExecConn(t *testing.T, uid string) *mock.Connection {
+func rhel7ExecConn(t *testing.T, id uint32, uid string) *mock.Connection {
 	t.Helper()
 	const lsPrefix = `dr-xr-xr-x. 17    0    0       224 Oct  2 23:58 /
 drwxr-xr-x. 13    0    0       155 Sep 30  2024 /usr
@@ -53,7 +53,7 @@ drwxr-xr-x.  2 1000 1000        20 Oct  3 02:05 /tmp/k
 -rwxr-xr-x.  1 1000 1000        40 Oct  3 02:05 /tmp/k/kubelet
 `},
 	}
-	conn, err := mock.New(0, &inventory.Asset{
+	conn, err := mock.New(id, &inventory.Asset{
 		Platform: &inventory.Platform{Name: "redhat", Version: "7.9", Family: []string{"redhat", "linux", "unix", "os"}},
 	}, mock.WithData(&mock.TomlData{
 		Commands: cmds,
@@ -66,7 +66,7 @@ drwxr-xr-x.  2 1000 1000        20 Oct  3 02:05 /tmp/k
 }
 
 func TestRunnableBinary(t *testing.T) {
-	root := rhel7ExecConn(t, "0")
+	root := rhel7ExecConn(t, 9100, "0")
 	// uid 1000 owns /usr/local/lib/node_modules and could swap claude for
 	// anything: a root scan does not run it
 	assert.Empty(t, runnableBinary(root, "/usr/local/bin/claude"))
@@ -78,10 +78,10 @@ func TestRunnableBinary(t *testing.T) {
 	assert.Equal(t, "kubelet", runnableBinary(root, "kubelet"))
 
 	// the account that owns the tree may run what it owns
-	owner := rhel7ExecConn(t, "1000")
+	owner := rhel7ExecConn(t, 9101, "1000")
 	assert.Equal(t, "/usr/local/bin/claude", runnableBinary(owner, "/usr/local/bin/claude"))
 	// another account may not
-	other := rhel7ExecConn(t, "1500")
+	other := rhel7ExecConn(t, 9102, "1500")
 	assert.Empty(t, runnableBinary(other, "/usr/local/bin/claude"))
 
 	// the tool version lookup finds claude where sudo's PATH does not reach,
