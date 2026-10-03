@@ -190,6 +190,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"cassandra.role.isSuperuser": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCassandraRole).GetIsSuperuser()).ToDataRes(types.Bool)
 	},
+	"cassandra.role.isEffectiveSuperuser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCassandraRole).GetIsEffectiveSuperuser()).ToDataRes(types.Bool)
+	},
 	"cassandra.role.hasPassword": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCassandraRole).GetHasPassword()).ToDataRes(types.Bool)
 	},
@@ -348,6 +351,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"cassandra.role.isSuperuser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCassandraRole).IsSuperuser, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cassandra.role.isEffectiveSuperuser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCassandraRole).IsEffectiveSuperuser, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"cassandra.role.hasPassword": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -715,12 +722,13 @@ type mqlCassandraRole struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlCassandraRoleInternal it will be used here
-	Name        plugin.TValue[string]
-	CanLogin    plugin.TValue[bool]
-	IsSuperuser plugin.TValue[bool]
-	HasPassword plugin.TValue[bool]
-	MemberOf    plugin.TValue[[]any]
-	Permissions plugin.TValue[[]any]
+	Name                 plugin.TValue[string]
+	CanLogin             plugin.TValue[bool]
+	IsSuperuser          plugin.TValue[bool]
+	IsEffectiveSuperuser plugin.TValue[bool]
+	HasPassword          plugin.TValue[bool]
+	MemberOf             plugin.TValue[[]any]
+	Permissions          plugin.TValue[[]any]
 }
 
 // createCassandraRole creates a new instance of this resource
@@ -765,6 +773,10 @@ func (c *mqlCassandraRole) GetCanLogin() *plugin.TValue[bool] {
 
 func (c *mqlCassandraRole) GetIsSuperuser() *plugin.TValue[bool] {
 	return &c.IsSuperuser
+}
+
+func (c *mqlCassandraRole) GetIsEffectiveSuperuser() *plugin.TValue[bool] {
+	return &c.IsEffectiveSuperuser
 }
 
 func (c *mqlCassandraRole) GetHasPassword() *plugin.TValue[bool] {

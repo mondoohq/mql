@@ -20,7 +20,7 @@ Arguments:
 mql shell cassandra localhost --user cassandra --ask-pass
 ```
 
-> Prefer a least-privileged role for auditing. A role with `SELECT` on the `system`, `system_schema`, `system_auth`, and `system_views` keyspaces can read everything the resources below need. Without the `system_auth`/`system_views` grants, the cluster resolves while the security posture and roles come back null/empty rather than failing the scan. When the cluster runs the default `AllowAllAuthenticator`, no credentials are required and the roles table is empty; `cassandra.cluster.security.authenticationEnabled` reports this.
+> Prefer a least-privileged role for auditing. A role with `SELECT` on the `system`, `system_schema`, `system_auth`, and `system_views` keyspaces can read everything the resources below need. Without the `system_auth`/`system_views` grants, the cluster resolves while the security posture and roles cannot be read. With the `StructuredErrors` feature on they report a permission error naming the missing grant; without it they come back null/empty, as in earlier releases. When the cluster runs the default `AllowAllAuthenticator`, no credentials are required and the roles table is empty; `cassandra.cluster.security.authenticationEnabled` reports this.
 
 ## Usage
 

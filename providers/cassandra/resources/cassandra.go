@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/cassandra/connection"
 )
@@ -23,4 +24,10 @@ func toAnySlice(in []string) []any {
 		out = append(out, s)
 	}
 	return out
+}
+
+// refused classifies a CQL authorization failure as Forbidden, naming the
+// grant the read needed.
+func refused(err error, permission string) error {
+	return llx.Forbidden(err, llx.WithPermissions(permission))
 }
