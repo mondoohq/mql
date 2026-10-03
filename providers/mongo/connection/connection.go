@@ -179,17 +179,35 @@ func (c *MongoConnection) tlsConfig() (*tls.Config, error) {
 	return cfg, nil
 }
 
+// clientOptions builds the driver options from the connection settings.
+func (c *MongoConnection) clientOptions() (*options.ClientOptions, error) {
+	opts := options.Client().ApplyURI(c.uri())
+	// A bare host names one server, and that server is the asset. Without a
+	// direct connection the driver discovers the replica set and routes
+	// commands to the primary, so auditing a secondary reported the primary's
+	// configuration, and a member whose set is not initiated yet could not be
+	// reached at all. A full connection string keeps its own topology settings
+	// (directConnection, replicaSet).
+	if c.namesSingleServer() {
+		opts.SetDirect(true)
+	}
+	tlsCfg, err := c.tlsConfig()
+	if err != nil {
+		return nil, err
+	}
+	if tlsCfg != nil {
+		opts.SetTLSConfig(tlsCfg)
+	}
+	return opts, nil
+}
+
 // Client returns the shared MongoDB client, dialing on first use.
 func (c *MongoConnection) Client() (*mongo.Client, error) {
 	c.clientOnce.Do(func() {
-		opts := options.Client().ApplyURI(c.uri())
-		tlsCfg, err := c.tlsConfig()
+		opts, err := c.clientOptions()
 		if err != nil {
 			c.clientErr = err
 			return
-		}
-		if tlsCfg != nil {
-			opts.SetTLSConfig(tlsCfg)
 		}
 		client, err := mongo.Connect(opts)
 		if err != nil {

@@ -84,7 +84,8 @@ mongo.instance @defaults("version") {
 // through role inheritance, so it also reports the roles reached through a
 // custom role. `isPrivileged` flags accounts that reach a high-privilege
 // built-in role (for example root, __system, or any of the *AnyDatabase
-// roles), directly or by inheritance.
+// roles), directly or by inheritance, or a custom role granting the same
+// access through its privileges.
 mongo.user @defaults("user db") {
   // User name
   user string
@@ -102,11 +103,15 @@ mongo.user @defaults("user db") {
   // that includes another role confers that role too, transitively. This is
   // the set `isPrivileged` is decided on.
   effectiveRoles() []mongo.role
-  // Whether the user holds a high-privilege built-in role
+  // Whether the user holds a high-privilege role
   //
   // Decided on `effectiveRoles`, so an account that reaches root, dbOwner,
   // clusterAdmin or one of the *AnyDatabase roles through a custom role is
-  // flagged just like one granted the role directly.
+  // flagged just like one granted the role directly. A custom role counts
+  // too when its privileges grant the same access: the anyAction action,
+  // any action on anyResource, user or role administration (createUser,
+  // grantRole, and similar), or reading or writing documents in every
+  // database.
   isPrivileged bool
 }
 
@@ -132,16 +137,29 @@ mongo.role @defaults("role db") {
 // MongoDB role privilege
 //
 // A single privilege granted by a role: a set of `actions` on a resource. The
-// resource is a database/collection (`database`, `collection`) or the whole
-// deployment (`cluster`). A `database` of "" with `collection` "" and
-// `cluster` false denotes the any-resource grant.
+// resource is a database/collection (`database`, `collection`), the
+// time-series bucket collections (`systemBuckets`), the whole deployment
+// (`cluster`), or every resource including system collections
+// (`anyResource`). A `database` of "" with `collection` "" means every
+// non-system collection in every database.
 mongo.role.privilege @defaults("actions") {
-  // Database the privilege applies to, or empty for cluster/any-resource
+  // Database the privilege applies to, or empty for every database
   database string
   // Collection the privilege applies to, or empty for all collections
   collection string
   // Whether the privilege targets the whole cluster
   cluster bool
+  // Whether the privilege applies to every resource
+  //
+  // The anyResource grant, which also covers system collections such as
+  // admin.system.users that a `database` of "" and `collection` of "" does
+  // not.
+  anyResource bool
+  // Time-series bucket collections the privilege applies to
+  //
+  // Set for a system_buckets resource: the bucket collection name, or empty
+  // for every bucket collection in `database`. Null for every other resource.
+  systemBuckets string
   // Actions permitted, for example find, insert, or dropDatabase
   actions []string
 }

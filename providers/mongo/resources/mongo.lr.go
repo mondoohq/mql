@@ -226,6 +226,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mongo.role.privilege.cluster": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMongoRolePrivilege).GetCluster()).ToDataRes(types.Bool)
 	},
+	"mongo.role.privilege.anyResource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMongoRolePrivilege).GetAnyResource()).ToDataRes(types.Bool)
+	},
+	"mongo.role.privilege.systemBuckets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMongoRolePrivilege).GetSystemBuckets()).ToDataRes(types.String)
+	},
 	"mongo.role.privilege.actions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMongoRolePrivilege).GetActions()).ToDataRes(types.Array(types.String))
 	},
@@ -406,6 +412,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mongo.role.privilege.cluster": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMongoRolePrivilege).Cluster, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mongo.role.privilege.anyResource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMongoRolePrivilege).AnyResource, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mongo.role.privilege.systemBuckets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMongoRolePrivilege).SystemBuckets, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"mongo.role.privilege.actions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -876,10 +890,12 @@ type mqlMongoRolePrivilege struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMongoRolePrivilegeInternal it will be used here
-	Database   plugin.TValue[string]
-	Collection plugin.TValue[string]
-	Cluster    plugin.TValue[bool]
-	Actions    plugin.TValue[[]any]
+	Database      plugin.TValue[string]
+	Collection    plugin.TValue[string]
+	Cluster       plugin.TValue[bool]
+	AnyResource   plugin.TValue[bool]
+	SystemBuckets plugin.TValue[string]
+	Actions       plugin.TValue[[]any]
 }
 
 // createMongoRolePrivilege creates a new instance of this resource
@@ -924,6 +940,14 @@ func (c *mqlMongoRolePrivilege) GetCollection() *plugin.TValue[string] {
 
 func (c *mqlMongoRolePrivilege) GetCluster() *plugin.TValue[bool] {
 	return &c.Cluster
+}
+
+func (c *mqlMongoRolePrivilege) GetAnyResource() *plugin.TValue[bool] {
+	return &c.AnyResource
+}
+
+func (c *mqlMongoRolePrivilege) GetSystemBuckets() *plugin.TValue[string] {
+	return &c.SystemBuckets
 }
 
 func (c *mqlMongoRolePrivilege) GetActions() *plugin.TValue[[]any] {
