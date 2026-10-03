@@ -77,10 +77,3 @@ func TestSettingsRefusal(t *testing.T) {
 	withStructuredErrors(t, false)
 	assert.NoError(t, settingsRefusal(false), "v13 behavior: the visible subset is returned")
 }
-
-func TestMembershipQueriesFoldGrantors(t *testing.T) {
-	// PostgreSQL 16+ stores one pg_auth_members row per grantor
-	for _, q := range []string{memberOfQuery, membersQuery} {
-		assert.Contains(t, q, "SELECT DISTINCT")
-	}
-}

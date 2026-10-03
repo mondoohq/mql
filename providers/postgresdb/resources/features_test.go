@@ -11,7 +11,8 @@ import (
 )
 
 // withStructuredErrors turns the StructuredErrors feature on or off for one
-// test, the way a Connect request carrying the scan's features does.
+// test, the way a Connect request carrying the scan's features does. The flag
+// is process-wide, so tests that use it must not call t.Parallel.
 func withStructuredErrors(t *testing.T, on bool) {
 	t.Helper()
 	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
