@@ -6,6 +6,7 @@ package logindefs
 import (
 	"bufio"
 	"io"
+	"math"
 	"regexp"
 	"strings"
 )
@@ -18,6 +19,11 @@ func Parse(r io.Reader) map[string]string {
 	res := map[string]string{}
 
 	scanner := bufio.NewScanner(r)
+	// shadow reads login.defs with getline(3) and has no line limit; read
+	// whole lines so a long value does not drop every key after it. With no
+	// token limit the scanner can only fail on a read error, and callers pass
+	// file content already held in memory.
+	scanner.Buffer(make([]byte, 0, 64*1024), math.MaxInt)
 	for scanner.Scan() {
 		line := scanner.Text()
 		noWhitespace := strings.TrimSpace(line)
