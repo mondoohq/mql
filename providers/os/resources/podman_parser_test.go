@@ -660,3 +660,83 @@ func TestPodmanMergeImageInspect(t *testing.T) {
 		"quay.io/libpod/busybox@sha256:c9249fdf56138f0d929e2080ae98ee9cb2946f71498fc1484288e6a935b5e5bc",
 	}, busybox.RepoDigests)
 }
+
+// captured from "podman ps -a --format json" on podman 3.4.2 (Ubuntu 20.04)
+// and 3.0.1 (Debian 11): podman 3 spells the port mapping in camelCase and has
+// no range
+const podmanTestPsPortsV3 = `[
+  {
+    "Id": "pweb",
+    "Names": ["pweb"],
+    "Ports": [{"hostPort": 8081, "containerPort": 80, "protocol": "tcp", "hostIP": ""}]
+  },
+  {
+    "Id": "plocal",
+    "Names": ["plocal"],
+    "Ports": [{"hostPort": 8083, "containerPort": 80, "protocol": "tcp", "hostIP": "127.0.0.1"}]
+  },
+  {
+    "Id": "pexit",
+    "Names": ["pexit"],
+    "Ports": null
+  }
+]`
+
+func TestPodmanPortDicts_Podman3(t *testing.T) {
+	entries, err := parsePodmanPs(podmanTestPsPortsV3)
+	require.NoError(t, err)
+	require.Len(t, entries, 3)
+
+	assert.Equal(t, []any{map[string]any{
+		"hostIp":        "0.0.0.0",
+		"hostPort":      int64(8081),
+		"containerPort": int64(80),
+		"protocol":      "tcp",
+		"range":         int64(1),
+	}}, podmanPortDicts(entries[0].Ports), "published on every interface")
+	assert.Equal(t, []any{map[string]any{
+		"hostIp":        "127.0.0.1",
+		"hostPort":      int64(8083),
+		"containerPort": int64(80),
+		"protocol":      "tcp",
+		"range":         int64(1),
+	}}, podmanPortDicts(entries[1].Ports), "bound to loopback")
+	assert.Empty(t, podmanPortDicts(entries[2].Ports))
+}
+
+// A port record that names no port in either spelling is not every interface.
+func TestPodmanPortDicts_UndecodedPortIsNotAllInterfaces(t *testing.T) {
+	entries, err := parsePodmanPs(`[{"Id": "x", "Ports": [{"protocol": "tcp"}]}]`)
+	require.NoError(t, err)
+	ports := podmanPortDicts(entries[0].Ports)
+	require.Len(t, ports, 1)
+	assert.Equal(t, "", ports[0].(map[string]any)["hostIp"])
+}
+
+func TestPodmanVersionFailure(t *testing.T) {
+	cases := []struct {
+		name         string
+		exitCode     int64
+		stderr       string
+		notInstalled bool
+		refused      bool
+	}{
+		// Debian/Ubuntu /bin/sh (dash)
+		{"dash not found", 127, "sh: 1: podman: not found\n", true, false},
+		{"bash not found", 127, "bash: line 1: podman: command not found\n", true, false},
+		// sudo exits 1 when it cannot find the command
+		{"sudo not found", 1, "sudo: podman: command not found\n", true, false},
+		{"sudo not found, German locale", 1, "sudo: podman: Befehl nicht gefunden\n", true, false},
+		// deb13 over SSH --sudo with "Defaults requiretty"
+		{"sudo requiretty", 1, "sudo: sorry, you must have a tty to run sudo\n", false, true},
+		{"sudo password", 1, "sudo: a password is required\n", false, true},
+		{"not executable", 126, "sh: 1: podman: Permission denied\n", false, true},
+		{"engine failure", 125, "Error: cannot re-exec process\n", false, false},
+	}
+	for _, kase := range cases {
+		t.Run(kase.name, func(t *testing.T) {
+			assert.Equal(t, kase.notInstalled, isPodmanNotInstalled(kase.exitCode, kase.stderr), "not installed")
+			assert.Equal(t, kase.refused, isPodmanRefused(kase.exitCode, kase.stderr), "refused")
+		})
+	}
+}
