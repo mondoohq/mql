@@ -37,6 +37,8 @@ Examples:
   cnspec shell opensearch localhost --user admin --ask-pass --tls-insecure
   cnspec scan opensearch os.contoso.com --user auditor --ask-pass --tls-ca ca.pem
 `,
+			// The host may be given as the positional argument instead of --host.
+			MaxArgs: 1,
 			Flags: []plugin.Flag{
 				{
 					Long:    "host",

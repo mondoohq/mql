@@ -37,6 +37,8 @@ Examples:
   cnspec shell redisdb localhost --ask-pass
   cnspec scan redisdb redis.contoso.com --user auditor --ask-pass --tls
 `,
+			// The host may be given as the positional argument instead of --host.
+			MaxArgs: 1,
 			Flags: []plugin.Flag{
 				{
 					Long:    "host",

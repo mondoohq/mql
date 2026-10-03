@@ -226,3 +226,9 @@ func TestGenBuiltinFlagsSortsDiscoveries(t *testing.T) {
 	desc := discoverFlagDesc(t, genBuiltinFlags("terraform", "k8s"))
 	assert.True(t, strings.Contains(desc, "all, auto, k8s, terraform"), desc)
 }
+
+func TestGenBuiltinFlagsListsEachDiscoveryOnce(t *testing.T) {
+	// mssql, mysqldb, postgresdb and others declare all and auto themselves
+	desc := discoverFlagDesc(t, genBuiltinFlags("auto", "all", "instance", "databases", "none"))
+	assert.True(t, strings.HasSuffix(desc, "Supports: all, auto, databases, instance, none"), desc)
+}
