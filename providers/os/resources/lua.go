@@ -90,7 +90,7 @@ func (r *mqlLuaPackages) gatherData() error {
 			if err == nil && cmd.ExitStatus == 0 {
 				pkgs, fps := luarocks.ParseLuaRocksList(cmd.Stdout, "")
 				transitiveDeps = append(transitiveDeps, pkgs...)
-				filePaths = append(filePaths, fps...)
+				filePaths = append(filePaths, luaRocksListFiles(afs, fps)...)
 			} else {
 				exitStatus := -1
 				if cmd != nil {
@@ -125,6 +125,21 @@ func (r *mqlLuaPackages) gatherData() error {
 
 	r.fetched = true
 	return nil
+}
+
+// luaRocksListFiles returns the files of the rocks `luarocks list` reported,
+// given their version directories: the rockspec, or the rock_manifest, which
+// is what a rock read from disk reports. A directory with neither keeps its
+// own name.
+func luaRocksListFiles(afs *afero.Afero, versionDirs []string) []string {
+	out := make([]string, len(versionDirs))
+	for i, dir := range versionDirs {
+		out[i] = dir
+		if f := luarocks.RockEvidence(afs, dir); f != "" {
+			out[i] = f
+		}
+	}
+	return out
 }
 
 // addDefaultLuaRockTrees adds the rocks of the system trees and every user's
