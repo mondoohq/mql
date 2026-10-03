@@ -232,6 +232,18 @@ type SystemdUnitManager struct {
 
 	lastCapOnce sync.Once
 	lastCap     int
+
+	answeringOnce sync.Once
+	answering     bool
+}
+
+// systemdAnswering reports whether systemctl reaches a running systemd. It
+// is asked once, and only after a batch failed.
+func (m *SystemdUnitManager) systemdAnswering() bool {
+	m.answeringOnce.Do(func() {
+		m.answering = systemdAnswering(m.conn)
+	})
+	return m.answering
 }
 
 // systemdVersion is the release of the systemd on the host, or 0 when
@@ -303,6 +315,12 @@ func (m *SystemdUnitManager) listViaSystemctl() ([]*SystemdUnit, error) {
 	// units missing. Ask systemctl only about the concrete names and read the
 	// templates off disk, where they always have a unit file.
 	concrete, templates := splitSystemdTemplateUnits(names)
+	extra := m.unitsNotInUnitFiles(names)
+	concrete = append(concrete, extra...)
+	isExtra := make(map[string]bool, len(extra))
+	for _, name := range extra {
+		isExtra[name] = true
+	}
 
 	res := make([]*SystemdUnit, 0, len(names))
 	// list-unit-files names an alias as well as the unit it points at, and
@@ -319,17 +337,19 @@ func (m *SystemdUnitManager) listViaSystemctl() ([]*SystemdUnit, error) {
 		end := min(start+systemdUnitShowChunk, len(concrete))
 
 		chunk := concrete[start:end]
-		records, exitErr, err := m.showUnits(chunk)
+		records, err := m.showUnitsSplitting(chunk)
 		if err != nil {
 			return nil, err
-		}
-		if exitErr != nil {
-			return nil, exitErr
 		}
 
 		for _, record := range records {
 			u := m.unitFromProperties(record)
 			if u == nil {
+				continue
+			}
+			// a name that did not come from list-unit-files and does not load
+			// is not a unit on this host
+			if !u.Installed && (isExtra[u.Name] || isExtra[record["Id"]]) {
 				continue
 			}
 			if _, dup := seen[u.Name]; dup {
@@ -364,6 +384,62 @@ func (m *SystemdUnitManager) listViaSystemctl() ([]*SystemdUnit, error) {
 	}
 
 	return res, nil
+}
+
+// unitsNotInUnitFiles names the service units systemd has that
+// list-unit-files does not report: instances of a template (getty@tty1,
+// user@1000), which only list-units names, and on systemd before 220 the
+// units it generates for SysV init scripts. Without them an assertion over
+// every unit passed without looking at the running gettys or the SysV
+// services.
+func (m *SystemdUnitManager) unitsNotInUnitFiles(listed []string) []string {
+	known := make(map[string]bool, len(listed))
+	for _, name := range listed {
+		known[name] = true
+	}
+	res := []string{}
+	add := func(names []string) {
+		for _, name := range names {
+			if known[name] {
+				continue
+			}
+			known[name] = true
+			res = append(res, name)
+		}
+	}
+
+	cmd, err := m.conn.RunCommand("systemctl list-units --type service --all --plain --no-legend")
+	if err != nil || cmd.ExitStatus != 0 {
+		log.Debug().Err(err).Msg("mql[systemd]> could not list loaded units")
+	} else if loaded, err := parseSystemdLoadedUnitNames(cmd.Stdout); err == nil {
+		add(loaded)
+	}
+
+	if version := m.systemdVersion(); version > 0 && version < systemdListsSysVUnitFilesSince {
+		add(sysvInitScriptUnits(m.conn.FileSystem()))
+	}
+	return res
+}
+
+// showUnitsSplitting shows a batch of units, splitting it when one unit in it
+// makes systemctl fail the whole batch.
+func (m *SystemdUnitManager) showUnitsSplitting(units []string) ([]map[string]string, error) {
+	var res []map[string]string
+	err := bisectSystemdShow(units,
+		func(batch []string) ([]map[string]string, error) {
+			records, exitErr, err := m.showUnits(batch)
+			if err != nil {
+				return nil, err
+			}
+			return records, exitErr
+		},
+		func(records []map[string]string) { res = append(res, records...) },
+		func(unit string, err error) {
+			log.Debug().Err(err).Str("unit", unit).Msg("mql[systemd]> systemctl show failed for this unit")
+		},
+		m.systemdAnswering,
+	)
+	return res, err
 }
 
 // splitSystemdTemplateUnits separates uninstantiated template units
@@ -425,6 +501,7 @@ func (m *SystemdUnitManager) showUnits(units []string) (records []map[string]str
 	if cmd.ExitStatus == 0 {
 		records, err = parseSystemdShowRecords(cmd.Stdout)
 		for _, record := range records {
+			foldSystemdLegacyPathProperties(record)
 			markUnsupportedShowProperties(record)
 		}
 		return records, nil, err
@@ -447,6 +524,7 @@ func (m *SystemdUnitManager) showUnits(units []string) (records []map[string]str
 	}
 	records, err = parseSystemdShowRecords(cmd.Stdout)
 	for _, record := range records {
+		foldSystemdLegacyPathProperties(record)
 		markUnsupportedShowProperties(record)
 	}
 	return records, nil, err
@@ -1032,6 +1110,11 @@ func (m *SystemdFSUnitManager) foldUnitFile(props map[string]string, unitPath st
 				props["Description"] = opt.Value
 			}
 		case "Service":
+			// ReadOnlyDirectories and the other pre-231 names are aliases of
+			// the *Paths settings
+			if current, ok := systemdLegacyPathProperties[opt.Name]; ok {
+				opt.Name = current
+			}
 			// an empty assignment resets a list setting, so it clears what came
 			// before rather than appending to it
 			if opt.Value == "" {

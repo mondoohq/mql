@@ -149,7 +149,7 @@ func TestSystemDServiceManagerListResolvesAliasRows(t *testing.T) {
 
 	services, err := (&SystemDServiceManager{conn: conn}).List()
 	require.NoError(t, err)
-	assert.Equal(t, []string{unitFilesCmd, listUnitsCmd, showCmd}, conn.commands)
+	assert.Equal(t, []string{unitFilesCmd, listUnitsCmd, showCmd, "systemctl --version"}, conn.commands)
 
 	byName := servicesByName(services)
 	require.Len(t, byName, 6)
