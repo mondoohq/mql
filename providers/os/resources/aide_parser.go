@@ -72,6 +72,9 @@ type aideConfig struct {
 	// Invalid is the first line the installed AIDE rejects. AIDE refuses to
 	// run with such a configuration, so it checks nothing at all.
 	Invalid error
+	// AttributeNames are the attribute names the installed AIDE accepts in an
+	// expression, or nil when its release is unknown.
+	AttributeNames map[string]struct{}
 }
 
 // aideEnvVar is one variable set by @@x_include_setenv.
@@ -286,6 +289,7 @@ func parseAideConfigPrefixed(cfg *aideConfig, filePath string, content string, d
 		}
 
 		if rule, ok := parseAideSelectionLine(cfg, line, prefix, filePath, lineNumber); ok {
+			cfg.checkAideExpression(rule.Expression, filePath, lineNumber)
 			cfg.Rules = append(cfg.Rules, rule)
 			continue
 		}
@@ -304,8 +308,52 @@ func parseAideConfigPrefixed(cfg *aideConfig, filePath string, content string, d
 			cfg.Params[strings.ToLower(key)] = value
 			continue
 		}
+		cfg.checkAideExpression(value, filePath, lineNumber)
 		cfg.Groups[key] = value
 	}
+}
+
+// checkAideExpression records, as cfg.Invalid, the first term of an attribute
+// expression that names neither a group defined so far, nor a group AIDE
+// defines itself, nor an attribute. AIDE stops at such a line with "group 'X'
+// is not defined" (0.16: "Error in expression"), in a rule and in a group
+// definition alike, whether or not the group is used.
+func (cfg *aideConfig) checkAideExpression(expression string, filePath string, lineNumber int) {
+	if cfg.Invalid != nil {
+		return
+	}
+	for _, token := range splitAideExpression(expression) {
+		if cfg.definesAideTerm(token.name) {
+			continue
+		}
+		release := "AIDE"
+		if cfg.Version != "" {
+			release += " " + cfg.Version
+		}
+		cfg.Invalid = fmt.Errorf("aide: %s:%d: %s rejects the configuration: group '%s' is not defined", filePath, lineNumber, release, token.name)
+		return
+	}
+}
+
+// definesAideTerm reports whether a term of an attribute expression names
+// something the installed AIDE knows at this point of the configuration.
+func (cfg *aideConfig) definesAideTerm(name string) bool {
+	if _, ok := cfg.Groups[name]; ok {
+		return true
+	}
+	if cfg.Builtins != nil {
+		if _, ok := cfg.Builtins[name]; ok {
+			return true
+		}
+	} else if _, ok := aideBuiltinGroupNames[name]; ok {
+		return true
+	}
+	names := cfg.AttributeNames
+	if names == nil {
+		names = aideAnyReleaseAttributeNames
+	}
+	_, ok := names[name]
+	return ok
 }
 
 // aideIncludeDirective is an include the parser asks the resolver for, with
@@ -876,6 +924,85 @@ func aideBuiltinGroups(versionOutput string) map[string]string {
 		groups["X"] = join(extra)
 	}
 	return groups
+}
+
+// aideReleaseAttributeNames are the attribute names AIDE's configuration
+// parser accepts from 0.17 on, per minor release, from the attribute table in
+// its src/attributes.c (identical across the patch releases of each line). A
+// name the binary was built without is still accepted, with a warning.
+var aideReleaseAttributeNames = map[int][]string{
+	17: {"l", "p", "u", "g", "s", "a", "c", "m", "i", "b", "n", "md5", "sha1", "rmd160", "tiger", "crc32", "haval", "gost", "crc32b", "acl", "S", "I", "ANF", "ARF", "sha256", "sha512", "selinux", "xattrs", "whirlpool", "ftype", "e2fsattrs", "caps", "stribog256", "stribog512"},
+	18: {"growing", "compressed"},
+	19: {"sha512_256", "sha3_256", "sha3_512", "fstype"},
+}
+
+// aideAnyReleaseAttributeNames are the attribute names some AIDE release
+// accepts, for a configuration whose AIDE release is not known.
+var aideAnyReleaseAttributeNames = func() map[string]struct{} {
+	res := map[string]struct{}{}
+	for _, names := range aideReleaseAttributeNames {
+		for _, name := range names {
+			res[name] = struct{}{}
+		}
+	}
+	return res
+}()
+
+// aideAttributeNames returns the attribute names the installed AIDE accepts,
+// read from its `aide --version` output, or nil when the release is not one
+// whose names are known.
+//
+// 0.17 to 0.19 accept every name of their attribute table. 0.16 defines only
+// the names it was compiled with (its WITH_* options): the hashes with a hash
+// library, gost and whirlpool with mhash, and acl, xattrs, selinux and
+// e2fsattrs with their features.
+func aideAttributeNames(versionOutput string) map[string]struct{} {
+	major, minor, ok := aideReleaseNumbers(parseAideVersion(versionOutput))
+	if !ok || major != 0 {
+		return nil
+	}
+
+	names := []string{}
+	switch {
+	case minor >= 17 && minor <= 19:
+		for m := 17; m <= minor; m++ {
+			names = append(names, aideReleaseAttributeNames[m]...)
+		}
+	case minor == 16:
+		options := map[string]bool{}
+		for _, line := range strings.Split(versionOutput, "\n") {
+			if option := strings.TrimSpace(line); strings.HasPrefix(option, "WITH_") {
+				options[option] = true
+			}
+		}
+		names = append(names, "ANF", "ARF", "p", "i", "I", "n", "u", "g", "l", "s", "S", "b", "m", "c", "a", "ftype")
+		if options["WITH_MHASH"] || options["WITH_GCRYPT"] {
+			names = append(names, "md5", "tiger", "haval", "crc32", "sha1", "rmd160", "sha256", "sha512")
+		}
+		if options["WITH_MHASH"] {
+			names = append(names, "gost", "whirlpool")
+		}
+		if options["WITH_POSIX_ACL"] || options["WITH_ACL"] {
+			names = append(names, "acl")
+		}
+		if options["WITH_XATTR"] {
+			names = append(names, "xattrs")
+		}
+		if options["WITH_SELINUX"] {
+			names = append(names, "selinux")
+		}
+		if options["WITH_E2FSATTRS"] {
+			names = append(names, "e2fsattrs")
+		}
+	default:
+		return nil
+	}
+
+	res := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		res[name] = struct{}{}
+	}
+	return res
 }
 
 // parseAideDefaultGroups reads the "Default compound groups:" section of
