@@ -164,9 +164,12 @@ var logrotateServiceUnits = []string{
 //
 //   - When logrotate.service runs logrotate-all, every regular file in the
 //     drop-in trees, subdirectories included, is passed to logrotate.
-//   - On SUSE, logrotate reads the directory through `include` and skips the
-//     names matching its built-in taboo list, which depends on its version.
-//   - Elsewhere the long-standing suffix list applies.
+//   - Otherwise logrotate reads the directory through `include` and skips the
+//     names matching its built-in taboo list, which depends on its version:
+//     3.8.6 (RHEL 7) to 3.16 read x.bak, everything before 3.22 reads x.old,
+//     and every version skips x.disabled and x.swp.
+//   - When the version cannot be read, SUSE gets the list of SLE 15's 3.18
+//     and other platforms the long-standing suffix list.
 func (l *mqlLogrotate) dropInFilter(fs afero.Fs) (func(string) bool, bool) {
 	if logrotateAllDrivesRotation(fs) {
 		return func(string) bool { return false }, true
@@ -177,21 +180,106 @@ func (l *mqlLogrotate) dropInFilter(fs afero.Fs) (func(string) bool, bool) {
 		return logrotateLegacySkip, false
 	}
 	asset := conn.Asset()
-	if asset == nil || asset.Platform == nil || !asset.Platform.IsFamily("suse") {
-		return logrotateLegacySkip, false
-	}
+	suse := asset != nil && asset.Platform != nil && asset.Platform.IsFamily("suse")
+	return logrotateDropInSkip(logrotateInstalledVersion(l.MqlRuntime), suse), false
+}
 
-	version := ""
-	for _, cmd := range []string{logrotateBinPath + " --version", "logrotate --version"} {
-		if stdout, ok, err := runSystemctl(l.MqlRuntime, cmd); err == nil && ok {
-			version = parseLogrotateVersion(stdout)
-			if version != "" {
-				break
+// logrotateDropInSkip returns the test for a drop-in name logrotate of this
+// version skips. An empty version is unknown.
+func logrotateDropInSkip(version string, suse bool) func(string) bool {
+	if version == "" && !suse {
+		return logrotateLegacySkip
+	}
+	exts := logrotateTabooExts(version)
+	return func(name string) bool { return logrotateTabooMatch(exts, name) }
+}
+
+// logrotateInstalledVersion is the version `logrotate --version` prints, or
+// "" when it cannot be run. The command resource caches the answer.
+func logrotateInstalledVersion(runtime *plugin.Runtime) string {
+	conn, ok := runtime.Connection.(shared.Connection)
+	if !ok || !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return ""
+	}
+	for _, cmdline := range []string{logrotateBinPath + " --version", "logrotate --version"} {
+		o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+			"command": llx.StringData(cmdline),
+		})
+		if err != nil {
+			continue
+		}
+		cmd := o.(*mqlCommand)
+		if cmd.GetExitcode().Data != 0 {
+			continue
+		}
+		// logrotate before 3.9 (3.8.6 on RHEL 7) prints its version on stderr
+		for _, out := range []string{cmd.GetStdout().Data, cmd.GetStderr().Data} {
+			if version := parseLogrotateVersion(out); version != "" {
+				return version
 			}
 		}
 	}
-	exts := logrotateTabooExts(version)
-	return func(name string) bool { return logrotateTabooMatch(exts, name) }, false
+	return ""
+}
+
+// logrotateRejectsFile reports whether the installed logrotate skips a whole
+// configuration file because it does not parse. logrotate reads a "{" or "}"
+// followed by a carriage return as an error, so a file with CRLF line endings
+// is one; strict releases log "found error in file g04crlf, skipping" and use
+// none of its rules.
+func logrotateRejectsFile(runtime *plugin.Runtime, content string) bool {
+	if !logrotateFileHasCRLF(content) {
+		return false
+	}
+	version := logrotateInstalledVersion(runtime)
+	release := ""
+	if version == "3.14.0" {
+		if stdout, ok, err := runSystemctl(runtime, "rpm -q --qf '%{RELEASE}' logrotate"); err == nil && ok {
+			release = strings.TrimSpace(stdout)
+		}
+	}
+	return logrotateStrictParsing(version, release)
+}
+
+// logrotateStrictParsing reports whether a logrotate skips a configuration
+// file with a syntax error rather than logging it and keeping the rest.
+// Upstream does so from 3.18; RHEL 8 backported it into 3.14.0-6 ("enforce
+// stricter parsing of config files"), which the rpm release tells apart from
+// Debian's and Ubuntu's 3.14.0.
+func logrotateStrictParsing(version, rpmRelease string) bool {
+	major, minor, ok := logrotateMajorMinor(version)
+	if !ok {
+		return false
+	}
+	if major > 3 || (major == 3 && minor >= 18) {
+		return true
+	}
+	if version == "3.14.0" && rpmRelease != "" {
+		n, _, _ := strings.Cut(rpmRelease, ".")
+		if r, err := strconv.Atoi(n); err == nil && r >= 6 {
+			return true
+		}
+	}
+	return false
+}
+
+// logrotateFileHasCRLF reports whether a configuration line other than a
+// comment ends in a carriage return. logrotate itself only fails on the "{"
+// and "}" lines (a keyword line such as "weekly\r" parses, the carriage
+// return reading as whitespace), so this stands for "the file has CRLF line
+// endings": an editor or a copy from Windows converts every line, the braces
+// included.
+func logrotateFileHasCRLF(content string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimLeft(line, " \t")
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasSuffix(line, "\r") {
+			return true
+		}
+	}
+	return false
 }
 
 // logrotateAllDrivesRotation reports whether logrotate.service runs the
@@ -313,6 +401,9 @@ func (l *mqlLogrotate) globalConfig(files []any) (map[string]any, error) {
 			continue
 		}
 
+		if logrotateRejectsFile(l.MqlRuntime, content.Data) {
+			continue
+		}
 		global, _ := logrotate.ParseContent(file.Path.Data, content.Data)
 		for k, v := range global {
 			merged[k] = v
@@ -336,6 +427,9 @@ func (l *mqlLogrotate) entries(files []any) ([]any, error) {
 			continue
 		}
 
+		if logrotateRejectsFile(l.MqlRuntime, content.Data) {
+			continue
+		}
 		entries, err := parseLogrotateContent(l.MqlRuntime, file, content.Data)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to parse %s: %w", file.Path.Data, err))
