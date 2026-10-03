@@ -4,9 +4,12 @@
 package resources
 
 import (
+	"errors"
 	"testing"
 
+	"go.mondoo.com/mql/llx"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 func TestDeepGet(t *testing.T) {
@@ -58,5 +61,35 @@ func TestIDBuilders(t *testing.T) {
 	}
 	if got := userResourceID("SRV", "admin", "opsadmin"); got != "SRV/user/admin.opsadmin" {
 		t.Errorf("userResourceID = %q", got)
+	}
+}
+
+// The messages are the server's own, captured from MongoDB 8.0 for an account
+// without clusterMonitor and for a connection without credentials.
+func TestClassifyRefusal(t *testing.T) {
+	forbidden := mongo.CommandError{Code: 13, Name: "Unauthorized",
+		Message: `not authorized on admin to execute command { getCmdLineOpts: 1, lsid: { id: UUID("35d25205-fad1-4393-98ad-9bdbb983fee2") }, $db: "admin" }`}
+	err := classifyRefusal(forbidden, "getCmdLineOpts")
+	if !errors.Is(err, llx.ErrForbidden) {
+		t.Fatalf("want forbidden, got %v (%v)", llx.KindOf(err), err)
+	}
+	var le *llx.Error
+	if !errors.As(err, &le) || len(le.Permissions) != 1 || le.Permissions[0] != "getCmdLineOpts" {
+		t.Errorf("want the getCmdLineOpts permission named, got %+v", le)
+	}
+
+	unauth := mongo.CommandError{Code: 13, Name: "Unauthorized", Message: "Command getCmdLineOpts requires authentication"}
+	if err := classifyRefusal(unauth, "getCmdLineOpts"); !errors.Is(err, llx.ErrUnauthenticated) {
+		t.Errorf("want unauthenticated, got %v (%v)", llx.KindOf(err), err)
+	}
+
+	// Anything that is not a refusal keeps its own error and no kind.
+	other := mongo.CommandError{Code: 59, Name: "CommandNotFound", Message: "no such command"}
+	if err := classifyRefusal(other, "getCmdLineOpts"); llx.KindOf(err) != llx.ErrorKind_ERROR_KIND_UNSPECIFIED {
+		t.Errorf("want unclassified, got %v", llx.KindOf(err))
+	}
+	transport := errors.New("connection reset by peer")
+	if err := classifyRefusal(transport, "getCmdLineOpts"); err != transport {
+		t.Errorf("transport error must pass through, got %v", err)
 	}
 }
