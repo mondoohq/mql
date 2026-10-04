@@ -143,6 +143,7 @@ func TestNpmPackagesProjectNodeModules(t *testing.T) {
 		require.NoError(t, afero.WriteFile(mockFS, "/srv/app/node_modules/.package-lock.json", []byte(`{
 			"name": "app", "version": "1.0.0", "lockfileVersion": 3, "requires": true,
 			"packages": {
+				"node_modules/lru-cache": {"version": "10.0.0"},
 				"node_modules/semver": {"version": "7.5.0"},
 				"node_modules/semver/node_modules/lru-cache": {"version": "6.0.0"}
 			}}`), 0o644))
@@ -154,11 +155,25 @@ func TestNpmPackagesProjectNodeModules(t *testing.T) {
 		pkgs := raw.(*mqlNpmPackages)
 		require.NoError(t, pkgs.gatherData())
 		// lru-cache has no package.json in this fixture: only the hidden
-		// lockfile knows about it
+		// lockfile knows about it. Both installs of it are reported.
 		require.Equal(t, map[string][]string{
-			"lru-cache": {"6.0.0"},
+			"lru-cache": {"10.0.0", "6.0.0"},
 			"semver":    {"7.5.0"},
 		}, npmPackageVersions(pkgs.List.Data))
+
+		// each package's evidence is its install directory, the same file a
+		// direct dependency is read from
+		files := map[string]string{}
+		for _, p := range pkgs.List.Data {
+			pkg := p.(*mqlNpmPackage)
+			require.Len(t, pkg.Files.Data, 1)
+			files[pkg.Version.Data] = pkg.Files.Data[0].(*mqlPkgFileInfo).Path.Data
+		}
+		require.Equal(t, map[string]string{
+			"10.0.0": "/srv/app/node_modules/lru-cache/package.json",
+			"6.0.0":  "/srv/app/node_modules/semver/node_modules/lru-cache/package.json",
+			"7.5.0":  "/srv/app/node_modules/semver/package.json",
+		}, files)
 	})
 
 	t.Run("package.json only", func(t *testing.T) {

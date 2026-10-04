@@ -20,7 +20,12 @@ import (
 )
 
 // maxNodeModulesNesting bounds the walk into node_modules/<pkg>/node_modules.
-// npm hoists most packages to the top; real trees nest only a few levels.
+// It is a backstop, not a tuning knob: the walk does not follow symlinks
+// (ReadDir reports a linked package as a non-directory), so it cannot loop,
+// and its cost grows with the number of packages, not the depth. Hoisted trees
+// nest a few levels, but install-strategy=nested (formerly --legacy-bundling)
+// nests one level per dependency hop, which passes 8 in real projects; a lower
+// bound would silently drop installed packages.
 const maxNodeModulesNesting = 32
 
 // npmInstalledBom describes a project, or a global prefix, from what is
@@ -85,13 +90,14 @@ func npmManifestDependencyNames(manifest []byte) []string {
 // installedNodeModules lists every package installed in a node_modules
 // directory, nested ones included. npm 7+ keeps a record of the tree in
 // node_modules/.package-lock.json; when it is there it is read, otherwise
-// every package's own package.json is.
+// every package's own package.json is. Either way a package's evidence is the
+// package.json in its install directory.
 func installedNodeModules(fs afero.Fs, nodeModules string) languages.Packages {
 	hidden := filepath.Join(nodeModules, ".package-lock.json")
 	if data, err := afero.ReadFile(fs, hidden); err == nil {
-		bom, err := (&packagelockjson.Extractor{}).Parse(bytes.NewReader(data), hidden)
+		pkgs, err := packagelockjson.ParseInstalled(bytes.NewReader(data), filepath.Dir(nodeModules))
 		if err == nil {
-			return bom.Transitive()
+			return pkgs
 		}
 		log.Debug().Err(err).Str("path", hidden).Msg("cannot parse hidden npm lockfile, reading node_modules instead")
 	}
