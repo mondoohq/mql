@@ -297,6 +297,19 @@ func TestReadVersionlockFollowsLocklist(t *testing.T) {
 	assert.False(t, locks.has("stale"))
 }
 
+// dnf reads only the store its own plugin configuration names. With the dnf4
+// plugin installed and no lock added yet, a yum store left on the host holds
+// nothing.
+func TestReadVersionlockEnabledPluginWithoutStore(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/etc/dnf/plugins/versionlock.conf",
+		[]byte("[main]\nenabled = 1\nlocklist = /etc/dnf/plugins/versionlock.list\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/yum/pluginconf.d/versionlock.list", []byte("0:stale-1.0-1.*\n"), 0o644))
+	locks, err := readVersionlock(fs)
+	require.NoError(t, err)
+	assert.False(t, locks.has("stale"))
+}
+
 // The configuration as AlmaLinux 9 and RHEL 7 ship it, plus the spellings
 // dnf and yum accept for a boolean.
 func TestParseVersionlockConf(t *testing.T) {

@@ -170,6 +170,9 @@ type zypperLock struct {
 	matchType     string
 	caseSensitive bool
 	op, edition   string
+	// regexes holds each regex lock's patterns compiled once, at parse time.
+	// An invalid pattern maps to nil and matches nothing.
+	regexes map[string]*regexp.Regexp
 }
 
 type zypperLocks []zypperLock
@@ -193,6 +196,7 @@ func parseZypperLocks(content string) zypperLocks {
 	hasKind, isPackage, empty := false, false, true
 	flush := func() {
 		if !empty && (!hasKind || isPackage) && (len(cur.names) > 0 || len(cur.archs) > 0) {
+			cur.compileRegexes()
 			out = append(out, cur)
 		}
 		cur = newZypperLock()
@@ -239,6 +243,29 @@ func parseZypperLocks(content string) zypperLocks {
 	}
 	flush()
 	return out
+}
+
+// compileRegexes compiles a regex lock's patterns once all of its paragraph
+// is read, since match_type and case_sensitive may follow solvable_name.
+func (l *zypperLock) compileRegexes() {
+	if l.matchType != "regex" {
+		return
+	}
+	l.regexes = map[string]*regexp.Regexp{}
+	for _, patterns := range [][]string{l.names, l.archs} {
+		for _, p := range patterns {
+			if _, ok := l.regexes[p]; ok || p == "" {
+				continue
+			}
+			expr := p
+			if !l.caseSensitive {
+				expr = "(?i)" + expr
+			}
+			// regexp.Compile returns nil for an invalid pattern
+			re, _ := regexp.Compile(expr)
+			l.regexes[p] = re
+		}
+	}
 }
 
 // newZypperLock carries libzypp's defaults for an attribute a paragraph leaves
@@ -341,11 +368,8 @@ func (l *zypperLock) match(pattern, value string) bool {
 		ok, err := path.Match(pattern, value)
 		return err == nil && ok
 	case "regex":
-		if !l.caseSensitive {
-			pattern = "(?i)" + pattern
-		}
-		re, err := regexp.Compile(pattern)
-		return err == nil && re.MatchString(value)
+		re := l.regexes[pattern]
+		return re != nil && re.MatchString(value)
 	case "words":
 		if !l.caseSensitive {
 			pattern, value = strings.ToLower(pattern), strings.ToLower(value)

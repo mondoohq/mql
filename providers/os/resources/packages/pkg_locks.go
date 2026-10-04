@@ -110,6 +110,11 @@ func readVersionlock(fs afero.Fs) (lockedNames, error) {
 		if raw != nil {
 			return parseVersionlockList(string(raw)), nil
 		}
+		if conf != nil {
+			// the plugin is installed and enabled and has no store yet: it
+			// reads no other plugin's store, so nothing is locked
+			return nil, nil
+		}
 	}
 	return nil, nil
 }
