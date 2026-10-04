@@ -25,7 +25,7 @@ func New(conn shared.Connection) (Reboot, error) {
 		return newNixosReboot(conn), nil
 	case pf.IsFamily("debian"):
 		return &DebianReboot{conn: conn}, nil
-	case pf.IsFamily("redhat") || pf.Name == "amazonlinux":
+	case pf.IsFamily("redhat") || pf.IsFamily("euler") || pf.Name == "amazonlinux":
 		return &RpmNewestKernel{conn: conn}, nil
 	case pf.IsFamily("suse"):
 		return &ZypperNeedsRebooting{conn: conn}, nil

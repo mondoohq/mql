@@ -50,6 +50,26 @@ func TestRebootOnRhel(t *testing.T) {
 	assert.Equal(t, true, required)
 }
 
+// openEuler, EulerOS and Huawei Cloud EulerOS are rpm distributions in their
+// own euler family, outside redhat, and were reported as unsupported.
+func TestRebootOnEulerFamily(t *testing.T) {
+	for _, name := range []string{"openeuler", "euleros", "hce"} {
+		t.Run(name, func(t *testing.T) {
+			conn, err := mock.New(0, &inventory.Asset{
+				Platform: &inventory.Platform{
+					Name:   name,
+					Family: []string{"euler", "linux", "unix", "os"},
+				},
+			}, mock.WithData(&mock.TomlData{}))
+			require.NoError(t, err)
+
+			lb, err := New(conn)
+			require.NoError(t, err)
+			assert.IsType(t, &RpmNewestKernel{}, lb)
+		})
+	}
+}
+
 func TestRebootOnWindows(t *testing.T) {
 	filepath, _ := filepath.Abs("./testdata/windows_reboot.toml")
 	mock, err := mock.New(0, &inventory.Asset{

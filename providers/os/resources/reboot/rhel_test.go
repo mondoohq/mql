@@ -200,3 +200,40 @@ func TestAmznRebootKernelEpoch(t *testing.T) {
 		assert.True(t, required)
 	})
 }
+
+// openEuler 24.03 LTS SP2 (aarch64), output captured on a VM before and after
+// `dnf upgrade kernel`, with needs-restarting absent so the kernel comparison
+// alone decides.
+func TestOpenEulerRebootKernel(t *testing.T) {
+	const (
+		running = "kernel 0:6.6.0-98.0.0.103.oe2403sp2 aarch64__(none)__Linux Kernel__GPLv2__1750912158\n"
+		newer   = "kernel 0:6.6.0-145.0.3.144.oe2403sp2 aarch64__(none)__Linux Kernel__GPLv2__1791076975\n"
+	)
+
+	t.Run("running its only kernel", func(t *testing.T) {
+		required, err := rhelRebootMock(t, map[string]*mock.Command{
+			rpmQueryKernelCmd: {Stdout: running},
+			"uname -r":        {Stdout: "6.6.0-98.0.0.103.oe2403sp2.aarch64\n"},
+		}).RebootPending()
+		require.NoError(t, err)
+		assert.False(t, required)
+	})
+
+	t.Run("newer kernel installed", func(t *testing.T) {
+		required, err := rhelRebootMock(t, map[string]*mock.Command{
+			rpmQueryKernelCmd: {Stdout: running + newer},
+			"uname -r":        {Stdout: "6.6.0-98.0.0.103.oe2403sp2.aarch64\n"},
+		}).RebootPending()
+		require.NoError(t, err)
+		assert.True(t, required)
+	})
+
+	t.Run("rebooted into the newer kernel", func(t *testing.T) {
+		required, err := rhelRebootMock(t, map[string]*mock.Command{
+			rpmQueryKernelCmd: {Stdout: running + newer},
+			"uname -r":        {Stdout: "6.6.0-145.0.3.144.oe2403sp2.aarch64\n"},
+		}).RebootPending()
+		require.NoError(t, err)
+		assert.False(t, required)
+	})
+}
