@@ -89,7 +89,7 @@ func Parse(file io.Reader) ([]Entry, error) {
 		return nil, err
 	}
 
-	return entries, scanner.Err()
+	return entries, nil
 }
 
 // UnescapeOctal decodes the three-digit octal escapes (\040 for a space)
