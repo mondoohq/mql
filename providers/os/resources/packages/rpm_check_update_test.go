@@ -75,6 +75,19 @@ func TestParseRpmCheckUpdateResult(t *testing.T) {
 		assert.Len(t, m, 1)
 	})
 
+	// The notice is looked for in all of stderr, not only in the part kept
+	// for the error message.
+	t.Run("a skip notice past the cut is still an error", func(t *testing.T) {
+		stderr := strings.Repeat("Trying other mirror.\n", 40) +
+			"Repo rhel-7-server-rhui-rpms forced skip_if_unavailable=True due to: /etc/pki/rhui/content-rhel7.key\n"
+		require.Greater(t, strings.Index(stderr, rpmForcedSkipNotice), rpmCheckUpdateMaxErr)
+		m, err := parseRpmCheckUpdateResult(checkUpdateCmd(
+			"\ng03-epoch.x86_64     3:2.0-1     g03repo\n", stderr, 100))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrUpdateCheckFailed)
+		assert.Equal(t, "3:2.0-1", m["g03-epoch.x86_64"].Available)
+	})
+
 	t.Run("a long stderr is cut", func(t *testing.T) {
 		_, err := parseRpmCheckUpdateResult(checkUpdateCmd("", strings.Repeat("x", 4096), 1))
 		require.Error(t, err)

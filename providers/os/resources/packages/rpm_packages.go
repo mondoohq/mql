@@ -493,6 +493,7 @@ func parseRpmCheckUpdateResult(cmd *shared.Command) (map[string]PackageUpdate, e
 			msg = strings.TrimSpace(string(b))
 		}
 	}
+	skipped := strings.Contains(msg, rpmForcedSkipNotice)
 	if len(msg) > rpmCheckUpdateMaxErr {
 		msg = strings.ToValidUTF8(msg[:rpmCheckUpdateMaxErr], "") + "..."
 	}
@@ -500,7 +501,7 @@ func parseRpmCheckUpdateResult(cmd *shared.Command) (map[string]PackageUpdate, e
 	switch cmd.ExitStatus {
 	case 0, 100:
 		updates, err := ParseRpmCheckUpdate(cmd.Stdout)
-		if err != nil || !strings.Contains(msg, rpmForcedSkipNotice) {
+		if err != nil || !skipped {
 			return updates, err
 		}
 		return updates, fmt.Errorf("%w: a repository was skipped: %s", ErrUpdateCheckFailed, msg)
