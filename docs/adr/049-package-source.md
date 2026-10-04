@@ -44,10 +44,10 @@ package {
   source() package.source
 }
 
-package.source @defaults("kind name") {
-  // How the build arrived: "repository", "store", "file", or "unknown"
-  kind string
-  // The repository or store, as the system names it, e.g. "nginx", "Docker"
+package.source @defaults("channel name") {
+  // How the build reached the system, e.g. "app-store", "homebrew", "direct"
+  channel string
+  // The repository, store or cask, as the system names it, e.g. "nginx", "Docker"
   name string
   // Where the repository is, with credentials removed
   url string
@@ -59,8 +59,10 @@ package.source @defaults("kind name") {
 and each backend below says when that happens. "Third-party only" is
 `osProvided == false`.
 
-`source` is for display: "installed from nginx.org", "installed from Docker".
-It does not decide `osProvided`.
+`source.channel` answers the next question for third-party software: where did
+it come from? It is a second filter ("everything installed from a dmg", "every
+vendor repository") and drives display ("installed from nginx.org"). It does
+not decide `osProvided`.
 
 ### The rule: the OS vendor's own signing keys
 
@@ -170,19 +172,74 @@ OS". On the host checked, it also covered the Python bundled with the Command
 Line Tools, which the user installs separately. This ADR corrects that
 comment.
 
-### `source`
+### `source.channel`
 
-`source` reports where the build came from, so the platform can show it:
+One value per way software reaches a system. `os` is the channel of every
+`osProvided: true` package. The rest are third-party channels.
 
-| Backend | `kind` / `name` / `url` |
-|---|---|
-| dpkg | the matching index: `repository`, its `Release` `Origin`, its URI. Name in no index: `file`. |
-| dnf4, dnf5 | the repo id of the install in the transaction history (`/var/lib/dnf/history.sqlite`, `/usr/lib/sysimage/libdnf5/transaction_history.sqlite`). `@commandline` is `file`. `url` comes from the repo's `baseurl` in `/etc/yum.repos.d`. |
-| macOS | `obtained_from` `mac_app_store` or `ios_app_store`: `store`. Otherwise `file`. |
-| AppX | `SignatureKind` `Store`: `store`. `Developer` or `Enterprise`: `file`. |
+| `channel` | Meaning | `name` |
+|---|---|---|
+| `os` | provided by the operating system vendor | the OS repository or store, e.g. `Debian`, `baseos` |
+| `vendor-repository` | a vendor's apt or dnf repository the administrator added | its `Origin` or repo id, e.g. `nginx`, `docker-ce-stable` |
+| `app-store` | the Mac App Store or the Microsoft Store | `mac-app-store`, `ios-app-store`, `microsoft-store` |
+| `homebrew` | a Homebrew formula or cask | the formula or cask token |
+| `installer` | a vendor installer package: macOS `.pkg`, Windows MSI or EXE setup | the package identifier |
+| `direct` | copied in by hand: an app dragged from a `.dmg` or `.zip`, a `.deb` or `.rpm` installed from a file | empty |
+| `snap`, `flatpak`, `chocolatey` | that package manager | the snap, the flatpak remote, the package |
+| `unknown` | no record answers | empty |
 
-`url` keeps only scheme, host and path. It drops userinfo, the query string
-and the fragment, because private repositories embed tokens there.
+`url` is set for the repository channels. It keeps only scheme, host and path,
+and drops userinfo, the query string and the fragment, because private
+repositories embed tokens there.
+
+#### How each platform resolves it
+
+**Linux.** dpkg: an exact index match signed by the OS keyring is `os`, by
+another key `vendor-repository`. A name in no index is `direct`. dnf: the repo
+id in the transaction history (`/var/lib/dnf/history.sqlite`,
+`/usr/lib/sysimage/libdnf5/transaction_history.sqlite`), with the signing key
+deciding `os` against `vendor-repository`. `@commandline`, or no history entry
+with a non-OS key, is `direct`. snap and flatpak packages are already their
+own formats.
+
+**macOS.** An application bundle can be claimed by several records. The first
+that matches wins:
+
+1. `macOS Software Signing` leaf: `os`.
+2. `obtained_from` `mac_app_store` or `ios_app_store`: `app-store`.
+3. A Homebrew cask whose version directory symlinks to the bundle
+   (`/opt/homebrew/Caskroom/<token>/<version>/<App>.app`), also listed in the
+   cask's `.metadata/INSTALL_RECEIPT.json` under `uninstall_artifacts`:
+   `homebrew`.
+4. An installer receipt in `/var/db/receipts/<id>.plist` with
+   `InstallProcessName` `installer` that installed the bundle: `installer`.
+5. Otherwise `direct`: the bundle was copied in, usually from a `.dmg`.
+
+The order matters, and the host checked shows why. Bitwarden had a cask
+symlink to `/Applications/Bitwarden.app` dated Sep 17. The bundle at that path
+reported `obtained_from: mac_app_store`, with an App Store receipt
+(`InstallProcessName: appstored`) dated Oct 2. The App Store install replaced
+the cask's copy and left the symlink behind. The bundle's own signature is
+current. A cask link can be stale.
+
+On the host checked:
+
+- all 30 casks had an `INSTALL_RECEIPT.json`;
+- every cask that installs an app had the symlink;
+- the 41 receipts split into 27 `installer`/`Installer` and 14
+  `appstoreagent`/`appstored`.
+
+Matching a `.pkg` receipt to the bundle it installed needs the receipt's bill
+of materials (`/var/db/receipts/<id>.bom`). I did not check how reliably the
+paths in it match the bundle path. Homebrew formulae are already reported as
+`brew` packages (`homebrew_packages.go`) and are `homebrew` by definition.
+
+**Windows.** AppX: `SignatureKind` `System` is `os`, `Store` is `app-store`,
+`Developer` or `Enterprise` is `direct`. Win32: an Uninstall entry exists
+only because an installer ran, so it is `installer`. `WindowsInstaller=1`,
+already collected (`windows_packages.go:185`), marks an MSI. Chocolatey
+packages are already their own format. winget leaves no per-package record
+that was checked for this ADR, so a winget install reads as `installer`.
 
 ### Files, not commands
 
@@ -316,7 +373,7 @@ separately. The OS signing identity is exact.
 - yum on Amazon Linux 2 and RHEL 7, zypper, apk, pacman and opkg. Each keeps
   its keys differently. None was checked for this ADR. They report null until
   a reader is added.
-- snap and flatpak.
+- winget as a channel of its own.
 - Language packages (npm, PyPI, Maven). They are third-party by construction.
 - Whether an OS package came with the image or was installed later. The
   filter does not need it, so it is left for later.
