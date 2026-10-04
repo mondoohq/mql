@@ -309,6 +309,11 @@ const al2023MountinfoTriggered = al2023MountinfoUntriggered +
 	`225 43 259:6 / /boot/efi rw,noatime shared:92 - vfat /dev/nvme0n1p128 rw,fmask=0077,dmask=0077,codepage=437,iocharset=ascii,shortname=winnt,errors=remount-ro
 `
 
+// An EFI system partition mounted directly from fstab, with no automount.
+const plainEspMountinfo = `68 1 259:4 / / rw,noatime shared:1 - xfs /dev/nvme0n1p1 rw,seclabel,attr2,inode64,logbufs=8,logbsize=32k,sunit=1024,swidth=1024,noquota
+43 68 259:6 / /boot/efi rw,noatime shared:24 - vfat /dev/nvme0n1p128 rw,fmask=0077,dmask=0077,codepage=437,iocharset=ascii,shortname=winnt,errors=remount-ro
+`
+
 // secboot.config.images must not mount an automounted EFI system partition.
 // Without a configuration there are no images to describe, so the default
 // /boot/efi/EFI/Linux is not read at all; a configured directory under an
@@ -325,6 +330,7 @@ func TestSecbootImagesDir(t *testing.T) {
 		{"config on the ESP, untriggered automount", `{"efi-subdir": "/boot/efi/EFI/Linux"}`, al2023MountinfoUntriggered, ""},
 		{"config on the ESP, mounted ESP", `{"efi-subdir": "/boot/efi/EFI/Linux"}`, al2023MountinfoTriggered, "/boot/efi/EFI/Linux"},
 		{"config off the ESP, untriggered automount", `{"efi-subdir": "/srv/efi/Linux"}`, al2023MountinfoUntriggered, "/srv/efi/Linux"},
+		{"config on the ESP, no automount", `{"efi-subdir": "/boot/efi/EFI/Linux"}`, plainEspMountinfo, "/boot/efi/EFI/Linux"},
 		{"config, no mountinfo", `{"efi-subdir": "/boot/efi/EFI/Linux"}`, "", "/boot/efi/EFI/Linux"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
