@@ -363,11 +363,24 @@ func TestIsPamControlEnabled(t *testing.T) {
 		{"optional", true},
 		{"substack", true},
 		{"include", true},
-		{"[success=1 default=ignore]", false},
-		{"[default=ignore]", false},
-		{"[default=skip]", false},
+		// pam-auth-update's pam_unix line on Debian and Ubuntu: a success
+		// jumps, so the module decides the outcome.
+		{"[success=2 default=ignore]", true},
+		{"[success=1 default=ignore]", true},
+		{"[success=done new_authtok_reqd=done default=ignore]", true},
+		// authselect on Rocky Linux 9
+		{"[default=1 ignore=ignore success=ok]", true},
+		{"[default=bad success=ok user_unknown=ignore]", true},
+		{"[default=1]", true},
 		{"[default=die]", true},
 		{"[success=ok default=bad]", true},
+		// every return value ignored
+		{"[default=ignore]", false},
+		{"[success=ignore default=ignore]", false},
+		{"[DEFAULT=IGNORE]", false},
+		{"[default=skip]", false},
+		// a value the control does not name counts as bad
+		{"[success=ignore]", true},
 		{"", false},
 	}
 
@@ -588,4 +601,257 @@ func TestIsPamServiceDir(t *testing.T) {
 	assert.True(t, isPamServiceDir("/usr/etc/pam.d/su"))
 	assert.False(t, isPamServiceDir("/etc/pam.conf"))
 	assert.False(t, isPamServiceDir("/etc/pam.d/sub/su"))
+}
+
+// stackModules returns "<file>:<module>" for every entry of a service's stack.
+func stackModules(t *testing.T, rt *plugin.Runtime, name string) []string {
+	t.Helper()
+	res, err := NewResource(rt, "pam.conf.service", map[string]*llx.RawData{"name": llx.StringData(name)})
+	require.NoError(t, err)
+	stack := res.(*mqlPamConfService).GetStack()
+	require.NoError(t, stack.Error)
+	out := []string{}
+	for _, e := range stack.Data {
+		entry := e.(*mqlPamConfServiceEntry)
+		out = append(out, filepath.Base(entry.Service.Data)+":"+entry.PamType.Data+":"+canonicalizePamModuleName(entry.Module.Data))
+	}
+	return out
+}
+
+// Debian 12 with openssh-server: sshd's authentication comes from
+// common-auth through @include, which brings in every line of the file.
+func TestPamConfServiceStackDebianInclude(t *testing.T) {
+	rt := newPamVendorRuntime(t, map[string]string{
+		"/etc/pam.d/sshd": `@include common-auth
+account    required     pam_nologin.so
+@include common-account
+session    optional     pam_motd.so motd=/run/motd.dynamic
+`,
+		"/etc/pam.d/common-auth": `auth	requisite			pam_faillock.so preauth
+auth	[success=2 default=ignore]	pam_unix.so try_first_pass
+auth	[default=die]			pam_faillock.so authfail
+auth	requisite			pam_deny.so
+auth	required			pam_permit.so
+`,
+		"/etc/pam.d/common-account": `account	[success=1 new_authtok_reqd=done default=ignore]	pam_unix.so
+account	requisite			pam_deny.so
+account	required			pam_permit.so
+`,
+	})
+
+	assert.Equal(t, []string{
+		"common-auth:auth:pam_faillock",
+		"common-auth:auth:pam_unix",
+		"common-auth:auth:pam_faillock",
+		"common-auth:auth:pam_deny",
+		"common-auth:auth:pam_permit",
+		"sshd:account:pam_nologin",
+		"common-account:account:pam_unix",
+		"common-account:account:pam_deny",
+		"common-account:account:pam_permit",
+		"sshd:session:pam_motd",
+	}, stackModules(t, rt, "sshd"))
+
+	res, err := NewResource(rt, "pam.conf.service", map[string]*llx.RawData{"name": llx.StringData("sshd")})
+	require.NoError(t, err)
+	sshd := res.(*mqlPamConfService)
+	assert.Len(t, sshd.GetEntries().Data, 4, "entries stay the lines of the sshd file")
+
+	mods := sshd.GetModules()
+	require.NoError(t, mods.Error)
+	unix, ok := mods.Data["pam_unix"].(*mqlPamModule)
+	require.True(t, ok, "pam_unix reached through @include common-auth is a module of sshd")
+	assert.True(t, unix.Enabled.Data, "[success=2 default=ignore] runs pam_unix")
+	assert.Contains(t, mods.Data, "pam_faillock")
+	assert.NotContains(t, mods.Data, "common-auth")
+}
+
+// Rocky Linux 9 with authselect: sshd uses `auth substack password-auth` and
+// `<type> include`, which bring in only that type's lines. An @include inside
+// an included file keeps the type it was included for, as Linux-PAM does.
+func TestPamConfServiceStackTypeFilter(t *testing.T) {
+	rt := newPamVendorRuntime(t, map[string]string{
+		"/etc/pam.d/sshd": `auth       substack     password-auth
+auth       include      postlogin
+account    required     pam_nologin.so
+account    include      password-auth
+session    include      postlogin
+`,
+		"/etc/pam.d/password-auth": `auth        required                                     pam_env.so
+auth        sufficient                                   pam_unix.so nullok
+auth        required                                     pam_deny.so
+account     required                                     pam_unix.so
+password    sufficient                                   pam_unix.so sha512 shadow nullok use_authtok
+-session    optional                                     pam_systemd.so
+session     required                                     pam_unix.so
+`,
+		"/etc/pam.d/postlogin": `session     optional                   pam_umask.so silent
+@include postlogin-extra
+`,
+		"/etc/pam.d/postlogin-extra": `auth        required                   pam_faildelay.so delay=4000000
+session     optional                   pam_lastlog.so silent noupdate showfailed
+`,
+	})
+
+	assert.Equal(t, []string{
+		"password-auth:auth:pam_env",
+		"password-auth:auth:pam_unix",
+		"password-auth:auth:pam_deny",
+		// auth include postlogin: the @include in postlogin only brings auth
+		"postlogin-extra:auth:pam_faildelay",
+		"sshd:account:pam_nologin",
+		"password-auth:account:pam_unix",
+		"postlogin:session:pam_umask",
+		"postlogin-extra:session:pam_lastlog",
+	}, stackModules(t, rt, "sshd"))
+
+	res, err := NewResource(rt, "pam.conf.service", map[string]*llx.RawData{"name": llx.StringData("sshd")})
+	require.NoError(t, err)
+	mods := res.(*mqlPamConfService).GetModules()
+	require.NoError(t, mods.Error)
+	assert.NotContains(t, mods.Data, "password-auth", "an include line names a file, not a module")
+	assert.NotContains(t, mods.Data, "postlogin")
+	assert.NotContains(t, mods.Data, "pam_systemd", "session lines of password-auth are not included by sshd")
+
+	conf, err := NewResource(rt, "pam.conf", map[string]*llx.RawData{})
+	require.NoError(t, err)
+	all := conf.(*mqlPamConf).GetModules()
+	require.NoError(t, all.Error)
+	names := []string{}
+	for _, m := range all.Data {
+		names = append(names, m.(*mqlPamModule).Name.Data)
+	}
+	assert.Contains(t, names, "pam_systemd")
+	assert.NotContains(t, names, "password-auth")
+	assert.NotContains(t, names, "postlogin")
+}
+
+func TestPamConfServiceStackErrors(t *testing.T) {
+	t.Run("missing include", func(t *testing.T) {
+		// Linux-PAM fails the whole service when an included file is missing.
+		rt := newPamVendorRuntime(t, map[string]string{
+			"/etc/pam.d/login": "auth include system-auth\naccount required pam_unix.so\n",
+		})
+		res, err := NewResource(rt, "pam.conf.service", map[string]*llx.RawData{"name": llx.StringData("login")})
+		require.NoError(t, err)
+		stack := res.(*mqlPamConfService).GetStack()
+		require.Error(t, stack.Error)
+		assert.ErrorIs(t, stack.Error, llx.ErrNotFound)
+		assert.ErrorContains(t, stack.Error, "/etc/pam.d/login:1")
+		assert.ErrorContains(t, stack.Error, "system-auth")
+	})
+
+	t.Run("include cycle", func(t *testing.T) {
+		rt := newPamVendorRuntime(t, map[string]string{
+			"/etc/pam.d/a": "@include b\n",
+			"/etc/pam.d/b": "auth required pam_unix.so\n@include a\n",
+		})
+		res, err := NewResource(rt, "pam.conf.service", map[string]*llx.RawData{"name": llx.StringData("a")})
+		require.NoError(t, err)
+		stack := res.(*mqlPamConfService).GetStack()
+		require.Error(t, stack.Error)
+		assert.ErrorContains(t, stack.Error, "nest more than 16 levels")
+	})
+
+	t.Run("include fan-out", func(t *testing.T) {
+		rt := newPamVendorRuntime(t, map[string]string{
+			"/etc/pam.d/a":     strings.Repeat("@include empty\n", pamMaxIncludes+1),
+			"/etc/pam.d/empty": "# nothing\n",
+		})
+		res, err := NewResource(rt, "pam.conf.service", map[string]*llx.RawData{"name": llx.StringData("a")})
+		require.NoError(t, err)
+		stack := res.(*mqlPamConfService).GetStack()
+		assert.ErrorContains(t, stack.Error, "more than 1000 PAM include lines")
+	})
+
+	t.Run("include of a device", func(t *testing.T) {
+		conn, err := mock.New(0, &inventory.Asset{
+			Platform: &inventory.Platform{Name: "arch", Family: []string{"arch", "linux", "unix"}},
+		}, mock.WithData(&mock.TomlData{
+			Files: map[string]*mock.MockFileData{
+				"/etc/pam.d/su": {Path: "/etc/pam.d/su", Content: "auth include /dev/zero\n"},
+				"/dev/zero":     {Path: "/dev/zero", StatData: mock.FileInfo{Mode: os.ModeDevice | os.ModeCharDevice | 0o666}},
+			},
+		}))
+		require.NoError(t, err)
+		p := &pamStack{runtime: &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}, entries: map[string]any{}}
+		_, _, err = p.load("/dev/zero")
+		assert.ErrorContains(t, err, "/dev/zero is not a regular file")
+	})
+
+	t.Run("oversized include", func(t *testing.T) {
+		rt := newPamVendorRuntime(t, map[string]string{
+			"/etc/pam.d/login": "auth include /srv/big\n",
+			"/srv/big":         strings.Repeat("#", pamMaxIncludedFileSize+1),
+		})
+		res, err := NewResource(rt, "pam.conf.service", map[string]*llx.RawData{"name": llx.StringData("login")})
+		require.NoError(t, err)
+		stack := res.(*mqlPamConfService).GetStack()
+		assert.ErrorContains(t, stack.Error, "/srv/big is larger than 1048576 bytes")
+	})
+}
+
+// An include names a file anywhere when it is absolute, and a relative name
+// resolves in the pam.d directories in PAM's order, so a vendor file under
+// /usr/lib/pam.d is found when /etc/pam.d has none.
+func TestPamConfServiceStackIncludeLookup(t *testing.T) {
+	rt := newPamVendorRuntime(t, map[string]string{
+		"/etc/pam.d/login":                        "auth include /etc/authselect/custom/site/system-auth\naccount include common-account\n",
+		"/etc/authselect/custom/site/system-auth": "auth required pam_faillock.so preauth\naccount required pam_access.so\n",
+		"/usr/lib/pam.d/common-account":           "account required pam_unix.so\n",
+	})
+	assert.Equal(t, []string{
+		"system-auth:auth:pam_faillock",
+		"common-account:account:pam_unix",
+	}, stackModules(t, rt, "login"))
+}
+
+func TestPamConfEntryIgnoreMissing(t *testing.T) {
+	rt := newPamVendorRuntime(t, map[string]string{
+		"/etc/pam.d/system-auth": "-session optional pam_systemd.so\nsession required pam_unix.so\n",
+	})
+	res, err := NewResource(rt, "pam.conf", map[string]*llx.RawData{})
+	require.NoError(t, err)
+	entries := res.(*mqlPamConf).GetEntries()
+	require.NoError(t, entries.Error)
+	list := entries.Data["/etc/pam.d/system-auth"].([]any)
+	require.Len(t, list, 2)
+	systemd := list[0].(*mqlPamConfServiceEntry)
+	assert.Equal(t, "session", systemd.PamType.Data)
+	assert.True(t, systemd.IgnoreMissing.Data)
+	assert.False(t, list[1].(*mqlPamConfServiceEntry).IgnoreMissing.Data)
+}
+
+// An authselect profile template is pam.d format outside a pam.d directory.
+// It used to be read in the single-file layout, taking the type as the service.
+func TestPamConfPathReadsPamDFormatOutsidePamD(t *testing.T) {
+	const profile = "/etc/authselect/custom/site/system-auth"
+	rt := newPamVendorRuntime(t, map[string]string{
+		profile: "# a profile template\nauth        required      pam_env.so\n-auth       sufficient    pam_sss.so forward_pass\n",
+	})
+	res, err := NewResource(rt, "pam.conf", map[string]*llx.RawData{"path": llx.StringData(profile)})
+	require.NoError(t, err)
+	entries := res.(*mqlPamConf).GetEntries()
+	require.NoError(t, entries.Error)
+	assert.NotContains(t, entries.Data, "auth")
+	list, ok := entries.Data[profile].([]any)
+	require.True(t, ok, "entries keyed by the file path")
+	require.Len(t, list, 2)
+	sss := list[1].(*mqlPamConfServiceEntry)
+	assert.Equal(t, "auth", sss.PamType.Data)
+	assert.Equal(t, "pam_sss.so", sss.Module.Data)
+	assert.True(t, sss.IgnoreMissing.Data)
+}
+
+func TestIsPamSingleFileFormat(t *testing.T) {
+	assert.False(t, isPamSingleFileFormat("/etc/pam.d/su", "su auth required pam_unix.so\n"), "a pam.d file is always pam.d format")
+	assert.True(t, isPamSingleFileFormat("/etc/pam.conf", "# comment\n\nlogin auth required pam_unix.so\n"))
+	assert.False(t, isPamSingleFileFormat("/etc/authselect/custom/p/system-auth", "# comment\nauth required pam_env.so\n"))
+	assert.False(t, isPamSingleFileFormat("/srv/pam/x", "-session optional pam_systemd.so\n"))
+	assert.False(t, isPamSingleFileFormat("/srv/pam/y", "@include common-auth\n"))
+	// authselect's profile templates start with template directives
+	assert.False(t, isPamSingleFileFormat("/etc/authselect/custom/site/system-auth",
+		"{imply \"with-smartcard\" if \"with-smartcard-required\"}\nauth        required      pam_env.so\n"))
+	assert.True(t, isPamSingleFileFormat("/srv/pam.conf", "other auth required pam_deny.so\n"))
+	assert.True(t, isPamSingleFileFormat("/srv/empty.conf", "# nothing\n"), "an empty file keeps the single-file default")
 }

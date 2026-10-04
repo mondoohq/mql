@@ -3231,8 +3231,10 @@ pam.conf.service.entries 13.27.1
 pam.conf.service.modules 13.27.1
 pam.conf.service.name 13.27.1
 pam.conf.service.path 13.27.1
+pam.conf.service.stack 14.14.1
 pam.conf.serviceEntry 9.0.0
 pam.conf.serviceEntry.control 9.0.0
+pam.conf.serviceEntry.ignoreMissing 14.14.1
 pam.conf.serviceEntry.lineNumber 9.0.0
 pam.conf.serviceEntry.module 9.0.0
 pam.conf.serviceEntry.options 9.0.0

@@ -4220,6 +4220,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"pam.conf.serviceEntry.pamType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPamConfServiceEntry).GetPamType()).ToDataRes(types.String)
 	},
+	"pam.conf.serviceEntry.ignoreMissing": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPamConfServiceEntry).GetIgnoreMissing()).ToDataRes(types.Bool)
+	},
 	"pam.conf.serviceEntry.control": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPamConfServiceEntry).GetControl()).ToDataRes(types.String)
 	},
@@ -4240,6 +4243,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"pam.conf.service.entries": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPamConfService).GetEntries()).ToDataRes(types.Array(types.Resource("pam.conf.serviceEntry")))
+	},
+	"pam.conf.service.stack": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPamConfService).GetStack()).ToDataRes(types.Array(types.Resource("pam.conf.serviceEntry")))
 	},
 	"pam.conf.service.modules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPamConfService).GetModules()).ToDataRes(types.Map(types.String, types.Resource("pam.module")))
@@ -19661,6 +19667,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlPamConfServiceEntry).PamType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"pam.conf.serviceEntry.ignoreMissing": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPamConfServiceEntry).IgnoreMissing, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"pam.conf.serviceEntry.control": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPamConfServiceEntry).Control, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -19691,6 +19701,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"pam.conf.service.entries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPamConfService).Entries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"pam.conf.service.stack": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPamConfService).Stack, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"pam.conf.service.modules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -45662,13 +45676,14 @@ type mqlPamConfServiceEntry struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlPamConfServiceEntryInternal it will be used here
-	Service    plugin.TValue[string]
-	LineNumber plugin.TValue[int64]
-	PamType    plugin.TValue[string]
-	Control    plugin.TValue[string]
-	Module     plugin.TValue[string]
-	Options    plugin.TValue[[]any]
-	Params     plugin.TValue[map[string]any]
+	Service       plugin.TValue[string]
+	LineNumber    plugin.TValue[int64]
+	PamType       plugin.TValue[string]
+	IgnoreMissing plugin.TValue[bool]
+	Control       plugin.TValue[string]
+	Module        plugin.TValue[string]
+	Options       plugin.TValue[[]any]
+	Params        plugin.TValue[map[string]any]
 }
 
 // createPamConfServiceEntry creates a new instance of this resource
@@ -45720,6 +45735,10 @@ func (c *mqlPamConfServiceEntry) GetPamType() *plugin.TValue[string] {
 	return &c.PamType
 }
 
+func (c *mqlPamConfServiceEntry) GetIgnoreMissing() *plugin.TValue[bool] {
+	return &c.IgnoreMissing
+}
+
 func (c *mqlPamConfServiceEntry) GetControl() *plugin.TValue[string] {
 	return &c.Control
 }
@@ -45751,6 +45770,7 @@ type mqlPamConfService struct {
 	Name    plugin.TValue[string]
 	Path    plugin.TValue[string]
 	Entries plugin.TValue[[]any]
+	Stack   plugin.TValue[[]any]
 	Modules plugin.TValue[map[string]any]
 }
 
@@ -45801,6 +45821,22 @@ func (c *mqlPamConfService) GetPath() *plugin.TValue[string] {
 
 func (c *mqlPamConfService) GetEntries() *plugin.TValue[[]any] {
 	return &c.Entries
+}
+
+func (c *mqlPamConfService) GetStack() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Stack, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("pam.conf.service", c.__id, "stack")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.stack()
+	})
 }
 
 func (c *mqlPamConfService) GetModules() *plugin.TValue[map[string]any] {

@@ -1552,7 +1552,10 @@ packages {
 // entries keyed by service, each carrying its type, control, and
 // module; `modules` deduplicates the modules loaded across every
 // service. Used to audit authentication policy, such as which services
-// enforce `pam_faillock` or `pam_pwquality`.
+// enforce `pam_faillock` or `pam_pwquality`. `pam.conf("<path>")` reads a
+// single file instead: one whose lines start with the type, as in a pam.d
+// directory or an authselect profile under `/etc/authselect/custom`, or one
+// whose lines start with the service name, as in `/etc/pam.conf`.
 pam.conf {
   init(path string)
   // Whether PAM configuration is present on the system
@@ -1585,9 +1588,9 @@ pam.conf {
 private pam.conf.serviceEntry @defaults("service module") {
   // Service the entry belongs to
   //
-  // The `<pam.d directory>/<service>` file path the line came from, such as
-  // `/etc/pam.d/su` or `/usr/lib/pam.d/su`, or the service
-  // name in the first column when read from the single-file `/etc/pam.conf`.
+  // The path of the file the line came from, such as `/etc/pam.d/su` or
+  // `/usr/lib/pam.d/su`, or the service name in the first column when read
+  // from the single-file `/etc/pam.conf`.
   service string
   // Line number the entry was read from
   //
@@ -1598,7 +1601,16 @@ private pam.conf.serviceEntry @defaults("service module") {
   // of the entry's identity, so it is kept as it is rather than renumbered.
   lineNumber int
   // PAM entry type (e.g., auth, account, password, session)
+  //
+  // Without the leading `-` that marks a line PAM skips silently when the
+  // module is missing (see ignoreMissing), so `-session optional
+  // pam_systemd.so` has the type `session`. `@include` for an include line.
   pamType string
+  // Whether PAM skips the line silently when its module cannot be loaded
+  //
+  // True when the type is written with a leading `-`, such as
+  // `-auth sufficient pam_sss.so`.
+  ignoreMissing bool
   // Control field (e.g., required, requisite, sufficient, optional, or a bracketed [value=action] expression)
   control string
   // PAM module used
@@ -1639,13 +1651,27 @@ private pam.conf.service {
   // when no such service is configured.
   path string
   // Parsed entries for this service, in source order
-  entries []pam.conf.serviceEntry
-  // Modules loaded by this service, keyed by canonical module name
   //
-  // Each value aggregates every entry in this service that loads the module
+  // The lines of the service's own file. An include line is an entry here;
+  // `stack` has the lines it brings in.
+  entries []pam.conf.serviceEntry
+  // Entries PAM runs for this service, with includes expanded
+  //
+  // In order: `@include <file>` brings in every line of the file, and
+  // `<type> include <file>` and `<type> substack <file>` bring in the file's
+  // lines of that type, nested includes expanded the same way. A relative
+  // file name is looked up in the pam.d directories as a service is. Each
+  // entry's `service` names the file it came from, such as
+  // `/etc/pam.d/common-auth`. An included file that does not exist is an
+  // error, since PAM then fails the service.
+  stack() []pam.conf.serviceEntry
+  // Modules this service runs, keyed by canonical module name
+  //
+  // Aggregated over `stack`, so modules pulled in through an include are
+  // listed. Each value aggregates every entry that loads the module
   // (last-write-wins per option), so `modules["pam_wheel"].params["use_uid"]`
   // and `modules["pam_wheel"].enabled` answer module-level questions without
-  // iterating `entries`.
+  // iterating `stack`.
   modules() map[string]pam.module
 }
 
@@ -1677,12 +1703,13 @@ private pam.module @defaults("name enabled entries.length") {
   // map with an empty string value so `params["use_authtok"] != null`
   // works as an existence check.
   params map[string]string
-  // Whether the module is loaded by any service with a non-skip control
+  // Whether any entry runs the module with a control that acts on its result
   //
-  // True when at least one service entry references this module with a
-  // control of `required`, `requisite`, `sufficient`, `optional`, or a
-  // bracketed control with `default=ok` / `success=ok`. Always false when
-  // every reference is part of a stub or commented-out line.
+  // True for `required`, `requisite`, `sufficient`, `optional`, and any
+  // bracketed control with an action other than `ignore`, such as
+  // `[success=2 default=ignore]` or `[default=die]`. False only when every
+  // entry's bracketed control ignores every return value, as
+  // `[default=ignore]` or `[success=ignore default=ignore]` do.
   enabled bool
   // Every service entry that loads this module
   //

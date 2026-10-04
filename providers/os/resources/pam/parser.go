@@ -13,6 +13,21 @@ type PamLine struct {
 	Control string
 	Module  string
 	Options []any
+	// IgnoreMissing is set by a leading '-' on the type (`-session optional
+	// pam_systemd.so`): PAM skips the line without logging an error when the
+	// module cannot be loaded. The '-' is not part of PamType.
+	IgnoreMissing bool
+}
+
+// IsType reports whether token is a PAM module type (auth, account,
+// password, session), optionally prefixed with '-'. PAM compares types
+// case-insensitively.
+func IsType(token string) bool {
+	switch strings.ToLower(strings.TrimPrefix(token, "-")) {
+	case "auth", "account", "password", "session":
+		return true
+	}
+	return false
 }
 
 func ParseLine(line string) (*PamLine, error) {
@@ -42,7 +57,7 @@ func ParseLine(line string) (*PamLine, error) {
 
 	// parse modules
 
-	pamType := fields[0]
+	pamType, ignoreMissing := splitType(fields[0])
 	control := fields[1]
 	// Control can either be one word or several contained in [] brackets
 	if control[0] == '[' && control[len(control)-1] != ']' {
@@ -59,16 +74,26 @@ func ParseLine(line string) (*PamLine, error) {
 	}
 
 	pl := &PamLine{
-		PamType: pamType,
-		Control: control,
-		Module:  module,
-		Options: options,
+		PamType:       pamType,
+		Control:       control,
+		Module:        module,
+		Options:       options,
+		IgnoreMissing: ignoreMissing,
 	}
 	return pl, nil
 }
 
+// splitType strips the leading '-' PAM accepts on a type and reports whether
+// it was there.
+func splitType(token string) (string, bool) {
+	if len(token) > 1 && token[0] == '-' {
+		return token[1:], true
+	}
+	return token, false
+}
+
 func complicatedParse(fields []string) (*PamLine, error) {
-	pamType := fields[0]
+	pamType, ignoreMissing := splitType(fields[0])
 	control := fields[1]
 	i := 2
 	closed := false
@@ -97,10 +122,11 @@ func complicatedParse(fields []string) (*PamLine, error) {
 		}
 	}
 	pl := &PamLine{
-		PamType: pamType,
-		Control: control,
-		Module:  module,
-		Options: options,
+		PamType:       pamType,
+		Control:       control,
+		Module:        module,
+		Options:       options,
+		IgnoreMissing: ignoreMissing,
 	}
 	return pl, nil
 }
