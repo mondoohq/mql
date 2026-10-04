@@ -1,4 +1,4 @@
-# ADR 049: Reporting Where an Installed Package Came From
+# ADR 049: Telling Operating-System Packages From Third-Party Software
 
 ## Status
 
@@ -8,368 +8,336 @@ Deciders: @tas50, @chris-rock
 
 ## Context
 
-A software inventory mixes three kinds of software that a security team
-treats differently:
+A software inventory mixes two kinds of software that a security team treats
+differently:
 
-- software that **came with the operating system**: Calculator on macOS, the
-  inbox apps on Windows, the packages a Linux image was built from;
-- software installed later **from the distribution's own repositories**;
-- **third-party** software: a vendor's repository (`download.docker.com`,
-  `packages.microsoft.com`), an app store, or a file downloaded from the vendor
-  and installed by hand.
+- software the **operating system vendor provides**: Calculator on macOS, the
+  Windows inbox apps, and every package from the distribution's own
+  repositories, whether it came with the image or was installed later;
+- **third-party** software: anything from a vendor's repository
+  (`nginx.org`, `download.docker.com`, `packages.microsoft.com`), from an app
+  store, or from a file downloaded and installed by hand.
 
-A user who wants to focus on third-party software has to filter the first two
-out. A user who audits a Linux fleet wants to see which hosts take packages
-from outside the distribution, because those packages get no distribution
-security updates.
+The user's question is a filter: "show me only the third-party software". The
+case it must get right is a Debian host where an administrator added
+nginx.org's repository. Debian's `nginx` and nginx.org's `nginx` have the same
+package name and the same PURL, `pkg:deb/debian/nginx`. One is OS software. The
+other is third-party.
 
-`mql` cannot tell these apart today. The `package` resource reports what is
-installed, not how it arrived. Some of the evidence is already collected, but
-it is spread over fields whose meaning changes per backend:
-
-| Evidence | Where it is today |
-|---|---|
-| macOS Gatekeeper classification (`obtained_from`) | `package.origin` on macOS (`providers/os/resources/os.lr:1392-1412`) |
-| macOS signing chain (`signed_by`) | parsed (`providers/os/resources/packages/macos_packages.go:46`), not exposed |
-| rpm `%{VENDOR}` | `package.vendor` (`rpm_packages.go:404`) |
-| deb source package name | `package.origin` on deb |
-| apt repository of the installed version | not read |
-| dnf repository of the installed package | not read |
-| rpm signing key | not read |
-| AppX signature kind | not read: the query selects `Name, PackageFullName, Architecture, Version, Publisher, InstallLocation` (`windows_packages.go:225`) |
-
-`package.origin` cannot carry the answer. Its meaning is already per-backend
-by design (`os.lr:1392-1412`): the source package on deb, the ports origin on
-FreeBSD, the remote on flatpak, the Gatekeeper class on macOS. A check that
-compares it across platforms breaks today, and a fifth meaning would make
-that worse.
-
-The PURL namespace looks like an answer and is not one.
-`pkg:deb/debian/curl` names **the host's distribution**, not where the
-package came from. A `docker-ce-cli` installed from Docker's repository on a
-Debian host is `pkg:deb/debian/docker-ce-cli` as well.
+`mql` cannot answer this today. The `package` resource reports what is
+installed, not who provided it. The PURL namespace looks like an answer and is
+not one: `pkg:deb/debian/…` names the host's distribution, not where the
+package came from. `package.origin` cannot carry it either. Its meaning is
+per-backend by design (`providers/os/resources/os.lr:1392-1412`): the source
+package on deb, the parent package on Alpine, the ports origin on FreeBSD, the
+remote on flatpak, the Gatekeeper class on macOS.
 
 ## Decision
 
-Add a `source` field to `package`. It reports the **evidence** of how the
-installed build reached the system. It does not judge that evidence.
+Add two fields to `package`:
 
 ```
 package {
-  // How this build of the package reached the system
+  // Whether the operating system vendor provides this package
+  osProvided() bool
+  // Where the installed build came from
   source() package.source
 }
 
 package.source @defaults("kind name") {
   // How the build arrived: "repository", "store", "file", or "unknown"
   kind string
-  // The repository, store or channel, as the system names it
+  // The repository or store, as the system names it, e.g. "nginx", "Docker"
   name string
   // Where the repository is, with credentials removed
   url string
-  // Who signed the build, when the system records it
-  signer string
-  // Whether the package is part of the operating system as installed
-  system bool
-  // Which record decided the answer
-  method string
 }
 ```
 
-### The scanner reports evidence. The platform decides "third-party"
+`osProvided` is the filter. `true` means the OS vendor provides the package.
+`false` means third-party. It is null only when no record on the host answers,
+and each backend below says when that happens. "Third-party only" is
+`osProvided == false`.
 
-"Is this third-party?" needs a curated list of which repositories belong to
-which distribution: `Origin: Debian`, `baseos`, `appstream`, the Ubuntu and
-SUSE archives, and so on. That list changes, and it belongs to the platform
-that also curates the software catalog. If `mql` baked it in, every agent
-would carry a frozen copy, and fixing a wrong entry would need an agent
-upgrade.
+`source` is for display: "installed from nginx.org", "installed from Docker".
+It does not decide `osProvided`.
 
-So `kind` names a **mechanism**, never a judgment:
+### The rule: the OS vendor's own signing keys
 
-| `kind` | Meaning |
+Every operating system ships the keys it signs its software with, inside one
+of its own packages. A package manager installs only what those keys, or keys
+the administrator added, have signed. So the scanner asks one question per
+package: **was it signed with a key that the operating system itself
+installed?**
+
+- Yes: `osProvided: true`.
+- No, it was signed with a key someone added later, or it is unsigned:
+  `osProvided: false`.
+
+This needs no curated list of repositories or vendors. It uses the trust
+anchors the OS already relies on. The only code-owned knowledge is, per OS
+family, which package ships those keys. That is one or two package names per
+distribution, and they do not change between releases.
+
+| OS family | Package that ships the OS keys |
 |---|---|
-| `repository` | Installed from a package repository. `name` and `url` say which. |
-| `store` | Installed from an app store: Mac App Store, Microsoft Store, Snap Store, a flatpak remote. |
-| `file` | Installed from a local file, with no repository or store behind it. |
-| `unknown` | The system keeps no record that answers the question. |
-
-`unknown` is a real answer, not an error. On a container image with empty
-apt lists there is nothing to read, and the field says so. This follows the
-rule from ADR 044: a value must mean "this is the case", never "this was not
-checked".
-
-`system` is nullable, like `kernel.parameter.active` in ADR 048. It is `true`
-or `false` only when a record answers the question. It is null otherwise.
-
-`method` names the record that produced the answer, for example `apt-lists`,
-`dnf-history` or `gatekeeper`. A consumer can then give a direct record more
-weight than an inference.
+| Debian | `debian-archive-keyring` |
+| Ubuntu | `ubuntu-keyring` |
+| RHEL and rebuilds | the package that provides `system-release`, and the `*-gpg-keys` package it requires (`almalinux-gpg-keys` on AlmaLinux) |
+| Fedora | `fedora-gpg-keys` |
+| macOS | Apple's OS signing identity, `macOS Software Signing` |
+| Windows (AppX) | `SignatureKind: System` |
 
 ### Per backend
 
-Each row below says how the answer is read. The **Verified** column says on
-what. "Docs" means the behavior comes from vendor documentation and was not
-checked on a host for this ADR.
+| Backend | `osProvided` | null when | Verified |
+|---|---|---|---|
+| rpm | The package's signature key ID (`%{RSAHEADER:pgpsig}`, `%{SIGPGP:pgpsig}`) is a key in a file owned by the OS key package. | never: an unsigned package is `false` | `almalinux:9` |
+| dpkg | Debian signs repositories, not packages. The installed `(name, version, arch)` is matched against the apt indexes in `/var/lib/apt/lists`. The match is `true` when that index's `InRelease` is signed by a key in the OS keyring. See the next section for the rest of the cases. | no indexes on the host, or the case below | `debian:12` |
+| macOS | The bundle's leaf signing certificate (`signed_by[0]`) is `macOS Software Signing`. | never | macOS 27.0 |
+| AppX | `SignatureKind` is `System`. | the filesystem fallback (`getFsAppxPackages`, `windows_packages.go:1216`), which cannot read it | Docs |
+| Win32 (registry) | Windows records no channel for these programs. | always | — |
 
-| Backend | `kind` / `name` / `url` | `signer` | `system` | Verified |
-|---|---|---|---|---|
-| dpkg | Match the installed `(name, version, arch)` against `/var/lib/apt/lists/*_Packages`. The match gives the list file, and the sibling `InRelease` or `Release` gives `Origin`, which becomes `name`. The list's URI becomes `url`. No match while lists exist: `file`. No lists: `unknown`. | empty: Debian signs repository metadata, not packages | null (see open questions) | `debian:12` |
-| dnf4 | The latest install item for the package in `/var/lib/dnf/history.sqlite` gives the repo id: `name`. `@commandline` means `file`. `url` comes from the repo's `baseurl` or `metalink` in `/etc/yum.repos.d/*.repo`, when that file still exists. | `%{SIGPGP:pgpsig}` / `%{RSAHEADER:pgpsig}` key ID | true when it was installed in the earliest transaction | `almalinux:9` |
-| dnf5 | The same, from `/usr/lib/sysimage/libdnf5/transaction_history.sqlite` | same | same | `fedora:44` (file locations) |
-| macOS | `obtained_from` = `mac_app_store` or `ios_app_store`: `store`. `identified_developer` or `unknown`: `file`. `apple`: see `system`. `name` is the raw `obtained_from` value. | leaf of `signed_by` | true when the bundle path is under `/System/` | macOS 27.0 |
-| AppX | Add `SignatureKind` to the `Get-AppxPackage` query. `Store`: `store`, name `microsoft-store`. `Developer` or `Enterprise`: `file`. | `Publisher` | true when `SignatureKind` is `System` | Docs |
-| snap | `store`, name from the snap's channel | publisher | null | not verified |
-| flatpak | `store`, `name` from the remote that `package.origin` already reports | null | null | not verified |
+#### dpkg cases
 
-What the checks showed:
+dpkg is the one backend where the answer depends on the apt indexes, so it
+spells out every case:
 
-**dpkg.** On `debian:12`, after `apt-get update`:
-
-- `curl` matched `deb.debian.org` with `Origin: Debian`;
-- `docker-ce-cli` matched only `download.docker.com`, with `Origin: Docker`
-  and `Label: Docker CE`;
-- a locally built `.deb` installed with `dpkg -i` matched nothing.
-
-`apt-cache policy` agreed in all three cases.
-
-**dnf4.** On `almalinux:9`:
-
-- `bash` and `tree` recorded `baseos`;
-- `docker-ce-cli` recorded `docker-ce-stable`;
-- a local RPM installed with `dnf install ./nano-….rpm` recorded
-  `@commandline`;
-- a local RPM installed with `rpm -i` has no history entry at all.
-
-The signing key separates the last case from a vendor build. The `rpm -i`
-package still carries AlmaLinux's key ID (`d36cb86cb86b3716`), so it is a
-distribution build installed from a file.
-
-**dnf transaction history.** The history records the image build itself as
-transaction 1: `install --installroot /mnt/sys-root … almalinux-release bash
-…`, which installed 158 of the image's 159 packages. Later installs are later
-transactions. That is how `system` is answered for rpm. The repo id alone
-cannot answer it: the image's own packages report `baseos`, which is the same
-value a later `dnf install` from the distribution writes.
-
-**dnf5.** On `fedora:44`, the image's packages record two 32-hex-digit repo
-ids, `4b3429950e3844b28ffdbe8ec843ae60` (75 packages) and
-`f6ae26d2709140ec8807dba8ce4e3091` (71). These are the repositories of the
-image build. A package installed afterwards records `fedora`.
-
-**macOS.** On macOS 27.0, `system_profiler SPApplicationsDataType` reported
-520 applications:
-
-| `obtained_from` | Count |
+| Installed `(name, version)` | `osProvided` |
 |---|---|
-| `apple` | 310 |
-| `unknown` | 136 |
-| `identified_developer` | 54 |
-| `mac_app_store` | 19 |
-| `ios_app_store` | 1 |
+| in an index signed by the OS keyring | `true` |
+| only in indexes signed by other keys | `false` |
+| name in no index at all | `false`: installed from a local `.deb` |
+| version in no index, name only in OS-signed indexes | `true`: an OS package that missed an update. The Debian archive lists only current versions. |
+| version in no index, name also in a third-party index | null |
+| no indexes on the host | null |
 
-None of the 136 `unknown` entries has a `signed_by` chain. So `unknown`
-means "no valid signature reported", not "unclassified".
+The last two rows are null on purpose. A rule that matched on the name alone
+would send an outdated Debian `nginx` to nginx.org's index and call a Debian
+build third-party: the wrong answer for exactly the case this field exists
+for.
 
-### `apple` is not "shipped with the OS"
+### What the checks showed
 
-The comment on `ObtainedFrom` (`macos_packages.go:34`) says `"apple"` means
-"shipped with the OS". On the host checked, 7 of the 310 `apple`
-applications were outside `/System`. Among them:
+**dpkg.** Three `debian:12` containers, each after `apt-get update`:
 
-- XProtect and MRT under `/Library/Apple/`, which macOS updates on its own;
-- the Python bundled with the Command Line Tools, which the user installs
-  separately.
+| | Debian `nginx` | nginx.org `nginx` | Docker `docker-ce-cli` |
+|---|---|---|---|
+| Installed version | `1.22.1-9+deb12u10` | `1.30.5-1~bookworm` | `5:29.8.2-1~debian.12~bookworm` |
+| Index listing that version | `deb.debian.org …bookworm-security` | `nginx.org/packages/debian` | `download.docker.com/linux/debian` |
+| That index's key | `/usr/share/keyrings/debian-archive-keyring.gpg`, owned by `debian-archive-keyring` | `/usr/share/keyrings/nginx-archive-keyring.gpg`, owned by no package | added by the administrator |
+| `osProvided` | `true` | `false` | `false` |
+| `source.name` (`Origin:`) | `Debian` | `nginx` | `Docker` |
 
-The sealed system volume is the precise signal. Everything under `/System/`
-ships with the OS and cannot be modified. So `system` is read from the path,
-not from `obtained_from`. This ADR corrects that comment.
+nginx.org's `InRelease` verified against nginx's key and not against the
+Debian keyring. Debian's indexes verified against the Debian keyring.
+`apt-cache policy` agreed with the index match in every case. A locally built
+`.deb` installed with `dpkg -i` matched no index.
+
+Both vendor repositories keep old versions in their index. nginx.org still
+listed `1.30.4-1~bookworm` next to the installed `1.30.5`. Docker listed
+`29.8.1`, `29.8.0` and `29.7.2` next to `29.8.2`. So a host that skipped vendor
+updates still matches its vendor repository exactly.
+
+**rpm.** On `almalinux:9` with Docker's repository added:
+
+| | `tree` (AlmaLinux) | `docker-ce-cli` (Docker) |
+|---|---|---|
+| Signature key ID | `d36cb86cb86b3716` | `c52feb6b621e9f35` |
+| Key file | `/etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9`, owned by `almalinux-gpg-keys` | fetched from `https://download.docker.com/linux/rhel/gpg`, owned by no package |
+| `osProvided` | `true` | `false` |
+| `source.name` (dnf history) | `baseos` | `docker-ce-stable` |
+
+The rule also covers a package installed from a file. `jq`, downloaded and
+installed with `rpm -i`, has no dnf history, but it carries AlmaLinux's key.
+So it is OS software, which is correct.
+
+**macOS.** On macOS 27.0, `system_profiler SPApplicationsDataType` reported 520
+applications. 307 carry the `macOS Software Signing` leaf:
+
+- 303 are under `/System/`;
+- the other 4 are OS components under `/Library/Apple/` and
+  `/Library/Image Capture/`.
+
+All 304 applications under `/System/` carry that leaf, except one unsigned
+helper. Apple's optional App Store apps (Pages, Keynote, Numbers) carry
+`Apple Mac OS Application Signing` and `obtained_from: mac_app_store`. They are
+`false`: the OS does not include them.
+
+The leaf is a better rule than `obtained_from: apple`. The current comment on
+`ObtainedFrom` (`macos_packages.go:34`) says `"apple"` means "shipped with the
+OS". On the host checked, it also covered the Python bundled with the Command
+Line Tools, which the user installs separately. This ADR corrects that
+comment.
+
+### `source`
+
+`source` reports where the build came from, so the platform can show it:
+
+| Backend | `kind` / `name` / `url` |
+|---|---|
+| dpkg | the matching index: `repository`, its `Release` `Origin`, its URI. Name in no index: `file`. |
+| dnf4, dnf5 | the repo id of the install in the transaction history (`/var/lib/dnf/history.sqlite`, `/usr/lib/sysimage/libdnf5/transaction_history.sqlite`). `@commandline` is `file`. `url` comes from the repo's `baseurl` in `/etc/yum.repos.d`. |
+| macOS | `obtained_from` `mac_app_store` or `ios_app_store`: `store`. Otherwise `file`. |
+| AppX | `SignatureKind` `Store`: `store`. `Developer` or `Enterprise`: `file`. |
+
+`url` keeps only scheme, host and path. It drops userinfo, the query string
+and the fragment, because private repositories embed tokens there.
 
 ### Files, not commands
 
-As in ADR 044, every answer is read from files the package manager keeps:
+As in ADR 044, every answer is read from files:
 
-- the apt lists;
-- the dnf history databases;
-- the dnf `.repo` files;
-- the bundle path and the `system_profiler` output that `mql` already reads.
+- the OS key files;
+- the apt indexes and their `InRelease`;
+- the rpm signature tags;
+- the dnf history;
+- the `system_profiler` output that `mql` already reads.
 
-`mql` scans images, mounted filesystems and snapshots, where no command can
-run. A reader built on `apt-cache policy` or `dnf repoquery` would report
-`unknown` there for every package. The exception is AppX: Windows exposes
-`SignatureKind` only through the package manager API. The filesystem
-fallback for AppX (`getFsAppxPackages`, `windows_packages.go:1216`) cannot read it, so it reports a null
-`system` and `kind: unknown`.
-
-### Credentials never leave the host
-
-Private repositories often embed credentials in their URL. Examples are
-`https://user:token@repo.example/…` in a `sources.list` entry, or a token in
-a yum `baseurl` query string. `url` keeps only scheme, host and path. It
-drops userinfo, the query string and the fragment. A test asserts this for
-both backends.
+The scanner runs no package-manager command. This works on images and mounted
+filesystems. On rpm it also means `osProvided` answers on every image, because
+the signature is in the rpm database. AppX is the exception:
+`SignatureKind` is available only through the package manager API.
 
 ### Reaching the platform
 
-`mql_sbom.proto`'s `Package` gains a `PackageSource source` message with the
-same fields, so `cnspec` reports the evidence to the platform. The platform's
-classification (distribution vs vendor repository vs bundled) is defined in
-a separate server-side ADR. This one only defines what the scanner reports.
+`mql_sbom.proto`'s `Package` gains `os_provided` (an optional bool) and a
+`PackageSource source` message, so `cnspec` reports both. The platform stores
+them per install. Installs of the same product can differ: nginx is OS software
+on one host and third-party on the next.
 
 ## Security implications
 
-- **Threat model:** unchanged in kind. Every value comes from files on the
-  scanned system, like the rest of `packages`. A local administrator can
-  forge any of them: an apt list, a `Release` file, a dnf history row. So
-  `source` is evidence, not an attestation. `signer` is the hardest field to
-  forge, because it is the key ID of a signature over the package itself.
-- **Data handling:** `url` can contain secrets in its raw form. Userinfo and
-  query strings are removed before the value leaves the provider (see
-  above). Repository host names of private mirrors still reach the platform.
-  They are infrastructure names, and similar to the `InstallSource` paths
-  that Windows packages already report.
+- **Threat model:** unchanged in kind. The answer comes from the same trust
+  decision the package manager made: which keys it accepts. An administrator
+  who controls the host can forge any of it, for example by placing a key in
+  the OS keyring. So `osProvided` is evidence, not an attestation.
+- **Data handling:** `url` can contain secrets in raw form. They are removed
+  before the value leaves the provider. Private mirror host names still reach
+  the platform. These are infrastructure names, similar to the
+  `InstallSource` paths that Windows packages already report.
 - **Authentication and authorization:** no change. No new connection, no new
-  privilege. The apt lists, the dnf history and the `.repo` files are
-  world-readable on the distributions checked.
-- **Supply chain:** no new dependency. dnf history is sqlite, which
-  `rpm_packages.go` already reads with `github.com/glebarez/go-sqlite`.
-- **Residual risk:** a policy that trusts `kind: repository` with an
-  allow-listed `name` as proof of a safe install can be fooled by a host
-  that lies. Policies that need proof should check `signer`.
+  privilege. The key files, apt indexes and dnf history are world-readable on
+  the distributions checked.
+- **Supply chain:** reading an `InRelease` signature's issuer needs an
+  OpenPGP parser. `github.com/ProtonMail/go-crypto` is already a dependency of
+  the `mql` module (`go.mod:16`). The os provider adds it, so no new code
+  enters the build.
+- **Residual risk:** an OS that ships a vendor's key in its own keyring
+  package would make that vendor's packages `osProvided: true`. None of the
+  keyrings checked do.
 
 ## Performance implications
 
-- **Expected impact:** `source` is computed lazily, but SBOM generation asks
-  for it on every package, so assume it runs on every scan.
-- **dpkg is the expensive backend.** Matching needs the package indexes. On
-  `debian:12` arm64 after `apt-get update`, the bookworm `main` index is 49 MB
-  uncompressed (62,666 stanzas), stored as an 18.6 MB `.lz4` file. Security
-  and updates add 2.3 MB. The host had 90 packages installed. Decompressing
-  and filtering the main index locally took 23 ms. Over an SSH connection,
-  those bytes cross the network on every scan.
+- **rpm, macOS, AppX:** no new I/O beyond small key files.
+  - rpm: the signature is two more tags in the existing query
+    (`rpm_packages.go:404`).
+  - macOS: `signed_by` is already parsed (`macos_packages.go:46`).
+  - AppX: `SignatureKind` is one more column in an existing query
+    (`windows_packages.go:225`).
+- **dpkg is the expensive backend.** On `debian:12` arm64, the bookworm `main`
+  index is 49 MB uncompressed (62,666 stanzas), stored as an 18.6 MB `.lz4`
+  file. Decompressing and filtering it locally took 23 ms. Over SSH those bytes
+  cross the network on every scan.
 - **Mitigations, in order:**
-  1. Stream the index and keep only the stanzas whose package name is
-     installed.
-  2. Read each list once per `packages` call, not once per package.
-  3. Read `InRelease` headers only up to the first blank line.
-  4. If the transfer still shows up in SSH scan timings, let a connection
-     that can run commands read `apt-cache policy <installed names>` instead.
-     That output is small. Files stay the only path for images.
-- **dnf** reads one small sqlite database: 135 KB plus a 4.1 MB write-ahead
-  log on `almalinux:9`. Its write-ahead log must be copied with it. The
-  existing rpmdb reader copies the database file alone to a temp directory
-  (`rpm_packages.go:484-536`). Copying only the main file can lose rows that
-  are still in the write-ahead log. I inferred this from the file sizes and
-  did not test it.
-- **macOS and AppX** add no I/O. `signed_by` and the bundle path are already
-  parsed, and `SignatureKind` is one more column in an existing query.
-- **Regression budget:** measure scan time on a Debian host over SSH before
-  and after. The dpkg reader must not add more than the time `packages`
-  already spends parsing `/var/lib/dpkg/status`.
+  1. Stream each index once per `packages` call, keeping only stanzas whose
+     name is installed.
+  2. Read each `InRelease` only for its header and its signature issuer.
+  3. If SSH scan timings show the transfer, use `apt-cache policy <installed
+     names>` on connections that can run commands. Files stay the only path
+     for images.
+- **dnf history** must be copied together with its write-ahead log (4.1 MB on
+  `almalinux:9`, next to a 135 KB main file). The rpmdb reader copies only the
+  database file (`rpm_packages.go:484-536`). I inferred from the sizes that
+  rows can sit in the log, and did not test it.
+- **Regression budget:** measure scan time on a Debian host over SSH before and
+  after. The dpkg reader must not add more than `packages` already spends
+  parsing `/var/lib/dpkg/status`.
 
 ## Consequences
 
-- A platform can filter an inventory to third-party software, and can show
-  which hosts install from outside their distribution, with no curated name
-  list on the agent.
+- The platform can filter any inventory to third-party software with one
+  field, and it is right for the nginx.org and Docker cases on both package
+  families.
+- rpm, macOS and AppX answer everywhere, including images.
+- **dpkg images answer null.** Stock images ship with empty apt indexes
+  (`debian:12` does; `checkAptIndexes` at `dpkg_packages.go:618` documents the
+  same for cloud images). The platform fills these in by checking the exact
+  `(release, name, version)` against the distribution's archive, which it can
+  index once for all hosts. That check belongs to the platform. The scanner
+  reports null rather than guessing.
+- **Preinstalled Win32 programs** (Edge, OneDrive) are null. The platform
+  curates them.
 - `package.origin` keeps its per-backend meaning. Nothing that reads it
   changes.
-- **Most container images answer `unknown` on dpkg.** Stock images ship with
-  empty apt lists (`debian:12` does; `checkAptIndexes` at `dpkg_packages.go:618`
-  documents the same for cloud images). The platform needs a fallback for
-  them, for example the distribution suffix in the version (`+deb12u15`
-  against `~debian.12~bookworm`), or the `Maintainer` field (`Docker
-  <support@docker.com>` against a Debian maintainer). Those are inferences.
-  They belong to the platform, not to this field.
-- **An outdated dpkg package can look like a local install.** A distribution
-  index lists only current versions. A package that missed an update matches
-  the name but not the installed version. The reader then reports
-  `repository` with the index that lists the name, and `method:
-  apt-lists-name`, so a consumer can weight it lower.
-- Backends this ADR does not cover keep reporting `unknown`. Each one can be
-  added later as one more reader.
 
 ## Alternatives Considered
 
-### Classify in the scanner
+### Report evidence only, and classify on the platform
 
-A `thirdParty bool`, or a `provenance` enum with values like `os-bundled`,
-`distro` and `vendor-repo`. Rejected. Telling `distro` from `vendor-repo`
-needs a curated list of distribution repositories, and that list changes. In
-the agent it would be frozen per release. The software taxonomy is owned by
-the platform. The scanner owns the facts.
+The first draft of this ADR did this: repository name, signer and packager
+fields, with a platform-side list of which repositories belong to which
+distribution. Rejected. It gives no field to filter on, it needs a curated
+repository list, and the list would be wrong the day a distribution adds a
+repository. The OS's own keys answer the question without a list.
+
+### Classify by the package's `Maintainer` or `Packager`
+
+`Debian Nginx Maintainers` against `NGINX Packaging <…@f5.com>`. Rejected. It
+is a heuristic: some Debian maintainers use personal addresses, and Ubuntu
+rewrites the field. It cannot be the filter.
+
+### Classify by the version string
+
+`+deb12u10` is a Debian build, `~bookworm` is not. Rejected for the same
+reason. Many Debian packages carry no suffix at all.
 
 ### Running the package manager
 
-`apt-cache policy`, `dnf repoquery --qf '%{from_repo}'`. Rejected as the
-primary path for the reason in ADR 044: it answers nothing on images,
-mounted filesystems and snapshots. It remains a possible optimization for
-dpkg over SSH (see Performance).
-
-### Reusing `package.origin`
-
-Rejected. It already has a different meaning on each backend (the source package on deb, the parent package on Alpine, the ports origin, the flatpak remote, the Gatekeeper class), and checks compare it
-against backend-specific values. Another meaning would break them on deb and rpm,
-where `origin` is the source package name.
+`apt-cache policy`, `dnf repoquery`. Rejected as the primary path for the
+reason in ADR 044: it answers nothing on images, mounted filesystems and
+snapshots.
 
 ### A PURL qualifier
 
-The PURL spec has a `repository_url` qualifier. Rejected as the carrier. The
-PURL is the package's identity, and consumers key on it: vulnerability
-matching, catalog lookups, deduplication (`collapsePackages` at
-`windows_packages.go:2589`). A qualifier that differs per repository would split
-one product into one identity per mirror.
+The PURL spec has a `repository_url` qualifier. Rejected. The PURL is the
+package's identity, and vulnerability matching, catalog lookups and
+deduplication (`collapsePackages` at `windows_packages.go:2589`) key on it. A
+qualifier per repository would split one product into one identity per
+mirror.
 
-### Using `obtained_from: apple` as "shipped with macOS"
+### `obtained_from: apple` as "part of macOS"
 
-Rejected after checking a host (see "`apple` is not shipped with the OS").
-The system-volume path is exact. `obtained_from` is not.
-
-### Using `Priority: required` or `important` as "base system" on Debian
-
-Rejected. Priority describes the Debian base system, not what an image
-contains. In `debian:12`, 51 of the 88 installed packages are `optional`.
+Rejected after checking a host: it includes Apple software the user installs
+separately. The OS signing identity is exact.
 
 ## Not covered
 
-- yum (Amazon Linux 2, RHEL 7) `yumdb`, zypper's `/var/log/zypp/history`,
-  apk, pacman and opkg. Each keeps a different record, or none. None was
-  checked for this ADR.
-- Win32 programs from the Uninstall registry. Windows keeps no install
-  channel for them. `SystemComponent=1` hides an entry from Add/Remove
-  Programs. It does not mean the program came with Windows (the .NET
-  runtime's MSI entries set it, see `collapsePackages`). Preinstalled Win32
-  software has to be curated on the platform.
-- Language packages (npm, PyPI, Maven and others). Their registry is implied
-  by the ecosystem.
-- Container image layers. "Came from the base image layer" is a strong
-  `system` signal for images, but it comes from the image, not the package
-  manager. It belongs to a separate change.
+- yum on Amazon Linux 2 and RHEL 7, zypper, apk, pacman and opkg. Each keeps
+  its keys differently. None was checked for this ADR. They report null until
+  a reader is added.
+- snap and flatpak.
+- Language packages (npm, PyPI, Maven). They are third-party by construction.
+- Whether an OS package came with the image or was installed later. The
+  filter does not need it, so it is left for later.
 
 ## Open Questions
 
-1. **Debian and Ubuntu `system`.** dpkg keeps no install-time record. The
-   installers keep a copy of the status file from install time
-   (`/var/log/installer/status` on Debian, `initial-status.gz` on Ubuntu).
-   I did not check either. Images have neither.
-2. **anaconda installs.** The first dnf transaction on an image is the image
-   build. On a host installed with anaconda I expect it to be the installer
-   transaction, but I did not check this.
-3. **dpkg `url` for `file:` and `cdrom:` sources.** Should `kind` be
-   `repository` or `file` when the matching list comes from local media?
-4. **Several matching repositories.** One version can be in two indexes,
-   for example a mirror and the origin, or `bookworm` and
-   `bookworm-security`. Report the one apt would install from (highest pin
-   priority), or all of them?
+1. **Ubuntu Pro / ESM.** ESM repositories are signed with keys from
+   `ubuntu-pro-client`, not `ubuntu-keyring`. They are OS software, so the key
+   package list probably needs both. Not checked.
+2. **Fedora and SUSE key packages.** Taken from the distributions' layout. Not
+   checked on a host.
+3. **Safari and other Apple apps outside `/System`.** The host checked did not
+   list Safari, so whether it carries `macOS Software Signing` is unverified.
 
 ## References
 
 - ADR 044: Reporting Packages Held at Their Current Version
 - ADR 048: Kernel Parameters, Live and Configured
 - `providers/os/resources/os.lr`: `package`, `package.origin`
-- `providers/os/resources/packages/dpkg_packages.go`,
-  `rpm_packages.go`, `macos_packages.go`, `windows_packages.go`
+- `providers/os/resources/packages/dpkg_packages.go`, `rpm_packages.go`,
+  `macos_packages.go`, `windows_packages.go`
 - `sbom/mql_sbom.proto`: `Package`
-- [Debian repository format](https://wiki.debian.org/DebianRepository/Format):
-  `Release` / `InRelease` fields
+- [Debian repository format](https://wiki.debian.org/DebianRepository/Format)
 - [PackageSignatureKind enumeration](https://learn.microsoft.com/en-us/uwp/api/windows.applicationmodel.packagesignaturekind)
