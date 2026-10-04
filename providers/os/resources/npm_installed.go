@@ -104,6 +104,30 @@ func installedNodeModules(fs afero.Fs, nodeModules string) languages.Packages {
 	return walkNodeModules(fs, nodeModules, nil, 0)
 }
 
+// topLevelNodeModules returns the packages of all that are installed
+// directly in nodeModules, as node_modules/<name> or
+// node_modules/@scope/<name>: the ones a global install put there. all is what
+// installedNodeModules returned for nodeModules, whose evidence is each
+// package's own package.json, so the two lists cannot disagree.
+func topLevelNodeModules(nodeModules string, all languages.Packages) languages.Packages {
+	var out languages.Packages
+	for _, pkg := range all {
+		if pkg == nil || len(pkg.EvidenceList) == 0 {
+			continue
+		}
+		rel, err := filepath.Rel(nodeModules, filepath.Dir(pkg.EvidenceList[0].Value))
+		if err != nil {
+			continue
+		}
+		parts := strings.Split(filepath.ToSlash(rel), "/")
+		if (len(parts) == 1 && !strings.HasPrefix(parts[0], ".")) ||
+			(len(parts) == 2 && strings.HasPrefix(parts[0], "@")) {
+			out = append(out, pkg)
+		}
+	}
+	return out
+}
+
 // walkNodeModules appends the package in every node_modules/<name> and
 // node_modules/@scope/<name> directory, then descends into that package's own
 // node_modules, where npm installs a version it could not hoist.

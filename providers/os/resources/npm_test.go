@@ -99,6 +99,36 @@ func TestNpmPackagesGlobalInstalledVersions(t *testing.T) {
 	}
 }
 
+// A global prefix whose node_modules/.package-lock.json records fewer packages
+// than are on disk. The direct list used to come from the disk and the full
+// list from the hidden lockfile, so a direct package could be missing from
+// the list it is part of.
+func TestNpmPackagesGlobalHiddenLockfileDirectInList(t *testing.T) {
+	mockFS := afero.NewMemMapFs()
+	writeNpmGlobalFixture(t, mockFS)
+	require.NoError(t, afero.WriteFile(mockFS, "/usr/local/lib/node_modules/.package-lock.json", []byte(`{"lockfileVersion":3,"packages":{
+		"node_modules/semver": {"version": "7.5.0"},
+		"node_modules/semver/node_modules/yallist": {"version": "4.0.0"}
+	}}`), 0o644))
+
+	conn, err := fs.NewFileSystemConnectionWithFs(0, &inventory.Config{}, &inventory.Asset{}, "", nil, mockFS)
+	require.NoError(t, err)
+	mqlNpm := &mqlNpmPackages{MqlRuntime: &plugin.Runtime{
+		Resources:  &syncx.Map[plugin.Resource]{},
+		Connection: conn,
+		Callback:   &providerCallbacks{},
+	}}
+	require.NoError(t, mqlNpm.gatherData())
+
+	require.Equal(t, map[string][]string{
+		"semver":  {"7.5.0"},
+		"yallist": {"4.0.0"},
+	}, npmPackageVersions(mqlNpm.List.Data))
+	require.Equal(t, map[string][]string{
+		"semver": {"7.5.0"},
+	}, npmPackageVersions(mqlNpm.DirectDependencies.Data))
+}
+
 // A project without a lockfile but with node_modules: the installed versions
 // are reported, not the ranges in package.json.
 func TestNpmPackagesProjectNodeModules(t *testing.T) {

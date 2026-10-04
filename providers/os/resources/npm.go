@@ -163,12 +163,9 @@ func collectNpmPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []str
 		}
 		log.Debug().Str("path", walkPath).Msg("found npm node_modules")
 		nodeModulesPath := filepath.Join(walkPath, "node_modules")
-		for _, dir := range nodeModulesPackageDirs(fs, nodeModulesPath) {
-			if pkg := readInstalledNpmPackage(fs, dir); pkg != nil {
-				directPackageList = append(directPackageList, pkg)
-			}
-		}
-		transitivePackageList = append(transitivePackageList, installedNodeModules(fs, nodeModulesPath)...)
+		installed := installedNodeModules(fs, nodeModulesPath)
+		directPackageList = append(directPackageList, topLevelNodeModules(nodeModulesPath, installed)...)
+		transitivePackageList = append(transitivePackageList, installed...)
 		return nil
 	})
 	if err != nil {
