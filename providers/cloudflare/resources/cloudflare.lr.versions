@@ -55,6 +55,7 @@ cloudflare.account.workers 13.6.5
 cloudflare.accounts 11.0.0
 cloudflare.apiToken 13.1.1
 cloudflare.apiToken.accountId 13.8.1
+cloudflare.apiToken.creatorEmail 14.1.1
 cloudflare.apiToken.expiresOn 13.1.1
 cloudflare.apiToken.id 13.1.1
 cloudflare.apiToken.ipIn 13.1.1
@@ -65,6 +66,8 @@ cloudflare.apiToken.modifiedOn 13.1.1
 cloudflare.apiToken.name 13.1.1
 cloudflare.apiToken.notBefore 13.1.1
 cloudflare.apiToken.policies 13.1.1
+cloudflare.apiToken.provisionerId 14.1.1
+cloudflare.apiToken.provisionerType 14.1.1
 cloudflare.apiToken.status 13.1.1
 cloudflare.apiTokens 13.1.1
 cloudflare.corsHeaders 11.0.0
@@ -332,6 +335,7 @@ cloudflare.one.organization.serviceTokenInactivityAction 14.0.1
 cloudflare.one.organization.serviceTokenInactivityEnabled 14.0.1
 cloudflare.one.organization.serviceTokenInactivityThresholdDays 14.0.1
 cloudflare.one.organization.sessionDuration 13.1.0
+cloudflare.one.organization.strictServiceTokenAuth 14.1.1
 cloudflare.one.organization.updatedAt 13.1.0
 cloudflare.one.organization.userSeatExpirationInactiveTime 13.1.0
 cloudflare.one.organization.warpAuthNonBrowser401 13.8.1
@@ -690,6 +694,7 @@ cloudflare.zone.logpushJob.dataset 13.1.0
 cloudflare.zone.logpushJob.destinationConf 13.1.0
 cloudflare.zone.logpushJob.enabled 13.1.0
 cloudflare.zone.logpushJob.errorMessage 13.1.0
+cloudflare.zone.logpushJob.filterAttackTraffic 14.1.1
 cloudflare.zone.logpushJob.frequency 13.1.0
 cloudflare.zone.logpushJob.id 13.1.0
 cloudflare.zone.logpushJob.lastComplete 13.1.0

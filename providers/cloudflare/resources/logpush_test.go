@@ -39,4 +39,43 @@ func TestLogpushJobs(t *testing.T) {
 	assert.Equal(t, "s3://mybucket/logs?region=us-east-1", job.DestinationConf.Data)
 	assert.Equal(t, "", job.ErrorMessage.Data)
 	assert.False(t, job.LastComplete.Data.IsZero())
+	assert.True(t, job.FilterAttackTraffic.Data)
+}
+
+// filter_attack_traffic is optional on the job payload. An absent value must
+// stay null: false would claim attack traffic is known to be exported.
+func TestLogpushJobsFilterAttackTraffic(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		field    string
+		wantData bool
+		wantNull bool
+	}{
+		{name: "enabled", field: `,"filter_attack_traffic":true`, wantData: true},
+		{name: "disabled", field: `,"filter_attack_traffic":false`, wantData: false},
+		{name: "absent", field: ``, wantNull: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := setupTestEnv(t)
+			zone := createTestZone(t, env)
+
+			env.Mux.HandleFunc(fmt.Sprintf("/zones/%s/logpush/jobs", testZoneID), func(w http.ResponseWriter, r *http.Request) {
+				jsonResponse(w, fmt.Sprintf(
+					`{"success":true,"result":[{"id":7,"name":"fw","dataset":"firewall_events"%s}]}`,
+					tc.field))
+			})
+
+			result, err := zone.logpushJobs()
+			require.NoError(t, err)
+			require.Len(t, result, 1)
+			job := result[0].(*mqlCloudflareZoneLogpushJob)
+
+			if tc.wantNull {
+				assert.True(t, job.FilterAttackTraffic.IsNull(), "an absent setting must read as null, not as false")
+				return
+			}
+			assert.False(t, job.FilterAttackTraffic.IsNull())
+			assert.Equal(t, tc.wantData, job.FilterAttackTraffic.Data)
+		})
+	}
 }

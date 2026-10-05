@@ -11,6 +11,7 @@
       "logpull_options": "fields=RayID,ClientIP&timestamps=rfc3339",
       "destination_conf": "s3://mybucket/logs?region=us-east-1",
       "frequency": "high",
+      "filter_attack_traffic": true,
       "error_message": "",
       "last_complete": "2024-04-20T10:00:00Z",
       "last_error": null

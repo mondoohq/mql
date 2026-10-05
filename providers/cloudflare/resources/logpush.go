@@ -38,6 +38,8 @@ type logpushJob struct {
 	Enabled         bool      `json:"enabled"`
 	LastComplete    time.Time `json:"last_complete"`
 	LastError       time.Time `json:"last_error"`
+	// FilterAttackTraffic is nil when the job does not report the setting.
+	FilterAttackTraffic *bool `json:"filter_attack_traffic"`
 }
 
 func (c *mqlCloudflareZone) logpushJobs() ([]any, error) {
@@ -60,17 +62,18 @@ func (c *mqlCloudflareZone) logpushJobs() ([]any, error) {
 			// set on the Internal struct only AFTER NewResource returns, so
 			// relying on id() would key every job as `logpush@@<id>` (empty
 			// zone). An explicit __id is honored ahead of id().
-			"__id":            llx.StringData(fmt.Sprintf("logpush@%s@%d", c.Id.Data, rec.ID)),
-			"id":              llx.IntData(rec.ID),
-			"name":            llx.StringData(rec.Name),
-			"dataset":         llx.StringData(rec.Dataset),
-			"logpullOptions":  llx.StringData(rec.LogpullOptions),
-			"destinationConf": llx.StringData(rec.DestinationConf),
-			"frequency":       llx.StringData(rec.Frequency),
-			"errorMessage":    llx.StringData(rec.ErrorMessage),
-			"enabled":         llx.BoolData(rec.Enabled),
-			"lastComplete":    timeOrNil(rec.LastComplete),
-			"lastError":       timeOrNil(rec.LastError),
+			"__id":                llx.StringData(fmt.Sprintf("logpush@%s@%d", c.Id.Data, rec.ID)),
+			"id":                  llx.IntData(rec.ID),
+			"name":                llx.StringData(rec.Name),
+			"dataset":             llx.StringData(rec.Dataset),
+			"logpullOptions":      llx.StringData(rec.LogpullOptions),
+			"destinationConf":     llx.StringData(rec.DestinationConf),
+			"frequency":           llx.StringData(rec.Frequency),
+			"errorMessage":        llx.StringData(rec.ErrorMessage),
+			"enabled":             llx.BoolData(rec.Enabled),
+			"lastComplete":        timeOrNil(rec.LastComplete),
+			"lastError":           timeOrNil(rec.LastError),
+			"filterAttackTraffic": llx.BoolDataPtr(rec.FilterAttackTraffic),
 		})
 		if err != nil {
 			return nil, err

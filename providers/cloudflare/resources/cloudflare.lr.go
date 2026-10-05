@@ -966,6 +966,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"cloudflare.apiToken.policies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareApiToken).GetPolicies()).ToDataRes(types.Array(types.Dict))
 	},
+	"cloudflare.apiToken.creatorEmail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareApiToken).GetCreatorEmail()).ToDataRes(types.String)
+	},
+	"cloudflare.apiToken.provisionerType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareApiToken).GetProvisionerType()).ToDataRes(types.String)
+	},
+	"cloudflare.apiToken.provisionerId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareApiToken).GetProvisionerId()).ToDataRes(types.String)
+	},
 	"cloudflare.account.settings.enforceTwoFactor": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareAccountSettings).GetEnforceTwoFactor()).ToDataRes(types.Bool)
 	},
@@ -1433,6 +1442,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"cloudflare.one.organization.serviceTokenInactivityThresholdDays": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOneOrganization).GetServiceTokenInactivityThresholdDays()).ToDataRes(types.Int)
+	},
+	"cloudflare.one.organization.strictServiceTokenAuth": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneOrganization).GetStrictServiceTokenAuth()).ToDataRes(types.Bool)
 	},
 	"cloudflare.one.casbPosturePolicy.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetId()).ToDataRes(types.String)
@@ -2105,6 +2117,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"cloudflare.zone.logpushJob.lastError": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareZoneLogpushJob).GetLastError()).ToDataRes(types.Time)
+	},
+	"cloudflare.zone.logpushJob.filterAttackTraffic": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareZoneLogpushJob).GetFilterAttackTraffic()).ToDataRes(types.Bool)
 	},
 	"cloudflare.logExplorerDataset.datasetId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareLogExplorerDataset).GetDatasetId()).ToDataRes(types.String)
@@ -3471,6 +3486,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCloudflareApiToken).Policies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"cloudflare.apiToken.creatorEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareApiToken).CreatorEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.apiToken.provisionerType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareApiToken).ProvisionerType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.apiToken.provisionerId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareApiToken).ProvisionerId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"cloudflare.account.settings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareAccountSettings).__id, ok = v.Value.(string)
 		return
@@ -4169,6 +4196,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"cloudflare.one.organization.serviceTokenInactivityThresholdDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareOneOrganization).ServiceTokenInactivityThresholdDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.organization.strictServiceTokenAuth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneOrganization).StrictServiceTokenAuth, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"cloudflare.one.casbPosturePolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5165,6 +5196,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"cloudflare.zone.logpushJob.lastError": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareZoneLogpushJob).LastError, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.zone.logpushJob.filterAttackTraffic": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareZoneLogpushJob).FilterAttackTraffic, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"cloudflare.logExplorerDataset.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8027,18 +8062,21 @@ type mqlCloudflareApiToken struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlCloudflareApiTokenInternal it will be used here
-	Id         plugin.TValue[string]
-	Name       plugin.TValue[string]
-	Status     plugin.TValue[string]
-	IssuedOn   plugin.TValue[*time.Time]
-	ModifiedOn plugin.TValue[*time.Time]
-	NotBefore  plugin.TValue[*time.Time]
-	ExpiresOn  plugin.TValue[*time.Time]
-	IpIn       plugin.TValue[[]any]
-	IpNotIn    plugin.TValue[[]any]
-	LastUsedOn plugin.TValue[*time.Time]
-	AccountId  plugin.TValue[string]
-	Policies   plugin.TValue[[]any]
+	Id              plugin.TValue[string]
+	Name            plugin.TValue[string]
+	Status          plugin.TValue[string]
+	IssuedOn        plugin.TValue[*time.Time]
+	ModifiedOn      plugin.TValue[*time.Time]
+	NotBefore       plugin.TValue[*time.Time]
+	ExpiresOn       plugin.TValue[*time.Time]
+	IpIn            plugin.TValue[[]any]
+	IpNotIn         plugin.TValue[[]any]
+	LastUsedOn      plugin.TValue[*time.Time]
+	AccountId       plugin.TValue[string]
+	Policies        plugin.TValue[[]any]
+	CreatorEmail    plugin.TValue[string]
+	ProvisionerType plugin.TValue[string]
+	ProvisionerId   plugin.TValue[string]
 }
 
 // createCloudflareApiToken creates a new instance of this resource
@@ -8124,6 +8162,18 @@ func (c *mqlCloudflareApiToken) GetAccountId() *plugin.TValue[string] {
 
 func (c *mqlCloudflareApiToken) GetPolicies() *plugin.TValue[[]any] {
 	return &c.Policies
+}
+
+func (c *mqlCloudflareApiToken) GetCreatorEmail() *plugin.TValue[string] {
+	return &c.CreatorEmail
+}
+
+func (c *mqlCloudflareApiToken) GetProvisionerType() *plugin.TValue[string] {
+	return &c.ProvisionerType
+}
+
+func (c *mqlCloudflareApiToken) GetProvisionerId() *plugin.TValue[string] {
+	return &c.ProvisionerId
 }
 
 // mqlCloudflareAccountSettings for the cloudflare.account.settings resource
@@ -9888,6 +9938,7 @@ type mqlCloudflareOneOrganization struct {
 	ServiceTokenInactivityEnabled       plugin.TValue[bool]
 	ServiceTokenInactivityAction        plugin.TValue[string]
 	ServiceTokenInactivityThresholdDays plugin.TValue[int64]
+	StrictServiceTokenAuth              plugin.TValue[bool]
 }
 
 // createCloudflareOneOrganization creates a new instance of this resource
@@ -9976,6 +10027,10 @@ func (c *mqlCloudflareOneOrganization) GetServiceTokenInactivityAction() *plugin
 
 func (c *mqlCloudflareOneOrganization) GetServiceTokenInactivityThresholdDays() *plugin.TValue[int64] {
 	return &c.ServiceTokenInactivityThresholdDays
+}
+
+func (c *mqlCloudflareOneOrganization) GetStrictServiceTokenAuth() *plugin.TValue[bool] {
+	return &c.StrictServiceTokenAuth
 }
 
 // mqlCloudflareOneCasbPosturePolicy for the cloudflare.one.casbPosturePolicy resource
@@ -12154,16 +12209,17 @@ type mqlCloudflareZoneLogpushJob struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlCloudflareZoneLogpushJobInternal
-	Id              plugin.TValue[int64]
-	Name            plugin.TValue[string]
-	Dataset         plugin.TValue[string]
-	LogpullOptions  plugin.TValue[string]
-	DestinationConf plugin.TValue[string]
-	Frequency       plugin.TValue[string]
-	ErrorMessage    plugin.TValue[string]
-	Enabled         plugin.TValue[bool]
-	LastComplete    plugin.TValue[*time.Time]
-	LastError       plugin.TValue[*time.Time]
+	Id                  plugin.TValue[int64]
+	Name                plugin.TValue[string]
+	Dataset             plugin.TValue[string]
+	LogpullOptions      plugin.TValue[string]
+	DestinationConf     plugin.TValue[string]
+	Frequency           plugin.TValue[string]
+	ErrorMessage        plugin.TValue[string]
+	Enabled             plugin.TValue[bool]
+	LastComplete        plugin.TValue[*time.Time]
+	LastError           plugin.TValue[*time.Time]
+	FilterAttackTraffic plugin.TValue[bool]
 }
 
 // createCloudflareZoneLogpushJob creates a new instance of this resource
@@ -12241,6 +12297,10 @@ func (c *mqlCloudflareZoneLogpushJob) GetLastComplete() *plugin.TValue[*time.Tim
 
 func (c *mqlCloudflareZoneLogpushJob) GetLastError() *plugin.TValue[*time.Time] {
 	return &c.LastError
+}
+
+func (c *mqlCloudflareZoneLogpushJob) GetFilterAttackTraffic() *plugin.TValue[bool] {
+	return &c.FilterAttackTraffic
 }
 
 // mqlCloudflareLogExplorerDataset for the cloudflare.logExplorerDataset resource

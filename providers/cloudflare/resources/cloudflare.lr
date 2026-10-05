@@ -558,6 +558,22 @@ private cloudflare.apiToken @defaults("name status expiresOn") {
 	// and `permissionGroups` (a list of objects with `id` and `name`
 	// naming the permission groups granted).
 	policies []dict
+	// Email address of the user who created the token, as recorded at creation
+	//
+	// Null for a user-owned token, and for an account-owned token when no
+	// creator email was available.
+	creatorEmail string
+	// Kind of service that provisioned the token
+	//
+	// Set when the token was issued by a service rather than created by a
+	// person, such as a token provisioned through an OAuth client. Null for a
+	// user-owned token and for an account-owned token created directly.
+	provisionerType string
+	// Identifier of the service that provisioned the token
+	//
+	// For an OAuth-provisioned token this is the OAuth client identifier. Null
+	// when provisionerType is null or the identifier is unavailable.
+	provisionerId string
 }
 
 // Account settings
@@ -1155,6 +1171,14 @@ private cloudflare.one.organization @defaults("name authDomain") {
 	//
 	// Null when the organization does not report the setting.
 	serviceTokenInactivityThresholdDays int
+	// Whether strict service-token authentication is enabled
+	//
+	// When true, a request with a missing or invalid Access service token
+	// receives a 401 or 403 response and emits an audit log entry instead of
+	// being redirected to the login page, and a successful request no longer
+	// receives a CF_Authorization cookie. Null when the organization does not
+	// report the setting.
+	strictServiceTokenAuth bool
 }
 
 // Cloudflare One CASB posture policy
@@ -1897,6 +1921,12 @@ private cloudflare.zone.logpushJob @defaults("name dataset") {
 	lastComplete time
 	// Time of last error
 	lastError time
+	// Whether DDoS attack traffic is excluded from the exported logs
+	//
+	// Supported for the `http_requests`, `firewall_events`, and
+	// `network_analytics_logs` datasets. Null when the job does not report the
+	// setting.
+	filterAttackTraffic bool
 }
 
 // Cloudflare Log Explorer dataset

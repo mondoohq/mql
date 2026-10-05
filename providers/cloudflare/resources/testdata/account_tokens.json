@@ -12,6 +12,9 @@
       "not_before": "2024-01-01T00:00:00Z",
       "expires_on": "2025-01-01T00:00:00Z",
       "last_used_on": "2024-06-01T00:00:00Z",
+      "creator_email_at_creation": "ci-owner@example.com",
+      "provisioner_type": "oauth",
+      "provisioner_id": "3f1c9a7e2b5d4e8f",
       "condition": {
         "request_ip": {
           "in": ["203.0.113.0/24"],
@@ -35,6 +38,7 @@
       "status": "active",
       "issued_on": "2023-01-01T00:00:00Z",
       "modified_on": "2023-01-01T00:00:00Z",
+      "provisioner_id": null,
       "condition": {},
       "policies": []
     }

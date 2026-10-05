@@ -230,3 +230,42 @@ func TestOrganizationServiceTokenInactivity(t *testing.T) {
 		})
 	}
 }
+
+// strict_service_token_auth is optional on the organization payload. An absent
+// value has to stay null: false would claim failed service-token requests are
+// known to be redirected to a login page.
+func TestOrganizationStrictServiceTokenAuth(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		field    string
+		wantData bool
+		wantNull bool
+	}{
+		{name: "enabled", field: `,"strict_service_token_auth":true`, wantData: true},
+		{name: "disabled", field: `,"strict_service_token_auth":false`, wantData: false},
+		{name: "absent", field: ``, wantNull: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := setupTestEnv(t)
+			one := createTestOne(t, env)
+
+			env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/access/organizations", testAccountID), func(w http.ResponseWriter, r *http.Request) {
+				jsonResponse(w, fmt.Sprintf(
+					`{"success":true,"result":{"name":"My Organization","auth_domain":"myorg.cloudflareaccess.com"%s}}`,
+					tc.field))
+			})
+
+			result, err := one.organization()
+			require.NoError(t, err)
+			require.NotNil(t, result)
+
+			if tc.wantNull {
+				assert.True(t, result.StrictServiceTokenAuth.State&plugin.StateIsNull != 0,
+					"an absent setting must read as null, not as false")
+				return
+			}
+			assert.True(t, result.StrictServiceTokenAuth.State&plugin.StateIsNull == 0)
+			assert.Equal(t, tc.wantData, result.StrictServiceTokenAuth.Data)
+		})
+	}
+}

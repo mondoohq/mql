@@ -32,6 +32,9 @@ func TestAccountAPITokens(t *testing.T) {
 	assert.Equal(t, []any{"198.51.100.0/24"}, ci.IpNotIn.Data)
 	assert.False(t, ci.ExpiresOn.IsNull())
 	assert.False(t, ci.LastUsedOn.IsNull())
+	assert.Equal(t, "ci-owner@example.com", ci.CreatorEmail.Data)
+	assert.Equal(t, "oauth", ci.ProvisionerType.Data)
+	assert.Equal(t, "3f1c9a7e2b5d4e8f", ci.ProvisionerId.Data)
 
 	require.Len(t, ci.Policies.Data, 1)
 	policy := ci.Policies.Data[0].(map[string]any)
@@ -49,6 +52,11 @@ func TestAccountAPITokens(t *testing.T) {
 	assert.True(t, stale.LastUsedOn.IsNull())
 	assert.True(t, stale.NotBefore.IsNull())
 	assert.Empty(t, stale.IpIn.Data, "no IP allowlist means the token works from anywhere")
+	// A token created directly by a person carries no creator email or
+	// provisioner, whether the key is absent or explicitly null.
+	assert.True(t, stale.CreatorEmail.IsNull(), "an absent creator email must read null, not empty")
+	assert.True(t, stale.ProvisionerType.IsNull())
+	assert.True(t, stale.ProvisionerId.IsNull(), "an explicit null provisioner_id must read null")
 }
 
 func TestAccountAPITokens_degradesWhenUnavailable(t *testing.T) {
@@ -106,4 +114,11 @@ func TestUserAPITokens_credentialScopeFailureSurfaces(t *testing.T) {
 
 	_, err = root.(*mqlCloudflare).apiTokens()
 	require.Error(t, err)
+}
+
+func TestTokenStringOrNil(t *testing.T) {
+	assert.True(t, tokenStringOrNil("", true).Value == nil)
+	assert.True(t, tokenStringOrNil("", false).Value == nil, "an empty string carries no value")
+	assert.True(t, tokenStringOrNil("x", true).Value == nil, "a null JSON field wins over a stale value")
+	assert.Equal(t, "x", tokenStringOrNil("x", false).Value)
 }

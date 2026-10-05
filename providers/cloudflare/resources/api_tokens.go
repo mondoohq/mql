@@ -85,7 +85,21 @@ func newAPITokenResource(runtime *plugin.Runtime, cacheKey, accountID string, t 
 		"ipIn":       llx.ArrayData(convert.SliceAnyToInterface(t.Condition.RequestIP.In), types.String),
 		"ipNotIn":    llx.ArrayData(convert.SliceAnyToInterface(t.Condition.RequestIP.NotIn), types.String),
 		"policies":   llx.ArrayData(tokenPolicyDicts(t.Policies), types.Dict),
+		// Only account-owned tokens carry these; a user token omits them, and
+		// they must read as null there rather than as an empty string.
+		"creatorEmail":    tokenStringOrNil(t.CreatorEmailAtCreation, t.JSON.CreatorEmailAtCreation.IsNull()),
+		"provisionerType": tokenStringOrNil(t.ProvisionerType, t.JSON.ProvisionerType.IsNull()),
+		"provisionerId":   tokenStringOrNil(t.ProvisionerID, t.JSON.ProvisionerID.IsNull()),
 	})
+}
+
+// tokenStringOrNil returns null for a token attribute the API omitted, sent as
+// null, or sent empty, and the string otherwise.
+func tokenStringOrNil(v string, absent bool) *llx.RawData {
+	if absent || v == "" {
+		return llx.NilData
+	}
+	return llx.StringData(v)
 }
 
 // apiTokens lists API tokens visible to the calling user. These are *user*
