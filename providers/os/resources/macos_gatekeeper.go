@@ -4,11 +4,16 @@
 package resources
 
 import (
-	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
 	"go.mondoo.com/mql/llx"
+)
+
+const (
+	spctlEnabled  = "assessments enabled"
+	spctlDisabled = "assessments disabled"
 )
 
 type mqlMacosGatekeeperInternal struct {
@@ -34,13 +39,35 @@ func (m *mqlMacosGatekeeper) fetchStatus() (string, error) {
 		return "", err
 	}
 	cmd := res.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return "", errors.New("spctl --status failed: " + cmd.GetStderr().Data)
+	status, err := spctlStatus(cmd.GetStdout().Data, cmd.GetStderr().Data, cmd.GetExitcode().Data)
+	if err != nil {
+		return "", err
 	}
 
-	m.output = parseSpctlStatus(cmd.GetStdout().Data)
+	m.output = status
 	m.fetched = true
 	return m.output, nil
+}
+
+// spctlStatus turns the result of `spctl --status` into the status line.
+// spctl exits 1 when assessments are disabled, so the exit code alone does not
+// mean the command failed: "assessments disabled" on stdout with exit 1 is the
+// answer, not an error. Any other non-zero exit is an error.
+//
+// Measured on macOS 26.6.2:
+//
+//	enabled:  stdout "assessments enabled\n",  exit 0
+//	disabled: stdout "assessments disabled\n", exit 1
+func spctlStatus(stdout string, stderr string, exitCode int64) (string, error) {
+	status := parseSpctlStatus(stdout)
+	if exitCode == 0 || status == spctlDisabled {
+		return status, nil
+	}
+	msg := strings.TrimSpace(stderr)
+	if msg == "" {
+		msg = status
+	}
+	return "", fmt.Errorf("spctl --status failed (exit %d): %s", exitCode, msg)
 }
 
 // parseSpctlStatus normalizes `spctl --status` output. The command prints a
@@ -61,7 +88,7 @@ func parseSpctlStatus(raw string) string {
 // marker. parseSpctlStatus has already trimmed and picked one line, so an
 // exact match is safer than a substring check against future spctl output.
 func isGatekeeperEnabled(status string) bool {
-	return status == "assessments enabled"
+	return status == spctlEnabled
 }
 
 func (m *mqlMacosGatekeeper) status() (string, error) {
