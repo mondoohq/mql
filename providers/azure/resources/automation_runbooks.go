@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 
@@ -44,7 +45,10 @@ func (a *mqlAzureSubscriptionAutomationServiceAccountRunbook) fetchDetails() (*a
 }
 
 func (a *mqlAzureSubscriptionAutomationServiceAccountRunbook) loadDetails() (*armautomation.RunbookProperties, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
 	resourceID, err := ParseResourceID(a.Id.Data)
 	if err != nil {
 		return nil, err
