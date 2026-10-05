@@ -235,7 +235,7 @@ type findEntry struct {
 // findFixtureFs is the sweep's /etc/c3-links fixture plus a slice of
 // debian:12's /usr/bin, as `docker export` writes them: hard2 is a tar
 // hardlink to hard1, su is setuid, and realdirx is a sibling of realdir that
-// shares its name as a prefix.
+// shares its name as a prefix. bin links to usr/bin, as on a usr-merged image.
 func findFixtureFs(t *testing.T) *tar.FS {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "find.tar")
@@ -258,6 +258,7 @@ func findFixtureFs(t *testing.T) *tar.FS {
 		{name: "usr/bin/su", typ: archivetar.TypeReg, mode: 0o4755},
 		{name: "usr/bin/ls", typ: archivetar.TypeReg, mode: 0o755},
 		{name: "usr/bin/wall", typ: archivetar.TypeReg, mode: 0o2755},
+		{name: "bin", typ: archivetar.TypeSymlink, mode: 0o777, link: "usr/bin"},
 	} {
 		require.NoError(t, tw.WriteHeader(&archivetar.Header{Name: e.name, Typeflag: e.typ, Mode: e.mode, Linkname: e.link}))
 	}
@@ -330,4 +331,16 @@ func TestTarFindRegexIsAnchored(t *testing.T) {
 		"find -regex matches the whole path")
 	assert.Equal(t, []string{"/etc/c3-links/hard1", "/etc/c3-links/hard2"},
 		find(t, fs, "/etc/c3-links", regexp.MustCompile(`.*/hard.*`), "", nil))
+}
+
+func TestTarFindFromALinkedDirectory(t *testing.T) {
+	fs := findFixtureFs(t)
+	suid := uint32(0o4000)
+	assert.Equal(t, []string{"/bin/su"}, find(t, fs, "/bin", nil, "file", &suid),
+		"a start path that links to a directory is searched, as find -L does")
+	assert.Equal(t, []string{"/bin", "/bin/ls", "/bin/su", "/bin/wall"}, find(t, fs, "/bin", nil, "", nil))
+	assert.Equal(t, []string{"/bin/ls"}, find(t, fs, "/bin", regexp.MustCompile(`/bin/l.`), "", nil),
+		"the regex sees the path below from")
+
+	assert.Equal(t, []string{"/etc/c3-links/todir", "/etc/c3-links/todir/in.conf"}, find(t, fs, "/etc/c3-links/todir", nil, "", nil))
 }

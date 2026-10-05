@@ -272,10 +272,13 @@ func (fs *FS) open(header *tar.Header) (io.Reader, error) {
 //   - a symlink loop is skipped, as find -L skips it with an error.
 //
 // Links to directories are reported but not descended into, as the command
-// backend's `-xtype l -prune` does.
+// backend's `-xtype l -prune` does. The exception is from itself: like find
+// -L, a start path that links to a directory (/bin -> usr/bin on a usr-merged
+// image) is searched, and its entries are reported below from.
 func (fs *FS) Find(from string, r *regexp.Regexp, typ string, perm *uint32, depth *int) ([]string, error) {
 	from = Abs(from)
-	prefix := from
+	root := fs.findRoot(from)
+	prefix := root
 	if !strings.HasSuffix(prefix, "/") {
 		prefix += "/"
 	}
@@ -290,13 +293,18 @@ func (fs *FS) Find(from string, r *regexp.Regexp, typ string, perm *uint32, dept
 
 	list := []string{}
 	for k, entry := range fs.FileMap {
-		if k != from && !strings.HasPrefix(k, prefix) {
+		if k != root && !strings.HasPrefix(k, prefix) {
 			continue
 		}
-		if !depthMatch(from, k, depth) {
+		// the path as find prints it, below from
+		p := k
+		if root != from {
+			p = from + k[len(root):]
+		}
+		if !depthMatch(from, p, depth) {
 			continue
 		}
-		if r != nil && !r.MatchString(k) {
+		if r != nil && !r.MatchString(p) {
 			continue
 		}
 		// the target decides type and mode, as with find -L
@@ -320,9 +328,31 @@ func (fs *FS) Find(from string, r *regexp.Regexp, typ string, perm *uint32, dept
 		if perm != nil && *perm != 0 && uint32(target.Mode)&*perm != *perm {
 			continue
 		}
-		list = append(list, k)
+		list = append(list, p)
 	}
 	return list, nil
+}
+
+// findRoot returns the archive path a search from `from` walks: from itself,
+// or the directory it links to when from is a symlink to a directory.
+func (fs *FS) findRoot(from string) string {
+	h, ok := fs.FileMap[from]
+	if !ok || h.Typeflag != tar.TypeSymlink {
+		return from
+	}
+	info, err := fs.Stat(from)
+	if err != nil {
+		return from
+	}
+	target, ok := info.Sys().(*tar.Header)
+	if !ok || target.Typeflag != tar.TypeDir {
+		return from
+	}
+	root := Abs(target.Name)
+	if root == "/" || root == from {
+		return from
+	}
+	return root
 }
 
 // findTypes parses a files.find type list into find's one-letter types.
