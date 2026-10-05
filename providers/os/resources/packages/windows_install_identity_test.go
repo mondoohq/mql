@@ -4,6 +4,8 @@
 package packages
 
 import (
+	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -217,7 +219,7 @@ func TestParseWindowsAppPackagesReadsIdentity(t *testing.T) {
 	assert.Equal(t, "F608407A-6091-42E0-A1BA-B8FFFC21199B", purlQualifier(t, pkgs[1].PUrl, "upgrade_code"))
 	assert.Equal(t, "Notepad3", purlQualifier(t, pkgs[2].PUrl, "app_id"))
 
-	installers := []string{"msi", "burn", "inno", "installshield", "unknown"}
+	installers := []string{"msi", "burn", "inno", "installshield", "squirrel"}
 	for i, want := range installers {
 		assert.Equal(t, want, purlQualifier(t, pkgs[i].PUrl, "installer"), pkgs[i].Name)
 	}
@@ -319,22 +321,96 @@ func installerTestEntries() []struct {
 			want: "installshield",
 		},
 		{
-			name: "vendor bootstrapper: Google Chrome's setup.exe",
+			name: "Chromium: system-level Google Chrome",
 			key:  "Google Chrome",
 			items: []registry.RegistryKeyItem{
 				sz("DisplayName", "Google Chrome"),
-				sz("UninstallString", `"C:\Program Files\Google\Chrome\Application\129.0.6668.90\Installer\setup.exe" --uninstall --channel=stable --system-level --verbose-logging`),
+				sz("UninstallString", `"C:\Program Files\Google\Chrome\Application\153.0.8010.53\Installer\setup.exe" --uninstall --system-level`),
 			},
-			want: "unknown",
+			want: "chromium",
 		},
 		{
-			name: "Squirrel: per-user Update.exe",
+			name: "Chromium: per-user Google Chrome",
+			key:  "Google Chrome",
+			items: []registry.RegistryKeyItem{
+				sz("DisplayName", "Google Chrome"),
+				sz("UninstallString", `"C:\Users\catalog\AppData\Local\Google\Chrome\Application\153.0.8010.53\Installer\setup.exe" --uninstall`),
+			},
+			want: "chromium",
+		},
+		{
+			name: "Squirrel: per-user Slack Update.exe",
 			key:  "slack",
 			items: []registry.RegistryKeyItem{
 				sz("DisplayName", "Slack"),
 				sz("UninstallString", `"C:\Users\user\AppData\Local\slack\Update.exe" --uninstall -s`),
 			},
+			want: "squirrel",
+		},
+		{
+			name: "Squirrel: per-user Claude Update.exe",
+			key:  "AnthropicClaude",
+			items: []registry.RegistryKeyItem{
+				sz("DisplayName", "Claude"),
+				sz("UninstallString", `"C:\Users\catalog\AppData\Local\AnthropicClaude\Update.exe" --uninstall`),
+				sz("QuietUninstallString", `"C:\Users\catalog\AppData\Local\AnthropicClaude\Update.exe" --uninstall -s`),
+			},
+			want: "squirrel",
+		},
+		{
+			name: "a generic setup.exe uninstaller is not chromium",
+			key:  "Foo",
+			items: []registry.RegistryKeyItem{
+				sz("DisplayName", "Foo"),
+				sz("UninstallString", `C:\Program Files\Foo\setup.exe /uninstall`),
+			},
 			want: "unknown",
+		},
+		{
+			name: "an Update.exe without --uninstall is not squirrel",
+			key:  "Bar",
+			items: []registry.RegistryKeyItem{
+				sz("DisplayName", "Bar"),
+				sz("UninstallString", `"C:\Program Files\Bar\Update.exe" /remove`),
+			},
+			want: "unknown",
+		},
+		{
+			name: "NSIS-style uninstall.exe",
+			key:  "Baz",
+			items: []registry.RegistryKeyItem{
+				sz("DisplayName", "Baz"),
+				sz("UninstallString", `"C:\Program Files\Baz\uninstall.exe"`),
+			},
+			want: "unknown",
+		},
+		{
+			name: "Firefox helper.exe",
+			key:  "Mozilla Firefox (x64 en-US)",
+			items: []registry.RegistryKeyItem{
+				sz("DisplayName", "Mozilla Firefox (x64 en-US)"),
+				sz("UninstallString", `"C:\Program Files\Mozilla Firefox\uninstall\helper.exe"`),
+			},
+			want: "unknown",
+		},
+		{
+			name: "an MSI entry whose UninstallString looks like Squirrel stays msi",
+			key:  sevenZipProductKey,
+			items: []registry.RegistryKeyItem{
+				sz("DisplayName", "7-Zip 26.03 (x64 edition)"),
+				sz("UninstallString", `"C:\Users\user\AppData\Local\x\Update.exe" --uninstall`),
+				dword("WindowsInstaller", 1),
+			},
+			want: "msi",
+		},
+		{
+			name: "an Inno Setup key whose UninstallString looks like Chromium stays inno",
+			key:  "Example_is1",
+			items: []registry.RegistryKeyItem{
+				sz("DisplayName", "Example"),
+				sz("UninstallString", `"C:\Program Files\Example\Application\1.2.3.4\Installer\setup.exe" --uninstall`),
+			},
+			want: "inno",
 		},
 		{
 			name: "WindowsInstaller=1 on a key that is not a ProductCode is not msi",
@@ -383,6 +459,62 @@ func TestIsInstallShieldUninstall(t *testing.T) {
 	assert.False(t, isInstallShieldUninstall(""))
 }
 
+func TestIsSquirrelUninstall(t *testing.T) {
+	for _, s := range []string{
+		`"C:\Users\catalog\AppData\Local\AnthropicClaude\Update.exe" --uninstall`,
+		`"C:\Users\catalog\AppData\Local\AnthropicClaude\Update.exe" --uninstall -s`,
+		`"C:\USERS\U\APPDATA\LOCAL\APP\UPDATE.EXE" --Uninstall`,
+		// An unexpanded value, as read from another user's hive.
+		`"%LOCALAPPDATA%\slack\Update.exe" --uninstall -s`,
+		`C:\Users\u\AppData\Local\app\Update.exe --uninstall`,
+	} {
+		assert.True(t, isSquirrelUninstall(s), s)
+	}
+	for _, s := range []string{
+		`"C:\Program Files\Bar\Update.exe"`,
+		`"C:\Program Files\Bar\Update.exe" /uninstall`,
+		`"C:\Program Files\Bar\Update.exe" --uninstall-later`,
+		`"C:\Tools\MyUpdate.exe" --uninstall`,
+		`"C:\Update.exe Tools\remove.exe" --uninstall`,
+		`"C:\Program Files\Foo\uninstall.exe" --uninstall`,
+		`Update.exe --uninstall`,
+		`"C:\Users\u\AppData\Local\app\Update.exe`,
+		``,
+	} {
+		assert.False(t, isSquirrelUninstall(s), s)
+	}
+}
+
+func TestIsChromiumUninstall(t *testing.T) {
+	for _, s := range []string{
+		`"C:\Program Files\Google\Chrome\Application\153.0.8010.53\Installer\setup.exe" --uninstall --system-level`,
+		`"C:\Program Files\Google\Chrome\Application\129.0.6668.90\Installer\setup.exe" --uninstall --channel=stable --system-level --verbose-logging`,
+		`"C:\Users\catalog\AppData\Local\Google\Chrome\Application\153.0.8010.53\Installer\setup.exe" --uninstall`,
+		`"C:\PROGRAM FILES\GOOGLE\CHROME\APPLICATION\153.0.8010.53\INSTALLER\SETUP.EXE" --UNINSTALL`,
+		`C:\Program Files\Google\Chrome\Application\153.0.8010.53\Installer\setup.exe --uninstall --system-level`,
+	} {
+		assert.True(t, isChromiumUninstall(s), s)
+	}
+	for _, s := range []string{
+		`C:\Program Files\Foo\setup.exe /uninstall`,
+		`"C:\Program Files\Foo\setup.exe" --uninstall`,
+		// No --uninstall argument.
+		`"C:\Program Files\Google\Chrome\Application\153.0.8010.53\Installer\setup.exe"`,
+		`"C:\Program Files\Google\Chrome\Application\153.0.8010.53\Installer\setup.exe" /uninstall`,
+		// The layout is incomplete or reordered.
+		`"C:\Program Files\Google\Chrome\Application\Installer\setup.exe" --uninstall`,
+		`"C:\Program Files\Google\Chrome\Application\latest\Installer\setup.exe" --uninstall`,
+		`"C:\Program Files\Vendor\153.0.8010.53\Installer\setup.exe" --uninstall`,
+		`"C:\Program Files\Vendor\Application\153.0.8010.53\Installer\uninstall.exe" --uninstall`,
+		`"C:\Program Files\Vendor\Application\153.0.8010.53\Installer\setup.exe.bak" --uninstall`,
+		`"C:\Program Files\Mozilla Firefox\uninstall\helper.exe"`,
+		`MsiExec.exe /X{23170F69-40C1-2702-2603-000001000000}`,
+		``,
+	} {
+		assert.False(t, isChromiumUninstall(s), s)
+	}
+}
+
 func TestInstallScopeQualifier(t *testing.T) {
 	pf := &inventory.Platform{Name: "windows", Arch: "x86_64", Family: []string{"windows"}}
 	user := createPackage("Slack", "4.41.105", "windows/app", "x86_64", "Slack Technologies Inc.", "", pf)
@@ -404,7 +536,7 @@ func TestInstallScopeQualifier(t *testing.T) {
 	applyInstallIdentityQualifiers(pkgs, nil)
 
 	assert.Equal(t, "user", purlQualifier(t, pkgs[0].PUrl, "install-scope"))
-	assert.Equal(t, "unknown", purlQualifier(t, pkgs[0].PUrl, "installer"))
+	assert.Equal(t, "squirrel", purlQualifier(t, pkgs[0].PUrl, "installer"))
 	assert.Equal(t, "slack", purlQualifier(t, pkgs[0].PUrl, "app_id"))
 
 	assert.False(t, hasPurlQualifier(t, pkgs[1].PUrl, "install-scope"), "machine-wide installs carry no install-scope")
@@ -422,4 +554,93 @@ func hasPurlQualifier(t *testing.T, rawPurl, key string) bool {
 	require.NoError(t, err, "purl %q must parse", rawPurl)
 	_, ok := parsed.Qualifiers.Map()[key]
 	return ok
+}
+
+// TestInstallerQualifierAgreesAcrossPaths feeds the same Uninstall entries
+// through every way they are read -- the registry-item path of local scans,
+// another user's offline hive loaded from NTUSER.DAT, and the PowerShell JSON
+// of remote scans -- and requires the same installer value from each.
+func TestInstallerQualifierAgreesAcrossPaths(t *testing.T) {
+	entries := installerTestEntries()
+	pf := &inventory.Platform{Name: "windows", Arch: "x86_64", Family: []string{"windows"}}
+	installerOf := func(pkgs []Package) []string {
+		applyInstallIdentityQualifiers(pkgs, nil)
+		out := make([]string, len(pkgs))
+		for i := range pkgs {
+			out[i] = purlQualifier(t, pkgs[i].PUrl, "installer")
+		}
+		return out
+	}
+	want := make([]string, len(entries))
+	for i, e := range entries {
+		want[i] = e.want
+	}
+
+	// Local registry items.
+	local := []Package{}
+	for _, e := range entries {
+		p, _ := getPackageFromRegistryKeyItems(e.items, pf, pf.Arch)
+		require.NotNil(t, p, e.name)
+		p.installIdentity = installIdentityFromItems(e.key, e.items)
+		local = append(local, *p)
+	}
+	assert.Equal(t, want, installerOf(local), "local registry path")
+
+	// Another user's offline hive, one profile per entry: some entries share
+	// a key name ("Google Chrome"), as they do on real hosts.
+	const subpath = `Software\Microsoft\Windows\CurrentVersion\Uninstall`
+	offline := []Package{}
+	for i, e := range entries {
+		sid := "S-1-5-21-1-2-3-" + strconv.Itoa(1000+i)
+		hive := &fakeUserHiveHandler{
+			children: map[string][]registry.RegistryKeyChild{
+				sid + "|" + subpath: {{Path: `HKLM\TMPREG_USER_` + sid + `\` + subpath, Name: e.key}},
+			},
+			items: map[string][]registry.RegistryKeyItem{sid + "|" + subpath + `\` + e.key: e.items},
+		}
+		w := &WinPkgManager{platform: pf}
+		pkgs, err := w.getProfileInstalledApps(windowsProfile{SID: sid, Path: `C:\Users\u` + strconv.Itoa(i)},
+			&fakeRegistryReader{}, func() userHiveHandler { return hive })
+		require.NoError(t, err, e.name)
+		require.Len(t, pkgs, 1, e.name)
+		offline = append(offline, pkgs...)
+	}
+	assert.Equal(t, want, installerOf(offline), "offline hive path")
+
+	// Remote PowerShell JSON.
+	type psEntry struct {
+		DisplayName       string   `json:"DisplayName"`
+		UninstallString   string   `json:"UninstallString"`
+		PSPath            string   `json:"PSPath"`
+		WindowsInstaller  *int     `json:"WindowsInstaller,omitempty"`
+		BundleUpgradeCode []string `json:"BundleUpgradeCode,omitempty"`
+	}
+	ps := []psEntry{}
+	for i, e := range entries {
+		pe := psEntry{
+			// Distinct PSPath roots keep entries that share a key name apart.
+			PSPath: `Microsoft.PowerShell.Core\Registry::HKEY_USERS\S-1-5-21-1-2-3-` + strconv.Itoa(2000+i) +
+				`\Software\Microsoft\Windows\CurrentVersion\Uninstall\` + e.key,
+		}
+		for _, it := range e.items {
+			switch it.Key {
+			case "DisplayName":
+				pe.DisplayName = it.Value.String
+			case "UninstallString":
+				pe.UninstallString = it.Value.String
+			case "WindowsInstaller":
+				n := int(it.Value.Number)
+				pe.WindowsInstaller = &n
+			case "BundleUpgradeCode":
+				pe.BundleUpgradeCode = it.Value.MultiString
+			}
+		}
+		ps = append(ps, pe)
+	}
+	data, err := json.Marshal(ps)
+	require.NoError(t, err)
+	remote, err := parseWindowsAppPackages(pf, strings.NewReader(string(data)))
+	require.NoError(t, err)
+	require.Len(t, remote, len(entries))
+	assert.Equal(t, want, installerOf(remote), "PowerShell path")
 }

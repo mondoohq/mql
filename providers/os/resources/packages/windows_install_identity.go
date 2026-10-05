@@ -58,8 +58,20 @@ const (
 //	installshield An InstallShield (InstallScript) setup: the UninstallString
 //	              runs the setup.exe InstallShield caches under
 //	              "InstallShield Installation Information".
+//	squirrel      Squirrel.Windows: the UninstallString runs the app's
+//	              Update.exe with --uninstall, e.g.
+//	              "C:\Users\u\AppData\Local\slack\Update.exe" --uninstall -s
+//	chromium      The Chromium installer: the UninstallString runs the
+//	              setup.exe kept under Application\<version>\Installer with
+//	              --uninstall (Chrome, Edge and other Chromium browsers,
+//	              per-machine and per-user alike).
 //	unknown       The entry was examined and none of the above matched, for
-//	              example a vendor's own setup.exe or a Squirrel Update.exe.
+//	              example a vendor's own setup.exe or an NSIS uninstall.exe.
+//
+// msi and burn come from structural registry values and always win. inno comes
+// from the key name. The other values are read from the UninstallString's
+// executable and arguments, and only when none of the above applies. Only the
+// resulting value is kept, never the command line.
 //
 // NSIS is not detected: NSIS writes no fixed key name or value, and the
 // "uninstall.exe" its examples use is also used by other installers. Those
@@ -73,6 +85,8 @@ const (
 	installerBurn          = "burn"
 	installerInno          = "inno"
 	installerInstallShield = "installshield"
+	installerSquirrel      = "squirrel"
+	installerChromium      = "chromium"
 	installerUnknown       = "unknown"
 )
 
@@ -105,9 +119,10 @@ type installIdentity struct {
 	// innoSetup records that uninstallKey ended in "_is1", the Inno Setup
 	// naming, before the suffix is stripped to form app_id.
 	innoSetup bool
-	// installShield records that the UninstallString runs InstallShield's
-	// cached setup.exe. The command line itself is not kept.
-	installShield bool
+	// uninstaller is the installer value the UninstallString identifies
+	// (installshield, squirrel or chromium), "" when it identifies none. The
+	// command line itself is not kept.
+	uninstaller string
 }
 
 // newInstallIdentity builds the identity of one Uninstall entry from its key
@@ -118,7 +133,23 @@ func newInstallIdentity(keyName string, windowsInstaller bool, bundleUpgradeCode
 		windowsInstaller:  windowsInstaller,
 		bundleUpgradeCode: bundleUpgradeCode,
 		innoSetup:         strings.HasSuffix(keyName, innoSetupKeySuffix),
-		installShield:     isInstallShieldUninstall(uninstallString),
+		uninstaller:       installerFromUninstallString(uninstallString),
+	}
+}
+
+// installerFromUninstallString returns the installer an UninstallString
+// identifies by the executable it runs and its arguments: installshield,
+// squirrel, chromium, or "" for anything else.
+func installerFromUninstallString(uninstallString string) string {
+	switch {
+	case isInstallShieldUninstall(uninstallString):
+		return installerInstallShield
+	case isSquirrelUninstall(uninstallString):
+		return installerSquirrel
+	case isChromiumUninstall(uninstallString):
+		return installerChromium
+	default:
+		return ""
 	}
 }
 
@@ -128,6 +159,93 @@ func newInstallIdentity(keyName string, windowsInstaller bool, bundleUpgradeCode
 //	"C:\Program Files (x86)\InstallShield Installation Information\{GUID}\setup.exe" -runfromtemp -l0x0409 -removeonly
 func isInstallShieldUninstall(uninstallString string) bool {
 	return strings.Contains(strings.ToLower(uninstallString), installShieldCacheDir)
+}
+
+// splitUninstallCommand splits an UninstallString into the executable it runs
+// and the arguments after it. A quoted executable ends at the closing quote; an
+// unquoted one at the first ".exe" followed by whitespace or the end. ok is
+// false when no executable can be told apart.
+func splitUninstallCommand(uninstallString string) (exe string, args []string, ok bool) {
+	s := strings.TrimSpace(uninstallString)
+	var rest string
+	if strings.HasPrefix(s, `"`) {
+		end := strings.IndexByte(s[1:], '"')
+		if end < 0 {
+			return "", nil, false
+		}
+		exe, rest = s[1:1+end], s[2+end:]
+	} else {
+		lower := strings.ToLower(s)
+		from := 0
+		for {
+			i := strings.Index(lower[from:], ".exe")
+			if i < 0 {
+				return "", nil, false
+			}
+			end := from + i + len(".exe")
+			if end == len(s) || s[end] == ' ' || s[end] == '\t' {
+				exe, rest = s[:end], s[end:]
+				break
+			}
+			from = end
+		}
+	}
+	if exe == "" || (rest != "" && rest[0] != ' ' && rest[0] != '\t') {
+		return "", nil, false
+	}
+	return exe, strings.Fields(rest), true
+}
+
+// uninstallPathParts splits an executable path into its components.
+func uninstallPathParts(exe string) []string {
+	return strings.FieldsFunc(exe, func(r rune) bool { return r == '\\' || r == '/' })
+}
+
+func hasUninstallArg(args []string, want string) bool {
+	for _, a := range args {
+		if strings.EqualFold(a, want) {
+			return true
+		}
+	}
+	return false
+}
+
+// isSquirrelUninstall reports whether an UninstallString runs a Squirrel.Windows
+// Update.exe with --uninstall, e.g.
+//
+//	"C:\Users\u\AppData\Local\AnthropicClaude\Update.exe" --uninstall
+func isSquirrelUninstall(uninstallString string) bool {
+	exe, args, ok := splitUninstallCommand(uninstallString)
+	if !ok {
+		return false
+	}
+	parts := uninstallPathParts(exe)
+	return len(parts) > 1 && strings.EqualFold(parts[len(parts)-1], "Update.exe") &&
+		hasUninstallArg(args, "--uninstall")
+}
+
+// chromiumVersionDir is the version directory the Chromium installer keeps its
+// setup.exe under: four dot-separated numbers, e.g. 153.0.8010.53.
+var chromiumVersionDir = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$`)
+
+// isChromiumUninstall reports whether an UninstallString runs the setup.exe
+// the Chromium installer keeps under Application\<version>\Installer, with
+// --uninstall, e.g.
+//
+//	"C:\Program Files\Google\Chrome\Application\153.0.8010.53\Installer\setup.exe" --uninstall --system-level
+func isChromiumUninstall(uninstallString string) bool {
+	exe, args, ok := splitUninstallCommand(uninstallString)
+	if !ok {
+		return false
+	}
+	parts := uninstallPathParts(exe)
+	n := len(parts)
+	return n > 4 &&
+		strings.EqualFold(parts[n-1], "setup.exe") &&
+		strings.EqualFold(parts[n-2], "Installer") &&
+		chromiumVersionDir.MatchString(parts[n-3]) &&
+		strings.EqualFold(parts[n-4], "Application") &&
+		hasUninstallArg(args, "--uninstall")
 }
 
 var guidPattern = regexp.MustCompile(`^\{?([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})\}?$`)
@@ -192,8 +310,8 @@ func (id *installIdentity) qualifiers(upgradeCodes map[string]string) map[string
 	switch {
 	case id.innoSetup:
 		q[qualifierInstaller] = installerInno
-	case id.installShield:
-		q[qualifierInstaller] = installerInstallShield
+	case id.uninstaller != "":
+		q[qualifierInstaller] = id.uninstaller
 	default:
 		q[qualifierInstaller] = installerUnknown
 	}
