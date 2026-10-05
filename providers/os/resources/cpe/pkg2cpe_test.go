@@ -204,4 +204,14 @@ func TestNewPackage2CpeTransliteratesNonASCII(t *testing.T) {
 	cpes, err = NewPackage2Cpe("Straße Søftware Łódź", "naïve-café", "1.0", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"cpe:2.3:a:strasse_software_lodz:naive-cafe:1.0:*:*:*:*:*:*:*"}, cpes)
+
+	// a vendor with no ASCII spelling at all is unknown, not `_`, and a dropped
+	// word does not leave a stray `_` behind
+	cpes, err = NewPackage2Cpe("日本語 株式会社", "g03-cjk", "1.0", "", "")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"cpe:2.3:a:*:g03-cjk:1.0:*:*:*:*:*:*:*"}, cpes)
+
+	cpes, err = NewPackage2Cpe("株式会社 Example", "g03-cjk", "1.0", "", "")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"cpe:2.3:a:example:g03-cjk:1.0:*:*:*:*:*:*:*"}, cpes)
 }

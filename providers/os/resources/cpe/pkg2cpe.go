@@ -34,7 +34,8 @@ var asciiLetters = map[rune]string{
 // toASCII transliterates s to ASCII: `Vendör` becomes `Vendor`, `Straße`
 // `Strasse`. WFNize keeps only the low byte of a non-ASCII rune, so `ö`
 // (U+00F6) was dropped and `ł` (U+0142) became `B`. A rune with no ASCII
-// spelling (`日本語`) is dropped.
+// spelling (`日本語`) is dropped, along with the spaces it leaves at the ends
+// or doubled, so `日本語 株式会社` is empty rather than ` ` (`_` in a CPE).
 func toASCII(s string) string {
 	ascii := true
 	for i := 0; i < len(s); i++ {
@@ -48,6 +49,7 @@ func toASCII(s string) string {
 	}
 
 	var b strings.Builder
+	dropped := false
 	for _, r := range norm.NFD.String(s) {
 		switch {
 		case r < utf8.RuneSelf:
@@ -55,8 +57,15 @@ func toASCII(s string) string {
 		case unicode.Is(unicode.Mn, r):
 			// the accent of a decomposed letter
 		default:
-			b.WriteString(asciiLetters[r])
+			spelled, ok := asciiLetters[r]
+			if !ok {
+				dropped = true
+			}
+			b.WriteString(spelled)
 		}
+	}
+	if dropped {
+		return strings.Join(strings.Fields(b.String()), " ")
 	}
 	return b.String()
 }
