@@ -306,6 +306,7 @@ func (a *mqlAwsDirectconnect) gateways() ([]any, error) {
 					"ownerAccount":               llx.StringDataPtr(gw.OwnerAccount),
 					"stateChangeError":           llx.StringDataPtr(gw.StateChangeError),
 					"totalPrefixPoolAllocations": llx.IntDataPtr(gw.TotalPrefixPoolAllocations),
+					"tags":                       llx.MapData(directConnectTagsToMap(gw.Tags), types.String),
 				})
 			if err != nil {
 				return nil, err

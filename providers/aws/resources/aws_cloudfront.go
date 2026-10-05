@@ -759,6 +759,48 @@ func (a *mqlAwsCloudfrontDistribution) enforcesHttps() (bool, error) {
 	return true, nil
 }
 
+type mqlAwsCloudfrontTrustStoreInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsCloudfrontTrustStore) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return cloudfrontResourceTags(a.MqlRuntime, a.Arn.Data)
+	})
+}
+
 type mqlAwsCloudfrontKeyValueStoreInternal struct {
+	lazyTags
 	cacheComment *string
+}
+
+func (a *mqlAwsCloudfrontKeyValueStore) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return cloudfrontResourceTags(a.MqlRuntime, a.Arn.Data)
+	})
+}
+
+// cloudfrontResourceTags lists the tags on a CloudFront resource by ARN.
+// CloudFront is a global service, so the call goes through the default client.
+func cloudfrontResourceTags(runtime *plugin.Runtime, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Cloudfront("")
+	resp, err := svc.ListTagsForResource(context.Background(), &cloudfront.ListTagsForResourceInput{
+		Resource: &resourceArn,
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("cloudfront:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	if resp.Tags == nil {
+		return map[string]any{}, nil
+	}
+	return tagsToMap(resp.Tags.Items,
+		func(t cftypes.Tag) *string { return t.Key },
+		func(t cftypes.Tag) *string { return t.Value }), nil
 }

@@ -39,6 +39,7 @@ func (a *mqlAwsRoute53) resolver() (*mqlAwsRoute53Resolver, error) {
 // ----- Resolver endpoints -----
 
 type mqlAwsRoute53ResolverEndpointInternal struct {
+	lazyTags
 	securityGroupIdHandler
 	region    string
 	accountID string
@@ -199,6 +200,7 @@ func (a *mqlAwsRoute53ResolverEndpoint) ipAddresses() ([]any, error) {
 // ----- Resolver rules -----
 
 type mqlAwsRoute53ResolverRuleInternal struct {
+	lazyTags
 	region string
 }
 
@@ -661,6 +663,7 @@ func (a *mqlAwsRoute53ResolverQueryLogConfigAssociation) vpc() (*mqlAwsVpc, erro
 // ----- DNS Firewall rule groups -----
 
 type mqlAwsRoute53ResolverFirewallRuleGroupInternal struct {
+	lazyTags
 	region string
 }
 
@@ -1388,5 +1391,79 @@ type mqlAwsRoute53ResolverRuleAssociationInternal struct {
 }
 
 type mqlAwsRoute53ResolverFirewallRuleGroupAssociationInternal struct {
+	lazyTags
 	cacheVpcId string
+}
+
+type mqlAwsRoute53ResolverQueryLogConfigInternal struct {
+	lazyTags
+}
+
+type mqlAwsRoute53ResolverFirewallDomainListInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsRoute53ResolverEndpoint) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return route53ResolverTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsRoute53ResolverRule) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return route53ResolverTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsRoute53ResolverQueryLogConfig) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return route53ResolverTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsRoute53ResolverFirewallRuleGroup) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return route53ResolverTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsRoute53ResolverFirewallRuleGroupAssociation) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return route53ResolverTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsRoute53ResolverFirewallDomainList) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return route53ResolverTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+// route53ResolverTags lists the tags on a Route 53 Resolver resource by ARN,
+// following NextToken until every page is read.
+func route53ResolverTags(runtime *plugin.Runtime, region string, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Route53Resolver(region)
+	tags := map[string]any{}
+	paginator := route53resolver.NewListTagsForResourcePaginator(svc, &route53resolver.ListTagsForResourceInput{
+		ResourceArn: &resourceArn,
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(context.Background())
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("route53resolver:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		for k, v := range tagsToMap(page.Tags,
+			func(t resolvertypes.Tag) *string { return t.Key },
+			func(t resolvertypes.Tag) *string { return t.Value }) {
+			tags[k] = v
+		}
+	}
+	return tags, nil
 }

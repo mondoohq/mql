@@ -911,3 +911,54 @@ func (a *mqlAwsWorkspacesWorkspace) subnet() (*mqlAwsVpcSubnet, error) {
 	}
 	return res.(*mqlAwsVpcSubnet), nil
 }
+
+type mqlAwsWorkspacesImageInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsWorkspacesImage) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return workspacesResourceTags(a.MqlRuntime, a.Region.Data, a.ImageId.Data)
+	})
+}
+
+type mqlAwsWorkspacesBundleInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsWorkspacesBundle) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return workspacesResourceTags(a.MqlRuntime, a.Region.Data, a.BundleId.Data)
+	})
+}
+
+type mqlAwsWorkspacesIpGroupInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsWorkspacesIpGroup) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return workspacesResourceTags(a.MqlRuntime, a.Region.Data, a.GroupId.Data)
+	})
+}
+
+// workspacesResourceTags lists the tags on a WorkSpaces resource by its ID.
+func workspacesResourceTags(runtime *plugin.Runtime, region string, resourceId string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Workspaces(region)
+	resp, err := svc.DescribeTags(context.Background(), &workspaces.DescribeTagsInput{
+		ResourceId: &resourceId,
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("workspaces:DescribeTags"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return tagsToMap(resp.TagList,
+		func(t workspacestypes.Tag) *string { return t.Key },
+		func(t workspacestypes.Tag) *string { return t.Value }), nil
+}

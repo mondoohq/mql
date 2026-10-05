@@ -12181,6 +12181,8 @@ private aws.cloudfront.trustStore @defaults("name status numberOfCaCertificates"
   lastModifiedAt time
   // Whether the trust store uses the CA certificate's OCSP endpoint to check certificate revocation status
   useClientCertificateOcspEndpoint() bool
+  // Tags assigned to the trust store
+  tags() map[string]string
 }
 
 // Amazon CloudFront Anycast static IP list
@@ -12527,6 +12529,8 @@ private aws.cloudfront.keyValueStore @defaults("name status lastModifiedTime") {
   arn string
   // When the key value store was last modified
   lastModifiedTime time
+  // Tags assigned to the key value store
+  tags() map[string]string
 }
 
 // Amazon CloudFront public key
@@ -13294,6 +13298,8 @@ private aws.s3.bucket.accessPoint @defaults("name networkOrigin") {
   blockPublicAccess() aws.s3.publicAccessBlock
   // Resource policy attached to the access point
   policy() string
+  // Tags assigned to the access point
+  tags() map[string]string
 }
 
 // Amazon S3 bucket grant
@@ -16937,6 +16943,8 @@ private aws.route53.resolver.endpoint @defaults("id name direction status") {
   creationTime string
   // Last modification timestamp
   modificationTime string
+  // Tags assigned to the Resolver endpoint
+  tags() map[string]string
 }
 
 // Route 53 Resolver rule
@@ -16982,6 +16990,8 @@ private aws.route53.resolver.rule @defaults("id name domainName ruleType status"
   creationTime string
   // Last modification timestamp
   modificationTime string
+  // Tags assigned to the Resolver rule
+  tags() map[string]string
 }
 
 // Route 53 Resolver rule association
@@ -17051,6 +17061,8 @@ private aws.route53.resolver.queryLogConfig @defaults("id name status destinatio
   creationTime string
   // Caller-supplied request id used to create the configuration
   creatorRequestId string
+  // Tags assigned to the query logging configuration
+  tags() map[string]string
 }
 
 // Route 53 Resolver query log configuration association
@@ -17121,6 +17133,8 @@ private aws.route53.resolver.firewallRuleGroup @defaults("id name ruleCount stat
   creatorRequestId string
   // Ordered list of rules in the group
   firewallRules() []aws.route53.resolver.firewallRule
+  // Tags assigned to the firewall rule group
+  tags() map[string]string
 }
 
 // Route 53 Resolver DNS Firewall rule
@@ -17229,6 +17243,8 @@ private aws.route53.resolver.firewallRuleGroupAssociation @defaults("id name sta
   modificationTime string
   // Caller-supplied request id used to create the association
   creatorRequestId string
+  // Tags assigned to the firewall rule group association
+  tags() map[string]string
 }
 
 // Route 53 Resolver DNS Firewall domain list
@@ -17270,6 +17286,8 @@ private aws.route53.resolver.firewallDomainList @defaults("id name domainCount s
   modificationTime string
   // Caller-supplied request id used to create the domain list
   creatorRequestId string
+  // Tags assigned to the firewall domain list
+  tags() map[string]string
 }
 
 // Route 53 Resolver DNS Firewall per-VPC configuration
@@ -25321,6 +25339,8 @@ private aws.workspaces.image @defaults("imageId name state region") {
   ownerAccountId string
   // AWS region
   region string
+  // Tags assigned to the image
+  tags() map[string]string
 }
 
 // Amazon WorkSpaces bundle
@@ -25363,6 +25383,8 @@ private aws.workspaces.bundle @defaults("bundleId name region") {
   lastUpdatedTime time
   // AWS region
   region string
+  // Tags assigned to the bundle
+  tags() map[string]string
 }
 
 // Amazon WorkSpaces IP access control group
@@ -25386,6 +25408,8 @@ private aws.workspaces.ipGroup @defaults("groupId groupName region") {
   userRules []dict
   // AWS region
   region string
+  // Tags assigned to the IP access control group
+  tags() map[string]string
 }
 
 // Amazon WorkSpaces Web user access logging setting
@@ -33555,6 +33579,8 @@ private aws.vpclattice.serviceNetwork.vpcAssociation @defaults("id status") {
   privateDnsEnabled bool
   // When the association was created
   createdAt time
+  // Tags assigned to the association
+  tags() map[string]string
 }
 
 // Amazon VPC Lattice service
@@ -33948,6 +33974,8 @@ private aws.directconnect.gateway @defaults("id name state") {
   //
   // Null on a gateway that has no prefix pool allocations.
   totalPrefixPoolAllocations int
+  // Tags assigned to the Direct Connect gateway
+  tags map[string]string
 }
 
 // Amazon OpenSearch Serverless

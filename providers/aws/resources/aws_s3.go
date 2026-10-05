@@ -254,6 +254,7 @@ func (a *mqlAwsS3Bucket) id() (string, error) {
 }
 
 type mqlAwsS3BucketAccessPointInternal struct {
+	lazyTags
 	region          string
 	accountID       string
 	cacheBucketName string
@@ -2273,4 +2274,28 @@ func isS3BucketInaccessible(err error) bool {
 		return true
 	}
 	return false
+}
+
+func (a *mqlAwsS3BucketAccessPoint) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.S3Control(a.region)
+		apArn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &s3control.ListTagsForResourceInput{
+			AccountId:   aws.String(a.accountID),
+			ResourceArn: &apArn,
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("s3:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.Tags,
+			func(t s3controltypes.Tag) *string { return t.Key },
+			func(t s3controltypes.Tag) *string { return t.Value }), nil
+	})
 }

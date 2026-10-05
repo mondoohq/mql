@@ -251,6 +251,7 @@ func (a *mqlAwsVpclatticeServiceNetwork) vpcAssociations() ([]any, error) {
 				return nil, err
 			}
 			mqlAssoc.(*mqlAwsVpclatticeServiceNetworkVpcAssociation).cacheVpcId = convert.ToValue(assoc.VpcId)
+			mqlAssoc.(*mqlAwsVpclatticeServiceNetworkVpcAssociation).region = a.Region.Data
 			res = append(res, mqlAssoc)
 		}
 	}
@@ -258,6 +259,8 @@ func (a *mqlAwsVpclatticeServiceNetwork) vpcAssociations() ([]any, error) {
 }
 
 type mqlAwsVpclatticeServiceNetworkVpcAssociationInternal struct {
+	lazyTags
+	region     string
 	cacheVpcId string
 }
 
@@ -616,4 +619,11 @@ func (a *mqlAwsVpclatticeTargetGroup) vpc() (*mqlAwsVpc, error) {
 		return nil, err
 	}
 	return res.(*mqlAwsVpc), nil
+}
+
+func (a *mqlAwsVpclatticeServiceNetworkVpcAssociation) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		return vpcLatticeTags(conn.VpcLattice(a.region), a.Arn.Data)
+	})
 }
