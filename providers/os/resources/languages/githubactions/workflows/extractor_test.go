@@ -5,6 +5,7 @@ package workflows
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -93,4 +94,17 @@ func TestWorkflowExtractorReusableOnly(t *testing.T) {
 	require.Len(t, transitive, 1)
 	assert.Equal(t, "mondoohq/actions/.github/workflows/update-pinned-versions.yml", transitive[0].Name)
 	assert.Equal(t, "c38cfdf99da709760f58ff35aa5608688657f2f7", transitive[0].Version)
+}
+
+// An empty or comment-only YAML file has no document, which the decoder
+// reports as io.EOF. It holds no jobs; reading it as a parse error failed
+// githubactions.packages(path:) for the whole directory.
+func TestWorkflowExtractorEmptyFile(t *testing.T) {
+	for _, content := range []string{"", "# placeholder\n"} {
+		bom, err := (&Extractor{}).Parse(strings.NewReader(content), "ci.yml")
+		require.NoError(t, err)
+		assert.Empty(t, bom.Transitive())
+	}
+	_, err := (&Extractor{}).Parse(strings.NewReader("jobs: [\n"), "ci.yml")
+	assert.Error(t, err)
 }

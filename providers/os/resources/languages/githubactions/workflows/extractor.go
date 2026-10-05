@@ -4,6 +4,7 @@
 package workflows
 
 import (
+	"errors"
 	"io"
 
 	"github.com/rs/zerolog/log"
@@ -32,7 +33,8 @@ func (e *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 		wf.evidence = append(wf.evidence, filename)
 	}
 
-	if err := yaml.NewDecoder(r).Decode(&wf); err != nil {
+	// an empty or comment-only file holds no document: no jobs, not an error
+	if err := yaml.NewDecoder(r).Decode(&wf); err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
 	}
 
