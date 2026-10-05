@@ -34,7 +34,15 @@ const rpmNeedsRestartingCmd = "LC_ALL=C needs-restarting -r"
 // needs-restarting binary comes from dnf4's dnf-utils, which a dnf5 host
 // (Fedora 41 and later) does not install; dnf5-plugins provides the
 // subcommand with the same verdicts and exit codes.
-const dnfNeedsRestartingCmd = "LC_ALL=C dnf needs-restarting -r"
+//
+// dnf5's subcommand loads the enabled repositories' metadata, filelists
+// included, to read reboot_suggested advisories: on a host whose cache has
+// expired that is a download of a few hundred MB taking a minute, and a wait
+// on every unreachable repository of an air-gapped one. With the
+// repositories disabled it checks the core packages (kernel, glibc, systemd,
+// dbus, ...) against the boot time, as dnf4's needs-restarting does, from
+// the rpm database alone.
+const dnfNeedsRestartingCmd = "LC_ALL=C dnf --disablerepo='*' needs-restarting -r"
 
 // rpmQueryKernelCmd lists the packages that provide "kernel": the kernel
 // package on RHEL 7, kernel and kernel-core since RHEL 8, and only
