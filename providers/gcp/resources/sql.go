@@ -295,15 +295,6 @@ func (g *mqlGcpProject) sql() (*mqlGcpProjectSqlService, error) {
 	return svc, nil
 }
 
-// sqlDiskConfidentialMode reports whether Confidential Mode is enabled for an
-// instance's or a backup's disks.
-//
-// The whole DiskEncryptionConfiguration message is absent on an instance using
-// Google-managed encryption with no confidential disks, which is the common
-// case, so the nil guard is the normal path rather than an edge case. Absent
-// means not enabled: Cloud SQL only supports Confidential Mode on zonal C4A
-// instances, so false is the truthful reading everywhere else, and reporting it
-// as such keeps an "is confidential mode on" check failing rather than erroring.
 // sqlDiskEncryptionConfigDict maps an instance's customer-managed encryption
 // configuration to the diskEncryptionConfiguration dict. Absent
 // configurations yield nil.
@@ -328,6 +319,15 @@ func sqlCmekSourceLogEncryptionEnforced(cfg *sqladmin.DiskEncryptionConfiguratio
 	return &v
 }
 
+// sqlDiskConfidentialMode reports whether Confidential Mode is enabled for an
+// instance's or a backup's disks.
+//
+// The whole DiskEncryptionConfiguration message is absent on an instance using
+// Google-managed encryption with no confidential disks, which is the common
+// case, so the nil guard is the normal path rather than an edge case. Absent
+// means not enabled: Cloud SQL only supports Confidential Mode on zonal C4A
+// instances, so false is the truthful reading everywhere else, and reporting it
+// as such keeps an "is confidential mode on" check failing rather than erroring.
 func sqlDiskConfidentialMode(cfg *sqladmin.DiskEncryptionConfiguration) bool {
 	if cfg == nil {
 		return false
