@@ -17,6 +17,7 @@ require (
 require (
 	github.com/carabiner-dev/spdx3 v0.1.0 // indirect
 	github.com/microsoft/wmi v0.44.0 // indirect
+	github.com/pierrec/lz4/v4 v4.1.33 // indirect
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
 )
 
