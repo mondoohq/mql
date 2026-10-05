@@ -1309,6 +1309,7 @@ func getPackageFromRegistryKeyItems(children []registry.RegistryKeyItem, platfor
 	var publisher string
 	var installLocation string
 	var installDate string
+	var displayIcon string
 
 	for _, i := range children {
 		switch i.Key {
@@ -1325,6 +1326,8 @@ func getPackageFromRegistryKeyItems(children []registry.RegistryKeyItem, platfor
 		case "InstallDate":
 			// YYYYMMDD, as ParseWindowsAppPackages reads it on the remote path.
 			installDate = i.Value.String
+		case "DisplayIcon":
+			displayIcon = i.Value.String
 		}
 	}
 
@@ -1340,13 +1343,7 @@ func getPackageFromRegistryKeyItems(children []registry.RegistryKeyItem, platfor
 		return nil, ""
 	}
 
-	// For shared registry paths (like HKCU) where WOW64 redirection doesn't apply,
-	// fall back to checking install paths for "Program Files (x86)".
-	if arch == platform.Arch {
-		if detected := archFromInstallPath(installLocation, uninstallString); detected != "" {
-			arch = detected
-		}
-	}
+	arch = resolveWindowsAppArch(arch, platform.Arch, displayName, installLocation, uninstallString, displayIcon)
 
 	pkg := createPackage(displayName, displayVersion, "windows/app", arch, publisher, installLocation, platform)
 	pkg.InstallDate = parseWinInstallDate(installDate)
@@ -1355,7 +1352,10 @@ func getPackageFromRegistryKeyItems(children []registry.RegistryKeyItem, platfor
 }
 
 // archForRegistryPath returns "x86" for Wow6432Node registry paths (32-bit apps on 64-bit Windows),
-// or the platform architecture for regular paths.
+// or the platform architecture for regular paths. This is only the view's
+// default: resolveWindowsAppArch corrects it per entry from the DisplayName and
+// the entry's paths, since a 32-bit installer can register a 64-bit product
+// under Wow6432Node.
 func archForRegistryPath(path string, platformArch string) string {
 	if strings.Contains(path, "Wow6432Node") {
 		return "x86"
@@ -1479,6 +1479,115 @@ func archFromInstallPath(paths ...string) string {
 		}
 	}
 	return ""
+}
+
+// windowsArchFamily folds the spellings a Windows host architecture arrives
+// in (PROCESSOR_ARCHITECTURE reports "AMD64"/"ARM64"/"x86"; other paths and
+// tests use "x86_64", "amd64", "arm64") onto "x64", "arm64" or "x86". Returns
+// "" for anything it does not recognise.
+func windowsArchFamily(arch string) string {
+	switch strings.ToLower(arch) {
+	case "amd64", "x86_64", "x64":
+		return "x64"
+	case "arm64", "aarch64":
+		return "arm64"
+	case "x86", "386", "i386", "i686":
+		return "x86"
+	}
+	return ""
+}
+
+// displayNameArchMarker captures an explicit architecture marker at the end of
+// an Add/Remove-Programs DisplayName, optionally followed by a " - <version>"
+// suffix:
+//
+//	Microsoft Visual C++ v14 Redistributable (x64) - 14.51.36247
+//	Microsoft .NET Runtime - 8.0.30 (arm64)
+//
+// It is deliberately anchored at the end so "(x86)" inside a product name
+// ("... for Program Files (x86) ...") does not count. dotNetDisplayNameArch is
+// the stricter, end-only form normalizeDotNetInstallerArch keeps using.
+var displayNameArchMarker = regexp.MustCompile(`(?i)\((x86|x64|arm64)\)(?:\s*-\s*v?\d+(?:\.\d+)*)?\s*$`)
+
+// underNativeProgramFiles reports whether any of the paths points into the
+// native (64-bit) Program Files directory -- explicitly NOT
+// "Program Files (x86)". Like "Program Files (x86)", the directory name is the
+// same in every Windows language edition. %ProgramW6432% always names the
+// native directory; %ProgramFiles% is left out because it expands to the x86
+// directory inside a 32-bit process.
+func underNativeProgramFiles(paths ...string) bool {
+	for _, p := range paths {
+		lp := strings.ToLower(strings.Trim(p, `"' `))
+		if strings.Contains(lp, `\program files\`) || strings.HasSuffix(lp, `\program files`) ||
+			strings.Contains(lp, `%programw6432%`) {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveWindowsAppArch decides the architecture of one Add/Remove-Programs
+// entry. viewArch is what archForRegistryPath derived from the registry view
+// the entry was read from: "x86" for Wow6432Node, the platform architecture
+// otherwise.
+//
+// Entries labelled with the platform architecture (the native view, and the
+// HKCU view WOW64 does not redirect) keep the pre-existing rule: an
+// InstallLocation or UninstallString under "Program Files (x86)" makes them
+// x86, nothing else changes them.
+//
+// A Wow6432Node entry on a 64-bit host is re-examined, because the view says
+// which bitness the INSTALLER process had, not what it installed: a 32-bit
+// setup program (Google's system-level Chrome installer, a Burn bundle such as
+// the Visual C++ redistributable) registers under Wow6432Node even when it
+// lays down a 64-bit product. The evidence is weighed strongest first:
+//
+//  1. An explicit DisplayName marker -- "(x64)", "(arm64)" or "(x86)" at the
+//     end of the name, optionally followed by " - <version>". The publisher
+//     states the build's architecture outright. "(x86)" keeps x86; a 64-bit
+//     marker naming the host's own architecture gives the platform
+//     architecture. A 64-bit marker naming the OTHER 64-bit architecture (an
+//     x64 build on an ARM64 host, which runs emulated) is not mapped onto
+//     either vocabulary here and falls through to the rules below.
+//  2. Any of InstallLocation, UninstallString or DisplayIcon under
+//     "Program Files (x86)" keeps x86.
+//  3. Any of them under the native "Program Files" directory gives the
+//     platform architecture: a 32-bit installer that writes into the 64-bit
+//     Program Files does so on purpose. x64 hosts only -- an ARM64 host's
+//     native Program Files holds both arm64 and emulated x64 programs, so the
+//     directory alone cannot say which.
+//  4. Otherwise x86, as before.
+//
+// On a 32-bit or unrecognised host there is no Wow6432Node view to correct
+// and only the pre-existing rule applies.
+func resolveWindowsAppArch(viewArch, platformArch, displayName, installLocation, uninstallString, displayIcon string) string {
+	host := windowsArchFamily(platformArch)
+	if viewArch != "x86" || (host != "x64" && host != "arm64") {
+		if viewArch == platformArch {
+			if detected := archFromInstallPath(installLocation, uninstallString); detected != "" {
+				return detected
+			}
+		}
+		return viewArch
+	}
+
+	if m := displayNameArchMarker.FindStringSubmatch(displayName); m != nil {
+		switch marker := strings.ToLower(m[1]); marker {
+		case "x86":
+			return "x86"
+		case host:
+			return platformArch
+		}
+	}
+
+	if archFromInstallPath(installLocation, uninstallString, displayIcon) != "" {
+		return "x86"
+	}
+
+	if host == "x64" && underNativeProgramFiles(installLocation, uninstallString, displayIcon) {
+		return platformArch
+	}
+	return viewArch
 }
 
 // returns installed appx packages as well as hot fixes
@@ -1697,12 +1806,8 @@ func parseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 			continue
 		}
 
-		arch := archForRegistryPath(entry.PSPath, platform.Arch)
-		if arch == platform.Arch {
-			if detected := archFromInstallPath(entry.InstallLocation, entry.UninstallString); detected != "" {
-				arch = detected
-			}
-		}
+		arch := resolveWindowsAppArch(archForRegistryPath(entry.PSPath, platform.Arch), platform.Arch,
+			entry.DisplayName, entry.InstallLocation, entry.UninstallString, entry.DisplayIcon)
 		pkg := createPackage(entry.DisplayName, entry.DisplayVersion, "windows/app", arch, entry.Publisher, entry.InstallLocation, platform)
 		pkg.InstallDate = parseWinInstallDate(entry.InstallDate)
 		pkg.InstallScope = entry.InstallScope

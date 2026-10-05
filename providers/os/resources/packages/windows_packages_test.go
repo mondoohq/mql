@@ -955,8 +955,10 @@ func TestRegistryKeyItemsArchFallbackToInstallPath(t *testing.T) {
 	assert.Equal(t, "x86", p.Arch, "should detect x86 from Program Files (x86) install location")
 }
 
-func TestRegistryKeyItemsArchNoFallbackWhenAlreadyX86(t *testing.T) {
-	// When arch is already determined from Wow6432Node, the install path check should not run.
+func TestRegistryKeyItemsWow6432NodeNativeProgramFiles(t *testing.T) {
+	// A Wow6432Node entry whose install location is the native Program Files
+	// was written by a 32-bit installer for a 64-bit product: the view's x86
+	// default is corrected to the platform architecture.
 	items := []registry.RegistryKeyItem{
 		{
 			Key:   "DisplayName",
@@ -982,10 +984,254 @@ func TestRegistryKeyItemsArchNoFallbackWhenAlreadyX86(t *testing.T) {
 		Family: []string{"windows"},
 	}
 
-	// Caller already determined x86 from Wow6432Node — should not be overridden
 	p, _ := getPackageFromRegistryKeyItems(items, pf, "x86")
 	require.NotNil(t, p)
-	assert.Equal(t, "x86", p.Arch, "Wow6432Node-determined arch must not be overridden by install path")
+	assert.Equal(t, "amd64", p.Arch, "Wow6432Node entry installed under native Program Files is 64-bit")
+	assert.Contains(t, p.PUrl, "arch=amd64")
+}
+
+// Real Add/Remove-Programs entries observed on Windows 11 x64, values verbatim.
+const (
+	chromeSystemLevelUninstall  = `"C:\Program Files\Google\Chrome\Application\153.0.8010.53\Installer\setup.exe" --uninstall --system-level`
+	vcRedistX64Name             = `Microsoft Visual C++ v14 Redistributable (x64) - 14.51.36247`
+	vcRedistX64Uninstall        = `"C:\ProgramData\Package Cache\{0e3bb569-69d6-4c34-bff9-c2f81db5e5f0}\VC_redist.x64.exe" /uninstall`
+	mozillaMaintenanceUninstall = `"C:\Program Files (x86)\Mozilla Maintenance Service\uninstall.exe"`
+)
+
+func TestResolveWindowsAppArch(t *testing.T) {
+	tests := []struct {
+		name            string
+		viewArch        string
+		platformArch    string
+		displayName     string
+		installLocation string
+		uninstallString string
+		displayIcon     string
+		expected        string
+	}{
+		// Wow6432Node entries on an x64 host.
+		{
+			name:            "Chrome system-level EXE installer under Wow6432Node is x64",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     "Google Chrome",
+			uninstallString: chromeSystemLevelUninstall,
+			expected:        "AMD64",
+		},
+		{
+			name:            "VC++ v14 x64 Burn bundle under Wow6432Node is x64 by DisplayName marker",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     vcRedistX64Name,
+			uninstallString: vcRedistX64Uninstall,
+			expected:        "AMD64",
+		},
+		{
+			name:            "Mozilla Maintenance Service under Program Files (x86) stays x86",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     "Mozilla Maintenance Service",
+			uninstallString: mozillaMaintenanceUninstall,
+			expected:        "x86",
+		},
+		{
+			name:            "Wow6432Node with no evidence stays x86",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     "Some App",
+			uninstallString: `"C:\ProgramData\Package Cache\{abc}\setup.exe" /uninstall`,
+			expected:        "x86",
+		},
+		{
+			name:         "native Program Files in DisplayIcon only",
+			viewArch:     "x86",
+			platformArch: "AMD64",
+			displayName:  "Some App",
+			displayIcon:  `C:\Program Files\SomeApp\app.exe,0`,
+			expected:     "AMD64",
+		},
+		{
+			name:            "DisplayName (x86) marker beats native Program Files",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     "Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.38.33135",
+			installLocation: `C:\Program Files\Odd`,
+			expected:        "x86",
+		},
+		{
+			name:            "DisplayName (x64) marker beats Program Files (x86)",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     "Some Tool (x64)",
+			installLocation: `C:\Program Files (x86)\Some Tool`,
+			expected:        "AMD64",
+		},
+		{
+			name:            "Program Files (x86) beats native Program Files",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     "Some App",
+			installLocation: `C:\Program Files (x86)\SomeApp`,
+			displayIcon:     `C:\Program Files\SomeApp\app.exe`,
+			expected:        "x86",
+		},
+		{
+			name:         "(arm64) marker on an x64 host is not evidence",
+			viewArch:     "x86",
+			platformArch: "AMD64",
+			displayName:  "Some Runtime (arm64)",
+			expected:     "x86",
+		},
+		{
+			name:         "(x86) inside the name is not a marker",
+			viewArch:     "x86",
+			platformArch: "x86_64",
+			displayName:  "Helper for Program Files (x86) apps 2.0",
+			expected:     "x86",
+		},
+		{
+			name:            "platform arch spelling is preserved",
+			viewArch:        "x86",
+			platformArch:    "x86_64",
+			displayName:     "Google Chrome",
+			uninstallString: chromeSystemLevelUninstall,
+			expected:        "x86_64",
+		},
+
+		// Native and HKCU views are unaffected.
+		{
+			name:            "native view stays platform arch",
+			viewArch:        "AMD64",
+			platformArch:    "AMD64",
+			displayName:     "Google Chrome",
+			installLocation: `C:\Program Files\Google\Chrome\Application`,
+			expected:        "AMD64",
+		},
+		{
+			name:            "HKCU entry under Program Files (x86) is x86 as before",
+			viewArch:        "AMD64",
+			platformArch:    "AMD64",
+			displayName:     "Per-User App",
+			installLocation: `C:\Program Files (x86)\PerUserApp`,
+			expected:        "x86",
+		},
+		{
+			name:         "DisplayName (x86) under the native view is unaffected",
+			viewArch:     "AMD64",
+			platformArch: "AMD64",
+			displayName:  "Microsoft .NET Runtime - 8.0.7 (x86)",
+			expected:     "AMD64",
+		},
+		{
+			name:         "native view ignores DisplayIcon for the Program Files (x86) rule, as before",
+			viewArch:     "AMD64",
+			platformArch: "AMD64",
+			displayName:  "Some App",
+			displayIcon:  `C:\Program Files (x86)\SomeApp\app.exe`,
+			expected:     "AMD64",
+		},
+
+		// ARM64 hosts.
+		{
+			name:            "ARM64: native Program Files alone does not promote",
+			viewArch:        "x86",
+			platformArch:    "ARM64",
+			displayName:     "Google Chrome",
+			uninstallString: chromeSystemLevelUninstall,
+			expected:        "x86",
+		},
+		{
+			name:         "ARM64: (arm64) marker gives the platform arch",
+			viewArch:     "x86",
+			platformArch: "ARM64",
+			displayName:  "Microsoft .NET Runtime - 8.0.30 (arm64)",
+			expected:     "ARM64",
+		},
+		{
+			name:            "ARM64: (x64) marker names the emulated arch and is not mapped",
+			viewArch:        "x86",
+			platformArch:    "ARM64",
+			displayName:     vcRedistX64Name,
+			uninstallString: vcRedistX64Uninstall,
+			expected:        "x86",
+		},
+		{
+			name:         "ARM64: native view unaffected",
+			viewArch:     "arm64",
+			platformArch: "arm64",
+			displayName:  "Some App (x64)",
+			expected:     "arm64",
+		},
+
+		// 32-bit host: nothing to correct.
+		{
+			name:            "x86 host keeps x86",
+			viewArch:        "x86",
+			platformArch:    "x86",
+			displayName:     "Google Chrome",
+			uninstallString: chromeSystemLevelUninstall,
+			expected:        "x86",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveWindowsAppArch(tt.viewArch, tt.platformArch, tt.displayName, tt.installLocation, tt.uninstallString, tt.displayIcon)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+// TestWow6432NodeArchAgreesAcrossPaths feeds the same real entries through the
+// registry-item path (local and offline scans) and the PowerShell JSON path
+// (remote scans) and requires both to report the same architecture.
+func TestWow6432NodeArchAgreesAcrossPaths(t *testing.T) {
+	type entry struct {
+		key, displayName, displayVersion, uninstallString string
+		want                                              string
+	}
+	entries := []entry{
+		{"Google Chrome", "Google Chrome", "153.0.8010.53", chromeSystemLevelUninstall, "AMD64"},
+		{"{0e3bb569-69d6-4c34-bff9-c2f81db5e5f0}", vcRedistX64Name, "14.51.36247.0", vcRedistX64Uninstall, "AMD64"},
+		{"MozillaMaintenanceService", "Mozilla Maintenance Service", "140.0", mozillaMaintenanceUninstall, "x86"},
+	}
+	pf := &inventory.Platform{Name: "windows", Version: "10.0.26100", Arch: "AMD64", Family: []string{"windows"}}
+
+	type psEntry struct {
+		DisplayName     string `json:"DisplayName"`
+		DisplayVersion  string `json:"DisplayVersion"`
+		UninstallString string `json:"UninstallString"`
+		PSPath          string `json:"PSPath"`
+	}
+	ps := []psEntry{}
+	for _, e := range entries {
+		items := []registry.RegistryKeyItem{
+			{Key: "DisplayName", Value: registry.RegistryKeyValue{Kind: registry.SZ, String: e.displayName}},
+			{Key: "DisplayVersion", Value: registry.RegistryKeyValue{Kind: registry.SZ, String: e.displayVersion}},
+			{Key: "UninstallString", Value: registry.RegistryKeyValue{Kind: registry.SZ, String: e.uninstallString}},
+		}
+		arch := archForRegistryPath(`HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`, pf.Arch)
+		p, _ := getPackageFromRegistryKeyItems(items, pf, arch)
+		require.NotNil(t, p)
+		assert.Equal(t, e.want, p.Arch, "registry path: %s", e.displayName)
+
+		ps = append(ps, psEntry{
+			DisplayName:     e.displayName,
+			DisplayVersion:  e.displayVersion,
+			UninstallString: e.uninstallString,
+			PSPath:          `Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\` + e.key,
+		})
+	}
+
+	data, err := json.Marshal(ps)
+	require.NoError(t, err)
+	pkgs, err := ParseWindowsAppPackages(pf, strings.NewReader(string(data)))
+	require.NoError(t, err)
+	require.Len(t, pkgs, len(entries))
+	for i, e := range entries {
+		assert.Equal(t, e.displayName, pkgs[i].Name)
+		assert.Equal(t, e.want, pkgs[i].Arch, "PowerShell path: %s", e.displayName)
+	}
 }
 
 func TestWindowsAppPackagesParserInstallPathFallback(t *testing.T) {
