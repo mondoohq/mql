@@ -141,9 +141,10 @@ func ReadUnifiedKernelImage(r io.ReaderAt) (UnifiedKernelImage, error) {
 // secbootImageReader hands back a reader that can be read at an offset, which
 // is what reading a handful of sections out of an executable needs.
 //
-// Not every connection can do that: a container image layer, and the
-// command-backed filesystems that stand in for SSH and WinRM where no file
-// transfer is available, all answer ReadAt with an error. There the image is
+// Not every connection can do that: a container image layer and the
+// command-backed filesystem that stands in for WinRM answer ReadAt with an
+// error. (The one for SSH with sudo reads the whole file into memory on first
+// use and answers ReadAt from there.) There the image is
 // read into memory instead, which costs the whole file rather than the few
 // kilobytes the sections take, and is the difference between reporting the
 // images and reporting none.

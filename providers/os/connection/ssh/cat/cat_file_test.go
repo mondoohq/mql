@@ -5,7 +5,9 @@ package cat
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,6 +19,7 @@ import (
 	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"howett.net/plist"
 )
 
 func TestListDirCommand(t *testing.T) {
@@ -160,4 +163,85 @@ func TestReadContentQuotesPath(t *testing.T) {
 	args, err := shellquote.Split(run.commands[0])
 	require.NoError(t, err)
 	assert.Equal(t, []string{"cat", "./-rf"}, args)
+}
+
+func TestFileSeekAndReadAt(t *testing.T) {
+	run := &fakeRun{stdout: "0123456789"}
+	f := NewFile(&Fs{commandRunner: run}, "/f", false)
+
+	// Seek before any Read loads the content, so SeekEnd knows the size
+	pos, err := f.Seek(-3, io.SeekEnd)
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), pos)
+	rest, err := io.ReadAll(f)
+	require.NoError(t, err)
+	assert.Equal(t, "789", string(rest))
+
+	pos, err = f.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), pos)
+	head := make([]byte, 4)
+	_, err = io.ReadFull(f, head)
+	require.NoError(t, err)
+	assert.Equal(t, "0123", string(head))
+
+	pos, err = f.Seek(2, io.SeekCurrent)
+	require.NoError(t, err)
+	assert.Equal(t, int64(6), pos)
+
+	at := make([]byte, 3)
+	n, err := f.ReadAt(at, 2)
+	require.NoError(t, err)
+	assert.Equal(t, 3, n)
+	assert.Equal(t, "234", string(at))
+
+	// ReadAt past the end reports EOF, like os.File
+	n, err = f.ReadAt(at, 9)
+	assert.Equal(t, 1, n)
+	assert.ErrorIs(t, err, io.EOF)
+
+	_, err = f.Seek(-1, io.SeekStart)
+	assert.Error(t, err)
+
+	// the file is read from the target once
+	assert.Len(t, run.commands, 1)
+}
+
+func TestFileReadAtFailedRead(t *testing.T) {
+	f := NewFile(&Fs{commandRunner: failingRun{}}, "/f", false)
+	_, err := f.ReadAt(make([]byte, 1), 0)
+	assert.Error(t, err)
+	_, err = f.Seek(0, io.SeekStart)
+	assert.Error(t, err)
+}
+
+type failingRun struct{}
+
+func (failingRun) RunCommand(command string) (*shared.Command, error) {
+	return nil, errors.New("connection lost")
+}
+
+// The binary plist decoder reads the header, seeks back to the start and reads
+// the file again. Without Seek it saw the file from offset 6 and failed with
+// "incomprehensible magic", which is what macOS user preference files read
+// over SSH with sudo ran into.
+func TestFileDecodesBinaryPlist(t *testing.T) {
+	want := map[string]any{"home-sharing-enabled": uint64(0), "public-sharing-enabled": uint64(1)}
+	bin, err := plist.Marshal(want, plist.BinaryFormat)
+	require.NoError(t, err)
+	require.True(t, bytes.HasPrefix(bin, []byte("bplist00")))
+
+	for _, useBase64 := range []bool{false, true} {
+		stdout := string(bin)
+		if useBase64 {
+			// macOS base64 prints the whole stream on one line plus a newline
+			stdout = base64.StdEncoding.EncodeToString(bin) + "\n"
+		}
+		run := &fakeRun{stdout: stdout}
+		f := NewFile(&Fs{commandRunner: run}, "/Users/admin/Library/Preferences/com.apple.amp.mediasharingd.plist", useBase64)
+
+		var got map[string]any
+		require.NoError(t, plist.NewDecoder(f).Decode(&got), "base64=%v", useBase64)
+		assert.Equal(t, want, got, "base64=%v", useBase64)
+	}
 }

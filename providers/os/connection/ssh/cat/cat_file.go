@@ -21,14 +21,32 @@ func NewFile(catfs *Fs, path string, useBase64encoding bool) *File {
 	return &File{catfs: catfs, path: path, useBase64encoding: useBase64encoding}
 }
 
+// File is a file read through `cat` on the target. The first Read, ReadAt or
+// Seek reads the whole file into memory; all later calls are served from that
+// copy. Holding the content makes the file seekable, which decoders such as
+// the binary plist one need: they read the header, seek back to the start and
+// read again.
 type File struct {
 	catfs             *Fs
-	buf               *bytes.Buffer
+	content           *bytes.Reader
 	path              string
 	useBase64encoding bool
 }
 
-func (f *File) readContent() (*bytes.Buffer, error) {
+// load reads the file content on first use.
+func (f *File) load() (*bytes.Reader, error) {
+	if f.content != nil {
+		return f.content, nil
+	}
+	data, err := f.readContent()
+	if err != nil {
+		return nil, err
+	}
+	f.content = bytes.NewReader(data)
+	return f.content, nil
+}
+
+func (f *File) readContent() ([]byte, error) {
 	// we need shellquote to escape filenames with spaces
 	catCmd := shellquote.Join("cat", argPath(f.path))
 	if f.useBase64encoding {
@@ -52,7 +70,7 @@ func (f *File) readContent() (*bytes.Buffer, error) {
 		}
 	}
 
-	return bytes.NewBuffer(data), nil
+	return data, nil
 }
 
 func (f *File) Close() error {
@@ -76,18 +94,19 @@ func (f *File) Truncate(size int64) error {
 }
 
 func (f *File) Read(b []byte) (n int, err error) {
-	if f.buf == nil {
-		bufData, err := f.readContent()
-		if err != nil {
-			return 0, err
-		}
-		f.buf = bufData
+	content, err := f.load()
+	if err != nil {
+		return 0, err
 	}
-	return f.buf.Read(b)
+	return content.Read(b)
 }
 
 func (f *File) ReadAt(b []byte, off int64) (n int, err error) {
-	return 0, errors.New("not implemented")
+	content, err := f.load()
+	if err != nil {
+		return 0, err
+	}
+	return content.ReadAt(b, off)
 }
 
 func (f *File) Readdir(count int) (res []os.FileInfo, err error) {
@@ -201,7 +220,11 @@ func listDirError(path string, stderr string) error {
 }
 
 func (f *File) Seek(offset int64, whence int) (int64, error) {
-	return 0, errors.New("not implemented")
+	content, err := f.load()
+	if err != nil {
+		return 0, err
+	}
+	return content.Seek(offset, whence)
 }
 
 func (f *File) Write(b []byte) (n int, err error) {
