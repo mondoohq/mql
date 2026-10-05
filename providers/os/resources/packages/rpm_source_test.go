@@ -167,8 +167,8 @@ func TestRpmSourceGpgPubkey(t *testing.T) {
 		assert.True(t, *got.OSProvided, "%s: version %s", f, h.version)
 	}
 	// AlmaLinux names them by short ID
-	assert.True(t, openPGPKeys{"7FCC7D46ACCC4CF8": {}}.hasKeyID("accc4cf8"))
-	assert.False(t, openPGPKeys{"7FCC7D46ACCC4CF8": {}}.hasKeyID("0000cf8"))
+	assert.True(t, openPGPKeys{"7FCC7D46ACCC4CF8": nil}.hasKeyID("accc4cf8"))
+	assert.False(t, openPGPKeys{"7FCC7D46ACCC4CF8": nil}.hasKeyID("0000cf8"))
 }
 
 func TestRpmSourceDecisions(t *testing.T) {
@@ -315,7 +315,7 @@ func TestParseRpmFileLists(t *testing.T) {
 }
 
 func TestSignedByShortID(t *testing.T) {
-	keys := openPGPKeys{"D36CB86CB86B3716": {}}
+	keys := openPGPKeys{"D36CB86CB86B3716": nil}
 	assert.True(t, keys.signedBy([]string{"B86B3716"}), "older rpm prints the 8-digit ID")
 	assert.False(t, keys.signedBy([]string{"0000AAAA"}))
 }

@@ -195,22 +195,28 @@ func TestDpkgSourceDecisions(t *testing.T) {
 func TestParseAptReleaseFile(t *testing.T) {
 	data, err := os.ReadFile(path.Join(dpkgFixtures, "lists", "nginx.org_packages_debian_dists_bookworm_InRelease"))
 	require.NoError(t, err)
-	origin, label, issuers := parseAptReleaseFile(data)
+	origin, label, signed, sig := parseAptReleaseFile(data)
 	assert.Equal(t, "nginx", origin)
 	assert.Equal(t, "nginx", label)
-	require.NotEmpty(t, issuers, "the clearsigned release must yield its signer")
+	require.NotEmpty(t, sig, "the clearsigned release must yield its signature")
 
 	keys := openPGPKeys{}
 	nginxKey, err := os.ReadFile(path.Join(dpkgFixtures, "keyrings", "nginx-archive-keyring.gpg"))
 	require.NoError(t, err)
 	keys.addKeyring(nginxKey)
-	assert.True(t, keys.signedBy(issuers), "nginx.org's release is signed by nginx's key")
+	assert.True(t, keys.verifies(signed, sig), "nginx.org's release is signed by nginx's key")
 
 	debianKeys := openPGPKeys{}
 	debianKey, err := os.ReadFile(path.Join(dpkgFixtures, "keyrings", "debian-archive-bookworm-security-automatic.gpg"))
 	require.NoError(t, err)
 	debianKeys.addKeyring(debianKey)
-	assert.False(t, debianKeys.signedBy(issuers), "and not by Debian's")
+	assert.False(t, debianKeys.verifies(signed, sig), "and not by Debian's")
+
+	// the signature is checked, not only the key ID it names: a release
+	// whose signed text was changed after signing is not the key owner's
+	tampered := bytes.Replace(signed, []byte("Origin: nginx"), []byte("Origin: Debian"), 1)
+	require.NotEqual(t, signed, tampered)
+	assert.False(t, keys.verifies(tampered, sig), "a changed release does not verify")
 }
 
 func TestOpenPGPKeysArmored(t *testing.T) {
@@ -221,8 +227,8 @@ func TestOpenPGPKeysArmored(t *testing.T) {
 	keys.addKeyring(data)
 	release, err := os.ReadFile(path.Join(dpkgFixtures, "lists", "download.docker.com_linux_debian_dists_bookworm_InRelease"))
 	require.NoError(t, err)
-	_, _, issuers := parseAptReleaseFile(release)
-	assert.True(t, keys.signedBy(issuers))
+	_, _, signed, sig := parseAptReleaseFile(release)
+	assert.True(t, keys.verifies(signed, sig), "Docker signs with a subkey and names only its key ID")
 }
 
 func TestReadDpkgOSKeysSkipsRemovedKeys(t *testing.T) {
@@ -289,7 +295,13 @@ func TestReadAptSources(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/etc/apt/mirrors/debian.list", []byte(
 		"https://cdn-aws.deb.debian.org/debian\n"), 0o644))
 
+	// a mirror list outside apt's configuration is not read
+	require.NoError(t, afero.WriteFile(fs, "/etc/apt/sources.list.d/elsewhere.list", []byte(
+		"deb mirror+file:///etc/shadow bookworm main\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/shadow", []byte("https://secret.example/x\n"), 0o600))
+
 	got := readAptSources(newLocalSourceFiles(fs))
+	assert.NotContains(t, got.urls, "_etc_shadow")
 	assert.Equal(t, "http://deb.debian.org/debian", got.urls["deb.debian.org_debian"])
 	assert.Equal(t, "https://repo.example/apt", got.urls["repo.example_apt"])
 	assert.Equal(t, "https://pkgs.example.com/deb", got.urls["pkgs.example.com_deb"])
@@ -300,7 +312,7 @@ func TestReadAptSources(t *testing.T) {
 		assert.NotContains(t, v, "token")
 	}
 	// deb-src lines name source packages, not installable ones
-	assert.Len(t, got.entries, 4)
+	assert.Len(t, got.entries, 5)
 	assert.Equal(t, []string{"main", "contrib"}, got.entries[0].components)
 }
 
