@@ -137,24 +137,6 @@ func TestMap(t *testing.T) {
 			Code:        "parse.json('/dummy.json').params.length",
 			Expectation: int64(15),
 		},
-		// a dict holding a string: a compound block compares the whole value,
-		// a single `_ == x` keeps the substring search
-		{
-			Code:        `parse.json(content: '{"a":"All"}').params['a'].any(_ == "All" || _ == "all")`,
-			ResultIndex: 1, Expectation: true,
-		},
-		{
-			Code:        `parse.json(content: '{"a":"All"}').params['a'].none(_ == "x" || _ == "y")`,
-			ResultIndex: 1, Expectation: true,
-		},
-		{
-			Code:        `parse.json(content: '{"a":"All"}').params['a'].where(_ == "All" || _ == "x")`,
-			Expectation: []any{"All"},
-		},
-		{
-			Code:        `parse.json(content: '{"a":"All"}').params['a'].where(_ == "ll")`,
-			Expectation: "ll",
-		},
 		{
 			Code:        "parse.json('/dummy.json').params.keys.length",
 			Expectation: int64(15),
@@ -413,6 +395,47 @@ func TestDict_Methods_Contains(t *testing.T) {
 			Code:        p + "params['hello'].contains(['xx'])",
 			ResultIndex: 1,
 			Expectation: false,
+		},
+		// a single `_ == x` searches the string; any other block compares the
+		// whole value as a one-element list
+		{
+			Code:        p + "params['hello'].where(_ == 'll')",
+			Expectation: "ll",
+		},
+		{
+			Code:        p + "params['hello'].any(_ == 'hello' || _ == 'x')",
+			ResultIndex: 1,
+			Expectation: true,
+		},
+		{
+			Code:        p + "params['hello'].none(_ == 'x' || _ == 'y')",
+			ResultIndex: 1,
+			Expectation: true,
+		},
+		{
+			Code:        p + "params['hello'].contains(_ == 'll' || _ == 'zz')",
+			ResultIndex: 1,
+			Expectation: false,
+		},
+		{
+			Code:        p + "params['hello'].where(_ == 'hello' || _ == 'x')",
+			Expectation: []any{"hello"},
+		},
+		{
+			Code:        p + "params['hello'].where(_ != 'x')",
+			Expectation: []any{"hello"},
+		},
+		{
+			Code:        p + "params['hello'].where(_.downcase == 'hello')",
+			Expectation: []any{"hello"},
+		},
+		{
+			Code:        p + "params['hello'].where(_ == /el/)",
+			Expectation: []any{"hello"},
+		},
+		{
+			Code:        p + "params['hello'].where(_ == empty)",
+			Expectation: []any{},
 		},
 		{
 			Code:        p + "params['string-array'].contains('a')",

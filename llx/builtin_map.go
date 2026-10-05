@@ -943,6 +943,14 @@ func dictValuesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 // This means that we do not treat these operations the same we would for equality.
 // This is why the operations need a bit of special handling, which is done
 // inside this function.
+//
+// Only a block that is exactly `_ == x` (x a string, dict or []string) gets the
+// substring search and returns a string. Any other block treats the string as
+// a one-element list and returns a list, so the block's shape picks the result:
+//
+//	"All".where(_ == "All").length              ==>  3  (string)
+//	"All".where(_ == "All" || _ == "x").length  ==>  1  (list)
+//	"hello".contains(_ == "ll" || _ == "zz")    ==>  false (whole value)
 func _stringWhere(e *blockExecutor, src string, chunk *Chunk, ref uint64, inverted bool) (*RawData, uint64, error) {
 	arg1 := chunk.Function.Args[1]
 	fref, ok := arg1.RefV2()
@@ -979,14 +987,19 @@ func _stringWhere(e *blockExecutor, src string, chunk *Chunk, ref uint64, invert
 	return found.Data, 0, nil
 }
 
-// isStringSliceSearch reports whether a where block is exactly `_ == x`,
-// i.e. its only entrypoint is an `==` bound to the block's `_` argument.
+// isStringSliceSearch reports whether a where block is exactly `_ == x` with an
+// x that stringslice can search for, i.e. its only entrypoint is a stringslice
+// builtin bound to the block's `_` argument.
 func isStringSliceSearch(code *CodeV2, block *Block, fref uint64) bool {
 	if len(block.Entrypoints) != 1 {
 		return false
 	}
 	c := code.Chunk(block.Entrypoints[0])
-	return c.Function != nil && c.Function.Binding == fref|2 && strings.HasPrefix(c.Id, "==")
+	if c.Function == nil || c.Function.Binding != fref|2 {
+		return false
+	}
+	_, err := BuiltinFunctionV2(types.StringSlice, c.Id)
+	return err == nil
 }
 
 // requires at least 1 entry in the list!
