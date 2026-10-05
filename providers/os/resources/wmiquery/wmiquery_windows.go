@@ -16,29 +16,35 @@ import (
 )
 
 // query runs the WMI query; tests replace it to simulate a failing library.
-var query = queryCIMv2
+var query = queryNamespace
 
 // lock serializes the queries: each one sets COM up on its own locked OS
 // thread and tears it down again.
 var lock sync.Mutex
 
-// Query runs a WQL query against the local root\cimv2 namespace and returns,
+// Query runs a WQL query against the local root\cimv2 namespace (see QueryNamespace for others) and returns,
 // for every object, the properties named in props. Values are read as COM
 // returns them and converted by the Row accessors, so a type WMI sends that a
 // caller does not expect is an absent value, not a panic. The WMI library
 // panics on some failures of its own (COM setup, a nil session); Query turns
 // any panic into an error, so the caller can fall back to its PowerShell path.
-func Query(q string, props ...string) (rows []Row, err error) {
+func Query(q string, props ...string) ([]Row, error) {
+	return QueryNamespace(`root\cimv2`, q, props...)
+}
+
+// QueryNamespace is Query against another local WMI namespace, e.g.
+// root\Microsoft\Windows\DeviceGuard.
+func QueryNamespace(namespace, q string, props ...string) (rows []Row, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			rows = nil
-			err = fmt.Errorf("WMI query %q panicked: %v", q, r)
+			err = fmt.Errorf("WMI query %q in %s panicked: %v", q, namespace, r)
 		}
 	}()
-	return query(q, props)
+	return query(namespace, q, props)
 }
 
-func queryCIMv2(q string, props []string) ([]Row, error) {
+func queryNamespace(namespace, q string, props []string) ([]Row, error) {
 	lock.Lock()
 	defer lock.Unlock()
 	// COM objects belong to the thread that created them.
@@ -48,7 +54,7 @@ func queryCIMv2(q string, props []string) ([]Row, error) {
 	mgr := cim.NewWmiSessionManager()
 	defer mgr.Close()
 
-	session, err := mgr.GetLocalSession(`root\cimv2`)
+	session, err := mgr.GetLocalSession(namespace)
 	if err != nil {
 		return nil, err
 	}

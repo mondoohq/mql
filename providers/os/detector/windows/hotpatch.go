@@ -24,13 +24,41 @@ func isClientOS(pf *inventory.Platform) bool {
 	return pf.Labels["windows.mondoo.com/product-type"] == "1"
 }
 
-// WindowsClientHotpatch holds the registry values relevant for client (Win11) hotpatch detection.
+// WindowsClientHotpatch holds the values relevant for client (Win11) hotpatch detection.
 type WindowsClientHotpatch struct {
-	AllowRebootlessUpdates            string `json:"AllowRebootlessUpdates"`
+	AllowRebootlessUpdates string `json:"AllowRebootlessUpdates"`
+	// EnableVirtualizationBasedSecurity is the CONFIGURED state of VBS (registry
+	// value HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard). VBS can be
+	// running without this value being set, so it is only a fallback.
 	EnableVirtualizationBasedSecurity string `json:"EnableVirtualizationBasedSecurity"`
+	// VirtualizationBasedSecurityStatus is the RUNNING state of VBS as reported by
+	// Win32_DeviceGuard (root\Microsoft\Windows\DeviceGuard): "0" = not enabled,
+	// "1" = enabled but not running, "2" = enabled and running. Empty when the
+	// WMI query returned nothing.
+	// https://learn.microsoft.com/windows/security/hardware-security/enable-virtualization-based-protection-of-code-integrity#validate-enabled-vbs-and-memory-integrity-features
+	VirtualizationBasedSecurityStatus string `json:"VirtualizationBasedSecurityStatus"`
 }
 
-// ParseWinRegistryClientHotpatch checks whether AllowRebootlessUpdates and VBS are both enabled.
+// vbsRunning reports whether VBS satisfies the hotpatch prerequisite. Microsoft
+// asks to verify that VBS is running, so the WMI running state wins whenever it
+// is present (a configured-but-not-running VBS does not satisfy it). Only when
+// the running state is unavailable (older OS, WMI error) do we fall back to the
+// configured registry value.
+func (h WindowsClientHotpatch) vbsRunning() bool {
+	if h.VirtualizationBasedSecurityStatus != "" {
+		return h.VirtualizationBasedSecurityStatus == "2"
+	}
+	return h.EnableVirtualizationBasedSecurity == "1"
+}
+
+// enabled reports whether the client hotpatch prerequisites hold: the
+// rebootless-updates policy is on and VBS is running. Shared by the PowerShell
+// and native paths.
+func (h WindowsClientHotpatch) enabled() bool {
+	return h.AllowRebootlessUpdates == "1" && h.vbsRunning()
+}
+
+// ParseWinRegistryClientHotpatch checks whether AllowRebootlessUpdates is enabled and VBS is running.
 func ParseWinRegistryClientHotpatch(r io.Reader) (bool, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
@@ -44,28 +72,33 @@ func ParseWinRegistryClientHotpatch(r io.Reader) (bool, error) {
 	}
 	log.Debug().Interface("ClientHotpatch", hotpatch).Msg("Parsed client hotpatch information")
 
-	return hotpatch.AllowRebootlessUpdates == "1" && hotpatch.EnableVirtualizationBasedSecurity == "1", nil
+	return hotpatch.enabled(), nil
 }
 
 // hotpatchSupported checks whether the given platform meets the prerequisites
 // for hotpatching:
 //   - Windows Server 2022+ (build 20348+, product-type "2" or "3")
-//   - Windows 11 Enterprise / Education 24H2+ (product-type "1"):
+//   - Windows 11 24H2+ client (product-type "1") on an edition that can be
+//     enrolled (see isHotpatchEligibleClientEdition):
 //   - x64 (AMD64/Intel): build 26100.2033+
 //   - arm64: build 26100.4929+
 //
-// Client hotpatch is license-gated, not just build-gated: the eligible SKUs
-// (Windows 11 Enterprise E3/E5, Education A3/A5, M365 F3, M365 Business Premium,
-// Windows 365 Enterprise) all activate Windows 11 Enterprise or Education on
-// the device. A Pro / Home / Pro Education box can never receive hotpatches
-// even when AllowRebootlessUpdates + VBS are set in the registry — a config
-// that can leak in via a misapplied GPO/Intune policy. Without the edition
-// guard we falsely tag those assets `hotpatch=true` and hotpatch-only KBs
-// surface as findings (real example: KB5089466 on a Win11 Pro AMD64 box).
+// Client hotpatch is license-gated, not edition-gated. Microsoft lists Windows
+// Enterprise E3/E5, Education A3/A5, Microsoft 365 F3, Microsoft 365 Business
+// Premium and Windows 365 Enterprise as eligible. Business Premium includes
+// "Windows for business" (Windows 11 Pro / Pro for Workstations) and does not
+// step the device up to Enterprise, so a hotpatch-enrolled client can run Pro.
+// The edition therefore only rules out SKUs that can never be enrolled (Home, SE).
+//
+// The resulting label is a hint: a Pro device with the hotpatch policy and VBS
+// but without an entitlement is still reported as hotpatch-capable here. The
+// asset's build number is the stronger signal for consumers of this label.
 //
 // References:
-//   - https://learn.microsoft.com/en-us/intune/device-updates/windows/hotpatch (eligible license list, 2026-04-29)
-//   - https://learn.microsoft.com/en-us/windows/deployment/windows-autopatch/manage/windows-autopatch-hotpatch-updates (Autopatch eligibility, 2026-03-06)
+//   - https://learn.microsoft.com/en-us/windows/deployment/windows-autopatch/manage/windows-autopatch-hotpatch-updates#prerequisites (eligible licenses)
+//   - https://learn.microsoft.com/microsoft-365/business-premium/microsoft-365-business-faqs (Business Premium includes Windows for business)
+//   - https://learn.microsoft.com/windows/deployment/windows-subscription-activation#how-it-works (only Enterprise E3/E5 steps Pro up to Enterprise)
+//   - https://learn.microsoft.com/en-us/intune/device-updates/windows/manage-quality-updates#prerequisites (quality update policies support Pro, Pro Education, Enterprise, Education)
 //   - https://learn.microsoft.com/en-us/windows/client-management/hotpatch (technical preconditions: build, UBR, VBS, ARM64 CHPE)
 func hotpatchSupported(pf *inventory.Platform) bool {
 	buildNumber, err := strconv.Atoi(pf.Version)
@@ -108,25 +141,34 @@ func hotpatchSupported(pf *inventory.Platform) bool {
 
 // isHotpatchEligibleClientEdition reports whether `title` (the human-readable
 // Windows edition string from platform detection, e.g. "Windows 11 Enterprise"
-// or "Windows 11 Pro") corresponds to a SKU that can receive client hotpatches.
+// or "Windows 11 Pro") corresponds to an edition that can be enrolled in client
+// hotpatch.
 //
-// Eligibility is license-gated per Microsoft Intune docs (2026-04-29) but every
-// eligible license activates Enterprise or Education on the device. The edition
-// string is the closest runtime signal we can read without inspecting tenant
-// licensing. Empty Title → refuse, since we can't tell what's running and
-// hotpatch is the failure-mode-with-false-positives direction.
+// Eligibility is license-gated, and not every eligible license activates
+// Enterprise: Microsoft 365 Business Premium keeps the device on Windows 11 Pro
+// (see hotpatchSupported). Accepted are the editions Intune quality-update
+// policies and Windows Autopatch support: Pro, Pro for Workstations, Pro
+// Education, Enterprise, Education and IoT Enterprise. Home, Home Single
+// Language and SE can never be enrolled. An empty Title is refused since we
+// cannot tell what is running.
 //
-// "Pro Education" is a distinct SKU in the Pro family (not Education A3/A5) so
-// it's rejected explicitly before the broader "education" substring match.
+// Autopatch prerequisites: https://learn.microsoft.com/en-us/windows/deployment/windows-autopatch/prepare/windows-autopatch-prerequisites
 func isHotpatchEligibleClientEdition(title string) bool {
 	t := strings.ToLower(title)
 	if t == "" {
 		return false
 	}
-	if strings.Contains(t, "pro education") {
-		return false
+	if strings.Contains(t, "enterprise") || strings.Contains(t, "education") {
+		return true
 	}
-	return strings.Contains(t, "enterprise") || strings.Contains(t, "education")
+	// Pro family ("Pro", "Pro for Workstations", "Professional"): match on whole
+	// words so unrelated titles containing "pro" as a substring do not qualify.
+	for _, w := range strings.Fields(t) {
+		if w == "pro" || w == "professional" {
+			return true
+		}
+	}
+	return false
 }
 
 type WindowsHotpatch struct {
@@ -156,13 +198,17 @@ func ParseWinRegistryHotpatch(r io.Reader) (bool, error) {
 // https://learn.microsoft.com/en-us/windows/client-management/hotpatch
 
 // powershellGetWindowsClientHotpatch queries the client-specific AllowRebootlessUpdates policy and VBS.
+// VBS is read as its running state from Win32_DeviceGuard; the registry
+// configuration value is collected as a fallback for when WMI yields nothing.
 func powershellGetWindowsClientHotpatch(conn shared.Connection) (bool, error) {
 	pscommand := `
 $rebootless = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Update' -Name AllowRebootlessUpdates -ErrorAction SilentlyContinue
 $sysInfo = Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard' -Name EnableVirtualizationBasedSecurity -ErrorAction SilentlyContinue
+$dg = Get-CimInstance -Namespace 'root\Microsoft\Windows\DeviceGuard' -ClassName Win32_DeviceGuard -ErrorAction SilentlyContinue
 $result = @{}
 if ($rebootless) { $result.AllowRebootlessUpdates = [string]$rebootless.AllowRebootlessUpdates }
 if ($sysInfo) { $result.EnableVirtualizationBasedSecurity = [string]$sysInfo.EnableVirtualizationBasedSecurity }
+if ($dg -and $null -ne $dg.VirtualizationBasedSecurityStatus) { $result.VirtualizationBasedSecurityStatus = [string]$dg.VirtualizationBasedSecurityStatus }
 $result | ConvertTo-Json
 `
 

@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func withQuery(t *testing.T, f func(string, []string) ([]Row, error)) {
+func withQuery(t *testing.T, f func(string, string, []string) ([]Row, error)) {
 	t.Helper()
 	orig := query
 	query = f
@@ -24,7 +24,7 @@ func withQuery(t *testing.T, f func(string, []string) ([]Row, error)) {
 // The WMI library panics on some failures of its own (COM setup, a nil
 // session); Query must turn that into an error.
 func TestQueryRecoversPanic(t *testing.T) {
-	withQuery(t, func(string, []string) ([]Row, error) {
+	withQuery(t, func(string, string, []string) ([]Row, error) {
 		panic("couldn't initialize the WmiSessionManager")
 	})
 	rows, err := Query("SELECT Name FROM Win32_OperatingSystem", "Name")
@@ -36,17 +36,27 @@ func TestQueryRecoversPanic(t *testing.T) {
 
 func TestQueryPassesErrorsAndResults(t *testing.T) {
 	want := errors.New("access denied")
-	withQuery(t, func(string, []string) ([]Row, error) { return nil, want })
+	withQuery(t, func(string, string, []string) ([]Row, error) { return nil, want })
 	_, err := Query("SELECT x FROM y", "x")
 	assert.ErrorIs(t, err, want)
 
-	withQuery(t, func(_ string, props []string) ([]Row, error) {
+	withQuery(t, func(ns, _ string, props []string) ([]Row, error) {
+		assert.Equal(t, `root\cimv2`, ns)
 		assert.Equal(t, []string{"Name"}, props)
 		return []Row{{"Name": "host"}}, nil
 	})
 	rows, err := Query("SELECT Name FROM y", "Name")
 	require.NoError(t, err)
 	assert.Equal(t, "host", rows[0].String("Name"))
+}
+
+func TestQueryNamespacePassesNamespace(t *testing.T) {
+	withQuery(t, func(ns, _ string, _ []string) ([]Row, error) {
+		assert.Equal(t, `root\Microsoft\Windows\DeviceGuard`, ns)
+		return nil, nil
+	})
+	_, err := QueryNamespace(`root\Microsoft\Windows\DeviceGuard`, "SELECT x FROM y", "x")
+	require.NoError(t, err)
 }
 
 // Real queries on the machine that runs the test.
@@ -103,4 +113,16 @@ func TestQueryConcurrentLive(t *testing.T) {
 		})
 	}
 	wg.Wait()
+}
+
+// Win32_DeviceGuard lives outside root\cimv2. VirtualizationBasedSecurityStatus
+// is 0 (not enabled), 1 (enabled, not running) or 2 (running).
+func TestQueryNamespaceDeviceGuardLive(t *testing.T) {
+	rows, err := QueryNamespace(`root\Microsoft\Windows\DeviceGuard`,
+		"SELECT VirtualizationBasedSecurityStatus FROM Win32_DeviceGuard", "VirtualizationBasedSecurityStatus")
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	status, ok := rows[0].Int64("VirtualizationBasedSecurityStatus")
+	require.True(t, ok, "VirtualizationBasedSecurityStatus: %T %v", rows[0]["VirtualizationBasedSecurityStatus"], rows[0]["VirtualizationBasedSecurityStatus"])
+	assert.Contains(t, []int64{0, 1, 2}, status)
 }
