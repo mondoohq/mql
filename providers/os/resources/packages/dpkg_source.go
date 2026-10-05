@@ -9,7 +9,9 @@ import (
 	"compress/bzip2"
 	"compress/gzip"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/url"
 	"path"
@@ -404,23 +406,11 @@ func (k openPGPKeys) signedBy(issuers []string) bool {
 }
 
 func keyIDHex(id uint64) string {
-	const digits = "0123456789ABCDEF"
-	b := make([]byte, 16)
-	for i := 15; i >= 0; i-- {
-		b[i] = digits[id&0xf]
-		id >>= 4
-	}
-	return string(b)
+	return fmt.Sprintf("%016X", id)
 }
 
 func hexString(b []byte) string {
-	const digits = "0123456789ABCDEF"
-	out := make([]byte, len(b)*2)
-	for i, c := range b {
-		out[i*2] = digits[c>>4]
-		out[i*2+1] = digits[c&0xf]
-	}
-	return string(out)
+	return strings.ToUpper(hex.EncodeToString(b))
 }
 
 // verifies reports whether a signature in sig, binary or armored, is a valid
