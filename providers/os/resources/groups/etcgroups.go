@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"strconv"
 	"strings"
 
@@ -20,14 +19,20 @@ import (
 	"go.mondoo.com/mql/utils/multierr"
 )
 
+// maxLineBytes bounds a single /etc/group line, the same 16 MiB cap the
+// authorized_keys parser uses.
+const maxLineBytes = 16 << 20
+
 // a good description of this file is available at:
 // https://www.cyberciti.biz/faq/understanding-etcgroup-file/
 func ParseEtcGroup(input io.Reader) ([]*Group, error) {
 	var groups []*Group
 	scanner := bufio.NewScanner(input)
-	// glibc has no line limit for /etc/group; read whole lines so a group
-	// with thousands of members does not end the scan early.
-	scanner.Buffer(make([]byte, 0, 64*1024), math.MaxInt)
+	// glibc has no line limit for /etc/group; read lines up to maxLineBytes so
+	// a long entry does not end the scan early. The bound only keeps a
+	// pathological file from exhausting memory; a longer line fails the
+	// parse through scanner.Err below instead of truncating the list.
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 	for scanner.Scan() {
 		line := scanner.Text()
 

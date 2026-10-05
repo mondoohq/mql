@@ -7,7 +7,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"math"
 	"strconv"
 	"strings"
 
@@ -15,14 +14,20 @@ import (
 	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
+// maxLineBytes bounds a single /etc/passwd line, the same 16 MiB cap the
+// authorized_keys parser uses.
+const maxLineBytes = 16 << 20
+
 // a good description of this file is available at:
 // https://www.cyberciti.biz/faq/understanding-etcpasswd-file-format/
 func ParseEtcPasswd(input io.Reader) ([]*User, error) {
 	var users []*User
 	scanner := bufio.NewScanner(input)
-	// glibc has no line limit for /etc/passwd; read whole lines so a long
-	// GECOS field does not end the scan early.
-	scanner.Buffer(make([]byte, 0, 64*1024), math.MaxInt)
+	// glibc has no line limit for /etc/passwd; read lines up to maxLineBytes so
+	// a long entry does not end the scan early. The bound only keeps a
+	// pathological file from exhausting memory; a longer line fails the
+	// parse through scanner.Err below instead of truncating the list.
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 	for scanner.Scan() {
 		line := scanner.Text()
 

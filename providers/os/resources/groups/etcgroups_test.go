@@ -144,3 +144,11 @@ func TestParseEtcGroupReturnsReadError(t *testing.T) {
 	_, err := ParseEtcGroup(r)
 	require.Error(t, err)
 }
+
+// A line over maxLineBytes must fail the parse, not end it quietly with the
+// groups read so far.
+func TestParseEtcGroupLineOverCapFails(t *testing.T) {
+	group := "root:x:0:\nmqlg_huge:x:5000:" + strings.Repeat("m", maxLineBytes) + "\nmqlg_after:x:5001:\n"
+	_, err := ParseEtcGroup(strings.NewReader(group))
+	require.Error(t, err)
+}

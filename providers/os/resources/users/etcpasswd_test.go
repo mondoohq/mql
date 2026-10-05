@@ -131,3 +131,13 @@ func TestParseEtcPasswdReturnsReadError(t *testing.T) {
 	_, err := users.ParseEtcPasswd(r)
 	require.Error(t, err)
 }
+
+// A line over the 16 MiB cap must fail the parse, not end it quietly with the
+// users read so far.
+func TestParseEtcPasswdLineOverCapFails(t *testing.T) {
+	passwd := "root:x:0:0:root:/root:/bin/bash\n" +
+		"longgecos:x:1001:1001:" + strings.Repeat("g", 16<<20) + ":/home/longgecos:/bin/bash\n" +
+		"toor:x:0:0:hidden root:/root:/bin/sh\n"
+	_, err := users.ParseEtcPasswd(strings.NewReader(passwd))
+	require.Error(t, err)
+}
