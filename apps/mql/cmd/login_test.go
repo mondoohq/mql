@@ -89,7 +89,13 @@ func TestLoginCmd_RejectedTokenExitsNonZero(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			require.NoError(t, LoginCmd.Flags().Set("token", token))
-			t.Cleanup(func() { _ = LoginCmd.Flags().Set("token", "") })
+			// LoginCmd is package-level: reset what RunE mutates so each case
+			// asserts its own effect. Not t.Parallel() for the same reason.
+			t.Cleanup(func() {
+				_ = LoginCmd.Flags().Set("token", "")
+				LoginCmd.SilenceUsage = false
+				LoginCmd.SilenceErrors = false
+			})
 
 			err := LoginCmd.RunE(LoginCmd, nil)
 			assert.Equal(t, cli_errors.ExitCode1WithoutError, err)
