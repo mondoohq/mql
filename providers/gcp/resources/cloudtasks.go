@@ -188,7 +188,9 @@ func (c *cloudTasksCmekCache) kmsKeyName(runtime *plugin.Runtime, location strin
 	}
 
 	conn := runtime.Connection.(*connection.GcpConnection)
-	creds, err := conn.Credentials(cloudtasks.DefaultAuthScopes()...)
+	// The connection's HTTP client is authenticated and traces every call;
+	// a gRPC trace option would be ignored by a REST client.
+	httpClient, err := conn.Client(cloudtasks.DefaultAuthScopes()...)
 	if err != nil {
 		return "", err
 	}
@@ -196,7 +198,7 @@ func (c *cloudTasksCmekCache) kmsKeyName(runtime *plugin.Runtime, location strin
 	// GetCmekConfig goes over REST: the gRPC client sends the routing header
 	// as "name=", and the service rejects the call unless it reads
 	// "cmek_config.name=".
-	client, err := cloudtasks.NewRESTClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	client, err := cloudtasks.NewRESTClient(ctx, option.WithHTTPClient(httpClient))
 	if err != nil {
 		return "", err
 	}
