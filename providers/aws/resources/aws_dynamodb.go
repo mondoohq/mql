@@ -54,7 +54,6 @@ func (a *mqlAwsDynamodbExport) id() (string, error) {
 }
 
 type mqlAwsDynamodbExportInternal struct {
-	lazyTags
 	exportCache *ddtypes.ExportDescription
 	fetched     bool
 	region      string
@@ -1163,40 +1162,4 @@ func (a *mqlAwsDynamodbTable) id() (string, error) {
 
 func (a *mqlAwsDynamodbLimit) id() (string, error) {
 	return a.Arn.Data, nil
-}
-
-func (a *mqlAwsDynamodbExport) tags() (map[string]any, error) {
-	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
-		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-		exportArn := a.Arn.Data
-		region := a.region
-		if region == "" {
-			if parsed, err := arn.Parse(exportArn); err == nil {
-				region = parsed.Region
-			}
-		}
-		svc := conn.Dynamodb(region)
-		tags := map[string]any{}
-		var nextToken *string
-		for {
-			resp, err := svc.ListTagsOfResource(context.Background(), &dynamodb.ListTagsOfResourceInput{ResourceArn: &exportArn, NextToken: nextToken})
-			if err != nil {
-				if Is400AccessDeniedError(err) {
-					if plugin.StructuredErrors() {
-						return nil, llx.Forbidden(err, llx.WithPermissions("dynamodb:ListTagsOfResource"))
-					}
-					return nil, errTagsUnreadable
-				}
-				return nil, err
-			}
-			for k, v := range tagsToMap(resp.Tags, func(t ddtypes.Tag) *string { return t.Key }, func(t ddtypes.Tag) *string { return t.Value }) {
-				tags[k] = v
-			}
-			if resp.NextToken == nil {
-				break
-			}
-			nextToken = resp.NextToken
-		}
-		return tags, nil
-	})
 }

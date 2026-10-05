@@ -1,7 +1,7 @@
 {
   "provider": "aws",
   "version": "14.3.2",
-  "generated_at": "2026-10-05T18:49:12-07:00",
+  "generated_at": "2026-10-05T18:49:34-07:00",
   "permissions": [
     "access-analyzer:GetFindingV2",
     "access-analyzer:ListAnalyzers",
@@ -627,7 +627,6 @@
     "kafka:ListNodes",
     "kafka:ListReplicators",
     "kafka:ListScramSecrets",
-    "kafka:ListTagsForResource",
     "kinesis:DescribeChannel",
     "kinesis:DescribeStreamSummary",
     "kinesis:ListChannels",
@@ -4986,12 +4985,6 @@
       "permission": "kafka:ListScramSecrets",
       "service": "kafka",
       "action": "ListScramSecrets",
-      "source_file": "aws_msk.go"
-    },
-    {
-      "permission": "kafka:ListTagsForResource",
-      "service": "kafka",
-      "action": "ListTagsForResource",
       "source_file": "aws_msk.go"
     },
     {

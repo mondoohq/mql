@@ -3449,7 +3449,6 @@ aws.dynamodb.export.s3SseAlgorithm 11.15.2
 aws.dynamodb.export.startTime 11.15.2
 aws.dynamodb.export.status 11.15.2
 aws.dynamodb.export.table 11.15.2
-aws.dynamodb.export.tags 14.3.1
 aws.dynamodb.export.type 11.15.2
 aws.dynamodb.exports 11.15.2
 aws.dynamodb.globalTables 11.15.2
@@ -7891,7 +7890,6 @@ aws.msk.cluster.operation.errorCode 13.14.2
 aws.msk.cluster.operation.errorString 13.14.2
 aws.msk.cluster.operation.operationState 13.14.2
 aws.msk.cluster.operation.operationType 13.14.2
-aws.msk.cluster.operation.tags 14.3.1
 aws.msk.cluster.operations 13.14.2
 aws.msk.cluster.publicAccess 11.16.1
 aws.msk.cluster.region 11.16.1
@@ -7930,7 +7928,6 @@ aws.msk.configuration.name 13.14.2
 aws.msk.configuration.region 13.14.2
 aws.msk.configuration.serverProperties 13.14.2
 aws.msk.configuration.state 13.14.2
-aws.msk.configuration.tags 14.3.1
 aws.msk.configurations 13.14.2
 aws.msk.replicator 13.14.2
 aws.msk.replicator.arn 13.14.2

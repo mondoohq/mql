@@ -14541,8 +14541,6 @@ private aws.dynamodb.export {
   filterSpecification() dict
   // ARN for the export
   arn string
-  // Tags assigned to the export
-  tags() map[string]string
 }
 
 // Amazon DynamoDB limits
@@ -27669,8 +27667,6 @@ private aws.msk.cluster.operation @defaults("operationType operationState create
   errorCode string
   // Error message if the operation failed
   errorString string
-  // Tags assigned to the cluster operation
-  tags() map[string]string
 }
 
 // Broker or controller node in an MSK cluster
@@ -27753,8 +27749,6 @@ private aws.msk.configuration @defaults("name state latestRevision region") {
   region string
   // Contents of the server.properties file
   serverProperties() string
-  // Tags assigned to the configuration
-  tags() map[string]string
 }
 
 // Amazon MSK replicator

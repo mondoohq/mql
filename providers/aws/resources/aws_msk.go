@@ -128,7 +128,6 @@ type mqlAwsMskClusterServerlessConfigVpcConfigInternal struct {
 }
 
 type mqlAwsMskConfigurationInternal struct {
-	lazyTags
 	region         string
 	latestRevision int64
 	propsOnce      sync.Once
@@ -2696,50 +2695,4 @@ func (a *mqlAwsMskReplicatorLogDeliveryS3) bucket() (*mqlAwsS3Bucket, error) {
 		return nil, err
 	}
 	return mqlBucket.(*mqlAwsS3Bucket), nil
-}
-
-func (a *mqlAwsMskConfiguration) tags() (map[string]any, error) {
-	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
-		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-		svc := conn.Kafka(a.Region.Data)
-		arn := a.Arn.Data
-		resp, err := svc.ListTagsForResource(context.Background(), &kafka.ListTagsForResourceInput{ResourceArn: &arn})
-		if err != nil {
-			if Is400AccessDeniedError(err) {
-				if plugin.StructuredErrors() {
-					return nil, llx.Forbidden(err, llx.WithPermissions("kafka:ListTagsForResource"))
-				}
-				return nil, errTagsUnreadable
-			}
-			return nil, err
-		}
-		return toInterfaceMap(resp.Tags), nil
-	})
-}
-
-type mqlAwsMskClusterOperationInternal struct {
-	lazyTags
-}
-
-func (a *mqlAwsMskClusterOperation) tags() (map[string]any, error) {
-	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
-		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-		opArn := a.Arn.Data
-		parsed, err := arn.Parse(opArn)
-		if err != nil {
-			return nil, err
-		}
-		svc := conn.Kafka(parsed.Region)
-		resp, err := svc.ListTagsForResource(context.Background(), &kafka.ListTagsForResourceInput{ResourceArn: &opArn})
-		if err != nil {
-			if Is400AccessDeniedError(err) {
-				if plugin.StructuredErrors() {
-					return nil, llx.Forbidden(err, llx.WithPermissions("kafka:ListTagsForResource"))
-				}
-				return nil, errTagsUnreadable
-			}
-			return nil, err
-		}
-		return toInterfaceMap(resp.Tags), nil
-	})
 }

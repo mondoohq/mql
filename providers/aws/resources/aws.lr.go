@@ -19394,9 +19394,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.dynamodb.export.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDynamodbExport).GetArn()).ToDataRes(types.String)
 	},
-	"aws.dynamodb.export.tags": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsDynamodbExport).GetTags()).ToDataRes(types.Map(types.String, types.String))
-	},
 	"aws.dynamodb.limit.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDynamodbLimit).GetArn()).ToDataRes(types.String)
 	},
@@ -32483,9 +32480,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.msk.cluster.operation.errorString": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsMskClusterOperation).GetErrorString()).ToDataRes(types.String)
 	},
-	"aws.msk.cluster.operation.tags": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsMskClusterOperation).GetTags()).ToDataRes(types.Map(types.String, types.String))
-	},
 	"aws.msk.cluster.node.nodeArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsMskClusterNode).GetNodeArn()).ToDataRes(types.String)
 	},
@@ -32578,9 +32572,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.msk.configuration.serverProperties": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsMskConfiguration).GetServerProperties()).ToDataRes(types.String)
-	},
-	"aws.msk.configuration.tags": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsMskConfiguration).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
 	"aws.msk.replicator.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsMskReplicator).GetArn()).ToDataRes(types.String)
@@ -59802,10 +59793,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsDynamodbExport).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"aws.dynamodb.export.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsDynamodbExport).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
-		return
-	},
 	"aws.dynamodb.limit.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsDynamodbLimit).__id, ok = v.Value.(string)
 		return
@@ -78710,10 +78697,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsMskClusterOperation).ErrorString, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"aws.msk.cluster.operation.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsMskClusterOperation).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
-		return
-	},
 	"aws.msk.cluster.node.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsMskClusterNode).__id, ok = v.Value.(string)
 		return
@@ -78856,10 +78839,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.msk.configuration.serverProperties": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsMskConfiguration).ServerProperties, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
-	"aws.msk.configuration.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsMskConfiguration).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"aws.msk.replicator.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -144174,7 +144153,6 @@ type mqlAwsDynamodbExport struct {
 	KmsKey              plugin.TValue[*mqlAwsKmsKey]
 	FilterSpecification plugin.TValue[any]
 	Arn                 plugin.TValue[string]
-	Tags                plugin.TValue[map[string]any]
 }
 
 // createAwsDynamodbExport creates a new instance of this resource
@@ -144314,12 +144292,6 @@ func (c *mqlAwsDynamodbExport) GetFilterSpecification() *plugin.TValue[any] {
 
 func (c *mqlAwsDynamodbExport) GetArn() *plugin.TValue[string] {
 	return &c.Arn
-}
-
-func (c *mqlAwsDynamodbExport) GetTags() *plugin.TValue[map[string]any] {
-	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
-		return c.tags()
-	})
 }
 
 // mqlAwsDynamodbLimit for the aws.dynamodb.limit resource
@@ -191129,7 +191101,7 @@ func (c *mqlAwsMskClusterClusterPolicy) GetAllowsWildcardPrincipal() *plugin.TVa
 type mqlAwsMskClusterOperation struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	mqlAwsMskClusterOperationInternal
+	// optional: if you define mqlAwsMskClusterOperationInternal it will be used here
 	Arn            plugin.TValue[string]
 	OperationType  plugin.TValue[string]
 	OperationState plugin.TValue[string]
@@ -191137,7 +191109,6 @@ type mqlAwsMskClusterOperation struct {
 	EndTime        plugin.TValue[*time.Time]
 	ErrorCode      plugin.TValue[string]
 	ErrorString    plugin.TValue[string]
-	Tags           plugin.TValue[map[string]any]
 }
 
 // createAwsMskClusterOperation creates a new instance of this resource
@@ -191198,12 +191169,6 @@ func (c *mqlAwsMskClusterOperation) GetErrorCode() *plugin.TValue[string] {
 
 func (c *mqlAwsMskClusterOperation) GetErrorString() *plugin.TValue[string] {
 	return &c.ErrorString
-}
-
-func (c *mqlAwsMskClusterOperation) GetTags() *plugin.TValue[map[string]any] {
-	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
-		return c.tags()
-	})
 }
 
 // mqlAwsMskClusterNode for the aws.msk.cluster.node resource
@@ -191534,7 +191499,6 @@ type mqlAwsMskConfiguration struct {
 	CreatedAt        plugin.TValue[*time.Time]
 	Region           plugin.TValue[string]
 	ServerProperties plugin.TValue[string]
-	Tags             plugin.TValue[map[string]any]
 }
 
 // createAwsMskConfiguration creates a new instance of this resource
@@ -191604,12 +191568,6 @@ func (c *mqlAwsMskConfiguration) GetRegion() *plugin.TValue[string] {
 func (c *mqlAwsMskConfiguration) GetServerProperties() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.ServerProperties, func() (string, error) {
 		return c.serverProperties()
-	})
-}
-
-func (c *mqlAwsMskConfiguration) GetTags() *plugin.TValue[map[string]any] {
-	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
-		return c.tags()
 	})
 }
 

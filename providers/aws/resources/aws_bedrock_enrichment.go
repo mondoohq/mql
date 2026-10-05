@@ -369,6 +369,11 @@ func (a *mqlAwsBedrockImportedModel) tags() (map[string]any, error) {
 }
 
 func (a *mqlAwsBedrockInferenceProfile) tags() (map[string]any, error) {
+	// System-defined profiles are owned by AWS and cannot carry tags; the tag
+	// call rejects their ARN as invalid, so answer without making it.
+	if a.Type.Data == "SYSTEM_DEFINED" {
+		return map[string]any{}, nil
+	}
 	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
 		return bedrockTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
 	})
