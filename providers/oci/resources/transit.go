@@ -116,6 +116,16 @@ func (o *mqlOciNetworkDrg) compartment() (*mqlOciCompartment, error) {
 	return resolveOciCompartment(o.MqlRuntime, o.cacheCompartmentID, &o.Compartment)
 }
 
+// drgCompartment returns the compartment holding the DRG's attachments. An
+// attachment is always created in its DRG's compartment, so listing anywhere
+// else, such as the tenancy root for a DRG in a child compartment, finds none.
+func (o *mqlOciNetworkDrg) drgCompartment(tenancyID string) string {
+	if o.cacheCompartmentID != "" {
+		return o.cacheCompartmentID
+	}
+	return tenancyID
+}
+
 func (o *mqlOciNetworkDrg) drgRegion() string {
 	if o.cacheRegion != "" {
 		return o.cacheRegion
@@ -138,7 +148,7 @@ func (o *mqlOciNetworkDrg) attachments() ([]any, error) {
 		// exists to expose, and the reason the ipsecConnection/virtualCircuit
 		// accessors below could never resolve.
 		response, err := svc.ListDrgAttachments(ctx, core.ListDrgAttachmentsRequest{
-			CompartmentId:  common.String(conn.TenantID()),
+			CompartmentId:  common.String(o.drgCompartment(conn.TenantID())),
 			DrgId:          common.String(o.Id.Data),
 			AttachmentType: core.ListDrgAttachmentsAttachmentTypeAll,
 			Page:           page,

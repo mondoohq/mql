@@ -489,54 +489,63 @@ func (o *mqlOciDatabase) backups() ([]any, error) {
 
 			var res []any
 			for i := range items {
-				b := items[i]
-
-				var started, ended, expiry *time.Time
-				if b.TimeStarted != nil {
-					started = &b.TimeStarted.Time
-				}
-				if b.TimeEnded != nil {
-					ended = &b.TimeEnded.Time
-				}
-				if b.TimeExpiryScheduled != nil {
-					expiry = &b.TimeExpiryScheduled.Time
-				}
-
-				var sizeGBs float64
-				if b.DatabaseSizeInGBs != nil {
-					sizeGBs = *b.DatabaseSizeInGBs
-				}
-
-				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.database.backup", stringValue(b.CompartmentId), map[string]*llx.RawData{
-					"id":                       llx.StringDataPtr(b.Id),
-					"name":                     llx.StringDataPtr(b.DisplayName),
-					"databaseId":               llx.StringDataPtr(b.DatabaseId),
-					"availabilityDomain":       llx.StringDataPtr(b.AvailabilityDomain),
-					"type":                     llx.StringData(string(b.Type)),
-					"backupDestinationType":    llx.StringData(string(b.BackupDestinationType)),
-					"databaseSizeInGBs":        llx.FloatData(sizeGBs),
-					"databaseEdition":          llx.StringData(string(b.DatabaseEdition)),
-					"version":                  llx.StringDataPtr(b.Version),
-					"shape":                    llx.StringDataPtr(b.Shape),
-					"isUsingOracleManagedKeys": llx.BoolDataPtr(b.IsUsingOracleManagedKeys),
-					"retentionPeriodInDays":    llx.IntData(intValue(b.RetentionPeriodInDays)),
-					"retentionPeriodInYears":   llx.IntData(intValue(b.RetentionPeriodInYears)),
-					"timeExpiryScheduled":      llx.TimeDataPtr(expiry),
-					"state":                    llx.StringData(string(b.LifecycleState)),
-					"timeStarted":              llx.TimeDataPtr(started),
-					"timeEnded":                llx.TimeDataPtr(ended),
-				})
+				mqlBackup, err := newOciDatabaseBackup(o.MqlRuntime, items[i])
 				if err != nil {
 					return nil, err
 				}
-				mqlBackup := mqlInstance.(*mqlOciDatabaseBackup)
-				mqlBackup.cacheKmsKeyID = stringValue(b.KmsKeyId)
-				mqlBackup.cacheVaultID = stringValue(b.VaultId)
 				res = append(res, mqlBackup)
 			}
 
 			return res, nil
 		})
+}
+
+// newOciDatabaseBackup creates the resource for a backup summary. Both the
+// service-wide backup list and a database's own backups build it, so the two
+// paths share one cache entry per backup.
+func newOciDatabaseBackup(runtime *plugin.Runtime, b database.BackupSummary) (*mqlOciDatabaseBackup, error) {
+	var started, ended, expiry *time.Time
+	if b.TimeStarted != nil {
+		started = &b.TimeStarted.Time
+	}
+	if b.TimeEnded != nil {
+		ended = &b.TimeEnded.Time
+	}
+	if b.TimeExpiryScheduled != nil {
+		expiry = &b.TimeExpiryScheduled.Time
+	}
+
+	var sizeGBs float64
+	if b.DatabaseSizeInGBs != nil {
+		sizeGBs = *b.DatabaseSizeInGBs
+	}
+
+	mqlInstance, err := createOciResourceInCompartment(runtime, "oci.database.backup", stringValue(b.CompartmentId), map[string]*llx.RawData{
+		"id":                       llx.StringDataPtr(b.Id),
+		"name":                     llx.StringDataPtr(b.DisplayName),
+		"databaseId":               llx.StringDataPtr(b.DatabaseId),
+		"availabilityDomain":       llx.StringDataPtr(b.AvailabilityDomain),
+		"type":                     llx.StringData(string(b.Type)),
+		"backupDestinationType":    llx.StringData(string(b.BackupDestinationType)),
+		"databaseSizeInGBs":        llx.FloatData(sizeGBs),
+		"databaseEdition":          llx.StringData(string(b.DatabaseEdition)),
+		"version":                  llx.StringDataPtr(b.Version),
+		"shape":                    llx.StringDataPtr(b.Shape),
+		"isUsingOracleManagedKeys": llx.BoolDataPtr(b.IsUsingOracleManagedKeys),
+		"retentionPeriodInDays":    llx.IntData(intValue(b.RetentionPeriodInDays)),
+		"retentionPeriodInYears":   llx.IntData(intValue(b.RetentionPeriodInYears)),
+		"timeExpiryScheduled":      llx.TimeDataPtr(expiry),
+		"state":                    llx.StringData(string(b.LifecycleState)),
+		"timeStarted":              llx.TimeDataPtr(started),
+		"timeEnded":                llx.TimeDataPtr(ended),
+	})
+	if err != nil {
+		return nil, err
+	}
+	mqlBackup := mqlInstance.(*mqlOciDatabaseBackup)
+	mqlBackup.cacheKmsKeyID = stringValue(b.KmsKeyId)
+	mqlBackup.cacheVaultID = stringValue(b.VaultId)
+	return mqlBackup, nil
 }
 
 type mqlOciDatabaseBackupInternal struct {

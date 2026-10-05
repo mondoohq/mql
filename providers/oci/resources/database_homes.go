@@ -323,18 +323,35 @@ func (o *mqlOciDatabaseDatabase) kmsVault() (*mqlOciKmsVault, error) {
 	return resolveOciVault(o.MqlRuntime, ocidOrEmpty(o.cacheVaultID), &o.KmsVault)
 }
 
+// backups lists the database's backups by database id. Listing by
+// compartment, as the service-wide oci.database.backups does, returns only
+// standalone backups, so a database's automatic backups never appeared.
 func (o *mqlOciDatabaseDatabase) backups() ([]any, error) {
-	items, err := ociServiceCollection(o.MqlRuntime, "oci.database", func(r plugin.Resource) *plugin.TValue[[]any] {
-		return r.(*mqlOciDatabase).GetBackups()
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+	svc, err := conn.DatabaseClient(ociRegionFromOCID(o.Id.Data))
+	if err != nil {
+		return nil, err
+	}
+	items, err := ociPaginate(context.Background(), func(ctx context.Context, page *string) ([]database.BackupSummary, *string, error) {
+		response, err := svc.ListBackups(ctx, database.ListBackupsRequest{
+			DatabaseId: common.String(o.Id.Data),
+			Page:       page,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return response.Items, response.OpcNextPage, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	res := []any{}
-	for _, raw := range items {
-		if b, ok := raw.(*mqlOciDatabaseBackup); ok && b.DatabaseId.Data == o.Id.Data {
-			res = append(res, b)
+	res := make([]any, 0, len(items))
+	for i := range items {
+		b, err := newOciDatabaseBackup(o.MqlRuntime, items[i])
+		if err != nil {
+			return nil, err
 		}
+		res = append(res, b)
 	}
 	return res, nil
 }
