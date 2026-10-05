@@ -137,6 +137,24 @@ func TestMap(t *testing.T) {
 			Code:        "parse.json('/dummy.json').params.length",
 			Expectation: int64(15),
 		},
+		// a dict holding a string: a compound block compares the whole value,
+		// a single `_ == x` keeps the substring search
+		{
+			Code:        `parse.json(content: '{"a":"All"}').params['a'].any(_ == "All" || _ == "all")`,
+			ResultIndex: 1, Expectation: true,
+		},
+		{
+			Code:        `parse.json(content: '{"a":"All"}').params['a'].none(_ == "x" || _ == "y")`,
+			ResultIndex: 1, Expectation: true,
+		},
+		{
+			Code:        `parse.json(content: '{"a":"All"}').params['a'].where(_ == "All" || _ == "x")`,
+			Expectation: []any{"All"},
+		},
+		{
+			Code:        `parse.json(content: '{"a":"All"}').params['a'].where(_ == "ll")`,
+			Expectation: "ll",
+		},
 		{
 			Code:        "parse.json('/dummy.json').params.keys.length",
 			Expectation: int64(15),

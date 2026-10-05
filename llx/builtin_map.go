@@ -960,6 +960,14 @@ func _stringWhere(e *blockExecutor, src string, chunk *Chunk, ref uint64, invert
 		return BoolFalse, 0, nil
 	}
 
+	// The substring search only applies when the whole block is one `_ == x`.
+	// In any larger expression (`_ == "a" || _ == "b"`) each `==` would return
+	// the matched substring instead of a bool, and the boolean operators panic
+	// on it. Evaluate those against the string as a single dict value instead.
+	if !isStringSliceSearch(e.ctx.code, funBlock, fref) {
+		return _dictArrayWhere(e, []any{src}, chunk, ref, inverted)
+	}
+
 	var found *RawResult
 	_ = e.runFunctionBlock([]*RawData{
 		{Type: types.Nil, Value: nil},
@@ -969,6 +977,16 @@ func _stringWhere(e *blockExecutor, src string, chunk *Chunk, ref uint64, invert
 	})
 
 	return found.Data, 0, nil
+}
+
+// isStringSliceSearch reports whether a where block is exactly `_ == x`,
+// i.e. its only entrypoint is an `==` bound to the block's `_` argument.
+func isStringSliceSearch(code *CodeV2, block *Block, fref uint64) bool {
+	if len(block.Entrypoints) != 1 {
+		return false
+	}
+	c := code.Chunk(block.Entrypoints[0])
+	return c.Function != nil && c.Function.Binding == fref|2 && strings.HasPrefix(c.Id, "==")
 }
 
 // requires at least 1 entry in the list!
