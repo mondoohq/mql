@@ -328,6 +328,29 @@ message Package {
   // 'supplier' is the entity that supplied the package, as SPDX and CycloneDX
   // both model it (a name, optionally with an email in angle brackets).
   string supplier = 33;
+  // 'os_provided' says whether the operating system vendor provides the
+  // package: true for an application that comes with macOS or Windows and for
+  // a package from the distribution's own repositories, false for third-party
+  // software (ADR 049). Unset when nothing on the system answered, which is
+  // not the same as false: most container images ship without the apt
+  // indexes a deb package is matched against.
+  optional bool os_provided = 34;
+  // 'source' is where the installed build came from. Unset when the scan did
+  // not report it.
+  PackageSource source = 35;
+}
+
+// PackageSource is where an installed package came from (ADR 049).
+message PackageSource {
+  // 'channel' is how the package reached the system: "os", "vendor-repository",
+  // "app-store", "homebrew", "installer", "direct", "snap", "flatpak",
+  // "chocolatey" or "unknown".
+  string channel = 1;
+  // 'name' is the repository, store or installer as the system names it, e.g.
+  // the apt release Origin "nginx" or the dnf repository id "docker-ce-stable".
+  string name = 2;
+  // 'url' is the repository's address, without credentials.
+  string url = 3;
 }
 
 // License is one license attributed to a package, and how that attribution was

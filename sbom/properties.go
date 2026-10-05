@@ -4,6 +4,7 @@
 package sbom
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/CycloneDX/cyclonedx-go"
@@ -26,6 +27,13 @@ const (
 	propPlatformFamily = "mondoo:platform:family"
 	propPackageOrigin  = "mondoo:package:origin"
 	propPackageArch    = "mondoo:package:arch"
+
+	// Where a package came from (ADR 049). os-provided is written only when
+	// the scan answered it: an absent property means unknown, not false.
+	propPackageOSProvided    = "mondoo:package:os-provided"
+	propPackageSourceChannel = "mondoo:package:source:channel"
+	propPackageSourceName    = "mondoo:package:source:name"
+	propPackageSourceURL     = "mondoo:package:source:url"
 )
 
 // platformProperties renders the platform fields CycloneDX cannot hold, or nil
@@ -51,6 +59,14 @@ func packageProperties(pkg *Package) *[]cyclonedx.Property {
 	}
 	props := appendProp(nil, propPackageOrigin, pkg.Origin)
 	props = appendProp(props, propPackageArch, pkg.Architecture)
+	if pkg.OsProvided != nil {
+		props = appendProp(props, propPackageOSProvided, strconv.FormatBool(pkg.GetOsProvided()))
+	}
+	if src := pkg.GetSource(); src != nil {
+		props = appendProp(props, propPackageSourceChannel, src.GetChannel())
+		props = appendProp(props, propPackageSourceName, src.GetName())
+		props = appendProp(props, propPackageSourceURL, src.GetUrl())
+	}
 	if len(props) == 0 {
 		return nil
 	}
@@ -96,6 +112,24 @@ func applyPackageProperties(pkg *Package, props *[]cyclonedx.Property) {
 			pkg.Origin = prop.Value
 		case propPackageArch:
 			pkg.Architecture = prop.Value
+		case propPackageOSProvided:
+			if v, err := strconv.ParseBool(prop.Value); err == nil {
+				pkg.OsProvided = &v
+			}
+		case propPackageSourceChannel:
+			packageSource(pkg).Channel = prop.Value
+		case propPackageSourceName:
+			packageSource(pkg).Name = prop.Value
+		case propPackageSourceURL:
+			packageSource(pkg).Url = prop.Value
 		}
 	}
+}
+
+// packageSource returns the package's source, creating it on first use.
+func packageSource(pkg *Package) *PackageSource {
+	if pkg.Source == nil {
+		pkg.Source = &PackageSource{}
+	}
+	return pkg.Source
 }

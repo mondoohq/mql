@@ -1507,6 +1507,73 @@ package @defaults("name version") {
 
   // macOS application details; null for anything that is not a macOS application
   macos() package.macos
+
+  // Whether the operating system vendor provides this package
+  //
+  // True for software the OS vendor ships: an application that comes with
+  // macOS or Windows, and any package from the distribution's own
+  // repositories, whether it came with the image or was installed later.
+  // False for third-party software: a vendor's repository such as nginx.org or
+  // download.docker.com, an app store, Homebrew, or a file installed by hand.
+  //
+  // Decided by the signing key the operating system itself installed, not by
+  // the package name: Debian's nginx is true, nginx.org's nginx on the same
+  // host is false. On rpm the package's signature is checked against the keys
+  // the distribution's own key package installs. On dpkg the installed version
+  // is matched against the apt indexes, and the index's release file must be
+  // signed by the distribution's archive keyring. On macOS the application
+  // must be signed with Apple's OS signing identity or live on the sealed
+  // system volume. On Windows an AppX package must be a system component,
+  // provisioned in the Windows image (Calculator, Photos, Edge), or a
+  // Microsoft framework; Edge and WebView2 count when Edge Update records
+  // Windows as their source.
+  //
+  // Null when nothing on the system answers: a dpkg system with no apt
+  // indexes (most container images), an outdated dpkg package whose name a
+  // third-party index also lists, any other program from the Windows
+  // Uninstall registry, and package managers without such a record (apk,
+  // pacman, snap, flatpak).
+  osProvided() bool
+
+  // Where the installed build came from
+  //
+  // How the package reached the system, and from which repository or store.
+  // `channel` is the filterable part: everything from an app store, every
+  // vendor repository, everything installed from a file.
+  source() package.source
+}
+
+// Where an installed package came from
+//
+// The channel a package arrived through and the repository, store or
+// installer that delivered it. `channel` is one of "os" (provided by the
+// operating system vendor), "vendor-repository", "app-store", "homebrew",
+// "installer", "direct", "snap", "flatpak", "chocolatey", or "unknown".
+private package.source @defaults("channel name") {
+  // How the package reached the system, e.g. "app-store", "homebrew", "direct"
+  //
+  // "os" for software the operating system vendor provides. "vendor-repository"
+  // for an apt or dnf repository someone added, such as nginx.org.
+  // "app-store" for the Mac App Store and the Microsoft Store. "homebrew" for a
+  // formula or cask. "installer" for a vendor installer package: a macOS .pkg,
+  // a Windows MSI or setup program. "direct" for software copied in or
+  // installed from a file: an application dragged from a disk image, a .deb or
+  // .rpm installed by hand. "snap", "flatpak" and "chocolatey" for those
+  // package managers. "unknown" when no record on the system answers.
+  channel string
+  // Repository, store, cask or installer that delivered the package
+  //
+  // The name the system itself records: the apt release's Origin ("Debian",
+  // "nginx", "Docker"), the dnf repository id ("baseos", "docker-ce-stable"),
+  // "mac-app-store", "microsoft-store", the Homebrew formula or cask, or the
+  // installer package identifier. Empty when the channel has none.
+  name string
+  // Address of the repository, without credentials
+  //
+  // Scheme, host and path of the apt or dnf repository the package came from,
+  // e.g. "http://nginx.org/packages/debian". User names, passwords, tokens and
+  // query strings are removed. Empty for channels that are not a repository.
+  url string
 }
 
 // macOS application details of a package

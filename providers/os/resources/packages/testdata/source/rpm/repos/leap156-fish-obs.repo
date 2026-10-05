@@ -1,0 +1,4 @@
+[fish-obs]
+enabled=1
+autorefresh=1
+baseurl=https://download.opensuse.org/repositories/shells:/fish:/release:/4/15.6/

@@ -106,6 +106,13 @@ type Package struct {
 	// windows_install_identity.go). Unexported: it only becomes purl
 	// qualifiers, and is never serialized on its own.
 	installIdentity *installIdentity
+
+	// source is where the package came from, when the backend learned it
+	// while listing at no extra cost (an AppX package's signature kind is in
+	// the same query). Everything else is resolved later, and only when a
+	// query asks, through SourceResolver. Unexported: it reaches MQL through
+	// package.osProvided and package.source.
+	source *Source
 }
 
 // MacOSApp describes a macOS application bundle.

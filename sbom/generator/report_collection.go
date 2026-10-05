@@ -44,6 +44,18 @@ type BomPackage struct {
 	FilePath string `json:"file.path,omitempty"`
 	// used by os packages
 	FilePaths []string `json:"files.map,omitempty"`
+	// OSProvided and Source say where an os package came from (ADR 049).
+	// OSProvided is a pointer because null, "nothing on the system answered",
+	// is not false.
+	OSProvided *bool             `json:"osProvided,omitempty"`
+	Source     *BomPackageSource `json:"source,omitempty"`
+}
+
+// BomPackageSource is the package.source block of the SBOM query.
+type BomPackageSource struct {
+	Channel string `json:"channel,omitempty"`
+	Name    string `json:"name,omitempty"`
+	URL     string `json:"url,omitempty"`
 }
 
 type KernelInstalled struct {
@@ -53,8 +65,14 @@ type KernelInstalled struct {
 }
 
 type BomFields struct {
-	Asset                 *BomAsset         `json:"asset,omitempty"`
-	Packages              []BomPackage      `json:"packages.list,omitempty"`
+	Asset    *BomAsset    `json:"asset,omitempty"`
+	Packages []BomPackage `json:"packages.list,omitempty"`
+	// PackageSources is the SBOM pack's separate query for where os packages
+	// came from (ADR 049), `packages.where(...) { name version arch format
+	// osProvided source { ... } }`. It is its own query so that a provider
+	// without those fields fails only it, not the package list; its entries
+	// are merged into Packages by format, name, version and arch.
+	PackageSources        []BomPackage      `json:"packages.where.list,omitempty"`
 	PythonPackages        []BomPackage      `json:"python.packages,omitempty"`
 	NpmPackages           []BomPackage      `json:"npm.packages.list,omitempty"`
 	GoPackages            []BomPackage      `json:"go.packages.list,omitempty"`

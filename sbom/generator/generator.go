@@ -127,6 +127,10 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 		// decode success -- not package count -- is correct either way.
 		var fieldErrors []string
 		var decodedCount int
+		// packageSources collects the separate package-source query's
+		// entries; they are merged once every data point is read, since the
+		// queries come in no fixed order.
+		packageSources := map[string]BomPackage{}
 		for _, k := range keys {
 			dataValue := dataPoints.Values[k]
 			jsondata, err := reporter.JsonValue(dataValue.Content)
@@ -184,6 +188,10 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 				})
 			}
 
+			for _, src := range rb.PackageSources {
+				packageSources[packageSourceKey(src.Format, src.Name, src.Version, src.Arch)] = src
+			}
+
 			if rb.Packages != nil {
 				for _, pkg := range rb.Packages {
 					bomPkg := &sbom.Package{
@@ -196,6 +204,14 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 						Type:         pkg.Format,
 						License:      pkg.License,
 						Licenses:     sbom.DeclaredLicenses(pkg.License),
+						OsProvided:   pkg.OSProvided,
+					}
+					if pkg.Source != nil && pkg.Source.Channel != "" {
+						bomPkg.Source = &sbom.PackageSource{
+							Channel: pkg.Source.Channel,
+							Name:    pkg.Source.Name,
+							Url:     pkg.Source.URL,
+						}
 					}
 
 					for _, filepath := range pkg.FilePaths {
@@ -297,6 +313,7 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 				pkg.BomRef = sbom.BomRefFor(pkg)
 			}
 		}
+		applyPackageSources(bom.Packages, packageSources)
 
 		if len(fieldErrors) > 0 {
 			if decodedCount == 0 {
@@ -341,4 +358,31 @@ func enrichPlatformIds(ids []string) []string {
 		}
 	}
 	return platformIds
+}
+
+// packageSourceKey identifies an os package across the package query and the
+// package-source query.
+func packageSourceKey(format, name, version, arch string) string {
+	return format + "\x00" + name + "\x00" + version + "\x00" + arch
+}
+
+// applyPackageSources sets where each package came from, from the separate
+// package-source query. A package the package query already carried a source
+// for keeps it.
+func applyPackageSources(pkgs []*sbom.Package, sources map[string]BomPackage) {
+	if len(sources) == 0 {
+		return
+	}
+	for _, pkg := range pkgs {
+		src, ok := sources[packageSourceKey(pkg.Type, pkg.Name, pkg.Version, pkg.Architecture)]
+		if !ok {
+			continue
+		}
+		if pkg.OsProvided == nil {
+			pkg.OsProvided = src.OSProvided
+		}
+		if pkg.Source == nil && src.Source != nil && src.Source.Channel != "" {
+			pkg.Source = &sbom.PackageSource{Channel: src.Source.Channel, Name: src.Source.Name, Url: src.Source.URL}
+		}
+	}
 }
