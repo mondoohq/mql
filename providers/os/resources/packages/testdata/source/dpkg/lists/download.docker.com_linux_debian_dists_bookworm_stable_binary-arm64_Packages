@@ -1,0 +1,126 @@
+Package: docker-ce-cli
+Architecture: arm64
+Version: 5:23.0.0-1~debian.12~bookworm
+Priority: optional
+Section: admin
+Source: docker-ce
+Maintainer: Docker <support@docker.com>
+Installed-Size: 33958
+Depends: libc6 (>= 2.34)
+Recommends: docker-buildx-plugin, docker-compose-plugin
+Conflicts: docker (<< 1.5~), docker-engine, docker-engine-cs, docker.io, lxc-docker, lxc-docker-virtual-package
+Breaks: docker-ce (<< 5:0)
+Replaces: docker-ce (<< 5:0)
+Filename: dists/bookworm/pool/stable/arm64/docker-ce-cli_23.0.0-1~debian.12~bookworm_arm64.deb
+Size: 11956262
+MD5sum: e595c12d9589eb0dbddb6d5d6cf71047
+SHA1: a3e665dcea580bac19546646ef53ca16eb2907bc
+SHA256: 10935f772e2992a99ee66e4d9383bcb450f1ae7ccd28da2c2c06081ad3ac14b5
+SHA512: 16110f00ac76e9ec68dde1d17e2b296d87a13f3da3e06d3c6f1ddfb81324380fd46f7f29562f0250bdf47e7f9f1cf41dc75ca932cc482c494f3de86d39d9d6a4
+Homepage: https://www.docker.com
+Description: Docker CLI: the open-source application container engine
+ Docker is a product for you to build, ship and run any application as a
+ lightweight container
+ .
+ Docker containers are both hardware-agnostic and platform-agnostic. This means
+ they can run anywhere, from your laptop to the largest cloud compute instance and
+ everything in between - and they don't require you to use a particular
+ language, framework or packaging system. That makes them great building blocks
+ for deploying and scaling web apps, databases, and backend services without
+ depending on a particular stack or provider.
+
+Package: docker-ce-cli
+Architecture: arm64
+Version: 5:23.0.1-1~debian.12~bookworm
+Priority: optional
+Section: admin
+Source: docker-ce
+Maintainer: Docker <support@docker.com>
+Installed-Size: 33958
+Depends: libc6 (>= 2.34)
+Recommends: docker-buildx-plugin, docker-compose-plugin
+Conflicts: docker (<< 1.5~), docker-engine, docker-engine-cs, docker.io, lxc-docker, lxc-docker-virtual-package
+Breaks: docker-ce (<< 5:0)
+Replaces: docker-ce (<< 5:0)
+Filename: dists/bookworm/pool/stable/arm64/docker-ce-cli_23.0.1-1~debian.12~bookworm_arm64.deb
+Size: 11955682
+MD5sum: 130931ae9f6a1e3182fdb4ed9e04da6d
+SHA1: be44b9a614e7cd72ed661bfa0abdc0d1972b07a5
+SHA256: 759cd4dee23c191ac8265a35e88ddedcc2e06397d3122dc8617681d652c11bd2
+SHA512: 0e85a900f377febf0e39480e63b5f0466612e5ae96e666f6cebbe2a06c3d9abf9660de463e4db1cf3704d099a0773118cf12ce2caad52135d6940359e2ae5678
+Homepage: https://www.docker.com
+Description: Docker CLI: the open-source application container engine
+ Docker is a product for you to build, ship and run any application as a
+ lightweight container
+ .
+ Docker containers are both hardware-agnostic and platform-agnostic. This means
+ they can run anywhere, from your laptop to the largest cloud compute instance and
+ everything in between - and they don't require you to use a particular
+ language, framework or packaging system. That makes them great building blocks
+ for deploying and scaling web apps, databases, and backend services without
+ depending on a particular stack or provider.
+
+Package: docker-ce-cli
+Architecture: arm64
+Version: 5:29.8.1-1~debian.12~bookworm
+Priority: optional
+Section: admin
+Source: docker-ce
+Maintainer: Docker <support@docker.com>
+Installed-Size: 43965
+Depends: libc6 (>= 2.34)
+Recommends: docker-buildx-plugin, docker-compose-plugin
+Suggests: docker-model-plugin
+Conflicts: docker-cli, docker.io
+Breaks: docker-ce (<< 5:0)
+Replaces: docker-ce (<< 5:0)
+Filename: dists/bookworm/pool/stable/arm64/docker-ce-cli_29.8.1-1~debian.12~bookworm_arm64.deb
+Size: 15819088
+MD5sum: 4f3cfcbf707d469de35440b1e15da468
+SHA1: 710fa30f7779c81b73133404d53c43c774d9574d
+SHA256: 72a9776fd667bdd6b91855e75e16603df22ce050c3563136acd273c95b099c09
+SHA512: fbd9fb2cf8b191d693f00f91f47d017b8cf65ab9682580d5250bfe4eac0763f1ce8fd88ec231f6e8d9b1c29085884764285dda200f1f3492193fbdf7199d4e9a
+Homepage: https://www.docker.com
+Description: Docker CLI: the open-source application container engine
+ Docker is a product for you to build, ship and run any application as a
+ lightweight container
+ .
+ Docker containers are both hardware-agnostic and platform-agnostic. This means
+ they can run anywhere, from your laptop to the largest cloud compute instance
+ and everything in between - and they don't require you to use a particular
+ language, framework or packaging system. That makes them great building blocks
+ for deploying and scaling web apps, databases, and backend services without
+ depending on a particular stack or provider.
+
+Package: docker-ce-cli
+Architecture: arm64
+Version: 5:29.8.2-1~debian.12~bookworm
+Priority: optional
+Section: admin
+Source: docker-ce
+Maintainer: Docker <support@docker.com>
+Installed-Size: 43965
+Depends: libc6 (>= 2.34)
+Recommends: docker-buildx-plugin, docker-compose-plugin
+Suggests: docker-model-plugin
+Conflicts: docker-cli, docker.io
+Breaks: docker-ce (<< 5:0)
+Replaces: docker-ce (<< 5:0)
+Filename: dists/bookworm/pool/stable/arm64/docker-ce-cli_29.8.2-1~debian.12~bookworm_arm64.deb
+Size: 15818596
+MD5sum: cfe4e1b8c411f57fcba1cb41fea60c55
+SHA1: 7bfa2edf36382a453526c5eca394ded2cb11a5f2
+SHA256: 35a011055e46b9446dc66385a3e20422c132cd82762a18c792adfed642ec8005
+SHA512: 51ac659a5425fc79196fb90e657f47458ecbd6266c307bb8b11d6e88b9818e765a9fed76542ff62d58ca2539fdc65922264f7bbaf67e12e404b5f8c8056aa895
+Homepage: https://www.docker.com
+Description: Docker CLI: the open-source application container engine
+ Docker is a product for you to build, ship and run any application as a
+ lightweight container
+ .
+ Docker containers are both hardware-agnostic and platform-agnostic. This means
+ they can run anywhere, from your laptop to the largest cloud compute instance
+ and everything in between - and they don't require you to use a particular
+ language, framework or packaging system. That makes them great building blocks
+ for deploying and scaling web apps, databases, and backend services without
+ depending on a particular stack or provider.
+

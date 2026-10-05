@@ -39,7 +39,8 @@ var macOSReceiptDirs = []string{
 // the literal path and prints nothing, which reads as no receipts.
 var macOSReceiptBundlesCmd = `for b in ` + strings.Join(macOSReceiptDirs, "/*.bom ") + `/*.bom; do printf '#%s\n' "$b"; lsbom -s -d "$b" 2>/dev/null | grep -i '\.app$'; done`
 
-// macOSReceipt is the part of an installer receipt that dates an install.
+// macOSReceipt is the part of an installer receipt that dates an install and
+// says what ran it.
 type macOSReceipt struct {
 	PackageIdentifier string    `plist:"PackageIdentifier"`
 	PackageVersion    string    `plist:"PackageVersion"`
@@ -48,6 +49,10 @@ type macOSReceipt struct {
 	// to. Usually "/", but App Store receipts carry "Applications", with no
 	// leading slash.
 	InstallPrefixPath string `plist:"InstallPrefixPath"`
+	// InstallProcessName is the process that ran the install: "appstoreagent"
+	// or "appstored" for the App Store, "installer" or "Installer" for an
+	// installer package, "softwareupdated" for Software Update.
+	InstallProcessName string `plist:"InstallProcessName"`
 }
 
 // parseMacOSReceiptBundles reads the output of macOSReceiptBundlesCmd into a

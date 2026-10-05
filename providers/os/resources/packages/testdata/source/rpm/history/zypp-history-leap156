@@ -1,0 +1,100 @@
+2026-10-05 20:24:56|radd   |fish-obs|https://download.opensuse.org/repositories/shells:/fish:/release:/4/15.6/|
+2026-10-05 20:26:52|command|root@a75f8eeca57c|'zypper' '-n' '--gpg-auto-import-keys' 'in' '-y' '--from' 'fish-obs' 'fish'|
+2026-10-05 20:26:52|install|file|5.32-7.14.1|aarch64||repo-oss|63c9cea30b63dd445c27f67a3e95dd81158af360fdb26934e53ea4f7f5828100548f47f616cd3d342e1cf07e48863ee0fd8300be412984379bee38b537813cea|
+2026-10-05 20:26:52|install|libpcre2-32-0|10.42-150600.1.26|aarch64||repo-oss|2bca8ca609540fcb1f14f89fc66b3b299c18459395617135c200427c33073753a4b40557ecf6e347bc4176e66ef4544bb723c307a5978f2ddf68659dc97d62d7|
+2026-10-05 20:26:53|install|libsepol1|3.1-150400.1.70|aarch64||repo-oss|88b4e07031db848021bbaadef9d2e5e8bad78854997d44ae96498b6dc848aa0a068a1238a4eb16fa863e5ec0b7f5944356ab38947e95a5572a9a9ff372ba9157|
+2026-10-05 20:26:53|install|libexpat1|2.7.1-150400.3.37.1|aarch64||repo-sle-update|19dcf4d088acb61c6590848f313795e53dc3c8c6bb35df1057de7aab42d31952|
+2026-10-05 20:26:53|install|libopenssl1_1|1.1.1w-150600.5.21.1|aarch64||repo-sle-update|72a0fed417b3c041f0c3c40289af461ea9d05b6015d2c59d2a512c1928f4d297|
+2026-10-05 20:26:53|install|pkg-config|0.29.2-150600.15.6.3|aarch64||repo-sle-update|cb1a20ab80aadfe806ae89599ad6fdb72428e769907cac8551d257700ffd7725|
+2026-10-05 20:26:53|install|busybox|1.37.0-150500.10.17.1|aarch64||repo-sle-update|170d3060af489f0d0533e1dcb4ee356f984fc536e37771d004a8c82801264ca6|
+2026-10-05 20:26:55|install|python3-base|3.6.15-150300.10.118.1|aarch64||repo-sle-update|ec8957531f1b51af492bcc5bd9d3518cc9149ea6bdc94247479166d92952746c|
+2026-10-05 20:26:55|install|libpython3_6m1_0|3.6.15-150300.10.118.1|aarch64||repo-sle-update|f9b2a9efa726867da020bca73c79df84bae97ebcaecb6bb3aa457412bdfcbd71|
+2026-10-05 20:26:55|install|busybox-man|1.37.0-150500.7.11.1|noarch||repo-sle-update|5e4d781049d295a1da986d1035953483860f425bf5e8785d44c0543645cc2385|
+2026-10-05 20:26:56|install|python3|3.6.15-150300.10.118.1|aarch64||repo-sle-update|04afd2019a429ade516f9d7142ca50bec3741c43d5a7215ea7e639ea17101f42|
+2026-10-05 20:26:57|install|fish|4.9.3-lp156.2.4|aarch64|root@a75f8eeca57c|fish-obs|44c093f2fdbe09561ff45ac0abc6bd33142922c270f4872ecc08fbe49dac9bd3|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2024-2479|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2024-2059|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2024-2933|1|noarch|repo-sle-update|moderate|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2024-3216|1|noarch|repo-sle-update|moderate|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2024-3470|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2024-3905|1|noarch|repo-sle-update|moderate|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2024-3879|1|noarch|repo-sle-update|moderate|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2024-4035|1|noarch|repo-sle-update|moderate|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2024-4193|1|noarch|repo-sle-update|low|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2025-554|1|noarch|repo-sle-update|moderate|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2025-613|1|noarch|repo-sle-update|moderate|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2025-794|1|noarch|repo-sle-update|important|recommended|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2025-1245|1|noarch|repo-sle-update|moderate|recommended|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2025-1056|1|noarch|repo-sle-update|moderate|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2025-1201|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2025-1867|1|noarch|repo-sle-update|important|recommended|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2025-2778|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2025-2841|1|noarch|repo-sle-update|moderate|recommended|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2025-3271|1|noarch|repo-sle-update|moderate|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2025-3443|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2025-3624|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2025-4368|1|noarch|repo-sle-update|low|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2026-27|1|noarch|repo-sle-update|moderate|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2026-236|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2026-346|1|noarch|repo-sle-update|moderate|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2026-826|1|noarch|repo-sle-update|moderate|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2026-664|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2026-758|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2026-1090|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2026-1166|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:26:57|patch  |openSUSE-SLE-15.6-2026-1715|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:27:21|command|root@a75f8eeca57c|'zypper' '-n' '--gpg-auto-import-keys' 'in' '-y' 'rpm-build'|
+2026-10-05 20:27:21|install|bzip2|1.0.8-150400.1.122|aarch64||repo-oss|829642d71fd089860817514ed3d8be8c944f6b83e92d67f53145858d924c2e93acee1717b82f846947d914b3ae9e40be8b8b9fd5a9cdbbd70e004a768a0b1c97|
+2026-10-05 20:27:22|install|gzip|1.10-150200.10.1|aarch64||repo-oss|80aa42fa5ff85cfc09acf0b986a8391d68e23bdc2afbcbd6e9474ee73c69c58511c43d8b8a87b51f520b30c5fa1de35fd8f6aa3e46641c0472daf8d73245d9db|
+2026-10-05 20:27:22|install|libisl15|0.18-1.443|aarch64||repo-oss|446f6d2b260a343321b49001605f9d7bc9c1aa38751134d4622ce410a8d199d34ab8aefeb78c8272ab1b5f2b01cca8de14ac98066dfb0bab7bf2ca7bcf0dac51|
+2026-10-05 20:27:22|install|libmpfr6|4.0.2-3.3.1|aarch64||repo-oss|1a97b04d56f774a9995b0c2bf236d1cdb7a6a69bf14a51ab10daa18b70336d343c7efa6fdcabf44203e9a2a553bb3bfa351f74f1983887866241051026fd269e|
+2026-10-05 20:27:22|install|libtsan0|11.3.0+git1637-150000.1.11.2|aarch64||repo-oss|d149f3415f3a6ee4956767bd1fe422b57cd53203809f5e24a974035092c549836cbc13039ee37c71d11d27c6495ef663adef5f4ae70a8b26cc178171dc6c0f97|
+2026-10-05 20:27:22|install|libxcrypt-devel|4.4.15-150300.4.7.1|aarch64||repo-oss|73c0ab464768c5b59045041d815608ef2193a5e2c7800f6441e9451e78bae090c6b7297762cbf313ad73cd11e4f4f7115478fdcb7923fc1dca6776c3119177b6|
+2026-10-05 20:27:23|install|linux-glibc-devel|6.4-150600.2.17|aarch64||repo-oss|2d19e57cdc6522e5bba3ca6aadd619ae058ef6f92cebca8c127da200ab17908cc894fcc2e42fd2fc08b9c716ef7732b47a7c60e6919e5ea5b508fc6134f3ef3b|
+2026-10-05 20:27:23|install|make|4.2.1-7.3.2|aarch64||repo-oss|ab859581117b88256cf949915e5bf3588a5b76a25791dbcfe2f6fd41d37b861ef550b0fa8884e68b9436abd40ee41884345e47c30496ebddc5d1e5a86d239934|
+2026-10-05 20:27:23|install|which|2.21-2.20|aarch64||repo-oss|fe5cbfaea5f07a049163a4b81f58f8b488ab75d6a928abd83880c4a4d9a17793aaa63cc098e5e9e9027906715fd772c3d54c230905cec5bf6561518180adf4c8|
+2026-10-05 20:27:23|install|libmpc3|1.1.0-1.47|aarch64||repo-oss|ca6fb89382d758a2e7877c3eb1446e0a7efd29468d7865abe6992b10f0733f84d79323cd0e563caf21398a08df9b2e629a9d9a7c44b147c887567b64587266f2|
+2026-10-05 20:27:23|install|dwz|0.12-150000.3.8.1|aarch64||repo-sle-update|ea49fa700bdff101708ebdf6e062485d4c1d864f1e069101b9498f22174f4972|
+2026-10-05 20:27:26|install|glibc-locale-base|2.38-150600.14.46.1|aarch64||repo-sle-update|2dbabdeea2bb6d8ec7855c14e33df35094d92a9dbd98419d9c8362f2c630221a|
+2026-10-05 20:27:26|install|libasan4|7.5.0+r278197-150000.4.44.1|aarch64||repo-sle-update|034d2264e89f606c2c8ce79a9774a7a36cfdeb38ce300a5f5cb4af2061d74a2d|
+2026-10-05 20:27:26|install|libatomic1|15.2.0+git10201-150000.1.9.1|aarch64||repo-sle-update|5d55c603a2fc747b0e9844dbceb5e699074128b215168a0b9e9991d5b3ab643d|
+2026-10-05 20:27:26|install|libctf-nobfd0|2.45-150100.7.57.1|aarch64||repo-sle-update|24c925901d14325d8f7820ea72b2866cc8b9883f2e1fa576ff672705a4231563|
+2026-10-05 20:27:26|install|libgomp1|15.2.0+git10201-150000.1.9.1|aarch64||repo-sle-update|f4e79fd14c1b8545f754953a389428426922a5875e4ffb59ad0ccec68f3f68e2|
+2026-10-05 20:27:26|install|libitm1|15.2.0+git10201-150000.1.9.1|aarch64||repo-sle-update|d67bb2611f0fbf19bd737241d8bd14afbcbf447570a587975776fc33196d5f37|
+2026-10-05 20:27:26|install|liblsan0|15.2.0+git10201-150000.1.9.1|aarch64||repo-sle-update|d6e2912174ddd0c533fcd19747711a823f84548399d1b4c92285f711c9107776|
+2026-10-05 20:27:26|install|libtextstyle0|0.21.1-150600.3.3.2|aarch64||repo-sle-update|bbaaafd7302f06b9efd01cc90270f5f1f108aafbbc707863fce1d6e731ac5961|
+2026-10-05 20:27:26|install|libubsan0|7.5.0+r278197-150000.4.44.1|aarch64||repo-sle-update|05f44ad14f6565be96951af385bd9584b37eb49e64a5a3837b34a15347fc1e90|
+2026-10-05 20:27:26|install|patch|2.7.6-150000.5.9.1|aarch64||repo-sle-update|06ef603522b45dc8a829de14b31ed0168e08736396fa32d678577274179484ec|
+2026-10-05 20:27:26|install|python-rpm-macros|20241120.6ae645f-150400.3.18.1|noarch||repo-sle-update|be3d828fdb9aeb9b775287cae666fea734d8c89edfbe1093d33ba155221c6a67|
+2026-10-05 20:27:26|install|systemd-rpm-macros|16-150000.7.42.1|noarch||repo-sle-update|58c5f2776535170910f66d66306fc154124d90de953dc6905c27ed0525101653|
+2026-10-05 20:27:26|install|xz|5.4.1-150600.3.3.1|aarch64||repo-sle-update|85ad22d0079373c5053ea7805746914e6264c2510d25f31ff1bd5756214d1f1e|
+2026-10-05 20:27:27|install|glibc-devel|2.38-150600.14.46.1|aarch64||repo-sle-update|d160de5dc99b7dd460c55ddb87db219ea3401c78bfce50ae2ed01ba97914302c|
+2026-10-05 20:27:27|install|cpp7|7.5.0+r278197-150000.4.44.1|aarch64||repo-sle-update|b0ac3cd726f1ad04e3e739888e4770ba612e15a5965cea413a1d45b7298fe6bf|
+2026-10-05 20:27:32|install|glibc-locale|2.38-150600.14.46.1|aarch64||repo-sle-update|47b0ccc0f461fe359ff9bc81af4fd8ed548198e166d46589f3db13e5080323d9|
+2026-10-05 20:27:32|install|libctf0|2.45-150100.7.57.1|aarch64||repo-sle-update|d250de37a98f619c36a3b778092b788cc0f43121dd03eb701835cca364dcae7e|
+# 2026-10-05 20:27:34 binutils-2.45-150100.7.57.1.aarch64.rpm installed ok
+# Additional rpm output:
+# update-alternatives: using /usr/bin/ld.bfd to provide /usr/bin/ld (ld) in auto mode
+# 
+2026-10-05 20:27:34|install|binutils|2.45-150100.7.57.1|aarch64||repo-sle-update|802787e4ca7c9e7b202964c0fa160e3ba7e293549ca64e4270ac76601426184e|
+2026-10-05 20:27:35|install|gettext-runtime|0.21.1-150600.3.3.2|aarch64||repo-sle-update|b0524b223e54ec6e051457aabb0e2db09edccbb7bbf940de521f819ee9b8f41b|
+2026-10-05 20:27:35|install|tar|1.34-150000.3.37.1|aarch64||repo-sle-update|f5f5f0794d24bcca7dfc7c60ea6db928a0ded812880d423b1b3198162c06f4e4|
+2026-10-05 20:27:37|install|gcc7|7.5.0+r278197-150000.4.44.1|aarch64||repo-sle-update|1fdfe2f7378a6c4690d207972c6c0d3cb809bab50b1b649a02b4903276980503|
+2026-10-05 20:27:37|install|gettext-tools|0.21.1-150600.3.3.2|aarch64||repo-sle-update|b640e3b1f580c595bb7f9db06a694f9bea9bccdbe20916be8f2081aee4d7ba3f|
+2026-10-05 20:27:37|install|cpp|7-3.9.1|aarch64||repo-oss|818e640887bba3e1c9b53dce969385c82daaccd398e23df52c2bd0253d42b4da574a02669e7853b9b4ac2f8c7fcfde173b4bf5c05baac3e02a9c035c213b3f3b|
+2026-10-05 20:27:37|install|gcc|7-3.9.1|aarch64||repo-oss|ff740550680a1428f3ab73cda4ac28bb68a100211baf5698153689901add0f8eb8006b51ac3265131513a3b65e9be48985cf4885f9995abf4dbe8972553a1a46|
+2026-10-05 20:27:37|install|rpm-build|4.14.3-150400.59.16.1|aarch64|root@a75f8eeca57c|repo-sle-update|6c7e52fd24af0da2c55a9ed5cef7f06934a4cfbf708483840a1e361dbd8e465c|
+2026-10-05 20:27:37|patch  |openSUSE-SLE-15.6-2024-1851|1|noarch|repo-sle-update|low|recommended|not-needed|applied|
+2026-10-05 20:27:37|patch  |openSUSE-SLE-15.6-2024-2264|1|noarch|repo-sle-update|moderate|recommended|not-needed|applied|
+2026-10-05 20:27:37|patch  |openSUSE-SLE-15.6-2024-2780|1|noarch|repo-sle-update|low|security|not-needed|applied|
+2026-10-05 20:27:37|patch  |openSUSE-SLE-15.6-2024-3180|1|noarch|repo-sle-update|moderate|recommended|not-needed|applied|
+2026-10-05 20:27:37|patch  |openSUSE-SLE-15.6-2024-4289|1|noarch|repo-sle-update|moderate|recommended|not-needed|applied|
+2026-10-05 20:27:37|patch  |openSUSE-SLE-15.6-2024-4415|1|noarch|repo-sle-update|moderate|recommended|not-needed|applied|
+2026-10-05 20:27:37|patch  |openSUSE-SLE-15.6-2025-367|1|noarch|repo-sle-update|moderate|recommended|not-needed|applied|
+2026-10-05 20:27:37|patch  |openSUSE-SLE-15.6-2025-1046|1|noarch|repo-sle-update|moderate|recommended|not-needed|applied|
+2026-10-05 20:27:37|patch  |openSUSE-SLE-15.6-2025-2776|1|noarch|repo-sle-update|moderate|recommended|not-needed|applied|
+2026-10-05 20:27:37|patch  |openSUSE-SLE-15.6-2025-4096|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:27:37|patch  |openSUSE-SLE-15.6-2026-781|1|noarch|repo-sle-update|low|security|not-needed|applied|
+2026-10-05 20:27:37|patch  |openSUSE-SLE-15.6-2026-1177|1|noarch|repo-sle-update|important|security|not-needed|applied|
+2026-10-05 20:27:46|command|root@a75f8eeca57c|'zypper' '-n' 'in' '-y' '--allow-unsigned-rpm' '/tmp/rb/RPMS/noarch/evlocal-1.0-1.noarch.rpm'|
+2026-10-05 20:27:46|install|evlocal|1.0-1|noarch|root@a75f8eeca57c|_tmpRPMcache_||
