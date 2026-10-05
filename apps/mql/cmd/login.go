@@ -71,11 +71,14 @@ You remain logged in until you explicitly log out using the 'logout' subcommand.
 		apiEndpointOverride, _ := cmd.Flags().GetString("api-endpoint")
 		err := register(token, annotations, updatesURL, timer, splay, apiEndpointOverride)
 		if err != nil {
+			// A login failure is not a usage error: don't print the help text,
+			// and don't let cobra repeat an error we log ourselves.
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+
 			if err == tokenValidationErr {
 				log.Error().Msg(err.Error())
-
-				// Prevents help message from being printed
-				return nil
+				return cli_errors.ExitCode1WithoutError
 			}
 			defer func() {
 				opts, optsErr := config.Read()
@@ -103,9 +106,7 @@ You remain logged in until you explicitly log out using the 'logout' subcommand.
 
 			if err == tokenExpiredErr {
 				log.Error().Msg(err.Error())
-
-				// Prevents help message from being printed
-				return nil
+				return cli_errors.ExitCode1WithoutError
 			}
 		}
 		return err

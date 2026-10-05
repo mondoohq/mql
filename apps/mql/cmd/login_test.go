@@ -4,10 +4,13 @@
 package cmd
 
 import (
+	"encoding/base64"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	cli_errors "go.mondoo.com/mql/cli/errors"
 )
 
 func TestLoginCmd_ProvidersURLFlagRemoved(t *testing.T) {
@@ -69,6 +72,28 @@ func TestLoginCmd_AllFlags(t *testing.T) {
 			if ef.shorthand != "" {
 				assert.Equal(t, ef.shorthand, flag.Shorthand, "flag %s shorthand mismatch", ef.name)
 			}
+		})
+	}
+}
+
+// A token rejected before registration must fail the command (exit 1), not
+// return nil: scripts check the exit code.
+func TestLoginCmd_RejectedTokenExitsNonZero(t *testing.T) {
+	b64 := base64.RawURLEncoding.EncodeToString
+	expired := b64([]byte(`{"alg":"HS256","typ":"JWT"}`)) + "." +
+		b64([]byte(`{"exp":1,"space":"//captain.api.mondoo.app/spaces/test"}`)) + ".sig"
+
+	for name, token := range map[string]string{
+		"expired":     expired,
+		"unparseable": "not-a-jwt",
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.NoError(t, LoginCmd.Flags().Set("token", token))
+			t.Cleanup(func() { _ = LoginCmd.Flags().Set("token", "") })
+
+			err := LoginCmd.RunE(LoginCmd, nil)
+			assert.Equal(t, cli_errors.ExitCode1WithoutError, err)
+			assert.True(t, LoginCmd.SilenceUsage, "a rejected token is not a usage error")
 		})
 	}
 }
