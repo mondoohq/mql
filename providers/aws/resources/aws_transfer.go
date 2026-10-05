@@ -779,6 +779,43 @@ func (a *mqlAwsTransferWorkflow) onExceptionSteps() ([]any, error) {
 	return convert.JsonToDictSlice(resp.Workflow.OnExceptionSteps)
 }
 
+func (a *mqlAwsTransferWorkflow) structuredLogGroups() ([]any, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	if resp.Workflow == nil {
+		return res, nil
+	}
+	for _, dest := range resp.Workflow.StructuredLogDestinations {
+		logGroupArn := transferLogGroupArn(dest)
+		if logGroupArn == "" {
+			continue
+		}
+		lg, err := NewResource(a.MqlRuntime, ResourceAwsCloudwatchLoggroup, map[string]*llx.RawData{
+			"arn": llx.StringData(logGroupArn),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, lg)
+	}
+	return res, nil
+}
+
+// transferLogGroupArn normalizes a Transfer Family structured log destination
+// to the form CloudWatch Logs reports for a log group ARN (with the trailing
+// ":*"), so the reference resolves to the cached log group. Empty input stays
+// empty.
+func transferLogGroupArn(dest string) string {
+	dest = strings.TrimSpace(dest)
+	if dest == "" {
+		return ""
+	}
+	return strings.TrimSuffix(dest, ":*") + ":*"
+}
+
 func (a *mqlAwsTransferWorkflow) tags() (map[string]any, error) {
 	resp, err := a.fetchDetail()
 	if err != nil {

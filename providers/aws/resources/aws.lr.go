@@ -27554,6 +27554,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.cognito.userPool.riskConfiguration": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCognitoUserPool).GetRiskConfiguration()).ToDataRes(types.Dict)
 	},
+	"aws.cognito.userPool.acrConfiguration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCognitoUserPool).GetAcrConfiguration()).ToDataRes(types.Map(types.String, types.String))
+	},
 	"aws.cognito.userPool.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCognitoUserPool).GetCreatedAt()).ToDataRes(types.Time)
 	},
@@ -27706,6 +27709,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.cognito.userPoolIdentityProvider.providerDetails": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCognitoUserPoolIdentityProvider).GetProviderDetails()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.cognito.userPoolIdentityProvider.acrMapping": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCognitoUserPoolIdentityProvider).GetAcrMapping()).ToDataRes(types.Map(types.String, types.String))
 	},
 	"aws.cognito.userPoolIdentityProvider.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCognitoUserPoolIdentityProvider).GetCreatedAt()).ToDataRes(types.Time)
@@ -34906,6 +34912,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.transfer.workflow.onExceptionSteps": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsTransferWorkflow).GetOnExceptionSteps()).ToDataRes(types.Array(types.Dict))
+	},
+	"aws.transfer.workflow.structuredLogGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsTransferWorkflow).GetStructuredLogGroups()).ToDataRes(types.Array(types.Resource("aws.cloudwatch.loggroup")))
 	},
 	"aws.transfer.workflow.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsTransferWorkflow).GetTags()).ToDataRes(types.Map(types.String, types.String))
@@ -71231,6 +71240,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsCognitoUserPool).RiskConfiguration, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"aws.cognito.userPool.acrConfiguration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCognitoUserPool).AcrConfiguration, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"aws.cognito.userPool.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsCognitoUserPool).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
@@ -71449,6 +71462,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.cognito.userPoolIdentityProvider.providerDetails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsCognitoUserPoolIdentityProvider).ProviderDetails, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.cognito.userPoolIdentityProvider.acrMapping": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCognitoUserPoolIdentityProvider).AcrMapping, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"aws.cognito.userPoolIdentityProvider.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -81905,6 +81922,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.transfer.workflow.onExceptionSteps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsTransferWorkflow).OnExceptionSteps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.transfer.workflow.structuredLogGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsTransferWorkflow).StructuredLogGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.transfer.workflow.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -172294,6 +172315,7 @@ type mqlAwsCognitoUserPool struct {
 	SmsConfiguration            plugin.TValue[any]
 	LambdaConfig                plugin.TValue[any]
 	RiskConfiguration           plugin.TValue[any]
+	AcrConfiguration            plugin.TValue[map[string]any]
 	CreatedAt                   plugin.TValue[*time.Time]
 	UpdatedAt                   plugin.TValue[*time.Time]
 }
@@ -172533,6 +172555,12 @@ func (c *mqlAwsCognitoUserPool) GetLambdaConfig() *plugin.TValue[any] {
 func (c *mqlAwsCognitoUserPool) GetRiskConfiguration() *plugin.TValue[any] {
 	return plugin.GetOrCompute[any](&c.RiskConfiguration, func() (any, error) {
 		return c.riskConfiguration()
+	})
+}
+
+func (c *mqlAwsCognitoUserPool) GetAcrConfiguration() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.AcrConfiguration, func() (map[string]any, error) {
+		return c.acrConfiguration()
 	})
 }
 
@@ -172913,6 +172941,7 @@ type mqlAwsCognitoUserPoolIdentityProvider struct {
 	AttributeMapping plugin.TValue[map[string]any]
 	IdpIdentifiers   plugin.TValue[[]any]
 	ProviderDetails  plugin.TValue[map[string]any]
+	AcrMapping       plugin.TValue[map[string]any]
 	CreatedAt        plugin.TValue[*time.Time]
 	UpdatedAt        plugin.TValue[*time.Time]
 }
@@ -172996,6 +173025,10 @@ func (c *mqlAwsCognitoUserPoolIdentityProvider) GetIdpIdentifiers() *plugin.TVal
 
 func (c *mqlAwsCognitoUserPoolIdentityProvider) GetProviderDetails() *plugin.TValue[map[string]any] {
 	return &c.ProviderDetails
+}
+
+func (c *mqlAwsCognitoUserPoolIdentityProvider) GetAcrMapping() *plugin.TValue[map[string]any] {
+	return &c.AcrMapping
 }
 
 func (c *mqlAwsCognitoUserPoolIdentityProvider) GetCreatedAt() *plugin.TValue[*time.Time] {
@@ -199367,13 +199400,14 @@ type mqlAwsTransferWorkflow struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsTransferWorkflowInternal
-	Arn              plugin.TValue[string]
-	WorkflowId       plugin.TValue[string]
-	Region           plugin.TValue[string]
-	Description      plugin.TValue[string]
-	Steps            plugin.TValue[[]any]
-	OnExceptionSteps plugin.TValue[[]any]
-	Tags             plugin.TValue[map[string]any]
+	Arn                 plugin.TValue[string]
+	WorkflowId          plugin.TValue[string]
+	Region              plugin.TValue[string]
+	Description         plugin.TValue[string]
+	Steps               plugin.TValue[[]any]
+	OnExceptionSteps    plugin.TValue[[]any]
+	StructuredLogGroups plugin.TValue[[]any]
+	Tags                plugin.TValue[map[string]any]
 }
 
 // createAwsTransferWorkflow creates a new instance of this resource
@@ -199438,6 +199472,22 @@ func (c *mqlAwsTransferWorkflow) GetSteps() *plugin.TValue[[]any] {
 func (c *mqlAwsTransferWorkflow) GetOnExceptionSteps() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.OnExceptionSteps, func() ([]any, error) {
 		return c.onExceptionSteps()
+	})
+}
+
+func (c *mqlAwsTransferWorkflow) GetStructuredLogGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.StructuredLogGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.transfer.workflow", c.__id, "structuredLogGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.structuredLogGroups()
 	})
 }
 

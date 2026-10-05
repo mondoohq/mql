@@ -230,6 +230,43 @@ func (a *mqlAwsCognitoUserPool) fetchDescribeUserPool() (*cognitoidentityprovide
 	return resp, nil
 }
 
+func (a *mqlAwsCognitoUserPool) acrConfiguration() (map[string]any, error) {
+	resp, err := a.fetchDescribeUserPool()
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.UserPool == nil || resp.UserPool.AcrConfiguration == nil {
+		a.AcrConfiguration.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return cognitoAcrConfigurationToMap(resp.UserPool.AcrConfiguration), nil
+}
+
+// cognitoAcrConfigurationToMap flattens a user pool's ACR configuration into
+// level -> ACR value. A nil configuration stays nil so the field reads null.
+func cognitoAcrConfigurationToMap(cfg map[string]cognitoidentityprovidertypes.AcrLevelConfigType) map[string]any {
+	if cfg == nil {
+		return nil
+	}
+	res := make(map[string]any, len(cfg))
+	for level, c := range cfg {
+		if c.AcrValue == nil {
+			continue
+		}
+		res[level] = *c.AcrValue
+	}
+	return res
+}
+
+// cognitoAcrMappingData converts an identity provider's ACR mapping, keeping
+// an unset mapping null instead of an empty map.
+func cognitoAcrMappingData(m map[string]string) *llx.RawData {
+	if m == nil {
+		return llx.NilData
+	}
+	return llx.MapData(convert.MapToInterfaceMap(m), types.String)
+}
+
 func (a *mqlAwsCognitoUserPool) deletionProtection() (bool, error) {
 	resp, err := a.fetchDescribeUserPool()
 	if err != nil || resp == nil || resp.UserPool == nil {
@@ -988,6 +1025,7 @@ func newMqlAwsCognitoUserPoolIdentityProvider(runtime *plugin.Runtime, region st
 		"attributeMapping": llx.MapData(convert.MapToInterfaceMap(p.AttributeMapping), types.String),
 		"idpIdentifiers":   llx.ArrayData(stringsToAnyArray(p.IdpIdentifiers), types.String),
 		"providerDetails":  llx.MapData(convert.MapToInterfaceMap(p.ProviderDetails), types.String),
+		"acrMapping":       cognitoAcrMappingData(p.AcrMapping),
 		"createdAt":        llx.TimeDataPtr(p.CreationDate),
 		"updatedAt":        llx.TimeDataPtr(p.LastModifiedDate),
 	})

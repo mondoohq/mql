@@ -12412,7 +12412,10 @@ private aws.cloudfront.originAccessControl @defaults("name originAccessControlOr
   signingProtocol string
   // When CloudFront signs requests sent to the origin
   //
-  // One of `always`, `never`, or `no-override`.
+  // One of `always`, `never`, `no-override`, or `always-amz-auth`.
+  // `always-amz-auth` signs every origin request with Amazon authentication
+  // headers and also forwards the viewer's Authorization header; it applies
+  // only to Lambda origins.
   signingBehavior string
   // Type of origin the OAC targets
   //
@@ -22851,6 +22854,13 @@ private aws.cognito.userPool @defaults("arn name") {
   // of BLOCK, MFA_IF_CONFIGURED, MFA_REQUIRED, or NO_ACTION), and
   // RiskExceptionConfiguration (BlockedIPRangeList, SkippedIPRangeList).
   riskConfiguration() dict
+  // Authentication context class reference (ACR) level names
+  //
+  // Map of assurance level (Level1 through Level4) to the ACR value Cognito
+  // reports in the `acr` token claim when a user meets that level. Cognito
+  // returns the effective configuration, so levels without a custom name carry
+  // their default names. Null when the user pool reports no ACR configuration.
+  acrConfiguration() map[string]string
   // Date the user pool was created
   createdAt time
   // Date the user pool was last modified
@@ -22999,6 +23009,13 @@ private aws.cognito.userPoolIdentityProvider @defaults("providerName providerTyp
   // authorize_scopes; for Google/Facebook/Amazon/Apple: provider client credentials
   // and scopes.
   providerDetails map[string]string
+  // Authentication context class reference (ACR) mapping
+  //
+  // Maps the user pool's assurance levels (Level1 through Level4) onto the ACR
+  // values of the external OpenID Connect provider, so a step-up requirement
+  // means the same thing whichever provider authenticated the user. Null when
+  // no mapping is set.
+  acrMapping map[string]string
   // Date the provider was created
   createdAt time
   // Date the provider was last modified
@@ -30091,6 +30108,8 @@ private aws.transfer.workflow @defaults("arn workflowId description") {
   // (CopyStepDetails, CustomStepDetails, TagStepDetails, DeleteStepDetails,
   // or DecryptStepDetails).
   onExceptionSteps() []dict
+  // CloudWatch log groups that receive the workflow's structured logs
+  structuredLogGroups() []aws.cloudwatch.loggroup
   // Tags for the workflow
   tags() map[string]string
 }

@@ -2573,6 +2573,7 @@ aws.cognito.tokenValidityUnits.idToken 13.53.4
 aws.cognito.tokenValidityUnits.refreshToken 13.53.4
 aws.cognito.userPool 11.16.1
 aws.cognito.userPool.accountRecoverySetting 13.26.3
+aws.cognito.userPool.acrConfiguration 14.2.1
 aws.cognito.userPool.advancedSecurityMode 11.16.1
 aws.cognito.userPool.arn 11.16.1
 aws.cognito.userPool.clients 13.21.4
@@ -2644,6 +2645,7 @@ aws.cognito.userPoolDomain.userPool 13.21.4
 aws.cognito.userPoolDomain.userPoolId 13.21.4
 aws.cognito.userPoolDomain.version 13.21.4
 aws.cognito.userPoolIdentityProvider 13.21.4
+aws.cognito.userPoolIdentityProvider.acrMapping 14.2.1
 aws.cognito.userPoolIdentityProvider.attributeMapping 13.21.4
 aws.cognito.userPoolIdentityProvider.createdAt 13.21.4
 aws.cognito.userPoolIdentityProvider.idpIdentifiers 13.21.4
@@ -11310,6 +11312,7 @@ aws.transfer.workflow.description 13.20.1
 aws.transfer.workflow.onExceptionSteps 13.20.1
 aws.transfer.workflow.region 13.20.1
 aws.transfer.workflow.steps 13.20.1
+aws.transfer.workflow.structuredLogGroups 14.2.1
 aws.transfer.workflow.tags 13.20.1
 aws.transfer.workflow.workflowId 13.20.1
 aws.transfer.workflows 13.20.1
