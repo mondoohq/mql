@@ -849,8 +849,8 @@ private googleworkspace.report.usage {
 // Managed endpoint device
 //
 // Device enrolled in Google endpoint management or reported through endpoint
-// verification. Chrome OS, Android, iOS, Windows, macOS, Linux, and Google
-// Sync clients all surface through the same record. Fields cover platform
+// verification. Chrome OS, Googlebook, Android, iOS, Windows, macOS, Linux, and
+// Google Sync clients all surface through the same record. Fields cover platform
 // identity (`deviceType`, `manufacturer`, `model`, `osVersion`), hardware
 // identifiers (`serialNumber`, `imei`, `meid`, `wifiMacAddresses`), posture
 // signals (`compromisedState`, `encryptionState`, `enabledDeveloperOptions`,
@@ -863,7 +863,7 @@ private googleworkspace.endpoint @defaults("deviceType model serialNumber manage
   id string
   // Full resource name in the format devices/{device}
   name string
-  // Platform of the device. Possible values: ANDROID, IOS, GOOGLE_SYNC, WINDOWS, MAC_OS, LINUX, CHROME_OS, DEVICE_TYPE_UNSPECIFIED
+  // Platform of the device. Possible values: ANDROID, IOS, GOOGLE_SYNC, WINDOWS, MAC_OS, LINUX, CHROME_OS, GOOGLEBOOK, DEVICE_TYPE_UNSPECIFIED
   deviceType string
   // Ownership of the device. Possible values: COMPANY, BYOD, DEVICE_OWNERSHIP_UNSPECIFIED
   ownerType string
