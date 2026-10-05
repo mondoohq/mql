@@ -135,16 +135,26 @@ func (a *mqlAwsBedrockAgentCorePaymentManager) workloadIdentity() (*mqlAwsBedroc
 	return res.(*mqlAwsBedrockAgentCoreWorkloadIdentity), nil
 }
 
+// tags reads the payment manager's tags from ListTagsForResource.
+// GetPaymentManager declares a tags field but never fills it.
 func (a *mqlAwsBedrockAgentCorePaymentManager) tags() (map[string]any, error) {
-	detail, err := a.fetchDetail()
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgentCoreControl(a.Region.Data)
+	arn := a.Arn.Data
+	out, err := svc.ListTagsForResource(context.Background(), &bedrockagentcorecontrol.ListTagsForResourceInput{
+		ResourceArn: &arn,
+	})
 	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if !plugin.StructuredErrors() {
+				a.Tags.State = plugin.StateIsSet | plugin.StateIsNull
+				return nil, nil
+			}
+			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:ListTagsForResource"))
+		}
 		return nil, err
 	}
-	if detail == nil {
-		a.Tags.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
-	}
-	return toInterfaceMap(detail.Tags), nil
+	return toInterfaceMap(out.Tags), nil
 }
 
 // --- Payments: payment connectors ---
