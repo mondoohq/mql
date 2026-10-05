@@ -307,6 +307,11 @@ func unreportedApplications(reported, added []sysProfilerItem) (count int, syste
 type MacOSPkgManager struct {
 	conn     shared.Connection
 	platform *inventory.Platform
+
+	// receipts are the installer receipts List read to date the installs,
+	// keyed by the bundle path they laid down. Sources reads them again to
+	// tell installer packages and App Store installs from copied bundles.
+	receipts map[string]macOSReceipt
 }
 
 func (mpm *MacOSPkgManager) Name() string {
@@ -334,7 +339,8 @@ func (mpm *MacOSPkgManager) List() ([]Package, error) {
 		log.Debug().Int("applications", len(pkgs)).
 			Msg("system_profiler listed no applications, Spotlight indexing may be off; using the application folders")
 	}
-	applyMacOSReceiptInstallDates(pkgs, readMacOSReceipts(mpm.conn))
+	mpm.receipts = readMacOSReceipts(mpm.conn)
+	applyMacOSReceiptInstallDates(pkgs, mpm.receipts)
 	return pkgs, nil
 }
 

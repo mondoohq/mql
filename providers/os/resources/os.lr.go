@@ -69,6 +69,7 @@ const (
 	ResourceGroup                                         string = "group"
 	ResourceGroups                                        string = "groups"
 	ResourcePackage                                       string = "package"
+	ResourcePackageSource                                 string = "package.source"
 	ResourcePackageMacos                                  string = "package.macos"
 	ResourcePkgFileInfo                                   string = "pkgFileInfo"
 	ResourcePackages                                      string = "packages"
@@ -888,6 +889,10 @@ func init() {
 		"package": {
 			Init:   initPackage,
 			Create: createPackage,
+		},
+		"package.source": {
+			Init:   initPackageSource,
+			Create: createPackageSource,
 		},
 		"package.macos": {
 			Init:   initPackageMacos,
@@ -4174,6 +4179,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"package.macos": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPackage).GetMacos()).ToDataRes(types.Resource("package.macos"))
+	},
+	"package.osProvided": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackage).GetOsProvided()).ToDataRes(types.Bool)
+	},
+	"package.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackage).GetSource()).ToDataRes(types.Resource("package.source"))
+	},
+	"package.source.channel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackageSource).GetChannel()).ToDataRes(types.String)
+	},
+	"package.source.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackageSource).GetName()).ToDataRes(types.String)
+	},
+	"package.source.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackageSource).GetUrl()).ToDataRes(types.String)
 	},
 	"package.macos.bundleId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPackageMacos).GetBundleId()).ToDataRes(types.String)
@@ -19585,6 +19605,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"package.macos": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPackage).Macos, ok = plugin.RawToTValue[*mqlPackageMacos](v.Value, v.Error)
+		return
+	},
+	"package.osProvided": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackage).OsProvided, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"package.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackage).Source, ok = plugin.RawToTValue[*mqlPackageSource](v.Value, v.Error)
+		return
+	},
+	"package.source.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageSource).__id, ok = v.Value.(string)
+		return
+	},
+	"package.source.channel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageSource).Channel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.source.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageSource).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.source.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageSource).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"package.macos.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -45202,6 +45246,8 @@ type mqlPackage struct {
 	InstallScope plugin.TValue[string]
 	InstallUser  plugin.TValue[*mqlUser]
 	Macos        plugin.TValue[*mqlPackageMacos]
+	OsProvided   plugin.TValue[bool]
+	Source       plugin.TValue[*mqlPackageSource]
 }
 
 // createPackage creates a new instance of this resource
@@ -45369,6 +45415,82 @@ func (c *mqlPackage) GetMacos() *plugin.TValue[*mqlPackageMacos] {
 
 		return c.macos()
 	})
+}
+
+func (c *mqlPackage) GetOsProvided() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.OsProvided, func() (bool, error) {
+		return c.osProvided()
+	})
+}
+
+func (c *mqlPackage) GetSource() *plugin.TValue[*mqlPackageSource] {
+	return plugin.GetOrCompute[*mqlPackageSource](&c.Source, func() (*mqlPackageSource, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("package", c.__id, "source")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPackageSource), nil
+			}
+		}
+
+		return c.source()
+	})
+}
+
+// mqlPackageSource for the package.source resource
+type mqlPackageSource struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlPackageSourceInternal it will be used here
+	Channel plugin.TValue[string]
+	Name    plugin.TValue[string]
+	Url     plugin.TValue[string]
+}
+
+// createPackageSource creates a new instance of this resource
+func createPackageSource(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPackageSource{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("package.source", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPackageSource) MqlName() string {
+	return "package.source"
+}
+
+func (c *mqlPackageSource) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPackageSource) GetChannel() *plugin.TValue[string] {
+	return &c.Channel
+}
+
+func (c *mqlPackageSource) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlPackageSource) GetUrl() *plugin.TValue[string] {
+	return &c.Url
 }
 
 // mqlPackageMacos for the package.macos resource

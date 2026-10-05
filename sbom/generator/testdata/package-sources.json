@@ -1,0 +1,115 @@
+{
+    "assets": {
+        "//explorer.api.mondoo.com/assets/licensed": {
+            "mrn": "//explorer.api.mondoo.com/assets/licensed",
+            "name": "licensed:latest",
+            "trace_id": "trace-licensed"
+        }
+    },
+    "data": {
+        "//explorer.api.mondoo.com/assets/licensed": {
+            "values": {
+                "//local.cnquery.io/run/local-execution/queries/mondoo-sbom-asset": {
+                    "content": {
+                        "asset": {
+                            "version": "3.19.0",
+                            "arch": "aarch64",
+                            "platform": "alpine",
+                            "ids": [
+                                "//platformid.api.mondoo.app/runtime/docker/images/licensed"
+                            ],
+                            "name": "licensed:latest"
+                        }
+                    }
+                },
+                "//local.cnquery.io/run/local-execution/queries/mondoo-sbom-packages": {
+                    "content": {
+                        "packages.list": [
+                            {
+                                "arch": "all",
+                                "files.map": [],
+                                "osProvided": false,
+                                "name": "acme-agent",
+                                "cpes.map": [
+                                    "cpe:2.3:a:acme-agent:acme-agent:1.2.3:*:*:*:*:*:all:*",
+                                    "cpe:2.3:a:acme-agent:acme-agent:1.2.3:*:*:*:*:*:*:*"
+                                ],
+                                "version": "1.2.3",
+                                "format": "deb",
+                                "origin": "",
+                                "purl": "pkg:deb/debian/acme-agent@1.2.3?arch=all&distro=debian-12.15",
+                                "source": {
+                                    "name": "",
+                                    "channel": "direct",
+                                    "url": ""
+                                }
+                            },
+                            {
+                                "arch": "arm64",
+                                "files.map": [
+                                    "/var/lib/dpkg/info/libc6:arm64.list"
+                                ],
+                                "osProvided": true,
+                                "name": "libc6",
+                                "cpes.map": [
+                                    "cpe:2.3:a:libc6:libc6:2.36-9\\+deb12u14:*:*:*:*:*:arm64:*",
+                                    "cpe:2.3:a:libc6:libc6:2.36-9\\+deb12u14:*:*:*:*:*:*:*"
+                                ],
+                                "version": "2.36-9+deb12u14",
+                                "format": "deb",
+                                "origin": "glibc",
+                                "purl": "pkg:deb/debian/libc6@2.36-9%2Bdeb12u14?arch=arm64&distro=debian-12.15",
+                                "source": {
+                                    "name": "Debian",
+                                    "channel": "os",
+                                    "url": "http://deb.debian.org/debian"
+                                }
+                            },
+                            {
+                                "arch": "arm64",
+                                "files.map": [
+                                    "/var/lib/dpkg/info/nginx.list"
+                                ],
+                                "osProvided": false,
+                                "name": "nginx",
+                                "cpes.map": [
+                                    "cpe:2.3:a:nginx:nginx:1.30.5-1\\~bookworm:*:*:*:*:*:arm64:*",
+                                    "cpe:2.3:a:nginx:nginx:1.30.5-1\\~bookworm:*:*:*:*:*:*:*"
+                                ],
+                                "version": "1.30.5-1~bookworm",
+                                "format": "deb",
+                                "origin": "",
+                                "purl": "pkg:deb/debian/nginx@1.30.5-1~bookworm?arch=arm64&distro=debian-12.15",
+                                "source": {
+                                    "name": "nginx",
+                                    "channel": "vendor-repository",
+                                    "url": "http://nginx.org/packages/debian"
+                                }
+                            },
+                            {
+                                "cpes.map": [
+                                    "cpe:2.3:a:*:busybox:1.36.1-r31:*:*:*:*:*:arm64:*"
+                                ],
+                                "purl": "pkg:apk/alpine/busybox@1.36.1-r31?arch=aarch64&distro=alpine-3.20.10",
+                                "source": {
+                                    "channel": "unknown",
+                                    "url": "",
+                                    "name": ""
+                                },
+                                "files.map": [
+                                    "/lib/apk/db/installed"
+                                ],
+                                "version": "1.36.1-r31",
+                                "osProvided": null,
+                                "arch": "aarch64",
+                                "name": "busybox",
+                                "format": "apk",
+                                "origin": "busybox"
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+}

@@ -74,6 +74,8 @@ func TestMacOSReceiptInstallDates(t *testing.T) {
 	assert.Equal(t, "com.apple.pkg.Keynote15", receipts["/Applications/Keynote.app"].PackageIdentifier)
 	// App Store receipts are relative to "Applications", without a leading slash.
 	assert.Contains(t, receipts, "/Applications/Bitwarden.app")
+	// and are written by the App Store's own installer process
+	assert.Equal(t, "appstored", receipts["/Applications/Bitwarden.app"].InstallProcessName)
 	// A receipt whose plist is missing claims nothing.
 	assert.NotContains(t, receipts, "/Applications/Orphan.app")
 

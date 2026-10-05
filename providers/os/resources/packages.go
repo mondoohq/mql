@@ -100,6 +100,13 @@ type mqlPackageInternal struct {
 	// package manager that listed this package, shared by all its packages.
 	// Nil for a package that list() did not build.
 	updates *pkgUpdates
+
+	// sources backs osProvided() and source(): where the packages of the
+	// manager that listed this package came from, resolved once for all of
+	// them. sourceIdx is this package's position in that manager's list. Nil
+	// for a package that list() did not build.
+	sources   *pkgSources
+	sourceIdx int
 }
 
 // initPackageMacos keeps `package.macos` from resolving on its own. The
@@ -237,6 +244,9 @@ func initPackage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 	res.License.State = plugin.StateIsSet | plugin.StateIsNull
 	res.InstallDate.State = plugin.StateIsSet | plugin.StateIsNull
 	res.Macos.State = plugin.StateIsSet | plugin.StateIsNull
+	// Nothing came from anywhere when nothing is installed.
+	res.OsProvided.State = plugin.StateIsSet | plugin.StateIsNull
+	res.Source.State = plugin.StateIsSet | plugin.StateIsNull
 	res.__id, _ = res.id()
 	return nil, res, nil
 }
@@ -264,6 +274,55 @@ func (p *mqlPackage) outdated() (bool, error) {
 
 func (p *mqlPackage) origin() (string, error) {
 	return "", nil
+}
+
+// initPackageSource keeps `package.source` from resolving on its own, for the
+// same reason as initPackageMacos: it describes one package.
+func initPackageSource(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if _, ok := args["__id"]; ok {
+		return args, nil, nil
+	}
+	return nil, nil, errors.New("package.source belongs to a package and cannot be queried on its own, read the source field of a package instead")
+}
+
+// resolvedSource is where this package came from, or nil for a package that
+// list() did not build.
+func (p *mqlPackage) resolvedSource() *packages.Source {
+	if p.sources == nil {
+		return nil
+	}
+	return p.sources.lookup(p.sourceIdx)
+}
+
+// osProvided reports whether the operating system vendor provides this
+// package. Null when nothing on the system answers (see os.lr).
+func (p *mqlPackage) osProvided() (bool, error) {
+	src := p.resolvedSource()
+	if src == nil || src.OSProvided == nil {
+		p.OsProvided.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *src.OSProvided, nil
+}
+
+// source returns where this package came from. A package list() did not build
+// has no source to report.
+func (p *mqlPackage) source() (*mqlPackageSource, error) {
+	src := p.resolvedSource()
+	if src == nil {
+		p.Source.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := CreateResource(p.MqlRuntime, ResourcePackageSource, map[string]*llx.RawData{
+		"__id":    llx.StringData(p.__id + "/source"),
+		"channel": llx.StringData(src.Channel),
+		"name":    llx.StringData(src.Name),
+		"url":     llx.StringData(src.URL),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlPackageSource), nil
 }
 
 // license is the lazy fallback for package managers that don't surface
@@ -320,6 +379,55 @@ func (p *mqlPackage) files() ([]any, error) {
 		pkgFiles = append(pkgFiles, pkgFile)
 	}
 	return pkgFiles, nil
+}
+
+// pkgSources holds where one package manager's packages came from. The manager
+// is only asked the first time a package reads osProvided or source, and only
+// once per scan however many packages ask: answering can mean reading the apt
+// indexes, the dnf history or the macOS installer receipts, which a plain
+// inventory never needs.
+type pkgSources struct {
+	pm   packages.OperatingSystemPkgManager
+	pkgs []packages.Package
+
+	once    sync.Once
+	sources []packages.Source
+}
+
+func (s *pkgSources) load() {
+	var resolved []packages.Source
+	if r, ok := s.pm.(packages.SourceResolver); ok {
+		var err error
+		resolved, err = r.Sources(s.pkgs)
+		if err != nil {
+			// A resolver that fails answers nothing it was not sure of; the
+			// format still decides what it can (see DefaultSource).
+			log.Debug().Err(err).Str("manager", s.pm.Name()).Msg("mql[packages]> could not resolve package sources")
+			resolved = nil
+		}
+		if resolved != nil && len(resolved) != len(s.pkgs) {
+			log.Debug().Str("manager", s.pm.Name()).Int("packages", len(s.pkgs)).Int("sources", len(resolved)).Msg("mql[packages]> package source count does not match the package list")
+			resolved = nil
+		}
+	}
+	s.sources = make([]packages.Source, len(s.pkgs))
+	for i := range s.pkgs {
+		if resolved != nil {
+			s.sources[i] = resolved[i]
+		} else {
+			s.sources[i] = packages.DefaultSource(s.pkgs[i])
+		}
+	}
+	// the package list is only needed to resolve; drop it once that is done
+	s.pkgs = nil
+}
+
+func (s *pkgSources) lookup(i int) *packages.Source {
+	s.once.Do(s.load)
+	if i < 0 || i >= len(s.sources) {
+		return nil
+	}
+	return &s.sources[i]
 }
 
 type mqlPackagesInternal struct {
@@ -508,6 +616,11 @@ func (x *mqlPackages) list() ([]any, error) {
 	// osPkgs[i]. Nothing asks the manager for them until a package reads
 	// available or outdated.
 	osPkgUpdates := []*pkgUpdates{}
+	// osPkgSources[i] and osPkgSourceIdx[i] locate osPkgs[i] in its manager's
+	// source resolution, which runs only when a package reads osProvided or
+	// source.
+	osPkgSources := []*pkgSources{}
+	osPkgSourceIdx := []int{}
 	for _, pm := range pms {
 		// retrieve all system packages
 		pkgs, err := pm.List()
@@ -517,8 +630,11 @@ func (x *mqlPackages) list() ([]any, error) {
 		osPkgs = append(osPkgs, pkgs...)
 
 		updates := &pkgUpdates{pm: pm}
-		for range pkgs {
+		sources := &pkgSources{pm: pm, pkgs: pkgs}
+		for j := range pkgs {
 			osPkgUpdates = append(osPkgUpdates, updates)
+			osPkgSources = append(osPkgSources, sources)
+			osPkgSourceIdx = append(osPkgSourceIdx, j)
 		}
 	}
 
@@ -559,6 +675,8 @@ func (x *mqlPackages) list() ([]any, error) {
 		s.installUserSid = osPkg.InstallUser
 		s.macosApp = osPkg.MacOS
 		s.updates = osPkgUpdates[i]
+		s.sources = osPkgSources[i]
+		s.sourceIdx = osPkgSourceIdx[i]
 		pkgs[i] = s
 	}
 

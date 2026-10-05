@@ -3212,9 +3212,14 @@ package.macos.signer 14.5.1
 package.macos.teamId 14.5.1
 package.name 9.0.0
 package.origin 9.0.0
+package.osProvided 14.15.1
 package.outdated 9.0.0
 package.pinned 13.40.10
 package.purl 9.1.6
+package.source 14.15.1
+package.source.channel 14.15.1
+package.source.name 14.15.1
+package.source.url 14.15.1
 package.status 9.0.0
 package.vendor 11.2.18
 package.version 9.0.0

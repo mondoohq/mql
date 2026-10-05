@@ -120,6 +120,7 @@ require (
 )
 
 require (
+	github.com/klauspost/compress v1.19.2
 	github.com/microsoft/wmi v0.44.0
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.1
@@ -239,7 +240,6 @@ require (
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
-	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
