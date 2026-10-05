@@ -627,3 +627,63 @@ func (a *mqlAwsFmsPolicy) resourceSets() ([]any, error) {
 func intPtr32(v int32) *int32 {
 	return &v
 }
+
+// fmsTagsForArn reads the tags of a Firewall Manager policy, apps list,
+// protocols list or resource set.
+func fmsTagsForArn(runtime *plugin.Runtime, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Fms(fmsRegion)
+	resp, err := svc.ListTagsForResource(context.Background(), &fms.ListTagsForResourceInput{ResourceArn: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("fms:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return tagsToMap(resp.TagList,
+		func(t fmstypes.Tag) *string { return t.Key },
+		func(t fmstypes.Tag) *string { return t.Value }), nil
+}
+
+type mqlAwsFmsPolicyInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsFmsPolicy) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return fmsTagsForArn(a.MqlRuntime, a.Arn.Data)
+	})
+}
+
+type mqlAwsFmsAppsListInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsFmsAppsList) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return fmsTagsForArn(a.MqlRuntime, a.Arn.Data)
+	})
+}
+
+type mqlAwsFmsProtocolsListInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsFmsProtocolsList) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return fmsTagsForArn(a.MqlRuntime, a.Arn.Data)
+	})
+}
+
+type mqlAwsFmsResourceSetInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsFmsResourceSet) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return fmsTagsForArn(a.MqlRuntime, a.Arn.Data)
+	})
+}

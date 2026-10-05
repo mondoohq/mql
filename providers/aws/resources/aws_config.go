@@ -159,6 +159,7 @@ func (a *mqlAwsConfig) getRecorders(conn *connection.AwsConnection) []*jobpool.J
 				mqlRecorderRes := mqlRecorder.(*mqlAwsConfigRecorder)
 				mqlRecorderRes.cacheRoleArn = r.RoleARN
 				mqlRecorderRes.cacheRecordingGroup = r.RecordingGroup
+				mqlRecorderRes.cacheArn = convert.ToValue(r.Arn)
 				res = append(res, mqlRecorderRes)
 			}
 			return jobpool.JobResult(res), nil
@@ -169,8 +170,21 @@ func (a *mqlAwsConfig) getRecorders(conn *connection.AwsConnection) []*jobpool.J
 }
 
 type mqlAwsConfigRecorderInternal struct {
+	lazyTags
 	cacheRoleArn        *string
 	cacheRecordingGroup *cstypes.RecordingGroup
+	cacheArn            string
+}
+
+func (a *mqlAwsConfigRecorder) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		// The recorder ARN carries a service-generated id, so it cannot be
+		// rebuilt from the name when the describe response leaves it out.
+		if a.cacheArn == "" {
+			return nil, errTagsUnreadable
+		}
+		return configTagsForArn(a.MqlRuntime, a.Region.Data, a.cacheArn)
+	})
 }
 
 func (a *mqlAwsConfigRecorder) iamRole() (*mqlAwsIamRole, error) {

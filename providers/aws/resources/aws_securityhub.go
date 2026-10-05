@@ -440,6 +440,7 @@ func (a *mqlAwsSecurityhubHub) automationRules() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			mqlRule.(*mqlAwsSecurityhubAutomationRule).cacheRegion = region
 			res = append(res, mqlRule)
 		}
 
@@ -453,6 +454,30 @@ func (a *mqlAwsSecurityhubHub) automationRules() ([]any, error) {
 
 func (a *mqlAwsSecurityhubAutomationRule) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+type mqlAwsSecurityhubAutomationRuleInternal struct {
+	lazyTags
+	cacheRegion string
+}
+
+func (a *mqlAwsSecurityhubAutomationRule) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Securityhub(a.cacheRegion)
+		ruleArn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &securityhub.ListTagsForResourceInput{ResourceArn: &ruleArn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("securityhub:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return toInterfaceMap(resp.Tags), nil
+	})
 }
 
 func (a *mqlAwsSecurityhubHub) insights() ([]any, error) {

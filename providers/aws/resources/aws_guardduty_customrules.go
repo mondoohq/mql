@@ -244,7 +244,11 @@ type mqlAwsGuarddutyCustomDetectionRuleAssociationInternal struct {
 	cacheRuleID string
 	detailOnce  sync.Once
 	detail      *types.AssociationDetail
+	detailTags  map[string]string
 	detailErr   error
+	// detailDenied records that the detail could not be read for lack of
+	// permission, so tags surface as null rather than as an empty set.
+	detailDenied bool
 }
 
 // fetchDetail reads the account the association binds the rule to, which the
@@ -264,12 +268,14 @@ func (a *mqlAwsGuarddutyCustomDetectionRuleAssociation) fetchDetail() (*types.As
 		if err != nil {
 			if Is400AccessDeniedError(err) {
 				log.Warn().Str("association", associationID).Msg("access denied getting guardduty custom detection rule association")
+				a.detailDenied = true
 				return
 			}
 			a.detailErr = err
 			return
 		}
 		a.detail = out.RuleAssociation
+		a.detailTags = out.Tags
 	})
 	return a.detail, a.detailErr
 }
@@ -284,6 +290,22 @@ func (a *mqlAwsGuarddutyCustomDetectionRuleAssociation) accountId() (string, err
 		return "", nil
 	}
 	return *detail.AccountId, nil
+}
+
+// tags reads the association's tags from the same detail call that feeds
+// accountId, so both fields together cost one request.
+func (a *mqlAwsGuarddutyCustomDetectionRuleAssociation) tags() (map[string]any, error) {
+	if _, err := a.fetchDetail(); err != nil {
+		return nil, err
+	}
+	if a.detailDenied {
+		return markTagsUnreadable(&a.Tags)
+	}
+	res := make(map[string]any, len(a.detailTags))
+	for k, v := range a.detailTags {
+		res[k] = v
+	}
+	return res, nil
 }
 
 // --- Organization rollouts ---

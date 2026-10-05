@@ -707,6 +707,7 @@ func (a *mqlAwsIdentitycenterInstance) applications() ([]any, error) {
 }
 
 type mqlAwsIdentitycenterApplicationInternal struct {
+	lazyTags
 	cacheInstance *mqlAwsIdentitycenterInstance
 }
 
@@ -720,4 +721,55 @@ func (a *mqlAwsIdentitycenterApplication) instance() (*mqlAwsIdentitycenterInsta
 	}
 	a.Instance.State = plugin.StateIsNull | plugin.StateIsSet
 	return nil, nil
+}
+
+// identitycenterTagsForArn reads the tags of an Identity Center resource.
+// instanceArn names the instance the resource belongs to and is left empty when
+// the resource is the instance itself.
+func identitycenterTagsForArn(runtime *plugin.Runtime, instanceArn, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.SsoAdmin("")
+
+	input := &ssoadmin.ListTagsForResourceInput{ResourceArn: &resourceArn}
+	if instanceArn != "" {
+		input.InstanceArn = &instanceArn
+	}
+	tags := map[string]any{}
+	paginator := ssoadmin.NewListTagsForResourcePaginator(svc, input)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(context.Background())
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("sso:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		for k, v := range ssoTagsToMap(page.Tags) {
+			tags[k] = v
+		}
+	}
+	return tags, nil
+}
+
+type mqlAwsIdentitycenterInstanceInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsIdentitycenterInstance) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return identitycenterTagsForArn(a.MqlRuntime, "", a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsIdentitycenterApplication) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		instanceArn := ""
+		if a.cacheInstance != nil {
+			instanceArn = a.cacheInstance.Arn.Data
+		}
+		return identitycenterTagsForArn(a.MqlRuntime, instanceArn, a.Arn.Data)
+	})
 }

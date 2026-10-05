@@ -574,3 +574,35 @@ func fetchBudgetSubscribers(svc *budgets.Client, accountId, budgetName string, n
 	}
 	return out, nil
 }
+
+// budgetArn builds the ARN that the Budgets tag API takes. The list response
+// carries no ARN, but the format is fixed: budgets are global, so the region
+// segment is empty.
+func budgetArn(partition, accountId, name string) string {
+	return "arn:" + partition + ":budgets::" + accountId + ":budget/" + name
+}
+
+type mqlAwsBillingBudgetInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsBillingBudget) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Budgets()
+		arn := budgetArn(kmsPartitionForRegion(conn.Region()), a.AccountId.Data, a.Name.Data)
+		resp, err := svc.ListTagsForResource(context.Background(), &budgets.ListTagsForResourceInput{ResourceARN: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("budgets:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.ResourceTags,
+			func(t budgetstypes.ResourceTag) *string { return t.Key },
+			func(t budgetstypes.ResourceTag) *string { return t.Value }), nil
+	})
+}

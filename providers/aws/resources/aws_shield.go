@@ -293,3 +293,43 @@ func (a *mqlAwsShield) emergencyContacts() ([]any, error) {
 func (a *mqlAwsShieldEmergencyContact) id() (string, error) {
 	return "aws.shield.emergencyContact/" + a.EmailAddress.Data, nil
 }
+
+// shieldTagsForArn reads the tags of a Shield protection or protection group.
+// Shield is a global service served from us-east-1.
+func shieldTagsForArn(runtime *plugin.Runtime, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Shield("us-east-1")
+	resp, err := svc.ListTagsForResource(context.Background(), &shield.ListTagsForResourceInput{ResourceARN: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("shield:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return tagsToMap(resp.Tags,
+		func(t shieldtypes.Tag) *string { return t.Key },
+		func(t shieldtypes.Tag) *string { return t.Value }), nil
+}
+
+type mqlAwsShieldProtectionInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsShieldProtection) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return shieldTagsForArn(a.MqlRuntime, a.Arn.Data)
+	})
+}
+
+type mqlAwsShieldProtectionGroupInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsShieldProtectionGroup) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return shieldTagsForArn(a.MqlRuntime, a.Arn.Data)
+	})
+}

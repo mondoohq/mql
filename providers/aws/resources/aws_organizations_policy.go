@@ -209,3 +209,74 @@ func (a *mqlAwsAccount) effectivePolicies() ([]any, error) {
 	}
 	return res, nil
 }
+
+// organizationResourceTags reads the tags Organizations holds for one of its
+// resources (an account, OU, root, policy or resource policy), keyed by the
+// resource's bare id.
+func organizationResourceTags(runtime *plugin.Runtime, resourceId string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	client := conn.Organizations("")
+
+	tags := map[string]any{}
+	paginator := organizations.NewListTagsForResourcePaginator(client, &organizations.ListTagsForResourceInput{
+		ResourceId: &resourceId,
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(context.Background())
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("organizations:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		for k, v := range tagsToMap(page.Tags,
+			func(t orgtypes.Tag) *string { return t.Key },
+			func(t orgtypes.Tag) *string { return t.Value }) {
+			tags[k] = v
+		}
+	}
+	return tags, nil
+}
+
+type mqlAwsOrganizationPolicyInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsOrganizationPolicy) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return organizationResourceTags(a.MqlRuntime, a.Id.Data)
+	})
+}
+
+type mqlAwsOrganizationServiceControlPolicyInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsOrganizationServiceControlPolicy) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return organizationResourceTags(a.MqlRuntime, a.Id.Data)
+	})
+}
+
+type mqlAwsOrganizationOrganizationalUnitInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsOrganizationOrganizationalUnit) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return organizationResourceTags(a.MqlRuntime, a.Id.Data)
+	})
+}
+
+type mqlAwsOrganizationResourcePolicyInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsOrganizationResourcePolicy) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return organizationResourceTags(a.MqlRuntime, a.Id.Data)
+	})
+}

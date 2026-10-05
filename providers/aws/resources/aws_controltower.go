@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/controltower"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
 	"go.mondoo.com/mql/providers/aws/connection"
@@ -79,6 +80,7 @@ func (a *mqlAwsControltower) landingZones() ([]any, error) {
 }
 
 type mqlAwsControltowerLandingZoneInternal struct {
+	lazyTags
 	cacheRegion string
 	fetched     bool
 	lock        sync.Mutex
@@ -237,4 +239,37 @@ func (a *mqlAwsControltower) getEnabledBaselines(conn *connection.AwsConnection)
 
 func (a *mqlAwsControltowerEnabledBaseline) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+// controltowerTagsForArn reads the tags of a landing zone or enabled baseline.
+func controltowerTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Controltower(region)
+	resp, err := svc.ListTagsForResource(context.Background(), &controltower.ListTagsForResourceInput{ResourceArn: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("controltower:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return toInterfaceMap(resp.Tags), nil
+}
+
+func (a *mqlAwsControltowerLandingZone) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return controltowerTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+type mqlAwsControltowerEnabledBaselineInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsControltowerEnabledBaseline) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return controltowerTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
 }

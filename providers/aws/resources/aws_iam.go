@@ -2902,3 +2902,31 @@ func (a *mqlAwsIamSamlProvider) fetchSamlProviderDetails() (*iam.GetSAMLProvider
 
 	return resp, nil
 }
+
+type mqlAwsIamServerCertificateInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsIamServerCertificate) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Iam("")
+		name := a.Name.Data
+		res := []iamtypes.Tag{}
+		paginator := iam.NewListServerCertificateTagsPaginator(svc, &iam.ListServerCertificateTagsInput{ServerCertificateName: &name})
+		for paginator.HasMorePages() {
+			page, err := paginator.NextPage(context.Background())
+			if err != nil {
+				if Is400AccessDeniedError(err) {
+					if plugin.StructuredErrors() {
+						return nil, llx.Forbidden(err, llx.WithPermissions("iam:ListServerCertificateTags"))
+					}
+					return nil, errTagsUnreadable
+				}
+				return nil, err
+			}
+			res = append(res, page.Tags...)
+		}
+		return iamTagsToMap(res), nil
+	})
+}

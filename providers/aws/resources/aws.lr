@@ -240,6 +240,8 @@ private aws.billing.budget @defaults("name budgetType budgetLimit actualSpend") 
   // threshold, thresholdType (PERCENTAGE|ABSOLUTE_VALUE), notificationState
   // (OK|ALARM), and subscribers ([{type, address}]).
   notifications() []dict
+  // Tags assigned to the budget
+  tags() map[string]string
 }
 
 // AWS Organizations organization
@@ -335,6 +337,8 @@ private aws.organization.resourcePolicy @defaults("id") {
   // Written in the IAM policy grammar, so the principals, actions and
   // conditions that bound the delegation are resolved here.
   statements() []aws.iam.policyStatement
+  // Tags assigned to the resource policy
+  tags() map[string]string
 }
 
 // AWS Organizations service control policy
@@ -360,6 +364,8 @@ private aws.organization.serviceControlPolicy @defaults("name id") {
   content() string
   // Parsed statements from the policy content
   statements() []aws.iam.policyStatement
+  // Tags assigned to the service control policy
+  tags() map[string]string
 }
 
 // AWS Organizations policy
@@ -403,6 +409,8 @@ private aws.organization.policy @defaults("name type id") {
   // backup, declarative, AI-services opt-out, and per-service policy types,
   // which use their own document formats: read content for those.
   statements() []aws.iam.policyStatement
+  // Tags assigned to the policy
+  tags() map[string]string
 }
 
 // AWS Organizations effective policy
@@ -477,6 +485,8 @@ private aws.organization.organizationalUnit @defaults("id name path") {
   // Only the policies attached at this level, not the ones the unit inherits
   // from the organization root or a parent unit.
   policies() []aws.organization.policy
+  // Tags assigned to the organizational unit
+  tags() map[string]string
 }
 
 // Amazon Virtual Private Cloud (VPC)
@@ -3263,6 +3273,8 @@ private aws.iam.serverCertificate @defaults("name expiration") {
   //
   // Null when IAM reports no upload date for the certificate.
   uploadedAt time
+  // Tags assigned to the server certificate
+  tags() map[string]string
 }
 
 // MFA device assigned to an IAM user
@@ -8222,6 +8234,8 @@ private aws.guardduty.customDetectionRule.association @defaults("associationId m
   // The rule stops evaluating in the associated account after this time.
   // Null when the association carries no expiry.
   expiresAt time
+  // Tags assigned to the association
+  tags() map[string]string
 }
 
 // Amazon GuardDuty custom detection rule organization rollout
@@ -9210,6 +9224,8 @@ private aws.securityhub.automationRule @defaults("ruleName ruleStatus") {
   updatedAt time
   // Who created the rule
   createdBy string
+  // Tags assigned to the automation rule
+  tags() map[string]string
 }
 
 // AWS Security Hub insight (saved filter/aggregation)
@@ -9329,6 +9345,8 @@ private aws.shield.protection @defaults("arn name resourceArn") {
   applicationLayerAutomaticResponseEnabled bool
   // WAF rule action used by automatic application-layer mitigation (BLOCK or COUNT; empty when not configured)
   applicationLayerAutomaticResponseAction string
+  // Tags assigned to the protection
+  tags() map[string]string
 }
 
 // AWS Shield Advanced protection group
@@ -9345,6 +9363,8 @@ private aws.shield.protectionGroup @defaults("id aggregation pattern") {
   resourceType string
   // List of member resource ARNs (for ARBITRARY pattern)
   members []string
+  // Tags assigned to the protection group
+  tags() map[string]string
 }
 
 // AWS Shield Advanced DRT (Shield Response Team) access configuration
@@ -21842,6 +21862,8 @@ private aws.config.recorder @defaults("name region") {
   recordingStrategy() string
   // Resource types explicitly excluded from recording
   exclusionByResourceTypes() []string
+  // Tags assigned to the configuration recorder
+  tags() map[string]string
 }
 
 // AWS Config delivery channel
@@ -30500,6 +30522,8 @@ private aws.identitycenter.instance @defaults("arn name status") {
   users() []aws.identitycenter.user
   // Applications configured for this Identity Center instance
   applications() []aws.identitycenter.application
+  // Tags assigned to the instance
+  tags() map[string]string
 }
 
 // AWS IAM Identity Center application
@@ -30530,6 +30554,8 @@ private aws.identitycenter.application @defaults("name status applicationProvide
   signInOrigin string
   // URL that accepts authentication requests for the application (set when signInOrigin is APPLICATION)
   applicationUrl string
+  // Tags assigned to the application
+  tags() map[string]string
 }
 
 // AWS IAM Identity Center permission set
@@ -31034,6 +31060,8 @@ private aws.controltower.landingZone @defaults("arn status") {
   driftStatus() string
   // Status: ACTIVE, PROCESSING, or FAILED
   status() string
+  // Tags assigned to the landing zone
+  tags() map[string]string
 }
 
 // AWS Control Tower enabled baseline
@@ -31060,6 +31088,8 @@ private aws.controltower.enabledBaseline @defaults("arn baselineIdentifier") {
   // target OU no longer matches the baseline configuration defined on
   // that OU.
   driftStatus dict
+  // Tags assigned to the enabled baseline
+  tags() map[string]string
 }
 
 // Amazon Bedrock
@@ -33362,6 +33392,8 @@ private aws.fms.policy @defaults("name resourceType securityServiceType") {
   //
   // Each entry has `memberAccount`, `status`, `violatorCount`, `evaluationLimitExceeded`, `issueInfoMap`, and `lastUpdated`.
   complianceStatuses() []dict
+  // Tags assigned to the policy
+  tags() map[string]string
 }
 
 // AWS Firewall Manager notification channel
@@ -33384,6 +33416,8 @@ private aws.fms.appsList @defaults("name id") {
   name string
   // Applications in the list, each with `appName`, `protocol`, and `port`
   apps []dict
+  // Tags assigned to the applications list
+  tags() map[string]string
 }
 
 // AWS Firewall Manager protocols list
@@ -33396,6 +33430,8 @@ private aws.fms.protocolsList @defaults("name id") {
   name string
   // Protocol names included in the list (tcp, udp, icmp, or numeric IP protocol numbers)
   protocols []string
+  // Tags assigned to the protocols list
+  tags() map[string]string
 }
 
 // AWS Firewall Manager resource set
@@ -33415,6 +33451,8 @@ private aws.fms.resourceSet @defaults("name id status") {
   status string
   // Time the resource set was last modified
   lastUpdateTime time
+  // Tags assigned to the resource set
+  tags() map[string]string
 }
 
 // AWS DataSync
