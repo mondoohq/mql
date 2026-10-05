@@ -178,11 +178,14 @@ slack.enterpriseUser {
 // User group whose members are addressable together by an `@handle`,
 // used to mention or notify a set of workspace members at once. Covers
 // the friendly name and description, the `isExternal` flag marking
-// groups shared from another workspace, lifecycle timestamps with the
+// groups shared from another workspace, the identity-provider sync,
+// auto-provisioning, organization-level, and membership and editing lock
+// flags, lifecycle timestamps with the
 // users that created, updated, and deleted the group, the member
 // count, and the `members` list. Audit user groups to review who a
-// broadcast handle reaches and to catch stale or externally sourced
-// groups.
+// broadcast handle reaches, to catch stale or externally sourced
+// groups, and to find identity-provider groups whose membership can still
+// be edited in Slack.
 slack.userGroup @defaults("handle") {
   // Group ID
   id string
@@ -196,6 +199,22 @@ slack.userGroup @defaults("handle") {
   handle string
   // Whether the group is external
   isExternal bool
+  // Whether the group is synced from an identity provider
+  //
+  // True for groups whose membership is managed by the
+  // organization's identity provider rather than in Slack.
+  isIdpGroup bool
+  // Whether members are added to the group automatically
+  autoProvision bool
+  // Whether changes to the group's membership are locked
+  isMembershipLocked bool
+  // Whether editing the group is restricted
+  isEditingRestricted bool
+  // Whether the group is an organization-wide group
+  //
+  // True for groups defined at the Enterprise Grid organization level and
+  // shared to its workspaces, rather than defined in a single workspace.
+  isOrgLevel bool
   // Timestamp when the group was created
   created time
   // Timestamp when the group was updated

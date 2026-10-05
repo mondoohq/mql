@@ -81,6 +81,7 @@ slack.user.timeZoneLabel 9.0.0
 slack.user.timeZoneOffset 9.0.0
 slack.user.twoFactorType 9.0.0
 slack.userGroup 9.0.0
+slack.userGroup.autoProvision 14.0.2
 slack.userGroup.created 9.0.0
 slack.userGroup.createdBy 9.0.0
 slack.userGroup.deleted 9.0.0
@@ -88,7 +89,11 @@ slack.userGroup.deletedBy 9.0.0
 slack.userGroup.description 9.0.0
 slack.userGroup.handle 9.0.0
 slack.userGroup.id 9.0.0
+slack.userGroup.isEditingRestricted 14.0.2
 slack.userGroup.isExternal 9.0.0
+slack.userGroup.isIdpGroup 14.0.2
+slack.userGroup.isMembershipLocked 14.0.2
+slack.userGroup.isOrgLevel 14.0.2
 slack.userGroup.members 9.0.0
 slack.userGroup.name 9.0.0
 slack.userGroup.teamId 9.0.0

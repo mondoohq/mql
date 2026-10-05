@@ -300,6 +300,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"slack.userGroup.isExternal": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSlackUserGroup).GetIsExternal()).ToDataRes(types.Bool)
 	},
+	"slack.userGroup.isIdpGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackUserGroup).GetIsIdpGroup()).ToDataRes(types.Bool)
+	},
+	"slack.userGroup.autoProvision": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackUserGroup).GetAutoProvision()).ToDataRes(types.Bool)
+	},
+	"slack.userGroup.isMembershipLocked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackUserGroup).GetIsMembershipLocked()).ToDataRes(types.Bool)
+	},
+	"slack.userGroup.isEditingRestricted": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackUserGroup).GetIsEditingRestricted()).ToDataRes(types.Bool)
+	},
+	"slack.userGroup.isOrgLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackUserGroup).GetIsOrgLevel()).ToDataRes(types.Bool)
+	},
 	"slack.userGroup.created": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSlackUserGroup).GetCreated()).ToDataRes(types.Time)
 	},
@@ -668,6 +683,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"slack.userGroup.isExternal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSlackUserGroup).IsExternal, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.userGroup.isIdpGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackUserGroup).IsIdpGroup, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.userGroup.autoProvision": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackUserGroup).AutoProvision, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.userGroup.isMembershipLocked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackUserGroup).IsMembershipLocked, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.userGroup.isEditingRestricted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackUserGroup).IsEditingRestricted, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.userGroup.isOrgLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackUserGroup).IsOrgLevel, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"slack.userGroup.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1495,20 +1530,25 @@ type mqlSlackUserGroup struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlSlackUserGroupInternal
-	Id          plugin.TValue[string]
-	TeamId      plugin.TValue[string]
-	Name        plugin.TValue[string]
-	Description plugin.TValue[string]
-	Handle      plugin.TValue[string]
-	IsExternal  plugin.TValue[bool]
-	Created     plugin.TValue[*time.Time]
-	Updated     plugin.TValue[*time.Time]
-	Deleted     plugin.TValue[*time.Time]
-	CreatedBy   plugin.TValue[*mqlSlackUser]
-	UpdatedBy   plugin.TValue[*mqlSlackUser]
-	DeletedBy   plugin.TValue[*mqlSlackUser]
-	UserCount   plugin.TValue[int64]
-	Members     plugin.TValue[[]any]
+	Id                  plugin.TValue[string]
+	TeamId              plugin.TValue[string]
+	Name                plugin.TValue[string]
+	Description         plugin.TValue[string]
+	Handle              plugin.TValue[string]
+	IsExternal          plugin.TValue[bool]
+	IsIdpGroup          plugin.TValue[bool]
+	AutoProvision       plugin.TValue[bool]
+	IsMembershipLocked  plugin.TValue[bool]
+	IsEditingRestricted plugin.TValue[bool]
+	IsOrgLevel          plugin.TValue[bool]
+	Created             plugin.TValue[*time.Time]
+	Updated             plugin.TValue[*time.Time]
+	Deleted             plugin.TValue[*time.Time]
+	CreatedBy           plugin.TValue[*mqlSlackUser]
+	UpdatedBy           plugin.TValue[*mqlSlackUser]
+	DeletedBy           plugin.TValue[*mqlSlackUser]
+	UserCount           plugin.TValue[int64]
+	Members             plugin.TValue[[]any]
 }
 
 // createSlackUserGroup creates a new instance of this resource
@@ -1570,6 +1610,26 @@ func (c *mqlSlackUserGroup) GetHandle() *plugin.TValue[string] {
 
 func (c *mqlSlackUserGroup) GetIsExternal() *plugin.TValue[bool] {
 	return &c.IsExternal
+}
+
+func (c *mqlSlackUserGroup) GetIsIdpGroup() *plugin.TValue[bool] {
+	return &c.IsIdpGroup
+}
+
+func (c *mqlSlackUserGroup) GetAutoProvision() *plugin.TValue[bool] {
+	return &c.AutoProvision
+}
+
+func (c *mqlSlackUserGroup) GetIsMembershipLocked() *plugin.TValue[bool] {
+	return &c.IsMembershipLocked
+}
+
+func (c *mqlSlackUserGroup) GetIsEditingRestricted() *plugin.TValue[bool] {
+	return &c.IsEditingRestricted
+}
+
+func (c *mqlSlackUserGroup) GetIsOrgLevel() *plugin.TValue[bool] {
+	return &c.IsOrgLevel
 }
 
 func (c *mqlSlackUserGroup) GetCreated() *plugin.TValue[*time.Time] {

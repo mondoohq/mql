@@ -51,23 +51,30 @@ type mqlSlackUserGroupInternal struct {
 	cacheDeletedBy string
 }
 
-func newMqlSlackUserGroup(runtime *plugin.Runtime, userGroup slack.UserGroup) (any, error) {
-	dateCreate := userGroup.DateCreate.Time()
-	dateUpdate := userGroup.DateUpdate.Time()
-	dateDelete := userGroup.DateDelete.Time()
+// userGroupArgs maps a usergroups.list entry onto the slack.userGroup fields
+// that come straight from the listing.
+func userGroupArgs(userGroup slack.UserGroup) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"id":                  llx.StringData(userGroup.ID),
+		"teamId":              llx.StringData(userGroup.TeamID),
+		"name":                llx.StringData(userGroup.Name),
+		"description":         llx.StringData(userGroup.Description),
+		"handle":              llx.StringData(userGroup.Handle),
+		"isExternal":          llx.BoolData(userGroup.IsExternal),
+		"isIdpGroup":          llx.BoolData(userGroup.IsIDPGroup),
+		"autoProvision":       llx.BoolData(userGroup.AutoProvision),
+		"isMembershipLocked":  llx.BoolData(userGroup.IsMembershipLocked),
+		"isEditingRestricted": llx.BoolData(userGroup.IsEditingRestricted),
+		"isOrgLevel":          llx.BoolData(userGroup.IsOrgLevel),
+		"created":             llx.TimeData(userGroup.DateCreate.Time()),
+		"updated":             llx.TimeData(userGroup.DateUpdate.Time()),
+		"deleted":             llx.TimeData(userGroup.DateDelete.Time()),
+		"userCount":           llx.IntData(int64(userGroup.UserCount)),
+	}
+}
 
-	r, err := CreateResource(runtime, "slack.userGroup", map[string]*llx.RawData{
-		"id":          llx.StringData(userGroup.ID),
-		"teamId":      llx.StringData(userGroup.TeamID),
-		"name":        llx.StringData(userGroup.Name),
-		"description": llx.StringData(userGroup.Description),
-		"handle":      llx.StringData(userGroup.Handle),
-		"isExternal":  llx.BoolData(userGroup.IsExternal),
-		"created":     llx.TimeData(dateCreate),
-		"updated":     llx.TimeData(dateUpdate),
-		"deleted":     llx.TimeData(dateDelete),
-		"userCount":   llx.IntData(int64(userGroup.UserCount)),
-	})
+func newMqlSlackUserGroup(runtime *plugin.Runtime, userGroup slack.UserGroup) (any, error) {
+	r, err := CreateResource(runtime, "slack.userGroup", userGroupArgs(userGroup))
 	if err != nil {
 		return nil, err
 	}
