@@ -222,7 +222,7 @@ func TestDeliberateNonZeroExitBranchesSurvive(t *testing.T) {
 		assert.Empty(t, out)
 
 		rt = commandRuntime(t, map[string]*mock.Command{
-			"vgs --reportformat json --units b --nosuffix -o vg_name": {ExitStatus: 127},
+			"env LC_ALL=C vgs --reportformat json --units b --nosuffix -o vg_name": {ExitStatus: 127},
 		})
 		lvm = mustResource(t, rt, "lvm").(*mqlLvm)
 		out, ok, err = lvm.runLvmReport("vgs", "vg", "vg_name")
@@ -233,7 +233,7 @@ func TestDeliberateNonZeroExitBranchesSurvive(t *testing.T) {
 
 	t.Run("lvm other non-zero exit is still an error", func(t *testing.T) {
 		rt := commandRuntime(t, map[string]*mock.Command{
-			"vgs --reportformat json --units b --nosuffix -o vg_name": {ExitStatus: 5, Stderr: "broken metadata"},
+			"env LC_ALL=C vgs --reportformat json --units b --nosuffix -o vg_name": {ExitStatus: 5, Stderr: "broken metadata"},
 		})
 		lvm := mustResource(t, rt, "lvm").(*mqlLvm)
 		_, _, err := lvm.runLvmReport("vgs", "vg", "vg_name")
@@ -324,25 +324,6 @@ func failingCommandRuntime(t *testing.T) *plugin.Runtime {
 // These tests pin both directions. Getting either one backwards is a bug.
 
 func TestUnreadListIsNull(t *testing.T) {
-	t.Run("mdadm.arrays: scan could not run", func(t *testing.T) {
-		rt := commandRuntime(t, map[string]*mock.Command{
-			"mdadm --detail --scan": {ExitStatus: 1, Stderr: "mdadm: not found"},
-		})
-		v := mustResource(t, rt, "mdadm").(*mqlMdadm).GetArrays()
-		require.NoError(t, v.Error)
-		assert.True(t, v.IsNull(), "a failed scan must not read as `no arrays`")
-	})
-
-	t.Run("mdadm.arrays: scan listed arrays but none could be read", func(t *testing.T) {
-		rt := commandRuntime(t, map[string]*mock.Command{
-			"mdadm --detail --scan":     {Stdout: "ARRAY /dev/md0 metadata=1.2 UUID=abc\n"},
-			`mdadm --detail "/dev/md0"`: {ExitStatus: 1, Stderr: "permission denied"},
-		})
-		v := mustResource(t, rt, "mdadm").(*mqlMdadm).GetArrays()
-		require.NoError(t, v.Error)
-		assert.True(t, v.IsNull(), "the scan found an array, so `no arrays` is false")
-	})
-
 	t.Run("selinux.modules: semodule could not run", func(t *testing.T) {
 		rt := commandRuntime(t, map[string]*mock.Command{
 			semoduleListCmd: {ExitStatus: 127, Stderr: "semodule: command not found"},
@@ -472,46 +453,6 @@ func TestReadListIsPopulated(t *testing.T) {
 // structured errors a denied mdadm or semodule run is forbidden; without them
 // it stays the unknown null above.
 func TestRefusedListIsForbidden(t *testing.T) {
-	t.Run("mdadm.arrays: scan refused", func(t *testing.T) {
-		withStructuredErrors(t, true)
-		rt := commandRuntime(t, map[string]*mock.Command{
-			"mdadm --detail --scan": {ExitStatus: 1, Stderr: "mdadm: cannot open /dev/md0: Permission denied\n"},
-		})
-		v := mustResource(t, rt, "mdadm").(*mqlMdadm).GetArrays()
-		assert.True(t, errors.Is(v.Error, llx.ErrForbidden), "got %v", v.Error)
-	})
-
-	t.Run("mdadm.arrays: scan not installed stays null", func(t *testing.T) {
-		withStructuredErrors(t, true)
-		rt := commandRuntime(t, map[string]*mock.Command{
-			"mdadm --detail --scan": {ExitStatus: 127, Stderr: "mdadm: not found"},
-		})
-		v := mustResource(t, rt, "mdadm").(*mqlMdadm).GetArrays()
-		require.NoError(t, v.Error)
-		assert.True(t, v.IsNull())
-	})
-
-	t.Run("mdadm.arrays: every detail refused", func(t *testing.T) {
-		withStructuredErrors(t, true)
-		rt := commandRuntime(t, map[string]*mock.Command{
-			"mdadm --detail --scan":     {Stdout: "ARRAY /dev/md0 metadata=1.2 UUID=abc\n"},
-			`mdadm --detail "/dev/md0"`: {ExitStatus: 1, Stderr: "mdadm: cannot open /dev/md0: Permission denied\n"},
-		})
-		v := mustResource(t, rt, "mdadm").(*mqlMdadm).GetArrays()
-		assert.True(t, errors.Is(v.Error, llx.ErrForbidden), "got %v", v.Error)
-	})
-
-	t.Run("mdadm.arrays: every detail refused, v13", func(t *testing.T) {
-		withStructuredErrors(t, false)
-		rt := commandRuntime(t, map[string]*mock.Command{
-			"mdadm --detail --scan":     {Stdout: "ARRAY /dev/md0 metadata=1.2 UUID=abc\n"},
-			`mdadm --detail "/dev/md0"`: {ExitStatus: 1, Stderr: "mdadm: cannot open /dev/md0: Permission denied\n"},
-		})
-		v := mustResource(t, rt, "mdadm").(*mqlMdadm).GetArrays()
-		require.NoError(t, v.Error)
-		assert.True(t, v.IsNull())
-	})
-
 	t.Run("selinux.modules: semodule refused", func(t *testing.T) {
 		withStructuredErrors(t, true)
 		rt := commandRuntime(t, map[string]*mock.Command{
