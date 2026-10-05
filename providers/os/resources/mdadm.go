@@ -48,12 +48,10 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 
 	arrayNames := parseMdadmScan(cmd.Stdout.Data)
 	if len(arrayNames) == 0 {
-		// The scan ran and listed nothing. This one is a measured fact, so it
-		// stays an empty list.
 		return []any{}, nil
 	}
 
-	results := make([]any, 0, len(arrayNames))
+	var results []any
 	for _, name := range arrayNames {
 		if !validMdDevicePath.MatchString(name) {
 			continue
@@ -96,13 +94,6 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 		mqlArr.cachedDevices = arr.devices
 
 		results = append(results, mqlArray)
-	}
-	if len(results) == 0 {
-		// The scan named arrays but `mdadm --detail` answered for none of them.
-		// Reporting that as "no arrays" would hide the very arrays the scan
-		// just found.
-		m.Arrays.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
 	}
 	return results, nil
 }
