@@ -237,6 +237,18 @@ var markerVersionVariables = map[string]bool{
 // part (python_version "3"), so its side is passed along: varLeft is true when
 // the variable is on the left.
 func compareMarker(isVersion bool, left, op, right string, varLeft bool) tri {
+	// "in" compares strings: a partly known python_version ("3") is a
+	// substring of "3.4 3.5" whatever the minor version is, so it decides
+	// nothing
+	if isVersion && (op == "in" || op == "not in") {
+		known := left
+		if !varLeft {
+			known = right
+		}
+		if !strings.Contains(known, ".") {
+			return triUnknown
+		}
+	}
 	switch op {
 	case "in":
 		return triOf(strings.Contains(right, left))
