@@ -90,13 +90,13 @@ func aptBoolParam(params map[string]any, key string, def bool) bool {
 // is false for 0 and true for 1; any other number is not a boolean. Then
 // yes/true/with/on/enable are true and no/false/without/off/disable are
 // false, ignoring case. Everything else is the default: "2" is not true, and
-// "0x0" is false.
+// "0x0" is false. Like APT, the value is not trimmed: strtol skips leading
+// whitespace, but "1 " and " yes" are not booleans.
 func aptStringToBool(text string, def bool) bool {
-	s := strings.TrimSpace(text)
-	if n, ok := aptStrtol(s); ok && (n == 0 || n == 1) {
+	if n, ok := aptStrtol(text); ok && (n == 0 || n == 1) {
 		return n == 1
 	}
-	switch strings.ToLower(s) {
+	switch strings.ToLower(text) {
 	case "no", "false", "without", "off", "disable":
 		return false
 	case "yes", "true", "with", "on", "enable":
@@ -110,6 +110,7 @@ func aptStringToBool(text string, def bool) bool {
 // later also read a 0b binary prefix; that is left out, as older releases
 // treat it as no number.
 func aptStrtol(s string) (int32, bool) {
+	s = strings.TrimLeft(s, " \t\n\v\f\r")
 	neg := false
 	if s != "" && (s[0] == '+' || s[0] == '-') {
 		neg = s[0] == '-'
@@ -202,8 +203,15 @@ func (a *mqlAptConfig) checkDate(params map[string]any) (bool, error) {
 	return aptWeakestBool(params, "Acquire::Check-Date", true, false), nil
 }
 
+// installRecommends is true when apt-config dump has no APT::Install-Recommends:
+// APT's built-in configuration sets it. The resolver reads it with
+// FindB("APT::Install-Recommends", false), though, so a value that is not a
+// boolean ("2", "maybe", "") turns recommends off, as apt-get install shows.
 func (a *mqlAptConfig) installRecommends(params map[string]any) (bool, error) {
-	return aptBoolParam(params, "APT::Install-Recommends", true), nil
+	if _, ok := aptParam(params, "APT::Install-Recommends"); !ok {
+		return true, nil
+	}
+	return aptBoolParam(params, "APT::Install-Recommends", false), nil
 }
 
 func (a *mqlAptConfig) installSuggests(params map[string]any) (bool, error) {

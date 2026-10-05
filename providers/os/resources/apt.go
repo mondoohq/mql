@@ -325,7 +325,7 @@ func parseAptDeb822(content string) []aptRepo {
 		// a boolean false, so "Enabled: maybe" is still read.
 		enabled := true
 		if v := fields["enabled"]; strings.TrimSpace(v) != "" {
-			enabled = aptStringToBool(v, true)
+			enabled = aptStringToBool(strings.TrimSpace(v), true)
 		}
 
 		var opts aptRepo
@@ -432,9 +432,10 @@ func parseDeb822Fields(stanza string) map[string]string {
 
 // aptBool interprets a boolean source option the way apt does, with false
 // as the default: an empty value is false, anything else goes through
-// aptStringToBool.
+// aptStringToBool. apt's source parsers hand over the value trimmed.
 func aptBool(v string) bool {
-	if strings.TrimSpace(v) == "" {
+	v = strings.TrimSpace(v)
+	if v == "" {
 		return false
 	}
 	return aptStringToBool(v, false)

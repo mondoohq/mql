@@ -96,7 +96,7 @@ func TestAptBoolParam(t *testing.T) {
 	for value, want := range map[string]bool{
 		"1": true, "0": false, "true": true, "FALSE": false, "Yes": true, "no": false,
 		"on": true, "off": false, "with": true, "without": false, "enable": true, "disable": false,
-		" true ": true,
+		" 1": true,
 	} {
 		assert.Equal(t, want, aptBoolParam(map[string]any{"k": value}, "k", !want), "value %q", value)
 	}
@@ -104,6 +104,30 @@ func TestAptBoolParam(t *testing.T) {
 	assert.False(t, aptBoolParam(map[string]any{"k": "maybe"}, "k", false), "unrecognized: the default")
 	assert.True(t, aptBoolParam(map[string]any{"k": "maybe"}, "k", true), "unrecognized: the default")
 	assert.True(t, aptBoolParam(map[string]any{"k": ""}, "k", true), "empty: the default")
+	// APT does not trim the value: strtol skips leading whitespace, nothing
+	// else does. With Acquire::Check-Date set to each of these, apt-get update
+	// on Debian 13 and Ubuntu 22.04 still refuses a Release file dated in the
+	// future, its default.
+	for _, value := range []string{"1 ", "0 ", " true", "true ", " no", "false "} {
+		assert.False(t, aptBoolParam(map[string]any{"k": value}, "k", false), "value %q", value)
+		assert.True(t, aptBoolParam(map[string]any{"k": value}, "k", true), "value %q", value)
+	}
+}
+
+// APT's built-in configuration sets APT::Install-Recommends "1", but the
+// resolver reads it with a default of false. apt-get install -s curl on
+// Debian 12/13 and Ubuntu 22.04/24.04 leaves the recommends out for each of
+// these values.
+func TestAptConfigInstallRecommendsNotABoolean(t *testing.T) {
+	a := &mqlAptConfig{}
+	for _, value := range []string{"", "2", "-1", "010", "maybe", "1 ", "0 "} {
+		v, _ := a.installRecommends(map[string]any{"APT::Install-Recommends": value})
+		assert.False(t, v, "value %q", value)
+	}
+	v, _ := a.installRecommends(map[string]any{"APT::Install-Recommends": "0x1"})
+	assert.True(t, v)
+	v, _ = a.installRecommends(map[string]any{})
+	assert.True(t, v, "absent: APT's built-in configuration")
 }
 
 // What `apt-config -o G03::B=<value> shell X G03::B/b` prints on Debian 9
