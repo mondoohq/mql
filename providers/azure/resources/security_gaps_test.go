@@ -280,9 +280,14 @@ func TestRunCommandArgsNeverCopySecrets(t *testing.T) {
 	assert.Equal(t, true, args["outputBlobConfigured"].Value)
 	assert.Equal(t, false, args["errorBlobConfigured"].Value)
 	assert.Equal(t, int64(600), args["timeoutInSeconds"].Value)
-	assert.Equal(t, "Failed", args["executionState"].Value)
-	assert.Equal(t, int64(2), args["exitCode"].Value)
-	assert.Nil(t, args["endTime"].Value)
+
+	exec := runCommandExecutionFrom(rc.Properties.InstanceView)
+	require.NotNil(t, exec.state)
+	assert.Equal(t, "Failed", *exec.state)
+	require.NotNil(t, exec.exitCode)
+	assert.Equal(t, int64(2), *exec.exitCode)
+	assert.Equal(t, &start, exec.startTime)
+	assert.Nil(t, exec.endTime)
 }
 
 func TestRunCommandArgsWithoutInstanceView(t *testing.T) {
@@ -294,8 +299,10 @@ func TestRunCommandArgsWithoutInstanceView(t *testing.T) {
 	assert.Equal(t, true, args["hasInlineScript"].Value)
 	assert.False(t, argsContain(t, args, "whoami"))
 	// No execution recorded: null, not a zero exit code that reads as success.
-	assert.Nil(t, args["exitCode"].Value)
-	assert.Nil(t, args["executionState"].Value)
+	exec := runCommandExecutionFrom(nil)
+	assert.Nil(t, exec.exitCode)
+	assert.Nil(t, exec.state)
+	assert.Nil(t, exec.startTime)
 }
 
 func TestParseAgentBool(t *testing.T) {

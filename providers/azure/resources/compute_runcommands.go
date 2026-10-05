@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -153,6 +154,9 @@ func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) installedExtensions() ([]
 	}
 	res := make([]any, 0, len(list))
 	for _, ext := range list {
+		if ext == nil {
+			continue
+		}
 		id := childResourceID(ext.ID, a.Id.Data, "extensions", ext.Name)
 		if id == "" {
 			continue
@@ -308,11 +312,10 @@ func runCommandArgs(rc *compute.VirtualMachineRunCommand) map[string]*llx.RawDat
 		scriptSource, scriptURI                         string
 		hasInlineScript, scriptURIHasSAS                bool
 		commandID, galleryScriptID, scriptShell         *string
-		runAsUser, provisioningState, executionState    *string
-		timeout, exitCode                               *int64
+		runAsUser, provisioningState                    *string
+		timeout                                         *int64
 		asyncExecution, treatFailureAsDeploymentFailure *bool
 		outputBlobConfigured, errorBlobConfigured       bool
-		startTime, endTime                              *time.Time
 	)
 	if p := rc.Properties; p != nil {
 		if src := p.Source; src != nil {
@@ -335,14 +338,6 @@ func runCommandArgs(rc *compute.VirtualMachineRunCommand) map[string]*llx.RawDat
 		treatFailureAsDeploymentFailure = p.TreatFailureAsDeploymentFailure
 		outputBlobConfigured = p.OutputBlobURI != nil && *p.OutputBlobURI != ""
 		errorBlobConfigured = p.ErrorBlobURI != nil && *p.ErrorBlobURI != ""
-		if iv := p.InstanceView; iv != nil {
-			executionState = stringEnumPtr(iv.ExecutionState)
-			if iv.ExitCode != nil {
-				exitCode = to.Ptr(int64(*iv.ExitCode))
-			}
-			startTime = iv.StartTime
-			endTime = iv.EndTime
-		}
 	}
 	return map[string]*llx.RawData{
 		"id":                              llx.StringDataPtr(rc.ID),
@@ -363,11 +358,33 @@ func runCommandArgs(rc *compute.VirtualMachineRunCommand) map[string]*llx.RawDat
 		"outputBlobConfigured":            llx.BoolData(outputBlobConfigured),
 		"errorBlobConfigured":             llx.BoolData(errorBlobConfigured),
 		"provisioningState":               llx.StringDataPtr(provisioningState),
-		"executionState":                  llx.StringDataPtr(executionState),
-		"exitCode":                        llx.IntDataPtr(exitCode),
-		"startTime":                       llx.TimeDataPtr(startTime),
-		"endTime":                         llx.TimeDataPtr(endTime),
 	}
+}
+
+// runCommandExecution is the outcome of a run command's last execution. Each
+// field is nil when Azure reports no value, so a run command that never ran
+// reads as null rather than as a zero exit code that looks like success.
+type runCommandExecution struct {
+	state     *string
+	exitCode  *int64
+	startTime *time.Time
+	endTime   *time.Time
+}
+
+// runCommandExecutionFrom reads the execution outcome from an instance view.
+// The script output and error text are never copied.
+func runCommandExecutionFrom(iv *compute.VirtualMachineRunCommandInstanceView) runCommandExecution {
+	var e runCommandExecution
+	if iv == nil {
+		return e
+	}
+	e.state = stringEnumPtr(iv.ExecutionState)
+	if iv.ExitCode != nil {
+		e.exitCode = to.Ptr(int64(*iv.ExitCode))
+	}
+	e.startTime = iv.StartTime
+	e.endTime = iv.EndTime
+	return e
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVm) runCommands() ([]any, error) {
@@ -391,6 +408,8 @@ func (a *mqlAzureSubscriptionComputeServiceVm) runCommands() ([]any, error) {
 	}
 
 	ctx := context.Background()
+	// ARM ignores the expand on this list call today; if it ever honors it,
+	// the instance views seed fetchExecution and save one GET per command.
 	pager := client.NewListByVirtualMachinePager(resourceID.ResourceGroup, vmName, &compute.VirtualMachineRunCommandsClientListByVirtualMachineOptions{
 		Expand: to.Ptr("instanceView"),
 	})
@@ -412,7 +431,11 @@ func (a *mqlAzureSubscriptionComputeServiceVm) runCommands() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
-			mqlRc.(*mqlAzureSubscriptionComputeServiceVmRunCommand).cacheSystemData = sysData
+			typed := mqlRc.(*mqlAzureSubscriptionComputeServiceVmRunCommand)
+			typed.cacheSystemData = sysData
+			if rc.Properties != nil {
+				typed.cacheInstanceView = rc.Properties.InstanceView
+			}
 			res = append(res, mqlRc)
 		}
 	}
@@ -420,7 +443,107 @@ func (a *mqlAzureSubscriptionComputeServiceVm) runCommands() ([]any, error) {
 }
 
 type mqlAzureSubscriptionComputeServiceVmRunCommandInternal struct {
-	cacheSystemData any
+	cacheSystemData   any
+	cacheInstanceView *compute.VirtualMachineRunCommandInstanceView
+
+	executionOnce sync.Once
+	execution     runCommandExecution
+	executionErr  error
+}
+
+// fetchExecution reads the outcome of the run command's last execution. The
+// run command list leaves out the instance view even when asked to expand it,
+// so it takes a GET of the single run command. Every execution field shares
+// this one call.
+func (a *mqlAzureSubscriptionComputeServiceVmRunCommand) fetchExecution() (runCommandExecution, error) {
+	a.executionOnce.Do(func() {
+		iv := a.cacheInstanceView
+		if iv == nil {
+			iv, a.executionErr = a.loadInstanceView()
+		}
+		a.execution = runCommandExecutionFrom(iv)
+	})
+	return a.execution, a.executionErr
+}
+
+func (a *mqlAzureSubscriptionComputeServiceVmRunCommand) loadInstanceView() (*compute.VirtualMachineRunCommandInstanceView, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	resourceID, err := ParseResourceID(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	vmName, err := resourceID.Component("virtualMachines")
+	if err != nil {
+		return nil, err
+	}
+	name, err := resourceID.Component("runCommands")
+	if err != nil {
+		return nil, err
+	}
+	client, err := compute.NewVirtualMachineRunCommandsClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.GetByVirtualMachine(context.Background(), resourceID.ResourceGroup, vmName, name,
+		&compute.VirtualMachineRunCommandsClientGetByVirtualMachineOptions{Expand: to.Ptr("instanceView")})
+	if err != nil {
+		return nil, classifyAzureRefusal(err, "Microsoft.Compute/virtualMachines/runCommands/read")
+	}
+	if resp.Properties == nil {
+		return nil, nil
+	}
+	return resp.Properties.InstanceView, nil
+}
+
+func (a *mqlAzureSubscriptionComputeServiceVmRunCommand) executionState() (string, error) {
+	e, err := a.fetchExecution()
+	if err != nil {
+		return "", err
+	}
+	if e.state == nil {
+		a.ExecutionState.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *e.state, nil
+}
+
+func (a *mqlAzureSubscriptionComputeServiceVmRunCommand) exitCode() (int64, error) {
+	e, err := a.fetchExecution()
+	if err != nil {
+		return 0, err
+	}
+	if e.exitCode == nil {
+		a.ExitCode.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return *e.exitCode, nil
+}
+
+func (a *mqlAzureSubscriptionComputeServiceVmRunCommand) startTime() (*time.Time, error) {
+	e, err := a.fetchExecution()
+	if err != nil {
+		return nil, err
+	}
+	if e.startTime == nil {
+		a.StartTime.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return e.startTime, nil
+}
+
+func (a *mqlAzureSubscriptionComputeServiceVmRunCommand) endTime() (*time.Time, error) {
+	e, err := a.fetchExecution()
+	if err != nil {
+		return nil, err
+	}
+	if e.endTime == nil {
+		a.EndTime.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return e.endTime, nil
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVmRunCommand) id() (string, error) {

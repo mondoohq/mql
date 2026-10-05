@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"strings"
+	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/automation/armautomation"
@@ -18,6 +19,79 @@ import (
 
 type mqlAzureSubscriptionAutomationServiceAccountRunbookInternal struct {
 	cacheSystemData any
+	// cacheDetails holds the properties the runbook list returned. The list
+	// leaves out the description and provisioning state, which only a GET of
+	// the single runbook carries.
+	cacheDetails *armautomation.RunbookProperties
+
+	detailsOnce sync.Once
+	details     *armautomation.RunbookProperties
+	detailsErr  error
+}
+
+// fetchDetails returns the runbook properties that carry the description and
+// provisioning state. A list response that already has them is used as is;
+// otherwise one GET of the runbook feeds both fields.
+func (a *mqlAzureSubscriptionAutomationServiceAccountRunbook) fetchDetails() (*armautomation.RunbookProperties, error) {
+	a.detailsOnce.Do(func() {
+		if p := a.cacheDetails; p != nil && p.ProvisioningState != nil {
+			a.details = p
+			return
+		}
+		a.details, a.detailsErr = a.loadDetails()
+	})
+	return a.details, a.detailsErr
+}
+
+func (a *mqlAzureSubscriptionAutomationServiceAccountRunbook) loadDetails() (*armautomation.RunbookProperties, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	resourceID, err := ParseResourceID(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	account, err := resourceID.Component("automationAccounts")
+	if err != nil {
+		return nil, err
+	}
+	name, err := resourceID.Component("runbooks")
+	if err != nil {
+		return nil, err
+	}
+	client, err := armautomation.NewRunbookClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Get(context.Background(), resourceID.ResourceGroup, account, name, nil)
+	if err != nil {
+		return nil, classifyAzureRefusal(err, "Microsoft.Automation/automationAccounts/runbooks/read")
+	}
+	return resp.Properties, nil
+}
+
+func (a *mqlAzureSubscriptionAutomationServiceAccountRunbook) description() (string, error) {
+	p, err := a.fetchDetails()
+	if err != nil {
+		return "", err
+	}
+	if p == nil || p.Description == nil {
+		a.Description.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *p.Description, nil
+}
+
+func (a *mqlAzureSubscriptionAutomationServiceAccountRunbook) provisioningState() (string, error) {
+	p, err := a.fetchDetails()
+	if err != nil {
+		return "", err
+	}
+	if p == nil || p.ProvisioningState == nil {
+		a.ProvisioningState.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *p.ProvisioningState, nil
 }
 
 type mqlAzureSubscriptionAutomationServiceAccountWebhookInternal struct {
@@ -71,8 +145,6 @@ func runbookArgs(rb *armautomation.Runbook) map[string]*llx.RawData {
 		"logVerbose":         llx.NilData,
 		"logProgress":        llx.NilData,
 		"logActivityTrace":   llx.NilData,
-		"description":        llx.NilData,
-		"provisioningState":  llx.NilData,
 		"creationTime":       llx.NilData,
 		"lastModifiedTime":   llx.NilData,
 		"lastModifiedBy":     llx.NilData,
@@ -84,8 +156,6 @@ func runbookArgs(rb *armautomation.Runbook) map[string]*llx.RawData {
 		args["logVerbose"] = llx.BoolDataPtr(p.LogVerbose)
 		args["logProgress"] = llx.BoolDataPtr(p.LogProgress)
 		args["logActivityTrace"] = llx.IntDataPtr(p.LogActivityTrace)
-		args["description"] = llx.StringDataPtr(p.Description)
-		args["provisioningState"] = llx.StringDataPtr(p.ProvisioningState)
 		args["creationTime"] = llx.TimeDataPtr(p.CreationTime)
 		args["lastModifiedTime"] = llx.TimeDataPtr(p.LastModifiedTime)
 		args["lastModifiedBy"] = llx.StringDataPtr(p.LastModifiedBy)
@@ -129,7 +199,9 @@ func (a *mqlAzureSubscriptionAutomationServiceAccount) runbooks() ([]any, error)
 			if err != nil {
 				return nil, err
 			}
-			mqlRb.(*mqlAzureSubscriptionAutomationServiceAccountRunbook).cacheSystemData = sysData
+			typed := mqlRb.(*mqlAzureSubscriptionAutomationServiceAccountRunbook)
+			typed.cacheSystemData = sysData
+			typed.cacheDetails = rb.Properties
 			res = append(res, mqlRb)
 		}
 	}

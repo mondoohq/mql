@@ -58620,19 +58620,27 @@ func (c *mqlAzureSubscriptionComputeServiceVmRunCommand) GetProvisioningState() 
 }
 
 func (c *mqlAzureSubscriptionComputeServiceVmRunCommand) GetExecutionState() *plugin.TValue[string] {
-	return &c.ExecutionState
+	return plugin.GetOrCompute[string](&c.ExecutionState, func() (string, error) {
+		return c.executionState()
+	})
 }
 
 func (c *mqlAzureSubscriptionComputeServiceVmRunCommand) GetExitCode() *plugin.TValue[int64] {
-	return &c.ExitCode
+	return plugin.GetOrCompute[int64](&c.ExitCode, func() (int64, error) {
+		return c.exitCode()
+	})
 }
 
 func (c *mqlAzureSubscriptionComputeServiceVmRunCommand) GetStartTime() *plugin.TValue[*time.Time] {
-	return &c.StartTime
+	return plugin.GetOrCompute[*time.Time](&c.StartTime, func() (*time.Time, error) {
+		return c.startTime()
+	})
 }
 
 func (c *mqlAzureSubscriptionComputeServiceVmRunCommand) GetEndTime() *plugin.TValue[*time.Time] {
-	return &c.EndTime
+	return plugin.GetOrCompute[*time.Time](&c.EndTime, func() (*time.Time, error) {
+		return c.endTime()
+	})
 }
 
 func (c *mqlAzureSubscriptionComputeServiceVmRunCommand) GetSystemMetadata() *plugin.TValue[*mqlAzureSubscriptionSystemData] {
@@ -124634,11 +124642,15 @@ func (c *mqlAzureSubscriptionAutomationServiceAccountRunbook) GetLogActivityTrac
 }
 
 func (c *mqlAzureSubscriptionAutomationServiceAccountRunbook) GetDescription() *plugin.TValue[string] {
-	return &c.Description
+	return plugin.GetOrCompute[string](&c.Description, func() (string, error) {
+		return c.description()
+	})
 }
 
 func (c *mqlAzureSubscriptionAutomationServiceAccountRunbook) GetProvisioningState() *plugin.TValue[string] {
-	return &c.ProvisioningState
+	return plugin.GetOrCompute[string](&c.ProvisioningState, func() (string, error) {
+		return c.provisioningState()
+	})
 }
 
 func (c *mqlAzureSubscriptionAutomationServiceAccountRunbook) GetCreationTime() *plugin.TValue[*time.Time] {

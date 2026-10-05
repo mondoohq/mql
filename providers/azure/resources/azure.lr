@@ -1117,13 +1117,13 @@ private azure.subscription.computeService.vm.runCommand @defaults("name executio
   // Provisioning state of the run command
   provisioningState string
   // State of the last execution ("Pending", "Running", "Succeeded", "Failed", "TimedOut", "Canceled", or "Unknown")
-  executionState string
+  executionState() string
   // Exit code returned by the last execution
-  exitCode int
+  exitCode() int
   // When the last execution started
-  startTime time
+  startTime() time
   // When the last execution ended
-  endTime time
+  endTime() time
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
 }
@@ -20744,9 +20744,9 @@ private azure.subscription.automationService.account.runbook @defaults("name run
   // Level of activity tracing written to the job history
   logActivityTrace int
   // Runbook description
-  description string
+  description() string
   // Provisioning state of the runbook
-  provisioningState string
+  provisioningState() string
   // When the runbook was created
   creationTime time
   // When the runbook was last modified

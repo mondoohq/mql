@@ -1,7 +1,7 @@
 {
   "provider": "azure",
-  "version": "14.1.0",
-  "generated_at": "2026-09-28T21:39:52-07:00",
+  "version": "14.3.0",
+  "generated_at": "2026-10-05T21:00:19+02:00",
   "permissions": [
     "Microsoft.Advisor/recommendations/read",
     "Microsoft.ApiManagement/service/apis/policies/read",
@@ -581,7 +581,7 @@
     {
       "permission": "Microsoft.Automation/automationAccounts/runbooks/read",
       "service": "Microsoft.Automation",
-      "action": "NewListByAutomationAccountPager",
+      "action": "Get",
       "source_file": "automation_runbooks.go"
     },
     {
