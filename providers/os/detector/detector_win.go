@@ -36,7 +36,7 @@ func runtimeWindowsDetector(pf *inventory.Platform, conn shared.Connection) (boo
 			log.Debug().Err(err).Msg("could not get windows hotpatch status")
 		}
 
-		pf.Labels["windows.mondoo.com/hotpatch"] = strconv.FormatBool(hotpatchEnabled)
+		pf.Labels[win.HotpatchLabel] = strconv.FormatBool(hotpatchEnabled)
 
 		detectIntuneDeviceID(pf, conn)
 		detectESU(pf, conn)
@@ -162,7 +162,7 @@ func staticWindowsDetector(pf *inventory.Platform, conn shared.Connection) (bool
 	} else {
 		hotpatchEnabled = staticServerHotpatch(rh, pf.Arch)
 	}
-	pf.Labels["windows.mondoo.com/hotpatch"] = strconv.FormatBool(hotpatchEnabled)
+	pf.Labels[win.HotpatchLabel] = strconv.FormatBool(hotpatchEnabled)
 
 	if win.IdentityDetectable(pf) {
 		applyIntuneInfo(pf, staticIntuneInfo(rh))

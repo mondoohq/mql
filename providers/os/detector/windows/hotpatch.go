@@ -17,6 +17,17 @@ import (
 
 const (
 	HotpatchPackage = "Hotpatch Enrollment Package"
+
+	// HotpatchLabel is the platform label carrying the hotpatch detection
+	// result. On Windows clients it only says the device is configured for
+	// hotpatch (AllowRebootlessUpdates, VBS) on an edition and build that can
+	// be enrolled. It does NOT prove enrollment: eligibility depends on the
+	// tenant's licence (e.g. Microsoft 365 Business Premium keeps the device
+	// on Windows 11 Pro), which Microsoft decides in its cloud and nothing on
+	// the device shows. Consumers that must know whether a client actually
+	// receives hotpatches should look for an installed hotpatch update instead.
+	// On servers the value comes from the Hotpatch Enrollment Package check.
+	HotpatchLabel = "windows.mondoo.com/hotpatch"
 )
 
 // isClientOS returns true if the platform's product-type indicates a workstation (Windows client).
