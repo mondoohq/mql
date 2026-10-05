@@ -5,6 +5,7 @@ package packagelockjson
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -192,4 +193,29 @@ func TestPackageLockLicense(t *testing.T) {
 		require.NotNil(t, p, name)
 		assert.Equal(t, want[name], p.License, "direct %s", name)
 	}
+}
+
+// The hidden lockfile in node_modules gives each package the package.json in
+// its install directory as evidence, so a hoisted and a nested install of one
+// name can be told apart.
+func TestParseInstalled(t *testing.T) {
+	data := `{"name":"app","lockfileVersion":3,"packages":{
+		"node_modules/lru-cache": {"version": "10.0.0"},
+		"node_modules/semver/node_modules/lru-cache": {"version": "6.0.0"}
+	}}`
+	pkgs, err := ParseInstalled(strings.NewReader(data), "/srv/app")
+	require.NoError(t, err)
+
+	got := map[string]string{}
+	for _, p := range pkgs {
+		require.Len(t, p.EvidenceList, 1)
+		got[p.Version] = p.EvidenceList[0].Value
+	}
+	assert.Equal(t, map[string]string{
+		"10.0.0": "/srv/app/node_modules/lru-cache/package.json",
+		"6.0.0":  "/srv/app/node_modules/semver/node_modules/lru-cache/package.json",
+	}, got)
+
+	_, err = ParseInstalled(strings.NewReader("{"), "/srv/app")
+	assert.Error(t, err)
 }

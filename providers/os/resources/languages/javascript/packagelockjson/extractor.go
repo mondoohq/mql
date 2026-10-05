@@ -6,6 +6,7 @@ package packagelockjson
 import (
 	"encoding/json"
 	"io"
+	"path/filepath"
 
 	"go.mondoo.com/mql/providers/os/resources/languages"
 	"go.mondoo.com/mql/providers/os/resources/languages/javascript"
@@ -37,6 +38,19 @@ func (p *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 	}
 
 	return &packageJsonLock, nil
+}
+
+// ParseInstalled reads the hidden lockfile npm keeps in
+// node_modules/.package-lock.json, whose keys are install paths relative to
+// projectDir. Each package's evidence is the package.json in its own install
+// directory, so two installs of one name at different versions stay apart.
+func ParseInstalled(r io.Reader, projectDir string) (languages.Packages, error) {
+	var lock packageLock
+	if err := json.NewDecoder(r).Decode(&lock); err != nil {
+		return nil, err
+	}
+	lock.installDir = projectDir
+	return lock.Transitive(), nil
 }
 
 func (p *packageLock) Root() *languages.Package {
@@ -110,6 +124,11 @@ func (p *packageLock) Transitive() languages.Packages {
 				name = v.Name
 			}
 
+			evidence := p.evidence
+			if p.installDir != "" && k != "" {
+				evidence = []string{filepath.Join(p.installDir, filepath.FromSlash(k), "package.json")}
+			}
+
 			transitive = append(transitive, &languages.Package{
 				Name:    name,
 				Version: v.Version,
@@ -119,7 +138,7 @@ func (p *packageLock) Transitive() languages.Packages {
 				License:      languages.LicenseExpression(v.License),
 				Purl:         idx[k],
 				Cpes:         javascript.NewCpes(name, v.Version),
-				EvidenceList: javascript.NewEvidenceList(p.evidence),
+				EvidenceList: javascript.NewEvidenceList(evidence),
 				DependsOn:    dependsOnRefs(p.Packages, idx, k, v.Dependencies),
 				Scope:        scopeOf(v),
 				Hashes:       javascript.NewHashes(v.Integrity),

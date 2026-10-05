@@ -6,6 +6,8 @@ package resources
 import (
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -19,61 +21,203 @@ import (
 	"go.mondoo.com/mql/utils/syncx"
 )
 
-func TestNpmPackage_unique(t *testing.T) {
+// writeNpmGlobalFixture installs the package.json files captured from a real
+// `npm install -g lodash@4.17.20 left-pad mkdirp@0.5.1 semver@7.5.0` prefix
+// into fs under /usr/local/lib/node_modules. File names encode the install
+// path: semver__yallist.json is node_modules/semver/node_modules/yallist.
+func writeNpmGlobalFixture(t *testing.T, mockFS afero.Fs) {
+	entries, err := os.ReadDir(filepath.Join("testdata", "npm-global"))
+	require.NoError(t, err)
+	for _, e := range entries {
+		data, err := os.ReadFile(filepath.Join("testdata", "npm-global", e.Name()))
+		require.NoError(t, err)
+		rel := strings.ReplaceAll(strings.TrimSuffix(e.Name(), ".json"), "__", "/node_modules/")
+		dir := filepath.Join("/usr/local/lib/node_modules", rel)
+		require.NoError(t, mockFS.MkdirAll(dir, 0o755))
+		require.NoError(t, afero.WriteFile(mockFS, filepath.Join(dir, "package.json"), data, 0o644))
+	}
+	// npm links executables here; it is not a package
+	require.NoError(t, mockFS.MkdirAll("/usr/local/lib/node_modules/.bin", 0o755))
+}
+
+func npmPackageVersions(list []any) map[string][]string {
+	res := map[string][]string{}
+	for _, p := range list {
+		pkg := p.(*mqlNpmPackage)
+		res[pkg.Name.Data] = append(res[pkg.Name.Data], pkg.Version.Data)
+	}
+	for k := range res {
+		sort.Strings(res[k])
+	}
+	return res
+}
+
+// A global prefix has no lockfile. The packages were reported from each
+// top-level package.json, with the dependency ranges it declares as versions
+// (lru-cache "^6.0.0"), and the packages npm installed nested under another
+// one (semver/node_modules/yallist) were never seen.
+func TestNpmPackagesGlobalInstalledVersions(t *testing.T) {
 	mockFS := afero.NewMemMapFs()
-	// create test files and directories
-	err := mockFS.MkdirAll("/usr/local/lib/node_modules/generator-code", 0o755)
-	require.NoError(t, err)
-	err = mockFS.MkdirAll("/usr/local/lib/node_modules/yo", 0o755)
-	require.NoError(t, err)
-
-	// Read package.json files from testdata
-	yoPkg, err := os.ReadFile(filepath.Join("packages", "testdata", "yo_package.json"))
-	require.NoError(t, err)
-	require.NotNil(t, yoPkg)
-
-	gcPkg, err := os.ReadFile(filepath.Join("packages", "testdata", "gc_package.json"))
-	require.NoError(t, err)
-	require.NotNil(t, gcPkg)
-
-	err = afero.WriteFile(mockFS, "/usr/local/lib/node_modules/generator-code/package.json", gcPkg, 0o644)
-	require.NoError(t, err)
-	err = afero.WriteFile(mockFS, "/usr/local/lib/node_modules/yo/package.json", yoPkg, 0o644)
-	require.NoError(t, err)
+	writeNpmGlobalFixture(t, mockFS)
 
 	conn, err := fs.NewFileSystemConnectionWithFs(0, &inventory.Config{}, &inventory.Asset{}, "", nil, mockFS)
 	require.NoError(t, err)
-
 	r := &plugin.Runtime{
 		Resources:  &syncx.Map[plugin.Resource]{},
 		Connection: conn,
 		Callback:   &providerCallbacks{},
 	}
-	mqlNpm := &mqlNpmPackages{
-		MqlRuntime: r,
+	mqlNpm := &mqlNpmPackages{MqlRuntime: r}
+	require.NoError(t, mqlNpm.gatherData())
+
+	require.Equal(t, map[string][]string{
+		"left-pad":  {"1.3.0"},
+		"lodash":    {"4.17.20"},
+		"lru-cache": {"6.0.0"},
+		"minimist":  {"0.0.8"},
+		"mkdirp":    {"0.5.1"},
+		"semver":    {"7.5.0"},
+		"yallist":   {"4.0.0"},
+	}, npmPackageVersions(mqlNpm.List.Data))
+
+	// the globally installed packages are the direct ones
+	require.Equal(t, map[string][]string{
+		"left-pad": {"1.3.0"},
+		"lodash":   {"4.17.20"},
+		"mkdirp":   {"0.5.1"},
+		"semver":   {"7.5.0"},
+	}, npmPackageVersions(mqlNpm.DirectDependencies.Data))
+
+	// each package's evidence is its own package.json
+	for _, p := range mqlNpm.List.Data {
+		pkg := p.(*mqlNpmPackage)
+		if pkg.Name.Data == "yallist" {
+			require.Len(t, pkg.Files.Data, 1)
+			require.Equal(t, "/usr/local/lib/node_modules/semver/node_modules/yallist/package.json",
+				pkg.Files.Data[0].(*mqlPkgFileInfo).Path.Data)
+		}
 	}
+}
 
-	// Create resources from filesystem
-	err = mqlNpm.gatherData()
+// A global prefix whose node_modules/.package-lock.json records fewer packages
+// than are on disk. The direct list used to come from the disk and the full
+// list from the hidden lockfile, so a direct package could be missing from
+// the list it is part of.
+func TestNpmPackagesGlobalHiddenLockfileDirectInList(t *testing.T) {
+	mockFS := afero.NewMemMapFs()
+	writeNpmGlobalFixture(t, mockFS)
+	require.NoError(t, afero.WriteFile(mockFS, "/usr/local/lib/node_modules/.package-lock.json", []byte(`{"lockfileVersion":3,"packages":{
+		"node_modules/semver": {"version": "7.5.0"},
+		"node_modules/semver/node_modules/yallist": {"version": "4.0.0"}
+	}}`), 0o644))
+
+	conn, err := fs.NewFileSystemConnectionWithFs(0, &inventory.Config{}, &inventory.Asset{}, "", nil, mockFS)
 	require.NoError(t, err)
+	mqlNpm := &mqlNpmPackages{MqlRuntime: &plugin.Runtime{
+		Resources:  &syncx.Map[plugin.Resource]{},
+		Connection: conn,
+		Callback:   &providerCallbacks{},
+	}}
+	require.NoError(t, mqlNpm.gatherData())
 
-	// Check that we have 4 packages
-	require.Equal(t, 4, len(mqlNpm.List.Data))
+	require.Equal(t, map[string][]string{
+		"semver":  {"7.5.0"},
+		"yallist": {"4.0.0"},
+	}, npmPackageVersions(mqlNpm.List.Data))
+	require.Equal(t, map[string][]string{
+		"semver": {"7.5.0"},
+	}, npmPackageVersions(mqlNpm.DirectDependencies.Data))
+}
 
-	// Check that the first package is yosay
-	pkg2 := mqlNpm.List.Data[2].(*mqlNpmPackage)
-	require.Equal(t, "yosay", pkg2.Name.Data)
-	require.Equal(t, "^2.0.2", pkg2.Version.Data)
+// A project without a lockfile but with node_modules: the installed versions
+// are reported, not the ranges in package.json.
+func TestNpmPackagesProjectNodeModules(t *testing.T) {
+	newRuntime := func(mockFS afero.Fs) *plugin.Runtime {
+		conn, err := fs.NewFileSystemConnectionWithFs(0, &inventory.Config{}, &inventory.Asset{}, "", nil, mockFS)
+		require.NoError(t, err)
+		return &plugin.Runtime{
+			Resources:  &syncx.Map[plugin.Resource]{},
+			Connection: conn,
+			Callback:   &providerCallbacks{},
+		}
+	}
+	manifest := []byte(`{"name":"app","version":"1.0.0","dependencies":{"semver":"^7.0.0","mkdirp":"~0.5.0"}}`)
 
-	// Check that the third package is also yosay, but with a different version
-	pkg3 := mqlNpm.List.Data[3].(*mqlNpmPackage)
-	require.Equal(t, "yosay", pkg3.Name.Data)
-	require.Equal(t, "^3.0.0", pkg3.Version.Data)
+	t.Run("node_modules without hidden lockfile", func(t *testing.T) {
+		mockFS := afero.NewMemMapFs()
+		writeNpmGlobalFixture(t, mockFS)
+		require.NoError(t, afero.WriteFile(mockFS, "/usr/local/lib/package.json", manifest, 0o644))
 
-	// To get the correct data, we need distinct IDs
-	require.NotEqual(t, pkg2.MqlID(), pkg3.MqlID())
-	require.Equal(t, "yosay/usr/local/lib/node_modules/yo/package.json", pkg2.MqlID())
-	require.Equal(t, "yosay/usr/local/lib/node_modules/generator-code/package.json", pkg3.MqlID())
+		raw, err := CreateResource(newRuntime(mockFS), "npm.packages", map[string]*llx.RawData{
+			"path": llx.StringData("/usr/local/lib"),
+		})
+		require.NoError(t, err)
+		pkgs := raw.(*mqlNpmPackages)
+		require.NoError(t, pkgs.gatherData())
+
+		got := npmPackageVersions(pkgs.List.Data)
+		require.Equal(t, []string{"7.5.0"}, got["semver"])
+		require.Equal(t, []string{"4.0.0"}, got["yallist"])
+		require.Equal(t, map[string][]string{
+			"mkdirp": {"0.5.1"},
+			"semver": {"7.5.0"},
+		}, npmPackageVersions(pkgs.DirectDependencies.Data))
+		require.Equal(t, "app", pkgs.Root.Data.Name.Data)
+	})
+
+	t.Run("hidden lockfile", func(t *testing.T) {
+		mockFS := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(mockFS, "/srv/app/package.json", manifest, 0o644))
+		require.NoError(t, afero.WriteFile(mockFS, "/srv/app/node_modules/semver/package.json",
+			[]byte(`{"name":"semver","version":"7.5.0"}`), 0o644))
+		require.NoError(t, afero.WriteFile(mockFS, "/srv/app/node_modules/.package-lock.json", []byte(`{
+			"name": "app", "version": "1.0.0", "lockfileVersion": 3, "requires": true,
+			"packages": {
+				"node_modules/lru-cache": {"version": "10.0.0"},
+				"node_modules/semver": {"version": "7.5.0"},
+				"node_modules/semver/node_modules/lru-cache": {"version": "6.0.0"}
+			}}`), 0o644))
+
+		raw, err := CreateResource(newRuntime(mockFS), "npm.packages", map[string]*llx.RawData{
+			"path": llx.StringData("/srv/app"),
+		})
+		require.NoError(t, err)
+		pkgs := raw.(*mqlNpmPackages)
+		require.NoError(t, pkgs.gatherData())
+		// lru-cache has no package.json in this fixture: only the hidden
+		// lockfile knows about it. Both installs of it are reported.
+		require.Equal(t, map[string][]string{
+			"lru-cache": {"10.0.0", "6.0.0"},
+			"semver":    {"7.5.0"},
+		}, npmPackageVersions(pkgs.List.Data))
+
+		// each package's evidence is its install directory, the same file a
+		// direct dependency is read from
+		files := map[string]string{}
+		for _, p := range pkgs.List.Data {
+			pkg := p.(*mqlNpmPackage)
+			require.Len(t, pkg.Files.Data, 1)
+			files[pkg.Version.Data] = pkg.Files.Data[0].(*mqlPkgFileInfo).Path.Data
+		}
+		require.Equal(t, map[string]string{
+			"10.0.0": "/srv/app/node_modules/lru-cache/package.json",
+			"6.0.0":  "/srv/app/node_modules/semver/node_modules/lru-cache/package.json",
+			"7.5.0":  "/srv/app/node_modules/semver/package.json",
+		}, files)
+	})
+
+	t.Run("package.json only", func(t *testing.T) {
+		mockFS := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(mockFS, "/srv/app/package.json", manifest, 0o644))
+		raw, err := CreateResource(newRuntime(mockFS), "npm.packages", map[string]*llx.RawData{
+			"path": llx.StringData("/srv/app"),
+		})
+		require.NoError(t, err)
+		pkgs := raw.(*mqlNpmPackages)
+		require.NoError(t, pkgs.gatherData())
+		// nothing is installed, so the declared ranges are all there is
+		require.Equal(t, []string{"^7.0.0"}, npmPackageVersions(pkgs.List.Data)["semver"])
+	})
 }
 
 // Mock callbacks for testing
