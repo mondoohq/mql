@@ -83,3 +83,20 @@ func TestLinuxProcManager_ProcessExistingSucceeds(t *testing.T) {
 	require.Equal(t, int64(42), proc.Pid)
 	require.Equal(t, "bash", proc.Command)
 }
+
+// A kernel thread has an empty cmdline. Its argv was read and is empty, so it
+// must not be nil: flags would take nil for an argv it has yet to read and
+// run a command per kernel thread to read it again.
+func TestLinuxProcManager_KernelThreadArgvIsEmptyNotUnknown(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/proc/2/cmdline", nil, 0o444))
+	require.NoError(t, afero.WriteFile(fs, "/proc/2/comm", []byte("kthreadd\n"), 0o444))
+	require.NoError(t, afero.WriteFile(fs, "/proc/2/status", []byte("Name:\tkthreadd\nState:\tS (sleeping)\nPid:\t2\n"), 0o444))
+	lpm := &LinuxProcManager{conn: &fakeProcConn{fs: fs}}
+
+	proc, err := lpm.Process(2)
+	require.NoError(t, err)
+	require.Equal(t, "kthreadd", proc.Command)
+	require.NotNil(t, proc.Argv)
+	require.Empty(t, proc.Argv)
+}

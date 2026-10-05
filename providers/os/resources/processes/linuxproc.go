@@ -96,6 +96,11 @@ func (lpm *LinuxProcManager) processInfo(pid int64, pidPath string) (*OSProcess,
 		return nil, err
 	}
 	argv := procfs.ParseProcessArgv(cmdlineData)
+	if argv == nil {
+		// A kernel thread has an empty cmdline: its argv was read and is
+		// empty, which flags must not take for an argv it still has to read.
+		argv = []string{}
+	}
 
 	cmdline, err := procfs.ParseProcessCmdline(bytes.NewReader(cmdlineData))
 	if err != nil {
