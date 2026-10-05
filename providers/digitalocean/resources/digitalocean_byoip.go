@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/digitalocean/godo"
@@ -62,7 +63,7 @@ func initDigitaloceanByoipPrefix(runtime *plugin.Runtime, args map[string]*llx.R
 	}
 	uuid := stringArg(args, "uuid")
 	if uuid == "" {
-		return args, nil, nil
+		return nil, nil, errors.New("digitalocean.byoipPrefix requires a uuid")
 	}
 	conn := runtime.Connection.(*connection.DigitaloceanConnection)
 	p, _, err := conn.Client().BYOIPPrefixes.Get(context.Background(), uuid)
@@ -191,7 +192,7 @@ func initDigitaloceanPartnerAttachment(runtime *plugin.Runtime, args map[string]
 	}
 	id := stringArg(args, "id")
 	if id == "" {
-		return args, nil, nil
+		return nil, nil, errors.New("digitalocean.partnerAttachment requires an id")
 	}
 	conn := runtime.Connection.(*connection.DigitaloceanConnection)
 	p, _, err := conn.Client().PartnerAttachment.Get(context.Background(), id)

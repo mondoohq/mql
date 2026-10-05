@@ -131,6 +131,30 @@ func routePaths(routes []*godo.AppRouteSpec) []any {
 	return out
 }
 
+// componentRoutes returns the path prefixes the app's ingress routes to a
+// component. The platform moves component routes into the app-level ingress
+// rules, so the deprecated per-component routes are empty on a deployed app;
+// they are used only for a spec that has no ingress rules.
+func componentRoutes(spec *godo.AppSpec, name string, legacy []any) []any {
+	if spec == nil || spec.Ingress == nil || len(spec.Ingress.Rules) == 0 {
+		return legacy
+	}
+	out := []any{}
+	for _, rule := range spec.Ingress.Rules {
+		if rule == nil || rule.Component == nil || rule.Component.Name != name ||
+			rule.Match == nil || rule.Match.Path == nil {
+			continue
+		}
+		switch {
+		case rule.Match.Path.Prefix != nil:
+			out = append(out, *rule.Match.Path.Prefix)
+		case rule.Match.Path.Exact != nil:
+			out = append(out, *rule.Match.Path.Exact)
+		}
+	}
+	return out
+}
+
 func autoscaleBounds(a *godo.AppAutoscalingSpec) (lo, hi *int64) {
 	if a == nil {
 		return nil, nil
@@ -223,7 +247,7 @@ func (r *mqlDigitaloceanApp) components() ([]any, error) {
 			"autoscalingMaxInstances":       llx.IntDataPtr(rt.autoscaleMax),
 			"httpPort":                      llx.IntDataPtr(rt.httpPort),
 			"internalPorts":                 llx.ArrayData(rt.internalPorts, types.Int),
-			"routes":                        llx.ArrayData(rt.routes, types.String),
+			"routes":                        llx.ArrayData(componentRoutes(r.cacheSpec, c.GetName(), rt.routes), types.String),
 		})
 		if err != nil {
 			return nil, err

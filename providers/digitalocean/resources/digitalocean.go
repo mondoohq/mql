@@ -27,9 +27,15 @@ func (r *mqlDigitalocean) id() (string, error) {
 // exist on this account" (a soft absence) from transient or
 // authorization failures (which should propagate).
 func isDoNotFound(err error) bool {
+	return isDoStatus(err, http.StatusNotFound)
+}
+
+// isDoStatus reports whether err is a DigitalOcean API error with the given
+// HTTP status.
+func isDoStatus(err error, status int) bool {
 	var er *godo.ErrorResponse
 	if errors.As(err, &er) {
-		return er.Response != nil && er.Response.StatusCode == http.StatusNotFound
+		return er.Response != nil && er.Response.StatusCode == status
 	}
 	return false
 }

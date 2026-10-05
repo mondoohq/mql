@@ -363,16 +363,33 @@ func k8sCluster(rt *plugin.Runtime) *mqlDigitaloceanKubernetesCluster {
 }
 
 func TestClusterlintNeverRunIsNull(t *testing.T) {
-	rt := statusRuntime(t, map[string]route{})
-	c := k8sCluster(rt)
-	out, err := c.lintDiagnostics()
-	require.NoError(t, err)
-	assert.Nil(t, out)
-	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, c.LintDiagnostics.State,
-		"a cluster nobody linted must not read as a clean one")
-	_, err = c.lintCompletedAt()
-	require.NoError(t, err)
-	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, c.LintCompletedAt.State)
+	for name, routes := range map[string]map[string]route{
+		// The live answer for a cluster that has never been linted.
+		"precondition failed": {
+			"/v2/kubernetes/clusters/c1/clusterlint": {412, `{"id":"precondition_failed","message":"clusterlint has not run yet for cluster"}`},
+		},
+		"not found": {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := k8sCluster(statusRuntime(t, routes))
+			out, err := c.lintDiagnostics()
+			require.NoError(t, err)
+			assert.Nil(t, out)
+			assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, c.LintDiagnostics.State,
+				"a cluster nobody linted must not read as a clean one")
+			_, err = c.lintCompletedAt()
+			require.NoError(t, err)
+			assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, c.LintCompletedAt.State)
+		})
+	}
+}
+
+func TestClusterlintServerErrorSurfaces(t *testing.T) {
+	c := k8sCluster(statusRuntime(t, map[string]route{
+		"/v2/kubernetes/clusters/c1/clusterlint": {500, `{"id":"server_error","message":"boom"}`},
+	}))
+	_, err := c.lintDiagnostics()
+	assert.Error(t, err)
 }
 
 func TestClusterlintDiagnostics(t *testing.T) {

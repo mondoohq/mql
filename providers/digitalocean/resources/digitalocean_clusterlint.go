@@ -84,7 +84,9 @@ func (r *mqlDigitaloceanKubernetesCluster) fetchClusterlint() (*clusterlintResul
 		}
 		root := new(clusterlintResults)
 		if _, err := client.Do(ctx, req, root); err != nil {
-			if isDoNotFound(err) {
+			// The API answers 412 precondition_failed for a cluster that has
+			// never been linted, and 404 when the results have expired.
+			if isDoNotFound(err) || isDoStatus(err, http.StatusPreconditionFailed) {
 				return
 			}
 			r.clusterlintErr = classifyDoError(err)

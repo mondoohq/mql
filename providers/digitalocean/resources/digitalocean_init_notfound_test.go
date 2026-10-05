@@ -98,6 +98,18 @@ func TestInitReportsNotFoundInsteadOfPanicking(t *testing.T) {
 			want: `digitalocean.partnerAttachment with id "pa-1" not found`,
 		},
 		{
+			name: "byoip prefix without a uuid",
+			init: initDigitaloceanByoipPrefix,
+			args: map[string]*llx.RawData{},
+			want: "digitalocean.byoipPrefix requires a uuid",
+		},
+		{
+			name: "partner attachment without an id",
+			init: initDigitaloceanPartnerAttachment,
+			args: map[string]*llx.RawData{},
+			want: "digitalocean.partnerAttachment requires an id",
+		},
+		{
 			name: "account",
 			init: initDigitaloceanAccount,
 			args: map[string]*llx.RawData{},
