@@ -13,6 +13,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/fs"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/id"
 	"go.mondoo.com/mql/providers/os/id/ids"
 )
@@ -21,7 +22,7 @@ const mountPathIDPrefix = "//platformid.api.mondoo.app/runtime/filesystem/hash/"
 
 func fsConn(t *testing.T, path string) *fs.FileSystemConnection {
 	t.Helper()
-	conn, err := fs.NewConnection(0, &inventory.Config{Path: path}, &inventory.Asset{})
+	conn, err := fs.NewConnection(0, &inventory.Config{Type: shared.Type_FileSystem.String(), Path: path}, &inventory.Asset{})
 	require.NoError(t, err)
 	return conn
 }
@@ -87,4 +88,17 @@ func TestIdentifyPlatform_HostnameWins(t *testing.T) {
 	assert.Equal(t, []string{"//platformid.api.mondoo.app/hostname/web-01"}, fingerprint.PlatformIDs)
 	assert.Equal(t, "web-01", fingerprint.Name)
 	assert.Equal(t, []string{ids.IdDetector_Hostname}, fingerprint.ActiveIdDetectors)
+}
+
+// A device or snapshot scan reads each partition through a filesystem
+// connection mounted at a temporary directory (conf type "fs"). That path
+// changes on every run, so it must never become the asset's id: the same disk
+// would turn into a new asset on every scan, and a snapshot that already
+// carries platform ids would gain a random extra one.
+func TestIdentifyPlatform_DevicePartitionGetsNoMountPathID(t *testing.T) {
+	conn, err := fs.NewConnection(0, &inventory.Config{Type: "fs", Path: "./testdata/container-rootfs"}, &inventory.Asset{})
+	require.NoError(t, err)
+
+	_, _, err = id.IdentifyPlatform(conn, &plugin.ConnectReq{}, nil, nil)
+	require.Error(t, err)
 }

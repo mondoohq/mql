@@ -335,7 +335,7 @@ func gatherPlatformInfo(conn shared.Connection, pf *inventory.Platform, idDetect
 		return &platformInfo{}, nil
 	case ids.IdDetector_MountPath:
 		mounted, ok := conn.(shared.ConnectionWithMountPath)
-		if !ok {
+		if !ok || mounted.MountPath() == "" {
 			return &platformInfo{}, nil
 		}
 

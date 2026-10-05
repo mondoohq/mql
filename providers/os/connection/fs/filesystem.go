@@ -113,8 +113,15 @@ func (c *FileSystemConnection) Identifier() (string, error) {
 }
 
 // MountPath returns the directory this connection reads, implementing
-// shared.ConnectionWithMountPath.
+// shared.ConnectionWithMountPath. It is empty unless the directory is the
+// scan target the user named: a device or snapshot scan reads each partition
+// through a filesystem connection too, but mounts it at a temporary directory
+// that changes on every run, so its path would give the same disk a new asset
+// on every scan.
 func (c *FileSystemConnection) MountPath() string {
+	if c.Conf == nil || c.Conf.Type != shared.Type_FileSystem.String() {
+		return ""
+	}
 	return c.MountedDir
 }
 
