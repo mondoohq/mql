@@ -46,6 +46,45 @@ const (
 	qualifierAppID       = "app_id"
 )
 
+// The installer qualifier says which installer technology wrote the entry, so
+// a consumer knows how the install can be updated or removed. It is a closed
+// set, decided by the same rules that pick the identity qualifiers above:
+//
+//	msi           WindowsInstaller=1 on a GUID Uninstall key. Present exactly
+//	              when product_code is.
+//	burn          A WiX Burn bundle (BundleUpgradeCode). Present exactly when
+//	              the bundle's upgrade_code is used.
+//	inno          Inno Setup: the Uninstall key is the AppId plus "_is1".
+//	installshield An InstallShield (InstallScript) setup: the UninstallString
+//	              runs the setup.exe InstallShield caches under
+//	              "InstallShield Installation Information".
+//	unknown       The entry was examined and none of the above matched, for
+//	              example a vendor's own setup.exe or a Squirrel Update.exe.
+//
+// NSIS is not detected: NSIS writes no fixed key name or value, and the
+// "uninstall.exe" its examples use is also used by other installers. Those
+// entries report unknown. A package without the qualifier was read by a path
+// that cannot see the Uninstall entry's values. Store apps (pkg:appx) never get
+// it, their package type already says how they were installed.
+const (
+	qualifierInstaller = "installer"
+
+	installerMsi           = "msi"
+	installerBurn          = "burn"
+	installerInno          = "inno"
+	installerInstallShield = "installshield"
+	installerUnknown       = "unknown"
+)
+
+// innoSetupKeySuffix is what Inno Setup appends to the AppId to name the
+// Uninstall key.
+const innoSetupKeySuffix = "_is1"
+
+// installShieldCacheDir is the directory an InstallShield (InstallScript)
+// setup copies itself into to serve as the uninstaller; the UninstallString
+// of such an entry runs setup.exe from there.
+const installShieldCacheDir = `\installshield installation information\`
+
 // msiUpgradeCodesKey maps every installed MSI product to its UpgradeCode. Each
 // subkey is a packed UpgradeCode; its value names are the packed ProductCodes
 // of the installed products that share it.
@@ -63,6 +102,32 @@ type installIdentity struct {
 	windowsInstaller bool
 	// bundleUpgradeCode is a WiX Burn bundle's BundleUpgradeCode value.
 	bundleUpgradeCode string
+	// innoSetup records that uninstallKey ended in "_is1", the Inno Setup
+	// naming, before the suffix is stripped to form app_id.
+	innoSetup bool
+	// installShield records that the UninstallString runs InstallShield's
+	// cached setup.exe. The command line itself is not kept.
+	installShield bool
+}
+
+// newInstallIdentity builds the identity of one Uninstall entry from its key
+// name and the values the identity rules read.
+func newInstallIdentity(keyName string, windowsInstaller bool, bundleUpgradeCode, uninstallString string) *installIdentity {
+	return &installIdentity{
+		uninstallKey:      keyName,
+		windowsInstaller:  windowsInstaller,
+		bundleUpgradeCode: bundleUpgradeCode,
+		innoSetup:         strings.HasSuffix(keyName, innoSetupKeySuffix),
+		installShield:     isInstallShieldUninstall(uninstallString),
+	}
+}
+
+// isInstallShieldUninstall reports whether an UninstallString runs the setup
+// InstallShield cached under "InstallShield Installation Information", e.g.
+//
+//	"C:\Program Files (x86)\InstallShield Installation Information\{GUID}\setup.exe" -runfromtemp -l0x0409 -removeonly
+func isInstallShieldUninstall(uninstallString string) bool {
+	return strings.Contains(strings.ToLower(uninstallString), installShieldCacheDir)
 }
 
 var guidPattern = regexp.MustCompile(`^\{?([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})\}?$`)
@@ -80,21 +145,24 @@ func normalizeGUID(g string) string {
 // installIdentityFromItems reads the identity values out of one Uninstall
 // subkey's values.
 func installIdentityFromItems(keyName string, items []registry.RegistryKeyItem) *installIdentity {
-	id := &installIdentity{uninstallKey: keyName}
+	var windowsInstaller bool
+	var bundleUpgradeCode, uninstallString string
 	for _, i := range items {
 		switch i.Key {
 		case "WindowsInstaller":
-			id.windowsInstaller = i.Value.Number == 1
+			windowsInstaller = i.Value.Number == 1
 		case "BundleUpgradeCode":
 			// REG_MULTI_SZ in WiX 3/4, occasionally REG_SZ.
 			if len(i.Value.MultiString) > 0 {
-				id.bundleUpgradeCode = i.Value.MultiString[0]
+				bundleUpgradeCode = i.Value.MultiString[0]
 			} else {
-				id.bundleUpgradeCode = i.Value.String
+				bundleUpgradeCode = i.Value.String
 			}
+		case "UninstallString":
+			uninstallString = i.Value.String
 		}
 	}
-	return id
+	return newInstallIdentity(keyName, windowsInstaller, bundleUpgradeCode, uninstallString)
 }
 
 // qualifiers returns the identity qualifiers for one entry. upgradeCodes maps a
@@ -108,6 +176,7 @@ func (id *installIdentity) qualifiers(upgradeCodes map[string]string) map[string
 		// A Burn bundle's key is the bundle's per-release provider id; the
 		// upgrade code is the stable part, and the bundle has no ProductCode.
 		q[qualifierUpgradeCode] = bundle
+		q[qualifierInstaller] = installerBurn
 		return q
 	}
 	if id.windowsInstaller {
@@ -116,10 +185,22 @@ func (id *installIdentity) qualifiers(upgradeCodes map[string]string) map[string
 			if uc := upgradeCodes[pc]; uc != "" {
 				q[qualifierUpgradeCode] = uc
 			}
+			q[qualifierInstaller] = installerMsi
 			return q
 		}
 	}
-	appID := strings.TrimSuffix(id.uninstallKey, "_is1")
+	switch {
+	case id.innoSetup:
+		q[qualifierInstaller] = installerInno
+	case id.installShield:
+		q[qualifierInstaller] = installerInstallShield
+	default:
+		q[qualifierInstaller] = installerUnknown
+	}
+	appID := id.uninstallKey
+	if id.innoSetup {
+		appID = strings.TrimSuffix(appID, innoSetupKeySuffix)
+	}
 	if g := normalizeGUID(appID); g != "" {
 		appID = g
 	}
@@ -232,9 +313,12 @@ if (Test-Path $k) {
 }
 `
 
-// applyInstallIdentityQualifiers adds the identity qualifiers to every Windows
-// application package that carries an installIdentity, keeping the qualifiers
-// its purl already has (arch, channel, ...).
+// applyInstallIdentityQualifiers adds the identity and installer qualifiers to
+// every Windows application package that carries an installIdentity, and
+// install-scope=user to every one read from a user's registry hive (HKCU or
+// HKEY_USERS\<sid>), keeping the qualifiers its purl already has (arch,
+// channel, ...). A machine-wide install carries no install-scope, the same as
+// on macOS.
 //
 // It must run AFTER collapsePackages: that collapse keys on the purl, and the
 // two Add/Remove Programs entries of one .NET install have different
@@ -244,10 +328,16 @@ if (Test-Path $k) {
 func applyInstallIdentityQualifiers(pkgs []Package, upgradeCodes map[string]string) {
 	for i := range pkgs {
 		p := &pkgs[i]
-		if p.Format != "windows/app" || p.installIdentity == nil {
+		if p.Format != "windows/app" {
 			continue
 		}
 		add := p.installIdentity.qualifiers(upgradeCodes)
+		if p.InstallScope == installScopeUser {
+			if add == nil {
+				add = map[string]string{}
+			}
+			add[PurlQualifierInstallScope] = InstallScopeUser
+		}
 		if len(add) == 0 {
 			continue
 		}

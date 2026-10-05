@@ -1707,11 +1707,12 @@ func parseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		pkg.InstallDate = parseWinInstallDate(entry.InstallDate)
 		pkg.InstallScope = entry.InstallScope
 		pkg.InstallUser = entry.InstallUser
-		pkg.installIdentity = &installIdentity{
-			uninstallKey:      registryPathLeaf(entry.PSPath),
-			windowsInstaller:  entry.WindowsInstaller != nil && *entry.WindowsInstaller == 1,
-			bundleUpgradeCode: firstJSONString(entry.BundleUpgradeCode),
-		}
+		pkg.installIdentity = newInstallIdentity(
+			registryPathLeaf(entry.PSPath),
+			entry.WindowsInstaller != nil && *entry.WindowsInstaller == 1,
+			firstJSONString(entry.BundleUpgradeCode),
+			entry.UninstallString,
+		)
 		pkg.uninstallEvidence = &uninstallEvidence{
 			installLocation: rawOr(entry.RawLocation, entry.InstallLocation),
 			uninstallString: rawOr(entry.RawUninstall, entry.UninstallString),
