@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed
+Accepted. Implemented in the os provider; the sections below were corrected
+on 2026-10-05 where the implementation, run against real systems, disproved
+what this ADR first said. Each correction says what it replaces.
 
 Deciders: @tas50, @chris-rock
 
@@ -77,28 +79,59 @@ installed?**
   `osProvided: false`.
 
 This needs no curated list of repositories or vendors. It uses the trust
-anchors the OS already relies on. The only code-owned knowledge is, per OS
-family, which package ships those keys. That is one or two package names per
-distribution, and they do not change between releases.
+anchors the OS already relies on. The only code-owned knowledge is, per
+platform, which package ships those keys. That is one to three package names
+per distribution, and they do not change between releases.
 
-| OS family | Package that ships the OS keys |
+The list is explicit, keyed by mql's platform name, and every entry was read
+off the distribution's own image: the package that owns the key files whose
+keys sign that image's packages.
+
+| Platform | Package that ships the OS keys |
 |---|---|
-| Debian | `debian-archive-keyring` |
-| Ubuntu | `ubuntu-keyring` |
-| RHEL and rebuilds | the package that provides `system-release`, and the `*-gpg-keys` package it requires (`almalinux-gpg-keys` on AlmaLinux) |
-| Fedora | `fedora-gpg-keys` |
-| macOS | Apple's OS signing identity, `macOS Software Signing` |
-| Windows (AppX) | `SignatureKind: System` |
+| `debian` | `debian-archive-keyring`, `debian-ports-archive-keyring` |
+| `ubuntu` | `ubuntu-keyring`, and `ubuntu-pro-client` (formerly `ubuntu-advantage-tools`) for the ESM repositories Ubuntu Pro enables |
+| `kali` | `kali-archive-keyring` |
+| `linuxmint` | `linuxmint-keyring`, plus `ubuntu-keyring` (Mint) or `debian-archive-keyring` (LMDE) |
+| `raspbian` | `raspberrypi-archive-keyring`, `raspbian-archive-keyring`, `debian-archive-keyring` (from the packages' published file lists; not run on a host) |
+| `redhat` | `redhat-release` |
+| `centos`, `centos-stream` | `centos-gpg-keys` (and `centos-release` on CentOS 7 and 8) |
+| `almalinux` | `almalinux-gpg-keys` (9), `almalinux-release` (8) |
+| `rockylinux` | `rocky-gpg-keys`, `rocky-release` |
+| `oraclelinux` | `oraclelinux-release` |
+| `fedora` | `fedora-gpg-keys` |
+| `amazonlinux` | `system-release` |
+| `opensuse`, `opensuse-leap`, `opensuse-tumbleweed` | `openSUSE-build-key` |
+| `sles` | `suse-build-key` |
+| `photon` | `photon-repos` |
+| `azurelinux` | `azurelinux-repos-shared` |
+| macOS | Apple's OS signing identity, `macOS Software Signing`, or the sealed system volume |
+| Windows | see "How each platform resolves it" |
+
+*Corrected 2026-10-05.* This table first said the RHEL key package is "the
+package that provides `system-release`, and the `*-gpg-keys` package it
+requires". That holds on none of the families checked in a uniform way: RHEL,
+Oracle Linux and Amazon Linux keep the keys in the release package itself,
+Fedora, Photon and Azure Linux in a package from another source package. The
+explicit list replaces the rule.
+
+Counting every key file an operating-system package owns would be wrong. On
+AlmaLinux, Rocky, CentOS and Amazon Linux 2, `epel-release` is signed by the
+distribution and installs the EPEL key next to the distribution's own. On
+Debian and Ubuntu, `postgresql-common` installs the key of the PostgreSQL
+project's repository. Both keys sign third-party software. Oracle Linux is the
+one case where this rule calls an EPEL package the operating system's: Oracle
+re-signs its EPEL mirror (`ol9_developer_EPEL`) with its release key.
 
 ### Per backend
 
 | Backend | `osProvided` | null when | Verified |
 |---|---|---|---|
-| rpm | The package's signature key ID (`%{RSAHEADER:pgpsig}`, `%{SIGPGP:pgpsig}`) is a key in a file owned by the OS key package. | never: an unsigned package is `false` | `almalinux:9` |
-| dpkg | Debian signs repositories, not packages. The installed `(name, version, arch)` is matched against the apt indexes in `/var/lib/apt/lists`. The match is `true` when that index's `InRelease` is signed by a key in the OS keyring. See the next section for the rest of the cases. | no indexes on the host, or the case below | `debian:12` |
-| macOS | The bundle's leaf signing certificate (`signed_by[0]`) is `macOS Software Signing`. | never | macOS 27.0 |
-| AppX | `SignatureKind` is `System`. | the filesystem fallback (`getFsAppxPackages`, `windows_packages.go:1216`), which cannot read it | Docs |
-| Win32 (registry) | Windows records no channel for these programs. | always | — |
+| rpm | The package's signature key ID (`RSAHEADER`, `DSAHEADER`, `SIGPGP` or `SIGGPG`) is a key, or a subkey, in a file owned by the OS key package. SUSE signs with version 3 signature packets, which the OpenPGP library skips, so those are read directly. | the platform has no entry in the key package list | almalinux:9 (container, image, EC2), amazonlinux:2023 (EC2); the matrix below |
+| dpkg | Debian signs repositories, not packages. The installed `(name, version, arch)` is matched against the apt indexes in `/var/lib/apt/lists`. The match is `true` when that index's `InRelease` (or `Release` with `Release.gpg`) is signed by a key in the OS keyring. See the next section for the rest of the cases. | see the next section | debian:12 (container, image, EC2), Ubuntu 22.04 and 24.04 Pro (EC2) |
+| macOS | The bundle's leaf signing certificate (`signed_by[0]`) is `macOS Software Signing`, or the bundle is under `/System/`. The second covers Safari, which lives on the App cryptex under `/System/Cryptexes` and which mql lists without a signer, and the applications mql finds by listing the folders. | never | macOS 27.0 |
+| AppX | See "How each platform resolves it". | the package was found on disk without PowerShell and is not under `SystemApps` | Windows 11 24H2 |
+| Win32 (registry) | `true` only for Edge, WebView2 and Edge Update when Edge Update records Windows as their install source, and for the .NET Framework 4.x runtime. | every other program: Windows records nothing that says it came with Windows | Windows 11 24H2 |
 
 #### dpkg cases
 
@@ -109,12 +142,18 @@ spells out every case:
 |---|---|
 | in an index signed by the OS keyring | `true` |
 | only in indexes signed by other keys | `false` |
-| name in no index at all | `false`: installed from a local `.deb` |
+| name in no index at all, and every component the sources enable has an index | `false`: installed from a local `.deb` |
+| name in no index at all, and some enabled component has no index | null |
 | version in no index, name only in OS-signed indexes | `true`: an OS package that missed an update. The Debian archive lists only current versions. |
 | version in no index, name also in a third-party index | null |
 | no indexes on the host | null |
 
-The last two rows are null on purpose. A rule that matched on the name alone
+The null rows are null on purpose. An Ubuntu cloud image ships the main and
+restricted indexes and none for universe until the first `apt-get update`, so
+a universe package from the image build is in no index; calling it a local
+install would be a confident wrong answer. *Added 2026-10-05.*
+
+The last two rows of the table are also null on purpose. A rule that matched on the name alone
 would send an outdated Debian `nginx` to nginx.org's index and call a Debian
 build third-party: the wrong answer for exactly the case this field exists
 for.
@@ -234,12 +273,46 @@ of materials (`/var/db/receipts/<id>.bom`). I did not check how reliably the
 paths in it match the bundle path. Homebrew formulae are already reported as
 `brew` packages (`homebrew_packages.go`) and are `homebrew` by definition.
 
-**Windows.** AppX: `SignatureKind` `System` is `os`, `Store` is `app-store`,
-`Developer` or `Enterprise` is `direct`. Win32: an Uninstall entry exists
-only because an installer ran, so it is `installer`. `WindowsInstaller=1`,
-already collected (`windows_packages.go:185`), marks an MSI. Chocolatey
-packages are already their own format. winget leaves no per-package record
-that was checked for this ADR, so a winget install reads as `installer`.
+**Windows.** *Corrected 2026-10-05.* This section first said AppX
+`SignatureKind` decides: `System` is `os`, `Store` is `app-store`,
+`Developer` or `Enterprise` is `direct`. On a Windows 11 24H2 host that calls
+most of Windows third-party. The signature kind says how a package is signed,
+not whether it came with Windows. Only the 49 shell components are `System`.
+The inbox apps (Calculator, Photos, Paint, Notepad, Terminal, the Store) are
+`Store`-signed, and Edge, Teams and Outlook are `Developer`-signed, exactly
+like the package Notepad++'s installer registers.
+
+What does mark an inbox app is that the Windows image provisions it for every
+new user: it is listed under
+`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications`,
+by bundle name (`<Name>_<Version>_<Arch>_<ResourceId>_<PublisherId>`), which
+reduces to the package family. An app a user installs from the Store is not
+listed. So an AppX package is `os` when:
+
+1. its signature kind is `System`;
+2. its family is provisioned;
+3. it is a framework package Microsoft publishes (VCLibs, UI.Xaml), which the
+   inbox apps depend on; or
+4. it is published by `CN=Microsoft Windows` (Windows' own web experience and
+   cross-device components ship that way, `Store`-signed).
+
+Otherwise a `Store`-signed package is `app-store`, and any other is `direct`.
+Two packages Windows installs through the Store after the first logon
+(StartExperiencesApp, WidgetsPlatformRuntime) read as `app-store`: nothing on
+the system tells them apart from a user's Store install.
+
+Win32: an Uninstall entry exists only because an installer ran, so it is
+`installer`, named by the MSI ProductCode for an MSI (the purl's
+`product_code` qualifier). Edge, WebView2 and Edge Update are the exception:
+Edge Update records `InstallSource=windows` (and `brand=INBX`) for the copies
+that came with Windows, and the Uninstall entry is matched by its install
+location. The .NET Framework 4.x runtime, which the backend synthesizes from
+its setup key, is `os`. OneDrive installs per user from a setup program the
+image ships and carries no such marker; it is `installer` with a null
+`osProvided`.
+
+These facts are read with one PowerShell query, only when a query asks for
+`osProvided` or `source`; the package list's own AppX query is unchanged.
 
 ### Files, not commands
 
@@ -251,10 +324,25 @@ As in ADR 044, every answer is read from files:
 - the dnf history;
 - the `system_profiler` output that `mql` already reads.
 
-The scanner runs no package-manager command. This works on images and mounted
-filesystems. On rpm it also means `osProvided` answers on every image, because
-the signature is in the rpm database. AppX is the exception:
-`SignatureKind` is available only through the package manager API.
+The scanner runs no package-manager command for these on local, container and
+image connections. This works on images and mounted filesystems. On rpm it
+also means `osProvided` answers on every image, because the signature is in
+the rpm database.
+
+*Added 2026-10-05.* SSH is the exception, in the other direction: there every
+file read is a network round trip, and running one command is cheaper than
+copying the files. Over SSH the reader filters the apt indexes on the host
+(`apt-helper cat-file` plus `awk`, printing only the lines of installed
+package names), asks `rpm -qa` for each package's signature instead of
+copying the rpm database, queries dnf's history with the Python dnf itself
+runs on instead of copying the database and its write-ahead log, and fetches
+release files, key files and sources lists in one batched command. Each falls
+back to reading the files when its command fails.
+
+Windows is the other exception: the provisioned AppX list and the Edge Update
+install sources are read with PowerShell. Both are file-readable in principle
+(the registry hive, `StateRepository-Machine.srd`), which a reader for offline
+Windows disks can use later.
 
 ### Reaching the platform
 
@@ -280,36 +368,54 @@ on one host and third-party on the next.
   OpenPGP parser. `github.com/ProtonMail/go-crypto` is already a dependency of
   the `mql` module (`go.mod:16`). The os provider adds it, so no new code
   enters the build.
+- **Untrusted input:** the readers parse files a host's owner controls: rpm
+  headers, keyrings, release files, sqlite databases. Counts taken from a
+  header are checked against the bytes that remain before anything is
+  allocated, so a crafted header cannot force a large allocation.
+  *Added 2026-10-05.*
+- **Commands over SSH:** the commands are fixed strings. The only values put
+  into them are file paths read from the package manager's own records, and
+  those are single-quoted. They read; they change nothing on the host.
+- **Names:** when a release file names no origin, the repository's address is
+  reported as its name. It is decoded from the list file name, which apt
+  writes without user information but with the query string, so the query
+  string and anything before an `@` are removed first.
 - **Residual risk:** an OS that ships a vendor's key in its own keyring
   package would make that vendor's packages `osProvided: true`. None of the
-  keyrings checked do.
+  keyrings checked do, which is why the list names keyring packages rather
+  than trusting every package the OS signed.
 
 ## Performance implications
 
-- **rpm, macOS, AppX:** no new I/O beyond small key files.
-  - rpm: the signature is two more tags in the existing query
-    (`rpm_packages.go:404`).
-  - macOS: `signed_by` is already parsed (`macos_packages.go:46`).
-  - AppX: `SignatureKind` is one more column in an existing query
-    (`windows_packages.go:225`).
-- **dpkg is the expensive backend.** On `debian:12` arm64, the bookworm `main`
-  index is 49 MB uncompressed (62,666 stanzas), stored as an 18.6 MB `.lz4`
-  file. Decompressing and filtering it locally took 23 ms. Over SSH those bytes
-  cross the network on every scan.
-- **Mitigations, in order:**
-  1. Stream each index once per `packages` call, keeping only stanzas whose
-     name is installed.
-  2. Read each `InRelease` only for its header and its signature issuer.
-  3. If SSH scan timings show the transfer, use `apt-cache policy <installed
-     names>` on connections that can run commands. Files stay the only path
-     for images.
-- **dnf history** must be copied together with its write-ahead log (4.1 MB on
-  `almalinux:9`, next to a 135 KB main file). The rpmdb reader copies only the
-  database file (`rpm_packages.go:484-536`). I inferred from the sizes that
-  rows can sit in the log, and did not test it.
-- **Regression budget:** measure scan time on a Debian host over SSH before and
-  after. The dpkg reader must not add more than `packages` already spends
-  parsing `/var/lib/dpkg/status`.
+*Replaced 2026-10-05 with measurements.* The first version estimated the cost
+and named `apt-cache policy` as the SSH mitigation.
+
+- **Nothing is read unless a query asks.** Sources are resolved once per
+  package manager, the first time a package reads `osProvided` or `source`.
+  A plain `packages` inventory does no new work.
+- **Local and container scans.** On a `debian:12` container with nginx.org's
+  and Docker's repositories, adding `osProvided` and `source` to a 157-package
+  query took it from 1.0 s to 2.4 s: reading the 18.6 MB `.lz4` index and
+  the release files.
+- **SSH scans, measured from a laptop against t3.small EC2 instances.** The
+  extra time over the same query without the two fields:
+
+  | Host | Packages | First implementation | Final |
+  |---|---|---|---|
+  | Debian 12 | 370 | +11 s | +4 s |
+  | Ubuntu 24.04 Pro | 671 | +26 s | +2 s |
+  | Ubuntu 22.04 | 626 | +22 s | +6 s |
+  | AlmaLinux 9 | 488 | +16 s | +3 to +7 s |
+  | Amazon Linux 2023 | 506 | | +2 to +4 s |
+
+  The first implementation read every file over SFTP: about twenty key files
+  per Debian host, every release file, the rpm database and dnf's history with
+  its 4 MB write-ahead log. Copying the apt indexes alone would have been 60 to
+  210 MB per scan, 10 to 40 s. The final one runs the filtering on the host
+  (see "Files, not commands"); the filtered apt indexes are 50 to 110 KB.
+- **dnf history** copied for a local scan includes its write-ahead log. Twelve
+  databases read without it lost no rows, but a scan during a transaction
+  could.
 
 ## Consequences
 
@@ -323,8 +429,9 @@ on one host and third-party on the next.
   `(release, name, version)` against the distribution's archive, which it can
   index once for all hosts. That check belongs to the platform. The scanner
   reports null rather than guessing.
-- **Preinstalled Win32 programs** (Edge, OneDrive) are null. The platform
-  curates them.
+- **Preinstalled Win32 programs** other than Edge, WebView2, Edge Update and
+  the .NET Framework runtime are null. The platform curates them; OneDrive is
+  the one seen on a stock image.
 - `package.origin` keeps its per-backend meaning. Nothing that reads it
   changes.
 
@@ -353,7 +460,9 @@ reason. Many Debian packages carry no suffix at all.
 
 `apt-cache policy`, `dnf repoquery`. Rejected as the primary path for the
 reason in ADR 044: it answers nothing on images, mounted filesystems and
-snapshots.
+snapshots. Over SSH, commands do run, but they filter and query the same
+files the reader reads elsewhere (see "Files, not commands"), so a host and
+its image give the same answer.
 
 ### A PURL qualifier
 
@@ -370,23 +479,34 @@ separately. The OS signing identity is exact.
 
 ## Not covered
 
-- yum on Amazon Linux 2 and RHEL 7, zypper, apk, pacman and opkg. Each keeps
-  its keys differently. None was checked for this ADR. They report null until
-  a reader is added.
-- winget as a channel of its own.
+- apk, pacman, opkg, xbps and the BSDs. They report null until a reader is
+  added. (*Corrected 2026-10-05:* yum on Amazon Linux 2 and zypper are
+  covered: their signatures decide `osProvided` like dnf's, and their history,
+  `yumdb` and `/var/log/zypp/history`, names the repository.)
+- winget as a channel of its own. winget does keep a record: an `installed.db`
+  per user and one for SYSTEM, mapping its package IDs to Uninstall keys. A
+  winget install reads as `installer` until a reader uses it.
+- Chocolatey installs that run an installer also appear in the Uninstall
+  registry, as `installer`; `C:\ProgramData\chocolatey\.chocolatey\<pkg>\.registry`
+  names the key and could mark them `chocolatey`.
 - Language packages (npm, PyPI, Maven). They are third-party by construction.
 - Whether an OS package came with the image or was installed later. The
   filter does not need it, so it is left for later.
 
-## Open Questions
+## Answered Questions
 
-1. **Ubuntu Pro / ESM.** ESM repositories are signed with keys from
-   `ubuntu-pro-client`, not `ubuntu-keyring`. They are OS software, so the key
-   package list probably needs both. Not checked.
-2. **Fedora and SUSE key packages.** Taken from the distributions' layout. Not
-   checked on a host.
-3. **Safari and other Apple apps outside `/System`.** The host checked did not
-   list Safari, so whether it carries `macOS Software Signing` is unverified.
+Answered 2026-10-05.
+
+1. **Ubuntu Pro / ESM.** The ESM repositories are signed with keys in
+   `/usr/share/keyrings/ubuntu-pro-esm-{apps,infra}.gpg`, owned by
+   `ubuntu-pro-client`. On an Ubuntu 24.04 Pro EC2 instance, ESM packages
+   resolve to `os` with the source name `UbuntuESMApps` only with that package
+   on the list.
+2. **Fedora and SUSE key packages.** `fedora-gpg-keys`, `openSUSE-build-key`
+   and `suse-build-key`, read off their images.
+3. **Safari.** It lives on the App cryptex
+   (`/System/Cryptexes/App/System/Applications/Safari.app`), and mql lists it
+   without a signer; the `/System/` rule covers it.
 
 ## References
 
