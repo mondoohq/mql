@@ -195,4 +195,49 @@ func TestLoadBalancerHealthStatusDicts(t *testing.T) {
 		assert.Equal(t, "healthy", first["status"])
 		requireDictArraySerializes(t, a)
 	})
+
+	t.Run("healthy target leaves detail and httpStatusCode null", func(t *testing.T) {
+		a := loadBalancerHealthStatusDicts([]hcloud.LoadBalancerTargetHealthStatus{
+			{ListenPort: 443, Status: hcloud.LoadBalancerTargetHealthStatusStatusHealthy},
+		})
+		require.Len(t, a, 1)
+		d := a[0].(map[string]any)
+		require.Contains(t, d, "detail")
+		require.Contains(t, d, "httpStatusCode")
+		assert.Nil(t, d["detail"])
+		assert.Nil(t, d["httpStatusCode"])
+		requireDictArraySerializes(t, a)
+	})
+
+	t.Run("unhealthy http target reports detail and status code", func(t *testing.T) {
+		detail := hcloud.LoadBalancerTargetHealthStatusDetailUnexpectedHTTPStatus
+		code := 503
+		a := loadBalancerHealthStatusDicts([]hcloud.LoadBalancerTargetHealthStatus{
+			{
+				ListenPort:     80,
+				Status:         hcloud.LoadBalancerTargetHealthStatusStatusUnhealthy,
+				Detail:         &detail,
+				HTTPStatusCode: &code,
+			},
+		})
+		require.Len(t, a, 1)
+		d := a[0].(map[string]any)
+		assert.Equal(t, "unhealthy", d["status"])
+		assert.Equal(t, "unexpected_http_status", d["detail"])
+		// HTTPStatusCode is hcloud `*int`, widened to int64 to serialize.
+		assert.Equal(t, int64(503), d["httpStatusCode"])
+		requireDictArraySerializes(t, a)
+	})
+
+	t.Run("tcp failure reports detail without a status code", func(t *testing.T) {
+		detail := hcloud.LoadBalancerTargetHealthStatusDetailLayer4NoConnection
+		a := loadBalancerHealthStatusDicts([]hcloud.LoadBalancerTargetHealthStatus{
+			{ListenPort: 5432, Status: hcloud.LoadBalancerTargetHealthStatusStatusUnhealthy, Detail: &detail},
+		})
+		require.Len(t, a, 1)
+		d := a[0].(map[string]any)
+		assert.Equal(t, "layer4_no_connection", d["detail"])
+		assert.Nil(t, d["httpStatusCode"])
+		requireDictArraySerializes(t, a)
+	})
 }

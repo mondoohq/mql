@@ -809,7 +809,14 @@ private hetzner.loadBalancer.target @defaults("type") {
   loadBalancer() hetzner.loadBalancer
   // Target type (server, label_selector, ip)
   type string
-  // Health status of the target [{listenPort, status}]
+  // Health status of the target per listen port
+  //
+  // Each entry carries listenPort, status (healthy, unhealthy, or unknown),
+  // detail, and httpStatusCode. detail gives the reason a health check failed;
+  // known values are unspecified, layer4_no_connection, layer4_timeout,
+  // layer7_timeout, unexpected_http_status, and unexpected_http_content.
+  // httpStatusCode is the status code an HTTP health check received. Both are
+  // null when the API reports no value, for example on a healthy target.
   healthStatus []dict
   // Whether to route traffic to the target's private IP
   usePrivateIp bool

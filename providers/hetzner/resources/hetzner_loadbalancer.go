@@ -321,14 +321,26 @@ func (r *mqlHetznerLoadBalancerTarget) id() (string, error) {
 }
 
 // loadBalancerHealthStatusDicts renders a target's per-listener health status as
-// dicts. ListenPort is an hcloud `int`, widened to int64 so the healthStatus
-// []dict field serializes (a raw int fails the dict-to-primitive converter).
+// dicts. ListenPort and HTTPStatusCode are hcloud `int`s, widened to int64 so the
+// healthStatus []dict field serializes (a raw int fails the dict-to-primitive
+// converter). Detail and HTTPStatusCode stay nil when the API omits them (a
+// healthy target, or a failure with no HTTP response), never "" or 0.
 func loadBalancerHealthStatusDicts(statuses []hcloud.LoadBalancerTargetHealthStatus) []any {
 	out := make([]any, 0, len(statuses))
 	for _, hs := range statuses {
+		var detail any
+		if hs.Detail != nil {
+			detail = string(*hs.Detail)
+		}
+		var httpStatusCode any
+		if hs.HTTPStatusCode != nil {
+			httpStatusCode = int64(*hs.HTTPStatusCode)
+		}
 		out = append(out, map[string]any{
-			"listenPort": int64(hs.ListenPort),
-			"status":     string(hs.Status),
+			"listenPort":     int64(hs.ListenPort),
+			"status":         string(hs.Status),
+			"detail":         detail,
+			"httpStatusCode": httpStatusCode,
 		})
 	}
 	return out
