@@ -393,6 +393,21 @@ func (c *mqlNetworkRoutes) defaults() ([]any, error) {
 	return defaultRoutes, nil
 }
 
+// iface hands back the interface the route was listed with. networkRoutes
+// sets it while building each route, so this only runs for a route that was
+// created without one -- a bare `networkRoute` in a query, or a recording that
+// never captured the field.
+//
+// Returning a nil *mqlNetworkInterface with no error would tell the runtime
+// the field resolved to a resource, and the nil would then be dereferenced
+// when its id was read. The field has to say it resolved to nothing instead.
 func (c *mqlNetworkRoute) iface() (*mqlNetworkInterface, error) {
-	return c.Iface.Data, c.Iface.Error
+	if c.Iface.Error != nil {
+		return nil, c.Iface.Error
+	}
+	if c.Iface.Data == nil {
+		c.Iface.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return c.Iface.Data, nil
 }
