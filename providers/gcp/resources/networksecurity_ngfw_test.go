@@ -95,3 +95,72 @@ func TestZonesOnly(t *testing.T) {
 	}
 	assert.Equal(t, []string{"us-central1-a", "europe-west4-c"}, zonesOnly(locs))
 }
+
+func TestGoogleDurationMillis(t *testing.T) {
+	assert.Nil(t, googleDurationMillis(""))
+	assert.Nil(t, googleDurationMillis("not-a-duration"))
+	if got := googleDurationMillis("1s"); assert.NotNil(t, got) {
+		assert.Equal(t, int64(1000), *got)
+	}
+	if got := googleDurationMillis("0.250s"); assert.NotNil(t, got) {
+		assert.Equal(t, int64(250), *got)
+	}
+}
+
+func TestFirewallEndpointWildfireArgs(t *testing.T) {
+	keys := []string{
+		"wildfireEnabled", "wildfireLookupTimeoutAction", "wildfireLookupDurationMs",
+		"wildfireRegion", "wildfireInlineCloudAnalysis",
+	}
+
+	// An endpoint without WildFire settings must not read as WildFire disabled.
+	t.Run("absent settings make every field null", func(t *testing.T) {
+		args := firewallEndpointWildfireArgs(nil)
+		for _, k := range keys {
+			if assert.Contains(t, args, k) {
+				assert.Nil(t, args[k].Value, k)
+			}
+		}
+	})
+
+	t.Run("maps the settings", func(t *testing.T) {
+		args := firewallEndpointWildfireArgs(&networksecurity.FirewallEndpointWildfireSettings{
+			Enabled:                             true,
+			WildfireRealtimeLookupTimeoutAction: "DENY",
+			WildfireRealtimeLookupDuration:      "2s",
+			WildfireRegion:                      "GERMANY",
+			WildfireInlineCloudAnalysisSettings: &networksecurity.FirewallEndpointWildfireSettingsWildfireInlineCloudAnalysisSettings{
+				MaxAnalysisDuration:              "30s",
+				SubmissionTimeoutLoggingDisabled: true,
+				TimeoutAction:                    "DENY",
+			},
+		})
+		assert.Equal(t, true, args["wildfireEnabled"].Value)
+		assert.Equal(t, "DENY", args["wildfireLookupTimeoutAction"].Value)
+		assert.Equal(t, int64(2000), args["wildfireLookupDurationMs"].Value)
+		assert.Equal(t, "GERMANY", args["wildfireRegion"].Value)
+		assert.Equal(t, map[string]any{
+			"timeoutAction":                    "DENY",
+			"maxAnalysisDurationMs":            int64(30000),
+			"submissionTimeoutLoggingDisabled": true,
+		}, args["wildfireInlineCloudAnalysis"].Value)
+	})
+
+	t.Run("unset lookup duration and inline analysis are null", func(t *testing.T) {
+		args := firewallEndpointWildfireArgs(&networksecurity.FirewallEndpointWildfireSettings{})
+		assert.Equal(t, false, args["wildfireEnabled"].Value)
+		assert.Nil(t, args["wildfireLookupDurationMs"].Value)
+		assert.Nil(t, args["wildfireInlineCloudAnalysis"].Value)
+	})
+
+	t.Run("unset max analysis duration is null inside the dict", func(t *testing.T) {
+		args := firewallEndpointWildfireArgs(&networksecurity.FirewallEndpointWildfireSettings{
+			WildfireInlineCloudAnalysisSettings: &networksecurity.FirewallEndpointWildfireSettingsWildfireInlineCloudAnalysisSettings{
+				TimeoutAction: "ALLOW",
+			},
+		})
+		m := args["wildfireInlineCloudAnalysis"].Value.(map[string]any)
+		assert.Contains(t, m, "maxAnalysisDurationMs")
+		assert.Nil(t, m["maxAnalysisDurationMs"])
+	})
+}

@@ -59,19 +59,7 @@ func listHierarchicalFirewallPolicies(runtime *plugin.Runtime, parent string) ([
 				continue
 			}
 
-			associations := make([]any, 0, len(p.Associations))
-			for _, a := range p.Associations {
-				if a == nil {
-					continue
-				}
-				associations = append(associations, map[string]any{
-					"name":             a.Name,
-					"attachmentTarget": a.AttachmentTarget,
-					"firewallPolicyId": a.FirewallPolicyId,
-					"shortName":        a.ShortName,
-					"displayName":      a.DisplayName,
-				})
-			}
+			associations := hierarchicalFirewallPolicyAssociations(p.Associations)
 
 			mqlPolicy, err := CreateResource(runtime, "gcp.hierarchicalFirewallPolicy", map[string]*llx.RawData{
 				"name":           llx.StringData(p.Name),
@@ -100,6 +88,31 @@ func listHierarchicalFirewallPolicies(runtime *plugin.Runtime, parent string) ([
 	}
 
 	return res, nil
+}
+
+// hierarchicalFirewallPolicyAssociations maps a policy's associations to
+// dicts. Priority is null when the API reports none: 0 is not a valid
+// priority (1 is the highest).
+func hierarchicalFirewallPolicyAssociations(in []*compute.FirewallPolicyAssociation) []any {
+	res := make([]any, 0, len(in))
+	for _, a := range in {
+		if a == nil {
+			continue
+		}
+		var priority any
+		if a.Priority != 0 {
+			priority = a.Priority
+		}
+		res = append(res, map[string]any{
+			"name":             a.Name,
+			"attachmentTarget": a.AttachmentTarget,
+			"firewallPolicyId": a.FirewallPolicyId,
+			"shortName":        a.ShortName,
+			"displayName":      a.DisplayName,
+			"priority":         priority,
+		})
+	}
+	return res
 }
 
 // rules maps the policy's rules, reusing the mapping that serves network

@@ -3052,6 +3052,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.organization.networkSecurityProfile.customInterceptProfile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationNetworkSecurityProfile).GetCustomInterceptProfile()).ToDataRes(types.Dict)
 	},
+	"gcp.organization.networkSecurityProfile.wildfireAnalysisProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationNetworkSecurityProfile).GetWildfireAnalysisProfile()).ToDataRes(types.Dict)
+	},
 	"gcp.organization.networkSecurityProfile.labels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationNetworkSecurityProfile).GetLabels()).ToDataRes(types.Map(types.String, types.String))
 	},
@@ -3088,6 +3091,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.organization.firewallEndpoint.jumboFramesEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetJumboFramesEnabled()).ToDataRes(types.Bool)
 	},
+	"gcp.organization.firewallEndpoint.httpPartialResponseBlocked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetHttpPartialResponseBlocked()).ToDataRes(types.Bool)
+	},
+	"gcp.organization.firewallEndpoint.contentCloudRegion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetContentCloudRegion()).ToDataRes(types.String)
+	},
+	"gcp.organization.firewallEndpoint.wildfireEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetWildfireEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.organization.firewallEndpoint.wildfireLookupTimeoutAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetWildfireLookupTimeoutAction()).ToDataRes(types.String)
+	},
+	"gcp.organization.firewallEndpoint.wildfireLookupDurationMs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetWildfireLookupDurationMs()).ToDataRes(types.Int)
+	},
+	"gcp.organization.firewallEndpoint.wildfireRegion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetWildfireRegion()).ToDataRes(types.String)
+	},
+	"gcp.organization.firewallEndpoint.wildfireInlineCloudAnalysis": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetWildfireInlineCloudAnalysis()).ToDataRes(types.Dict)
+	},
 	"gcp.organization.firewallEndpoint.labels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetLabels()).ToDataRes(types.Map(types.String, types.String))
 	},
@@ -3111,6 +3135,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.organization.networkSecurityProfileGroup.customInterceptProfile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationNetworkSecurityProfileGroup).GetCustomInterceptProfile()).ToDataRes(types.String)
+	},
+	"gcp.organization.networkSecurityProfileGroup.wildfireAnalysisProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationNetworkSecurityProfileGroup).GetWildfireAnalysisProfile()).ToDataRes(types.Resource("gcp.organization.networkSecurityProfile"))
+	},
+	"gcp.organization.networkSecurityProfileGroup.urlFilteringProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationNetworkSecurityProfileGroup).GetUrlFilteringProfile()).ToDataRes(types.Resource("gcp.organization.networkSecurityProfile"))
 	},
 	"gcp.organization.networkSecurityProfileGroup.labels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationNetworkSecurityProfileGroup).GetLabels()).ToDataRes(types.Map(types.String, types.String))
@@ -6117,6 +6147,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.sqlService.instance.diskEncryptionStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectSqlServiceInstance).GetDiskEncryptionStatus()).ToDataRes(types.Dict)
+	},
+	"gcp.project.sqlService.instance.cmekSourceLogEncryptionEnforced": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectSqlServiceInstance).GetCmekSourceLogEncryptionEnforced()).ToDataRes(types.Bool)
 	},
 	"gcp.project.sqlService.instance.diskConfidentialMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectSqlServiceInstance).GetDiskConfidentialMode()).ToDataRes(types.Bool)
@@ -20439,6 +20472,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpOrganizationNetworkSecurityProfile).CustomInterceptProfile, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"gcp.organization.networkSecurityProfile.wildfireAnalysisProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationNetworkSecurityProfile).WildfireAnalysisProfile, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
 	"gcp.organization.networkSecurityProfile.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpOrganizationNetworkSecurityProfile).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
@@ -20491,6 +20528,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpOrganizationFirewallEndpoint).JumboFramesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"gcp.organization.firewallEndpoint.httpPartialResponseBlocked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).HttpPartialResponseBlocked, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.contentCloudRegion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).ContentCloudRegion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.wildfireEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).WildfireEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.wildfireLookupTimeoutAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).WildfireLookupTimeoutAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.wildfireLookupDurationMs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).WildfireLookupDurationMs, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.wildfireRegion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).WildfireRegion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.wildfireInlineCloudAnalysis": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).WildfireInlineCloudAnalysis, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
 	"gcp.organization.firewallEndpoint.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpOrganizationFirewallEndpoint).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
@@ -20525,6 +20590,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.organization.networkSecurityProfileGroup.customInterceptProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpOrganizationNetworkSecurityProfileGroup).CustomInterceptProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.networkSecurityProfileGroup.wildfireAnalysisProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationNetworkSecurityProfileGroup).WildfireAnalysisProfile, ok = plugin.RawToTValue[*mqlGcpOrganizationNetworkSecurityProfile](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.networkSecurityProfileGroup.urlFilteringProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationNetworkSecurityProfileGroup).UrlFilteringProfile, ok = plugin.RawToTValue[*mqlGcpOrganizationNetworkSecurityProfile](v.Value, v.Error)
 		return
 	},
 	"gcp.organization.networkSecurityProfileGroup.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -24801,6 +24874,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.sqlService.instance.diskEncryptionStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectSqlServiceInstance).DiskEncryptionStatus, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.sqlService.instance.cmekSourceLogEncryptionEnforced": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectSqlServiceInstance).CmekSourceLogEncryptionEnforced, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"gcp.project.sqlService.instance.diskConfidentialMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -46291,6 +46368,7 @@ type mqlGcpOrganizationNetworkSecurityProfile struct {
 	UrlFilteringProfile     plugin.TValue[any]
 	CustomMirroringProfile  plugin.TValue[any]
 	CustomInterceptProfile  plugin.TValue[any]
+	WildfireAnalysisProfile plugin.TValue[any]
 	Labels                  plugin.TValue[map[string]any]
 	Etag                    plugin.TValue[string]
 	Created                 plugin.TValue[*time.Time]
@@ -46362,6 +46440,10 @@ func (c *mqlGcpOrganizationNetworkSecurityProfile) GetCustomInterceptProfile() *
 	return &c.CustomInterceptProfile
 }
 
+func (c *mqlGcpOrganizationNetworkSecurityProfile) GetWildfireAnalysisProfile() *plugin.TValue[any] {
+	return &c.WildfireAnalysisProfile
+}
+
 func (c *mqlGcpOrganizationNetworkSecurityProfile) GetLabels() *plugin.TValue[map[string]any] {
 	return &c.Labels
 }
@@ -46383,17 +46465,24 @@ type mqlGcpOrganizationFirewallEndpoint struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGcpOrganizationFirewallEndpointInternal
-	Name               plugin.TValue[string]
-	Zone               plugin.TValue[string]
-	Description        plugin.TValue[string]
-	State              plugin.TValue[string]
-	Reconciling        plugin.TValue[bool]
-	AssociatedNetworks plugin.TValue[[]any]
-	BillingProject     plugin.TValue[*mqlGcpProject]
-	JumboFramesEnabled plugin.TValue[bool]
-	Labels             plugin.TValue[map[string]any]
-	Created            plugin.TValue[*time.Time]
-	Updated            plugin.TValue[*time.Time]
+	Name                        plugin.TValue[string]
+	Zone                        plugin.TValue[string]
+	Description                 plugin.TValue[string]
+	State                       plugin.TValue[string]
+	Reconciling                 plugin.TValue[bool]
+	AssociatedNetworks          plugin.TValue[[]any]
+	BillingProject              plugin.TValue[*mqlGcpProject]
+	JumboFramesEnabled          plugin.TValue[bool]
+	HttpPartialResponseBlocked  plugin.TValue[bool]
+	ContentCloudRegion          plugin.TValue[string]
+	WildfireEnabled             plugin.TValue[bool]
+	WildfireLookupTimeoutAction plugin.TValue[string]
+	WildfireLookupDurationMs    plugin.TValue[int64]
+	WildfireRegion              plugin.TValue[string]
+	WildfireInlineCloudAnalysis plugin.TValue[any]
+	Labels                      plugin.TValue[map[string]any]
+	Created                     plugin.TValue[*time.Time]
+	Updated                     plugin.TValue[*time.Time]
 }
 
 // createGcpOrganizationFirewallEndpoint creates a new instance of this resource
@@ -46489,6 +46578,34 @@ func (c *mqlGcpOrganizationFirewallEndpoint) GetJumboFramesEnabled() *plugin.TVa
 	return &c.JumboFramesEnabled
 }
 
+func (c *mqlGcpOrganizationFirewallEndpoint) GetHttpPartialResponseBlocked() *plugin.TValue[bool] {
+	return &c.HttpPartialResponseBlocked
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetContentCloudRegion() *plugin.TValue[string] {
+	return &c.ContentCloudRegion
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetWildfireEnabled() *plugin.TValue[bool] {
+	return &c.WildfireEnabled
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetWildfireLookupTimeoutAction() *plugin.TValue[string] {
+	return &c.WildfireLookupTimeoutAction
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetWildfireLookupDurationMs() *plugin.TValue[int64] {
+	return &c.WildfireLookupDurationMs
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetWildfireRegion() *plugin.TValue[string] {
+	return &c.WildfireRegion
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetWildfireInlineCloudAnalysis() *plugin.TValue[any] {
+	return &c.WildfireInlineCloudAnalysis
+}
+
 func (c *mqlGcpOrganizationFirewallEndpoint) GetLabels() *plugin.TValue[map[string]any] {
 	return &c.Labels
 }
@@ -46505,12 +46622,14 @@ func (c *mqlGcpOrganizationFirewallEndpoint) GetUpdated() *plugin.TValue[*time.T
 type mqlGcpOrganizationNetworkSecurityProfileGroup struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGcpOrganizationNetworkSecurityProfileGroupInternal it will be used here
+	mqlGcpOrganizationNetworkSecurityProfileGroupInternal
 	Name                    plugin.TValue[string]
 	Description             plugin.TValue[string]
 	ThreatPreventionProfile plugin.TValue[string]
 	CustomMirroringProfile  plugin.TValue[string]
 	CustomInterceptProfile  plugin.TValue[string]
+	WildfireAnalysisProfile plugin.TValue[*mqlGcpOrganizationNetworkSecurityProfile]
+	UrlFilteringProfile     plugin.TValue[*mqlGcpOrganizationNetworkSecurityProfile]
 	Labels                  plugin.TValue[map[string]any]
 	Etag                    plugin.TValue[string]
 	Created                 plugin.TValue[*time.Time]
@@ -46572,6 +46691,38 @@ func (c *mqlGcpOrganizationNetworkSecurityProfileGroup) GetCustomMirroringProfil
 
 func (c *mqlGcpOrganizationNetworkSecurityProfileGroup) GetCustomInterceptProfile() *plugin.TValue[string] {
 	return &c.CustomInterceptProfile
+}
+
+func (c *mqlGcpOrganizationNetworkSecurityProfileGroup) GetWildfireAnalysisProfile() *plugin.TValue[*mqlGcpOrganizationNetworkSecurityProfile] {
+	return plugin.GetOrCompute[*mqlGcpOrganizationNetworkSecurityProfile](&c.WildfireAnalysisProfile, func() (*mqlGcpOrganizationNetworkSecurityProfile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization.networkSecurityProfileGroup", c.__id, "wildfireAnalysisProfile")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpOrganizationNetworkSecurityProfile), nil
+			}
+		}
+
+		return c.wildfireAnalysisProfile()
+	})
+}
+
+func (c *mqlGcpOrganizationNetworkSecurityProfileGroup) GetUrlFilteringProfile() *plugin.TValue[*mqlGcpOrganizationNetworkSecurityProfile] {
+	return plugin.GetOrCompute[*mqlGcpOrganizationNetworkSecurityProfile](&c.UrlFilteringProfile, func() (*mqlGcpOrganizationNetworkSecurityProfile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization.networkSecurityProfileGroup", c.__id, "urlFilteringProfile")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpOrganizationNetworkSecurityProfile), nil
+			}
+		}
+
+		return c.urlFilteringProfile()
+	})
 }
 
 func (c *mqlGcpOrganizationNetworkSecurityProfileGroup) GetLabels() *plugin.TValue[map[string]any] {
@@ -57222,6 +57373,7 @@ type mqlGcpProjectSqlServiceInstance struct {
 	DatabaseVersion                            plugin.TValue[string]
 	DiskEncryptionConfiguration                plugin.TValue[any]
 	DiskEncryptionStatus                       plugin.TValue[any]
+	CmekSourceLogEncryptionEnforced            plugin.TValue[bool]
 	DiskConfidentialMode                       plugin.TValue[bool]
 	KmsKey                                     plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey]
 	FailoverReplica                            plugin.TValue[any]
@@ -57348,6 +57500,10 @@ func (c *mqlGcpProjectSqlServiceInstance) GetDiskEncryptionConfiguration() *plug
 
 func (c *mqlGcpProjectSqlServiceInstance) GetDiskEncryptionStatus() *plugin.TValue[any] {
 	return &c.DiskEncryptionStatus
+}
+
+func (c *mqlGcpProjectSqlServiceInstance) GetCmekSourceLogEncryptionEnforced() *plugin.TValue[bool] {
+	return &c.CmekSourceLogEncryptionEnforced
 }
 
 func (c *mqlGcpProjectSqlServiceInstance) GetDiskConfidentialMode() *plugin.TValue[bool] {

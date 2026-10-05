@@ -102,8 +102,83 @@ func (g *mqlGcpOrganizationNetworkSecurityProfile) id() (string, error) {
 	return g.Name.Data, g.Name.Error
 }
 
+type mqlGcpOrganizationNetworkSecurityProfileGroupInternal struct {
+	// cacheOrg is the organization the group was listed under, whose profile
+	// list resolves the group's profile references.
+	cacheOrg                     *mqlGcpOrganization
+	cacheWildfireAnalysisProfile string
+	cacheUrlFilteringProfile     string
+}
+
 func (g *mqlGcpOrganizationNetworkSecurityProfileGroup) id() (string, error) {
 	return g.Name.Data, g.Name.Error
+}
+
+// wildfireAnalysisProfileDict maps a WildFire analysis profile to a dict,
+// leaving out the deprecated list form of the inline ML settings. Absent
+// profiles yield nil.
+func wildfireAnalysisProfileDict(p *networksecurity.WildfireAnalysisProfile) (map[string]any, error) {
+	if p == nil {
+		return nil, nil
+	}
+	cp := *p
+	cp.WildfireInlineMlSettings = nil
+	return convert.JsonToDict(cp)
+}
+
+// findNetworkSecurityProfile returns the profile with the given resource name
+// from an already-listed set of profiles, or nil when none matches.
+func findNetworkSecurityProfile(profiles []any, name string) *mqlGcpOrganizationNetworkSecurityProfile {
+	if name == "" {
+		return nil
+	}
+	for _, raw := range profiles {
+		p, ok := raw.(*mqlGcpOrganizationNetworkSecurityProfile)
+		if !ok || p == nil {
+			continue
+		}
+		if p.Name.Error == nil && p.Name.Data == name {
+			return p
+		}
+	}
+	return nil
+}
+
+// resolveProfile resolves a profile reference against the organization's
+// profile list, so each group costs no extra API call.
+func (g *mqlGcpOrganizationNetworkSecurityProfileGroup) resolveProfile(name string) (*mqlGcpOrganizationNetworkSecurityProfile, error) {
+	if name == "" || g.cacheOrg == nil {
+		return nil, nil
+	}
+	profiles := g.cacheOrg.GetNetworkSecurityProfiles()
+	if profiles.Error != nil {
+		return nil, profiles.Error
+	}
+	return findNetworkSecurityProfile(profiles.Data, name), nil
+}
+
+func (g *mqlGcpOrganizationNetworkSecurityProfileGroup) wildfireAnalysisProfile() (*mqlGcpOrganizationNetworkSecurityProfile, error) {
+	p, err := g.resolveProfile(g.cacheWildfireAnalysisProfile)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		g.WildfireAnalysisProfile.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return p, nil
+}
+
+func (g *mqlGcpOrganizationNetworkSecurityProfileGroup) urlFilteringProfile() (*mqlGcpOrganizationNetworkSecurityProfile, error) {
+	p, err := g.resolveProfile(g.cacheUrlFilteringProfile)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		g.UrlFilteringProfile.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return p, nil
 }
 
 // networkSecurityHTTPClient resolves an authenticated HTTP client for the
@@ -570,6 +645,14 @@ func (g *mqlGcpOrganization) networkSecurityProfiles() ([]any, error) {
 			if err != nil {
 				return err
 			}
+			wildfireAnalysisProfile, err := wildfireAnalysisProfileDict(sp.WildfireAnalysisProfile)
+			if err != nil {
+				return err
+			}
+			wildfireAnalysisProfileData := llx.NilData
+			if wildfireAnalysisProfile != nil {
+				wildfireAnalysisProfileData = llx.DictData(wildfireAnalysisProfile)
+			}
 			mqlProfile, err := CreateResource(g.MqlRuntime, "gcp.organization.networkSecurityProfile", map[string]*llx.RawData{
 				"name":                    llx.StringData(sp.Name),
 				"description":             llx.StringData(sp.Description),
@@ -578,6 +661,7 @@ func (g *mqlGcpOrganization) networkSecurityProfiles() ([]any, error) {
 				"urlFilteringProfile":     llx.DictData(urlFilteringProfile),
 				"customMirroringProfile":  llx.DictData(customMirroringProfile),
 				"customInterceptProfile":  llx.DictData(customInterceptProfile),
+				"wildfireAnalysisProfile": wildfireAnalysisProfileData,
 				"labels":                  llx.MapData(convert.MapToInterfaceMap(sp.Labels), types.String),
 				"etag":                    llx.StringData(sp.Etag),
 				"created":                 llx.TimeDataPtr(parseTime(sp.CreateTime)),
@@ -639,6 +723,10 @@ func (g *mqlGcpOrganization) networkSecurityProfileGroups() ([]any, error) {
 			if err != nil {
 				return err
 			}
+			internal := mqlGroup.(*mqlGcpOrganizationNetworkSecurityProfileGroup)
+			internal.cacheOrg = g
+			internal.cacheWildfireAnalysisProfile = spg.WildfireAnalysisProfile
+			internal.cacheUrlFilteringProfile = spg.UrlFilteringProfile
 			res = append(res, mqlGroup)
 		}
 		return nil

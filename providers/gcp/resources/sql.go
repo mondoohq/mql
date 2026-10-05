@@ -304,6 +304,30 @@ func (g *mqlGcpProject) sql() (*mqlGcpProjectSqlService, error) {
 // means not enabled: Cloud SQL only supports Confidential Mode on zonal C4A
 // instances, so false is the truthful reading everywhere else, and reporting it
 // as such keeps an "is confidential mode on" check failing rather than erroring.
+// sqlDiskEncryptionConfigDict maps an instance's customer-managed encryption
+// configuration to the diskEncryptionConfiguration dict. Absent
+// configurations yield nil.
+func sqlDiskEncryptionConfigDict(cfg *sqladmin.DiskEncryptionConfiguration) map[string]any {
+	if cfg == nil {
+		return nil
+	}
+	return map[string]any{
+		"kmsKeyName":                      cfg.KmsKeyName,
+		"cmekSourceLogEncryptionEnforced": cfg.CmekSourceLogEncryptionEnforced,
+	}
+}
+
+// sqlCmekSourceLogEncryptionEnforced reports whether transaction logs are
+// encrypted with the customer-managed key at source. It is nil when the
+// instance has no customer-managed key, where the setting does not apply.
+func sqlCmekSourceLogEncryptionEnforced(cfg *sqladmin.DiskEncryptionConfiguration) *bool {
+	if cfg == nil || cfg.KmsKeyName == "" {
+		return nil
+	}
+	v := cfg.CmekSourceLogEncryptionEnforced
+	return &v
+}
+
 func sqlDiskConfidentialMode(cfg *sqladmin.DiskEncryptionConfiguration) bool {
 	if cfg == nil {
 		return false
@@ -346,18 +370,7 @@ func (g *mqlGcpProjectSqlService) instances() ([]any, error) {
 			instance := page.Items[i]
 			instanceId := fmt.Sprintf("%s/%s", projectId, instance.Name)
 
-			type mqlDiskEncryptionCfg struct {
-				KmsKeyName string `json:"kmsKeyName"`
-			}
-			var mqlEncCfg map[string]any
-			if instance.DiskEncryptionConfiguration != nil {
-				mqlEncCfg, err = convert.JsonToDict(mqlDiskEncryptionCfg{
-					KmsKeyName: instance.DiskEncryptionConfiguration.KmsKeyName,
-				})
-				if err != nil {
-					return err
-				}
-			}
+			mqlEncCfg := sqlDiskEncryptionConfigDict(instance.DiskEncryptionConfiguration)
 
 			type mqlDiskEncryptionStatus struct {
 				KmsKeyVersionName string `json:"kmsKeyVersionName"`
@@ -872,32 +885,33 @@ func (g *mqlGcpProjectSqlService) instances() ([]any, error) {
 			}
 
 			mqlInstance, err := CreateResource(g.MqlRuntime, "gcp.project.sqlService.instance", map[string]*llx.RawData{
-				"availableMaintenanceVersions": llx.ArrayData(convert.SliceAnyToInterface(instance.AvailableMaintenanceVersions), types.String),
-				"backendType":                  llx.StringData(instance.BackendType),
-				"connectionName":               llx.StringData(instance.ConnectionName),
-				"created":                      llx.TimeDataPtr(parseTime(instance.CreateTime)),
-				"databaseInstalledVersion":     llx.StringData(instance.DatabaseInstalledVersion),
-				"databaseVersion":              llx.StringData(instance.DatabaseVersion),
-				"diskEncryptionConfiguration":  llx.DictData(mqlEncCfg),
-				"diskConfidentialMode":         llx.BoolData(sqlDiskConfidentialMode(instance.DiskEncryptionConfiguration)),
-				"diskEncryptionStatus":         llx.DictData(mqlEncStatus),
-				"failoverReplica":              llx.DictData(mqlFailoverReplica),
-				"instanceType":                 llx.StringData(instance.InstanceType),
-				"ipAddresses":                  llx.ArrayData(mqlIpAddresses, types.Resource("gcp.project.sqlService.instance.ipMapping")),
-				"maintenanceVersion":           llx.StringData(instance.MaintenanceVersion),
-				"masterInstanceName":           llx.StringData(instance.MasterInstanceName),
-				"maxDiskSize":                  llx.IntData(instance.MaxDiskSize),
-				"name":                         llx.StringData(instance.Name),
-				"projectId":                    llx.StringData(projectId),
-				"region":                       llx.StringData(instance.Region),
-				"replicaNames":                 llx.ArrayData(convert.SliceAnyToInterface(instance.ReplicaNames), types.String),
-				"settings":                     llx.ResourceData(mqlSettings, "gcp.project.sqlService.instance.settings"),
-				"state":                        llx.StringData(instance.State),
-				"satisfiesPzi":                 llx.BoolData(instance.SatisfiesPzi),
-				"satisfiesPzs":                 llx.BoolData(instance.SatisfiesPzs),
-				"dnsName":                      llx.StringData(instance.DnsName),
-				"sqlNetworkArchitecture":       llx.StringData(instance.SqlNetworkArchitecture),
-				"suspensionReason":             llx.ArrayData(convert.SliceAnyToInterface(instance.SuspensionReason), types.String),
+				"availableMaintenanceVersions":    llx.ArrayData(convert.SliceAnyToInterface(instance.AvailableMaintenanceVersions), types.String),
+				"backendType":                     llx.StringData(instance.BackendType),
+				"connectionName":                  llx.StringData(instance.ConnectionName),
+				"created":                         llx.TimeDataPtr(parseTime(instance.CreateTime)),
+				"databaseInstalledVersion":        llx.StringData(instance.DatabaseInstalledVersion),
+				"databaseVersion":                 llx.StringData(instance.DatabaseVersion),
+				"diskEncryptionConfiguration":     llx.DictData(mqlEncCfg),
+				"cmekSourceLogEncryptionEnforced": llx.BoolDataPtr(sqlCmekSourceLogEncryptionEnforced(instance.DiskEncryptionConfiguration)),
+				"diskConfidentialMode":            llx.BoolData(sqlDiskConfidentialMode(instance.DiskEncryptionConfiguration)),
+				"diskEncryptionStatus":            llx.DictData(mqlEncStatus),
+				"failoverReplica":                 llx.DictData(mqlFailoverReplica),
+				"instanceType":                    llx.StringData(instance.InstanceType),
+				"ipAddresses":                     llx.ArrayData(mqlIpAddresses, types.Resource("gcp.project.sqlService.instance.ipMapping")),
+				"maintenanceVersion":              llx.StringData(instance.MaintenanceVersion),
+				"masterInstanceName":              llx.StringData(instance.MasterInstanceName),
+				"maxDiskSize":                     llx.IntData(instance.MaxDiskSize),
+				"name":                            llx.StringData(instance.Name),
+				"projectId":                       llx.StringData(projectId),
+				"region":                          llx.StringData(instance.Region),
+				"replicaNames":                    llx.ArrayData(convert.SliceAnyToInterface(instance.ReplicaNames), types.String),
+				"settings":                        llx.ResourceData(mqlSettings, "gcp.project.sqlService.instance.settings"),
+				"state":                           llx.StringData(instance.State),
+				"satisfiesPzi":                    llx.BoolData(instance.SatisfiesPzi),
+				"satisfiesPzs":                    llx.BoolData(instance.SatisfiesPzs),
+				"dnsName":                         llx.StringData(instance.DnsName),
+				"sqlNetworkArchitecture":          llx.StringData(instance.SqlNetworkArchitecture),
+				"suspensionReason":                llx.ArrayData(convert.SliceAnyToInterface(instance.SuspensionReason), types.String),
 				"switchTransactionLogsToCloudStorageEnabled": llx.BoolData(instance.SwitchTransactionLogsToCloudStorageEnabled),
 				"primaryDnsName":             llx.StringData(instance.PrimaryDnsName),
 				"writeEndpoint":              llx.StringData(instance.WriteEndpoint),

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
@@ -94,22 +95,80 @@ func (g *mqlGcpOrganizationFirewallEndpoint) id() (string, error) {
 	return g.Name.Data, g.Name.Error
 }
 
+// googleDurationMillis converts a google-duration string ("1s", "0.500s")
+// into milliseconds. Empty or unparseable values yield nil.
+func googleDurationMillis(d string) *int64 {
+	if d == "" {
+		return nil
+	}
+	parsed, err := time.ParseDuration(d)
+	if err != nil {
+		return nil
+	}
+	ms := parsed.Milliseconds()
+	return &ms
+}
+
+// firewallEndpointWildfireArgs maps an endpoint's WildFire settings onto the
+// resource's wildfire* fields. Every field is null when the endpoint carries
+// no WildFire settings, so an absent block never reads as disabled.
+func firewallEndpointWildfireArgs(w *networksecurity.FirewallEndpointWildfireSettings) map[string]*llx.RawData {
+	if w == nil {
+		return map[string]*llx.RawData{
+			"wildfireEnabled":             llx.NilData,
+			"wildfireLookupTimeoutAction": llx.NilData,
+			"wildfireLookupDurationMs":    llx.NilData,
+			"wildfireRegion":              llx.NilData,
+			"wildfireInlineCloudAnalysis": llx.NilData,
+		}
+	}
+	inline := llx.NilData
+	if a := w.WildfireInlineCloudAnalysisSettings; a != nil {
+		var maxDuration any
+		if ms := googleDurationMillis(a.MaxAnalysisDuration); ms != nil {
+			maxDuration = *ms
+		}
+		inline = llx.DictData(map[string]any{
+			"timeoutAction":                    a.TimeoutAction,
+			"maxAnalysisDurationMs":            maxDuration,
+			"submissionTimeoutLoggingDisabled": a.SubmissionTimeoutLoggingDisabled,
+		})
+	}
+	return map[string]*llx.RawData{
+		"wildfireEnabled":             llx.BoolData(w.Enabled),
+		"wildfireLookupTimeoutAction": llx.StringData(w.WildfireRealtimeLookupTimeoutAction),
+		"wildfireLookupDurationMs":    llx.IntDataPtr(googleDurationMillis(w.WildfireRealtimeLookupDuration)),
+		"wildfireRegion":              llx.StringData(w.WildfireRegion),
+		"wildfireInlineCloudAnalysis": inline,
+	}
+}
+
 func newMqlFirewallEndpoint(runtime *plugin.Runtime, e *networksecurity.FirewallEndpoint) (*mqlGcpOrganizationFirewallEndpoint, error) {
 	jumboFrames := false
+	httpPartialResponseBlocked := false
+	contentCloudRegion := ""
 	if e.EndpointSettings != nil {
 		jumboFrames = e.EndpointSettings.JumboFramesEnabled
+		httpPartialResponseBlocked = e.EndpointSettings.HttpPartialResponseBlocked
+		contentCloudRegion = e.EndpointSettings.ContentCloudRegion
 	}
-	res, err := CreateResource(runtime, "gcp.organization.firewallEndpoint", map[string]*llx.RawData{
-		"name":               llx.StringData(e.Name),
-		"zone":               llx.StringData(parseLocationFromPath(e.Name)),
-		"description":        llx.StringData(e.Description),
-		"state":              llx.StringData(e.State),
-		"reconciling":        llx.BoolData(e.Reconciling),
-		"jumboFramesEnabled": llx.BoolData(jumboFrames),
-		"labels":             llx.MapData(convert.MapToInterfaceMap(e.Labels), types.String),
-		"created":            llx.TimeDataPtr(parseTime(e.CreateTime)),
-		"updated":            llx.TimeDataPtr(parseTime(e.UpdateTime)),
-	})
+	args := map[string]*llx.RawData{
+		"name":                       llx.StringData(e.Name),
+		"zone":                       llx.StringData(parseLocationFromPath(e.Name)),
+		"description":                llx.StringData(e.Description),
+		"state":                      llx.StringData(e.State),
+		"reconciling":                llx.BoolData(e.Reconciling),
+		"jumboFramesEnabled":         llx.BoolData(jumboFrames),
+		"httpPartialResponseBlocked": llx.BoolData(httpPartialResponseBlocked),
+		"contentCloudRegion":         llx.StringData(contentCloudRegion),
+		"labels":                     llx.MapData(convert.MapToInterfaceMap(e.Labels), types.String),
+		"created":                    llx.TimeDataPtr(parseTime(e.CreateTime)),
+		"updated":                    llx.TimeDataPtr(parseTime(e.UpdateTime)),
+	}
+	for k, v := range firewallEndpointWildfireArgs(e.WildfireSettings) {
+		args[k] = v
+	}
+	res, err := CreateResource(runtime, "gcp.organization.firewallEndpoint", args)
 	if err != nil {
 		return nil, err
 	}

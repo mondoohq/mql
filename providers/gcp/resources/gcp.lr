@@ -187,8 +187,10 @@ private gcp.hierarchicalFirewallPolicy @defaults("shortName parent ruleTupleCoun
   // Nodes the policy is attached to
   //
   // Each entry holds `name`, `attachmentTarget` (the organization, folder, or
-  // network the policy is enforced on), `firewallPolicyId`, `shortName`, and
-  // `displayName`. A policy with no associations enforces nothing.
+  // network the policy is enforced on), `firewallPolicyId`, `shortName`,
+  // `displayName`, and `priority` (policies attached to the same node are
+  // evaluated from 1, the highest, to 2147483647, the lowest; null when the
+  // API reports none). A policy with no associations enforces nothing.
   associations []dict
   // Rules the policy enforces, evaluated ahead of any project-level rule
   rules() []gcp.project.computeService.firewallPolicy.rule
@@ -291,7 +293,7 @@ private gcp.organization.networkSecurityProfile @defaults("name type") {
   name string
   // Optional human-readable description
   description string
-  // Profile type (THREAT_PREVENTION, CUSTOM_MIRRORING, CUSTOM_INTERCEPT, URL_FILTERING)
+  // Profile type (THREAT_PREVENTION, CUSTOM_MIRRORING, CUSTOM_INTERCEPT, URL_FILTERING, WILDFIRE_ANALYSIS)
   type string
   // Threat prevention configuration
   //
@@ -318,6 +320,20 @@ private gcp.organization.networkSecurityProfile @defaults("name type") {
   // resource name of the intercept endpoint group that receives
   // intercepted traffic.
   customInterceptProfile dict
+  // WildFire analysis configuration
+  //
+  // Dict with keys `wildfireRealtimeLookup` (whether a file is held while
+  // the WildFire signature cloud looks it up), `wildfireSubmissionRules`
+  // (list of {direction, fileSelectionMode, customFileTypes} selecting the
+  // files submitted for analysis), `wildfireOverrides` (list of {protocol,
+  // action}), `wildfireThreatOverrides` (list of {threatId, action}),
+  // `wildfireInlineCloudAnalysisRules` (list of {direction,
+  // fileSelectionMode, customFileTypes, action}),
+  // `wildfireInlineMlOverrides` (list of {protocol, action}), and
+  // `wildfireInlineMlSetting` (inline machine-learning configuration and
+  // file exceptions). Keys the profile does not set are absent. Null unless
+  // `type` is WILDFIRE_ANALYSIS.
+  wildfireAnalysisProfile dict
   // User-defined key/value labels for organizing the resource
   labels map[string]string
   // Entity tag for optimistic concurrency control
@@ -358,6 +374,45 @@ private gcp.organization.firewallEndpoint @defaults("name state") {
   billingProject() gcp.project
   // Whether jumbo frames are enabled on the endpoint
   jumboFramesEnabled bool
+  // Whether HTTP partial responses are blocked
+  //
+  // When true, the endpoint blocks resumption of a malicious HTTP file
+  // download it already blocked once. False
+  // favors availability over security.
+  httpPartialResponseBlocked bool
+  // Palo Alto Networks content cloud region the endpoint uses
+  //
+  // For example US_CENTRAL, APAC, or UK. Empty when not specified.
+  contentCloudRegion string
+  // Whether WildFire analysis is enabled on the endpoint
+  //
+  // Null when the endpoint carries no WildFire settings.
+  wildfireEnabled bool
+  // Action taken when a WildFire real-time signature lookup times out
+  //
+  // One of WILDFIRE_REALTIME_SIGNATURE_LOOKUP_TIMEOUT_ACTION_UNSPECIFIED,
+  // ALLOW, or DENY. The service default is ALLOW, which lets a file through
+  // unchecked. Null when the endpoint carries no WildFire settings.
+  wildfireLookupTimeoutAction string
+  // Milliseconds a file is held while the WildFire signature cloud looks it up
+  //
+  // Between 1 and 5000. Null when the endpoint does not set it, in which case
+  // the service default of 1000 applies.
+  wildfireLookupDurationMs int
+  // Palo Alto Networks region where WildFire analysis is performed
+  //
+  // For example UNITED_STATES, GERMANY, or JAPAN. Null when the endpoint
+  // carries no WildFire settings.
+  wildfireRegion string
+  // WildFire inline cloud analysis settings
+  //
+  // Dict with keys `timeoutAction` (the action applied to a file whose
+  // analysis times out, ALLOW or DENY; the service default is ALLOW),
+  // `maxAnalysisDurationMs` (how long a file is held during analysis, null
+  // when unset), and `submissionTimeoutLoggingDisabled` (whether files that
+  // time out produce no submission log). Null when the endpoint carries no
+  // inline cloud analysis settings.
+  wildfireInlineCloudAnalysis dict
   // User-defined key/value labels for organizing the resource
   labels map[string]string
   // Time the firewall endpoint was created
@@ -369,10 +424,12 @@ private gcp.organization.firewallEndpoint @defaults("name state") {
 // Network Security profile group for an organization
 //
 // Bundle of individual security profiles so that a single firewall
-// policy rule can apply threat prevention, URL filtering, mirroring,
-// and intercept behavior together. Each field references the full
-// resource name of the security profile that supplies that behavior.
-// Selected by the full resource name.
+// policy rule can apply threat prevention, URL filtering, WildFire
+// analysis, mirroring, and intercept behavior together.
+// `wildfireAnalysisProfile` and `urlFilteringProfile` lead to the
+// profiles themselves; the other profile fields hold the full resource
+// name of the profile that supplies that behavior. Selected by the full
+// resource name.
 private gcp.organization.networkSecurityProfileGroup @defaults("name") {
   // Full resource name of the security profile group
   name string
@@ -384,6 +441,14 @@ private gcp.organization.networkSecurityProfileGroup @defaults("name") {
   customMirroringProfile string
   // Resource name of the custom intercept profile in the group
   customInterceptProfile string
+  // WildFire analysis profile in the group
+  //
+  // Null when the group carries no WildFire analysis profile.
+  wildfireAnalysisProfile() gcp.organization.networkSecurityProfile
+  // URL filtering profile in the group
+  //
+  // Null when the group carries no URL filtering profile.
+  urlFilteringProfile() gcp.organization.networkSecurityProfile
   // User-defined key/value labels for organizing the resource
   labels map[string]string
   // Entity tag for optimistic concurrency control
@@ -3555,16 +3620,25 @@ private gcp.project.sqlService.instance @defaults("name") {
   databaseInstalledVersion string
   // Database engine type and version
   databaseVersion string
-  // Customer-managed disk encryption configuration (`{kmsKeyName}`)
+  // Customer-managed disk encryption configuration (`{kmsKeyName, cmekSourceLogEncryptionEnforced}`)
   //
   // The kmsKeyName is the resource name of the Cloud KMS key used to encrypt
   // the instance's data disk. See kmsKey for the resolved key.
+  // cmekSourceLogEncryptionEnforced reports whether transaction logs are
+  // encrypted with that key before they are uploaded to Cloud Storage.
   diskEncryptionConfiguration dict
   // Disk encryption status (`{kmsKeyVersionName}`)
   //
   // The kmsKeyVersionName is the specific Cloud KMS key version currently
   // protecting the instance's data disk.
   diskEncryptionStatus dict
+  // Whether transaction logs are encrypted with the customer-managed key at source
+  //
+  // When true, Cloud SQL encrypts transaction logs with the instance's
+  // customer-managed key before uploading them to Cloud Storage. When false,
+  // Cloud Storage encrypts the uploaded logs instead. Null when the instance
+  // uses Google-managed encryption.
+  cmekSourceLogEncryptionEnforced bool
   // Whether Confidential Mode is enabled for the instance's Hyperdisk Balanced volumes
   //
   // Confidential Mode encrypts the instance's disks with hardware-backed keys

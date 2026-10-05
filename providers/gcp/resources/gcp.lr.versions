@@ -203,14 +203,21 @@ gcp.organization.essentialContacts 13.21.2
 gcp.organization.firewallEndpoint 14.2.1
 gcp.organization.firewallEndpoint.associatedNetworks 14.2.1
 gcp.organization.firewallEndpoint.billingProject 14.2.1
+gcp.organization.firewallEndpoint.contentCloudRegion 14.3.1
 gcp.organization.firewallEndpoint.created 14.2.1
 gcp.organization.firewallEndpoint.description 14.2.1
+gcp.organization.firewallEndpoint.httpPartialResponseBlocked 14.3.1
 gcp.organization.firewallEndpoint.jumboFramesEnabled 14.2.1
 gcp.organization.firewallEndpoint.labels 14.2.1
 gcp.organization.firewallEndpoint.name 14.2.1
 gcp.organization.firewallEndpoint.reconciling 14.2.1
 gcp.organization.firewallEndpoint.state 14.2.1
 gcp.organization.firewallEndpoint.updated 14.2.1
+gcp.organization.firewallEndpoint.wildfireEnabled 14.3.1
+gcp.organization.firewallEndpoint.wildfireInlineCloudAnalysis 14.3.1
+gcp.organization.firewallEndpoint.wildfireLookupDurationMs 14.3.1
+gcp.organization.firewallEndpoint.wildfireLookupTimeoutAction 14.3.1
+gcp.organization.firewallEndpoint.wildfireRegion 14.3.1
 gcp.organization.firewallEndpoint.zone 14.2.1
 gcp.organization.firewallEndpoints 14.2.1
 gcp.organization.firewallPolicies 13.34.2
@@ -247,6 +254,7 @@ gcp.organization.networkSecurityProfile.threatPreventionProfile 13.15.1
 gcp.organization.networkSecurityProfile.type 13.15.1
 gcp.organization.networkSecurityProfile.updated 13.15.1
 gcp.organization.networkSecurityProfile.urlFilteringProfile 13.15.1
+gcp.organization.networkSecurityProfile.wildfireAnalysisProfile 14.3.1
 gcp.organization.networkSecurityProfileGroup 13.15.1
 gcp.organization.networkSecurityProfileGroup.created 13.15.1
 gcp.organization.networkSecurityProfileGroup.customInterceptProfile 13.15.1
@@ -257,6 +265,8 @@ gcp.organization.networkSecurityProfileGroup.labels 13.15.1
 gcp.organization.networkSecurityProfileGroup.name 13.15.1
 gcp.organization.networkSecurityProfileGroup.threatPreventionProfile 13.15.1
 gcp.organization.networkSecurityProfileGroup.updated 13.15.1
+gcp.organization.networkSecurityProfileGroup.urlFilteringProfile 14.3.1
+gcp.organization.networkSecurityProfileGroup.wildfireAnalysisProfile 14.3.1
 gcp.organization.networkSecurityProfileGroups 13.15.1
 gcp.organization.networkSecurityProfiles 13.15.1
 gcp.organization.orgPolicies 11.5.1
@@ -5268,6 +5278,7 @@ gcp.project.sqlService.instance.availableMaintenanceVersions 9.0.0
 gcp.project.sqlService.instance.backendType 9.0.0
 gcp.project.sqlService.instance.backupConfigurationEnabled 13.12.2
 gcp.project.sqlService.instance.backupRuns 13.11.2
+gcp.project.sqlService.instance.cmekSourceLogEncryptionEnforced 14.3.1
 gcp.project.sqlService.instance.connectionName 9.0.0
 gcp.project.sqlService.instance.created 9.0.0
 gcp.project.sqlService.instance.currentDiskSize 13.1.2
