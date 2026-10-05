@@ -1,0 +1,119 @@
+{
+    "assets": {
+        "//explorer.api.mondoo.com/assets/licensed": {
+            "mrn": "//explorer.api.mondoo.com/assets/licensed",
+            "name": "licensed:latest",
+            "trace_id": "trace-licensed"
+        }
+    },
+    "data": {
+        "//explorer.api.mondoo.com/assets/licensed": {
+            "values": {
+                "//local.cnquery.io/run/local-execution/queries/mondoo-sbom-asset": {
+                    "content": {
+                        "asset": {
+                            "version": "3.19.0",
+                            "arch": "aarch64",
+                            "platform": "alpine",
+                            "ids": [
+                                "//platformid.api.mondoo.app/runtime/docker/images/licensed"
+                            ],
+                            "name": "licensed:latest"
+                        }
+                    }
+                },
+                "//local.cnquery.io/run/local-execution/queries/mondoo-sbom-packages": {
+                    "content": {
+                        "packages.list": [
+                            {
+                                "arch": "all",
+                                "files.map": [],
+                                "name": "acme-agent",
+                                "cpes.map": [
+                                    "cpe:2.3:a:acme-agent:acme-agent:1.2.3:*:*:*:*:*:all:*",
+                                    "cpe:2.3:a:acme-agent:acme-agent:1.2.3:*:*:*:*:*:*:*"
+                                ],
+                                "version": "1.2.3",
+                                "format": "deb",
+                                "origin": "",
+                                "purl": "pkg:deb/debian/acme-agent@1.2.3?arch=all&distro=debian-12.15"
+                            },
+                            {
+                                "arch": "arm64",
+                                "files.map": [
+                                    "/var/lib/dpkg/info/libc6:arm64.list"
+                                ],
+                                "name": "libc6",
+                                "cpes.map": [
+                                    "cpe:2.3:a:libc6:libc6:2.36-9\\+deb12u14:*:*:*:*:*:arm64:*",
+                                    "cpe:2.3:a:libc6:libc6:2.36-9\\+deb12u14:*:*:*:*:*:*:*"
+                                ],
+                                "version": "2.36-9+deb12u14",
+                                "format": "deb",
+                                "origin": "glibc",
+                                "purl": "pkg:deb/debian/libc6@2.36-9%2Bdeb12u14?arch=arm64&distro=debian-12.15"
+                            },
+                            {
+                                "arch": "arm64",
+                                "files.map": [
+                                    "/var/lib/dpkg/info/nginx.list"
+                                ],
+                                "name": "nginx",
+                                "cpes.map": [
+                                    "cpe:2.3:a:nginx:nginx:1.30.5-1\\~bookworm:*:*:*:*:*:arm64:*",
+                                    "cpe:2.3:a:nginx:nginx:1.30.5-1\\~bookworm:*:*:*:*:*:*:*"
+                                ],
+                                "version": "1.30.5-1~bookworm",
+                                "format": "deb",
+                                "origin": "",
+                                "purl": "pkg:deb/debian/nginx@1.30.5-1~bookworm?arch=arm64&distro=debian-12.15"
+                            }
+                        ]
+                    }
+                },
+                "//local.cnquery.io/run/local-execution/queries/mondoo-sbom-package-sources": {
+                    "content": {
+                        "packages.where.list": [
+                            {
+                                "name": "acme-agent",
+                                "arch": "all",
+                                "version": "1.2.3",
+                                "source": {
+                                    "channel": "direct",
+                                    "name": "",
+                                    "url": ""
+                                },
+                                "format": "deb",
+                                "osProvided": false
+                            },
+                            {
+                                "name": "libc6",
+                                "arch": "arm64",
+                                "version": "2.36-9+deb12u14",
+                                "source": {
+                                    "channel": "os",
+                                    "name": "Debian",
+                                    "url": "http://deb.debian.org/debian"
+                                },
+                                "format": "deb",
+                                "osProvided": true
+                            },
+                            {
+                                "name": "nginx",
+                                "arch": "arm64",
+                                "version": "1.30.5-1~bookworm",
+                                "source": {
+                                    "channel": "vendor-repository",
+                                    "name": "nginx",
+                                    "url": "http://nginx.org/packages/debian"
+                                },
+                                "format": "deb",
+                                "osProvided": false
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+}

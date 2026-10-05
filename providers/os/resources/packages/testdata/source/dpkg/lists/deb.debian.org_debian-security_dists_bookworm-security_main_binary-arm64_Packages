@@ -1,0 +1,20 @@
+Package: libc6
+Source: glibc
+Version: 2.36-9+deb12u7
+Installed-Size: 23127
+Maintainer: GNU Libc Maintainers <debian-glibc@lists.debian.org>
+Architecture: arm64
+Depends: libgcc-s1
+Suggests: glibc-doc, debconf | debconf-2.0, libc-l10n, locales, libnss-nis, libnss-nisplus
+Breaks: aide (<< 0.17.3-4+b3), busybox (<< 1.30.1-6), chrony (<< 4.2-3~), fakechroot (<< 2.19-3.5), firefox (<< 91~), firefox-esr (<< 91~), gnumach-image-1.8-486 (<< 2:1.8+git20210923~), gnumach-image-1.8-486-dbg (<< 2:1.8+git20210923~), gnumach-image-1.8-xen-486 (<< 2:1.8+git20210923~), gnumach-image-1.8-xen-486-dbg (<< 2:1.8+git20210923~), hurd (<< 1:0.9.git20220301-2), ioquake3 (<< 1.36+u20200211.f2c61c1~dfsg-2~), iraf-fitsutil (<< 2018.07.06-4), libgegl-0.4-0 (<< 0.4.18), libtirpc1 (<< 0.2.3), locales (<< 2.36), locales-all (<< 2.36), macs (<< 2.2.7.1-3~), nocache (<< 1.1-1~), nscd (<< 2.36), openarena (<< 0.8.8+dfsg-4~), openssh-server (<< 1:8.1p1-5), python3-iptables (<< 1.0.0-2), r-cran-later (<< 0.7.5+dfsg-2), tinydns (<< 1:1.05-14), valgrind (<< 1:3.19.0-1~), wcc (<< 0.0.2+dfsg-3)
+Description: GNU C Library: Shared libraries
+Homepage: https://www.gnu.org/software/libc/libc.html
+Description-md5: fc3001b0b90a1c8e6690b283a619d57f
+Multi-Arch: same
+Recommends: libidn2-0 (>= 2.0.5~)
+Section: libs
+Priority: optional
+Filename: pool/updates/main/g/glibc/libc6_2.36-9+deb12u7_arm64.deb
+Size: 2318568
+SHA256: 84f9a8f8fa182c17e998c6094293ff0f4d504bfdb9b856802cf28b5d272ed303
+
