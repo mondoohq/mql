@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -77,7 +78,7 @@ func (r *mqlDigitaloceanKubernetesCluster) fetchClusterlint() (*clusterlintResul
 		conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 		client := conn.Client()
 		ctx := context.Background()
-		req, err := client.NewRequest(ctx, http.MethodGet, fmt.Sprintf("v2/kubernetes/clusters/%s/clusterlint", r.Id.Data), nil)
+		req, err := client.NewRequest(ctx, http.MethodGet, fmt.Sprintf("v2/kubernetes/clusters/%s/clusterlint", url.PathEscape(r.Id.Data)), nil)
 		if err != nil {
 			r.clusterlintErr = err
 			return
