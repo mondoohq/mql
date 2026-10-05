@@ -745,6 +745,7 @@ type mqlAwsFsxFilesystemInternal struct {
 }
 
 type mqlAwsFsxCacheInternal struct {
+	lazyTags
 	cacheVpcId     string
 	cacheSubnetIds []any
 }
@@ -756,4 +757,30 @@ type mqlAwsFsxBackupInternal struct {
 
 type mqlAwsFsxVolumeInternal struct {
 	cacheFileSystemId string
+}
+
+func (a *mqlAwsFsxCache) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Fsx(a.Region.Data)
+		arn := a.Arn.Data
+		tags := map[string]any{}
+		paginator := fsx.NewListTagsForResourcePaginator(svc, &fsx.ListTagsForResourceInput{ResourceARN: &arn})
+		for paginator.HasMorePages() {
+			resp, err := paginator.NextPage(context.Background())
+			if err != nil {
+				if Is400AccessDeniedError(err) {
+					if plugin.StructuredErrors() {
+						return nil, llx.Forbidden(err, llx.WithPermissions("fsx:ListTagsForResource"))
+					}
+					return nil, errTagsUnreadable
+				}
+				return nil, err
+			}
+			for k, v := range tagsToMap(resp.Tags, func(t fsxtypes.Tag) *string { return t.Key }, func(t fsxtypes.Tag) *string { return t.Value }) {
+				tags[k] = v
+			}
+		}
+		return tags, nil
+	})
 }

@@ -22,6 +22,7 @@ import (
 // ===== Internal struct layouts =====
 
 type mqlAwsDmsReplicationInstanceInternal struct {
+	lazyTags
 	securityGroupIdHandler
 	region                        string
 	accountID                     string
@@ -30,6 +31,7 @@ type mqlAwsDmsReplicationInstanceInternal struct {
 }
 
 type mqlAwsDmsEndpointInternal struct {
+	lazyTags
 	region                    string
 	accountID                 string
 	cacheKmsKeyId             *string
@@ -38,6 +40,7 @@ type mqlAwsDmsEndpointInternal struct {
 }
 
 type mqlAwsDmsReplicationTaskInternal struct {
+	lazyTags
 	region                      string
 	accountID                   string
 	cacheSourceEndpointArn      *string
@@ -763,4 +766,61 @@ func dmsGetParent(runtime *plugin.Runtime) (*mqlAwsDms, error) {
 		return nil, err
 	}
 	return res.(*mqlAwsDms), nil
+}
+
+func (a *mqlAwsDmsReplicationInstance) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Dms(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &databasemigrationservice.ListTagsForResourceInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("dms:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t dmstypes.Tag) *string { return t.Key }, func(t dmstypes.Tag) *string { return t.Value }), nil
+	})
+}
+
+func (a *mqlAwsDmsEndpoint) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Dms(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &databasemigrationservice.ListTagsForResourceInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("dms:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t dmstypes.Tag) *string { return t.Key }, func(t dmstypes.Tag) *string { return t.Value }), nil
+	})
+}
+
+func (a *mqlAwsDmsReplicationTask) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Dms(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &databasemigrationservice.ListTagsForResourceInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("dms:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t dmstypes.Tag) *string { return t.Key }, func(t dmstypes.Tag) *string { return t.Value }), nil
+	})
 }

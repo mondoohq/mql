@@ -447,5 +447,25 @@ func (a *mqlAwsCloudwatchLogAnomalyDetector) kmsKey() (*mqlAwsKmsKey, error) {
 }
 
 type mqlAwsCloudwatchLogDestinationInternal struct {
+	lazyTags
 	cacheRoleArn string
+}
+
+func (a *mqlAwsCloudwatchLogDestination) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.CloudwatchLogs(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &cloudwatchlogs.ListTagsForResourceInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("logs:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return toInterfaceMap(resp.Tags), nil
+	})
 }

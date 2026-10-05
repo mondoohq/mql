@@ -2270,6 +2270,8 @@ private aws.fsx.cache @defaults("id lifecycle") {
   dataRepositoryAssociations []dict
   // Region where the cache exists
   region string
+  // Tags assigned to the File Cache
+  tags() map[string]string
 }
 
 // AWS FSx backup
@@ -14097,6 +14099,8 @@ private aws.backup.legalHold @defaults("title status region") {
   createdAt time
   // Time the legal hold was canceled
   cancelledAt time
+  // Tags assigned to the legal hold
+  tags() map[string]string
 }
 
 // AWS Backup access point
@@ -14539,6 +14543,8 @@ private aws.dynamodb.export {
   filterSpecification() dict
   // ARN for the export
   arn string
+  // Tags assigned to the export
+  tags() map[string]string
 }
 
 // Amazon DynamoDB limits
@@ -17799,6 +17805,8 @@ private aws.dms.replicationInstance @defaults("arn replicationInstanceIdentifier
   // `ReplicationInstanceClass`; each holds the new value that will be
   // applied to the corresponding attribute at the next window.
   pendingModifiedValues dict
+  // Tags assigned to the replication instance
+  tags() map[string]string
 }
 
 // AWS DMS endpoint
@@ -17837,6 +17845,8 @@ private aws.dms.endpoint @defaults("arn endpointIdentifier endpointType engineNa
   certificate() aws.acm.certificate
   // IAM role DMS assumes to access the endpoint (used by S3, Kinesis, OpenSearch, and other AWS-service endpoints)
   serviceAccessIamRole() aws.iam.role
+  // Tags assigned to the endpoint
+  tags() map[string]string
 }
 
 // AWS DMS replication task
@@ -17883,6 +17893,8 @@ private aws.dms.replicationTask @defaults("arn replicationTaskIdentifier migrati
   targetEndpoint() aws.dms.endpoint
   // Replication instance the task runs on
   replicationInstance() aws.dms.replicationInstance
+  // Tags assigned to the replication task
+  tags() map[string]string
 }
 
 // AWS DMS replication subnet group
@@ -22717,6 +22729,8 @@ private aws.neptune.instance @defaults("arn name status"){
   certificateAuthority string
   // Network protocol the instance is accessible over (IPV4 or DUAL for IPv4/IPv6 dual-stack)
   networkType string
+  // Tags assigned to the instance
+  tags() map[string]string
 }
 
 // Amazon Neptune DB cluster snapshot
@@ -22760,6 +22774,8 @@ private aws.neptune.snapshot @defaults("arn status createdAt") {
   clusterCreatedAt time
   // Region where the snapshot exists
   region string
+  // Tags assigned to the snapshot
+  tags() map[string]string
 }
 
 // Amazon Cognito
@@ -23410,6 +23426,8 @@ private aws.documentdb.snapshot @defaults("arn status createdAt") {
   clusterCreatedAt time
   // Region where the snapshot exists
   region string
+  // Tags assigned to the snapshot
+  tags() map[string]string
 }
 
 // Amazon DocumentDB cluster parameter group
@@ -23426,6 +23444,8 @@ private aws.documentdb.clusterParameterGroup @defaults("name family region") {
   region string
   // Parameters in the group
   parameters() []aws.documentdb.clusterParameter
+  // Tags assigned to the cluster parameter group
+  tags() map[string]string
 }
 
 // Parameter belonging to a DocumentDB cluster parameter group
@@ -23474,6 +23494,8 @@ private aws.documentdb.globalCluster @defaults("globalClusterIdentifier status")
   globalClusterResourceId string
   // Members of the global cluster
   members() []aws.documentdb.globalCluster.member
+  // Tags assigned to the global cluster
+  tags map[string]string
 }
 
 // Member of a DocumentDB global cluster
@@ -23637,6 +23659,8 @@ private aws.timestream.liveanalytics.table @defaults("name region") {
   // the memory store) and `MagneticStoreRetentionPeriodInDays` (how long a
   // record is retained in the magnetic store before deletion).
   retentionProperties dict
+  // Tags assigned to the table
+  tags() map[string]string
 }
 
 // AWS CodeDeploy
@@ -24860,6 +24884,8 @@ private aws.athena.dataCatalog @defaults("name type region") {
   region string
   // List of databases registered in the data catalog
   databases() []aws.athena.database
+  // Tags assigned to the data catalog
+  tags() map[string]string
 }
 
 // Amazon Athena named (saved) query
@@ -24901,6 +24927,8 @@ private aws.athena.capacityReservation @defaults("name status targetDpus region"
   lastSuccessfulAllocationAt time
   // Region where the capacity reservation exists
   region string
+  // Tags assigned to the capacity reservation
+  tags() map[string]string
 }
 
 // Amazon Athena catalog database
@@ -25597,6 +25625,8 @@ private aws.kinesis.streamConsumer @defaults("name status") {
   stream() aws.kinesis.stream
   // Region where the consumer exists
   region string
+  // Tags assigned to the stream consumer
+  tags() map[string]string
 }
 
 // Amazon Kinesis Video Streams stream
@@ -25718,6 +25748,8 @@ private aws.kinesis.channel @defaults("name status destinationType region") {
   //
   // Empty when the destination is a general purpose bucket.
   tables() []aws.kinesis.channel.table
+  // Tags assigned to the channel
+  tags() map[string]string
 }
 
 // Amazon Kinesis delivery channel streaming table
@@ -26227,6 +26259,8 @@ private aws.timestream.influxdb.backup @defaults("name status type createdAt") {
   dbInstance() aws.timestream.influxdb.instance
   // KMS key encrypting the backup
   kmsKey() aws.kms.key
+  // Tags assigned to the backup
+  tags() map[string]string
 }
 
 // Amazon Timestream for InfluxDB instance
@@ -26784,6 +26818,8 @@ private aws.glue.database @defaults("name region") {
   // Data Catalog and carry a federatedTable value. When the federation
   // source cannot be read, only the non-federated tables are listed.
   tables() []aws.glue.database.table
+  // Tags assigned to the database
+  tags() map[string]string
 }
 
 // AWS Glue Data Catalog database table
@@ -27175,6 +27211,8 @@ private aws.glue.connection @defaults("name connectionType region") {
   createdAt time
   // Date the connection was last updated
   updatedAt time
+  // Tags assigned to the connection
+  tags() map[string]string
 }
 
 // AWS Glue trigger
@@ -27633,6 +27671,8 @@ private aws.msk.cluster.operation @defaults("operationType operationState create
   errorCode string
   // Error message if the operation failed
   errorString string
+  // Tags assigned to the cluster operation
+  tags() map[string]string
 }
 
 // Broker or controller node in an MSK cluster
@@ -27715,6 +27755,8 @@ private aws.msk.configuration @defaults("name state latestRevision region") {
   region string
   // Contents of the server.properties file
   serverProperties() string
+  // Tags assigned to the configuration
+  tags() map[string]string
 }
 
 // Amazon MSK replicator
@@ -29557,6 +29599,8 @@ private aws.cloudwatch.logDestination @defaults("name arn") {
   accessPolicy string
   // Creation time of the destination
   createdAt time
+  // Tags assigned to the log destination
+  tags() map[string]string
 }
 
 // Amazon CloudWatch Logs Insights saved query
@@ -30076,6 +30120,8 @@ private aws.storagegateway.fileShare @defaults("id type status region") {
   auditDestinationArn() string
   // IAM role the gateway assumes to access the backing S3 bucket
   iamRole() aws.iam.role
+  // Tags assigned to the file share
+  tags() map[string]string
 }
 
 // Storage Gateway iSCSI volume
@@ -30111,6 +30157,8 @@ private aws.storagegateway.volume @defaults("id type sizeInBytes region") {
   encrypted() bool
   // KMS key used to encrypt the volume
   kmsKey() aws.kms.key
+  // Tags assigned to the volume
+  tags() map[string]string
 }
 
 // AWS Transfer Family

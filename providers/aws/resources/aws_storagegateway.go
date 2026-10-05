@@ -385,6 +385,7 @@ type sgwFileShareDetail struct {
 	bucketRegion        string
 	auditDestinationArn string
 	role                string
+	tags                map[string]any
 }
 
 type mqlAwsStoragegatewayFileShareInternal struct {
@@ -441,6 +442,7 @@ func (a *mqlAwsStoragegatewayFileShare) fetchDetail() (*sgwFileShareDetail, erro
 				bucketRegion:        convert.ToValue(s.BucketRegion),
 				auditDestinationArn: convert.ToValue(s.AuditDestinationARN),
 				role:                convert.ToValue(s.Role),
+				tags:                tagsToMap(s.Tags, func(t sgwtypes.Tag) *string { return t.Key }, func(t sgwtypes.Tag) *string { return t.Value }),
 			}
 		}
 	case "NFS":
@@ -468,6 +470,7 @@ func (a *mqlAwsStoragegatewayFileShare) fetchDetail() (*sgwFileShareDetail, erro
 				bucketRegion:        convert.ToValue(s.BucketRegion),
 				auditDestinationArn: convert.ToValue(s.AuditDestinationARN),
 				role:                convert.ToValue(s.Role),
+				tags:                tagsToMap(s.Tags, func(t sgwtypes.Tag) *string { return t.Key }, func(t sgwtypes.Tag) *string { return t.Value }),
 			}
 		}
 	}
@@ -611,6 +614,7 @@ type sgwVolumeDetail struct {
 }
 
 type mqlAwsStoragegatewayVolumeInternal struct {
+	lazyTags
 	fetched bool
 	lock    sync.Mutex
 	detail  *sgwVolumeDetail
@@ -741,4 +745,45 @@ func (a *mqlAwsStoragegatewayVolume) kmsKey() (*mqlAwsKmsKey, error) {
 
 func storageGatewayTagsToMap(tags []sgwtypes.Tag) map[string]any {
 	return tagsToMap(tags, func(t sgwtypes.Tag) *string { return t.Key }, func(t sgwtypes.Tag) *string { return t.Value })
+}
+
+func (a *mqlAwsStoragegatewayFileShare) tags() (map[string]any, error) {
+	d, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if d == nil {
+		return markTagsUnreadable(&a.Tags)
+	}
+	return d.tags, nil
+}
+
+func (a *mqlAwsStoragegatewayVolume) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.StorageGateway(a.Region.Data)
+		arn := a.Arn.Data
+		tags := map[string]any{}
+		var marker *string
+		for {
+			resp, err := svc.ListTagsForResource(context.Background(), &storagegateway.ListTagsForResourceInput{ResourceARN: &arn, Marker: marker})
+			if err != nil {
+				if Is400AccessDeniedError(err) {
+					if plugin.StructuredErrors() {
+						return nil, llx.Forbidden(err, llx.WithPermissions("storagegateway:ListTagsForResource"))
+					}
+					return nil, errTagsUnreadable
+				}
+				return nil, err
+			}
+			for k, v := range tagsToMap(resp.Tags, func(t sgwtypes.Tag) *string { return t.Key }, func(t sgwtypes.Tag) *string { return t.Value }) {
+				tags[k] = v
+			}
+			if resp.Marker == nil || *resp.Marker == "" {
+				break
+			}
+			marker = resp.Marker
+		}
+		return tags, nil
+	})
 }

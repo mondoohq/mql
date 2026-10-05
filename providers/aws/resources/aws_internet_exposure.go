@@ -115,6 +115,7 @@ func (a *mqlAwsEsDomain) isPublic() (bool, error) {
 }
 
 type mqlAwsNeptuneInstanceInternal struct {
+	lazyTags
 	cacheKmsKeyId          string
 	cacheMonitoringRoleArn string
 }

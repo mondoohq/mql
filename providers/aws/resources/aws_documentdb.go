@@ -1004,6 +1004,7 @@ func newMqlAwsDocumentdbSnapshot(runtime *plugin.Runtime, region, accountID stri
 }
 
 type mqlAwsDocumentdbSnapshotInternal struct {
+	lazyTags
 	region                 string
 	accountID              string
 	cacheKmsKeyId          *string
@@ -1321,6 +1322,7 @@ func newMqlAwsDocumentdbGlobalCluster(runtime *plugin.Runtime, gc docdb_types.Gl
 		"databaseName":            llx.StringDataPtr(gc.DatabaseName),
 		"storageEncrypted":        llx.BoolDataPtr(gc.StorageEncrypted),
 		"globalClusterResourceId": llx.StringDataPtr(gc.GlobalClusterResourceId),
+		"tags":                    llx.MapData(tagsToMap(gc.TagList, func(t docdb_types.Tag) *string { return t.Key }, func(t docdb_types.Tag) *string { return t.Value }), types.String),
 	})
 	if err != nil {
 		return nil, err
@@ -1894,4 +1896,46 @@ func (a *mqlAwsDocumentdbElasticSnapshot) tags() (map[string]any, error) {
 		tags[k] = v
 	}
 	return tags, nil
+}
+
+type mqlAwsDocumentdbClusterParameterGroupInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsDocumentdbSnapshot) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.DocumentDB(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &docdb.ListTagsForResourceInput{ResourceName: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("rds:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t docdb_types.Tag) *string { return t.Key }, func(t docdb_types.Tag) *string { return t.Value }), nil
+	})
+}
+
+func (a *mqlAwsDocumentdbClusterParameterGroup) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.DocumentDB(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &docdb.ListTagsForResourceInput{ResourceName: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("rds:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t docdb_types.Tag) *string { return t.Key }, func(t docdb_types.Tag) *string { return t.Value }), nil
+	})
 }

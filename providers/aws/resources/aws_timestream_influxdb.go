@@ -535,6 +535,7 @@ func parseInfluxdbExpiry(s *string) *time.Time {
 }
 
 type mqlAwsTimestreamInfluxdbBackupInternal struct {
+	lazyTags
 	cacheDbResourceId *string
 	cacheKmsKeyId     *string
 }
@@ -622,4 +623,23 @@ func initAwsTimestreamInfluxdbInstance(runtime *plugin.Runtime, args map[string]
 		return nil, nil, err
 	}
 	return args, mqlInstance, nil
+}
+
+func (a *mqlAwsTimestreamInfluxdbBackup) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.TimestreamInfluxDB(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &timestreaminfluxdb.ListTagsForResourceInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("timestream-influxdb:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return toInterfaceMap(resp.Tags), nil
+	})
 }

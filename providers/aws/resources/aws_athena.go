@@ -489,6 +489,7 @@ func newMqlAwsAthenaDataCatalog(runtime *plugin.Runtime, region string, catalog 
 }
 
 type mqlAwsAthenaDataCatalogInternal struct {
+	lazyTags
 	fetchedDetail bool
 	cachedDesc    string
 	// detailUnavailable records that GetDataCatalog has nothing to describe for
@@ -1032,4 +1033,72 @@ func athenaColumnsToDict(cols []athena_types.Column) []any {
 
 type mqlAwsAthenaNamedQueryInternal struct {
 	cacheWorkGroup string
+}
+
+type mqlAwsAthenaCapacityReservationInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsAthenaDataCatalog) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		arnField := a.GetArn()
+		if arnField.Error != nil {
+			return nil, arnField.Error
+		}
+		arn := arnField.Data
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Athena(a.Region.Data)
+		tags := map[string]any{}
+		var nextToken *string
+		for {
+			resp, err := svc.ListTagsForResource(context.Background(), &athena.ListTagsForResourceInput{ResourceARN: &arn, NextToken: nextToken})
+			if err != nil {
+				if Is400AccessDeniedError(err) {
+					if plugin.StructuredErrors() {
+						return nil, llx.Forbidden(err, llx.WithPermissions("athena:ListTagsForResource"))
+					}
+					return nil, errTagsUnreadable
+				}
+				return nil, err
+			}
+			for k, v := range tagsToMap(resp.Tags, func(t athena_types.Tag) *string { return t.Key }, func(t athena_types.Tag) *string { return t.Value }) {
+				tags[k] = v
+			}
+			if resp.NextToken == nil {
+				break
+			}
+			nextToken = resp.NextToken
+		}
+		return tags, nil
+	})
+}
+
+func (a *mqlAwsAthenaCapacityReservation) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		arn := a.Arn.Data
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Athena(a.Region.Data)
+		tags := map[string]any{}
+		var nextToken *string
+		for {
+			resp, err := svc.ListTagsForResource(context.Background(), &athena.ListTagsForResourceInput{ResourceARN: &arn, NextToken: nextToken})
+			if err != nil {
+				if Is400AccessDeniedError(err) {
+					if plugin.StructuredErrors() {
+						return nil, llx.Forbidden(err, llx.WithPermissions("athena:ListTagsForResource"))
+					}
+					return nil, errTagsUnreadable
+				}
+				return nil, err
+			}
+			for k, v := range tagsToMap(resp.Tags, func(t athena_types.Tag) *string { return t.Key }, func(t athena_types.Tag) *string { return t.Value }) {
+				tags[k] = v
+			}
+			if resp.NextToken == nil {
+				break
+			}
+			nextToken = resp.NextToken
+		}
+		return tags, nil
+	})
 }

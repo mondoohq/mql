@@ -467,6 +467,7 @@ func newMqlAwsNeptuneSnapshot(runtime *plugin.Runtime, region string, snapshot n
 }
 
 type mqlAwsNeptuneSnapshotInternal struct {
+	lazyTags
 	cacheKmsKeyId *string
 }
 
@@ -483,4 +484,42 @@ func (a *mqlAwsNeptuneSnapshot) kmsKey() (*mqlAwsKmsKey, error) {
 		return nil, err
 	}
 	return mqlKey.(*mqlAwsKmsKey), nil
+}
+
+func (a *mqlAwsNeptuneInstance) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Neptune(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &neptune.ListTagsForResourceInput{ResourceName: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("rds:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t neptune_types.Tag) *string { return t.Key }, func(t neptune_types.Tag) *string { return t.Value }), nil
+	})
+}
+
+func (a *mqlAwsNeptuneSnapshot) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Neptune(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &neptune.ListTagsForResourceInput{ResourceName: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("rds:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t neptune_types.Tag) *string { return t.Key }, func(t neptune_types.Tag) *string { return t.Value }), nil
+	})
 }

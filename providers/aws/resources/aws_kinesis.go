@@ -377,6 +377,7 @@ func newMqlAwsKinesisStreamConsumer(runtime *plugin.Runtime, region string, cons
 }
 
 type mqlAwsKinesisStreamConsumerInternal struct {
+	lazyTags
 	cacheStreamArn string
 }
 
@@ -1440,4 +1441,23 @@ func (a *mqlAwsKinesisFirehoseDeliveryStream) tags() (map[string]any, error) {
 		}
 	}
 	return tags, nil
+}
+
+func (a *mqlAwsKinesisStreamConsumer) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Kinesis(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &kinesis.ListTagsForResourceInput{ResourceARN: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("kinesis:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.Tags, func(t kinesis_types.Tag) *string { return t.Key }, func(t kinesis_types.Tag) *string { return t.Value }), nil
+	})
 }

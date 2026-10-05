@@ -192,6 +192,7 @@ func (a *mqlAwsKinesisChannel) id() (string, error) {
 }
 
 type mqlAwsKinesisChannelInternal struct {
+	lazyTags
 	cacheRegion     string
 	cacheStreamARNs []string
 	descOnce        sync.Once
@@ -485,4 +486,23 @@ func (a *mqlAwsKinesisChannel) tables() ([]any, error) {
 
 func (a *mqlAwsKinesisChannelTable) id() (string, error) {
 	return a.__id, nil
+}
+
+func (a *mqlAwsKinesisChannel) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Kinesis(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &kinesis.ListTagsForResourceInput{ResourceARN: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("kinesis:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.Tags, func(t kinesis_types.Tag) *string { return t.Key }, func(t kinesis_types.Tag) *string { return t.Value }), nil
+	})
 }

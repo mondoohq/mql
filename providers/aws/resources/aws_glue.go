@@ -1694,3 +1694,57 @@ func parseGlueAPITime(s *string) *time.Time {
 	}
 	return nil
 }
+
+type mqlAwsGlueDatabaseInternal struct {
+	lazyTags
+}
+
+type mqlAwsGlueConnectionInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsGlueDatabase) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		arnField := a.GetArn()
+		if arnField.Error != nil {
+			return nil, arnField.Error
+		}
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Glue(a.Region.Data)
+		arn := arnField.Data
+		resp, err := svc.GetTags(context.Background(), &glue.GetTagsInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("glue:GetTags"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return toInterfaceMap(resp.Tags), nil
+	})
+}
+
+func (a *mqlAwsGlueConnection) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		arnField := a.GetArn()
+		if arnField.Error != nil {
+			return nil, arnField.Error
+		}
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Glue(a.Region.Data)
+		arn := arnField.Data
+		resp, err := svc.GetTags(context.Background(), &glue.GetTagsInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("glue:GetTags"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return toInterfaceMap(resp.Tags), nil
+	})
+}

@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/aws/aws-sdk-go-v2/service/timestreamwrite"
+	timestreamwritetypes "github.com/aws/aws-sdk-go-v2/service/timestreamwrite/types"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -240,4 +241,27 @@ func (a *mqlAwsTimestreamLiveanalytics) getTables(conn *connection.AwsConnection
 
 type mqlAwsTimestreamLiveanalyticsDatabaseInternal struct {
 	cacheKmsKeyId string
+}
+
+type mqlAwsTimestreamLiveanalyticsTableInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsTimestreamLiveanalyticsTable) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.TimestreamLiveAnalytics(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &timestreamwrite.ListTagsForResourceInput{ResourceARN: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("timestream:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.Tags, func(t timestreamwritetypes.Tag) *string { return t.Key }, func(t timestreamwritetypes.Tag) *string { return t.Value }), nil
+	})
 }

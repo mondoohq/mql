@@ -173,3 +173,11 @@ func (a *mqlAwsBackup) legalHolds() ([]any, error) {
 func (a *mqlAwsBackupLegalHold) id() (string, error) {
 	return a.__id, nil
 }
+
+type mqlAwsBackupLegalHoldInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsBackupLegalHold) tags() (map[string]any, error) {
+	return backupResolveTags(a.MqlRuntime, &a.lazyTags, &a.Tags, a.Region.Data, a.Arn.Data)
+}
