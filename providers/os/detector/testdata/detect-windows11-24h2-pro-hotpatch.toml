@@ -4,8 +4,8 @@ stdout="""
     "CurrentBuild":  "26100",
     "UBR":  3000,
     "InstallationType":  "Client",
-    "EditionID":  "Enterprise",
-    "ProductName":  "Windows 11 Enterprise",
+    "EditionID":  "Professional",
+    "ProductName":  "Windows 11 Pro",
     "DisplayVersion":  "24H2",
     "Architecture":  "AMD64",
     "ProductType":  "WinNT"
@@ -16,7 +16,6 @@ stdout="""
 stdout="""
 {
     "AllowRebootlessUpdates":  "1",
-    "EnableVirtualizationBasedSecurity":  "1",
     "VirtualizationBasedSecurityStatus":  "2"
 }
 """

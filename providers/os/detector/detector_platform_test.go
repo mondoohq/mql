@@ -1288,6 +1288,17 @@ func TestWindows11_24H2HotpatchDetector(t *testing.T) {
 	assert.Equal(t, "true", di.Labels["windows.mondoo.com/hotpatch"])
 }
 
+func TestWindows11_24H2ProHotpatchDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-windows11-24h2-pro-hotpatch.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "windows", di.Name, "os name should be identified")
+	assert.Equal(t, "Windows 11 Pro", di.Title, "os title should be identified")
+	assert.Equal(t, "26100", di.Version, "os version should be identified")
+	assert.Equal(t, "1", di.Labels["windows.mondoo.com/product-type"])
+	assert.Equal(t, "true", di.Labels["windows.mondoo.com/hotpatch"])
+}
+
 func TestPhoton1Detector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-photon1.toml")
 	assert.Nil(t, err, "was able to create the provider")
