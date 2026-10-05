@@ -260,13 +260,15 @@ func runningPostmasters(runtime *plugin.Runtime) []postgresql.Instance {
 			"command": llx.StringData(postgresqlPidsCmd),
 		})
 		if err == nil {
-			cmd := o.(*mqlCommand)
-			switch cmd.GetExitcode().Data {
-			case 0:
-				pids = strings.Fields(cmd.GetStdout().Data)
-				listed = true
-			case 1:
-				return nil
+			// a pgrep that could not run lists nothing, so /proc is read instead
+			if run, err := commandResult(o.(*mqlCommand)); err == nil {
+				switch run.exitcode {
+				case 0:
+					pids = strings.Fields(run.stdout)
+					listed = true
+				case 1:
+					return nil
+				}
 			}
 		}
 	}

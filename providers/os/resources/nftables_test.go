@@ -460,3 +460,11 @@ func TestNftElemToString_Verdicts(t *testing.T) {
 	assert.Equal(t, "jump regular", nftElemToString(map[string]any{"jump": map[string]any{"target": "regular"}}))
 	assert.Equal(t, "goto regular", nftElemToString(map[string]any{"goto": map[string]any{"target": "regular"}}))
 }
+
+// nft --version on a connection whose commands fail to run must not cache an
+// empty version as measured.
+func TestNftablesVersion_CommandCannotRun(t *testing.T) {
+	n := mustResource(t, failingCommandRuntime(t), "nftables").(*mqlNftables)
+	_, err := n.fetchVersion()
+	require.Error(t, err)
+}

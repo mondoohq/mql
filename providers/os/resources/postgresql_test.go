@@ -563,6 +563,17 @@ func TestPostgresqlPreferredConfigsOrder(t *testing.T) {
 	}, postgresqlPreferredConfigs(fs, running, units))
 }
 
+// pgrep that fails to run used to read as "listed, no postmasters", which
+// skipped the /proc walk and lost every running cluster.
+func TestRunningPostmasters_PgrepCannotRun(t *testing.T) {
+	rt := testRuntime(t, &failingCommandConn{fsConnWithFiles(t, map[string]string{
+		"/proc/4242/cmdline": "/usr/lib/postgresql/16/bin/postgres\x00-D\x00/var/lib/postgresql/16/main\x00",
+	})})
+
+	insts := runningPostmasters(rt)
+	require.Len(t, insts, 1)
+}
+
 func TestPostgresqlHomes(t *testing.T) {
 	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
 	assert.Nil(t, postgresqlHomes(afs), "no /etc/passwd")
