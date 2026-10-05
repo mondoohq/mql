@@ -22,6 +22,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/iox"
 )
 
 // Known paths for /etc/default/grub
@@ -1193,7 +1194,7 @@ type GrubPasswordConfig struct {
 func ParseGrubPasswordConfig(content []byte) GrubPasswordConfig {
 	var cfg GrubPasswordConfig
 
-	scanner := bufio.NewScanner(bytes.NewReader(content))
+	scanner := iox.NewLineScanner(bytes.NewReader(content))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || line[0] == '#' {
@@ -1305,7 +1306,7 @@ func ParseGrubPasswordProtected(content []byte) bool {
 // is written by hand rather than generated, so there is no templated variable
 // to resolve, and an MD5 crypt hash begins with the `$` that a variable would.
 func ParseGrubLegacyPasswordProtected(content []byte) bool {
-	scanner := bufio.NewScanner(bytes.NewReader(content))
+	scanner := iox.NewLineScanner(bytes.NewReader(content))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || line[0] == '#' {

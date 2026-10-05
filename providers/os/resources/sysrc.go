@@ -4,7 +4,6 @@
 package resources
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"strings"
@@ -216,9 +215,8 @@ func ParseSysrc(content string) []SysrcEntry {
 	seen := map[string]int{} // name -> index in entries
 	var entries []SysrcEntry
 
-	scanner := bufio.NewScanner(strings.NewReader(content))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	for raw := range strings.Lines(content) {
+		line := strings.TrimSpace(raw)
 
 		// Skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "#") {

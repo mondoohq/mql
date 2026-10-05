@@ -207,9 +207,8 @@ func (s *mqlSelinux) parseConfig() error {
 
 // ParseSelinuxConfig extracts SELINUX and SELINUXTYPE from /etc/selinux/config content.
 func ParseSelinuxConfig(content string) (mode string, policyType string) {
-	scanner := bufio.NewScanner(strings.NewReader(content))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	for raw := range strings.Lines(content) {
+		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}

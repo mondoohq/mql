@@ -778,3 +778,15 @@ func TestParseGrubDefaultsUnterminatedQuote(t *testing.T) {
 	assert.Equal(t, "\"abc", params["GRUB_X"])
 	assert.Equal(t, "1", params["GRUB_Y"])
 }
+
+// Each of these parsers reads a whole file already held in memory. A line
+// over 64 KiB must not end the parse and drop the settings after it.
+
+func TestParseGrubPasswordConfigAfterLongLine(t *testing.T) {
+	cfg := ParseGrubPasswordConfig([]byte("# " + strings.Repeat("x", 70000) + "\nset superusers=\"root\"\npassword_pbkdf2 root grub.pbkdf2.sha512.10000.ABC123.DEF456\n"))
+	assert.True(t, cfg.Protected())
+}
+
+func TestParseGrubLegacyPasswordProtectedAfterLongLine(t *testing.T) {
+	assert.True(t, ParseGrubLegacyPasswordProtected([]byte("# "+strings.Repeat("x", 70000)+"\npassword --md5 $1$4Ktpx$aYSvUvC8JTHKbLZmPQz4S0\ntitle Linux\nkernel /vmlinuz ro\n")))
+}

@@ -15,10 +15,11 @@
 package fstab
 
 import (
-	"bufio"
 	"io"
 	"strconv"
 	"strings"
+
+	"go.mondoo.com/mql/utils/iox"
 )
 
 // Entry is one row of an fstab file.
@@ -36,8 +37,7 @@ type Entry struct {
 // is not a number, is skipped as libmount skips it ("parse error ... --
 // ignored"), so it does not hide the lines around it.
 func Parse(file io.Reader) ([]Entry, error) {
-	scanner := bufio.NewScanner(file)
-	scanner.Split(bufio.ScanLines)
+	scanner := iox.NewLineScanner(file)
 
 	var entries []Entry
 	for scanner.Scan() {
@@ -85,8 +85,11 @@ func Parse(file io.Reader) ([]Entry, error) {
 			Fsck:       fsck,
 		})
 	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
 
-	return entries, scanner.Err()
+	return entries, nil
 }
 
 // UnescapeOctal decodes the three-digit octal escapes (\040 for a space)
