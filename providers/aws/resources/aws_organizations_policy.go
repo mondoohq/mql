@@ -270,13 +270,3 @@ func (a *mqlAwsOrganizationOrganizationalUnit) tags() (map[string]any, error) {
 		return organizationResourceTags(a.MqlRuntime, a.Id.Data)
 	})
 }
-
-type mqlAwsOrganizationResourcePolicyInternal struct {
-	lazyTags
-}
-
-func (a *mqlAwsOrganizationResourcePolicy) tags() (map[string]any, error) {
-	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
-		return organizationResourceTags(a.MqlRuntime, a.Id.Data)
-	})
-}

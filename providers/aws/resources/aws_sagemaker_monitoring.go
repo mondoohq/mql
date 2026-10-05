@@ -89,7 +89,7 @@ func (a *mqlAwsSagemaker) getEndpointConfigs(conn *connection.AwsConnection) []*
 					ec := mqlRes.(*mqlAwsSagemakerEndpointConfig)
 					if eagerTags != nil {
 						ec.cacheTags = eagerTags
-						ec.tagsFetched = true
+						ec.tagsFetched.Store(true)
 					}
 					res = append(res, mqlRes)
 				}
@@ -482,7 +482,7 @@ func (a *mqlAwsSagemaker) getMonitoringSchedules(conn *connection.AwsConnection)
 					ms := mqlRes.(*mqlAwsSagemakerMonitoringSchedule)
 					if eagerTags != nil {
 						ms.cacheTags = eagerTags
-						ms.tagsFetched = true
+						ms.tagsFetched.Store(true)
 					}
 					res = append(res, mqlRes)
 				}

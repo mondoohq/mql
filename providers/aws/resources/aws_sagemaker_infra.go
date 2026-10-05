@@ -259,7 +259,7 @@ func (a *mqlAwsSagemaker) getApps(conn *connection.AwsConnection) []*jobpool.Job
 					}
 					if eagerTags != nil {
 						mqlA.cacheTags = eagerTags
-						mqlA.tagsFetched = true
+						mqlA.tagsFetched.Store(true)
 					}
 
 					res = append(res, mqlApp)
@@ -568,7 +568,7 @@ func (a *mqlAwsSagemaker) getAppImageConfigs(conn *connection.AwsConnection) []*
 					mqlC.configsLoaded = true
 					if eagerTags != nil {
 						mqlC.cacheTags = eagerTags
-						mqlC.tagsFetched = true
+						mqlC.tagsFetched.Store(true)
 					}
 
 					res = append(res, mqlCfg)
@@ -726,7 +726,7 @@ func (a *mqlAwsSagemaker) getStudioLifecycleConfigs(conn *connection.AwsConnecti
 					m := mqlCfg.(*mqlAwsSagemakerStudioLifecycleConfig)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlCfg)
 				}
@@ -854,7 +854,7 @@ func (a *mqlAwsSagemaker) getCodeRepositories(conn *connection.AwsConnection) []
 					}
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlRepo)
 				}
@@ -1140,7 +1140,7 @@ func (a *mqlAwsSagemaker) getImages(conn *connection.AwsConnection) []*jobpool.J
 					m := mqlImg.(*mqlAwsSagemakerImage)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlImg)
 				}
@@ -1386,7 +1386,7 @@ func (a *mqlAwsSagemaker) getAlgorithms(conn *connection.AwsConnection) []*jobpo
 					m := mqlAlg.(*mqlAwsSagemakerAlgorithm)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlAlg)
 				}
@@ -1568,7 +1568,7 @@ func (a *mqlAwsSagemaker) getCompilationJobs(conn *connection.AwsConnection) []*
 					m := mqlJob.(*mqlAwsSagemakerCompilationJob)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlJob)
 				}

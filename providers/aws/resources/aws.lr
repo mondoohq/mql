@@ -337,8 +337,6 @@ private aws.organization.resourcePolicy @defaults("id") {
   // Written in the IAM policy grammar, so the principals, actions and
   // conditions that bound the delegation are resolved here.
   statements() []aws.iam.policyStatement
-  // Tags assigned to the resource policy
-  tags() map[string]string
 }
 
 // AWS Organizations service control policy

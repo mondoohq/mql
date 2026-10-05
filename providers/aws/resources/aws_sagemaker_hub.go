@@ -131,7 +131,7 @@ func (a *mqlAwsSagemaker) getHubs(conn *connection.AwsConnection) []*jobpool.Job
 					m := mqlHub.(*mqlAwsSagemakerHub)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlHub)
 				}
@@ -274,7 +274,7 @@ func (a *mqlAwsSagemakerHub) contents() ([]any, error) {
 				m := mqlContent.(*mqlAwsSagemakerHubContent)
 				if eagerTags != nil {
 					m.cacheTags = eagerTags
-					m.tagsFetched = true
+					m.tagsFetched.Store(true)
 				}
 				res = append(res, mqlContent)
 			}

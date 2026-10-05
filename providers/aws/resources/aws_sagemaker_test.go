@@ -255,14 +255,14 @@ func TestClusterInstanceGroupIamRole(t *testing.T) {
 
 func TestSagemakerTagsCacheDoubleCheckLocking(t *testing.T) {
 	cache := &sagemakerTagsCache{}
-	assert.False(t, cache.tagsFetched)
+	assert.False(t, cache.tagsFetched.Load())
 	assert.Nil(t, cache.cacheTags)
 
 	// Simulate pre-fetched tags (as done during eager loading)
 	cache.cacheTags = map[string]any{"env": "prod"}
-	cache.tagsFetched = true
+	cache.tagsFetched.Store(true)
 
-	assert.True(t, cache.tagsFetched)
+	assert.True(t, cache.tagsFetched.Load())
 	assert.Equal(t, map[string]any{"env": "prod"}, cache.cacheTags)
 }
 

@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "14.3.1",
-  "generated_at": "2026-10-05T15:25:43-07:00",
+  "version": "14.3.2",
+  "generated_at": "2026-10-05T18:49:12-07:00",
   "permissions": [
     "access-analyzer:GetFindingV2",
     "access-analyzer:ListAnalyzers",
@@ -32,6 +32,7 @@
     "application-autoscaling:DescribeScalableTargets",
     "application-autoscaling:DescribeScalingPolicies",
     "application-autoscaling:DescribeScheduledActions",
+    "application-autoscaling:ListTagsForResource",
     "appmesh:ListMeshes",
     "appmesh:ListRoutes",
     "appmesh:ListTagsForResource",
@@ -129,6 +130,7 @@
     "bedrock:GetAccountDataRetention",
     "bedrock:GetAgent",
     "bedrock:GetAgentActionGroup",
+    "bedrock:GetAgentAlias",
     "bedrock:GetCustomModel",
     "bedrock:GetDataSource",
     "bedrock:GetEvaluationJob",
@@ -165,7 +167,9 @@
     "bedrock:ListModelInvocationJobs",
     "bedrock:ListPrompts",
     "bedrock:ListProvisionedModelThroughputs",
+    "bedrock:ListTagsForResource",
     "bedrock:ListVpcConfigurations",
+    "budgets:ListTagsForResource",
     "budgets:ViewBudget",
     "cassandra:Select",
     "cassandra:TagResource",
@@ -259,12 +263,15 @@
     "config:GetComplianceDetailsByConfigRule",
     "config:GetConformancePackComplianceSummary",
     "config:ListTagsForResource",
+    "controltower:GetLandingZone",
     "controltower:ListEnabledBaselines",
     "controltower:ListLandingZones",
+    "controltower:ListTagsForResource",
     "datasync:DescribeAgent",
     "datasync:DescribeTask",
     "datasync:ListAgents",
     "datasync:ListLocations",
+    "datasync:ListTagsForResource",
     "datasync:ListTasks",
     "dax:DescribeClusters",
     "dax:ListTags",
@@ -280,6 +287,7 @@
     "dms:DescribeReplicationInstances",
     "dms:DescribeReplicationSubnetGroups",
     "dms:DescribeReplicationTasks",
+    "dms:ListTagsForResource",
     "docdb-elastic:ListClusterSnapshots",
     "docdb-elastic:ListClusters",
     "drs:DescribeJobs",
@@ -506,10 +514,12 @@
     "fms:ListPolicies",
     "fms:ListProtocolsLists",
     "fms:ListResourceSets",
+    "fms:ListTagsForResource",
     "fsx:DescribeBackups",
     "fsx:DescribeFileCaches",
     "fsx:DescribeFileSystems",
     "fsx:DescribeVolumes",
+    "fsx:ListTagsForResource",
     "globalaccelerator:ListAccelerators",
     "globalaccelerator:ListEndpointGroups",
     "globalaccelerator:ListListeners",
@@ -591,6 +601,7 @@
     "iam:ListRoles",
     "iam:ListSAMLProviders",
     "iam:ListSSHPublicKeys",
+    "iam:ListServerCertificateTags",
     "iam:ListServerCertificates",
     "iam:ListServiceSpecificCredentials",
     "iam:ListUserPolicies",
@@ -616,11 +627,13 @@
     "kafka:ListNodes",
     "kafka:ListReplicators",
     "kafka:ListScramSecrets",
+    "kafka:ListTagsForResource",
     "kinesis:DescribeChannel",
     "kinesis:DescribeStreamSummary",
     "kinesis:ListChannels",
     "kinesis:ListStreamConsumers",
     "kinesis:ListStreams",
+    "kinesis:ListTagsForResource",
     "kinesis:ListTagsForStream",
     "kinesisvideo:ListStreams",
     "kinesisvideo:ListTagsForStream",
@@ -742,6 +755,7 @@
     "personalize:ListRecommenders",
     "personalize:ListSchemas",
     "personalize:ListSolutions",
+    "personalize:ListTagsForResource",
     "pipes:DescribePipe",
     "pipes:ListPipes",
     "qbusiness:GetApplication",
@@ -752,6 +766,7 @@
     "qbusiness:ListIndices",
     "qbusiness:ListPlugins",
     "qbusiness:ListRetrievers",
+    "qbusiness:ListTagsForResource",
     "qbusiness:ListWebExperiences",
     "ram:GetResourceShares",
     "ram:ListPrincipals",
@@ -819,6 +834,7 @@
     "route53resolver:ListResolverQueryLogConfigs",
     "route53resolver:ListResolverRuleAssociations",
     "route53resolver:ListResolverRules",
+    "route53resolver:ListTagsForResource",
     "s3:GetAccelerateConfiguration",
     "s3:GetAccessPoint",
     "s3:GetAccessPointPolicy",
@@ -845,6 +861,7 @@
     "s3:GetReplicationConfiguration",
     "s3:ListAccessPoints",
     "s3:ListAllMyBuckets",
+    "s3:ListTagsForResource",
     "sagemaker:DescribeAction",
     "sagemaker:DescribeAlgorithm",
     "sagemaker:DescribeApp",
@@ -980,6 +997,7 @@
     "shield:GetSubscriptionState",
     "shield:ListProtectionGroups",
     "shield:ListProtections",
+    "shield:ListTagsForResource",
     "signer:ListSigningProfiles",
     "sns:GetDataProtectionPolicy",
     "sns:GetSubscriptionAttributes",
@@ -1030,6 +1048,7 @@
     "storagegateway:DescribeStorediSCSIVolumes",
     "storagegateway:ListFileShares",
     "storagegateway:ListGateways",
+    "storagegateway:ListTagsForResource",
     "storagegateway:ListVolumes",
     "timestream-influxdb:GetDbCluster",
     "timestream-influxdb:GetDbInstance",
@@ -1277,6 +1296,12 @@
       "permission": "application-autoscaling:DescribeScheduledActions",
       "service": "application-autoscaling",
       "action": "DescribeScheduledActions",
+      "source_file": "aws_applicationautoscaling.go"
+    },
+    {
+      "permission": "application-autoscaling:ListTagsForResource",
+      "service": "application-autoscaling",
+      "action": "ListTagsForResource",
       "source_file": "aws_applicationautoscaling.go"
     },
     {
@@ -1841,6 +1866,12 @@
       "permission": "bedrock-agentcore:ListTagsForResource",
       "service": "bedrock-agentcore",
       "action": "ListTagsForResource",
+      "source_file": "aws_bedrock_agentcore.go"
+    },
+    {
+      "permission": "bedrock-agentcore:ListTagsForResource",
+      "service": "bedrock-agentcore",
+      "action": "ListTagsForResource",
       "source_file": "aws_bedrock_agentcore_payments.go"
     },
     {
@@ -1866,6 +1897,12 @@
       "service": "bedrock",
       "action": "GetAgentActionGroup",
       "source_file": "aws_bedrock_agent.go"
+    },
+    {
+      "permission": "bedrock:GetAgentAlias",
+      "service": "bedrock",
+      "action": "GetAgentAlias",
+      "source_file": "aws_bedrock_enrichment.go"
     },
     {
       "permission": "bedrock:GetCustomModel",
@@ -2102,10 +2139,22 @@
       "source_file": "aws_bedrock.go"
     },
     {
+      "permission": "bedrock:ListTagsForResource",
+      "service": "bedrock",
+      "action": "ListTagsForResource",
+      "source_file": "aws_bedrock.go"
+    },
+    {
       "permission": "bedrock:ListVpcConfigurations",
       "service": "bedrock",
       "action": "ListVpcConfigurations",
       "source_file": "aws_bedrock_knowledgebase_vpc.go"
+    },
+    {
+      "permission": "budgets:ListTagsForResource",
+      "service": "budgets",
+      "action": "ListTagsForResource",
+      "source_file": "aws_billing.go"
     },
     {
       "permission": "budgets:ViewBudget",
@@ -2666,6 +2715,12 @@
       "source_file": "aws_config.go"
     },
     {
+      "permission": "controltower:GetLandingZone",
+      "service": "controltower",
+      "action": "GetLandingZone",
+      "source_file": "aws_controltower.go"
+    },
+    {
       "permission": "controltower:ListEnabledBaselines",
       "service": "controltower",
       "action": "ListEnabledBaselines",
@@ -2675,6 +2730,12 @@
       "permission": "controltower:ListLandingZones",
       "service": "controltower",
       "action": "ListLandingZones",
+      "source_file": "aws_controltower.go"
+    },
+    {
+      "permission": "controltower:ListTagsForResource",
+      "service": "controltower",
+      "action": "ListTagsForResource",
       "source_file": "aws_controltower.go"
     },
     {
@@ -2699,6 +2760,12 @@
       "permission": "datasync:ListLocations",
       "service": "datasync",
       "action": "ListLocations",
+      "source_file": "aws_datasync.go"
+    },
+    {
+      "permission": "datasync:ListTagsForResource",
+      "service": "datasync",
+      "action": "ListTagsForResource",
       "source_file": "aws_datasync.go"
     },
     {
@@ -2789,6 +2856,12 @@
       "permission": "dms:DescribeReplicationTasks",
       "service": "dms",
       "action": "DescribeReplicationTasks",
+      "source_file": "aws_dms.go"
+    },
+    {
+      "permission": "dms:ListTagsForResource",
+      "service": "dms",
+      "action": "ListTagsForResource",
       "source_file": "aws_dms.go"
     },
     {
@@ -4232,6 +4305,12 @@
       "source_file": "aws_fms.go"
     },
     {
+      "permission": "fms:ListTagsForResource",
+      "service": "fms",
+      "action": "ListTagsForResource",
+      "source_file": "aws_fms.go"
+    },
+    {
       "permission": "fsx:DescribeBackups",
       "service": "fsx",
       "action": "DescribeBackups",
@@ -4253,6 +4332,12 @@
       "permission": "fsx:DescribeVolumes",
       "service": "fsx",
       "action": "DescribeVolumes",
+      "source_file": "aws_fsx.go"
+    },
+    {
+      "permission": "fsx:ListTagsForResource",
+      "service": "fsx",
+      "action": "ListTagsForResource",
       "source_file": "aws_fsx.go"
     },
     {
@@ -4748,6 +4833,12 @@
       "source_file": "aws_iam.go"
     },
     {
+      "permission": "iam:ListServerCertificateTags",
+      "service": "iam",
+      "action": "ListServerCertificateTags",
+      "source_file": "aws_iam.go"
+    },
+    {
       "permission": "iam:ListServerCertificates",
       "service": "iam",
       "action": "ListServerCertificates",
@@ -4898,6 +4989,12 @@
       "source_file": "aws_msk.go"
     },
     {
+      "permission": "kafka:ListTagsForResource",
+      "service": "kafka",
+      "action": "ListTagsForResource",
+      "source_file": "aws_msk.go"
+    },
+    {
       "permission": "kinesis:DescribeChannel",
       "service": "kinesis",
       "action": "DescribeChannel",
@@ -4926,6 +5023,18 @@
       "service": "kinesis",
       "action": "ListStreams",
       "source_file": "aws_kinesis.go"
+    },
+    {
+      "permission": "kinesis:ListTagsForResource",
+      "service": "kinesis",
+      "action": "ListTagsForResource",
+      "source_file": "aws_kinesis.go"
+    },
+    {
+      "permission": "kinesis:ListTagsForResource",
+      "service": "kinesis",
+      "action": "ListTagsForResource",
+      "source_file": "aws_kinesis_channel.go"
     },
     {
       "permission": "kinesis:ListTagsForStream",
@@ -5232,6 +5341,12 @@
       "service": "logs",
       "action": "ListTagsForResource",
       "source_file": "aws_cloudwatch.go"
+    },
+    {
+      "permission": "logs:ListTagsForResource",
+      "service": "logs",
+      "action": "ListTagsForResource",
+      "source_file": "aws_cloudwatch_logs.go"
     },
     {
       "permission": "macie2:DescribeBuckets",
@@ -5576,6 +5691,12 @@
       "source_file": "aws_account.go"
     },
     {
+      "permission": "organizations:ListTagsForResource",
+      "service": "organizations",
+      "action": "ListTagsForResource",
+      "source_file": "aws_organizations_policy.go"
+    },
+    {
       "permission": "personalize:DescribeCampaign",
       "service": "personalize",
       "action": "DescribeCampaign",
@@ -5672,6 +5793,12 @@
       "source_file": "aws_personalize.go"
     },
     {
+      "permission": "personalize:ListTagsForResource",
+      "service": "personalize",
+      "action": "ListTagsForResource",
+      "source_file": "aws_personalize.go"
+    },
+    {
       "permission": "pipes:DescribePipe",
       "service": "pipes",
       "action": "DescribePipe",
@@ -5729,6 +5856,12 @@
       "permission": "qbusiness:ListRetrievers",
       "service": "qbusiness",
       "action": "ListRetrievers",
+      "source_file": "aws_qbusiness.go"
+    },
+    {
+      "permission": "qbusiness:ListTagsForResource",
+      "service": "qbusiness",
+      "action": "ListTagsForResource",
       "source_file": "aws_qbusiness.go"
     },
     {
@@ -6212,6 +6345,12 @@
       "source_file": "aws_route53_resolver.go"
     },
     {
+      "permission": "route53resolver:ListTagsForResource",
+      "service": "route53resolver",
+      "action": "ListTagsForResource",
+      "source_file": "aws_route53_resolver.go"
+    },
+    {
       "permission": "s3:GetAccelerateConfiguration",
       "service": "s3",
       "action": "GetBucketAccelerateConfiguration",
@@ -6365,6 +6504,12 @@
       "permission": "s3:ListAllMyBuckets",
       "service": "s3",
       "action": "ListBuckets",
+      "source_file": "aws_s3.go"
+    },
+    {
+      "permission": "s3:ListTagsForResource",
+      "service": "s3",
+      "action": "ListTagsForResource",
       "source_file": "aws_s3.go"
     },
     {
@@ -7184,6 +7329,12 @@
       "source_file": "aws_shield.go"
     },
     {
+      "permission": "shield:ListTagsForResource",
+      "service": "shield",
+      "action": "ListTagsForResource",
+      "source_file": "aws_shield.go"
+    },
+    {
       "permission": "signer:ListSigningProfiles",
       "service": "signer",
       "action": "ListSigningProfiles",
@@ -7382,6 +7533,12 @@
       "source_file": "aws_ssm_documents.go"
     },
     {
+      "permission": "ssm:ListTagsForResource",
+      "service": "ssm",
+      "action": "ListTagsForResource",
+      "source_file": "aws_ssm_state.go"
+    },
+    {
       "permission": "sso:ListAccountAssignments",
       "service": "sso",
       "action": "ListAccountAssignments",
@@ -7517,6 +7674,12 @@
       "permission": "storagegateway:ListGateways",
       "service": "storagegateway",
       "action": "ListGateways",
+      "source_file": "aws_storagegateway.go"
+    },
+    {
+      "permission": "storagegateway:ListTagsForResource",
+      "service": "storagegateway",
+      "action": "ListTagsForResource",
       "source_file": "aws_storagegateway.go"
     },
     {

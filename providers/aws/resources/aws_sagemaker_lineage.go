@@ -127,7 +127,7 @@ func (a *mqlAwsSagemaker) getArtifacts(conn *connection.AwsConnection) []*jobpoo
 					m := mqlArt.(*mqlAwsSagemakerArtifact)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlArt)
 				}
@@ -289,7 +289,7 @@ func (a *mqlAwsSagemaker) getActions(conn *connection.AwsConnection) []*jobpool.
 					m := mqlAct.(*mqlAwsSagemakerAction)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlAct)
 				}
@@ -459,7 +459,7 @@ func (a *mqlAwsSagemaker) getContexts(conn *connection.AwsConnection) []*jobpool
 					m := mqlCtx.(*mqlAwsSagemakerContext)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlCtx)
 				}
@@ -695,7 +695,7 @@ func (a *mqlAwsSagemaker) getLineageGroups(conn *connection.AwsConnection) []*jo
 					m := mqlLg.(*mqlAwsSagemakerLineageGroup)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlLg)
 				}

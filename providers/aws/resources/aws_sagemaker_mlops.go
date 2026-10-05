@@ -176,7 +176,7 @@ func (a *mqlAwsSagemaker) getExperiments(conn *connection.AwsConnection) []*jobp
 					e := mqlExp.(*mqlAwsSagemakerExperiment)
 					if eagerTags != nil {
 						e.cacheTags = eagerTags
-						e.tagsFetched = true
+						e.tagsFetched.Store(true)
 					}
 					res = append(res, mqlExp)
 				}
@@ -343,7 +343,7 @@ func (a *mqlAwsSagemaker) getTrials(conn *connection.AwsConnection) []*jobpool.J
 					t := mqlTrial.(*mqlAwsSagemakerTrial)
 					if eagerTags != nil {
 						t.cacheTags = eagerTags
-						t.tagsFetched = true
+						t.tagsFetched.Store(true)
 					}
 					res = append(res, mqlTrial)
 				}
@@ -574,7 +574,7 @@ func (a *mqlAwsSagemaker) getTrialComponents(conn *connection.AwsConnection) []*
 					tcRes := mqlTC.(*mqlAwsSagemakerTrialComponent)
 					if eagerTags != nil {
 						tcRes.cacheTags = eagerTags
-						tcRes.tagsFetched = true
+						tcRes.tagsFetched.Store(true)
 					}
 					res = append(res, mqlTC)
 				}
@@ -1038,7 +1038,7 @@ func (a *mqlAwsSagemaker) getHyperParameterTuningJobs(conn *connection.AwsConnec
 					j := mqlJob.(*mqlAwsSagemakerHyperParameterTuningJob)
 					if eagerTags != nil {
 						j.cacheTags = eagerTags
-						j.tagsFetched = true
+						j.tagsFetched.Store(true)
 					}
 					res = append(res, mqlJob)
 				}
@@ -1403,7 +1403,7 @@ func (a *mqlAwsSagemaker) getTransformJobs(conn *connection.AwsConnection) []*jo
 					j := mqlJob.(*mqlAwsSagemakerTransformJob)
 					if eagerTags != nil {
 						j.cacheTags = eagerTags
-						j.tagsFetched = true
+						j.tagsFetched.Store(true)
 					}
 					res = append(res, mqlJob)
 				}
@@ -1774,7 +1774,7 @@ func (a *mqlAwsSagemaker) getAutoMLJobs(conn *connection.AwsConnection) []*jobpo
 					j := mqlJob.(*mqlAwsSagemakerAutoMLJob)
 					if eagerTags != nil {
 						j.cacheTags = eagerTags
-						j.tagsFetched = true
+						j.tagsFetched.Store(true)
 					}
 					res = append(res, mqlJob)
 				}

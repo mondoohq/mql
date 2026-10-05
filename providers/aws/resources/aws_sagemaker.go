@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/sagemaker"
@@ -102,7 +103,7 @@ func (a *mqlAwsSagemaker) getEndpoints(conn *connection.AwsConnection) []*jobpoo
 					ep := mqlEndpoint.(*mqlAwsSagemakerEndpoint)
 					if eagerTags != nil {
 						ep.cacheTags = eagerTags
-						ep.tagsFetched = true
+						ep.tagsFetched.Store(true)
 					}
 					res = append(res, mqlEndpoint)
 				}
@@ -236,7 +237,7 @@ func (a *mqlAwsSagemaker) getNotebookInstances(conn *connection.AwsConnection) [
 					nb := mqlNb.(*mqlAwsSagemakerNotebookinstance)
 					if eagerTags != nil {
 						nb.cacheTags = eagerTags
-						nb.tagsFetched = true
+						nb.tagsFetched.Store(true)
 					}
 					res = append(res, mqlNb)
 				}
@@ -418,17 +419,17 @@ func (a *mqlAwsSagemakerNotebookinstancedetails) securityGroups() ([]any, error)
 // Embed in Internal structs for SageMaker resources that need lazy tags.
 type sagemakerTagsCache struct {
 	cacheTags   map[string]any
-	tagsFetched bool
+	tagsFetched atomic.Bool
 	tagsLock    sync.Mutex
 }
 
 func (c *sagemakerTagsCache) fetchTags(conn *connection.AwsConnection, region, arn string) (map[string]any, error) {
-	if c.tagsFetched {
+	if c.tagsFetched.Load() {
 		return c.cacheTags, nil
 	}
 	c.tagsLock.Lock()
 	defer c.tagsLock.Unlock()
-	if c.tagsFetched {
+	if c.tagsFetched.Load() {
 		return c.cacheTags, nil
 	}
 
@@ -439,7 +440,7 @@ func (c *sagemakerTagsCache) fetchTags(conn *connection.AwsConnection, region, a
 		return nil, err
 	}
 	c.cacheTags = tags
-	c.tagsFetched = true
+	c.tagsFetched.Store(true)
 	return tags, nil
 }
 
@@ -833,7 +834,7 @@ func (a *mqlAwsSagemaker) getModels(conn *connection.AwsConnection) []*jobpool.J
 					m := mqlModel.(*mqlAwsSagemakerModel)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlModel)
 				}
@@ -1148,7 +1149,7 @@ func (a *mqlAwsSagemaker) getTrainingJobs(conn *connection.AwsConnection) []*job
 					tj := mqlJob.(*mqlAwsSagemakerTrainingjob)
 					if eagerTags != nil {
 						tj.cacheTags = eagerTags
-						tj.tagsFetched = true
+						tj.tagsFetched.Store(true)
 					}
 					res = append(res, mqlJob)
 				}
@@ -1615,7 +1616,7 @@ func (a *mqlAwsSagemaker) getProcessingJobs(conn *connection.AwsConnection) []*j
 					pj := mqlJob.(*mqlAwsSagemakerProcessingjob)
 					if eagerTags != nil {
 						pj.cacheTags = eagerTags
-						pj.tagsFetched = true
+						pj.tagsFetched.Store(true)
 					}
 					res = append(res, mqlJob)
 				}
@@ -1898,7 +1899,7 @@ func (a *mqlAwsSagemaker) getPipelines(conn *connection.AwsConnection) []*jobpoo
 					p.cacheRoleArn = pipeline.RoleArn
 					if eagerTags != nil {
 						p.cacheTags = eagerTags
-						p.tagsFetched = true
+						p.tagsFetched.Store(true)
 					}
 					res = append(res, mqlPipeline)
 				}
@@ -2074,7 +2075,7 @@ func (a *mqlAwsSagemaker) getDomains(conn *connection.AwsConnection) []*jobpool.
 					d := mqlDomain.(*mqlAwsSagemakerDomain)
 					if eagerTags != nil {
 						d.cacheTags = eagerTags
-						d.tagsFetched = true
+						d.tagsFetched.Store(true)
 					}
 					res = append(res, mqlDomain)
 				}
@@ -2721,7 +2722,7 @@ func (a *mqlAwsSagemaker) getClusters(conn *connection.AwsConnection) []*jobpool
 					c := mqlCluster.(*mqlAwsSagemakerCluster)
 					if eagerTags != nil {
 						c.cacheTags = eagerTags
-						c.tagsFetched = true
+						c.tagsFetched.Store(true)
 					}
 					res = append(res, mqlCluster)
 				}
@@ -3247,7 +3248,7 @@ func (a *mqlAwsSagemaker) getFeatureGroups(conn *connection.AwsConnection) []*jo
 					fgRes := mqlFG.(*mqlAwsSagemakerFeatureGroup)
 					if eagerTags != nil {
 						fgRes.cacheTags = eagerTags
-						fgRes.tagsFetched = true
+						fgRes.tagsFetched.Store(true)
 					}
 					res = append(res, mqlFG)
 				}
@@ -3500,7 +3501,7 @@ func (a *mqlAwsSagemaker) getModelPackages(conn *connection.AwsConnection) []*jo
 					m := mqlMP.(*mqlAwsSagemakerModelPackage)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlMP)
 				}
@@ -3739,7 +3740,7 @@ func (a *mqlAwsSagemaker) getModelPackageGroups(conn *connection.AwsConnection) 
 					g := mqlMPG.(*mqlAwsSagemakerModelPackageGroup)
 					if eagerTags != nil {
 						g.cacheTags = eagerTags
-						g.tagsFetched = true
+						g.tagsFetched.Store(true)
 					}
 					res = append(res, mqlMPG)
 				}
@@ -3948,7 +3949,7 @@ func (a *mqlAwsSagemaker) getModelCards(conn *connection.AwsConnection) []*jobpo
 					c := mqlMC.(*mqlAwsSagemakerModelCard)
 					if eagerTags != nil {
 						c.cacheTags = eagerTags
-						c.tagsFetched = true
+						c.tagsFetched.Store(true)
 					}
 					res = append(res, mqlMC)
 				}
@@ -4125,7 +4126,7 @@ func (a *mqlAwsSagemaker) getSpaces(conn *connection.AwsConnection) []*jobpool.J
 					s.cacheDomainId = domainId
 					if eagerTags != nil {
 						s.cacheTags = eagerTags
-						s.tagsFetched = true
+						s.tagsFetched.Store(true)
 					}
 					res = append(res, mqlSpace)
 				}
@@ -4322,7 +4323,7 @@ func (a *mqlAwsSagemaker) getUserProfiles(conn *connection.AwsConnection) []*job
 					u.cacheDomainId = domainId
 					if eagerTags != nil {
 						u.cacheTags = eagerTags
-						u.tagsFetched = true
+						u.tagsFetched.Store(true)
 					}
 					res = append(res, mqlUP)
 				}

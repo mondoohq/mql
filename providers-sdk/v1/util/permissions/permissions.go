@@ -637,6 +637,7 @@ func awsConnectionMethodToService(method string) string {
 		"route53":                  "route53",
 		"route53domains":           "route53domains",
 		"route53resolver":          "route53resolver",
+		"controltower":             "controltower",
 		"eks":                      "eks",
 		"efs":                      "efs",
 		"apigateway":               "apigateway",
