@@ -4,9 +4,10 @@
 package rebarlock
 
 import (
+	"errors"
+	"fmt"
 	"io"
 
-	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/resources/languages"
 	"go.mondoo.com/mql/providers/os/resources/languages/erlang/termparser"
 	"go.mondoo.com/mql/providers/os/resources/languages/hex"
@@ -39,8 +40,7 @@ func (e *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 
 	root, err := termparser.Parse(string(data))
 	if err != nil {
-		log.Debug().Err(err).Msg("could not parse rebar.lock as Erlang terms")
-		return lock, nil
+		return nil, fmt.Errorf("not a rebar.lock of Erlang terms: %w", err)
 	}
 
 	// rebar.lock can be either:
@@ -53,7 +53,7 @@ func (e *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 	}
 
 	if deps == nil || deps.Type != termparser.NodeList {
-		return lock, nil
+		return nil, errors.New("not a rebar.lock: no list of dependencies")
 	}
 
 	for i := 0; i < deps.Len(); i++ {

@@ -7,6 +7,8 @@ import (
 	"archive/zip"
 	"bufio"
 	"bytes"
+	"errors"
+	"io/fs"
 	"path"
 	"strings"
 
@@ -31,14 +33,17 @@ type JenkinsPlugin struct {
 }
 
 // ScanPluginDirExtended scans a directory and returns extended JenkinsPlugin structs.
+// A directory that cannot be listed is an error. A plugin file that cannot be
+// read because of its permissions is returned as an error alongside the
+// plugins that could be read; one that is not a valid archive is skipped.
 func ScanPluginDirExtended(afs *afero.Afero, dir string) ([]JenkinsPlugin, error) {
 	entries, err := afs.ReadDir(dir)
 	if err != nil {
-		log.Debug().Err(err).Str("path", dir).Msg("mql[jenkins]> could not read plugin directory")
-		return nil, nil
+		return nil, err
 	}
 
 	var plugins []JenkinsPlugin
+	var refused []error
 	for _, entry := range entries {
 		if entry.IsDir() || !isPluginFile(entry.Name()) {
 			continue
@@ -46,6 +51,10 @@ func ScanPluginDirExtended(afs *afero.Afero, dir string) ([]JenkinsPlugin, error
 		pluginPath := path.Join(dir, entry.Name())
 		plugin, err := scanPlugin(afs, pluginPath)
 		if err != nil {
+			if errors.Is(err, fs.ErrPermission) {
+				refused = append(refused, err)
+				continue
+			}
 			log.Debug().Err(err).Str("path", pluginPath).Msg("mql[jenkins]> could not scan plugin")
 			continue
 		}
@@ -54,7 +63,7 @@ func ScanPluginDirExtended(afs *afero.Afero, dir string) ([]JenkinsPlugin, error
 			plugins = append(plugins, *plugin)
 		}
 	}
-	return plugins, nil
+	return plugins, errors.Join(refused...)
 }
 
 // scanPlugin reads a .jpi/.hpi file and extracts metadata from its MANIFEST.MF.

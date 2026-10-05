@@ -4,8 +4,10 @@
 package wordpress
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -199,4 +201,38 @@ func TestScanPluginDirSingleFilePlugins(t *testing.T) {
 	assert.Equal(t, "5.5", bySlug["akismet"].Version)
 	_, ok = bySlug["index"]
 	assert.False(t, ok, "index.php has no plugin header")
+}
+
+// refusingFs refuses to open the paths in refused, the way a mode 0600 file
+// owned by root refuses a scan that is not root.
+type refusingFs struct {
+	afero.Fs
+	refused []string
+}
+
+func (f *refusingFs) Open(name string) (afero.File, error) {
+	if slices.Contains(f.refused, name) {
+		return nil, &os.PathError{Op: "open", Path: name, Err: fs.ErrPermission}
+	}
+	return f.Fs.Open(name)
+}
+
+// A plugin whose files the scan may not read was skipped, so a check that no
+// vulnerable akismet is installed passed for a scan that is not root. Fails
+// if the refusal is logged and dropped again, or if it hides the plugins
+// that could be read.
+func TestScanPluginDirReportsUnreadablePlugin(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(mem, "/p/akismet/akismet.php", []byte("<?php\n/*\nPlugin Name: Akismet\nVersion: 5.3.3\n*/\n"), 0o600))
+	require.NoError(t, afero.WriteFile(mem, "/p/akismet/readme.txt", []byte("=== Akismet ===\nStable tag: 5.3.3\n"), 0o600))
+	require.NoError(t, afero.WriteFile(mem, "/p/hello/hello.php", []byte("<?php\n/*\nPlugin Name: Hello\nVersion: 1.7.2\n*/\n"), 0o644))
+	afs := &afero.Afero{Fs: &refusingFs{Fs: mem, refused: []string{"/p/akismet/akismet.php", "/p/akismet/readme.txt"}}}
+
+	plugins, err := ScanPluginDir(afs, "/p")
+	assert.ErrorIs(t, err, fs.ErrPermission)
+	require.Len(t, plugins, 1)
+	assert.Equal(t, "hello", plugins[0].Slug)
+
+	_, err = ScanPluginDir(afs, "/missing")
+	assert.ErrorIs(t, err, fs.ErrNotExist)
 }

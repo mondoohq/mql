@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -77,14 +76,19 @@ func (r *mqlRustPackages) gatherData() error {
 	var filePaths []string
 
 	if path != "" {
-		root, directDeps, transitiveDeps, filePaths = collectRustPackages(afs, path)
+		var err error
+		root, directDeps, transitiveDeps, filePaths, err = collectRustPackages(afs, path)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 	} else {
 		for _, searchPath := range defaultRustPaths {
 			// Prefer Cargo.lock when available (resolved truth)
 			lockMatches, _ := afero.Glob(fs, filepath.Join(searchPath, "Cargo.lock"))
 			if len(lockMatches) > 0 {
 				for _, match := range lockMatches {
-					collectedRoot, _, t, f := collectRustPackages(afs, match)
+					collectedRoot, _, t, f, err := collectRustPackages(afs, match)
+					skipLockfileError(match, err)
 					if root == nil {
 						root = collectedRoot
 					}
@@ -97,7 +101,8 @@ func (r *mqlRustPackages) gatherData() error {
 			// Fall back to Cargo.toml only if no Cargo.lock in this path
 			tomlMatches, _ := afero.Glob(fs, filepath.Join(searchPath, "Cargo.toml"))
 			for _, match := range tomlMatches {
-				collectedRoot, d, t, f := collectRustPackages(afs, match)
+				collectedRoot, d, t, f, err := collectRustPackages(afs, match)
+				skipLockfileError(match, err)
 				if root == nil {
 					root = collectedRoot
 				}
@@ -158,11 +163,10 @@ func (r *mqlRustPackages) gatherData() error {
 	return nil
 }
 
-func collectRustPackages(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectRustPackages(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check Rust path")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, err
 	}
 
 	if isDir {
@@ -170,65 +174,45 @@ func collectRustPackages(afs *afero.Afero, path string) (*languages.Package, []*
 	}
 
 	if strings.HasSuffix(path, "Cargo.lock") {
-		return collectFromCargoLock(afs, path)
+		return collectRustFromFile(afs, path, &cargolock.Extractor{})
 	}
 	if strings.HasSuffix(path, "Cargo.toml") {
-		return collectFromCargoToml(afs, path)
+		return collectRustFromFile(afs, path, &cargotoml.Extractor{})
 	}
 
-	return nil, nil, nil, nil
+	return nil, nil, nil, nil, nil
 }
 
-func collectRustFromDir(afs *afero.Afero, dir string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
+func collectRustFromDir(afs *afero.Afero, dir string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
 	// Prefer Cargo.lock when available
 	lockPath := filepath.Join(dir, "Cargo.lock")
-	if exists, _ := afs.Exists(lockPath); exists {
-		return collectFromCargoLock(afs, lockPath)
+	exists, err := lockfileExists(afs, lockPath)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	if exists {
+		return collectRustFromFile(afs, lockPath, &cargolock.Extractor{})
 	}
 
 	// Fall back to Cargo.toml
 	tomlPath := filepath.Join(dir, "Cargo.toml")
-	if exists, _ := afs.Exists(tomlPath); exists {
-		return collectFromCargoToml(afs, tomlPath)
+	exists, err = lockfileExists(afs, tomlPath)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	if exists {
+		return collectRustFromFile(afs, tomlPath, &cargotoml.Extractor{})
 	}
 
-	return nil, nil, nil, nil
+	return nil, nil, nil, nil, nil
 }
 
-func collectFromCargoLock(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	f, err := afs.Open(path)
+func collectRustFromFile(afs *afero.Afero, path string, extractor languages.Extractor) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, extractor)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open Cargo.lock")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, err
 	}
-	defer f.Close()
-
-	extractor := &cargolock.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse Cargo.lock")
-		return nil, nil, nil, nil
-	}
-
-	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}
-}
-
-func collectFromCargoToml(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	f, err := afs.Open(path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open Cargo.toml")
-		return nil, nil, nil, nil
-	}
-	defer f.Close()
-
-	extractor := &cargotoml.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse Cargo.toml")
-		return nil, nil, nil, nil
-	}
-
-	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}
+	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}, nil
 }
 
 func deduplicateRustPackages(pkgs []*languages.Package) []*languages.Package {

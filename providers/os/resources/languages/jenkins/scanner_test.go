@@ -6,6 +6,7 @@ package jenkins
 import (
 	"archive/zip"
 	"bytes"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -116,4 +117,32 @@ func TestIsPluginFile(t *testing.T) {
 	assert.True(t, isPluginFile("test.JPI"))
 	assert.False(t, isPluginFile("readme.txt"))
 	assert.False(t, isPluginFile("plugin.jar"))
+}
+
+type refusingFs struct {
+	afero.Fs
+	refused string
+}
+
+func (f *refusingFs) Open(name string) (afero.File, error) {
+	if name == f.refused {
+		return nil, &os.PathError{Op: "open", Path: name, Err: fs.ErrPermission}
+	}
+	return f.Fs.Open(name)
+}
+
+// A plugin file the scan may not read is a refusal, returned beside the
+// plugins that could be read; a file that is not an archive is skipped.
+// Fails if the refusal is logged and dropped again.
+func TestScanPluginDirReportsUnreadablePlugin(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(mem, "/plugins/git.jpi", createTestPlugin(t, "Manifest-Version: 1.0\nShort-Name: git\nPlugin-Version: 5.2.2\n"), 0o644))
+	require.NoError(t, afero.WriteFile(mem, "/plugins/structs.jpi", createTestPlugin(t, "Manifest-Version: 1.0\nShort-Name: structs\nPlugin-Version: 1.24\n"), 0o600))
+	require.NoError(t, afero.WriteFile(mem, "/plugins/broken.jpi", []byte("not a zip"), 0o644))
+	afs := &afero.Afero{Fs: &refusingFs{Fs: mem, refused: "/plugins/structs.jpi"}}
+
+	plugins, err := ScanPluginDirExtended(afs, "/plugins")
+	assert.ErrorIs(t, err, fs.ErrPermission)
+	require.Len(t, plugins, 1)
+	assert.Equal(t, "git", plugins[0].Name)
 }

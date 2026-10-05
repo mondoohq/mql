@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -80,7 +79,11 @@ func (r *mqlPhpPackages) gatherData() error {
 	var filePaths []string
 
 	if path != "" {
-		root, directDeps, transitiveDeps, filePaths = collectPhpPackages(afs, path)
+		var err error
+		root, directDeps, transitiveDeps, filePaths, err = collectPhpPackages(afs, path)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 	} else {
 		for _, searchPath := range defaultPhpPaths {
 			hasLock := false
@@ -90,7 +93,8 @@ func (r *mqlPhpPackages) gatherData() error {
 			if len(lockMatches) > 0 {
 				hasLock = true
 				for _, match := range lockMatches {
-					_, d, t, f := collectPhpPackages(afs, match)
+					_, d, t, f, err := collectPhpPackages(afs, match)
+					skipLockfileError(match, err)
 					directDeps = append(directDeps, d...)
 					transitiveDeps = append(transitiveDeps, t...)
 					filePaths = append(filePaths, f...)
@@ -101,7 +105,8 @@ func (r *mqlPhpPackages) gatherData() error {
 			// only use deps from it if no lock file was found
 			jsonMatches, _ := afero.Glob(fs, filepath.Join(searchPath, "composer.json"))
 			for _, match := range jsonMatches {
-				collectedRoot, d, t, f := collectPhpPackages(afs, match)
+				collectedRoot, d, t, f, err := collectPhpPackages(afs, match)
+				skipLockfileError(match, err)
 				if root == nil {
 					root = collectedRoot
 				}
@@ -115,7 +120,8 @@ func (r *mqlPhpPackages) gatherData() error {
 			// Also check vendor/composer/installed.json
 			installedMatches, _ := afero.Glob(fs, filepath.Join(searchPath, "vendor/composer/installed.json"))
 			for _, match := range installedMatches {
-				_, _, t, f := collectPhpPackages(afs, match)
+				_, _, t, f, err := collectPhpPackages(afs, match)
+				skipLockfileError(match, err)
 				transitiveDeps = append(transitiveDeps, t...)
 				filePaths = append(filePaths, f...)
 			}
@@ -172,11 +178,10 @@ func (r *mqlPhpPackages) gatherData() error {
 	return nil
 }
 
-func collectPhpPackages(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectPhpPackages(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check PHP path")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, err
 	}
 
 	if isDir {
@@ -186,18 +191,24 @@ func collectPhpPackages(afs *afero.Afero, path string) (*languages.Package, []*l
 	return collectPhpFromFile(afs, path)
 }
 
-func collectPhpFromDir(afs *afero.Afero, dir string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
+// collectPhpFromDir reads the Composer files in dir. A file that cannot be
+// read or parsed is returned as an error alongside what the others hold.
+func collectPhpFromDir(afs *afero.Afero, dir string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
 	var root *languages.Package
 	var direct []*languages.Package
 	var transitive []*languages.Package
 	var files []string
+	var errs []error
 
 	// Check for composer.lock (resolved versions, preferred source)
 	hasLock := false
 	lockPath := filepath.Join(dir, "composer.lock")
-	if exists, _ := afs.Exists(lockPath); exists {
+	if exists, err := lockfileExists(afs, lockPath); err != nil {
+		errs = append(errs, err)
+	} else if exists {
 		hasLock = true
-		_, d, t, f := parsePhpFile(afs, lockPath, &composerlock.Extractor{})
+		_, d, t, f, err := parsePhpFile(afs, lockPath, &composerlock.Extractor{})
+		errs = append(errs, err)
 		direct = append(direct, d...)
 		transitive = append(transitive, t...)
 		files = append(files, f...)
@@ -206,8 +217,11 @@ func collectPhpFromDir(afs *afero.Afero, dir string) (*languages.Package, []*lan
 	// Always check composer.json for root project info;
 	// only use deps from it if no lock file was found
 	jsonPath := filepath.Join(dir, "composer.json")
-	if exists, _ := afs.Exists(jsonPath); exists {
-		r, d, t, f := parsePhpFile(afs, jsonPath, &composerjson.Extractor{})
+	if exists, err := lockfileExists(afs, jsonPath); err != nil {
+		errs = append(errs, err)
+	} else if exists {
+		r, d, t, f, err := parsePhpFile(afs, jsonPath, &composerjson.Extractor{})
+		errs = append(errs, err)
 		if root == nil {
 			root = r
 		}
@@ -220,16 +234,19 @@ func collectPhpFromDir(afs *afero.Afero, dir string) (*languages.Package, []*lan
 
 	// Check vendor/composer/installed.json
 	installedPath := filepath.Join(dir, "vendor", "composer", "installed.json")
-	if exists, _ := afs.Exists(installedPath); exists {
-		_, _, t, f := parsePhpFile(afs, installedPath, &installedjson.Extractor{})
+	if exists, err := lockfileExists(afs, installedPath); err != nil {
+		errs = append(errs, err)
+	} else if exists {
+		_, _, t, f, err := parsePhpFile(afs, installedPath, &installedjson.Extractor{})
+		errs = append(errs, err)
 		transitive = append(transitive, t...)
 		files = append(files, f...)
 	}
 
-	return root, direct, transitive, files
+	return root, direct, transitive, files, errors.Join(errs...)
 }
 
-func collectPhpFromFile(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
+func collectPhpFromFile(afs *afero.Afero, path string) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
 	var extractor languages.Extractor
 
 	switch {
@@ -240,27 +257,18 @@ func collectPhpFromFile(afs *afero.Afero, path string) (*languages.Package, []*l
 	case strings.HasSuffix(path, "installed.json"):
 		extractor = &installedjson.Extractor{}
 	default:
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 
 	return parsePhpFile(afs, path, extractor)
 }
 
-func parsePhpFile(afs *afero.Afero, path string, extractor languages.Extractor) (*languages.Package, []*languages.Package, []*languages.Package, []string) {
-	f, err := afs.Open(path)
+func parsePhpFile(afs *afero.Afero, path string, extractor languages.Extractor) (*languages.Package, []*languages.Package, []*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, extractor)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open PHP file")
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, err
 	}
-	defer f.Close()
-
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse PHP file")
-		return nil, nil, nil, nil
-	}
-
-	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}
+	return bom.Root(), bom.Direct(), bom.Transitive(), []string{path}, nil
 }
 
 func deduplicatePhpPackages(pkgs []*languages.Package) []*languages.Package {

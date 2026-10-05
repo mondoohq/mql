@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -71,7 +70,10 @@ func (r *mqlJuliaPackages) gatherData() error {
 	var filePaths []string
 
 	if searchPath != "" {
-		t, f := collectJuliaPackages(afs, fs, searchPath)
+		t, f, err := collectJuliaPackages(afs, fs, searchPath)
+		if err := explicitLockfileError(err); err != nil {
+			return err
+		}
 		transitiveDeps = append(transitiveDeps, t...)
 		filePaths = append(filePaths, f...)
 	} else {
@@ -87,7 +89,8 @@ func (r *mqlJuliaPackages) gatherData() error {
 				matches = []string{sp}
 			}
 			for _, match := range matches {
-				t, f := collectJuliaPackages(afs, fs, match)
+				t, f, err := collectJuliaPackages(afs, fs, match)
+				skipLockfileError(match, err)
 				transitiveDeps = append(transitiveDeps, t...)
 				filePaths = append(filePaths, f...)
 			}
@@ -118,44 +121,33 @@ func (r *mqlJuliaPackages) gatherData() error {
 	return nil
 }
 
-func collectJuliaPackages(afs *afero.Afero, fs afero.Fs, path string) ([]*languages.Package, []string) {
-	isDir, err := afs.IsDir(path)
+func collectJuliaPackages(afs *afero.Afero, fs afero.Fs, path string) ([]*languages.Package, []string, error) {
+	isDir, err := lockfileIsDir(afs, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not check Julia path")
-		return nil, nil
+		return nil, nil, err
 	}
 
 	if isDir {
-		manifestPath := filepath.Join(path, "Manifest.toml")
-		if exists, _ := afs.Exists(manifestPath); exists {
-			return collectJuliaFromFile(afs, manifestPath)
+		lockPath := filepath.Join(path, "Manifest.toml")
+		exists, err := lockfileExists(afs, lockPath)
+		if err != nil || !exists {
+			return nil, nil, err
 		}
-		return nil, nil
+		return collectJuliaFromFile(afs, lockPath)
 	}
 
 	if strings.HasSuffix(path, "Manifest.toml") {
 		return collectJuliaFromFile(afs, path)
 	}
-
-	return nil, nil
+	return nil, nil, nil
 }
 
-func collectJuliaFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string) {
-	f, err := afs.Open(path)
+func collectJuliaFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string, error) {
+	bom, err := parseLockfile(afs, path, &manifest.Extractor{})
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open Julia Manifest.toml")
-		return nil, nil
+		return nil, nil, err
 	}
-	defer f.Close()
-
-	extractor := &manifest.Extractor{}
-	bom, err := extractor.Parse(f, path)
-	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse Julia Manifest.toml")
-		return nil, nil
-	}
-
-	return bom.Transitive(), []string{path}
+	return bom.Transitive(), []string{path}, nil
 }
 
 func (r *mqlJuliaPackages) list() ([]any, error) {

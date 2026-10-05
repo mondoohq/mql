@@ -5,10 +5,10 @@ package lockfile
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"strings"
 
-	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/resources/languages"
 	"go.mondoo.com/mql/providers/os/resources/languages/terraform"
 )
@@ -43,6 +43,7 @@ func (e *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 func parseTerraformLock(r io.Reader) (*terraformLock, error) {
 	lock := &terraformLock{}
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	var currentSource string
 	var currentVersion string
@@ -65,6 +66,11 @@ func parseTerraformLock(r io.Reader) (*terraformLock, error) {
 				braceDepth = 1
 			}
 			continue
+		}
+
+		// terraform writes nothing but provider blocks
+		if braceDepth == 0 {
+			return nil, fmt.Errorf("unexpected line outside a provider block: %q", line)
 		}
 
 		// Track brace depth for nested blocks (e.g., hashes)
@@ -91,17 +97,13 @@ func parseTerraformLock(r io.Reader) (*terraformLock, error) {
 		}
 	}
 
-	// Handle unclosed final block
-	if currentSource != "" {
-		log.Debug().Str("source", currentSource).Msg("unclosed provider block in terraform lock file")
-		lock.Providers = append(lock.Providers, providerEntry{
-			Source:  currentSource,
-			Version: currentVersion,
-		})
-	}
-
 	if err := scanner.Err(); err != nil {
 		return nil, err
+	}
+
+	// a provider block still open at the end is a truncated lock file
+	if currentSource != "" {
+		return nil, fmt.Errorf("provider %q block is not closed", currentSource)
 	}
 
 	return lock, nil

@@ -67,6 +67,7 @@ func parseGemspec(r io.Reader) (*gemSpec, error) {
 	spec := &gemSpec{}
 
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
 

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/resources/languages"
 	"go.mondoo.com/mql/utils/syncx"
@@ -38,6 +39,23 @@ func TestPhpPackageCarriesLicenseAndDescription(t *testing.T) {
 
 	require.Equal(t, "(LGPL-2.1-only OR GPL-3.0-or-later)", pkg.License.Data)
 	require.Equal(t, "Two licenses", pkg.Description.Data)
+}
+
+// A directory with several files keeps what the readable ones hold when one
+// of them is refused: without the flag that is all v13 reported, and it must
+// not lose the rest.
+func TestPhpDirKeepsReadableFilesBesideRefusedOne(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(mem, "/srv/app/composer.lock",
+		[]byte(`{"packages":[{"name":"monolog/monolog","version":"2.3.0"}]}`), 0o644))
+	installed := "/srv/app/vendor/composer/installed.json"
+	require.NoError(t, afero.WriteFile(mem, installed, []byte(`[]`), 0o600))
+	afs := &afero.Afero{Fs: &unreadableFs{Fs: mem, files: []string{installed}}}
+
+	_, _, transitive, files, err := collectPhpPackages(afs, "/srv/app")
+	assert.ErrorIs(t, err, llx.ErrForbidden)
+	assert.Equal(t, []string{"monolog/monolog@2.3.0"}, packageNames(transitive))
+	assert.Equal(t, []string{"/srv/app/composer.lock"}, files)
 }
 
 // A package whose manifest declares neither reports empty rather than carrying
