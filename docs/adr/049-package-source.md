@@ -357,6 +357,18 @@ on one host and third-party on the next.
   decision the package manager made: which keys it accepts. An administrator
   who controls the host can forge any of it, for example by placing a key in
   the OS keyring. So `osProvided` is evidence, not an attestation.
+- **Signatures are checked where it is cheap.** *Added 2026-10-05.* A dpkg
+  release counts as the operating system's only when its signature verifies
+  against an OS key, not because it names an OS key ID: anyone who can write a
+  file in the lists directory could name Debian's key. Expiry is not checked,
+  so a host whose indexes predate a key rotation still matches. An rpm
+  package's header signature is matched by key ID and not re-verified: rpm
+  verified it when it installed the package into a database only root can
+  write, and verifying it again means rebuilding the signed header region from
+  the database copy. Whoever can rewrite that database can rewrite the
+  keyring too.
+- **Mirror lists** named by a `mirror+file:` source are read only under
+  `/etc/apt`, so a sources entry cannot point the scan at an arbitrary file.
 - **Data handling:** `url` can contain secrets in raw form. They are removed
   before the value leaves the provider. Private mirror host names still reach
   the platform. These are infrastructure names, similar to the

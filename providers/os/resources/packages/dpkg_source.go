@@ -305,9 +305,9 @@ func isKeyFile(p string) bool {
 	return false
 }
 
-// openPGPKeys holds the key IDs (as 16 hex digits) and fingerprints (as
-// upper-case hex) of a set of keys, primary keys and subkeys alike.
-type openPGPKeys map[string]struct{}
+// openPGPKeys holds a set of keys, primary keys and subkeys alike, by key ID
+// (16 hex digits) and by fingerprint (upper-case hex).
+type openPGPKeys map[string]*packet.PublicKey
 
 func (k openPGPKeys) addFile(files *sourceFiles, p string) {
 	data, err := files.read(p)
@@ -364,9 +364,9 @@ func (k openPGPKeys) addKey(pub *packet.PublicKey) {
 	if pub == nil {
 		return
 	}
-	k[keyIDHex(pub.KeyId)] = struct{}{}
+	k[keyIDHex(pub.KeyId)] = pub
 	if len(pub.Fingerprint) > 0 {
-		k[strings.ToUpper(hexString(pub.Fingerprint))] = struct{}{}
+		k[strings.ToUpper(hexString(pub.Fingerprint))] = pub
 	}
 }
 
@@ -421,6 +421,63 @@ func hexString(b []byte) string {
 		out[i*2+1] = digits[c&0xf]
 	}
 	return string(out)
+}
+
+// verifies reports whether a signature in sig, binary or armored, is a valid
+// signature over signed by one of the keys. The signature is checked, not just
+// its issuer: anyone can write a release file that names Debian's key ID.
+//
+// Key expiry is not checked. apt checked the release when it downloaded it,
+// and a host whose indexes predate an archive key's rotation still holds a
+// release the distribution signed.
+func (k openPGPKeys) verifies(signed, sig []byte) bool {
+	raw := sig
+	if block, err := armor.Decode(bytes.NewReader(sig)); err == nil {
+		if b, err := io.ReadAll(block.Body); err == nil {
+			raw = b
+		}
+	}
+	pr := packet.NewReader(bytes.NewReader(raw))
+	for {
+		p, err := pr.Next()
+		if err != nil {
+			return false
+		}
+		s, ok := p.(*packet.Signature)
+		if !ok {
+			continue
+		}
+		var candidates []*packet.PublicKey
+		if len(s.IssuerFingerprint) > 0 {
+			if pub := k[strings.ToUpper(hexString(s.IssuerFingerprint))]; pub != nil {
+				candidates = append(candidates, pub)
+			}
+		}
+		if s.IssuerKeyId != nil {
+			if pub := k[keyIDHex(*s.IssuerKeyId)]; pub != nil {
+				candidates = append(candidates, pub)
+			}
+		}
+		for _, pub := range candidates {
+			h, err := s.PrepareVerify()
+			if err != nil {
+				continue
+			}
+			// a text signature hashes the message with canonical line endings;
+			// the signature's own trailer is then hashed as is, into h, so the
+			// wrapper only ever sees the message
+			body := h
+			if s.SigType == packet.SigTypeText {
+				body = openpgp.NewCanonicalTextHash(h)
+			}
+			if _, err := body.Write(signed); err != nil {
+				continue
+			}
+			if pub.VerifySignature(h, s) == nil {
+				return true
+			}
+		}
+	}
 }
 
 // signatureIssuers returns the key ID and fingerprint of every signature in an
@@ -546,15 +603,17 @@ func nextOpenPGPPacket(data []byte) (tag byte, body, rest []byte, ok bool) {
 }
 
 // parseAptReleaseFile reads the Origin and Label of an InRelease (clearsigned)
-// or Release file, and the issuers of the signature an InRelease carries.
-func parseAptReleaseFile(data []byte) (origin, label string, issuers []string) {
+// or Release file. For an InRelease it also returns what was signed and the
+// signature; a Release file is signed as a whole, in Release.gpg.
+func parseAptReleaseFile(data []byte) (origin, label string, signed, sig []byte) {
 	text := data
+	signed = data
 	if block, _ := clearsign.Decode(data); block != nil {
 		text = block.Plaintext
+		signed = block.Bytes
 		if block.ArmoredSignature != nil {
-			sig, err := io.ReadAll(block.ArmoredSignature.Body)
-			if err == nil {
-				issuers = signatureIssuers(sig)
+			if b, err := io.ReadAll(block.ArmoredSignature.Body); err == nil {
+				sig = b
 			}
 		}
 	}
@@ -576,7 +635,7 @@ func parseAptReleaseFile(data []byte) (origin, label string, issuers []string) {
 			label = strings.TrimSpace(value)
 		}
 	}
-	return origin, label, issuers
+	return origin, label, signed, sig
 }
 
 // aptPackagesFile recognizes a package index in the lists directory and
@@ -770,16 +829,17 @@ func (l *aptLists) releaseOf(pkgBase string) *aptRelease {
 	r.url = l.sources.urls[aptRepoPrefix(base)]
 	if f, ok := l.releaseFiles[base]; ok {
 		if data, err := l.files.read(path.Join(aptListsDir, f)); err == nil {
-			var issuers []string
-			r.origin, r.label, issuers = parseAptReleaseFile(data)
+			var signed, sig []byte
+			r.origin, r.label, signed, sig = parseAptReleaseFile(data)
 			// a Release file carries its signature beside it, in Release.gpg;
 			// a repository added with [trusted=yes] has neither
 			if strings.HasSuffix(f, "_Release") {
-				if sig, err := l.files.read(path.Join(aptListsDir, f+".gpg")); err == nil {
-					issuers = signatureIssuers(sig)
+				signed, sig = data, nil
+				if gpg, err := l.files.read(path.Join(aptListsDir, f+".gpg")); err == nil {
+					sig = gpg
 				}
 			}
-			r.osSigned = l.keysKnown && l.osKeys.signedBy(issuers)
+			r.osSigned = l.keysKnown && sig != nil && l.osKeys.verifies(signed, sig)
 		}
 	}
 	l.releases[base] = r
@@ -1058,7 +1118,14 @@ func stripURIQuery(u string) string {
 
 // firstMirror returns the first URL of an apt mirror list, one URL per line,
 // optionally followed by tab-separated attributes.
+//
+// A sources entry can name any file as its mirror list. Only lists under
+// /etc/apt are read, where apt keeps its own configuration, so a sources entry
+// cannot make the scan read and report the start of an arbitrary file.
 func firstMirror(files *sourceFiles, p string) string {
+	if p = path.Clean(p); !strings.HasPrefix(p, "/etc/apt/") {
+		return ""
+	}
 	data, err := files.read(p)
 	if err != nil {
 		return ""
