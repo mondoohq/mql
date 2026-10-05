@@ -1005,6 +1005,7 @@ func (a *mqlAwsSagemaker) getNotebookInstanceLifecycleConfigs(conn *connection.A
 }
 
 type mqlAwsSagemakerNotebookInstanceLifecycleConfigInternal struct {
+	sagemakerTagsCache
 	hooksLock     sync.Mutex
 	hooksFetched  bool
 	cacheOnCreate []any
@@ -1013,6 +1014,11 @@ type mqlAwsSagemakerNotebookInstanceLifecycleConfigInternal struct {
 
 func (a *mqlAwsSagemakerNotebookInstanceLifecycleConfig) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerNotebookInstanceLifecycleConfig) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsSagemakerNotebookInstanceLifecycleConfig) fetchHooks() error {

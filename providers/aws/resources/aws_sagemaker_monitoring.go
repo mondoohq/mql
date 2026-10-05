@@ -1035,11 +1035,17 @@ func (a *mqlAwsSagemaker) monitoringJobDefinitions() ([]any, error) {
 }
 
 type mqlAwsSagemakerMonitoringJobDefinitionInternal struct {
+	sagemakerTagsCache
 	source monitoringJobDefinitionSource
 }
 
 func (a *mqlAwsSagemakerMonitoringJobDefinition) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerMonitoringJobDefinition) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 // jobDefinitionSource returns the per-kind resource backing this entry. The
@@ -1139,6 +1145,7 @@ func (a *mqlAwsSagemaker) getDataQualityJobDefinitions(conn *connection.AwsConne
 }
 
 type mqlAwsSagemakerDataQualityJobDefinitionInternal struct {
+	sagemakerTagsCache
 	fetched   bool
 	fetchLock sync.Mutex
 	cacheSub  *monitoringJobSubResources
@@ -1146,6 +1153,11 @@ type mqlAwsSagemakerDataQualityJobDefinitionInternal struct {
 
 func (a *mqlAwsSagemakerDataQualityJobDefinition) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerDataQualityJobDefinition) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsSagemakerDataQualityJobDefinition) fetchDetails() (*monitoringJobSubResources, error) {
@@ -1351,6 +1363,7 @@ func (a *mqlAwsSagemaker) getModelQualityJobDefinitions(conn *connection.AwsConn
 }
 
 type mqlAwsSagemakerModelQualityJobDefinitionInternal struct {
+	sagemakerTagsCache
 	fetched   bool
 	fetchLock sync.Mutex
 	cacheSub  *monitoringJobSubResources
@@ -1358,6 +1371,11 @@ type mqlAwsSagemakerModelQualityJobDefinitionInternal struct {
 
 func (a *mqlAwsSagemakerModelQualityJobDefinition) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerModelQualityJobDefinition) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsSagemakerModelQualityJobDefinition) fetchDetails() (*monitoringJobSubResources, error) {
@@ -1563,6 +1581,7 @@ func (a *mqlAwsSagemaker) getModelBiasJobDefinitions(conn *connection.AwsConnect
 }
 
 type mqlAwsSagemakerModelBiasJobDefinitionInternal struct {
+	sagemakerTagsCache
 	fetched   bool
 	fetchLock sync.Mutex
 	cacheSub  *monitoringJobSubResources
@@ -1570,6 +1589,11 @@ type mqlAwsSagemakerModelBiasJobDefinitionInternal struct {
 
 func (a *mqlAwsSagemakerModelBiasJobDefinition) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerModelBiasJobDefinition) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsSagemakerModelBiasJobDefinition) fetchDetails() (*monitoringJobSubResources, error) {
@@ -1771,6 +1795,7 @@ func (a *mqlAwsSagemaker) getModelExplainabilityJobDefinitions(conn *connection.
 }
 
 type mqlAwsSagemakerModelExplainabilityJobDefinitionInternal struct {
+	sagemakerTagsCache
 	fetched   bool
 	fetchLock sync.Mutex
 	cacheSub  *monitoringJobSubResources
@@ -1778,6 +1803,11 @@ type mqlAwsSagemakerModelExplainabilityJobDefinitionInternal struct {
 
 func (a *mqlAwsSagemakerModelExplainabilityJobDefinition) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerModelExplainabilityJobDefinition) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsSagemakerModelExplainabilityJobDefinition) fetchDetails() (*monitoringJobSubResources, error) {

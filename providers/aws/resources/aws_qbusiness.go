@@ -93,6 +93,7 @@ func (a *mqlAwsQBusiness) getApplications(conn *connection.AwsConnection) []*job
 }
 
 type mqlAwsQBusinessApplicationInternal struct {
+	lazyTags
 	cacheRegion string
 	fetchLock   sync.Mutex
 	fetched     bool
@@ -434,6 +435,7 @@ func (a *mqlAwsQBusinessIndex) id() (string, error) {
 // --- Data source ---
 
 type mqlAwsQBusinessDataSourceInternal struct {
+	lazyTags
 	cacheRegion string
 	fetchLock   sync.Mutex
 	fetched     bool
@@ -514,6 +516,7 @@ func (a *mqlAwsQBusinessDataSource) syncSchedule() (string, error) {
 // --- Retriever ---
 
 type mqlAwsQBusinessRetrieverInternal struct {
+	lazyTags
 	cacheRegion string
 	fetchLock   sync.Mutex
 	fetched     bool
@@ -588,4 +591,125 @@ func (a *mqlAwsQBusinessPlugin) id() (string, error) {
 
 func (a *mqlAwsQBusinessWebExperience) id() (string, error) {
 	return a.Region.Data + "/" + a.ApplicationId.Data + "/webexperience/" + a.Id.Data, nil
+}
+
+type mqlAwsQBusinessIndexInternal struct {
+	lazyTags
+}
+
+type mqlAwsQBusinessPluginInternal struct {
+	lazyTags
+}
+
+type mqlAwsQBusinessWebExperienceInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsQBusinessApplication) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return qbusinessTags(a.MqlRuntime, a.Region.Data, "qbusiness:GetApplication", func(context.Context, *qbusiness.Client) (*string, error) {
+			detail, err := a.fetchDetail()
+			if err != nil || detail == nil {
+				return nil, err
+			}
+			return detail.ApplicationArn, nil
+		})
+	})
+}
+
+func (a *mqlAwsQBusinessIndex) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return qbusinessTags(a.MqlRuntime, a.Region.Data, "qbusiness:GetIndex", func(ctx context.Context, svc *qbusiness.Client) (*string, error) {
+			appId, indexId := a.ApplicationId.Data, a.Id.Data
+			resp, err := svc.GetIndex(ctx, &qbusiness.GetIndexInput{ApplicationId: &appId, IndexId: &indexId})
+			if err != nil {
+				return nil, err
+			}
+			return resp.IndexArn, nil
+		})
+	})
+}
+
+func (a *mqlAwsQBusinessDataSource) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return qbusinessTags(a.MqlRuntime, a.Region.Data, "qbusiness:GetDataSource", func(context.Context, *qbusiness.Client) (*string, error) {
+			detail, err := a.fetchDetail()
+			if err != nil || detail == nil {
+				return nil, err
+			}
+			return detail.DataSourceArn, nil
+		})
+	})
+}
+
+func (a *mqlAwsQBusinessRetriever) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return qbusinessTags(a.MqlRuntime, a.Region.Data, "qbusiness:GetRetriever", func(context.Context, *qbusiness.Client) (*string, error) {
+			detail, err := a.fetchDetail()
+			if err != nil || detail == nil {
+				return nil, err
+			}
+			return detail.RetrieverArn, nil
+		})
+	})
+}
+
+func (a *mqlAwsQBusinessPlugin) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return qbusinessTags(a.MqlRuntime, a.Region.Data, "qbusiness:GetPlugin", func(ctx context.Context, svc *qbusiness.Client) (*string, error) {
+			appId, pluginId := a.ApplicationId.Data, a.Id.Data
+			resp, err := svc.GetPlugin(ctx, &qbusiness.GetPluginInput{ApplicationId: &appId, PluginId: &pluginId})
+			if err != nil {
+				return nil, err
+			}
+			return resp.PluginArn, nil
+		})
+	})
+}
+
+func (a *mqlAwsQBusinessWebExperience) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return qbusinessTags(a.MqlRuntime, a.Region.Data, "qbusiness:GetWebExperience", func(ctx context.Context, svc *qbusiness.Client) (*string, error) {
+			appId, webExperienceId := a.ApplicationId.Data, a.Id.Data
+			resp, err := svc.GetWebExperience(ctx, &qbusiness.GetWebExperienceInput{ApplicationId: &appId, WebExperienceId: &webExperienceId})
+			if err != nil {
+				return nil, err
+			}
+			return resp.WebExperienceArn, nil
+		})
+	})
+}
+
+// qbusinessTags reads the tags of a Q Business resource. The list responses
+// carry no ARNs, so lookupArn learns the ARN first, from a cached detail
+// response where the resource has one. getPermission names the permission
+// lookupArn needs.
+func qbusinessTags(runtime *plugin.Runtime, region, getPermission string, lookupArn func(context.Context, *qbusiness.Client) (*string, error)) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.QBusiness(region)
+	ctx := context.Background()
+	resourceArn, err := lookupArn(ctx, svc)
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions(getPermission))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	if convert.ToValue(resourceArn) == "" {
+		return nil, errTagsUnreadable
+	}
+	resp, err := svc.ListTagsForResource(ctx, &qbusiness.ListTagsForResourceInput{ResourceARN: resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("qbusiness:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return tagsToMap(resp.Tags, func(t qbusinesstypes.Tag) *string { return t.Key }, func(t qbusinesstypes.Tag) *string { return t.Value }), nil
 }

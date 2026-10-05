@@ -97,6 +97,7 @@ func (a *mqlAwsBedrockAgentCoreConsentPortal) id() (string, error) {
 }
 
 type mqlAwsBedrockAgentCoreConsentPortalInternal struct {
+	lazyTags
 	cacheRegion   string
 	cachePortalId string
 	cacheSources  []agentcore_types.ConsentPortalSource
@@ -298,4 +299,10 @@ func (a *mqlAwsBedrockAgentCoreConsentPortalSource) gateway() (*mqlAwsBedrockAge
 
 	a.Gateway.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreConsentPortal) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
 }

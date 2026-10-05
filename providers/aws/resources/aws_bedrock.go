@@ -494,6 +494,7 @@ func newMqlBedrockGuardrail(runtime *plugin.Runtime, g bedrocktypes.GuardrailSum
 }
 
 type mqlAwsBedrockGuardrailInternal struct {
+	lazyTags
 	cacheRegion string
 	fetched     bool
 	lock        sync.Mutex
@@ -896,6 +897,7 @@ func (a *mqlAwsBedrockAdvancedPromptOptimizationJob) id() (string, error) {
 }
 
 type mqlAwsBedrockAdvancedPromptOptimizationJobInternal struct {
+	lazyTags
 	detailOnce sync.Once
 	detailErr  error
 	detail     *bedrock.GetAdvancedPromptOptimizationJobOutput
@@ -1050,6 +1052,7 @@ func (a *mqlAwsBedrock) getAgents(conn *connection.AwsConnection) []*jobpool.Job
 }
 
 type mqlAwsBedrockAgentInternal struct {
+	lazyTags
 	cacheRegion string
 	detailOnce  sync.Once
 	detailErr   error
@@ -1322,6 +1325,7 @@ func (a *mqlAwsBedrock) getKnowledgeBases(conn *connection.AwsConnection) []*job
 }
 
 type mqlAwsBedrockKnowledgeBaseInternal struct {
+	lazyTags
 	cacheRegion string
 	detailOnce  sync.Once
 	detailErr   error
@@ -1608,6 +1612,7 @@ func newMqlBedrockFlow(runtime *plugin.Runtime, fl bedrockagenttypes.FlowSummary
 }
 
 type mqlAwsBedrockFlowInternal struct {
+	lazyTags
 	cacheRegion string
 	detailOnce  sync.Once
 	detailErr   error
@@ -2222,4 +2227,84 @@ type mqlAwsBedrockProvisionedModelThroughputInternal struct {
 
 type mqlAwsBedrockBatchInferenceJobInternal struct {
 	cacheRoleArn string
+}
+
+func (a *mqlAwsBedrockGuardrail) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return bedrockTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAdvancedPromptOptimizationJob) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return bedrockTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgent) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		arn := a.GetArn()
+		if arn.Error != nil {
+			return nil, arn.Error
+		}
+		return bedrockAgentTags(a.MqlRuntime, a.Region.Data, arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockKnowledgeBase) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		arn := a.GetArn()
+		if arn.Error != nil {
+			return nil, arn.Error
+		}
+		return bedrockAgentTags(a.MqlRuntime, a.Region.Data, arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockFlow) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return bedrockAgentTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+// bedrockTags reads the tags of a resource owned by the Bedrock control plane
+// (guardrails, inference profiles, imported models, prompt optimization jobs).
+func bedrockTags(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	if resourceArn == "" {
+		return nil, errTagsUnreadable
+	}
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Bedrock(region)
+	resp, err := svc.ListTagsForResource(context.Background(), &bedrock.ListTagsForResourceInput{ResourceARN: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("bedrock:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return tagsToMap(resp.Tags, func(t bedrocktypes.Tag) *string { return t.Key }, func(t bedrocktypes.Tag) *string { return t.Value }), nil
+}
+
+// bedrockAgentTags reads the tags of a resource owned by the Bedrock Agents API
+// (agents, agent aliases, knowledge bases, flows, prompts).
+func bedrockAgentTags(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	if resourceArn == "" {
+		return nil, errTagsUnreadable
+	}
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgent(region)
+	resp, err := svc.ListTagsForResource(context.Background(), &bedrockagent.ListTagsForResourceInput{ResourceArn: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("bedrock:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return toInterfaceMap(resp.Tags), nil
 }

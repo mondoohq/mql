@@ -465,6 +465,7 @@ func (a *mqlAwsSagemaker) getWorkforces(conn *connection.AwsConnection) []*jobpo
 }
 
 type mqlAwsSagemakerWorkforceInternal struct {
+	sagemakerTagsCache
 	securityGroupIdHandler
 	configsLoaded        bool
 	cacheCognitoConfig   any
@@ -476,6 +477,11 @@ type mqlAwsSagemakerWorkforceInternal struct {
 
 func (a *mqlAwsSagemakerWorkforce) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerWorkforce) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsSagemakerWorkforce) cognitoConfig() (any, error) {

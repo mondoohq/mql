@@ -127,6 +127,7 @@ func (a *mqlAwsBedrockAgentCore) gateways() ([]any, error) {
 }
 
 type mqlAwsBedrockAgentCoreGatewayInternal struct {
+	lazyTags
 	cacheRegion    string
 	cacheGatewayId string
 	fetchLock      sync.Mutex
@@ -408,6 +409,7 @@ func (a *mqlAwsBedrockAgentCore) capacityProviders() ([]any, error) {
 }
 
 type mqlAwsBedrockAgentCoreCapacityProviderInternal struct {
+	lazyTags
 	cacheRegion string
 	fetchLock   sync.Mutex
 	fetched     atomic.Bool
@@ -912,6 +914,7 @@ func (a *mqlAwsBedrockAgentCore) runtimes() ([]any, error) {
 }
 
 type mqlAwsBedrockAgentCoreRuntimeInternal struct {
+	lazyTags
 	cacheRegion string
 	fetchLock   sync.Mutex
 	fetched     bool
@@ -1113,6 +1116,7 @@ func (a *mqlAwsBedrockAgentCore) memories() ([]any, error) {
 }
 
 type mqlAwsBedrockAgentCoreMemoryInternal struct {
+	lazyTags
 	cacheRegion string
 	fetchLock   sync.Mutex
 	fetched     atomic.Bool
@@ -1231,6 +1235,7 @@ func (a *mqlAwsBedrockAgentCore) browsers() ([]any, error) {
 }
 
 type mqlAwsBedrockAgentCoreBrowserInternal struct {
+	lazyTags
 	fetchLock sync.Mutex
 	fetched   atomic.Bool
 	detail    *bedrockagentcorecontrol.GetBrowserOutput
@@ -1372,6 +1377,7 @@ func (a *mqlAwsBedrockAgentCore) codeInterpreters() ([]any, error) {
 }
 
 type mqlAwsBedrockAgentCoreCodeInterpreterInternal struct {
+	lazyTags
 	fetchLock sync.Mutex
 	fetched   atomic.Bool
 	detail    *bedrockagentcorecontrol.GetCodeInterpreterOutput
@@ -1558,4 +1564,106 @@ func initAwsBedrockAgentCoreWorkloadIdentity(runtime *plugin.Runtime, args map[s
 
 func (a *mqlAwsBedrockAgentCoreWorkloadIdentity) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+type mqlAwsBedrockAgentCoreRuntimeEndpointInternal struct {
+	lazyTags
+}
+
+type mqlAwsBedrockAgentCoreOauth2CredentialProviderInternal struct {
+	lazyTags
+}
+
+type mqlAwsBedrockAgentCoreApiKeyCredentialProviderInternal struct {
+	lazyTags
+}
+
+type mqlAwsBedrockAgentCoreWorkloadIdentityInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsBedrockAgentCoreGateway) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		arn := a.GetArn()
+		if arn.Error != nil {
+			return nil, arn.Error
+		}
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntimeEndpoint) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreMemory) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreBrowser) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreCodeInterpreter) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreOauth2CredentialProvider) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreApiKeyCredentialProvider) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreWorkloadIdentity) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+// agentCoreTags reads the tags of an AgentCore control-plane resource. The Get*
+// responses declare a Tags member that the service leaves empty, so tags come
+// from ListTagsForResource.
+func agentCoreTags(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	if resourceArn == "" {
+		return nil, errTagsUnreadable
+	}
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgentCoreControl(region)
+	resp, err := svc.ListTagsForResource(context.Background(), &bedrockagentcorecontrol.ListTagsForResourceInput{ResourceArn: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return toInterfaceMap(resp.Tags), nil
 }

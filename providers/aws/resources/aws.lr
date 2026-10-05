@@ -3517,6 +3517,8 @@ private aws.personalize.datasetGroup @defaults("name domain status region") {
   eventTrackers() []aws.personalize.eventTracker
   // Filters that constrain recommendations served from the group
   filters() []aws.personalize.filter
+  // Tags assigned to the dataset group
+  tags() map[string]string
 }
 
 // Amazon Personalize dataset
@@ -3542,6 +3544,8 @@ private aws.personalize.dataset @defaults("name datasetType status") {
   createdAt time
   // Last modification timestamp
   updatedAt time
+  // Tags assigned to the dataset
+  tags() map[string]string
 }
 
 // Amazon Personalize solution
@@ -3571,6 +3575,8 @@ private aws.personalize.solution @defaults("name status") {
   updatedAt time
   // Campaigns that serve this solution's model
   campaigns() []aws.personalize.campaign
+  // Tags assigned to the solution
+  tags() map[string]string
 }
 
 // Amazon Personalize campaign
@@ -3596,6 +3602,8 @@ private aws.personalize.campaign @defaults("name status minProvisionedTPS") {
   createdAt time
   // Last modification timestamp
   updatedAt time
+  // Tags assigned to the campaign
+  tags() map[string]string
 }
 
 // Amazon Personalize domain recommender
@@ -3618,6 +3626,8 @@ private aws.personalize.recommender @defaults("name status") {
   createdAt time
   // Last modification timestamp
   updatedAt time
+  // Tags assigned to the recommender
+  tags() map[string]string
 }
 
 // Amazon Personalize event tracker
@@ -3640,6 +3650,8 @@ private aws.personalize.eventTracker @defaults("name status") {
   createdAt time
   // Last modification timestamp
   updatedAt time
+  // Tags assigned to the event tracker
+  tags() map[string]string
 }
 
 // Amazon Personalize filter
@@ -3660,6 +3672,8 @@ private aws.personalize.filter @defaults("name status") {
   createdAt time
   // Last modification timestamp
   updatedAt time
+  // Tags assigned to the filter
+  tags() map[string]string
 }
 
 // Amazon Personalize dataset schema
@@ -4879,6 +4893,8 @@ private aws.sagemaker.monitoringJobDefinition @defaults("arn name type") {
   createdAt time
   // Network configuration
   networkConfig() aws.sagemaker.monitoringJobDefinition.networkConfig
+  // Tags assigned to the monitoring job definition
+  tags() map[string]string
 }
 
 // AWS SageMaker data quality job definition
@@ -4907,6 +4923,8 @@ private aws.sagemaker.dataQualityJobDefinition @defaults("arn name") {
   iamRole() aws.iam.role
   // Stopping condition
   stoppingCondition() dict
+  // Tags assigned to the job definition
+  tags() map[string]string
 }
 
 // AWS SageMaker model quality job definition
@@ -4935,6 +4953,8 @@ private aws.sagemaker.modelQualityJobDefinition @defaults("arn name") {
   iamRole() aws.iam.role
   // Stopping condition
   stoppingCondition() dict
+  // Tags assigned to the job definition
+  tags() map[string]string
 }
 
 // AWS SageMaker model bias job definition
@@ -4963,6 +4983,8 @@ private aws.sagemaker.modelBiasJobDefinition @defaults("arn name") {
   iamRole() aws.iam.role
   // Stopping condition
   stoppingCondition() dict
+  // Tags assigned to the job definition
+  tags() map[string]string
 }
 
 // AWS SageMaker model explainability job definition
@@ -4991,6 +5013,8 @@ private aws.sagemaker.modelExplainabilityJobDefinition @defaults("arn name") {
   iamRole() aws.iam.role
   // Stopping condition
   stoppingCondition() dict
+  // Tags assigned to the job definition
+  tags() map[string]string
 }
 
 // AWS SageMaker experiment
@@ -5505,6 +5529,8 @@ private aws.sagemaker.notebookInstanceLifecycleConfig @defaults("arn name") {
   onCreate() []string
   // Base64-encoded shell scripts run on instance start
   onStart() []string
+  // Tags assigned to the lifecycle configuration
+  tags() map[string]string
 }
 
 // AWS SageMaker custom container image
@@ -5531,6 +5557,8 @@ private aws.sagemaker.image @defaults("arn name status") {
   iamRole() aws.iam.role
   // Versions of the image
   versions() []aws.sagemaker.image.version
+  // Tags assigned to the image
+  tags() map[string]string
 }
 
 // AWS SageMaker image version
@@ -5691,6 +5719,8 @@ private aws.sagemaker.workforce @defaults("arn name") {
   vpcSubnets() []aws.vpc.subnet
   // Security groups associated with the workforce
   vpcSecurityGroups() []aws.ec2.securitygroup
+  // Tags assigned to the workforce
+  tags() map[string]string
 }
 
 // AWS SageMaker workteam
@@ -31452,6 +31482,8 @@ private aws.bedrock.agentCore.paymentCredentialProvider @defaults("name vendor")
   createdAt time
   // Time the payment credential provider was last updated
   updatedAt time
+  // Tags assigned to the credential provider
+  tags() map[string]string
 }
 
 // Amazon Bedrock AgentCore gateway
@@ -31500,6 +31532,8 @@ private aws.bedrock.agentCore.gateway @defaults("name status protocolType") {
   targets() []aws.bedrock.agentCore.gatewayTarget
   // Rate limits that cap how fast callers may drive the gateway
   rateLimits() []aws.bedrock.agentCore.gatewayRateLimit
+  // Tags assigned to the gateway
+  tags() map[string]string
 }
 
 // Amazon Bedrock AgentCore gateway rate limit
@@ -31611,6 +31645,8 @@ private aws.bedrock.agentCore.capacityProvider @defaults("name status region") {
   rootVolumeKmsKey() aws.kms.key
   // Named persistent EBS volumes agent runtimes can mount
   volumes() []aws.bedrock.agentCore.capacityProvider.volume
+  // Tags assigned to the capacity provider
+  tags() map[string]string
 }
 
 // Persistent EBS volume of an AgentCore capacity provider
@@ -31727,6 +31763,8 @@ private aws.bedrock.agentCore.runtime @defaults("name version status") {
   //
   // The version of the AgentCore runtime platform that hosts the agent code, distinct from the agent runtime `version`. Null when the API does not report one.
   platformVersion() string
+  // Tags assigned to the agent runtime
+  tags() map[string]string
 }
 
 // Amazon Bedrock AgentCore runtime endpoint
@@ -31758,6 +31796,8 @@ private aws.bedrock.agentCore.runtimeEndpoint @defaults("name status liveVersion
   createdAt time
   // Time the endpoint was last updated
   updatedAt time
+  // Tags assigned to the runtime endpoint
+  tags() map[string]string
 }
 
 // Amazon Bedrock AgentCore memory
@@ -31784,6 +31824,8 @@ private aws.bedrock.agentCore.memory @defaults("id status") {
   createdAt time
   // Time the memory store was last updated
   updatedAt time
+  // Tags assigned to the memory
+  tags() map[string]string
 }
 
 // Amazon Bedrock AgentCore memory namespace key
@@ -31832,6 +31874,8 @@ private aws.bedrock.agentCore.browser @defaults("name status") {
   createdAt time
   // Time the browser was last updated
   updatedAt time
+  // Tags assigned to the browser
+  tags() map[string]string
 }
 
 // Amazon Bedrock AgentCore code interpreter
@@ -31860,6 +31904,8 @@ private aws.bedrock.agentCore.codeInterpreter @defaults("name status") {
   createdAt time
   // Time the code interpreter was last updated
   updatedAt time
+  // Tags assigned to the code interpreter
+  tags() map[string]string
 }
 
 // Amazon Bedrock AgentCore sandbox file system mount
@@ -31910,6 +31956,8 @@ private aws.bedrock.agentCore.oauth2CredentialProvider @defaults("name vendor") 
   createdAt time
   // Time the credential provider was last updated
   updatedAt time
+  // Tags assigned to the credential provider
+  tags() map[string]string
 }
 
 // Amazon Bedrock AgentCore API-key credential provider
@@ -31929,6 +31977,8 @@ private aws.bedrock.agentCore.apiKeyCredentialProvider @defaults("name") {
   createdAt time
   // Time the credential provider was last updated
   updatedAt time
+  // Tags assigned to the credential provider
+  tags() map[string]string
 }
 
 // Amazon Bedrock AgentCore consent portal
@@ -31984,6 +32034,8 @@ private aws.bedrock.agentCore.consentPortal @defaults("name status portalUrl") {
   iamRole() aws.iam.role
   // Resources served by the consent portal
   sources() []aws.bedrock.agentCore.consentPortal.source
+  // Tags assigned to the consent portal
+  tags() map[string]string
 }
 
 // Amazon Bedrock AgentCore consent portal source
@@ -32020,6 +32072,8 @@ private aws.bedrock.agentCore.workloadIdentity @defaults("name") {
   name string
   // Region where the workload identity exists
   region string
+  // Tags assigned to the workload identity
+  tags() map[string]string
 }
 
 // Amazon Bedrock advanced prompt optimization job
@@ -32052,6 +32106,8 @@ private aws.bedrock.advancedPromptOptimizationJob @defaults("name status") {
   failureMessage() string
   // Model configurations for the optimization job
   modelConfigurations() []dict
+  // Tags assigned to the job
+  tags() map[string]string
 }
 
 // Amazon Bedrock foundation model
@@ -32145,6 +32201,8 @@ private aws.bedrock.guardrail @defaults("id name status") {
   // Keys: `Words` (custom blocked words) and `ManagedWordLists` (managed
   // word lists, such as profanity, that the guardrail blocks).
   wordPolicy() dict
+  // Tags assigned to the guardrail
+  tags() map[string]string
 }
 
 // Amazon Bedrock model invocation logging configuration
@@ -32300,6 +32358,8 @@ private aws.bedrock.agent @defaults("name status foundationModel") {
   promptOverrideLambda() aws.lambda.function
   // Aliases pointing at prepared versions of the agent
   aliases() []aws.bedrock.agent.alias
+  // Tags assigned to the agent
+  tags() map[string]string
 }
 
 // Amazon Bedrock agent action group
@@ -32426,6 +32486,8 @@ private aws.bedrock.agent.alias @defaults("name status") {
   createdAt time
   // Time the alias was last updated
   updatedAt time
+  // Tags assigned to the alias
+  tags() map[string]string
 }
 
 // Amazon Bedrock knowledge base
@@ -32489,6 +32551,8 @@ private aws.bedrock.knowledgeBase @defaults("name status") {
   dataSourceDetails() []aws.bedrock.knowledgeBase.dataSource
   // VPC configurations the knowledge base uses to reach private resources
   vpcConfigurations() []aws.bedrock.knowledgeBase.vpcConfiguration
+  // Tags assigned to the knowledge base
+  tags() map[string]string
 }
 
 // VPC configuration of an Amazon Bedrock knowledge base
@@ -32706,6 +32770,8 @@ private aws.bedrock.flow @defaults("name status version") {
   createdAt time
   // Time the flow was last updated
   updatedAt time
+  // Tags assigned to the flow
+  tags() map[string]string
 }
 
 // Amazon Bedrock model-evaluation job
@@ -32886,6 +32952,8 @@ private aws.qBusiness.application @defaults("name status identityType") {
   plugins() []aws.qBusiness.plugin
   // Web experiences that serve the application to end users
   webExperiences() []aws.qBusiness.webExperience
+  // Tags assigned to the application
+  tags() map[string]string
 }
 
 // Amazon Q Business index
@@ -32909,6 +32977,8 @@ private aws.qBusiness.index @defaults("name status") {
   createdAt time
   // Time the index was last updated
   updatedAt time
+  // Tags assigned to the index
+  tags() map[string]string
 }
 
 // Amazon Q Business data source
@@ -32943,6 +33013,8 @@ private aws.qBusiness.dataSource @defaults("name type status") {
   roleArn() string
   // Sync schedule for the data source as a cron expression (empty when on-demand)
   syncSchedule() string
+  // Tags assigned to the data source
+  tags() map[string]string
 }
 
 // Amazon Q Business retriever
@@ -32970,6 +33042,8 @@ private aws.qBusiness.retriever @defaults("name type status") {
   iamRole() aws.iam.role
   // ARN of the IAM role associated with the retriever
   roleArn() string
+  // Tags assigned to the retriever
+  tags() map[string]string
 }
 
 // Amazon Q Business plugin
@@ -33003,6 +33077,8 @@ private aws.qBusiness.plugin @defaults("name type state") {
   createdAt time
   // Time the plugin was last updated
   updatedAt time
+  // Tags assigned to the plugin
+  tags() map[string]string
 }
 
 // Amazon Q Business web experience
@@ -33025,6 +33101,8 @@ private aws.qBusiness.webExperience @defaults("id status") {
   createdAt time
   // Time the web experience was last updated
   updatedAt time
+  // Tags assigned to the web experience
+  tags() map[string]string
 }
 
 // Amazon Bedrock inference profile
@@ -33065,6 +33143,8 @@ private aws.bedrock.inferenceProfile @defaults("name status type") {
   policyStatements() []aws.iam.policyStatement
   // Whether the resource policy grants access to any principal
   isPublic() bool
+  // Tags assigned to the inference profile
+  tags() map[string]string
 }
 
 // Amazon Bedrock imported model
@@ -33094,6 +33174,8 @@ private aws.bedrock.importedModel @defaults("name modelArchitecture") {
   policyStatements() []aws.iam.policyStatement
   // Whether the resource policy grants access to any principal
   isPublic() bool
+  // Tags assigned to the imported model
+  tags() map[string]string
 }
 
 // Amazon Bedrock prompt
@@ -33118,6 +33200,8 @@ private aws.bedrock.prompt @defaults("name version") {
   createdAt time
   // Time the prompt was last updated
   updatedAt time
+  // Tags assigned to the prompt
+  tags() map[string]string
 }
 
 // AWS Step Functions

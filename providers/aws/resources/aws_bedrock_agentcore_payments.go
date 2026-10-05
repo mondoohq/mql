@@ -397,3 +397,13 @@ func (a *mqlAwsBedrockAgentCore) paymentCredentialProviders() ([]any, error) {
 		return res, nil
 	}))
 }
+
+type mqlAwsBedrockAgentCorePaymentCredentialProviderInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsBedrockAgentCorePaymentCredentialProvider) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}

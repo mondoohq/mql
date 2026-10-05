@@ -172,6 +172,7 @@ func (a *mqlAwsBedrock) getImportedModels(conn *connection.AwsConnection) []*job
 }
 
 type mqlAwsBedrockImportedModelInternal struct {
+	lazyTags
 	cacheRegion string
 	fetchLock   sync.Mutex
 	fetched     bool
@@ -347,4 +348,58 @@ func bedrockCollectRegionJobs(poolOfJobs *jobpool.Pool) ([]any, error) {
 		}
 	}
 	return res, nil
+}
+
+type mqlAwsBedrockInferenceProfileInternal struct {
+	lazyTags
+}
+
+type mqlAwsBedrockPromptInternal struct {
+	lazyTags
+}
+
+type mqlAwsBedrockAgentAliasInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsBedrockImportedModel) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return bedrockTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockInferenceProfile) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return bedrockTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockPrompt) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return bedrockAgentTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+// The alias listing carries no ARN, so the alias is read once to learn it.
+func (a *mqlAwsBedrockAgentAlias) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.BedrockAgent(a.Region.Data)
+		agentId := a.AgentId.Data
+		aliasId := a.Id.Data
+		resp, err := svc.GetAgentAlias(context.Background(), &bedrockagent.GetAgentAliasInput{AgentId: &agentId, AgentAliasId: &aliasId})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("bedrock:GetAgentAlias"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		if resp.AgentAlias == nil {
+			return nil, errTagsUnreadable
+		}
+		return bedrockAgentTags(a.MqlRuntime, a.Region.Data, convert.ToValue(resp.AgentAlias.AgentAliasArn))
+	})
 }

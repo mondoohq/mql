@@ -96,6 +96,7 @@ func (a *mqlAwsPersonalize) getDatasetGroups(conn *connection.AwsConnection) []*
 }
 
 type mqlAwsPersonalizeDatasetGroupInternal struct {
+	lazyTags
 	region         string
 	cacheKmsKeyArn *string
 	cacheRoleArn   *string
@@ -165,6 +166,7 @@ func (a *mqlAwsPersonalizeDatasetGroup) iamRole() (*mqlAwsIamRole, error) {
 }
 
 type mqlAwsPersonalizeDatasetInternal struct {
+	lazyTags
 	region         string
 	cacheSchemaArn *string
 }
@@ -284,6 +286,7 @@ func (a *mqlAwsPersonalizeDatasetGroup) solutions() ([]any, error) {
 }
 
 type mqlAwsPersonalizeSolutionInternal struct {
+	lazyTags
 	region string
 }
 
@@ -546,4 +549,70 @@ func buildSchemaResource(runtime *plugin.Runtime, schema *personalizetypes.Datas
 		return nil, err
 	}
 	return resource.(*mqlAwsPersonalizeSchema), nil
+}
+
+type mqlAwsPersonalizeCampaignInternal struct {
+	lazyTags
+}
+
+type mqlAwsPersonalizeRecommenderInternal struct {
+	lazyTags
+}
+
+type mqlAwsPersonalizeEventTrackerInternal struct {
+	lazyTags
+}
+
+type mqlAwsPersonalizeFilterInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsPersonalizeDatasetGroup) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) { return personalizeTags(a.MqlRuntime, a.Arn.Data) })
+}
+
+func (a *mqlAwsPersonalizeDataset) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) { return personalizeTags(a.MqlRuntime, a.Arn.Data) })
+}
+
+func (a *mqlAwsPersonalizeSolution) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) { return personalizeTags(a.MqlRuntime, a.Arn.Data) })
+}
+
+func (a *mqlAwsPersonalizeCampaign) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) { return personalizeTags(a.MqlRuntime, a.Arn.Data) })
+}
+
+func (a *mqlAwsPersonalizeRecommender) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) { return personalizeTags(a.MqlRuntime, a.Arn.Data) })
+}
+
+func (a *mqlAwsPersonalizeEventTracker) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) { return personalizeTags(a.MqlRuntime, a.Arn.Data) })
+}
+
+func (a *mqlAwsPersonalizeFilter) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) { return personalizeTags(a.MqlRuntime, a.Arn.Data) })
+}
+
+// personalizeTags reads the tags of a Personalize resource. Only the dataset
+// group carries its region as a field, so the region comes from the ARN.
+func personalizeTags(runtime *plugin.Runtime, resourceArn string) (map[string]any, error) {
+	region, err := GetRegionFromArn(resourceArn)
+	if err != nil {
+		return nil, err
+	}
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Personalize(region)
+	resp, err := svc.ListTagsForResource(context.Background(), &personalize.ListTagsForResourceInput{ResourceArn: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("personalize:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return tagsToMap(resp.Tags, func(t personalizetypes.Tag) *string { return t.TagKey }, func(t personalizetypes.Tag) *string { return t.TagValue }), nil
 }
