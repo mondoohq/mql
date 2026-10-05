@@ -22,7 +22,7 @@ func (a *mqlAptConfig) id() (string, error) {
 // defaults, which reads as a configured system.
 func (a *mqlAptConfig) params() (map[string]any, error) {
 	o, err := CreateResource(a.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("apt-config dump"),
+		"command": llx.StringData(aptConfigDumpCmd),
 	})
 	if err != nil {
 		return nil, err
@@ -43,6 +43,12 @@ func (a *mqlAptConfig) params() (map[string]any, error) {
 	}
 	return res, nil
 }
+
+// aptConfigDumpCmd runs apt-config in the C locale. aptConfigReadError
+// matches its English warning; under LANG=de_DE.UTF-8 apt prints
+// "W: /etc/apt/apt.conf.d/99local kann nicht gelesen werden. - open (13:
+// Keine Berechtigung)" and the unread file went unnoticed.
+const aptConfigDumpCmd = "LC_ALL=C apt-config dump"
 
 // aptConfigReadError reports the configuration files apt-config could not
 // read. apt 1.6 and later only warn about an unreadable apt.conf.d fragment
