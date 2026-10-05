@@ -284,6 +284,36 @@ func TestReadVersionlockDisabledPlugin(t *testing.T) {
 	}
 }
 
+// `plugins=0` in dnf.conf or yum.conf turns the versionlock plugin off with
+// every other plugin: dnf and yum offer the locked package's update again.
+// yum loads no plugins when yum.conf does not ask for them; dnf loads them
+// unless it is told not to.
+func TestReadVersionlockPluginsOff(t *testing.T) {
+	tests := []struct {
+		name, dir, mainPath, main string
+		locked                    bool
+	}{
+		{"dnf plugins=0", "/etc/dnf/plugins", "/etc/dnf/dnf.conf", "[main]\ngpgcheck=1\nplugins=0\n", false},
+		{"dnf plugins=1", "/etc/dnf/plugins", "/etc/dnf/dnf.conf", "[main]\nplugins=1\n", true},
+		{"dnf plugins not set", "/etc/dnf/plugins", "/etc/dnf/dnf.conf", "[main]\ngpgcheck=1\n", true},
+		{"yum plugins=0", "/etc/yum/pluginconf.d", "/etc/yum.conf", "[main]\nplugins=0\n", false},
+		{"yum plugins=1", "/etc/yum/pluginconf.d", "/etc/yum.conf", "[main]\nplugins=1\n", true},
+		{"yum plugins not set", "/etc/yum/pluginconf.d", "/etc/yum.conf", "[main]\ngpgcheck=1\n", false},
+		{"plugins outside [main]", "/etc/dnf/plugins", "/etc/dnf/dnf.conf", "[main]\n[fedora]\nplugins=0\n", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := afero.NewMemMapFs()
+			require.NoError(t, afero.WriteFile(fs, tt.dir+"/versionlock.conf", []byte("[main]\nenabled = 1\n"), 0o644))
+			require.NoError(t, afero.WriteFile(fs, tt.dir+"/versionlock.list", []byte("g03-lock-0:1.0-1.*\n"), 0o644))
+			require.NoError(t, afero.WriteFile(fs, tt.mainPath, []byte(tt.main), 0o644))
+			locks, err := readVersionlock(fs)
+			require.NoError(t, err)
+			assert.Equal(t, tt.locked, locks.has("g03-lock"))
+		})
+	}
+}
+
 // The plugin reads its locks from the file its configuration names.
 func TestReadVersionlockFollowsLocklist(t *testing.T) {
 	fs := afero.NewMemMapFs()

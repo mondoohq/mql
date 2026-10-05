@@ -33,9 +33,17 @@ const dnf5VersionlockPath = "/etc/dnf/versionlock.toml" // dnf5: Fedora 41+
 // versionlockPlugins are the dnf4 (RHEL 8 to 10, Fedora <= 40) and yum (RHEL
 // 7, Amazon Linux 2) versionlock plugins: the plugin configuration, and the
 // store it reads unless the configuration names another with `locklist`.
-var versionlockPlugins = []struct{ conf, list string }{
-	{"/etc/dnf/plugins/versionlock.conf", "/etc/dnf/plugins/versionlock.list"},
-	{"/etc/yum/pluginconf.d/versionlock.conf", "/etc/yum/pluginconf.d/versionlock.list"},
+//
+// main is the package manager's own configuration, whose `plugins` option
+// turns every plugin off. dnf loads plugins unless it says otherwise; yum
+// loads none unless it says `plugins=1`, which every yum.conf a distribution
+// ships does.
+var versionlockPlugins = []struct {
+	conf, list, main string
+	pluginsByDefault bool
+}{
+	{"/etc/dnf/plugins/versionlock.conf", "/etc/dnf/plugins/versionlock.list", "/etc/dnf/dnf.conf", true},
+	{"/etc/yum/pluginconf.d/versionlock.conf", "/etc/yum/pluginconf.d/versionlock.list", "/etc/yum.conf", false},
 }
 
 // lockedNames is the set of package names a lock store holds. A nil or empty
@@ -93,6 +101,15 @@ func readVersionlock(fs afero.Fs) (lockedNames, error) {
 			return nil, err
 		}
 		if conf != nil {
+			mainConf, err := readLockStore(fs, p.main)
+			if err != nil {
+				return nil, err
+			}
+			if mainConf != nil && !parsePluginsEnabled(string(mainConf), p.pluginsByDefault) {
+				// the package manager loads no plugins: its locks hold nothing
+				return nil, nil
+			}
+
 			enabled, locklist := parseVersionlockConf(string(conf))
 			if !enabled {
 				// the plugin is installed and turned off: its locks hold nothing
@@ -182,6 +199,38 @@ func parseVersionlockConf(content string) (enabled bool, locklist string) {
 		}
 	}
 	return enabled, locklist
+}
+
+// parsePluginsEnabled reads the `plugins` option of a dnf.conf or yum.conf
+// [main] section. def is what the package manager assumes when the option is
+// not set.
+func parsePluginsEnabled(content string, def bool) bool {
+	enabled := def
+	inMain := false
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line[0] == '#' || line[0] == ';' {
+			continue
+		}
+		if line[0] == '[' {
+			inMain = strings.TrimSpace(strings.Trim(line, "[]")) == "main"
+			continue
+		}
+		if !inMain {
+			continue
+		}
+		key, value, found := strings.Cut(line, "=")
+		if !found || strings.TrimSpace(key) != "plugins" {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "0", "false", "no", "off":
+			enabled = false
+		case "1", "true", "yes", "on":
+			enabled = true
+		}
+	}
+	return enabled
 }
 
 // parseVersionlockList reads the flat store dnf4 and yum write, one entry per
