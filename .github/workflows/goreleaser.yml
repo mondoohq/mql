@@ -70,63 +70,27 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: read
+      # When a commit has no test run, the gate reads the workflow's path
+      # filters and the diff since the last passing commit, both through the
+      # contents API.
+      contents: read
     steps:
+      - name: Check out the gate script
+        if: ${{ !inputs.goreleaser-snapshot && !inputs.skip-test-gate }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      # The logic lives in .github/scripts/verify-tested.sh, with the reasoning
+      # and the cases it has to tell apart, and is covered by bats tests there.
       - name: Require a successful test run for this commit
         if: ${{ !inputs.goreleaser-snapshot && !inputs.skip-test-gate }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-
-          # Keyed on workflow file rather than check-run name: a renamed check
-          # would silently drop out of a required-names list, which is the
-          # failure mode this job exists to prevent.
-          workflows=(pr-test-lint.yml pr-test-generated-files.yaml)
-
-          # A run may still be going when the tag lands. Wait, but not forever.
-          deadline=$(( $(date +%s) + 45 * 60 ))
-          failed=0
-
-          for wf in "${workflows[@]}"; do
-            while :; do
-              read -r status conclusion <<<"$(
-                gh api "repos/${REPO}/actions/workflows/${wf}/runs?head_sha=${SHA}&per_page=1" \
-                  --jq '.workflow_runs[0] | "\(.status // "none") \(.conclusion // "none")"' 2>/dev/null || echo "none none"
-              )"
-
-              if [ "$status" = "none" ]; then
-                echo "::error::${wf} never ran for ${SHA}. This commit has no test result, so there is nothing to release."
-                failed=1
-                break
-              fi
-
-              if [ "$status" = "completed" ]; then
-                if [ "$conclusion" = "success" ]; then
-                  echo "::notice::${wf} succeeded for ${SHA}"
-                else
-                  # `cancelled` is the case that prompted this gate. It is not a
-                  # milder form of failure -- it means the suite never produced
-                  # a verdict at all.
-                  echo "::error::${wf} for ${SHA} concluded '${conclusion}', not success. Re-run it and re-tag, or dispatch with skip-test-gate if this is an emergency."
-                  failed=1
-                fi
-                break
-              fi
-
-              if [ "$(date +%s)" -ge "$deadline" ]; then
-                echo "::error::${wf} for ${SHA} is still '${status}' after 45 minutes. Refusing to release on an unfinished test run."
-                failed=1
-                break
-              fi
-
-              echo "${wf} is ${status} for ${SHA}; waiting"
-              sleep 60
-            done
-          done
-
-          [ "$failed" -eq 0 ] || exit 1
+        run: .github/scripts/verify-tested.sh
 
       - name: Report a bypassed gate
         if: ${{ inputs.goreleaser-snapshot || inputs.skip-test-gate }}
