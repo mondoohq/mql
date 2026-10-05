@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -52,8 +53,9 @@ func runAsOf(runAs *jobs.JobRunAs, creator string) (name string, kind string) {
 	return creator, principalKindUser
 }
 
-// notificationEmailsOf collects every address notified about a run outcome. The
-// API groups addresses by event, but for review what matters is the full set of
+// notificationEmailsOf collects every address a job notifies, about a run
+// outcome or about platform maintenance of a continuous job. The API groups
+// addresses by event, but for review what matters is the full set of
 // recipients, so the events are unioned with duplicates removed.
 func notificationEmailsOf(n *jobs.JobEmailNotifications) []string {
 	if n == nil {
@@ -64,6 +66,7 @@ func notificationEmailsOf(n *jobs.JobEmailNotifications) []string {
 	for _, group := range [][]string{
 		n.OnStart, n.OnSuccess, n.OnFailure,
 		n.OnDurationWarningThresholdExceeded, n.OnStreamingBacklogExceeded,
+		n.OnMaintenanceStart, n.OnMaintenanceComplete,
 	} {
 		for _, addr := range group {
 			if addr == "" {
@@ -80,7 +83,8 @@ func notificationEmailsOf(n *jobs.JobEmailNotifications) []string {
 }
 
 // webhookNotificationIdsOf collects the notification destinations webhooks are
-// sent to, unioned across run events for the same reason as the email addresses.
+// sent to, unioned across run and maintenance events for the same reason as the
+// email addresses.
 func webhookNotificationIdsOf(n *jobs.WebhookNotifications) []string {
 	if n == nil {
 		return nil
@@ -90,6 +94,7 @@ func webhookNotificationIdsOf(n *jobs.WebhookNotifications) []string {
 	for _, group := range [][]jobs.Webhook{
 		n.OnStart, n.OnSuccess, n.OnFailure,
 		n.OnDurationWarningThresholdExceeded, n.OnStreamingBacklogExceeded,
+		n.OnMaintenanceStart, n.OnMaintenanceComplete,
 	} {
 		for i := range group {
 			id := group[i].Id
@@ -281,26 +286,125 @@ func (r *mqlDatabricksJob) jobSettings() (jobs.JobSettings, error) {
 	if !r.hasMore {
 		return r.settings, nil
 	}
+	detail, err := r.jobDetail()
+	if err != nil {
+		return jobs.JobSettings{}, err
+	}
+	return settingsOf(detail, r.settings), nil
+}
+
+// jobDetail reads the job through the get endpoint once and memoizes it.
+func (r *mqlDatabricksJob) jobDetail() (*jobs.Job, error) {
 	if r.detailFetched.Load() {
-		return settingsOf(r.detail, r.settings), nil
+		return r.detail, nil
 	}
 	r.detailLock.Lock()
 	defer r.detailLock.Unlock()
 	if r.detailFetched.Load() {
-		return settingsOf(r.detail, r.settings), nil
+		return r.detail, nil
 	}
 
 	ws, err := workspaceClient(r.MqlRuntime)
 	if err != nil {
-		return jobs.JobSettings{}, err
+		return nil, err
 	}
 	detail, err := ws.Jobs.GetByJobId(context.Background(), r.Id.Data)
 	if err != nil {
-		return jobs.JobSettings{}, err
+		return nil, err
 	}
 	r.detail = detail
 	r.detailFetched.Store(true)
-	return settingsOf(r.detail, r.settings), nil
+	return r.detail, nil
+}
+
+// jobEnvironmentVariables returns the job's named environment variable
+// entries.
+func (r *mqlDatabricksJob) jobEnvironmentVariables() ([]jobs.JobEnvironmentVariables, error) {
+	settings, err := r.jobSettings()
+	if err != nil {
+		return nil, err
+	}
+	return environmentVariablesOf(settings, r.jobDetail)
+}
+
+// environmentVariablesOf picks the environment variable entries out of the
+// settings the job was listed with. The list endpoint is not documented to
+// carry this block, so an empty block is confirmed against the job detail
+// rather than reported as "none": a job whose entries were left out of the list
+// would otherwise read as defining no variables at all.
+func environmentVariablesOf(settings jobs.JobSettings, detail func() (*jobs.Job, error)) ([]jobs.JobEnvironmentVariables, error) {
+	if len(settings.EnvironmentVariables) > 0 {
+		return settings.EnvironmentVariables, nil
+	}
+	d, err := detail()
+	if err != nil {
+		return nil, err
+	}
+	return settingsOf(d, settings).EnvironmentVariables, nil
+}
+
+// environmentVariableNamesOf collects the names of the variables a job sets
+// inline, across all of its entries, sorted and with duplicates removed. Values
+// are never read: they are free-form strings that may hold credentials.
+func environmentVariableNamesOf(entries []jobs.JobEnvironmentVariables) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for i := range entries {
+		if entries[i].Spec == nil {
+			continue
+		}
+		for name := range entries[i].Spec.Variables {
+			if name == "" {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// environmentVariableFilesOf collects the paths of the .env files a job loads,
+// across all of its entries, in declaration order with duplicates removed.
+func environmentVariableFilesOf(entries []jobs.JobEnvironmentVariables) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for i := range entries {
+		if entries[i].Spec == nil {
+			continue
+		}
+		for _, path := range entries[i].Spec.Files {
+			if path == "" {
+				continue
+			}
+			if _, ok := seen[path]; ok {
+				continue
+			}
+			seen[path] = struct{}{}
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
+func (r *mqlDatabricksJob) environmentVariableNames() ([]any, error) {
+	entries, err := r.jobEnvironmentVariables()
+	if err != nil {
+		return nil, err
+	}
+	return strSlice(environmentVariableNamesOf(entries)), nil
+}
+
+func (r *mqlDatabricksJob) environmentVariableFiles() ([]any, error) {
+	entries, err := r.jobEnvironmentVariables()
+	if err != nil {
+		return nil, err
+	}
+	return strSlice(environmentVariableFilesOf(entries)), nil
 }
 
 // settingsOf prefers the detail settings, falling back to the truncated list
@@ -545,23 +649,24 @@ func (r *mqlDatabricksJob) tasks() ([]any, error) {
 		}
 
 		res, err := CreateResource(r.MqlRuntime, "databricks.job.task", map[string]*llx.RawData{
-			"__id":                  llx.StringData("databricks.job/" + jobId + "/task/" + t.TaskKey),
-			"taskKey":               llx.StringData(t.TaskKey),
-			"description":           llx.StringData(t.Description),
-			"taskType":              llx.StringData(taskTypeOf(t)),
-			"disabled":              llx.BoolData(t.Disabled),
-			"notebookPath":          llx.StringData(notebookPath),
-			"notebookSource":        llx.StringData(notebookSource),
-			"sparkJarMainClass":     llx.StringData(sparkJarMainClass),
-			"sparkPythonFile":       llx.StringData(sparkPythonFile),
-			"sparkSubmitParameters": llx.ArrayData(strSlice(sparkSubmitParameters), types.String),
-			"alertParameters":       llx.MapData(alertParameters, types.String),
-			"dbtCommands":           llx.ArrayData(strSlice(dbtCommands), types.String),
-			"libraries":             llx.ArrayData(jobLibrariesToDict(t.Libraries), types.Dict),
-			"dependsOn":             llx.ArrayData(strSlice(dependsOn), types.String),
-			"maxRetries":            llx.IntData(int64(t.MaxRetries)),
-			"timeoutSeconds":        llx.IntData(int64(t.TimeoutSeconds)),
-			"jobClusterKey":         llx.StringData(t.JobClusterKey),
+			"__id":                    llx.StringData("databricks.job/" + jobId + "/task/" + t.TaskKey),
+			"taskKey":                 llx.StringData(t.TaskKey),
+			"description":             llx.StringData(t.Description),
+			"taskType":                llx.StringData(taskTypeOf(t)),
+			"disabled":                llx.BoolData(t.Disabled),
+			"notebookPath":            llx.StringData(notebookPath),
+			"notebookSource":          llx.StringData(notebookSource),
+			"sparkJarMainClass":       llx.StringData(sparkJarMainClass),
+			"sparkPythonFile":         llx.StringData(sparkPythonFile),
+			"sparkSubmitParameters":   llx.ArrayData(strSlice(sparkSubmitParameters), types.String),
+			"alertParameters":         llx.MapData(alertParameters, types.String),
+			"dbtCommands":             llx.ArrayData(strSlice(dbtCommands), types.String),
+			"libraries":               llx.ArrayData(jobLibrariesToDict(t.Libraries), types.Dict),
+			"dependsOn":               llx.ArrayData(strSlice(dependsOn), types.String),
+			"maxRetries":              llx.IntData(int64(t.MaxRetries)),
+			"timeoutSeconds":          llx.IntData(int64(t.TimeoutSeconds)),
+			"jobClusterKey":           llx.StringData(t.JobClusterKey),
+			"environmentVariablesKey": llx.StringData(t.EnvironmentVariablesKey),
 		})
 		if err != nil {
 			return nil, err

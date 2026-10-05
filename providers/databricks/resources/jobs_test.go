@@ -4,7 +4,9 @@
 package resources
 
 import (
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/databricks/databricks-sdk-go/service/compute"
@@ -153,6 +155,18 @@ func TestNotificationEmailsOf(t *testing.T) {
 		}
 	})
 
+	t.Run("includes maintenance-only recipients", func(t *testing.T) {
+		got := notificationEmailsOf(&jobs.JobEmailNotifications{
+			OnFailure:             []string{"oncall@example.com"},
+			OnMaintenanceStart:    []string{"platform@example.com", "oncall@example.com"},
+			OnMaintenanceComplete: []string{"ops@example.com"},
+		})
+		want := []string{"oncall@example.com", "platform@example.com", "ops@example.com"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("notificationEmailsOf() = %v, want %v", got, want)
+		}
+	})
+
 	t.Run("empty notifications yield empty slice", func(t *testing.T) {
 		got := notificationEmailsOf(&jobs.JobEmailNotifications{})
 		if len(got) != 0 {
@@ -177,6 +191,70 @@ func TestWebhookNotificationIdsOf(t *testing.T) {
 		want := []string{"hook-1", "hook-2", "hook-3"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("webhookNotificationIdsOf() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("includes maintenance-only destinations", func(t *testing.T) {
+		got := webhookNotificationIdsOf(&jobs.WebhookNotifications{
+			OnSuccess:             []jobs.Webhook{{Id: "hook-1"}},
+			OnMaintenanceStart:    []jobs.Webhook{{Id: "hook-2"}, {Id: "hook-1"}},
+			OnMaintenanceComplete: []jobs.Webhook{{Id: "hook-3"}, {Id: ""}},
+		})
+		want := []string{"hook-1", "hook-2", "hook-3"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("webhookNotificationIdsOf() = %v, want %v", got, want)
+		}
+	})
+}
+
+func TestEnvironmentVariableNamesOf(t *testing.T) {
+	t.Run("nil entries yield empty slice", func(t *testing.T) {
+		got := environmentVariableNamesOf(nil)
+		if got == nil || len(got) != 0 {
+			t.Fatalf("environmentVariableNamesOf(nil) = %#v, want empty non-nil", got)
+		}
+	})
+
+	t.Run("unions names across entries, sorted, without values", func(t *testing.T) {
+		got := environmentVariableNamesOf([]jobs.JobEnvironmentVariables{
+			{EnvironmentVariablesKey: "default", Spec: &jobs.JobEnvironmentVariablesSpec{
+				Variables: map[string]string{"STAGE": "prod", "DB_PASSWORD": "hunter2", "": "x"},
+			}},
+			{EnvironmentVariablesKey: "no-spec"},
+			{EnvironmentVariablesKey: "etl", Spec: &jobs.JobEnvironmentVariablesSpec{
+				Variables: map[string]string{"STAGE": "dev", "API_TOKEN": "s3cret"},
+				Files:     []string{"/Volumes/main/env/etl.env"},
+			}},
+		})
+		want := []string{"API_TOKEN", "DB_PASSWORD", "STAGE"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("environmentVariableNamesOf() = %v, want %v", got, want)
+		}
+	})
+}
+
+func TestEnvironmentVariableFilesOf(t *testing.T) {
+	t.Run("nil entries yield empty slice", func(t *testing.T) {
+		got := environmentVariableFilesOf(nil)
+		if got == nil || len(got) != 0 {
+			t.Fatalf("environmentVariableFilesOf(nil) = %#v, want empty non-nil", got)
+		}
+	})
+
+	t.Run("unions files across entries in order without duplicates", func(t *testing.T) {
+		got := environmentVariableFilesOf([]jobs.JobEnvironmentVariables{
+			{EnvironmentVariablesKey: "default", Spec: &jobs.JobEnvironmentVariablesSpec{
+				Files:     []string{"/Workspace/Shared/base.env", ""},
+				Variables: map[string]string{"STAGE": "prod"},
+			}},
+			{EnvironmentVariablesKey: "no-spec"},
+			{EnvironmentVariablesKey: "etl", Spec: &jobs.JobEnvironmentVariablesSpec{
+				Files: []string{"/Volumes/main/env/etl.env", "/Workspace/Shared/base.env"},
+			}},
+		})
+		want := []string{"/Workspace/Shared/base.env", "/Volumes/main/env/etl.env"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("environmentVariableFilesOf() = %v, want %v", got, want)
 		}
 	})
 }
@@ -365,6 +443,104 @@ func TestSettingsOf(t *testing.T) {
 	t.Run("falls back when the detail carries no settings", func(t *testing.T) {
 		if got := settingsOf(&jobs.Job{}, fallback); got.Name != "from-list" {
 			t.Fatalf("settingsOf() name = %q, want %q", got.Name, "from-list")
+		}
+	})
+}
+
+// The notification structs gain an event whenever the Jobs API adds one, and
+// the builders list their events by name, so a new event compiles cleanly and
+// its recipients silently drop out of the union. These walk every event field
+// through reflection and fail at SDK upgrade time instead.
+
+func TestNotificationEmailsOfCoversEverySdkEvent(t *testing.T) {
+	typ := reflect.TypeOf(jobs.JobEmailNotifications{})
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		if f.Type != reflect.TypeOf([]string{}) || !strings.HasPrefix(f.Name, "On") {
+			continue
+		}
+		t.Run(f.Name, func(t *testing.T) {
+			n := jobs.JobEmailNotifications{}
+			reflect.ValueOf(&n).Elem().Field(i).Set(reflect.ValueOf([]string{"sentinel@example.com"}))
+			if got := notificationEmailsOf(&n); !reflect.DeepEqual(got, []string{"sentinel@example.com"}) {
+				t.Fatalf("notificationEmailsOf() = %v for jobs.JobEmailNotifications.%s.\n"+
+					"The SDK models a notification event that notificationEmailsOf does not read. "+
+					"Add it to the union and to the notificationEmails doc comment.", got, f.Name)
+			}
+		})
+	}
+}
+
+func TestWebhookNotificationIdsOfCoversEverySdkEvent(t *testing.T) {
+	typ := reflect.TypeOf(jobs.WebhookNotifications{})
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		if f.Type != reflect.TypeOf([]jobs.Webhook{}) || !strings.HasPrefix(f.Name, "On") {
+			continue
+		}
+		t.Run(f.Name, func(t *testing.T) {
+			n := jobs.WebhookNotifications{}
+			reflect.ValueOf(&n).Elem().Field(i).Set(reflect.ValueOf([]jobs.Webhook{{Id: "sentinel"}}))
+			if got := webhookNotificationIdsOf(&n); !reflect.DeepEqual(got, []string{"sentinel"}) {
+				t.Fatalf("webhookNotificationIdsOf() = %v for jobs.WebhookNotifications.%s.\n"+
+					"The SDK models a notification event that webhookNotificationIdsOf does not read. "+
+					"Add it to the union and to the webhookNotificationIds doc comment.", got, f.Name)
+			}
+		})
+	}
+}
+
+func TestEnvironmentVariablesOf(t *testing.T) {
+	listed := []jobs.JobEnvironmentVariables{{
+		EnvironmentVariablesKey: "default",
+		Spec:                    &jobs.JobEnvironmentVariablesSpec{Variables: map[string]string{"STAGE": "prod"}},
+	}}
+
+	t.Run("entries in the list response are used without a detail call", func(t *testing.T) {
+		got, err := environmentVariablesOf(jobs.JobSettings{EnvironmentVariables: listed}, func() (*jobs.Job, error) {
+			t.Fatal("detail fetched although the list response carried the entries")
+			return nil, nil
+		})
+		if err != nil {
+			t.Fatalf("environmentVariablesOf() error = %v", err)
+		}
+		if !reflect.DeepEqual(got, listed) {
+			t.Fatalf("environmentVariablesOf() = %v, want %v", got, listed)
+		}
+	})
+
+	t.Run("an empty list block is confirmed against the detail", func(t *testing.T) {
+		calls := 0
+		got, err := environmentVariablesOf(jobs.JobSettings{}, func() (*jobs.Job, error) {
+			calls++
+			return &jobs.Job{Settings: &jobs.JobSettings{EnvironmentVariables: listed}}, nil
+		})
+		if err != nil {
+			t.Fatalf("environmentVariablesOf() error = %v", err)
+		}
+		if calls != 1 {
+			t.Fatalf("detail fetched %d times, want 1", calls)
+		}
+		if !reflect.DeepEqual(got, listed) {
+			t.Fatalf("environmentVariablesOf() = %v, want the detail's entries %v", got, listed)
+		}
+	})
+
+	t.Run("a job with no entries anywhere reports none", func(t *testing.T) {
+		got, err := environmentVariablesOf(jobs.JobSettings{}, func() (*jobs.Job, error) {
+			return &jobs.Job{Settings: &jobs.JobSettings{}}, nil
+		})
+		if err != nil || len(got) != 0 {
+			t.Fatalf("environmentVariablesOf() = %v, %v; want empty, nil", got, err)
+		}
+	})
+
+	t.Run("a failed detail call is an error, not an empty answer", func(t *testing.T) {
+		_, err := environmentVariablesOf(jobs.JobSettings{}, func() (*jobs.Job, error) {
+			return nil, errors.New("PERMISSION_DENIED")
+		})
+		if err == nil {
+			t.Fatal("environmentVariablesOf() error = nil, want the detail error")
 		}
 	})
 }

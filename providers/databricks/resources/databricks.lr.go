@@ -1894,6 +1894,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"databricks.job.webhookNotificationIds": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksJob).GetWebhookNotificationIds()).ToDataRes(types.Array(types.String))
 	},
+	"databricks.job.environmentVariableNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksJob).GetEnvironmentVariableNames()).ToDataRes(types.Array(types.String))
+	},
+	"databricks.job.environmentVariableFiles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksJob).GetEnvironmentVariableFiles()).ToDataRes(types.Array(types.String))
+	},
 	"databricks.job.tasks": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksJob).GetTasks()).ToDataRes(types.Array(types.Resource("databricks.job.task")))
 	},
@@ -1959,6 +1965,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"databricks.job.task.jobClusterKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksJobTask).GetJobClusterKey()).ToDataRes(types.String)
+	},
+	"databricks.job.task.environmentVariablesKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksJobTask).GetEnvironmentVariablesKey()).ToDataRes(types.String)
 	},
 	"databricks.job.task.existingCluster": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksJobTask).GetExistingCluster()).ToDataRes(types.Resource("databricks.cluster"))
@@ -4689,6 +4698,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatabricksJob).WebhookNotificationIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"databricks.job.environmentVariableNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksJob).EnvironmentVariableNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.job.environmentVariableFiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksJob).EnvironmentVariableFiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"databricks.job.tasks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatabricksJob).Tasks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -4779,6 +4796,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"databricks.job.task.jobClusterKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatabricksJobTask).JobClusterKey, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.job.task.environmentVariablesKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksJobTask).EnvironmentVariablesKey, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"databricks.job.task.existingCluster": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -10630,6 +10651,8 @@ type mqlDatabricksJob struct {
 	GitCommit                             plugin.TValue[string]
 	NotificationEmails                    plugin.TValue[[]any]
 	WebhookNotificationIds                plugin.TValue[[]any]
+	EnvironmentVariableNames              plugin.TValue[[]any]
+	EnvironmentVariableFiles              plugin.TValue[[]any]
 	Tasks                                 plugin.TValue[[]any]
 	Triggers                              plugin.TValue[[]any]
 	JobClusters                           plugin.TValue[[]any]
@@ -10790,6 +10813,18 @@ func (c *mqlDatabricksJob) GetWebhookNotificationIds() *plugin.TValue[[]any] {
 	return &c.WebhookNotificationIds
 }
 
+func (c *mqlDatabricksJob) GetEnvironmentVariableNames() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EnvironmentVariableNames, func() ([]any, error) {
+		return c.environmentVariableNames()
+	})
+}
+
+func (c *mqlDatabricksJob) GetEnvironmentVariableFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EnvironmentVariableFiles, func() ([]any, error) {
+		return c.environmentVariableFiles()
+	})
+}
+
 func (c *mqlDatabricksJob) GetTasks() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Tasks, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -10871,25 +10906,26 @@ type mqlDatabricksJobTask struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlDatabricksJobTaskInternal
-	TaskKey               plugin.TValue[string]
-	Description           plugin.TValue[string]
-	TaskType              plugin.TValue[string]
-	Disabled              plugin.TValue[bool]
-	NotebookPath          plugin.TValue[string]
-	NotebookSource        plugin.TValue[string]
-	SparkJarMainClass     plugin.TValue[string]
-	SparkPythonFile       plugin.TValue[string]
-	SparkSubmitParameters plugin.TValue[[]any]
-	AlertParameters       plugin.TValue[map[string]any]
-	DbtCommands           plugin.TValue[[]any]
-	Libraries             plugin.TValue[[]any]
-	DependsOn             plugin.TValue[[]any]
-	MaxRetries            plugin.TValue[int64]
-	TimeoutSeconds        plugin.TValue[int64]
-	JobClusterKey         plugin.TValue[string]
-	ExistingCluster       plugin.TValue[*mqlDatabricksCluster]
-	NewCluster            plugin.TValue[*mqlDatabricksClusterSpec]
-	Pipeline              plugin.TValue[*mqlDatabricksPipeline]
+	TaskKey                 plugin.TValue[string]
+	Description             plugin.TValue[string]
+	TaskType                plugin.TValue[string]
+	Disabled                plugin.TValue[bool]
+	NotebookPath            plugin.TValue[string]
+	NotebookSource          plugin.TValue[string]
+	SparkJarMainClass       plugin.TValue[string]
+	SparkPythonFile         plugin.TValue[string]
+	SparkSubmitParameters   plugin.TValue[[]any]
+	AlertParameters         plugin.TValue[map[string]any]
+	DbtCommands             plugin.TValue[[]any]
+	Libraries               plugin.TValue[[]any]
+	DependsOn               plugin.TValue[[]any]
+	MaxRetries              plugin.TValue[int64]
+	TimeoutSeconds          plugin.TValue[int64]
+	JobClusterKey           plugin.TValue[string]
+	EnvironmentVariablesKey plugin.TValue[string]
+	ExistingCluster         plugin.TValue[*mqlDatabricksCluster]
+	NewCluster              plugin.TValue[*mqlDatabricksClusterSpec]
+	Pipeline                plugin.TValue[*mqlDatabricksPipeline]
 }
 
 // createDatabricksJobTask creates a new instance of this resource
@@ -10986,6 +11022,10 @@ func (c *mqlDatabricksJobTask) GetTimeoutSeconds() *plugin.TValue[int64] {
 
 func (c *mqlDatabricksJobTask) GetJobClusterKey() *plugin.TValue[string] {
 	return &c.JobClusterKey
+}
+
+func (c *mqlDatabricksJobTask) GetEnvironmentVariablesKey() *plugin.TValue[string] {
+	return &c.EnvironmentVariablesKey
 }
 
 func (c *mqlDatabricksJobTask) GetExistingCluster() *plugin.TValue[*mqlDatabricksCluster] {

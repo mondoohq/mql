@@ -1688,17 +1688,35 @@ databricks.job @defaults("name runAs format") {
   gitTag string
   // Git commit the source is pinned to, empty when unused
   gitCommit string
-  // Email addresses notified about run outcomes
+  // Email addresses notified about run outcomes and platform maintenance
   //
   // The union of the addresses configured across the start, success, failure,
-  // duration-warning, and streaming-backlog events.
+  // duration-warning, streaming-backlog, maintenance-start, and
+  // maintenance-complete events.
   notificationEmails []string
   // Identifiers of the notification destinations webhooks are sent to
   //
-  // The union of the destination ids configured across every run event. Each id
-  // resolves to a workspace notification destination such as a Slack, Microsoft
-  // Teams, PagerDuty, or generic webhook target.
+  // The union of the destination ids configured across every run and
+  // maintenance event. Each id resolves to a workspace notification destination
+  // such as a Slack, Microsoft Teams, PagerDuty, or generic webhook target.
   webhookNotificationIds []string
+  // Names of the environment variables the job sets inline
+  //
+  // The union of the variable names across every environment variable entry
+  // the job defines, sorted. Only names are reported, never values, since a
+  // value set inline is stored in the job definition in plaintext. A name such
+  // as `DB_PASSWORD` or `API_TOKEN` points at a credential that belongs in a
+  // secret scope instead. Variables loaded from the files in
+  // environmentVariableFiles are not included. A task picks one entry through
+  // its environmentVariablesKey.
+  environmentVariableNames() []string
+  // Paths of the .env files the job loads environment variables from
+  //
+  // Workspace (`/Workspace/...`) or Unity Catalog volume (`/Volumes/...`)
+  // paths, across every environment variable entry the job defines. Anyone
+  // who can write to one of these files controls the environment the job's
+  // tasks run with.
+  environmentVariableFiles() []string
   // Tasks the job runs
   tasks() []databricks.job.task
   // Triggers that start runs of the job
@@ -1787,6 +1805,8 @@ private databricks.job.task @defaults("taskKey taskType") {
   timeoutSeconds int
   // Key of the job cluster the task runs on, empty when it does not use one
   jobClusterKey string
+  // Key of the job's environment variable entry the task runs with, empty when it uses none
+  environmentVariablesKey string
   // Long-lived cluster the task runs on
   existingCluster() databricks.cluster
   // Compute created for each run of the task

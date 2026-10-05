@@ -345,6 +345,8 @@ databricks.job.deploymentId 13.1.4
 databricks.job.deploymentKind 13.1.4
 databricks.job.description 13.1.4
 databricks.job.editMode 13.1.4
+databricks.job.environmentVariableFiles 14.0.2
+databricks.job.environmentVariableNames 14.0.2
 databricks.job.format 13.1.4
 databricks.job.gitBranch 13.1.4
 databricks.job.gitCommit 13.1.4
@@ -373,6 +375,7 @@ databricks.job.task.dbtCommands 13.1.4
 databricks.job.task.dependsOn 13.1.4
 databricks.job.task.description 13.1.4
 databricks.job.task.disabled 13.1.4
+databricks.job.task.environmentVariablesKey 14.0.2
 databricks.job.task.existingCluster 13.1.4
 databricks.job.task.jobClusterKey 13.1.4
 databricks.job.task.libraries 13.1.4
