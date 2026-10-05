@@ -548,6 +548,29 @@ func (a *mqlAwsSfnActivity) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+type mqlAwsSfnActivityInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsSfnActivity) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Sfn(a.Region.Data)
+		activityArn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &sfn.ListTagsForResourceInput{ResourceArn: &activityArn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("states:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return sfnTagsToMap(resp.Tags), nil
+	})
+}
+
 func sfnTagsToMap(tags []sfntypes.Tag) map[string]any {
 	return tagsToMap(tags, func(t sfntypes.Tag) *string { return t.Key }, func(t sfntypes.Tag) *string { return t.Value })
 }

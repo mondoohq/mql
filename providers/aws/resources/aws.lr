@@ -13579,6 +13579,8 @@ private aws.applicationAutoscaling.target @defaults("arn") {
   policies() []aws.applicationAutoscaling.policy
   // Scheduled scaling actions for this target
   scheduledActions() []aws.applicationAutoscaling.scheduledAction
+  // Tags assigned to the scalable target
+  tags() map[string]string
 }
 
 // AWS Application Auto Scaling policy
@@ -19111,6 +19113,8 @@ private aws.lambda.eventSourceMapping @defaults("uuid eventSourceArn") {
   // Between 2 and 1000. Null when no maximum is configured, leaving the
   // mapping to scale on the default schedule.
   maximumConcurrency int
+  // Tags assigned to the event source mapping
+  tags() map[string]string
 }
 
 // AWS Lambda function alias
@@ -19161,6 +19165,8 @@ private aws.lambda.codeSigningConfig @defaults("arn") {
   untrustedArtifactOnDeployment string
   // When the configuration was last modified
   lastModified time
+  // Tags assigned to the code signing configuration
+  tags() map[string]string
 }
 
 // AWS Systems Manager (SSM)
@@ -24255,6 +24261,8 @@ private aws.appstream.application @defaults("name displayName enabled platforms 
   createdAt time
   // Region where the application exists
   region string
+  // Tags assigned to the application
+  tags() map[string]string
 }
 
 // Amazon AppStream 2.0 image
@@ -24612,6 +24620,8 @@ private aws.apprunner.autoScalingConfiguration @defaults("name revision status r
   hasAssociatedService bool
   // Region where the revision exists
   region string
+  // Tags assigned to the auto scaling configuration
+  tags() map[string]string
 }
 
 // AWS App Runner source-provider connection
@@ -24637,6 +24647,8 @@ private aws.apprunner.connection @defaults("name providerType status region") {
   createdAt time
   // Region where the connection exists
   region string
+  // Tags assigned to the connection
+  tags() map[string]string
 }
 
 // AWS App Runner VPC connector
@@ -24665,6 +24677,8 @@ private aws.apprunner.vpcConnector @defaults("name revision status region") {
   securityGroups() []aws.ec2.securitygroup
   // Region where the connector exists
   region string
+  // Tags assigned to the VPC connector
+  tags() map[string]string
 }
 
 // AWS App Runner observability configuration revision
@@ -24695,6 +24709,8 @@ private aws.apprunner.observabilityConfiguration @defaults("name revision status
   traceConfigurationVendor() string
   // Region where the revision exists
   region string
+  // Tags assigned to the observability configuration
+  tags() map[string]string
 }
 
 // AWS App Runner VPC ingress connection
@@ -24727,6 +24743,8 @@ private aws.apprunner.vpcIngressConnection @defaults("name status domainName reg
   service() aws.apprunner.service
   // Region where the ingress connection exists
   region string
+  // Tags assigned to the VPC ingress connection
+  tags() map[string]string
 }
 
 // Amazon Athena
@@ -29423,6 +29441,8 @@ private aws.ssm.association @defaults("associationId name") {
   calendarNames() []string
   // Parameter used as the rate-control target when the association runs an Automation runbook
   automationTargetParameterName() string
+  // Tags assigned to the association
+  tags() map[string]string
 }
 
 // Amazon SSM compliance summary per resource
@@ -29865,6 +29885,8 @@ private aws.sfn.activity @defaults("arn name") {
   region string
   // Date the activity was created
   createdAt time
+  // Tags assigned to the activity
+  tags() map[string]string
 }
 
 // AWS Resource Access Manager (RAM)
@@ -30309,6 +30331,8 @@ private aws.appmesh.virtualService @defaults("arn name") {
   virtualNode() aws.appmesh.virtualNode
   // Virtual router backing the virtual service, when the provider type is virtualRouter
   virtualRouter() aws.appmesh.virtualRouter
+  // Tags assigned to the virtual service
+  tags() map[string]string
 }
 
 // AWS App Mesh virtual node
@@ -30359,6 +30383,8 @@ private aws.appmesh.virtualNode @defaults("arn name") {
   loggingAccessLogPath() string
   // Format of access log entries, describing either the JSON key/value pairs or the text format string
   loggingAccessLogFormat() []dict
+  // Tags assigned to the virtual node
+  tags() map[string]string
 }
 
 // AWS App Mesh virtual router
@@ -33505,6 +33531,8 @@ private aws.datasync.task @defaults("arn name status") {
   scheduleStatus() string
   // Time the task was created
   createdAt() time
+  // Tags assigned to the task
+  tags() map[string]string
 }
 
 // AWS DataSync location
@@ -33517,6 +33545,8 @@ private aws.datasync.location @defaults("arn locationUri") {
   locationType string
   // Region where the location exists
   region string
+  // Tags assigned to the location
+  tags() map[string]string
 }
 
 // AWS DataSync agent
@@ -33537,6 +33567,8 @@ private aws.datasync.agent @defaults("arn name status") {
   vpcEndpointId() string
   // Time the agent was activated
   createdAt() time
+  // Tags assigned to the agent
+  tags() map[string]string
 }
 
 // AWS AppFlow

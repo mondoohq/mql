@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/datasync"
+	datasynctypes "github.com/aws/aws-sdk-go-v2/service/datasync/types"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -100,6 +101,7 @@ func (a *mqlAwsDatasyncTask) id() (string, error) {
 }
 
 type mqlAwsDatasyncTaskInternal struct {
+	lazyTags
 	fetched  bool
 	lock     sync.Mutex
 	descResp *datasync.DescribeTaskOutput
@@ -424,6 +426,7 @@ func (a *mqlAwsDatasyncAgent) id() (string, error) {
 }
 
 type mqlAwsDatasyncAgentInternal struct {
+	lazyTags
 	fetched  bool
 	lock     sync.Mutex
 	descResp *datasync.DescribeAgentOutput
@@ -476,4 +479,54 @@ func (a *mqlAwsDatasyncAgent) createdAt() (*time.Time, error) {
 		return nil, err
 	}
 	return resp.CreationTime, nil
+}
+
+type mqlAwsDatasyncLocationInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsDatasyncTask) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return datasyncTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsDatasyncLocation) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return datasyncTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsDatasyncAgent) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return datasyncTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+// datasyncTagsForArn reads the tags of a DataSync task, location, or agent,
+// following the paginated ListTagsForResource response to the end.
+func datasyncTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.DataSync(region)
+	ctx := context.Background()
+	tags := map[string]any{}
+	paginator := datasync.NewListTagsForResourcePaginator(svc, &datasync.ListTagsForResourceInput{ResourceArn: &resourceArn})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("datasync:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		for k, v := range tagsToMap(page.Tags,
+			func(t datasynctypes.TagListEntry) *string { return t.Key },
+			func(t datasynctypes.TagListEntry) *string { return t.Value }) {
+			tags[k] = v
+		}
+	}
+	return tags, nil
 }

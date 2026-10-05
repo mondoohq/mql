@@ -284,6 +284,7 @@ func (a *mqlAwsSsmMaintenanceWindowTarget) id() (string, error) {
 // ---------------- Association detail lazy-load ----------------
 
 type mqlAwsSsmAssociationInternal struct {
+	lazyTags
 	fetched  bool
 	fetchErr error
 	lock     sync.Mutex
@@ -600,4 +601,30 @@ func isSsmDocumentNotFound(err error) bool {
 		return true
 	}
 	return false
+}
+
+// tags reads the association's tags. SSM's ListTagsForResource is keyed on a
+// resource id and type; for an association the id is the association ID.
+func (a *mqlAwsSsmAssociation) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Ssm(a.Region.Data)
+		associationId := a.AssociationId.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &ssm.ListTagsForResourceInput{
+			ResourceId:   &associationId,
+			ResourceType: types.ResourceTypeForTaggingAssociation,
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("ssm:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList,
+			func(t types.Tag) *string { return t.Key },
+			func(t types.Tag) *string { return t.Value }), nil
+	})
 }

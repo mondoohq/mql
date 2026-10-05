@@ -808,6 +808,30 @@ func newMqlAwsAppstreamApplication(runtime *plugin.Runtime, region string, app a
 
 func (a *mqlAwsAppstreamApplication) id() (string, error) { return a.Arn.Data, nil }
 
+type mqlAwsAppstreamApplicationInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsAppstreamApplication) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Appstream(a.Region.Data)
+		resp, err := svc.ListTagsForResource(context.Background(), &appstream.ListTagsForResourceInput{
+			ResourceArn: aws.String(a.Arn.Data),
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("appstream:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return toInterfaceMap(resp.Tags), nil
+	})
+}
+
 // Images
 
 func (a *mqlAwsAppstream) images() ([]any, error) {

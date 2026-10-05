@@ -12,6 +12,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
 	"go.mondoo.com/mql/providers/aws/connection"
@@ -42,6 +43,36 @@ func scalableTargetArn(target aatypes.ScalableTarget, region, accountID string) 
 
 func (a *mqlAwsApplicationAutoscalingTarget) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+type mqlAwsApplicationAutoscalingTargetInternal struct {
+	lazyTags
+	// cacheTargetArn is the ARN as DescribeScalableTargets reported it. It is
+	// empty when the API named none and arn holds a composed fallback, which
+	// ListTagsForResource does not accept.
+	cacheTargetArn string
+}
+
+func (a *mqlAwsApplicationAutoscalingTarget) tags() (map[string]any, error) {
+	if a.cacheTargetArn == "" {
+		return markTagsUnreadable(&a.Tags)
+	}
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.ApplicationAutoscaling(a.Region.Data)
+		targetArn := a.cacheTargetArn
+		resp, err := svc.ListTagsForResource(context.Background(), &applicationautoscaling.ListTagsForResourceInput{ResourceARN: &targetArn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("application-autoscaling:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return toInterfaceMap(resp.Tags), nil
+	})
 }
 
 func (a *mqlAwsApplicationAutoscalingPolicy) id() (string, error) {
@@ -122,6 +153,7 @@ func (a *mqlAwsApplicationAutoscaling) getTargets(conn *connection.AwsConnection
 					if err != nil {
 						return nil, err
 					}
+					mqlSTarget.(*mqlAwsApplicationAutoscalingTarget).cacheTargetArn = convert.ToValue(target.ScalableTargetARN)
 					res = append(res, mqlSTarget)
 				}
 			}

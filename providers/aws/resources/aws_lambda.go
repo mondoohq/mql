@@ -1568,6 +1568,50 @@ func (a *mqlAwsLambdaCodeSigningConfig) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+type mqlAwsLambdaCodeSigningConfigInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsLambdaCodeSigningConfig) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		// The resource carries no region field; the ARN names it.
+		parsed, err := arn.Parse(a.Arn.Data)
+		if err != nil {
+			return nil, err
+		}
+		return lambdaTagsForArn(a.MqlRuntime, parsed.Region, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsLambdaEventSourceMapping) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		mappingArn, err := a.arn()
+		if err != nil {
+			return nil, err
+		}
+		return lambdaTagsForArn(a.MqlRuntime, a.Region.Data, mappingArn)
+	})
+}
+
+// lambdaTagsForArn reads the tags of a Lambda event source mapping or code
+// signing configuration. Lambda's ListTags returns them as a map, so no
+// key/value accessors are needed.
+func lambdaTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Lambda(region)
+	resp, err := svc.ListTags(context.Background(), &lambda.ListTagsInput{Resource: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("lambda:ListTags"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return toInterfaceMap(resp.Tags), nil
+}
+
 func (a *mqlAwsLambdaFunction) eventInvokeConfig() (any, error) {
 	funcName := a.Name.Data
 	region := a.Region.Data
@@ -1878,6 +1922,7 @@ func (a *mqlAwsLambdaLayerVersion) id() (string, error) {
 }
 
 type mqlAwsLambdaEventSourceMappingInternal struct {
+	lazyTags
 	cacheFunctionArn string
 	cacheArn         string
 }

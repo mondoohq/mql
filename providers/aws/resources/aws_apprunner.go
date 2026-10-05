@@ -554,6 +554,7 @@ func (a *mqlAwsApprunnerAutoScalingConfiguration) id() (string, error) {
 }
 
 type mqlAwsApprunnerAutoScalingConfigurationInternal struct {
+	lazyTags
 	detailFetched bool
 	detailErr     error
 	detail        *apprunnertypes.AutoScalingConfiguration
@@ -777,6 +778,10 @@ func (a *mqlAwsApprunnerConnection) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+type mqlAwsApprunnerConnectionInternal struct {
+	lazyTags
+}
+
 // VPC connectors
 
 func (a *mqlAwsApprunner) vpcConnectors() ([]any, error) {
@@ -877,6 +882,7 @@ func (a *mqlAwsApprunnerVpcConnector) id() (string, error) {
 }
 
 type mqlAwsApprunnerVpcConnectorInternal struct {
+	lazyTags
 	securityGroupIdHandler
 	region         string
 	accountID      string
@@ -1032,6 +1038,7 @@ func (a *mqlAwsApprunnerObservabilityConfiguration) id() (string, error) {
 }
 
 type mqlAwsApprunnerObservabilityConfigurationInternal struct {
+	lazyTags
 	detailFetched bool
 	detailErr     error
 	detail        *apprunnertypes.ObservabilityConfiguration
@@ -1255,6 +1262,7 @@ func (a *mqlAwsApprunnerVpcIngressConnection) id() (string, error) {
 }
 
 type mqlAwsApprunnerVpcIngressConnectionInternal struct {
+	lazyTags
 	cacheServiceArn *string
 	detailFetched   bool
 	detailErr       error
@@ -1431,4 +1439,53 @@ func initAwsApprunnerVpcIngressConnection(runtime *plugin.Runtime, args map[stri
 	mqlIngressRes.detailFetched = true
 	mqlIngressRes.cacheServiceArn = v.ServiceArn
 	return args, mqlIngressRes, nil
+}
+
+func (a *mqlAwsApprunnerAutoScalingConfiguration) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return apprunnerTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsApprunnerConnection) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return apprunnerTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsApprunnerVpcConnector) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return apprunnerTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsApprunnerObservabilityConfiguration) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return apprunnerTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsApprunnerVpcIngressConnection) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return apprunnerTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+// apprunnerTagsForArn reads the tags of any App Runner resource by ARN.
+func apprunnerTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.AppRunner(region)
+	resp, err := svc.ListTagsForResource(context.Background(), &apprunner.ListTagsForResourceInput{ResourceArn: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("apprunner:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return tagsToMap(resp.Tags,
+		func(t apprunnertypes.Tag) *string { return t.Key },
+		func(t apprunnertypes.Tag) *string { return t.Value }), nil
 }

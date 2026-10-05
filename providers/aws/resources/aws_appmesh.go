@@ -326,6 +326,7 @@ func (a *mqlAwsAppmeshVirtualService) id() (string, error) {
 }
 
 type mqlAwsAppmeshVirtualServiceInternal struct {
+	lazyTags
 	fetched            bool
 	lock               sync.Mutex
 	descResp           *appmesh.DescribeVirtualServiceOutput
@@ -693,6 +694,7 @@ func (a *mqlAwsAppmeshVirtualNode) id() (string, error) {
 }
 
 type mqlAwsAppmeshVirtualNodeInternal struct {
+	lazyTags
 	fetched            bool
 	lock               sync.Mutex
 	descResp           *appmesh.DescribeVirtualNodeOutput
@@ -1800,6 +1802,54 @@ func (a *mqlAwsAppmeshVirtualGateway) tags() (map[string]any, error) {
 		}
 		for _, tag := range page.Tags {
 			tags[convert.ToValue(tag.Key)] = convert.ToValue(tag.Value)
+		}
+	}
+	return tags, nil
+}
+
+func (a *mqlAwsAppmeshVirtualService) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		region := a.region
+		if region == "" {
+			region = a.Region.Data
+		}
+		return appmeshTagsForArn(a.MqlRuntime, region, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsAppmeshVirtualNode) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		region := a.region
+		if region == "" {
+			region = a.Region.Data
+		}
+		return appmeshTagsForArn(a.MqlRuntime, region, a.Arn.Data)
+	})
+}
+
+// appmeshTagsForArn reads the tags of an App Mesh resource by ARN, following
+// the paginated ListTagsForResource response to the end.
+func appmeshTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.AppMesh(region)
+	ctx := context.Background()
+	tags := map[string]any{}
+	paginator := appmesh.NewListTagsForResourcePaginator(svc, &appmesh.ListTagsForResourceInput{ResourceArn: &resourceArn})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("appmesh:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		for k, v := range tagsToMap(page.Tags,
+			func(t appmesh_types.TagRef) *string { return t.Key },
+			func(t appmesh_types.TagRef) *string { return t.Value }) {
+			tags[k] = v
 		}
 	}
 	return tags, nil
