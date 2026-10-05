@@ -234,13 +234,13 @@ Hide synthetic `__id` values, don't expose them as `id` fields. When a sub-resou
 - Skip deprecated SDK fields and methods (`// Deprecated:`); they return empty on modern instances because the data moved. Comment if you must keep one.
 - Always commit `*.permissions.json` when `make providers/build/<provider>` changes it. A new AWS client's permissions only land if the client is mapped in `awsConnectionMethodToService` (plus `awsServiceNameOverrides` when the IAM prefix differs from the SDK package); for GCP, a `Get<Resource>` gRPC method needs a `gcpPermissionOverrides` entry for the plural form. Miss either and the perms silently drop.
 - Every provider that accepts connections declares an asset root (ADR 031): `@root` on the resource, `option root = "<resource>"` in the `.lr`, `Root:` in `config/config.go`, core in `Requires` (ADR 042). Enforced by `providers/roots_test.go`. Scaffolding: DEVELOPMENT.md → Creating a new provider, and `new-provider`.
-- `go mod tidy` runs inside `providers/<name>/`, not the repo root, or new SDK deps stay `// indirect`.
+- `go mod tidy` runs inside `providers/<name>/`, not the repo root, or new SDK deps stay `// indirect`. Exception: `os`, `core`, `network` and `iac` have no `go.mod` of their own and build from the root module, so their dependencies go in the root `go.mod` and `go mod tidy` runs at the repo root.
 
 ## 6. Pre-PR checklist
 
 - [ ] `gofmt -w` on all changed `.go` files
 - [ ] Generated files current: `make mql/generate && git diff --exit-code` (`.lr.go`, `.pb.go`, `.permissions.json`)
-- [ ] `go mod tidy` inside `providers/<name>/` shows no diff
+- [ ] `go mod tidy` inside `providers/<name>/` (at the repo root for `os`, `core`, `network`, `iac`) shows no diff
 - [ ] `make test/lint` and `make test/go/plain` pass; `go test -v ./providers/<provider>/...` if the provider has tests
 - [ ] Verified interactively (`mql shell <provider>`, queries from the ticket)
 - [ ] Every new field naming another resource is a typed accessor (Step 1.5)
