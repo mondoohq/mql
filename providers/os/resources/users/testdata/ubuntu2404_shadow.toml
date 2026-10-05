@@ -1,0 +1,28 @@
+# Accounts and shadow states from an Ubuntu 24.04 host (password hashes shortened)
+[files."/etc/passwd"]
+content="""root:x:0:0:root:/root:/bin/bash
+systemd-network:x:998:998:systemd Network Management:/:/usr/sbin/nologin
+ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash
+mqlt_bash:x:2001:2001::/home/mqlt_bash:/bin/bash
+mqlt_locked:x:2002:2002::/home/mqlt_locked:/bin/bash
+mqlt_nopw:x:2003:2003::/home/mqlt_nopw:/bin/bash
+mqlt_expire:x:2008:2008::/home/mqlt_expire:/bin/bash
+ldapuser:x:5001:5001::/home/ldapuser:/bin/bash"""
+
+[files."/etc/shadow"]
+content="""root:*:20719:0:99999:7:::
+systemd-network:!*:20719::::::
+ubuntu:!:20728:0:99999:7:::
+mqlt_bash:$y$j9T$QXjPV7Jc.bjCoIJb5OGOB/$chdD:20728:0:99999:7:::
+mqlt_locked:!$y$j9T$iv4pmtK8LnIZYySmm8biZ0$GkNB:20728:0:99999:7:::
+mqlt_nopw::20728:0:99999:7:::
+mqlt_expire:$y$j9T$3YS0/1bvowPl6pSDdoDlQ.$ok0I:20728:7:90:14:30:18262:"""
+
+[commands."uname -r"]
+stdout = "6.8.0-1012-aws"
+
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"

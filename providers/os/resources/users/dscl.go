@@ -82,10 +82,12 @@ func (s *OSXUserManager) List() ([]*User, error) {
 			log.Error().Err(err).Str("user", k).Msg("could not parse uid")
 		}
 
+		// dscl does not report whether an account is disabled
 		users[k] = &User{
-			ID:   m[k],
-			Name: k,
-			Uid:  uid,
+			ID:             m[k],
+			Name:           k,
+			Uid:            uid,
+			EnabledUnknown: true,
 		}
 	}
 
