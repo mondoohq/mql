@@ -319,7 +319,7 @@ func listRegionalNetworkFirewallPolicies(runtime *plugin.Runtime, projectId stri
 	}
 
 	res := []any{}
-	req := computeSvc.NetworkFirewallPolicies.AggregatedList(projectId).ReturnPartialSuccess(true)
+	req := computeSvc.NetworkFirewallPolicies.AggregatedList(projectId)
 	if err := req.Pages(ctx, func(page *compute.NetworkFirewallPolicyAggregatedList) error {
 		for _, u := range page.Unreachables {
 			log.Warn().Str("project", projectId).Str("scope", u).Msg("could not list regional network firewall policies in an unreachable scope")
