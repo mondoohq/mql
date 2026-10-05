@@ -4,8 +4,10 @@
 package kernel
 
 import (
+	"bufio"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -108,20 +110,57 @@ func (s *LinuxKernelManager) Info() (KernelInfo, error) {
 }
 
 func (s *LinuxKernelManager) Parameters() (map[string]string, error) {
+	params, _, err := s.ParametersWithDenied()
+	return params, err
+}
+
+// ParametersWithDenied returns the kernel parameters that could be read, and
+// the names of the ones that exist but could not be read for lack of
+// permission. A scan that is not root can't read a few of them, such as
+// kernel.usermodehelper.bset and fs.protected_hardlinks, which are mode 0600.
+func (s *LinuxKernelManager) ParametersWithDenied() (map[string]string, []string, error) {
 	if s.conn.Capabilities().Has(shared.Capability_RunCommand) {
 		cmd, err := s.conn.RunCommand("/sbin/sysctl -a")
 		// in case of err, the command is not there and we fallback to /proc/sys walking
 		if err == nil && cmd.ExitStatus == 0 {
 			log.Debug().Msg("using sysctl to read kernel parameters")
-			return ParseSysctl(cmd.Stdout, "=")
+			params, err := ParseSysctl(cmd.Stdout, "=")
+			if err != nil {
+				return nil, nil, err
+			}
+			return params, ParseSysctlDenied(cmd.Stderr), nil
 		}
 	}
 
 	log.Debug().Msg("using /proc/sys walking to read kernel parameters")
-	return walkProcSys(s.conn.FileSystem())
+	return walkProcSysDenied(s.conn.FileSystem())
+}
+
+var sysctlDeniedRegex = regexp.MustCompile(`^sysctl: permission denied on key '(.+)'$`)
+
+// ParseSysctlDenied returns the parameters procps `sysctl -a` reports on
+// stderr as "permission denied on key". sysctl still exits 0.
+func ParseSysctlDenied(r io.Reader) []string {
+	if r == nil {
+		return nil
+	}
+	var res []string
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		if m := sysctlDeniedRegex.FindStringSubmatch(strings.TrimSpace(scanner.Text())); m != nil {
+			res = append(res, m[1])
+		}
+	}
+	return res
 }
 
 // walkProcSys reads every readable knob under /proc/sys.
+func walkProcSys(fs afero.Fs) (map[string]string, error) {
+	params, _, err := walkProcSysDenied(fs)
+	return params, err
+}
+
+// walkProcSysDenied reads every readable knob under /proc/sys.
 //
 // Plenty of them are not readable: some are mode 0600 and owned by root
 // (kernel.usermodehelper/bset among them), and some are write-only by design
@@ -130,9 +169,13 @@ func (s *LinuxKernelManager) Parameters() (map[string]string, error) {
 // result of the walk cost the caller every parameter, so kernel.parameters was
 // empty for any non-root scan; skip the ones we cannot read and return the
 // rest.
-func walkProcSys(fs afero.Fs) (map[string]string, error) {
+//
+// The parameters it could not open for lack of permission are returned as
+// denied.
+func walkProcSysDenied(fs afero.Fs) (map[string]string, []string, error) {
 	fsUtil := afero.Afero{Fs: fs}
 	kernelParameters := make(map[string]string)
+	var denied []string
 
 	err := fsUtil.Walk(sysctlPath, func(path string, f os.FileInfo, err error) error {
 		if err != nil {
@@ -160,6 +203,9 @@ func walkProcSys(fs afero.Fs) (map[string]string, error) {
 		file, err := fs.Open(path)
 		if err != nil {
 			log.Debug().Err(err).Str("path", path).Msg("mql[kernel]> could not open sysctl parameter")
+			if os.IsPermission(err) {
+				denied = append(denied, procSysName(path))
+			}
 			return nil
 		}
 		defer file.Close()
@@ -170,17 +216,21 @@ func walkProcSys(fs afero.Fs) (map[string]string, error) {
 			return nil
 		}
 
-		// remove leading sysctl path
-		k := strings.ReplaceAll(path, sysctlPath, "")
-		k = strings.ReplaceAll(k, "/", ".")
-		kernelParameters[k] = strings.TrimSpace(string(content))
+		kernelParameters[procSysName(path)] = strings.TrimSpace(string(content))
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return kernelParameters, nil
+	return kernelParameters, denied, nil
+}
+
+// procSysName turns a path under /proc/sys into a parameter name.
+func procSysName(path string) string {
+	// remove leading sysctl path
+	k := strings.ReplaceAll(path, sysctlPath, "")
+	return strings.ReplaceAll(k, "/", ".")
 }
 
 func (s *LinuxKernelManager) Modules() ([]*KernelModule, error) {

@@ -7057,8 +7057,11 @@ kernel @defaults("info") {
 // at boot: a file hides a same-named file in a lower-priority directory, the
 // files are applied in file name order, and the last assignment wins. An
 // explicit assignment beats a glob, and `-name` excludes a parameter from
-// globs. Without systemd-sysctl, /etc/sysctl.conf is applied after the
-// sysctl.d files, as `sysctl --system` does. On BSD and macOS it is
+// globs. systemd-sysctl before 245 applies no globs or exclusions, and before
+// 243 (239-57 on RHEL 8) a leading `-` is part of the key; the configuration
+// is read the way the installed version reads it. Without systemd-sysctl,
+// /etc/sysctl.conf is applied after the sysctl.d files, as
+// `sysctl --system` does. On BSD and macOS it is
 // /etc/sysctl.conf (and /etc/sysctl.conf.local on FreeBSD).
 kernel.parameter @defaults("name value configured") {
   init(name string)
@@ -7076,7 +7079,9 @@ kernel.parameter @defaults("name value configured") {
   // Whitespace runs are collapsed to one space, so a value with several
   // parts compares equal to the same value in a configuration file:
   // `32768 60999`, where `kernel.parameters` has `32768\t60999`. Null when
-  // the parameter is not active.
+  // the parameter is not active, or when it is but has no readable value. A
+  // permission error when the scan may not read it, as a user other than
+  // root on a parameter such as `fs.protected_hardlinks`.
   value string
   // Value the configuration files set
   //
@@ -7096,7 +7101,7 @@ kernel.parameter @defaults("name value configured") {
 //
 // One `name = value` line in a sysctl configuration file.
 private kernel.parameter.setting @defaults("key value file.path line") {
-  // Key as written, without a leading `-`; may be a glob
+  // Key as written, without a leading `-` that ignores errors; may be a glob
   key string
   // Assigned value
   value string
