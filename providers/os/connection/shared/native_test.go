@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestEnvEnabled(t *testing.T) {
@@ -28,6 +30,21 @@ func TestWindowsNativeNeedsALocalWindowsConnection(t *testing.T) {
 	}
 	// A remote connection keeps the PowerShell path wherever the provider runs.
 	assert.False(t, WindowsNative(typedConn{t: Type_SSH}))
+}
+
+func TestWindowsNativeEnabled(t *testing.T) {
+	t.Setenv(WindowsNativeEnv, "")
+	t.Cleanup(func() { plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)})) })
+
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)}))
+	assert.False(t, WindowsNativeEnabled(), "off without the feature or the variable")
+
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.WindowsNative)}))
+	assert.True(t, WindowsNativeEnabled(), "the server's WindowsNative feature")
+
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.ResourceContext)}))
+	t.Setenv(WindowsNativeEnv, "1")
+	assert.True(t, WindowsNativeEnabled(), "MONDOO_WINDOWS_NATIVE")
 }
 
 type typedConn struct {

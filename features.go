@@ -133,9 +133,14 @@ const (
 	// status: new
 	StructuredErrors Feature = 24
 
+	// On a local scan of Windows (the agent, cnspec scan local), read Windows data through Windows APIs instead of starting PowerShell: users and groups, services, security and audit policy, optional features, computerInfo and the hypervisor. Remote scans (SSH, WinRM) keep PowerShell. Off by default until each native path has shown the same results as PowerShell; MONDOO_WINDOWS_NATIVE turns it on locally too.
+	// start:  v14.x
+	// status: new
+	WindowsNative Feature = 25
+
 	// Placeholder to indicate how many feature flags exist. This number
 	// is changing with every new feature and cannot be used as a featureflag itself.
-	MAX_FEATURES byte = 25
+	MAX_FEATURES byte = 26
 )
 
 var FeaturesValue = map[string]Feature{
@@ -163,6 +168,7 @@ var FeaturesValue = map[string]Feature{
 	"UploadResourcesData":          UploadResourcesData,
 	"RootedNamespace":              RootedNamespace,
 	"StructuredErrors":             StructuredErrors,
+	"WindowsNative":                WindowsNative,
 }
 
 // DefaultFeatures are a set of default flags that are active
@@ -187,4 +193,5 @@ var AvailableFeatures = Features{
 	byte(UploadResourcesData),
 	byte(RootedNamespace),
 	byte(StructuredErrors),
+	byte(WindowsNative),
 }

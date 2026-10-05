@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/local"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 // TestNativeServicesMatchPowerShell compares the Service Control Manager
@@ -87,7 +88,7 @@ func TestNativeServicesMatchPowerShell(t *testing.T) {
 // connection returns the Service Control Manager listing rather than falling
 // back to PowerShell.
 func TestNativeServicesUsedForLocalConnection(t *testing.T) {
-	t.Setenv(windowsNativeEnvVar, "on")
+	t.Setenv(shared.WindowsNativeEnv, "on")
 	mgr := &WindowsServiceManager{conn: local.NewConnection(0, &inventory.Config{}, &inventory.Asset{})}
 	listed, err := mgr.List()
 	require.NoError(t, err)

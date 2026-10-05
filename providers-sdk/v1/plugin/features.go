@@ -4,16 +4,17 @@
 package plugin
 
 import (
+	"bytes"
 	"sync/atomic"
 
 	"go.mondoo.com/mql"
 )
 
-// structuredErrors holds the StructuredErrors feature for the whole provider
-// process (ADR 046 §9). It is process-wide because the call sites that read
-// it have no connection or context at hand, and because the client sends one
-// feature set per scan.
-var structuredErrors atomic.Bool
+// features holds the scan's features for the whole provider process. It is
+// process-wide because the call sites that read it (StructuredErrors, ADR 046
+// §9, or a native Windows path) have no connection or context at hand, and
+// because the client sends one feature set per scan.
+var features atomic.Pointer[mql.Features]
 
 // ReadFeatures records the features a Connect request carried. The SDK calls
 // it for every Connect and MockConnect it serves, so a provider running in its
@@ -26,11 +27,19 @@ var structuredErrors atomic.Bool
 // the flag off would switch a provider back to v13 behavior halfway through
 // a scan. A request with features always decides, so a long-running process
 // picks up a flag that was turned off again.
-func ReadFeatures(features []byte) {
-	if len(features) == 0 {
+func ReadFeatures(b []byte) {
+	if len(b) == 0 {
 		return
 	}
-	structuredErrors.Store(mql.Features(features).IsActive(mql.StructuredErrors))
+	f := mql.Features(bytes.Clone(b))
+	features.Store(&f)
+}
+
+// FeatureActive reports whether the scan's features include f. It is false
+// until a Connect request carried features.
+func FeatureActive(f mql.Feature) bool {
+	cur := features.Load()
+	return cur != nil && cur.IsActive(f)
 }
 
 // StructuredErrors reports whether a refusal is returned as a classified error
@@ -45,5 +54,5 @@ func ReadFeatures(features []byte) {
 //
 // In v15 the flag becomes the default and those branches are deleted.
 func StructuredErrors() bool {
-	return structuredErrors.Load()
+	return FeatureActive(mql.StructuredErrors)
 }

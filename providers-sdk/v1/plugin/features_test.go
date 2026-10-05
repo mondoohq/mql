@@ -16,10 +16,24 @@ var (
 	withoutStructuredErrors = []byte(mql.Features{byte(mql.ResourceContext)})
 )
 
-// resetStructuredErrors puts the process-wide flag back to off when the test
-// ends, so no other test in the package inherits it.
+// resetStructuredErrors puts the process-wide features back to none when the
+// test ends, so no other test in the package inherits them.
 func resetStructuredErrors(t *testing.T) {
-	t.Cleanup(func() { structuredErrors.Store(false) })
+	t.Cleanup(func() { features.Store(nil) })
+}
+
+func TestFeatureActive(t *testing.T) {
+	resetStructuredErrors(t)
+	require.False(t, FeatureActive(mql.WindowsNative), "off until a Connect carries features")
+
+	in := []byte(mql.Features{byte(mql.WindowsNative)})
+	ReadFeatures(in)
+	assert.True(t, FeatureActive(mql.WindowsNative))
+	assert.False(t, FeatureActive(mql.StructuredErrors))
+
+	// the stored set is a copy: the caller's buffer may be reused
+	in[0] = byte(mql.StructuredErrors)
+	assert.True(t, FeatureActive(mql.WindowsNative))
 }
 
 func TestReadFeatures(t *testing.T) {

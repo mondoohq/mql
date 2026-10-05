@@ -134,3 +134,8 @@ Features:
   idx: 24
   start: v14.x
   status: new
+- id: WindowsNative
+  desc: "On a local scan of Windows (the agent, cnspec scan local), read Windows data through Windows APIs instead of starting PowerShell: users and groups, services, security and audit policy, optional features, computerInfo and the hypervisor. Remote scans (SSH, WinRM) keep PowerShell. Off by default until each native path has shown the same results as PowerShell; MONDOO_WINDOWS_NATIVE turns it on locally too."
+  idx: 25
+  start: v14.x
+  status: new
