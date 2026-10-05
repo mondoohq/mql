@@ -76,3 +76,19 @@ func TestBigtableBackupPolicyArgs(t *testing.T) {
 		assert.Equal(t, []any{}, args["locations"].Value)
 	})
 }
+
+func TestBigtableChangeStreamConfig(t *testing.T) {
+	// An unset retention is a nil interface, which used to compare unequal to
+	// 0 and report {retentionPeriod: "<nil>"} on every table.
+	assert.Nil(t, bigtableChangeStreamConfig(nil))
+	assert.Nil(t, bigtableChangeStreamConfig(time.Duration(0)))
+	assert.Equal(t, map[string]any{"retentionPeriod": "24h0m0s"},
+		bigtableChangeStreamConfig(24*time.Hour))
+}
+
+func TestDictDataOrNilReportsNullForNilMap(t *testing.T) {
+	var none map[string]any
+	assert.Nil(t, dictDataOrNil(none).Value,
+		"a table with no backup policy must read null, not {}")
+	assert.Equal(t, map[string]any{"k": "v"}, dictDataOrNil(map[string]any{"k": "v"}).Value)
+}

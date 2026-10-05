@@ -460,12 +460,7 @@ func (g *mqlGcpProjectBigtableServiceInstance) tables() ([]any, error) {
 		automatedBackupPolicy := bigtableAutomatedBackupPolicyDict(configuredPolicy)
 		automatedBackupsDisabled := configuredPolicy != nil && configuredPolicy.Disabled
 
-		var changeStreamConfig map[string]any
-		if tableInfo.ChangeStreamRetention != 0 {
-			changeStreamConfig = map[string]any{
-				"retentionPeriod": fmt.Sprintf("%v", tableInfo.ChangeStreamRetention),
-			}
-		}
+		changeStreamConfig := bigtableChangeStreamConfig(tableInfo.ChangeStreamRetention)
 
 		var tieredStorageConfig map[string]any
 		if tsc := tableInfo.TieredStorageConfig; tsc != nil {
@@ -491,10 +486,10 @@ func (g *mqlGcpProjectBigtableServiceInstance) tables() ([]any, error) {
 			"columnFamilies":           llx.DictData(columnFamilies),
 			"granularity":              llx.StringData("MILLIS"),
 			"deletionProtection":       llx.BoolData(deletionProtection),
-			"automatedBackupPolicy":    llx.DictData(automatedBackupPolicy),
+			"automatedBackupPolicy":    dictDataOrNil(automatedBackupPolicy),
 			"automatedBackupsDisabled": llx.BoolData(automatedBackupsDisabled),
-			"changeStreamConfig":       llx.DictData(changeStreamConfig),
-			"tieredStorageConfig":      llx.DictData(tieredStorageConfig),
+			"changeStreamConfig":       dictDataOrNil(changeStreamConfig),
+			"tieredStorageConfig":      dictDataOrNil(tieredStorageConfig),
 		}
 		var effectivePolicy plugin.Resource
 		if ep := tableInfo.EffectiveAutomatedBackupPolicy; ep != nil {
@@ -537,6 +532,27 @@ func bigtableOptionalDuration(d any) (time.Duration, bool) {
 // bigtableAutomatedBackupPolicyDict renders a table's configured automated
 // backup policy. It returns nil when the table has no policy or explicitly
 // disables automated backups, and omits duration keys the policy leaves unset.
+// dictDataOrNil reports a nil map as null. llx.DictData on a nil
+// map[string]any stores a typed nil, which reads as an empty dict, so a
+// table with no policy would answer `!= null` with true.
+func dictDataOrNil(m map[string]any) *llx.RawData {
+	if m == nil {
+		return llx.NilData
+	}
+	return llx.DictData(m)
+}
+
+// bigtableChangeStreamConfig reports the change stream retention of a table,
+// or nil when change streams are off. The retention is an optional duration:
+// nil when unset, a time.Duration otherwise.
+func bigtableChangeStreamConfig(retention bigtable.ChangeStreamRetention) map[string]any {
+	d, ok := retention.(time.Duration)
+	if !ok || d <= 0 {
+		return nil
+	}
+	return map[string]any{"retentionPeriod": d.String()}
+}
+
 func bigtableAutomatedBackupPolicyDict(abp *bigtable.TableAutomatedBackupPolicy) map[string]any {
 	if abp == nil || abp.Disabled {
 		return nil

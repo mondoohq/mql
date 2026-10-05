@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -167,6 +168,17 @@ func (g *mqlGcpProjectKmsServiceKeyringCryptokey) managedBy() (string, error) {
 	return managedByFromLabels(g.GetLabels())
 }
 
+// cryptoKeyPath trims a key version suffix from a crypto key resource name.
+// Compute reports the key that encrypts a disk, image, snapshot or machine
+// image as the version that was used
+// (".../cryptoKeys/<key>/cryptoKeyVersions/<n>"), which GetCryptoKey rejects.
+func cryptoKeyPath(name string) string {
+	if i := strings.Index(name, "/cryptoKeyVersions/"); i >= 0 {
+		return name[:i]
+	}
+	return name
+}
+
 func initGcpProjectKmsServiceKeyringCryptokey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
@@ -180,6 +192,7 @@ func initGcpProjectKmsServiceKeyringCryptokey(runtime *plugin.Runtime, args map[
 	if !ok || resourcePath == "" {
 		return nil, nil, errors.New(`gcp.project.kmsService.keyring.cryptokey requires a non-empty "resourcePath" argument`)
 	}
+	resourcePath = cryptoKeyPath(resourcePath)
 
 	conn, ok := runtime.Connection.(*connection.GcpConnection)
 	if !ok {
