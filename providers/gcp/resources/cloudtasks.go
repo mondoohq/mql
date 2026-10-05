@@ -209,7 +209,8 @@ func (c *cloudTasksCmekCache) kmsKeyName(runtime *plugin.Runtime, location strin
 	})
 	if err != nil {
 		if gerr, ok := googleAPIError(err); ok && gerr.Code == http.StatusNotFound {
-			// No CMEK config exists for the location: Google-managed encryption.
+			// A 404 is an answer, not a refusal: no CMEK config exists for the
+			// location, so it uses Google-managed encryption.
 			c.keys[location] = ""
 			return "", nil
 		}
