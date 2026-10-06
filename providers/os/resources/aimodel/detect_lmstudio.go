@@ -4,7 +4,6 @@
 package aimodel
 
 import (
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -20,8 +19,8 @@ type LMStudioDetector struct{}
 
 func (d *LMStudioDetector) Detect(ctx DetectContext) []ModelInfo {
 	dirs := []string{
-		filepath.Join(ctx.Home, ".lmstudio", "models"),
-		filepath.Join(ctx.Home, ".cache", "lm-studio", "models"),
+		joinPath(ctx.Home, ".lmstudio", "models"),
+		joinPath(ctx.Home, ".cache", "lm-studio", "models"),
 	}
 
 	seen := map[string]bool{}
@@ -35,7 +34,7 @@ func (d *LMStudioDetector) Detect(ctx DetectContext) []ModelInfo {
 			if !publisher.IsDir() {
 				continue
 			}
-			publisherDir := filepath.Join(modelsDir, publisher.Name())
+			publisherDir := joinPath(modelsDir, publisher.Name())
 			repos, err := ctx.Fs.ReadDir(publisherDir)
 			if err != nil {
 				continue
@@ -44,7 +43,7 @@ func (d *LMStudioDetector) Detect(ctx DetectContext) []ModelInfo {
 				if !repo.IsDir() {
 					continue
 				}
-				repoDir := filepath.Join(publisherDir, repo.Name())
+				repoDir := joinPath(publisherDir, repo.Name())
 				modelName := publisher.Name() + "/" + repo.Name()
 				if seen[modelName] {
 					continue
@@ -53,7 +52,7 @@ func (d *LMStudioDetector) Detect(ctx DetectContext) []ModelInfo {
 
 				ggufFiles := findGGUFFiles(ctx.Fs, repoDir)
 				for _, m := range ggufFiles {
-					filename := filepath.Base(m.path)
+					filename := baseName(m.path)
 					quant := ""
 					if match := reQuantization.FindString(filename); match != "" {
 						quant = strings.ToUpper(match)
@@ -96,7 +95,7 @@ func findGGUFFiles(afs *afero.Afero, dir string) []fileEntry {
 		}
 		if strings.HasSuffix(strings.ToLower(e.Name()), ".gguf") {
 			results = append(results, fileEntry{
-				path:    filepath.Join(dir, e.Name()),
+				path:    joinPath(dir, e.Name()),
 				size:    e.Size(),
 				modTime: e.ModTime(),
 			})

@@ -813,3 +813,36 @@ func TestOllamaDisplayName(t *testing.T) {
 		assert.Equal(t, tc.want, ollamaDisplayName(tc.registry, tc.namespace, tc.model, tc.tag))
 	}
 }
+
+func TestJoinPath(t *testing.T) {
+	tests := []struct {
+		name string
+		base string
+		elem []string
+		want string
+	}{
+		{"windows home", `C:\Users\me`, []string{".cache", "huggingface", "hub"}, `C:\Users\me\.cache\huggingface\hub`},
+		{"windows home with trailing separator", `C:\Users\me\`, []string{"jan"}, `C:\Users\me\jan`},
+		{"windows drive root", `C:\`, []string{"ollama"}, `C:\ollama`},
+		{"lowercase drive letter", `d:\models`, []string{"x.gguf"}, `d:\models\x.gguf`},
+		// ollamaModelDirs builds the per-user store with path.Join
+		{"mixed separators in base are normalized", `C:\Users\me/.ollama/models`, []string{"manifests"}, `C:\Users\me\.ollama\models\manifests`},
+		{"slash in an element", `C:\Users\me`, []string{"Library/Application Support"}, `C:\Users\me\Library\Application Support`},
+		{"unc share", `\\server\share\home`, []string{".keras"}, `\\server\share\home\.keras`},
+		{"posix home", "/home/me", []string{".cache", "huggingface"}, "/home/me/.cache/huggingface"},
+		{"posix keeps a backslash in a name", "/home/me", []string{`odd\name`}, `/home/me/odd\name`},
+		{"posix trailing slash", "/Users/me/", []string{"jan"}, "/Users/me/jan"},
+		{"relative", "models", []string{"x"}, "models/x"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, joinPath(test.base, test.elem...))
+		})
+	}
+}
+
+func TestBaseName(t *testing.T) {
+	assert.Equal(t, "model-Q4_K_M.gguf", baseName(`C:\Users\me\.lmstudio\models\pub\repo\model-Q4_K_M.gguf`))
+	assert.Equal(t, "model-Q4_K_M.gguf", baseName("/home/me/.lmstudio/models/pub/repo/model-Q4_K_M.gguf"))
+	assert.Equal(t, "plain", baseName("plain"))
+}

@@ -3,9 +3,7 @@
 
 package aimodel
 
-import (
-	"path/filepath"
-)
+import ()
 
 // TFHubDetector discovers TensorFlow Hub modules cached at
 // ~/.cache/tfhub_modules. Each module directory must contain a
@@ -13,7 +11,7 @@ import (
 type TFHubDetector struct{}
 
 func (d *TFHubDetector) Detect(ctx DetectContext) []ModelInfo {
-	modulesDir := filepath.Join(ctx.Home, ".cache", "tfhub_modules")
+	modulesDir := joinPath(ctx.Home, ".cache", "tfhub_modules")
 	entries, err := ctx.Fs.ReadDir(modulesDir)
 	if err != nil {
 		return nil
@@ -24,10 +22,10 @@ func (d *TFHubDetector) Detect(ctx DetectContext) []ModelInfo {
 		if !e.IsDir() {
 			continue
 		}
-		moduleDir := filepath.Join(modulesDir, e.Name())
+		moduleDir := joinPath(modulesDir, e.Name())
 
 		// TF Hub modules contain saved_model.pb
-		savedModel := filepath.Join(moduleDir, "saved_model.pb")
+		savedModel := joinPath(moduleDir, "saved_model.pb")
 		if exists, _ := ctx.Fs.Exists(savedModel); !exists {
 			continue
 		}

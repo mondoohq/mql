@@ -5,12 +5,56 @@ package aimodel
 
 import (
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/spf13/afero"
 )
+
+// joinPath joins path elements in the style of the target that base belongs
+// to. filepath.Join follows the host mql runs on instead, so scanning Windows
+// from macOS reported C:\Users\me/.cache/huggingface/hub, and scanning Linux
+// from Windows would turn every slash into a backslash. A base with a drive
+// letter or a UNC prefix is a Windows path and is joined with backslashes,
+// normalizing any slash already in it; anything else is joined with slashes.
+func joinPath(base string, elem ...string) string {
+	if !isWindowsPath(base) {
+		return path.Join(append([]string{base}, elem...)...)
+	}
+
+	parts := []string{}
+	for _, p := range append([]string{base}, elem...) {
+		parts = append(parts, strings.FieldsFunc(p, isPathSeparator)...)
+	}
+	joined := strings.Join(parts, `\`)
+	if strings.HasPrefix(base, `\\`) {
+		return `\\` + joined
+	}
+	return joined
+}
+
+// baseName is the last element of p, split on both separators so that a
+// Windows path reads the same on every host.
+func baseName(p string) string {
+	if i := strings.LastIndexFunc(p, isPathSeparator); i >= 0 {
+		return p[i+1:]
+	}
+	return p
+}
+
+func isWindowsPath(p string) bool {
+	if strings.HasPrefix(p, `\\`) {
+		return true
+	}
+	return len(p) >= 2 && p[1] == ':' &&
+		(p[0] >= 'a' && p[0] <= 'z' || p[0] >= 'A' && p[0] <= 'Z')
+}
+
+func isPathSeparator(r rune) bool {
+	return r == '/' || r == '\\'
+}
 
 // ModelInfo holds the metadata for a single discovered AI model cache entry.
 // Each detector populates what it can; fields left empty mean the source
