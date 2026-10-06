@@ -13,6 +13,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers-sdk/v1/util/azauth"
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
@@ -73,6 +74,9 @@ type Authenticator struct {
 	token     string
 	mintedAt  time.Time
 	expiresAt time.Time
+	// refreshWarned is set once a failed refresh of the current token was
+	// logged, so that every request until the expiry does not log it again.
+	refreshWarned bool
 }
 
 // NewAuthenticator picks the mode from the options.
@@ -122,7 +126,9 @@ func (a *Authenticator) Mode() AuthMode {
 }
 
 // Token returns the secret to present: the PAT, or an Entra access token that
-// is minted on first use and again once 80% of its lifetime has passed.
+// is minted on first use and again once 80% of its lifetime has passed. When
+// that refresh fails, the current token is used until it expires, and only
+// then does the failure reach the caller.
 func (a *Authenticator) Token(ctx context.Context) (string, error) {
 	if a.mode == AuthPAT {
 		return a.pat, nil
@@ -137,15 +143,27 @@ func (a *Authenticator) Token(ctx context.Context) (string, error) {
 	}
 
 	tk, err := a.cred.GetToken(ctx, policy.TokenRequestOptions{Scopes: []string{EntraScope}})
-	if err != nil {
-		return "", fmt.Errorf("azure devops: cannot mint an Entra token: %w", err)
+	switch {
+	case err != nil:
+		err = fmt.Errorf("azure devops: cannot mint an Entra token: %w", err)
+	case tk.Token == "":
+		err = errors.New("azure devops: Entra returned an empty token")
 	}
-	if tk.Token == "" {
-		return "", errors.New("azure devops: Entra returned an empty token")
+	if err != nil {
+		if a.token != "" && now.Before(a.expiresAt) {
+			if !a.refreshWarned {
+				log.Warn().Err(err).Time("expires", a.expiresAt).
+					Msg("azure devops: cannot refresh the Entra token, using the current one until it expires")
+				a.refreshWarned = true
+			}
+			return a.token, nil
+		}
+		return "", err
 	}
 	a.token = tk.Token
 	a.mintedAt = now
 	a.expiresAt = tk.ExpiresOn
+	a.refreshWarned = false
 	return a.token, nil
 }
 

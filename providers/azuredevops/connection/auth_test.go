@@ -4,27 +4,33 @@
 package connection
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
 
-// fakeTokenCredential hands out numbered tokens that live for lifetime.
+// fakeTokenCredential hands out numbered tokens that live for lifetime. With
+// empty set it answers with an empty token and no error.
 type fakeTokenCredential struct {
 	clock    *fakeClock
 	lifetime time.Duration
 	calls    int
 	scopes   [][]string
 	err      error
+	empty    bool
 }
 
 func (f *fakeTokenCredential) GetToken(_ context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
@@ -32,6 +38,9 @@ func (f *fakeTokenCredential) GetToken(_ context.Context, opts policy.TokenReque
 	f.scopes = append(f.scopes, opts.Scopes)
 	if f.err != nil {
 		return azcore.AccessToken{}, f.err
+	}
+	if f.empty {
+		return azcore.AccessToken{ExpiresOn: f.clock.now.Add(f.lifetime)}, nil
 	}
 	return azcore.AccessToken{
 		Token:     fmt.Sprintf("entra-token-%d", f.calls),
@@ -107,6 +116,59 @@ func TestEntraMintFailureIsReported(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot mint an Entra token")
 	assert.Contains(t, err.Error(), "invalid_client")
+}
+
+// captureLogs collects what the package logs for the rest of the test.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := log.Logger
+	log.Logger = zerolog.New(&buf)
+	t.Cleanup(func() { log.Logger = prev })
+	return &buf
+}
+
+// A refresh that fails while the current token has time left keeps that token
+// in use. The failure reaches the caller only once no valid token remains.
+func TestAFailedRefreshKeepsAnUnexpiredToken(t *testing.T) {
+	logs := captureLogs(t)
+	auth, cred, clock := newEntraAuth(t, time.Hour)
+	ctx := context.Background()
+
+	_, err := auth.Token(ctx)
+	require.NoError(t, err)
+
+	// past the refresh point at 48m, before the expiry at 60m
+	clock.now = clock.now.Add(50 * time.Minute)
+	cred.err = errors.New("AADSTS7000222: the client secret expired")
+	tok, err := auth.Token(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "entra-token-1", tok)
+	assert.Equal(t, 2, cred.calls, "the refresh was tried")
+	assert.Contains(t, logs.String(), "cannot refresh the Entra token")
+	assert.NotContains(t, logs.String(), "entra-token-1")
+
+	// an empty answer is a failed refresh as well
+	cred.err = nil
+	cred.empty = true
+	tok, err = auth.Token(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "entra-token-1", tok)
+	assert.Equal(t, 1, strings.Count(logs.String(), "cannot refresh the Entra token"), "the warning is logged once per token")
+
+	// at the expiry no valid token is left
+	clock.now = clock.now.Add(10 * time.Minute)
+	cred.empty = false
+	cred.err = errors.New("AADSTS7000222: the client secret expired")
+	_, err = auth.Token(ctx)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot mint an Entra token")
+
+	// a refresh that works again replaces the token
+	cred.err = nil
+	tok, err = auth.Token(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "entra-token-5", tok)
 }
 
 func TestPATHeaderIsBasicWithAnEmptyUser(t *testing.T) {
