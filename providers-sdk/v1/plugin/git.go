@@ -72,6 +72,8 @@ func NewGitClone(asset *inventory.Asset) (string, func(), error) {
 }
 
 func gitClone(gitUrl string) (string, func(), error) {
+	installGitTransport()
+
 	cloneDir, err := os.MkdirTemp(os.TempDir(), "mql-git-clone")
 	if err != nil {
 		return "", nil, errors.Wrap(err, "failed to create temporary dir for git processing")

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/go-git/go-git/v5/plumbing/transport/client"
 	"github.com/stretchr/testify/require"
 	inventory "go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
@@ -212,4 +213,77 @@ func TestURLSecrets(t *testing.T) {
 			require.Equal(t, tt.want, urlSecrets(tt.raw))
 		})
 	}
+}
+
+func TestGitClone_InstallsTheRouterOnFirstUse(t *testing.T) {
+	resetGitTransport(t)
+	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
+	require.Same(t, stockHTTP, client.Protocols["http"], "precondition: nothing is routed yet")
+
+	_, closer, err := gitClone(srv.repoURL("localhost", "ci:"+fixtureToken))
+	require.NoError(t, err)
+	closer()
+
+	for scheme, stock := range map[string]transport.Transport{"http": stockHTTP, "https": stockHTTPS} {
+		router, ok := client.Protocols[scheme].(*hostRoutedTransport)
+		require.True(t, ok, scheme)
+		require.Same(t, stock, router.base, scheme)
+	}
+}
+
+// NewGitClone is what the seven provider families call. These tests drive it
+// the way they do: an asset with an http-url option and a password credential.
+func TestNewGitClone_ClonesWithEveryCredentialShape(t *testing.T) {
+	tests := []struct {
+		name string
+		cred *vault.Credential
+	}{
+		{"user and secret", passwordCred("ci", fixtureToken, "")},
+		{"user and password field", passwordCred("ci", "", fixtureToken)},
+		{"token only, in the secret", passwordCred("", fixtureToken, "")},
+		{"token only, in the password field", passwordCred("", "", fixtureToken)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmp := isolateTempDir(t)
+			resetGitTransport(t)
+			routeLoopbackAsADO(t)
+			// Strict Azure DevOps fake on the host the router treats as Azure
+			// DevOps: the clone only works if the router adjusted the request.
+			srv := newFakeGitServer(t, fakeAzureDevOps, fixtureToken)
+			httpURL := srv.repoURL("127.0.0.1", "")
+			asset := gitAsset(httpURL, tt.cred)
+
+			dir, closer, err := NewGitClone(asset)
+			require.NoError(t, err)
+			require.NotNil(t, closer)
+
+			got, err := os.ReadFile(filepath.Join(dir, "main.tf"))
+			require.NoError(t, err)
+			require.Equal(t, fixtureMainTF, string(got))
+
+			// The tracked link is the URL as configured, with no credential.
+			require.Equal(t, httpURL, asset.Connections[0].Options[GitUrlOptionKey])
+			require.NotContains(t, asset.Connections[0].Options[GitUrlOptionKey], fixtureToken)
+
+			closer()
+			require.Empty(t, cloneDirsIn(t, tmp))
+		})
+	}
+}
+
+func TestNewGitClone_NonAzureDevOpsHostCloneIsUnchanged(t *testing.T) {
+	resetGitTransport(t)
+	isolateTempDir(t)
+	routeLoopbackAsADO(t) // 127.0.0.1 is routed; localhost is the "GitHub or GitLab" host
+	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
+
+	dir, closer, err := NewGitClone(gitAsset(srv.repoURL("localhost", ""), passwordCred("oauth2", fixtureToken, "")))
+
+	require.NoError(t, err)
+	defer closer()
+	require.FileExists(t, filepath.Join(dir, "main.tf"))
+	reqs := srv.uploadPackRequests()
+	require.Len(t, reqs, 1)
+	require.Equal(t, []string{"agent", "ofs-delta", "shallow", "side-band-64k"}, capSet(reqs[0].Caps))
 }

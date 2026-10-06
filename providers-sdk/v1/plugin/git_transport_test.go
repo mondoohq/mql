@@ -6,6 +6,8 @@ package plugin
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -342,4 +344,62 @@ func TestInstallGitTransport_RoutesOnceHoweverOftenItIsCalled(t *testing.T) {
 		require.True(t, ok, scheme)
 		require.Same(t, stock, router.base, "%s: one layer over go-git's own transport", scheme)
 	}
+}
+
+// routeLoopbackAsADO makes the router treat 127.0.0.1 as an Azure DevOps host
+// for the duration of the test. "localhost" stays a non-Azure-DevOps host and
+// reaches the same loopback listener, which lets one test exercise both
+// branches of the router over real HTTP.
+func routeLoopbackAsADO(t *testing.T) {
+	t.Helper()
+	prev := adoHostMatcher
+	adoHostMatcher = func(host string) bool { return host == "127.0.0.1" }
+	t.Cleanup(func() { adoHostMatcher = prev })
+}
+
+func TestClone_AzureDevOpsHostSucceedsThroughRouter(t *testing.T) {
+	resetGitTransport(t)
+	routeLoopbackAsADO(t)
+	srv := newFakeGitServer(t, fakeAzureDevOps, fixtureToken)
+
+	dir, closer, err := gitClone(srv.repoURL("127.0.0.1", "ci:"+fixtureToken))
+	require.NoError(t, err)
+	defer closer()
+
+	got, err := os.ReadFile(filepath.Join(dir, "main.tf"))
+	require.NoError(t, err)
+	require.Equal(t, fixtureMainTF, string(got))
+
+	reqs := srv.uploadPackRequests()
+	require.Len(t, reqs, 1)
+	require.Equal(t, []string{"agent", "multi_ack_detailed", "shallow", "side-band-64k"}, capSet(reqs[0].Caps))
+}
+
+func TestClone_OtherHostsKeepGoGitsDefaultRequest(t *testing.T) {
+	resetGitTransport(t)
+	routeLoopbackAsADO(t) // 127.0.0.1 is "Azure DevOps"; localhost is not
+	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
+	userinfo := "ci:" + fixtureToken
+
+	// Control: go-git's own transport, no router anywhere.
+	_, err := cloneWithStockTransport(t, srv.repoURL("localhost", userinfo))
+	require.NoError(t, err)
+	// The same clone through gitClone, which installs the router.
+	dir, closer, err := gitClone(srv.repoURL("localhost", userinfo))
+	require.NoError(t, err)
+	defer closer()
+	require.FileExists(t, filepath.Join(dir, "main.tf"))
+
+	reqs := srv.uploadPackRequests()
+	require.Len(t, reqs, 2)
+
+	// The exact capability list go-git sends today: no multi_ack, no
+	// multi_ack_detailed, no thin-pack. "shallow" is there because gitClone
+	// clones with Depth 1.
+	for i, r := range reqs {
+		require.Equal(t, []string{"agent", "ofs-delta", "shallow", "side-band-64k"}, capSet(r.Caps), "request %d", i)
+		require.Equal(t, []string{capability.DefaultAgent()}, r.Caps.Get(capability.Agent), "request %d", i)
+	}
+	// And the request bytes are identical to the control's.
+	require.Equal(t, string(reqs[0].Body), string(reqs[1].Body))
 }
