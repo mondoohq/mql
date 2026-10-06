@@ -6,12 +6,14 @@ package plugin
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/go-git/go-git/v5/plumbing/transport/client"
 	"github.com/stretchr/testify/require"
 )
 
@@ -267,5 +269,77 @@ func TestAzureDevOpsSession_NilRequestsReachTheUnderlyingSession(t *testing.T) {
 			require.Equal(t, 1, session.calls)
 			require.Same(t, req, session.got)
 		})
+	}
+}
+
+// restoreProtocols puts go-git's whole protocol table back after a test that
+// rewrites it: every scheme the test replaced is reinstalled and every scheme it
+// added is removed, so one test's edit can never decide the next test's result.
+func restoreProtocols(t *testing.T) {
+	t.Helper()
+	saved := make(map[string]transport.Transport, len(client.Protocols))
+	for scheme, tr := range client.Protocols {
+		saved[scheme] = tr
+	}
+	t.Cleanup(func() {
+		for scheme := range client.Protocols {
+			if _, kept := saved[scheme]; !kept {
+				delete(client.Protocols, scheme)
+			}
+		}
+		for scheme, tr := range saved {
+			client.InstallProtocol(scheme, tr)
+		}
+	})
+}
+
+func TestRouteGitHosts_WrapsHTTPAndHTTPSExactlyOnce(t *testing.T) {
+	restoreProtocols(t)
+	client.InstallProtocol("http", stockHTTP)
+	client.InstallProtocol("https", stockHTTPS)
+
+	routeGitHosts()
+	routeGitHosts() // idempotent: a second call must not wrap the router in itself
+
+	for scheme, stock := range map[string]transport.Transport{"http": stockHTTP, "https": stockHTTPS} {
+		router, ok := client.Protocols[scheme].(*hostRoutedTransport)
+		require.True(t, ok, scheme)
+		require.Same(t, stock, router.base, scheme)
+	}
+}
+
+func TestRouteGitHosts_LeavesOtherSchemesAlone(t *testing.T) {
+	restoreProtocols(t)
+	ssh, file := client.Protocols["ssh"], client.Protocols["file"]
+
+	routeGitHosts()
+
+	require.Same(t, ssh, client.Protocols["ssh"])
+	require.Same(t, file, client.Protocols["file"])
+}
+
+// resetGitTransport puts go-git's http(s) transports back to its own and re-arms
+// the one-time install, so the test starts like a process that has not cloned
+// yet. A test that expects gitClone to install the router would otherwise pass
+// whenever an earlier test had already installed it.
+func resetGitTransport(t *testing.T) {
+	t.Helper()
+	restoreProtocols(t)
+	client.InstallProtocol("http", stockHTTP)
+	client.InstallProtocol("https", stockHTTPS)
+	routeGitHostsOnce = sync.Once{}
+	t.Cleanup(func() { routeGitHostsOnce = sync.Once{} })
+}
+
+func TestInstallGitTransport_RoutesOnceHoweverOftenItIsCalled(t *testing.T) {
+	resetGitTransport(t)
+
+	installGitTransport()
+	installGitTransport()
+
+	for scheme, stock := range map[string]transport.Transport{"http": stockHTTP, "https": stockHTTPS} {
+		router, ok := client.Protocols[scheme].(*hostRoutedTransport)
+		require.True(t, ok, scheme)
+		require.Same(t, stock, router.base, "%s: one layer over go-git's own transport", scheme)
 	}
 }

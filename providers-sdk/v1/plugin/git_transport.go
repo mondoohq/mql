@@ -6,11 +6,13 @@ package plugin
 import (
 	"context"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/go-git/go-git/v5/plumbing/transport/client"
 )
 
 // Azure DevOps rejects go-git's default upload-pack request with HTTP 400:
@@ -94,4 +96,30 @@ func adjustAzureDevOpsCapabilities(caps *capability.List) error {
 	caps.Delete(capability.ThinPack)
 	caps.Delete(capability.MultiACK)
 	return caps.Set(capability.MultiACKDetailed)
+}
+
+// routeGitHosts wraps the http and https entries of go-git's protocol table in
+// a hostRoutedTransport. It is idempotent: an entry that is already routed is
+// left alone, so the router is never wrapped in itself.
+func routeGitHosts() {
+	for _, scheme := range []string{"http", "https"} {
+		base := client.Protocols[scheme]
+		if base == nil {
+			continue
+		}
+		if _, routed := base.(*hostRoutedTransport); routed {
+			continue
+		}
+		client.InstallProtocol(scheme, &hostRoutedTransport{base: base})
+	}
+}
+
+var routeGitHostsOnce sync.Once
+
+// installGitTransport routes git clones by host, once per process. go-git's
+// client.Protocols map is not synchronized, so the single write happens here,
+// before the first clone, in the only place in this repository that clones;
+// every later call only reads the map.
+func installGitTransport() {
+	routeGitHostsOnce.Do(routeGitHosts)
 }

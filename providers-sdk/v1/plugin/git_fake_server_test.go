@@ -299,9 +299,12 @@ type staticLoader struct{ st storer.Storer }
 
 func (l staticLoader) Load(*transport.Endpoint) (storer.Storer, error) { return l.st, nil }
 
-// go-git's stock http transport, captured at test-binary init, before anything
-// in this package can have routed it.
-var stockHTTP = client.Protocols["http"]
+// go-git's stock http(s) transports, captured at test-binary init, before
+// anything in this package can have routed them.
+var (
+	stockHTTP  = client.Protocols["http"]
+	stockHTTPS = client.Protocols["https"]
+)
 
 // cloneWithStockTransport clones the way gitClone does, but with go-git's
 // untouched http transport installed. It is the control the router is compared
