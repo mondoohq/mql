@@ -65,8 +65,9 @@ const (
 
 // recordedUploadPack is one upload-pack POST the fake received.
 type recordedUploadPack struct {
-	Body []byte
-	Caps *capability.List
+	Body   []byte
+	Caps   *capability.List
+	Header http.Header
 }
 
 // fakeGitServer is an in-process smart-HTTP git server around one in-memory
@@ -81,6 +82,7 @@ type fakeGitServer struct {
 
 	mu       sync.Mutex
 	requests []recordedUploadPack
+	adverts  []http.Header // headers of each info/refs GET, in arrival order
 }
 
 // newFakeGitServer starts a server serving a repository with one root commit
@@ -161,6 +163,14 @@ func (f *fakeGitServer) uploadPackRequests() []recordedUploadPack {
 	return append([]recordedUploadPack(nil), f.requests...)
 }
 
+// advertisementHeaders returns a snapshot of the headers of the recorded
+// info/refs GETs (the request that precedes every upload-pack POST).
+func (f *fakeGitServer) advertisementHeaders() []http.Header {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]http.Header(nil), f.adverts...)
+}
+
 func (f *fakeGitServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if f.token != "" {
 		user, pass, ok := r.BasicAuth()
@@ -223,6 +233,10 @@ func (f *fakeGitServer) setAdvertisedCapabilities(caps *capability.List) error {
 }
 
 func (f *fakeGitServer) serveAdvertisement(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	f.adverts = append(f.adverts, r.Header.Clone())
+	f.mu.Unlock()
+
 	sess, adv, err := f.newPrimedSession(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -250,7 +264,7 @@ func (f *fakeGitServer) serveUploadPack(w http.ResponseWriter, r *http.Request) 
 	}
 
 	f.mu.Lock()
-	f.requests = append(f.requests, recordedUploadPack{Body: body, Caps: req.Capabilities})
+	f.requests = append(f.requests, recordedUploadPack{Body: body, Caps: req.Capabilities, Header: r.Header.Clone()})
 	f.mu.Unlock()
 
 	if f.mode == fakeAzureDevOps {

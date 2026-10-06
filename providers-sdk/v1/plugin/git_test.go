@@ -43,6 +43,7 @@ func cloneDirsIn(t *testing.T, tmp string) []string {
 }
 
 func TestGitClone_ReturnsTheRepositoryAndACloserThatRemovesIt(t *testing.T) {
+	resetGitTransport(t)
 	tmp := isolateTempDir(t)
 	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
 
@@ -63,6 +64,7 @@ func TestGitClone_ReturnsTheRepositoryAndACloserThatRemovesIt(t *testing.T) {
 // assigned the function's shared err, which wiped the real one. Callers then
 // carried on with an empty path. These tests pin the error and the cleanup.
 func TestGitClone_AuthenticationFailureIsReturnedAsAnError(t *testing.T) {
+	resetGitTransport(t)
 	tmp := isolateTempDir(t)
 	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
 
@@ -77,6 +79,7 @@ func TestGitClone_AuthenticationFailureIsReturnedAsAnError(t *testing.T) {
 }
 
 func TestGitClone_EmptyRepositoryIsReturnedAsAnError(t *testing.T) {
+	resetGitTransport(t)
 	tmp := isolateTempDir(t)
 	srv := newEmptyFakeGitServer(t, fakeStandard, fixtureToken)
 
@@ -108,6 +111,7 @@ func passwordCred(user, secret, password string) *vault.Credential {
 }
 
 func TestNewGitClone_BadCredentialsReturnAnErrorAndNoPath(t *testing.T) {
+	resetGitTransport(t)
 	isolateTempDir(t)
 	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
 
@@ -132,6 +136,7 @@ func TestNewGitClone_InputErrorsAreUnchanged(t *testing.T) {
 // not a username, and NewGitClone puts a token with no user name into the
 // username slot. A server error therefore used to print the token.
 func TestGitClone_ErrorsNeverContainTheCredential(t *testing.T) {
+	resetGitTransport(t)
 	tests := []struct {
 		name     string
 		token    string
@@ -278,12 +283,26 @@ func TestNewGitClone_NonAzureDevOpsHostCloneIsUnchanged(t *testing.T) {
 	routeLoopbackAsADO(t) // 127.0.0.1 is routed; localhost is the "GitHub or GitLab" host
 	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
 
+	// Control: go-git's own transport against the URL NewGitClone builds from
+	// this credential.
+	_, err := cloneWithStockTransport(t, srv.repoURL("localhost", "oauth2:"+fixtureToken))
+	require.NoError(t, err)
+
 	dir, closer, err := NewGitClone(gitAsset(srv.repoURL("localhost", ""), passwordCred("oauth2", fixtureToken, "")))
 
 	require.NoError(t, err)
 	defer closer()
 	require.FileExists(t, filepath.Join(dir, "main.tf"))
 	reqs := srv.uploadPackRequests()
-	require.Len(t, reqs, 1)
-	require.Equal(t, []string{"agent", "ofs-delta", "shallow", "side-band-64k"}, capSet(reqs[0].Caps))
+	require.Len(t, reqs, 2)
+	for i, r := range reqs {
+		require.Equal(t, []string{"agent", "ofs-delta", "shallow", "side-band-64k"}, capSet(r.Caps), "request %d", i)
+	}
+	// Same request bytes and the same headers as the control's.
+	require.Equal(t, string(reqs[0].Body), string(reqs[1].Body))
+	require.NotEmpty(t, reqs[0].Header.Get("Authorization"))
+	require.Equal(t, reqs[0].Header, reqs[1].Header)
+	adverts := srv.advertisementHeaders()
+	require.Len(t, adverts, 2)
+	require.Equal(t, adverts[0], adverts[1])
 }

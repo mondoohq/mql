@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/client"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/stretchr/testify/require"
 )
 
@@ -144,17 +146,36 @@ func (s *captureSession) UploadPack(_ context.Context, req *packp.UploadPackRequ
 	return nil, errCaptured
 }
 
-// fakeBase is a transport.Transport that records the hosts it is asked about
-// and returns canned sessions.
+// fakeBase is a transport.Transport that records what it is asked for and
+// returns canned sessions. For every upload-pack call it keeps the host, the
+// endpoint pointer it was handed, a copy of that endpoint taken at the moment
+// of the call, and the auth method, so a test can tell whether the router
+// passed the caller's own objects through untouched.
 type fakeBase struct {
 	upload     transport.UploadPackSession
 	uploadErr  error
 	receive    transport.ReceivePackSession
 	uploadHost []string
+
+	uploadEndpoint     []*transport.Endpoint
+	uploadEndpointCopy []transport.Endpoint
+	uploadAuth         []transport.AuthMethod
 }
 
-func (b *fakeBase) NewUploadPackSession(ep *transport.Endpoint, _ transport.AuthMethod) (transport.UploadPackSession, error) {
+// copyEndpoint is a value copy of ep that shares no byte slice with it.
+func copyEndpoint(ep *transport.Endpoint) transport.Endpoint {
+	c := *ep
+	c.ClientCert = slices.Clone(ep.ClientCert)
+	c.ClientKey = slices.Clone(ep.ClientKey)
+	c.CaBundle = slices.Clone(ep.CaBundle)
+	return c
+}
+
+func (b *fakeBase) NewUploadPackSession(ep *transport.Endpoint, auth transport.AuthMethod) (transport.UploadPackSession, error) {
 	b.uploadHost = append(b.uploadHost, ep.Host)
+	b.uploadEndpoint = append(b.uploadEndpoint, ep)
+	b.uploadEndpointCopy = append(b.uploadEndpointCopy, copyEndpoint(ep))
+	b.uploadAuth = append(b.uploadAuth, auth)
 	return b.upload, b.uploadErr
 }
 
@@ -172,24 +193,59 @@ func mustEndpoint(t *testing.T, raw string) *transport.Endpoint {
 }
 
 func TestHostRoutedTransport_OtherHostsGetTheBaseSessionUntouched(t *testing.T) {
+	// Each call builds a fresh auth, so the one handed to the router can be
+	// compared with an independent, pristine copy of itself afterwards.
+	auths := []struct {
+		name string
+		new  func() transport.AuthMethod
+	}{
+		{"no auth", func() transport.AuthMethod { return nil }},
+		{"basic auth", func() transport.AuthMethod {
+			return &githttp.BasicAuth{Username: "ci", Password: fixtureToken}
+		}},
+	}
 	for _, raw := range []string{
 		"https://github.com/mondoohq/mql.git",
+		"https://x-access-token:token@github.com/mondoohq/mql.git",
+		"https://gitlab.com/group/project.git",
 		"https://user:token@gitlab.com/group/project.git",
+		"https://token-only@gitlab.com/group/project.git",
 		"https://bitbucket.org/team/repo.git",
 		"https://gitlab.example.com:8443/group/project.git",
+		"https://ci:token@git.example.com:8443/team/repo.git",
+		"http://ci:token@localhost:8080/team/repo.git",
 		"https://ssh.dev.azure.com/v3/org/project/repo",
 	} {
-		t.Run(raw, func(t *testing.T) {
-			session := &captureSession{}
-			router := &hostRoutedTransport{base: &fakeBase{upload: session}}
+		for _, a := range auths {
+			t.Run(raw+"/"+a.name, func(t *testing.T) {
+				session := &captureSession{}
+				base := &fakeBase{upload: session}
+				router := &hostRoutedTransport{base: base}
+				ep, wantEP, auth := mustEndpoint(t, raw), mustEndpoint(t, raw), a.new()
 
-			got, err := router.NewUploadPackSession(mustEndpoint(t, raw), nil)
+				got, err := router.NewUploadPackSession(ep, auth)
 
-			require.NoError(t, err)
-			// The very object the base transport produced: no wrapper, so the
-			// request it later sends is whatever go-git built.
-			require.Same(t, session, got)
-		})
+				require.NoError(t, err)
+				// The very object the base transport produced: no wrapper, so the
+				// request it later sends is whatever go-git built.
+				require.Same(t, session, got)
+
+				// The base transport was asked once, with the caller's own
+				// endpoint and auth. Nothing in them was edited before the
+				// call (the recorded copy) or after it (the caller's object).
+				require.Len(t, base.uploadEndpoint, 1)
+				require.Same(t, ep, base.uploadEndpoint[0], "the endpoint is the caller's, not a copy")
+				require.Equal(t, *wantEP, base.uploadEndpointCopy[0], "the base saw the endpoint as the caller built it")
+				require.Equal(t, *wantEP, copyEndpoint(ep), "the caller's endpoint is unchanged afterwards")
+				require.Len(t, base.uploadAuth, 1)
+				if auth == nil {
+					require.Nil(t, base.uploadAuth[0])
+				} else {
+					require.Same(t, auth, base.uploadAuth[0], "the auth is the caller's, not a wrapper or a copy")
+					require.Equal(t, a.new(), auth, "the auth is unchanged")
+				}
+			})
+		}
 	}
 }
 
@@ -402,4 +458,14 @@ func TestClone_OtherHostsKeepGoGitsDefaultRequest(t *testing.T) {
 	}
 	// And the request bytes are identical to the control's.
 	require.Equal(t, string(reqs[0].Body), string(reqs[1].Body))
+
+	// So are the headers of both requests of a clone, credentials included:
+	// the router adds, drops and alters none. The Authorization check keeps
+	// the comparison from passing vacuously on two empty header sets.
+	require.NotEmpty(t, reqs[0].Header.Get("Authorization"))
+	require.Equal(t, reqs[0].Header, reqs[1].Header)
+	adverts := srv.advertisementHeaders()
+	require.Len(t, adverts, 2)
+	require.NotEmpty(t, adverts[0].Get("Authorization"))
+	require.Equal(t, adverts[0], adverts[1])
 }
