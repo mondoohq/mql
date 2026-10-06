@@ -129,7 +129,7 @@ func (s *mqlFile) content(path string, exists bool) (string, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 	res, err := afs.ReadFile(path)
-	return string(res), err
+	return string(res), classifyFsError(err)
 }
 
 func (s *mqlFile) cacheStatFields(stat shared.FileInfoDetails) error {
