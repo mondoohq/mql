@@ -1,0 +1,173 @@
+# Copyright Mondoo, Inc. 2024, 2026
+# SPDX-License-Identifier: BUSL-1.1
+
+name: Weekly release
+
+# Cuts the weekly mql release by pushing the next minor tag (v14.2.0 -> v14.3.0).
+# The tag push starts goreleaser.yml, which builds and publishes the release.
+# The tag is pushed with the deploy key: tags pushed with GITHUB_TOKEN do not
+# trigger workflows.
+#
+# What gets tagged, and why, is decided in .github/scripts/next-minor-release.sh
+# (unit-tested in .github/scripts/tests/).
+
+on:
+  schedule:
+    # Tuesday 08:00 UTC
+    - cron: "0 8 * * 2"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Compute and report the release, but do not tag"
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: weekly-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # C07QZDJFF89 == #release-coordination
+  SLACK_BOT_CHANNEL_ID: "C07QZDJFF89"
+
+jobs:
+  weekly-release:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      # ref: main so the scripts always come from main, whatever branch the
+      # release is cut from.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ssh-key: ${{ secrets.CNQUERY_DEPLOY_KEY_PRIV }}
+          fetch-depth: 0
+          ref: main
+
+      - name: Fetch all tags and branches
+        run: git fetch origin --tags --force
+
+      - name: Compute next release
+        id: next
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/next-minor-release.sh | tee -a "$GITHUB_OUTPUT"
+
+      - name: Summarize
+        env:
+          PREV: ${{ steps.next.outputs.prev }}
+          NEXT: ${{ steps.next.outputs.next }}
+          BASE: ${{ steps.next.outputs.base }}
+          SHA: ${{ steps.next.outputs.sha }}
+          COMMITS: ${{ steps.next.outputs.commits }}
+          SKIP: ${{ steps.next.outputs.skip }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          {
+            echo "## Weekly release"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Previous release | \`${PREV}\` |"
+            echo "| Next release | \`${NEXT}\` |"
+            echo "| Branch | \`${BASE}\` |"
+            echo "| Commit | \`${SHA}\` |"
+            echo "| Commits since previous | ${COMMITS} |"
+            echo
+            if [ "$SKIP" = "true" ]; then
+              echo "Nothing new since \`${PREV}\`, no release."
+            elif [ "$DRY_RUN" = "true" ]; then
+              echo "Dry run, no tag pushed."
+            else
+              echo "Tagging \`${NEXT}\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Never push a tag that goreleaser's own verify-tested job would reject.
+      - name: Verify the commit is tested
+        if: ${{ steps.next.outputs.skip != 'true' && inputs.dry-run != true }}
+        env:
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.next.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/verify-tested.sh
+
+      - name: Push release tag
+        id: tag
+        if: ${{ steps.next.outputs.skip != 'true' && inputs.dry-run != true }}
+        env:
+          NEXT: ${{ steps.next.outputs.next }}
+          SHA: ${{ steps.next.outputs.sha }}
+        run: |
+          git tag --no-sign "$NEXT" "$SHA"
+          git push origin "refs/tags/$NEXT"
+
+      - name: Notify Slack, released
+        if: ${{ github.event_name == 'schedule' && steps.tag.outcome == 'success' }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            {
+              "channel": "${{ env.SLACK_BOT_CHANNEL_ID }}",
+              "text": "Weekly release: tagged ${{ steps.next.outputs.next }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":rocket: Weekly release: tagged <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ steps.next.outputs.next }}|${{ steps.next.outputs.next }}> on `${{ steps.next.outputs.base }}` (<${{ github.server_url }}/${{ github.repository }}/commit/${{ steps.next.outputs.sha }}|${{ steps.next.outputs.commits }} commits> since ${{ steps.next.outputs.prev }})\nFollow the <${{ github.server_url }}/${{ github.repository }}/actions/workflows/goreleaser.yml|goreleaser runs>."
+                  }
+                }
+              ]
+            }
+
+      - name: Notify Slack, nothing to release
+        if: ${{ github.event_name == 'schedule' && steps.next.outputs.skip == 'true' }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            {
+              "channel": "${{ env.SLACK_BOT_CHANNEL_ID }}",
+              "text": "Weekly release: nothing new since ${{ steps.next.outputs.prev }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":zzz: Weekly release skipped: nothing new on `${{ steps.next.outputs.base }}` since ${{ steps.next.outputs.prev }}."
+                  }
+                }
+              ]
+            }
+
+      - name: Notify Slack, failed
+        if: ${{ github.event_name == 'schedule' && failure() }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            {
+              "channel": "${{ env.SLACK_BOT_CHANNEL_ID }}",
+              "text": "Weekly release failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":x: Weekly release failed, no tag was pushed. See the <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|workflow run>."
+                  }
+                }
+              ]
+            }
