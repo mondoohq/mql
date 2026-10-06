@@ -115,6 +115,11 @@ func IsUnauthorized(err error) bool { return apiStatus(err) == http.StatusUnauth
 // IsForbidden reports HTTP 403.
 func IsForbidden(err error) bool { return apiStatus(err) == http.StatusForbidden }
 
+// IsNotFound reports HTTP 404. Azure DevOps answers it, with TF200016 or
+// TF401019, for a project or repository the principal cannot see as well as for
+// one that does not exist.
+func IsNotFound(err error) bool { return apiStatus(err) == http.StatusNotFound }
+
 // IsNoAccess reports that the principal may not read the thing it asked for.
 func IsNoAccess(err error) bool { return IsUnauthorized(err) || IsForbidden(err) }
 

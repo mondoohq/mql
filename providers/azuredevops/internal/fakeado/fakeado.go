@@ -76,6 +76,7 @@ type Server struct {
 	requests    []string
 	throttles   []*throttle
 	deniedItems map[string]bool
+	hiddenRepos map[string]bool
 }
 
 type throttle struct {
@@ -123,6 +124,24 @@ func (s *Server) itemsDenied(repoID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.deniedItems[repoID]
+}
+
+// HideRepositories makes the repository list of one project answer HTTP 404
+// with the TF401019 error, as Azure DevOps often does for a project the
+// principal cannot see instead of the 403 a project it can see would give.
+func (s *Server) HideRepositories(project string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.hiddenRepos == nil {
+		s.hiddenRepos = map[string]bool{}
+	}
+	s.hiddenRepos[project] = true
+}
+
+func (s *Server) repositoriesHidden(project string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hiddenRepos[project]
 }
 
 func (s *Server) record(r *http.Request) {
@@ -240,6 +259,10 @@ func (s *Server) project(w http.ResponseWriter, nameOrID string) {
 }
 
 func (s *Server) repositories(w http.ResponseWriter, project string) {
+	if s.repositoriesHidden(project) {
+		serveFixture(w, http.StatusNotFound, "error_forbidden.json")
+		return
+	}
 	file, ok := projectRepos[project]
 	if !ok {
 		serveFixture(w, http.StatusForbidden, "error_forbidden.json")
