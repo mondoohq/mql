@@ -316,6 +316,13 @@ func (c *Client) getJSON(ctx context.Context, r request, out any) (http.Header, 
 		if err == nil {
 			return hdr, nil
 		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			// net/http reports a cancelled request with the context's cause, and
+			// errgroup cancels with the error of the request that failed first.
+			// That is another request's answer, so report the cancellation
+			// instead: it is neither retried nor classified as this request's.
+			return nil, fmt.Errorf("azure devops: GET /%s: %w", strings.Join(r.segments, "/"), ctxErr)
+		}
 		var apiErr *APIError
 		if !errors.As(err, &apiErr) || !apiErr.retryable() || attempt >= maxRetries {
 			return nil, err

@@ -421,6 +421,22 @@ func TestCancellingDuringABackoffStopsTheCall(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+func TestACancelledRequestDoesNotTakeOnTheCauseAsItsAnswer(t *testing.T) {
+	// errgroup cancels its context with the error of the request that failed
+	// first, and net/http returns that cause from every request the
+	// cancellation cuts short. It is another request's answer: retrying it, or
+	// classifying it, would treat this request as throttled or denied.
+	c, _, sl := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+	ctx, cancel := context.WithCancelCause(context.Background())
+	cancel(&APIError{Status: http.StatusTooManyRequests, Path: "/legacy-apps/_apis/git/repositories", RetryAfter: time.Second})
+
+	_, err := c.Repositories(ctx, "scan-test")
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Empty(t, sl.waits, "a cancelled request is not retried")
+	assert.Zero(t, apiStatus(err), "the cause is not this request's answer")
+	assert.NotContains(t, err.Error(), "legacy-apps")
+}
+
 func TestAPIErrorNamesTheStatusAndPath(t *testing.T) {
 	err := &APIError{Status: 403, Path: "/scan-test/_apis/git/repositories", Message: "denied"}
 	assert.Equal(t, "azure devops: HTTP 403 on /scan-test/_apis/git/repositories: denied", err.Error())
