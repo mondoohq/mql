@@ -6,6 +6,8 @@ package plugin
 import (
 	"net/url"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/pkg/errors"
@@ -89,6 +91,7 @@ func gitClone(gitUrl string) (string, func(), error) {
 		}
 		infoUrl = u.String()
 	}
+	secrets := urlSecrets(gitUrl)
 
 	log.Info().Str("url", infoUrl).Str("path", cloneDir).Msg("git clone")
 	repo, err := git.PlainClone(cloneDir, false, &git.CloneOptions{
@@ -99,16 +102,68 @@ func gitClone(gitUrl string) (string, func(), error) {
 	})
 	if err != nil {
 		closer()
-		return "", nil, errors.Wrap(err, "failed to clone git repo "+infoUrl)
+		return "", nil, errors.Wrap(redactSecrets(err, secrets), "failed to clone git repo "+infoUrl)
 	}
 
 	ref, err := repo.Head()
 	if err != nil {
 		closer()
-		return "", nil, errors.Wrap(err, "failed to get head of git repo "+infoUrl)
+		return "", nil, errors.Wrap(redactSecrets(err, secrets), "failed to get head of git repo "+infoUrl)
 	}
 
 	log.Info().Str("url", infoUrl).Str("path", cloneDir).Str("head", ref.Hash().String()).Msg("finished git clone")
 
 	return cloneDir, closer, nil
+}
+
+// redactedError reports its cause's text with secrets replaced, and keeps the
+// cause reachable through errors.Is and errors.As.
+type redactedError struct {
+	cause   error
+	secrets []string
+}
+
+func (e *redactedError) Error() string {
+	text := e.cause.Error()
+	for _, secret := range e.secrets {
+		text = strings.ReplaceAll(text, secret, "_obfuscated_")
+	}
+	return text
+}
+
+func (e *redactedError) Unwrap() error { return e.cause }
+
+// redactSecrets returns err unchanged when there is nothing to hide.
+func redactSecrets(err error, secrets []string) error {
+	if err == nil || len(secrets) == 0 {
+		return err
+	}
+	return &redactedError{cause: err, secrets: secrets}
+}
+
+// urlSecrets lists the strings that carry the credential in rawURL's userinfo:
+// the password when there is one, otherwise the username, which NewGitClone
+// fills with the token when no user is configured. go-git copies the request
+// URL into its HTTP errors and redacts a password, but leaves a username-only
+// credential in place. The raw and URL-escaped spellings are both listed
+// because go-git prints the escaped one.
+func urlSecrets(rawURL string) []string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.User == nil {
+		return nil
+	}
+	secret, hasPassword := u.User.Password()
+	if !hasPassword {
+		secret = u.User.Username()
+	}
+	if secret == "" {
+		return nil
+	}
+	secrets := []string{secret}
+	for _, escaped := range []string{url.PathEscape(secret), url.User(secret).String()} {
+		if !slices.Contains(secrets, escaped) {
+			secrets = append(secrets, escaped)
+		}
+	}
+	return secrets
 }

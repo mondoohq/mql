@@ -4,6 +4,8 @@
 package plugin
 
 import (
+	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -123,4 +125,72 @@ func TestNewGitClone_InputErrorsAreUnchanged(t *testing.T) {
 
 	_, _, err = NewGitClone(&inventory.Asset{Name: "n", Connections: []*inventory.Config{{Options: map[string]string{"other": "x"}}}})
 	require.EqualError(t, err, "missing url for git repo n")
+}
+
+// go-git copies the request URL into its HTTP errors. It redacts a password but
+// not a username, and NewGitClone puts a token with no user name into the
+// username slot. A server error therefore used to print the token.
+func TestGitClone_ErrorsNeverContainTheCredential(t *testing.T) {
+	tests := []struct {
+		name     string
+		token    string
+		userinfo func(token string) *url.Userinfo
+	}{
+		{"user and token", fixtureToken, func(s string) *url.Userinfo { return url.UserPassword("ci", s) }},
+		{"token as the user name", fixtureToken, url.User},
+		{"token that needs escaping, as the user name", "p@ss/w rd+1%x", url.User},
+		{"token that needs escaping, as the password", "p@ss/w:rd 1+x", func(s string) *url.Userinfo { return url.UserPassword("ci", s) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isolateTempDir(t)
+			// A strict Azure DevOps fake reached through a host the router
+			// does not adjust answers go-git's default request with a 400,
+			// which is an error whose text carries the request URL.
+			srv := newFakeGitServer(t, fakeAzureDevOps, tt.token)
+			u := srv.repoURL("localhost", "")
+			parsed, err := url.Parse(u)
+			require.NoError(t, err)
+			parsed.User = tt.userinfo(tt.token)
+
+			_, _, err = gitClone(parsed.String())
+
+			require.Error(t, err)
+			require.ErrorContains(t, err, "status code: 400", "the failure must be the server's 400, not an auth error")
+			require.NotContains(t, err.Error(), tt.token)
+			require.NotContains(t, err.Error(), url.PathEscape(tt.token))
+			require.NotContains(t, err.Error(), url.User(tt.token).String())
+		})
+	}
+}
+
+func TestRedactSecrets(t *testing.T) {
+	cause := errors.New("GET http://abc123@host/x failed")
+
+	require.NoError(t, redactSecrets(nil, []string{"abc123"}))
+	require.Same(t, cause, redactSecrets(cause, nil), "nothing to hide: the error is returned as is")
+
+	redacted := redactSecrets(cause, []string{"abc123"})
+	require.EqualError(t, redacted, "GET http://_obfuscated_@host/x failed")
+	require.ErrorIs(t, redacted, cause, "the cause stays reachable")
+}
+
+func TestURLSecrets(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{"no credentials", "https://host/p", nil},
+		{"unparseable", "http://[::1", nil},
+		{"empty user", "https://@host/p", nil},
+		{"user and password: the password is the secret", "https://ci:tok@host/p", []string{"tok"}},
+		{"token only: the user name is the secret", "https://tok@host/p", []string{"tok"}},
+		{"escaped spellings are listed too", "https://p%40ss:w%2Frd@host/p", []string{"w/rd", "w%2Frd"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, urlSecrets(tt.raw))
+		})
+	}
 }
