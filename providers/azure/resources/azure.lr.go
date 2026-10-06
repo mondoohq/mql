@@ -1860,7 +1860,7 @@ func init() {
 			Create: createAzureSubscriptionCloudDefenderServiceDefenderCSPMExtension,
 		},
 		"azure.subscription.cloudDefenderService.defenderForServers": {
-			// to override args, implement: initAzureSubscriptionCloudDefenderServiceDefenderForServers(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAzureSubscriptionCloudDefenderServiceDefenderForServers,
 			Create: createAzureSubscriptionCloudDefenderServiceDefenderForServers,
 		},
 		"azure.subscription.cloudDefenderService.defenderForServers.extension": {
@@ -1900,7 +1900,7 @@ func init() {
 			Create: createAzureSubscriptionCloudDefenderServiceDefenderForResourceManager,
 		},
 		"azure.subscription.cloudDefenderService.defenderForContainers": {
-			// to override args, implement: initAzureSubscriptionCloudDefenderServiceDefenderForContainers(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAzureSubscriptionCloudDefenderServiceDefenderForContainers,
 			Create: createAzureSubscriptionCloudDefenderServiceDefenderForContainers,
 		},
 		"azure.subscription.cloudDefenderService.defenderForContainers.extension": {

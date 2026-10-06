@@ -58,6 +58,55 @@ func initAzureSubscriptionCloudDefenderService(runtime *plugin.Runtime, args map
 	return args, nil, nil
 }
 
+// A query written for the dict fields this service used to have, such as
+// azure.subscription.cloudDefender.defenderForServers.enabled, still compiles:
+// the dict fields are gone, and these typed resources carry the same names, so
+// the path now creates the resource by its type name with no arguments. Without
+// an init that left every field unset, so each read came back null with an empty
+// id and the check evaluated against nothing. These inits resolve the bare
+// resource through the subscription's service, so the old path returns the same
+// object forServers() and forContainers() do.
+
+func initAzureSubscriptionCloudDefenderServiceDefenderForServers(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 0 {
+		return args, nil, nil
+	}
+	svc, err := cloudDefenderServiceFor(runtime)
+	if err != nil {
+		return nil, nil, err
+	}
+	servers := svc.GetForServers()
+	if servers.Error != nil {
+		return nil, nil, servers.Error
+	}
+	return args, servers.Data, nil
+}
+
+func initAzureSubscriptionCloudDefenderServiceDefenderForContainers(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 0 {
+		return args, nil, nil
+	}
+	svc, err := cloudDefenderServiceFor(runtime)
+	if err != nil {
+		return nil, nil, err
+	}
+	containers := svc.GetForContainers()
+	if containers.Error != nil {
+		return nil, nil, containers.Error
+	}
+	return args, containers.Data, nil
+}
+
+// cloudDefenderServiceFor returns the connection subscription's
+// cloudDefenderService, the one the runtime already holds if it was built.
+func cloudDefenderServiceFor(runtime *plugin.Runtime) (*mqlAzureSubscriptionCloudDefenderService, error) {
+	res, err := NewResource(runtime, "azure.subscription.cloudDefenderService", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAzureSubscriptionCloudDefenderService), nil
+}
+
 func (a *mqlAzureSubscriptionCloudDefenderServiceSecurityContact) id() (string, error) {
 	return a.Id.Data, nil
 }
