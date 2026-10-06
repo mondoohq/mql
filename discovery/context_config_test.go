@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers"
 	inventory "go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/providers"
 )
 
 func TestDiscoveredChildrenInheritTheContextConfig(t *testing.T) {
