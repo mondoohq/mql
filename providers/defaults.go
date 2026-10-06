@@ -173,6 +173,22 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"azuredevops": {
+		Provider: &plugin.Provider{
+			Name:            "azuredevops",
+			ID:              "go.mondoo.com/mql/providers/azuredevops",
+			ConnectionTypes: []string{"azuredevops"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "azuredevops",
+					Use:   "azuredevops",
+					Short: "an Azure DevOps organization or repository",
+				},
+			},
+		},
+	},
+
 	"bicep": {
 		Provider: &plugin.Provider{
 			Name:            "bicep",

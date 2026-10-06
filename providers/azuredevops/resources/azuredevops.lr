@@ -1,0 +1,15 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+option provider = "go.mondoo.com/mql/providers/azuredevops"
+option go_package = "go.mondoo.com/mql/providers/azuredevops/resources"
+option root = "azuredevops"
+
+// Azure DevOps
+//
+// Namespace root for Azure DevOps queries. The organization and repository
+// resources replace its placeholder field in later commits.
+private azuredevops @root {
+  // Provider name, a placeholder until the real resources land
+  field() string
+}
