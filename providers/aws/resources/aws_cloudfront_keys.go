@@ -80,8 +80,14 @@ func (a *mqlAwsCloudfrontKeyValueStore) comment() (string, error) {
 	name := a.Name.Data
 	resp, err := conn.Cloudfront("").DescribeKeyValueStore(context.Background(), &cloudfront.DescribeKeyValueStoreInput{Name: &name})
 	if err != nil {
-		if Is400AccessDeniedError(err) && plugin.StructuredErrors() {
-			return "", llx.Forbidden(err, llx.WithPermissions("cloudfront:DescribeKeyValueStore"))
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return "", llx.Forbidden(err, llx.WithPermissions("cloudfront:DescribeKeyValueStore"))
+			}
+			// Before this field made its own call it never failed; keep a
+			// refusal null until structured errors are on.
+			a.Comment.State = plugin.StateIsSet | plugin.StateIsNull
+			return "", nil
 		}
 		return "", err
 	}

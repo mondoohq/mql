@@ -1184,7 +1184,7 @@ var sensitiveGlueConnectionPropertyKeys = map[string]struct{}{
 // sensitiveGlueConnectionPropertyMarkers catches credential keys the list
 // above does not name yet, so a key Glue adds later is redacted by default.
 // SECRET_ID and *_SECRETS_ARN stay visible: they name a secret, not hold one.
-var sensitiveGlueConnectionPropertyMarkers = []string{"PASSWORD", "KEYSTORE", "KEYTAB"}
+var sensitiveGlueConnectionPropertyMarkers = []string{"PASSWORD", "KEYSTORE", "KEYTAB", "KRB5"}
 
 func isSensitiveGlueConnectionProperty(key string) bool {
 	if _, ok := sensitiveGlueConnectionPropertyKeys[key]; ok {
