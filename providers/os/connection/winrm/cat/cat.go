@@ -45,12 +45,29 @@ func (cat *Fs) Name() string {
 // failed to open as if it did not exist, and nothing could be listed.
 const dirExitStatus = 64
 
-// openScript reads a file, or reports a directory through dirExitStatus, in
-// one round trip. A missing path still fails in Get-Content, as before.
+// tooLargeExitStatus is the exit status openScript ends with when the file is
+// larger than maxOpenSize.
+const tooLargeExitStatus = 65
+
+// maxOpenSize is the largest file Open reads. WinRM can only return a file
+// whole, as Get-Content text: a 105 MB model file had not finished after ten
+// minutes, and a binary read that way arrives altered anyway. Past this a
+// read fails at once with ErrFileTooLarge instead of stalling the scan.
+const maxOpenSize = 32 << 20
+
+// ErrFileTooLarge is returned by Open for a file larger than maxOpenSize.
+var ErrFileTooLarge = errors.New("file is too large to read over WinRM")
+
+// openScript reads a file, or reports a directory through dirExitStatus or a
+// file over maxOpenSize through tooLargeExitStatus, in one round trip. A
+// missing path still fails in Get-Content, as before.
 func openScript(name string) string {
 	quoted := powershell.SingleQuote(name)
 	return powershell.Encode("if (Test-Path -LiteralPath " + quoted + " -PathType Container) { exit " +
-		strconv.Itoa(dirExitStatus) + " }; Get-Content -LiteralPath " + quoted)
+		strconv.Itoa(dirExitStatus) + " }; " +
+		"$i = Get-Item -LiteralPath " + quoted + " -Force -ErrorAction SilentlyContinue; " +
+		"if ($i -and $i.Length -gt " + strconv.Itoa(maxOpenSize) + ") { exit " + strconv.Itoa(tooLargeExitStatus) + " }; " +
+		"Get-Content -LiteralPath " + quoted)
 }
 
 func getItemScript(name string) string {
@@ -88,6 +105,9 @@ func (cat *Fs) Open(name string) (afero.File, error) {
 
 	if cmd.ExitStatus == dirExitStatus {
 		return newDir(cat, name), nil
+	}
+	if cmd.ExitStatus == tooLargeExitStatus {
+		return nil, &os.PathError{Op: "open", Path: name, Err: ErrFileTooLarge}
 	}
 	if cmd.ExitStatus != 0 {
 		return nil, os.ErrNotExist

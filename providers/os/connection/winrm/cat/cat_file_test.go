@@ -25,6 +25,7 @@ import (
 type fakeRunner struct {
 	t        *testing.T
 	dirs     map[string]bool
+	large    map[string]bool
 	listing  string
 	listFor  func(path string) string
 	itemFor  func(path string) string
@@ -57,8 +58,6 @@ func (r *fakeRunner) RunCommand(command string) (*shared.Command, error) {
 			res.Stdout = bytes.NewBufferString(r.listFor(scriptPath(script)))
 		}
 		res.ExitStatus = r.exit
-	case strings.Contains(script, "Get-Item "):
-		res.Stdout = bytes.NewBufferString(r.itemFor(scriptPath(script)))
 	case strings.Contains(script, "Test-Path"):
 		for dir := range r.dirs {
 			if strings.Contains(script, "'"+dir+"'") {
@@ -66,7 +65,15 @@ func (r *fakeRunner) RunCommand(command string) (*shared.Command, error) {
 				return res, nil
 			}
 		}
+		for file := range r.large {
+			if strings.Contains(script, "'"+file+"'") {
+				res.ExitStatus = tooLargeExitStatus
+				return res, nil
+			}
+		}
 		res.Stdout = bytes.NewBufferString("hi\n")
+	case strings.Contains(script, "Get-Item "):
+		res.Stdout = bytes.NewBufferString(r.itemFor(scriptPath(script)))
 	}
 	return res, nil
 }
@@ -301,4 +308,12 @@ func TestReparseTag(t *testing.T) {
 	assert.Equal(t, uint32(IO_REPARSE_TAG_SYMLINK), reparseTag("SymbolicLink"))
 	assert.Zero(t, reparseTag("HardLink"))
 	assert.Zero(t, reparseTag(""))
+}
+
+func TestOpenLargeFileFailsFast(t *testing.T) {
+	p := `C:\Users\me\.lmstudio\models\pub\repo\model-Q4_K_M.gguf`
+	_, err := New(&fakeRunner{t: t, large: map[string]bool{p: true}}).Open(p)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrFileTooLarge)
+	assert.NotErrorIs(t, err, os.ErrNotExist)
 }
