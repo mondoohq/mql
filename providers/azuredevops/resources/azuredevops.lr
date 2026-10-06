@@ -19,7 +19,9 @@ private azuredevops @root {}
 // their Git repositories. Provides the `name` and `id` of the organization, its
 // `projects`, and the `repositories` of every project the credential can read.
 // Projects whose repositories the credential cannot list are named in
-// `unreadableProjects` and are left out of `repositories`.
+// `unreadableProjects` and are left out of `repositories`. The `--repos` and
+// `--repos-exclude` filters narrow discovery only, so `repositories` still lists
+// every repository, whatever its status.
 azuredevops.organization @defaults("name") @root {
   // Organization name, as it appears in dev.azure.com/<name>
   name string
@@ -29,7 +31,7 @@ azuredevops.organization @defaults("name") @root {
   deploymentType string
   // Projects of the organization
   projects() []azuredevops.project
-  // Git repositories of every project the credential can read
+  // Git repositories of every project the credential can read, of any status. The repository filters do not apply here
   repositories() []azuredevops.repository
   // Names of the projects whose repositories the credential cannot list
   unreadableProjects() []string
@@ -63,8 +65,10 @@ azuredevops.project @defaults("name") {
 //
 // Git repository in an Azure DevOps project. Provides the `fullName` as
 // project and repository, the `defaultBranch`, and whether the repository is
-// `isDisabled` or `isEmpty`. The `status` is ready, empty, or disabled, and
-// only a ready repository can be scanned. Select a repository with
+// `isDisabled` or `isEmpty`. The `status` is disabled, empty, or ready.
+// Organization discovery emits only ready repositories as assets; a repository
+// connection also emits an empty or disabled one, without Terraform or
+// Kubernetes children. Select a repository with
 // `azuredevops.repository(projectName: "<project>", name: "<repository>")`.
 azuredevops.repository @defaults("fullName") @root {
   init(projectName string, name string)
@@ -86,7 +90,7 @@ azuredevops.repository @defaults("fullName") @root {
   isEmpty bool
   // Whether the repository is a fork
   isFork bool
-  // Scan status: ready, empty, or disabled
+  // Scan status: disabled when an administrator disabled the repository (even with no commits), empty when it has no commits, otherwise ready
   status string
   // Address of the repository in the web portal
   webUrl string

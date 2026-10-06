@@ -39,19 +39,20 @@ Available commands:
   repo                      Azure DevOps repository
 
 Examples:
-  cnspec scan azuredevops org <ORG_NAME> --token <PAT>
-  cnspec scan azuredevops org <ORG_NAME> --tenant-id <TENANT_ID> --client-id <CLIENT_ID> --client-secret <SECRET>
-  cnspec scan azuredevops org <ORG_NAME> --repos "<PROJECT>/*" --repos-exclude "<PROJECT>/<REPO>"
-  cnspec scan azuredevops org <ORG_NAME> --discover repos,terraform
-  cnspec scan azuredevops repo <ORG_NAME>/<PROJECT>/<REPO>
-  cnspec shell azuredevops org <ORG_NAME>
+  mql discover azuredevops org <ORG_NAME> --token <PAT>
+  mql discover azuredevops org <ORG_NAME> --tenant-id <TENANT_ID> --client-id <CLIENT_ID> --client-secret <SECRET>
+  mql discover azuredevops org <ORG_NAME> --token <PAT> --repos "<PROJECT>/*" --repos-exclude "<PROJECT>/<REPO>"
+  mql discover azuredevops org <ORG_NAME> --token <PAT> --discover repos,terraform
+  mql run azuredevops org <ORG_NAME> --token <PAT> -c "azuredevops.organization.projects { name }"
+  mql shell azuredevops org <ORG_NAME> --token <PAT> --discover organization
+  mql shell azuredevops repo <ORG_NAME>/<PROJECT>/<REPO> --token <PAT>
 
 Notes:
   Only Azure DevOps Services (dev.azure.com) is supported, not Azure DevOps Server.
 
   Authenticate with a personal access token, passed with --token or set in the AZURE_DEVOPS_TOKEN environment variable, or with a Microsoft Entra service principal. For the service principal, pass --tenant-id and --client-id and give the client secret with --client-secret or the AZURE_CLIENT_SECRET environment variable. Add the service principal to the organization (Organization settings, Users) before scanning.
 
-  A project the credential cannot read is skipped and reported. It does not fail the scan.
+  A project the credential cannot read is skipped and reported. It does not fail the scan, unless the organization has projects and the credential can read none of them: then discovery fails.
 
   Repository filters match "<PROJECT>/<REPO>". The star does not cross the slash.
 `,
@@ -92,13 +93,13 @@ Notes:
 					Long:    "repos",
 					Type:    plugin.FlagType_String,
 					Default: "",
-					Desc:    "Only include repositories matching these <project>/<repo> patterns",
+					Desc:    "Only include repositories matching these comma-separated <project>/<repo> globs",
 				},
 				{
 					Long:    "repos-exclude",
 					Type:    plugin.FlagType_String,
 					Default: "",
-					Desc:    "Filter out repositories matching these <project>/<repo> patterns",
+					Desc:    "Filter out repositories matching these comma-separated <project>/<repo> globs",
 				},
 			},
 		},

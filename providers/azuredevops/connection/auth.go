@@ -49,7 +49,10 @@ const (
 // AuthOptions selects and configures the authentication mode.
 //
 // With a TenantID and a ClientID the mode is Entra, and Credential is the
-// client secret (or certificate). Without them Credential is a PAT.
+// client secret (or certificate). A nil Credential there, with no
+// TokenCredential either, falls back to azauth's default sign-in chain (the
+// environment, a workload identity, the Azure CLI and the like). Without a
+// TenantID and a ClientID, Credential is a PAT.
 type AuthOptions struct {
 	TenantID   string
 	ClientID   string
@@ -169,6 +172,13 @@ func (a *Authenticator) Token(ctx context.Context) (string, error) {
 
 // refreshAt is when the cached token is due for a refresh. A token without a
 // usable expiry is refreshed on every call.
+//
+// The lifetime is measured from when this authenticator received the token,
+// not from when Entra issued it. MSAL, under azidentity, answers from its own
+// cache until a token has less than 5 minutes left, so the refresh at 80% of a
+// 60-minute token gets the same token back with 12 minutes left. The next
+// refresh comes at 80% of those 12 minutes, which means a request can carry a
+// token with about 2.4 minutes of life left before MSAL mints a new one.
 func (a *Authenticator) refreshAt() time.Time {
 	lifetime := a.expiresAt.Sub(a.mintedAt)
 	if lifetime <= 0 {

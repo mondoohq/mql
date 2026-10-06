@@ -31,10 +31,12 @@ type repoIac struct {
 }
 
 // classifyIacTree sorts the files of a repository tree into the IaC entry
-// points the discovery targets ask for. It mirrors the GitHub provider's
-// classifyIacTree: a path with a hidden segment (.github, .azure, a leading
-// dot) is skipped, and mql.yaml and mql.yml are policy files, not manifests.
-// Azure DevOps has no languages API, so Terraform is found by the .tf suffix.
+// points the discovery targets ask for. Only blobs count, and a blob is skipped
+// when any segment of its path starts with a dot (.github, .azure). A file
+// name ending in .tf marks Terraform; Azure DevOps has no languages API, so the
+// suffix is the only signal. A file name ending in .yaml or .yml marks
+// Kubernetes, unless the name is exactly mql.yaml or mql.yml, which are policy
+// files. The comparison is on the whole name, so xmql.yaml still counts.
 func classifyIacTree(items []connection.Item) repoIac {
 	var out repoIac
 	for _, item := range items {

@@ -3,9 +3,11 @@
 
 // Package fakeado is an in-process stand-in for the Azure DevOps REST API.
 //
-// It serves JSON documents recorded in the shape of the real answers, from the
-// embedded testdata folder, for one fabricated organization. Every name, id and
-// address in the fixtures is invented. Tests start a server with New, point a
+// It serves JSON documents modelled on the documented API, from the embedded
+// testdata folder, for one fabricated organization. They are not recordings of
+// a live organization. Every name, id and address in the fixtures is invented,
+// and the git objectId and commitId values are GUID-shaped where the real API
+// returns 40-character SHA-1 hashes. Tests start a server with New, point a
 // connection at its URL with the api-endpoint option and never touch the
 // network.
 package fakeado
@@ -102,7 +104,9 @@ func (s *Server) Requests() []string {
 }
 
 // ThrottleNext answers the next n requests whose path ends in suffix with
-// HTTP 429. A non-empty retryAfter is sent as the Retry-After header.
+// HTTP 429. The suffix is matched against the decoded URL path ("scan test",
+// not "scan%20test"), and the query string is ignored. A non-empty retryAfter
+// is sent as the Retry-After header.
 func (s *Server) ThrottleNext(suffix string, n int, retryAfter string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -35,13 +35,13 @@ The provider picks the credential in this order:
 A tenant that is set in the shell for another tool therefore does not override a token.
 
 ```shell
-mql shell azuredevops org my-organization --token PAT
+mql shell azuredevops org my-organization --token PAT --discover organization
 ```
 
 > Create a PAT under User settings, Personal access tokens, in the Azure DevOps portal.
 
 ```shell
-mql shell azuredevops org my-organization \
+mql shell azuredevops org my-organization --discover organization \
   --tenant-id TENANT_ID --client-id CLIENT_ID --client-secret CLIENT_SECRET
 ```
 
@@ -57,10 +57,11 @@ with `asset.platform == "azuredevops-repo"`.
 Azure DevOps treats organization names as case-insensitive, so the asset id lower-cases the
 organization (`MyOrg` and `myorg` are one asset). Project and repository names keep their case.
 
-Open an interactive shell on an organization:
+Open an interactive shell on an organization. The default `auto` target also emits every
+repository, and `mql shell` connects to one asset, so ask for the organization alone:
 
 ```shell
-mql shell azuredevops org my-organization --token PAT
+mql shell azuredevops org my-organization --token PAT --discover organization
 ```
 
 Open a shell on one repository:
