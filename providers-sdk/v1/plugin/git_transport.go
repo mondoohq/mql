@@ -4,10 +4,13 @@
 package plugin
 
 import (
+	"context"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
 // Azure DevOps rejects go-git's default upload-pack request with HTTP 400:
@@ -38,6 +41,46 @@ func isAzureDevOpsHost(host string) bool {
 	}
 	org, ok := strings.CutSuffix(host, ".visualstudio.com")
 	return ok && org != "" && !strings.Contains(org, ".")
+}
+
+// adoHostMatcher decides which hosts get the Azure DevOps request. It is a
+// variable only so tests can point the router at a loopback server; production
+// code never reassigns it.
+var adoHostMatcher = isAzureDevOpsHost
+
+// hostRoutedTransport is a transport.Transport that delegates to base for
+// every host. For Azure DevOps hosts it wraps the upload-pack session so its
+// request carries the capabilities Azure DevOps requires.
+type hostRoutedTransport struct {
+	base transport.Transport
+}
+
+func (t *hostRoutedTransport) NewUploadPackSession(ep *transport.Endpoint, auth transport.AuthMethod) (transport.UploadPackSession, error) {
+	session, err := t.base.NewUploadPackSession(ep, auth)
+	if err != nil || !adoHostMatcher(ep.Host) {
+		// Not Azure DevOps: hand back exactly what the base transport produced.
+		return session, err
+	}
+	return &azureDevOpsUploadPackSession{UploadPackSession: session}, nil
+}
+
+func (t *hostRoutedTransport) NewReceivePackSession(ep *transport.Endpoint, auth transport.AuthMethod) (transport.ReceivePackSession, error) {
+	return t.base.NewReceivePackSession(ep, auth)
+}
+
+// azureDevOpsUploadPackSession adjusts the upload-pack request before it is
+// sent. The advertisement path is the embedded session's, unchanged.
+type azureDevOpsUploadPackSession struct {
+	transport.UploadPackSession
+}
+
+func (s *azureDevOpsUploadPackSession) UploadPack(ctx context.Context, req *packp.UploadPackRequest) (*packp.UploadPackResponse, error) {
+	if req != nil && req.Capabilities != nil {
+		if err := adjustAzureDevOpsCapabilities(req.Capabilities); err != nil {
+			return nil, err
+		}
+	}
+	return s.UploadPackSession.UploadPack(ctx, req)
 }
 
 // adjustAzureDevOpsCapabilities makes caps what Azure DevOps accepts: exactly
