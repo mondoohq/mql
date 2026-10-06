@@ -24,8 +24,15 @@ Arguments:
 - `--tenant-id`, `--client-id`, `--client-secret` - a Microsoft Entra service principal. Also
   read from `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET`.
 
-A token always wins over the `AZURE_*` variables, so a tenant that is set in the shell for
-another tool does not change how a scan authenticates.
+The provider picks the credential in this order:
+
+1. A `--tenant-id` or `--client-id` flag selects the service principal, even when a token is
+   also set. The provider logs a warning in that case.
+2. Otherwise a token, from `--token` or `AZURE_DEVOPS_TOKEN`.
+3. Otherwise a service principal from `AZURE_TENANT_ID` and `AZURE_CLIENT_ID`, which are both
+   required, and `AZURE_CLIENT_SECRET`.
+
+A tenant that is set in the shell for another tool therefore does not override a token.
 
 ```shell
 mql shell azuredevops org my-organization --token PAT
@@ -62,11 +69,23 @@ Open a shell on one repository:
 mql shell azuredevops repo my-organization/my-project/my-repo --token PAT
 ```
 
+Run a single query without a shell:
+
+```shell
+mql run azuredevops org my-organization --token PAT -c "azuredevops.organization.projects { name }"
+```
+
 ## Discovery
 
-An organization scan emits an asset for the organization and one for each repository that
-has commits and is not disabled. Disabled and empty repositories are reported and skipped.
-A project the credential cannot read is reported and skipped, and does not fail the scan.
+Discovery on an organization emits an asset for the organization and one for each repository
+that has commits and is not disabled. Disabled and empty repositories are reported and
+skipped, and only `ready` repositories become assets. A project the credential cannot read is
+reported and skipped. Discovery fails only when the organization has projects and the
+credential can read none of them, which is what a token without the `Code (Read)` scope
+produces. A repository filter (below) leaves the organization asset out.
+
+A `repo` connection emits the repository you named, even when it is empty or disabled, but
+gives such a repository no Terraform or Kubernetes child.
 
 | Target          | Emits                                                         |
 | --------------- | ------------------------------------------------------------- |
@@ -77,16 +96,31 @@ A project the credential cannot read is reported and skipped, and does not fail 
 | `k8s-manifests` | a Kubernetes child for each repository that holds YAML files  |
 | `all`           | every target above                                            |
 
+Terraform and Kubernetes detection reads the file tree of each repository. One `.tf` file, or
+one `.yaml` or `.yml` file, is enough. The check goes by file name, so a Kubernetes child can
+turn out to hold no manifest. Files under a hidden path (a segment that starts with a dot, such
+as `.github` or `.azure`) are ignored, and so are `mql.yaml` and `mql.yml`.
+
+`mql discover` prints how many assets of each platform a connection finds:
+
 ```shell
-mql scan azuredevops org my-organization --token PAT --discover repos,terraform
+mql discover azuredevops org my-organization --token PAT --discover repos,terraform
 ```
 
-Narrow the scan with `<project>/<repo>` patterns. The star does not cross the slash.
+Narrow discovery with `--repos` and `--repos-exclude`. Each takes a comma-separated list of
+`<project>/<repo>` patterns, matched case-insensitively. An include list keeps what matches,
+and the exclude list then removes what it matches. The star does not cross the slash, so
+`my-project/*` is every repository of one project and `*/ado-*` is the repositories with that
+prefix in any project. `**` does cross the slash. A pattern with no slash, such as `ado-*`,
+matches nothing, and the provider logs a warning when an include list matches no repository.
 
 ```shell
-mql scan azuredevops org my-organization --token PAT \
+mql discover azuredevops org my-organization --token PAT \
   --repos "my-project/*" --repos-exclude "my-project/archive-*"
 ```
+
+Setting `--repos` or `--repos-exclude` also drops the organization asset, whatever the
+discovery target is. A filter means you want those repositories, not the organization.
 
 ## Examples
 
@@ -129,7 +163,10 @@ mql> azuredevops.organization { name id deploymentType }
 `deploymentType` is `hosted` for Azure DevOps Services. An empty
 `azuredevops.organization.unreadableProjects` means the credential can read every project.
 A name in that list means the credential has no access to that project, and that project's
-repositories are not in the inventory.
+repositories are not in the inventory. The connection query above does not read repositories.
+When the organization has projects and the credential can read none of them, a query on
+`projects`, `repositories` or `unreadableProjects` fails with an error instead of returning a
+list.
 
 ## Troubleshooting
 
@@ -137,7 +174,17 @@ repositories are not in the inventory.
   belongs to another organization. Create a new one.
 - Every request fails for a service principal: the principal is not a user of the
   organization yet. Add it under Organization settings, Users.
-- A repository is missing from a scan: look at `azuredevops.organization.repositories` for
-  its `status`. Only `ready` repositories are scanned.
+- An error that says the credential cannot read the repositories of any of the organization's
+  projects: the token lacks the `Code (Read)` scope, or the service principal is not a member
+  of the projects. Fix the scope or the membership.
+- A repository is missing from a scan: a `--repos` or `--repos-exclude` filter may leave it
+  out, its project may be listed in `azuredevops.organization.unreadableProjects`, or it may
+  not be `ready`. Look at `azuredevops.organization.repositories` for its `status`. An
+  organization scan only picks up `ready` repositories. A `repo` connection still emits an
+  empty or disabled repository, without Terraform or Kubernetes children.
+- A repository has no Terraform or Kubernetes child: the default `auto` target does not emit
+  them, so pass `--discover terraform`, `k8s-manifests` or `all`. Past that, the file tree must
+  hold a `.tf`, `.yaml` or `.yml` file outside a hidden path such as `.github`, and `mql.yaml`
+  and `mql.yml` do not count.
 - `429` or slow scans: Azure DevOps throttles by cost per user. The provider backs off on its
   own. Narrow the scan with `--repos` if it keeps happening.
