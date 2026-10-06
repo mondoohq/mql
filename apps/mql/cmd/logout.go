@@ -161,7 +161,7 @@ func logoutSession(opts *config.Config) error {
 
 	path := viper.ConfigFileUsed()
 	if fi, err := os.Stat(path); err == nil {
-		clearSessionCredential(opts)
+		opts.ClearCredentials()
 		data, marshalErr := config.MarshalConfig(path, opts)
 		if marshalErr != nil {
 			log.Error().Err(marshalErr).Msg("could not update Mondoo config")
@@ -175,18 +175,4 @@ func logoutSession(opts *config.Config) error {
 
 	log.Info().Msgf("Logged out. Session %s removed", mrn)
 	return nil
-}
-
-// clearSessionCredential drops every credential field of a session config,
-// keeping unrelated settings.
-func clearSessionCredential(opts *config.Config) {
-	opts.AgentMrn = ""
-	opts.ServiceAccountMrn = ""
-	opts.PrivateKey = ""
-	opts.Certificate = ""
-	opts.Token = ""
-	opts.SpaceMrn = ""
-	opts.ScopeMrn = ""
-	opts.ParentMrn = ""
-	opts.Authentication = nil
 }

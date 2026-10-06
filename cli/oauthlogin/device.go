@@ -1,4 +1,4 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package oauthlogin
@@ -45,17 +45,12 @@ func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, key *ecdsa.
 	// One proof covers the whole poll window, so it must not outlive the
 	// server's limit; polling stops before it expires.
 	issuedAt := time.Now()
-	lifetime := MaxKeyProofLifetime
-	if !da.Expiry.IsZero() {
-		if remaining := time.Until(da.Expiry) + proofSafetyMargin; remaining < lifetime {
-			lifetime = remaining
-		}
-	}
+	lifetime, pollDeadline := deviceProofWindow(issuedAt, da.Expiry)
 	proof, err := NewKeyProof(key, cfg.Endpoint.TokenURL, da.DeviceCode, issuedAt, lifetime)
 	if err != nil {
 		return nil, err
 	}
-	pollCtx, cancel := context.WithDeadline(ctx, issuedAt.Add(lifetime-proofSafetyMargin))
+	pollCtx, cancel := context.WithDeadline(ctx, pollDeadline)
 	defer cancel()
 
 	stop := startSpinner(o.Out, o.Interactive, "Waiting for authorization...")
@@ -68,6 +63,22 @@ func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, key *ecdsa.
 		return nil, tokenError(err)
 	}
 	return tok, nil
+}
+
+// deviceProofWindow returns the key proof lifetime and the poll deadline for a
+// device code issued at now that expires at expiry (zero: unknown). Polling
+// runs until the device code expires, and the proof stays valid
+// proofSafetyMargin past the last poll. Both are bounded by
+// MaxKeyProofLifetime: the poll deadline is then the proof expiry minus
+// proofSafetyMargin.
+func deviceProofWindow(now, expiry time.Time) (time.Duration, time.Time) {
+	lifetime := MaxKeyProofLifetime
+	if !expiry.IsZero() {
+		if remaining := expiry.Sub(now) + proofSafetyMargin; remaining < lifetime {
+			lifetime = max(remaining, proofSafetyMargin)
+		}
+	}
+	return lifetime, now.Add(lifetime - proofSafetyMargin)
 }
 
 func waitForEnter(in io.Reader, fn func()) {

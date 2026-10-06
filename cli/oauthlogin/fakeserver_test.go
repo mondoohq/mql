@@ -1,4 +1,4 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package oauthlogin
@@ -49,6 +49,8 @@ type fakeAS struct {
 	pollTimes      []time.Time
 	tokenForms     []url.Values
 	revokeForms    []url.Values
+	revokeStatus   int    // 0: 200
+	revokeBody     string // written with revokeStatus
 	lastProofClaim jwt.MapClaims
 }
 
@@ -264,7 +266,12 @@ func (f *fakeAS) revoke(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.revokeForms = append(f.revokeForms, r.PostForm)
-	w.WriteHeader(http.StatusOK)
+	status := f.revokeStatus
+	if status == 0 {
+		status = http.StatusOK
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(f.revokeBody))
 }
 
 func oauthError(w http.ResponseWriter, code string) {

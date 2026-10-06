@@ -1,4 +1,4 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package oauthlogin
@@ -29,6 +29,8 @@ type callbackResult struct {
 // loopbackFlow runs the authorization code grant with PKCE and an RFC 8252
 // loopback redirect on 127.0.0.1.
 func loopbackFlow(ctx context.Context, o *Options, md *Metadata, cfg *oauth2.Config, key *ecdsa.PrivateKey, params []oauth2.AuthCodeOption) (*oauth2.Token, error) {
+	// The redirect URI uses the 127.0.0.1 literal rather than localhost, as
+	// recommended by RFC 8252 section 7.3.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("could not start the local login listener: %w", err)
@@ -43,6 +45,11 @@ func loopbackFlow(ctx context.Context, o *Options, md *Metadata, cfg *oauth2.Con
 	results := make(chan callbackResult, 1)
 	mux := http.NewServeMux()
 	mux.HandleFunc(callbackPath, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		res := validateCallback(r.URL.Query(), state, md.Issuer, md.AuthorizationResponseIssParameterSupported)
 		if res.err != nil {
 			writeResultPage(w, http.StatusBadRequest, false, res.err.Error())

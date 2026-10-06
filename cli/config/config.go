@@ -518,6 +518,19 @@ func (c *CommonOpts) IsOAuthSession() bool {
 	return c.Authentication != nil && c.Authentication.Method == AUTH_METHOD_OAUTH
 }
 
+// ClearCredentials drops every credential field, keeping unrelated settings.
+func (c *CommonOpts) ClearCredentials() {
+	c.AgentMrn = ""
+	c.ServiceAccountMrn = ""
+	c.PrivateKey = ""
+	c.Certificate = ""
+	c.Token = ""
+	c.SpaceMrn = ""
+	c.ScopeMrn = ""
+	c.ParentMrn = ""
+	c.Authentication = nil
+}
+
 // HasCredentials reports whether the config holds anything to authenticate
 // with, without performing any credential exchange.
 func (c *CommonOpts) HasCredentials() bool {
