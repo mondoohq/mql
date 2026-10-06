@@ -129,3 +129,27 @@ func TestSetBool(t *testing.T) {
 	assert.False(t, f.IsNull())
 	assert.True(t, f.Data)
 }
+
+func TestMergeZoneResults(t *testing.T) {
+	denied := classifyError(apiError(t, 403, `{"message":"denied"}`), "list-instances")
+	down := classifyError(apiError(t, 503, `{"message":"down"}`), "list-instances")
+	zones := []string{"ch-gva-2", "de-fra-1"}
+
+	// One zone refuses: the other zone's items survive.
+	got, err := mergeZoneResults(zones, [][]string{nil, {"a", "b"}}, []error{denied, nil}, "list-instances")
+	require.NoError(t, err)
+	assert.Equal(t, []zoned[string]{{"de-fra-1", "a"}, {"de-fra-1", "b"}}, got)
+
+	// Every zone refuses: the refusal is the answer, not an empty list.
+	_, err = mergeZoneResults(zones, [][]string{nil, nil}, []error{denied, denied}, "list-instances")
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
+
+	// A zone that answers with nothing is a genuine empty list.
+	got, err = mergeZoneResults(zones, [][]string{nil, {}}, []error{denied, nil}, "list-instances")
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	// Any non-refusal failure fails the whole list.
+	_, err = mergeZoneResults(zones, [][]string{{"a"}, nil}, []error{nil, down}, "list-instances")
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNAVAILABLE, llx.KindOf(err))
+}

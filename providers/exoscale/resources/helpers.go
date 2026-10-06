@@ -122,18 +122,39 @@ func listAllZones[T any](runtime *plugin.Runtime, operation string, list func(c 
 	}
 	wg.Wait()
 
+	names := make([]string, len(zones))
+	for i := range zones {
+		names[i] = string(zones[i].Name)
+	}
+	return mergeZoneResults(names, results, errs, operation)
+}
+
+// mergeZoneResults joins the per-zone answers in zone order. A refused zone
+// is skipped so the others' data survives, but when no zone answered at all
+// the refusal is returned: an empty list would claim the organization has
+// none of the resource, which nothing established.
+func mergeZoneResults[T any](zones []string, results [][]T, errs []error, operation string) ([]zoned[T], error) {
 	var out []zoned[T]
+	var refusal error
+	answered := false
 	for i, z := range zones {
 		if errs[i] != nil {
 			if isRefusal(errs[i]) {
-				log.Debug().Err(errs[i]).Str("zone", string(z.Name)).Str("operation", operation).Msg("exoscale> skipping zone")
+				log.Debug().Err(errs[i]).Str("zone", z).Str("operation", operation).Msg("exoscale> skipping zone")
+				if refusal == nil {
+					refusal = errs[i]
+				}
 				continue
 			}
 			return nil, errs[i]
 		}
+		answered = true
 		for _, item := range results[i] {
-			out = append(out, zoned[T]{zone: string(z.Name), item: item})
+			out = append(out, zoned[T]{zone: z, item: item})
 		}
+	}
+	if !answered && refusal != nil {
+		return nil, refusal
 	}
 	return out, nil
 }
