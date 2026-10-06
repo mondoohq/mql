@@ -1,0 +1,43 @@
+# Hand-written login.conf edge cases in getcap(3) format.
+# - default: string, number and boolean capabilities, and a cancellation
+# - chain: a tc= chain three levels deep (chain -> middle -> default)
+# - override: a capability set before tc= wins over the inherited one, and
+#   one cancelled before tc= stays cancelled
+# - loopa/loopb: a tc= cycle
+# - dangling: a tc= reference to a class that does not exist
+# - default again: a duplicate name that lookups never reach
+
+[files."/etc/login.conf"]
+content = '''
+# comment
+default|Default Class:\
+	:passwordtime=90d:\
+	:minpasswordlen#12:\
+	:requirehome:\
+	:ignoretime@:\
+	:umask=022:\
+	:mail=/var/mail/$:
+
+middle:\
+	:umask=027:\
+	:tc=default:
+chain:\
+	:warnpassword=7d:\
+	:tc=middle:
+override:\
+	:passwordtime=30d:\
+	:requirehome@:\
+	:tc=default:\
+	:umask=077:
+#commented:\
+	:umask=000:
+loopa:\
+	:tc=loopb:
+loopb:\
+	:tc=loopa:
+dangling:\
+	:umask=022:\
+	:tc=nosuchclass:
+default:\
+	:umask=000:
+'''

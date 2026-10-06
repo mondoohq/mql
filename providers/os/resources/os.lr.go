@@ -343,6 +343,10 @@ const (
 	ResourceMountPoint                                    string = "mount.point"
 	ResourceShadow                                        string = "shadow"
 	ResourceShadowEntry                                   string = "shadow.entry"
+	ResourceMasterpasswd                                  string = "masterpasswd"
+	ResourceMasterpasswdEntry                             string = "masterpasswd.entry"
+	ResourceLoginconf                                     string = "loginconf"
+	ResourceLoginconfClass                                string = "loginconf.class"
 	ResourceYum                                           string = "yum"
 	ResourceYumRepo                                       string = "yum.repo"
 	ResourceYumConfig                                     string = "yum.config"
@@ -1984,6 +1988,22 @@ func init() {
 		"shadow.entry": {
 			// to override args, implement: initShadowEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createShadowEntry,
+		},
+		"masterpasswd": {
+			Init:   initMasterpasswd,
+			Create: createMasterpasswd,
+		},
+		"masterpasswd.entry": {
+			// to override args, implement: initMasterpasswdEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMasterpasswdEntry,
+		},
+		"loginconf": {
+			Init:   initLoginconf,
+			Create: createLoginconf,
+		},
+		"loginconf.class": {
+			Init:   initLoginconfClass,
+			Create: createLoginconfClass,
 		},
 		"yum": {
 			// to override args, implement: initYum(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -11095,6 +11115,81 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"shadow.entry.reserved": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlShadowEntry).GetReserved()).ToDataRes(types.String)
+	},
+	"masterpasswd.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswd).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"masterpasswd.invalidLines": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswd).GetInvalidLines()).ToDataRes(types.Int)
+	},
+	"masterpasswd.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswd).GetList()).ToDataRes(types.Array(types.Resource("masterpasswd.entry")))
+	},
+	"masterpasswd.entry.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetName()).ToDataRes(types.String)
+	},
+	"masterpasswd.entry.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetUser()).ToDataRes(types.Resource("user"))
+	},
+	"masterpasswd.entry.password": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetPassword()).ToDataRes(types.String)
+	},
+	"masterpasswd.entry.hasPassword": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetHasPassword()).ToDataRes(types.Bool)
+	},
+	"masterpasswd.entry.locked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetLocked()).ToDataRes(types.Bool)
+	},
+	"masterpasswd.entry.uid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetUid()).ToDataRes(types.Int)
+	},
+	"masterpasswd.entry.gid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetGid()).ToDataRes(types.Int)
+	},
+	"masterpasswd.entry.group": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetGroup()).ToDataRes(types.Resource("group"))
+	},
+	"masterpasswd.entry.class": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetClass()).ToDataRes(types.String)
+	},
+	"masterpasswd.entry.loginClass": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetLoginClass()).ToDataRes(types.Resource("loginconf.class"))
+	},
+	"masterpasswd.entry.change": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetChange()).ToDataRes(types.Time)
+	},
+	"masterpasswd.entry.expire": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetExpire()).ToDataRes(types.Time)
+	},
+	"masterpasswd.entry.gecos": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetGecos()).ToDataRes(types.String)
+	},
+	"masterpasswd.entry.home": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetHome()).ToDataRes(types.String)
+	},
+	"masterpasswd.entry.shell": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMasterpasswdEntry).GetShell()).ToDataRes(types.String)
+	},
+	"loginconf.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlLoginconf).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"loginconf.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlLoginconf).GetList()).ToDataRes(types.Array(types.Resource("loginconf.class")))
+	},
+	"loginconf.class.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlLoginconfClass).GetName()).ToDataRes(types.String)
+	},
+	"loginconf.class.aliases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlLoginconfClass).GetAliases()).ToDataRes(types.Array(types.String))
+	},
+	"loginconf.class.capabilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlLoginconfClass).GetCapabilities()).ToDataRes(types.Dict)
+	},
+	"loginconf.class.inherits": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlLoginconfClass).GetInherits()).ToDataRes(types.Array(types.Resource("loginconf.class")))
+	},
+	"loginconf.class.effective": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlLoginconfClass).GetEffective()).ToDataRes(types.Dict)
 	},
 	"yum.vars": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlYum).GetVars()).ToDataRes(types.Map(types.String, types.String))
@@ -29909,6 +30004,122 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"shadow.entry.reserved": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlShadowEntry).Reserved, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswd).__id, ok = v.Value.(string)
+		return
+	},
+	"masterpasswd.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswd).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.invalidLines": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswd).InvalidLines, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswd).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).__id, ok = v.Value.(string)
+		return
+	},
+	"masterpasswd.entry.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).User, ok = plugin.RawToTValue[*mqlUser](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.password": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).Password, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.hasPassword": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).HasPassword, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.locked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).Locked, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.uid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).Uid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.gid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).Gid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.group": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).Group, ok = plugin.RawToTValue[*mqlGroup](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.class": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).Class, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.loginClass": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).LoginClass, ok = plugin.RawToTValue[*mqlLoginconfClass](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.change": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).Change, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.expire": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).Expire, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.gecos": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).Gecos, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.home": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).Home, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"masterpasswd.entry.shell": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMasterpasswdEntry).Shell, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"loginconf.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlLoginconf).__id, ok = v.Value.(string)
+		return
+	},
+	"loginconf.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlLoginconf).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"loginconf.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlLoginconf).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"loginconf.class.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlLoginconfClass).__id, ok = v.Value.(string)
+		return
+	},
+	"loginconf.class.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlLoginconfClass).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"loginconf.class.aliases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlLoginconfClass).Aliases, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"loginconf.class.capabilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlLoginconfClass).Capabilities, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"loginconf.class.inherits": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlLoginconfClass).Inherits, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"loginconf.class.effective": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlLoginconfClass).Effective, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
 	"yum.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -74947,6 +75158,427 @@ func (c *mqlShadowEntry) GetExpirydates() *plugin.TValue[string] {
 
 func (c *mqlShadowEntry) GetReserved() *plugin.TValue[string] {
 	return &c.Reserved
+}
+
+// mqlMasterpasswd for the masterpasswd resource
+type mqlMasterpasswd struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMasterpasswdInternal
+	File         plugin.TValue[*mqlFile]
+	InvalidLines plugin.TValue[int64]
+	List         plugin.TValue[[]any]
+}
+
+// createMasterpasswd creates a new instance of this resource
+func createMasterpasswd(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMasterpasswd{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("masterpasswd", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMasterpasswd) MqlName() string {
+	return "masterpasswd"
+}
+
+func (c *mqlMasterpasswd) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMasterpasswd) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("masterpasswd", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.file()
+	})
+}
+
+func (c *mqlMasterpasswd) GetInvalidLines() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.InvalidLines, func() (int64, error) {
+		return c.invalidLines()
+	})
+}
+
+func (c *mqlMasterpasswd) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("masterpasswd", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		vargFile := c.GetFile()
+		if vargFile.Error != nil {
+			return nil, vargFile.Error
+		}
+
+		return c.list(vargFile.Data)
+	})
+}
+
+// mqlMasterpasswdEntry for the masterpasswd.entry resource
+type mqlMasterpasswdEntry struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMasterpasswdEntryInternal it will be used here
+	Name        plugin.TValue[string]
+	User        plugin.TValue[*mqlUser]
+	Password    plugin.TValue[string]
+	HasPassword plugin.TValue[bool]
+	Locked      plugin.TValue[bool]
+	Uid         plugin.TValue[int64]
+	Gid         plugin.TValue[int64]
+	Group       plugin.TValue[*mqlGroup]
+	Class       plugin.TValue[string]
+	LoginClass  plugin.TValue[*mqlLoginconfClass]
+	Change      plugin.TValue[*time.Time]
+	Expire      plugin.TValue[*time.Time]
+	Gecos       plugin.TValue[string]
+	Home        plugin.TValue[string]
+	Shell       plugin.TValue[string]
+}
+
+// createMasterpasswdEntry creates a new instance of this resource
+func createMasterpasswdEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMasterpasswdEntry{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("masterpasswd.entry", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMasterpasswdEntry) MqlName() string {
+	return "masterpasswd.entry"
+}
+
+func (c *mqlMasterpasswdEntry) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMasterpasswdEntry) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlMasterpasswdEntry) GetUser() *plugin.TValue[*mqlUser] {
+	return plugin.GetOrCompute[*mqlUser](&c.User, func() (*mqlUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("masterpasswd.entry", c.__id, "user")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlUser), nil
+			}
+		}
+
+		vargName := c.GetName()
+		if vargName.Error != nil {
+			return nil, vargName.Error
+		}
+
+		return c.user(vargName.Data)
+	})
+}
+
+func (c *mqlMasterpasswdEntry) GetPassword() *plugin.TValue[string] {
+	return &c.Password
+}
+
+func (c *mqlMasterpasswdEntry) GetHasPassword() *plugin.TValue[bool] {
+	return &c.HasPassword
+}
+
+func (c *mqlMasterpasswdEntry) GetLocked() *plugin.TValue[bool] {
+	return &c.Locked
+}
+
+func (c *mqlMasterpasswdEntry) GetUid() *plugin.TValue[int64] {
+	return &c.Uid
+}
+
+func (c *mqlMasterpasswdEntry) GetGid() *plugin.TValue[int64] {
+	return &c.Gid
+}
+
+func (c *mqlMasterpasswdEntry) GetGroup() *plugin.TValue[*mqlGroup] {
+	return plugin.GetOrCompute[*mqlGroup](&c.Group, func() (*mqlGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("masterpasswd.entry", c.__id, "group")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGroup), nil
+			}
+		}
+
+		vargGid := c.GetGid()
+		if vargGid.Error != nil {
+			return nil, vargGid.Error
+		}
+
+		return c.group(vargGid.Data)
+	})
+}
+
+func (c *mqlMasterpasswdEntry) GetClass() *plugin.TValue[string] {
+	return &c.Class
+}
+
+func (c *mqlMasterpasswdEntry) GetLoginClass() *plugin.TValue[*mqlLoginconfClass] {
+	return plugin.GetOrCompute[*mqlLoginconfClass](&c.LoginClass, func() (*mqlLoginconfClass, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("masterpasswd.entry", c.__id, "loginClass")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlLoginconfClass), nil
+			}
+		}
+
+		vargClass := c.GetClass()
+		if vargClass.Error != nil {
+			return nil, vargClass.Error
+		}
+
+		vargUid := c.GetUid()
+		if vargUid.Error != nil {
+			return nil, vargUid.Error
+		}
+
+		return c.loginClass(vargClass.Data, vargUid.Data)
+	})
+}
+
+func (c *mqlMasterpasswdEntry) GetChange() *plugin.TValue[*time.Time] {
+	return &c.Change
+}
+
+func (c *mqlMasterpasswdEntry) GetExpire() *plugin.TValue[*time.Time] {
+	return &c.Expire
+}
+
+func (c *mqlMasterpasswdEntry) GetGecos() *plugin.TValue[string] {
+	return &c.Gecos
+}
+
+func (c *mqlMasterpasswdEntry) GetHome() *plugin.TValue[string] {
+	return &c.Home
+}
+
+func (c *mqlMasterpasswdEntry) GetShell() *plugin.TValue[string] {
+	return &c.Shell
+}
+
+// mqlLoginconf for the loginconf resource
+type mqlLoginconf struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlLoginconfInternal
+	File plugin.TValue[*mqlFile]
+	List plugin.TValue[[]any]
+}
+
+// createLoginconf creates a new instance of this resource
+func createLoginconf(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlLoginconf{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("loginconf", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlLoginconf) MqlName() string {
+	return "loginconf"
+}
+
+func (c *mqlLoginconf) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlLoginconf) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("loginconf", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.file()
+	})
+}
+
+func (c *mqlLoginconf) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("loginconf", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		vargFile := c.GetFile()
+		if vargFile.Error != nil {
+			return nil, vargFile.Error
+		}
+
+		return c.list(vargFile.Data)
+	})
+}
+
+// mqlLoginconfClass for the loginconf.class resource
+type mqlLoginconfClass struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlLoginconfClassInternal
+	Name         plugin.TValue[string]
+	Aliases      plugin.TValue[[]any]
+	Capabilities plugin.TValue[any]
+	Inherits     plugin.TValue[[]any]
+	Effective    plugin.TValue[any]
+}
+
+// createLoginconfClass creates a new instance of this resource
+func createLoginconfClass(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlLoginconfClass{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("loginconf.class", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlLoginconfClass) MqlName() string {
+	return "loginconf.class"
+}
+
+func (c *mqlLoginconfClass) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlLoginconfClass) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlLoginconfClass) GetAliases() *plugin.TValue[[]any] {
+	return &c.Aliases
+}
+
+func (c *mqlLoginconfClass) GetCapabilities() *plugin.TValue[any] {
+	return &c.Capabilities
+}
+
+func (c *mqlLoginconfClass) GetInherits() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Inherits, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("loginconf.class", c.__id, "inherits")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.inherits()
+	})
+}
+
+func (c *mqlLoginconfClass) GetEffective() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Effective, func() (any, error) {
+		return c.effective()
+	})
 }
 
 // mqlYum for the yum resource

@@ -82,7 +82,9 @@ alias os.unix.crontab = crontab
 alias os.unix.exim = exim
 alias os.unix.inetd = inetd
 alias os.unix.kernel = kernel
+alias os.unix.loginconf = loginconf
 alias os.unix.logrotate = logrotate
+alias os.unix.masterpasswd = masterpasswd
 alias os.unix.mount = mount
 alias os.unix.nfs = nfs
 alias os.unix.postfix = postfix
@@ -132,11 +134,13 @@ alias os.any.kernel = kernel
 alias os.any.launchd = launchd
 alias os.any.limits = limits
 alias os.any.logindefs = logindefs
+alias os.any.loginconf = loginconf
 alias os.any.logrotate = logrotate
 alias os.any.lsblk = lsblk
 alias os.any.luks = luks
 alias os.any.lvm = lvm
 alias os.any.macos = macos
+alias os.any.masterpasswd = masterpasswd
 alias os.any.mdadm = mdadm
 alias os.any.modprobe = modprobe
 alias os.any.mount = mount
@@ -10758,6 +10762,148 @@ shadow.entry {
   expirydates string
   // Reserved field
   reserved string
+}
+
+// BSD password database source (/etc/master.passwd)
+//
+// Accounts parsed from /etc/master.passwd on FreeBSD, DragonFly, OpenBSD,
+// and NetBSD, one `masterpasswd.entry` per account. Unlike `users`, which
+// reads the public passwd database, each entry carries the password field,
+// the login class, and the password change and account expiry times, so
+// audits can find accounts with no password, check that passwords are
+// shadowed, and resolve each account's login class settings. The file is
+// readable by root only: a scan without root or `--sudo` returns a
+// permission error, never an empty list. Lines that cannot be parsed are
+// left out and counted in `invalidLines`. Read another file with
+// `masterpasswd("/path/to/master.passwd")`. macOS ships this file too, but
+// its accounts live in Directory Services, so use `users` there.
+masterpasswd {
+  []masterpasswd.entry(file)
+  init(path? string)
+  // master.passwd file that the entries are read from
+  file() file
+  // Number of lines in the file that could not be parsed
+  //
+  // Counts the lines left out of the entry list: a line without exactly
+  // ten fields, or with a uid, gid, change, or expire field that is not a
+  // number. Such a line is never guessed at (a bad uid would otherwise read
+  // as 0, which is root), and counting it keeps a shorter list from passing
+  // a check silently. `pwd_mkdb` refuses such a file, so a non-zero value
+  // also means the password database was not rebuilt from it.
+  invalidLines() int
+}
+
+// Account entry from /etc/master.passwd
+private masterpasswd.entry @defaults("name uid class") {
+  // Login name
+  name string
+  // Account in the system user list with this name
+  //
+  // Null when the account is not in the user list that `users` reads, for
+  // example when master.passwd was edited without running `pwd_mkdb`.
+  user(name) user
+  // Encrypted password field
+  //
+  // Empty means the account has no password. A value starting with `*`
+  // cannot be matched by any password, and `*LOCKED*` in front of a hash is
+  // what `pw lock` writes. This field holds the password hash.
+  password string
+  // Whether the password field holds a usable hash
+  //
+  // False when the field is empty, or starts with `*` (which includes a
+  // `*LOCKED*` account) or `!`.
+  hasPassword bool
+  // Whether the account is locked with `pw lock`
+  //
+  // True when the password field starts with `*LOCKED*`.
+  locked bool
+  // User ID
+  uid int
+  // Primary group ID
+  gid int
+  // Primary group
+  group(gid) group
+  // Login class name as written in the file
+  //
+  // Empty means the default class; see `loginClass` for the class that
+  // applies.
+  class string
+  // Login class from /etc/login.conf that applies to this account
+  //
+  // The class named in `class`. When `class` is empty, this is `default`,
+  // or on FreeBSD and DragonFly `root` for uid 0 when login.conf has a root
+  // class. On FreeBSD and DragonFly a class login.conf does not define falls
+  // back to `default`, as login_getpwclass(3) does. Null when no such class
+  // exists, which on OpenBSD and NetBSD means a login with this class fails.
+  loginClass(class, uid) loginconf.class
+  // Time by which the password must be changed
+  //
+  // Null when the field is 0, which means never. This is a deadline, not the
+  // time the password was last changed.
+  change time
+  // Time the account expires
+  //
+  // Null when the field is 0, which means never.
+  expire time
+  // General information about the user (GECOS field), such as the full name
+  gecos string
+  // Home directory
+  home string
+  // Login shell; empty means /bin/sh
+  shell string
+}
+
+// BSD login class capability database (/etc/login.conf)
+//
+// Login classes parsed from /etc/login.conf on FreeBSD, DragonFly, OpenBSD,
+// and NetBSD, one `loginconf.class` per class. Login classes hold the
+// password policy (password format, expiry, warning period), umask, resource
+// limits, and environment for the accounts assigned to them in
+// /etc/master.passwd. The file uses the getcap(3) format, and the system
+// reads the compiled login.conf.db that `cap_mkdb` builds from it, so an edit
+// takes effect only after `cap_mkdb /etc/login.conf`. Read another file with
+// `loginconf("/path/to/login.conf")`.
+loginconf {
+  []loginconf.class(file)
+  init(path? string)
+  // login.conf file that the classes are read from
+  file() file
+}
+
+// Login class from /etc/login.conf
+//
+// One login class record. `capabilities` holds what the record itself
+// writes, `effective` what applies after `tc=` inheritance, and `inherits`
+// the classes it includes. Values keep their text as written (for example
+// `90d` or `022`); boolean capabilities read as true. Select a class with
+// `loginconf.class("default")`, which also matches an alias.
+loginconf.class @defaults("name") {
+  init(name string)
+  // Class name, the first name in the record header
+  name string
+  // Other names from the record header (`name|alias|...`)
+  //
+  // On FreeBSD the last one is often a description, such as
+  // `Russian Users Accounts`.
+  aliases []string
+  // Capabilities written in this class
+  //
+  // The first occurrence of each capability, before `tc=` inheritance. A
+  // capability cancelled with `cap@` is left out, and `tc=` references are
+  // listed in `inherits` instead.
+  capabilities dict
+  // Classes this class includes with `tc=`, in order
+  inherits() []loginconf.class
+  // Capabilities after `tc=` inheritance
+  //
+  // The capabilities login_getclass(3) returns for this class: each `tc=`
+  // is replaced by the referenced class's capabilities, the first occurrence
+  // of a capability wins, and one cancelled with `cap@` stays absent. A class
+  // does not inherit from `default` unless it says `tc=default`; for an
+  // unset capability the system uses its built-in default. A `tc=` that does
+  // not resolve, or a reference loop, is an error, as login refuses such a
+  // class.
+  effective() dict
 }
 
 // Yum/DNF package manager
