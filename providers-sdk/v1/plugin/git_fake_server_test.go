@@ -93,6 +93,15 @@ func newFakeGitServer(t *testing.T, mode fakeGitMode, token string) *fakeGitServ
 	return f
 }
 
+// newEmptyFakeGitServer starts a server whose repository has no refs.
+func newEmptyFakeGitServer(t *testing.T, mode fakeGitMode, token string) *fakeGitServer {
+	t.Helper()
+	f := &fakeGitServer{mode: mode, token: token, storage: memory.NewStorage()}
+	f.Server = httptest.NewServer(f)
+	t.Cleanup(f.Close)
+	return f
+}
+
 // newFixtureStorage builds a repository with one root commit on refs/heads/main
 // that contains a single file, main.tf.
 func newFixtureStorage(t *testing.T) *memory.Storage {

@@ -76,8 +76,8 @@ func gitClone(gitUrl string) (string, func(), error) {
 
 	closer := func() {
 		log.Info().Str("path", cloneDir).Msg("cleaning up git clone")
-		if err = os.RemoveAll(cloneDir); err != nil {
-			log.Error().Err(err).Msg("failed to remove temporary dir for git processing")
+		if rmErr := os.RemoveAll(cloneDir); rmErr != nil {
+			log.Error().Err(rmErr).Msg("failed to remove temporary dir for git processing")
 		}
 	}
 
