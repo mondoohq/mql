@@ -294,8 +294,9 @@ func (k *mqlKernel) loadModprobeRules() (map[string]modprobeRule, error) {
 	return k.modprobeRules, k.modprobeErr
 }
 
-// moduleRule resolves the parent kernel resource, triggers a one-shot
-// modprobe walk, and returns the rule for this module's name. The name is
+// moduleRule resolves the parent kernel resource and returns the rule the
+// platform's module configuration has for this module's name. On Linux that
+// is a one-shot modprobe walk. The name is
 // normalized the same way the rule keys are, so `kernel.module("firewire-core")`
 // and `kernel.module("firewire_core")` both find a rule written with either
 // spelling. A module with no matching rule yields a zero-value modprobeRule
@@ -305,12 +306,16 @@ func (m *mqlKernelModule) moduleRule() (modprobeRule, error) {
 	if err != nil {
 		return modprobeRule{}, err
 	}
-	kernel := obj.(*mqlKernel)
-	rules, err := kernel.loadModprobeRules()
+	return obj.(*mqlKernel).moduleConfig().rule(m.Name.Data)
+}
+
+// rule is the modprobe.d rule for a module name (kernelModuleConfig).
+func (l linuxKernelModules) rule(name string) (modprobeRule, error) {
+	rules, err := l.kernel.loadModprobeRules()
 	if err != nil {
 		return modprobeRule{}, err
 	}
-	return lookupModprobeRule(rules, m.Name.Data), nil
+	return lookupModprobeRule(rules, name), nil
 }
 
 // lookupModprobeRule finds the rule for a module name in a parsed rule set.

@@ -146,3 +146,31 @@ kstat.zfs.zroot.misc.dmu_tx_assign.1099511627776 ns=0
 kstat.zfs.zroot.misc.dmu_tx_assign.549755813888 ns=0
 kstat.zfs.zroot.misc.dmu_tx_assign.274877906944 ns=0
 '''
+
+# Excerpt of `kldstat -v` from the same instance: the kernel lists several
+# hundred modules it was compiled with, cut here to two.
+[commands."kldstat -v"]
+stdout = """Id Refs Address                Size Name
+ 1   15 0xffffffff80200000  1f46790 kernel (/boot/kernel/kernel)
+	Contains modules:
+		 Id Name
+		396 cubic
+		334 msdosfs
+		333 devfs
+ 2    1 0xffffffff82147000    37960 if_ena.ko (/boot/kernel/if_ena.ko)
+	Contains modules:
+		 Id Name
+		  1 pci/ena
+ 3    1 0xffffffff829e6000     3220 intpm.ko (/boot/kernel/intpm.ko)
+	Contains modules:
+		 Id Name
+		501 pci/intsmb
+		502 intsmb/smbus
+ 4    1 0xffffffff829ea000     2178 smbus.ko (/boot/kernel/smbus.ko)
+	Contains modules:
+		 Id Name
+ 5    1 0xffffffff829ed000    28450 ipfw.ko (/boot/kernel/ipfw.ko)
+	Contains modules:
+		 Id Name
+		503 ipfw
+"""

@@ -1,0 +1,89 @@
+# FreeBSD 14.5 GENERIC on EC2. `kldstat -v` is trimmed: the kernel contains
+# several hundred modules, msdosfs among them (options MSDOSFS in GENERIC).
+# The loader configuration blacklists sctp on top of the defaults.
+
+[commands."kldstat -v"]
+stdout = """Id Refs Address                Size Name
+ 1   15 0xffffffff80200000  1f46790 kernel (/boot/kernel/kernel)
+	Contains modules:
+		 Id Name
+		396 cubic
+		340 pseudofs
+		341 tmpfs
+		334 msdosfs
+		333 devfs
+		350 g_part_gpt
+		330 pci/xl
+ 2    1 0xffffffff82147000    37960 if_ena.ko (/boot/kernel/if_ena.ko)
+	Contains modules:
+		 Id Name
+		  1 pci/ena
+ 3    1 0xffffffff829e6000     3220 intpm.ko (/boot/kernel/intpm.ko)
+	Contains modules:
+		 Id Name
+		501 pci/intsmb
+		502 intsmb/smbus
+ 4    1 0xffffffff829ea000     2178 smbus.ko (/boot/kernel/smbus.ko)
+	Contains modules:
+		 Id Name
+ 5    1 0xffffffff829ed000    28450 ipfw.ko (/boot/kernel/ipfw.ko)
+	Contains modules:
+		 Id Name
+		503 ipfw
+ 6    2 0xffffffff82a20000   5e9340 zfs.ko (/boot/kernel/zfs.ko)
+	Contains modules:
+		 Id Name
+		505 zfsctrl
+		506 zfs
+"""
+
+[commands."uname -v"]
+stdout = "FreeBSD 14.5-RELEASE-p1 releng/14.5-n274884-231eee334c09 GENERIC"
+
+[commands."sysctl -ae"]
+stdout = """kern.ostype=FreeBSD
+kern.module_path=/boot/kernel;/boot/modules;/boot/dtb;/boot/dtb/overlays
+kern.securelevel=-1
+"""
+
+[files."/boot/defaults/loader.conf"]
+path = "/boot/defaults/loader.conf"
+content = """module_path="/boot/modules;/boot/dtb;/boot/dtb/overlays"	# Set the module search path
+module_blacklist="drm drm2 radeonkms i915kms amdgpu if_iwlwifi if_rtw88 if_rtw89"	# Loader module blacklist
+module_blacklist="${module_blacklist} nvidia nvidia-drm nvidia-modeset"
+"""
+
+[files."/boot/loader.conf"]
+path = "/boot/loader.conf"
+content = """if_ena_load="YES"
+ext2fs_load="NO"
+msdosfs_load="NO"
+# keep sctp out at boot
+module_blacklist="${module_blacklist} sctp"
+"""
+
+[files."/boot/loader.conf.d"]
+path = "/boot/loader.conf.d"
+[files."/boot/loader.conf.d".stat]
+isdir = true
+
+[files."/boot/loader.conf.d/cifs.conf"]
+path = "/boot/loader.conf.d/cifs.conf"
+content = """module_blacklist="${module_blacklist},smbfs"
+"""
+
+[files."/boot/kernel/ext2fs.ko"]
+path = "/boot/kernel/ext2fs.ko"
+content = "ELF"
+
+[files."/boot/kernel/msdosfs.ko"]
+path = "/boot/kernel/msdosfs.ko"
+content = "ELF"
+
+[files."/boot/kernel/zfs.ko"]
+path = "/boot/kernel/zfs.ko"
+content = "ELF"
+
+[files."/boot/kernel/sctp.ko"]
+path = "/boot/kernel/sctp.ko"
+content = "ELF"

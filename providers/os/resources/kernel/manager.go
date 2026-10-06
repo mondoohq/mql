@@ -30,6 +30,13 @@ type KernelModule struct {
 	Name   string
 	Size   string // int64
 	UsedBy string // int
+	// File is the kernel file the module is part of, where the platform
+	// reports it: on FreeBSD the .ko file ("zfs.ko"), or "kernel" for a
+	// module compiled into the kernel.
+	File string
+	// BuiltIn is true for a module compiled into the kernel, where the
+	// platform's module list says so (FreeBSD).
+	BuiltIn bool
 }
 
 type OSKernelManager interface {
@@ -323,14 +330,22 @@ func (s *BsdKernelManager) Modules() ([]*KernelModule, error) {
 	if platform.Name == "openbsd" {
 		// openbsd does not support kernel modules, so we return an empty list
 		return []*KernelModule{}, nil
-	} else {
-		// NOTE: kldstat is supported on freebsd variants so failures are possible
-		cmd, err := s.conn.RunCommand("kldstat")
-		if err != nil {
-			return nil, errors.Wrap(err, "could not read kernel modules")
-		}
-		return ParseKldstat(cmd.Stdout), nil
 	}
+
+	// `kldstat -v` lists the modules inside every loaded file, including the
+	// ones compiled into the kernel, by the names `kldstat -m` and kldload
+	// know them.
+	cmd, err := s.conn.RunCommand("kldstat -v")
+	if err == nil && cmd.ExitStatus == 0 {
+		return ParseKldstatVerbose(cmd.Stdout), nil
+	}
+
+	// NOTE: kldstat is supported on freebsd variants so failures are possible
+	cmd, err = s.conn.RunCommand("kldstat")
+	if err != nil {
+		return nil, errors.Wrap(err, "could not read kernel modules")
+	}
+	return ParseKldstat(cmd.Stdout), nil
 }
 
 type AixKernelManager struct {

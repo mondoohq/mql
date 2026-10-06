@@ -33,7 +33,10 @@ func initKernel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[stri
 
 type mqlKernelInternal struct {
 	moduleByName map[string]*mqlKernelModule
-	lock         sync.Mutex
+	// loadedFiles maps each loaded kernel file to its size, where the
+	// platform names the file a module is in (FreeBSD: "zfs.ko").
+	loadedFiles map[string]string
+	lock        sync.Mutex
 
 	// modprobe-rule cache. Populated lazily on first access via
 	// loadModprobeRules so the modprobe.d walk happens once per query
@@ -56,6 +59,12 @@ type mqlKernelInternal struct {
 	// kmodVersion. 0 means it could not be determined.
 	kmodOnce    sync.Once
 	kmodRelease int
+
+	// FreeBSD loader configuration, read once per query by
+	// freebsdKernelModules.blacklist.
+	freebsdBlacklistOnce sync.Once
+	freebsdBlacklist     map[string]bool
+	freebsdBlacklistErr  error
 
 	// sysctl cache. The live parameters and the parsed sysctl configuration
 	// are read once per query by loadSysctls and shared by kernel.sysctls
@@ -856,13 +865,23 @@ func (k *mqlKernel) modules() ([]any, error) {
 
 	// create MQL kernel module entry resources for each entry
 	moduleEntries := make([]any, len(kernelModules))
+	k.loadedFiles = map[string]string{}
 	for i, kernelModule := range kernelModules {
-
-		raw, err := CreateResource(k.MqlRuntime, "kernel.module", map[string]*llx.RawData{
+		args := map[string]*llx.RawData{
 			"name":   llx.StringData(kernelModule.Name),
 			"size":   llx.StringData(kernelModule.Size),
 			"loaded": llx.BoolTrue,
-		})
+		}
+		// FreeBSD's kldstat says which file a module is in, and whether
+		// that is the kernel itself
+		if kernelModule.File != "" {
+			args["builtIn"] = llx.BoolData(kernelModule.BuiltIn)
+			if !kernelModule.BuiltIn {
+				k.loadedFiles[kernelModule.File] = kernelModule.Size
+			}
+		}
+
+		raw, err := CreateResource(k.MqlRuntime, "kernel.module", args)
 		if err != nil {
 			return nil, err
 		}
@@ -900,6 +919,32 @@ func (x *mqlKernel) loadedModule(name string) (*mqlKernelModule, bool) {
 	return res, ok
 }
 
+// kernelModuleConfig answers the kernel.module fields that come from the
+// platform's module configuration rather than from the list of loaded
+// modules: blacklisted, installBypass and disabled (rule), and onDisk and
+// builtIn (index).
+type kernelModuleConfig interface {
+	rule(name string) (modprobeRule, error)
+	index(name string) (onDisk bool, builtIn bool, err error)
+}
+
+// moduleConfig returns the module configuration of the asset's platform: the
+// FreeBSD loader configuration and kern.module_path, or else Linux
+// modprobe.d and /lib/modules.
+func (k *mqlKernel) moduleConfig() kernelModuleConfig {
+	conn := k.MqlRuntime.Connection.(shared.Connection)
+	if pf := conn.Asset().Platform; pf != nil && pf.Name == "freebsd" {
+		return freebsdKernelModules{kernel: k}
+	}
+	return linuxKernelModules{kernel: k}
+}
+
+// linuxKernelModules reads modprobe.d (kernel_modprobe.go) and the
+// /lib/modules indexes (kernel_module_index.go).
+type linuxKernelModules struct {
+	kernel *mqlKernel
+}
+
 func initKernelModule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
@@ -922,6 +967,19 @@ func initKernelModule(runtime *plugin.Runtime, args map[string]*llx.RawData) (ma
 	}
 
 	if res, ok := kernel.loadedModule(name); ok {
+		return nil, res, nil
+	}
+
+	// Before FreeBSD modules were read with `kldstat -v`, they were named by
+	// their file. A file name such as "zfs.ko" still finds a loaded file.
+	if size, ok := kernel.loadedFiles[name]; ok {
+		res := &mqlKernelModule{}
+		res.MqlRuntime = runtime
+		res.Name = plugin.TValue[string]{Data: name, State: plugin.StateIsSet}
+		res.Size = plugin.TValue[string]{Data: size, State: plugin.StateIsSet}
+		res.Loaded = plugin.TValue[bool]{Data: true, State: plugin.StateIsSet}
+		res.BuiltIn = plugin.TValue[bool]{Data: false, State: plugin.StateIsSet}
+		res.__id, _ = res.id()
 		return nil, res, nil
 	}
 

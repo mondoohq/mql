@@ -7129,14 +7129,23 @@ private kernel.parameter.setting @defaults("key value file.path line") {
 // available for the running kernel even when it isn't currently loaded,
 // and `builtIn` to detect functionality compiled directly into the kernel
 // (which is always active and cannot be blacklisted or unloaded).
+// On FreeBSD, modules carry the names `kldstat -v` lists, such as `msdosfs`
+// or `pci/ena`, including the modules compiled into the kernel; a loaded
+// file name such as `zfs.ko` also selects its module.
 kernel.module @defaults("name loaded") {
   init(name string)
 
   // Name of the kernel module
   name string
   // Size of the kernel module
+  //
+  // On FreeBSD, the size of the .ko file the module is in, and empty for a
+  // module compiled into the kernel.
   size string
   // Whether the module is loaded
+  //
+  // On FreeBSD, true for every module `kldstat -v` lists, which includes the
+  // modules compiled into the kernel (as `kldstat -m <name>` reports them).
   loaded bool
   // Whether the module is blacklisted in modprobe configuration
   //
@@ -7145,6 +7154,10 @@ kernel.module @defaults("name loaded") {
   // events) but root can still force-load them with `modprobe --force`
   // or by writing to `/sys/module/...`. CIS macOS/Linux benchmarks check
   // for this to ensure unused filesystems/protocols stay off.
+  // On FreeBSD, true when `module_blacklist` in the loader configuration
+  // (/boot/defaults/loader.conf, /boot/loader.conf, /boot/loader.conf.d,
+  // /boot/loader.conf.local) names the module: the loader skips its
+  // `<name>_load="YES"`, but kldload, rc.conf `kld_list` and devd still load it.
   blacklisted() bool
   // Whether the module's load is short-circuited to /bin/true or /bin/false
   //
@@ -7152,13 +7165,15 @@ kernel.module @defaults("name loaded") {
   // `install <name> /bin/false` (or `/bin/true`). This is stronger than
   // blacklisting: even an explicit `modprobe <name>` is replaced with
   // the no-op binary, so the module cannot be loaded without overriding
-  // the install rule.
+  // the install rule. Always false on FreeBSD, which has no such rule.
   installBypass() bool
   // Whether the module is effectively disabled
   //
   // True when the module is either blacklisted or has an install
   // short-circuit rule. Use this as the canonical "module will not load
-  // without explicit override" predicate.
+  // without explicit override" predicate. On FreeBSD it equals
+  // `blacklisted`; only a module with no .ko file (`onDisk` false) cannot be
+  // loaded at all.
   disabled() bool
   // Whether a loadable module file is installed on disk for the running kernel
   //
@@ -7168,6 +7183,8 @@ kernel.module @defaults("name loaded") {
   // independently of `loaded`, so it answers "the module is available to
   // load but isn't loaded right now." Modules compiled into the kernel
   // have no file on disk and report false here (see `builtIn`).
+  // On FreeBSD, true when `<name>.ko` exists in a directory of
+  // `kern.module_path`, so kldload can load it.
   onDisk() bool
   // Whether the module is compiled into the kernel image
   //
@@ -7176,6 +7193,8 @@ kernel.module @defaults("name loaded") {
   // in the running kernel's `modules.builtin` index. Built-in modules
   // are always active: they never appear in `loaded`, have no file on
   // disk (`onDisk` is false), and cannot be blacklisted or unloaded.
+  // On FreeBSD, true when `kldstat -v` lists the module under the kernel;
+  // such a module is also `loaded`.
   builtIn() bool
 }
 
