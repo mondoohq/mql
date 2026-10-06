@@ -5,8 +5,8 @@ replace go.mondoo.com/mql => ../..
 go 1.26.8
 
 require (
-	github.com/redis/go-redis/v9 v9.22.0
-	go.mondoo.com/mql v0.0.0-20261005073343-85bedba3a65c
+	github.com/redis/go-redis/v9 v9.23.0
+	go.mondoo.com/mql v0.0.0-20261006032124-4a88d2f13ca7
 	go.mondoo.com/ranger-rpc v0.8.1
 )
 
@@ -59,7 +59,6 @@ require (
 	github.com/hokaccha/go-prettyjson v0.0.0-20211117102719-0474bc63780f // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.6.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
@@ -96,7 +95,7 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.51.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8 // indirect
 	google.golang.org/grpc v1.84.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect

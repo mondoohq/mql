@@ -5,7 +5,7 @@ replace go.mondoo.com/mql => ../..
 go 1.26.8
 
 require (
-	go.mondoo.com/mql v0.0.0-20261005073343-85bedba3a65c
+	go.mondoo.com/mql v0.0.0-20261006032124-4a88d2f13ca7
 	go.mondoo.com/ranger-rpc v0.8.1
 	go.mongodb.org/mongo-driver/v2 v2.9.1
 )
@@ -99,7 +99,7 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.51.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8 // indirect
 	google.golang.org/grpc v1.84.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect

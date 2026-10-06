@@ -6,7 +6,7 @@ replace go.mondoo.com/mql => ../..
 
 require (
 	github.com/stretchr/testify v1.12.1
-	go.mondoo.com/mql v0.0.0-20261005073343-85bedba3a65c
+	go.mondoo.com/mql v0.0.0-20261005222543-ee12c8bdb268
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -96,7 +96,7 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.51.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8 // indirect
 	google.golang.org/grpc v1.84.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
