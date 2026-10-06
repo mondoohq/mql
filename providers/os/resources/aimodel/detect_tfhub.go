@@ -3,8 +3,6 @@
 
 package aimodel
 
-import ()
-
 // TFHubDetector discovers TensorFlow Hub modules cached at
 // ~/.cache/tfhub_modules. Each module directory must contain a
 // saved_model.pb file to be recognized as a valid TF SavedModel.

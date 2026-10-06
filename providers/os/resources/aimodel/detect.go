@@ -19,6 +19,8 @@ import (
 // from Windows would turn every slash into a backslash. A base with a drive
 // letter or a UNC prefix is a Windows path and is joined with backslashes,
 // normalizing any slash already in it; anything else is joined with slashes.
+// base must not be empty: like filepath.Join, an empty base yields a relative
+// path, and every detector starts from a user home or a resolved store.
 func joinPath(base string, elem ...string) string {
 	if !isWindowsPath(base) {
 		return path.Join(append([]string{base}, elem...)...)
