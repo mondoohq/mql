@@ -1,0 +1,80 @@
+{
+  "count": 4,
+  "value": [
+    {
+      "id": "2b000000-0000-4000-8000-000000000001",
+      "name": "ado-scan-test-iac",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/1a000000-0000-4000-8000-000000000001/_apis/git/repositories/2b000000-0000-4000-8000-000000000001",
+      "project": {
+        "id": "1a000000-0000-4000-8000-000000000001",
+        "name": "scan-test",
+        "state": "wellFormed",
+        "visibility": "private",
+        "lastUpdateTime": "2026-01-01T00:00:00.000Z"
+      },
+      "size": 2048,
+      "remoteUrl": "https://mondoo-ado-scan-test@dev.azure.com/mondoo-ado-scan-test/scan-test/_git/ado-scan-test-iac",
+      "sshUrl": "git@ssh.dev.azure.com:v3/mondoo-ado-scan-test/scan-test/ado-scan-test-iac",
+      "webUrl": "https://dev.azure.com/mondoo-ado-scan-test/scan-test/_git/ado-scan-test-iac",
+      "isDisabled": false,
+      "isInMaintenance": false,
+      "defaultBranch": "refs/heads/main"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000002",
+      "name": "ado-scan-test-app",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/1a000000-0000-4000-8000-000000000001/_apis/git/repositories/2b000000-0000-4000-8000-000000000002",
+      "project": {
+        "id": "1a000000-0000-4000-8000-000000000001",
+        "name": "scan-test",
+        "state": "wellFormed",
+        "visibility": "private",
+        "lastUpdateTime": "2026-01-01T00:00:00.000Z"
+      },
+      "size": 2048,
+      "remoteUrl": "https://mondoo-ado-scan-test@dev.azure.com/mondoo-ado-scan-test/scan-test/_git/ado-scan-test-app",
+      "sshUrl": "git@ssh.dev.azure.com:v3/mondoo-ado-scan-test/scan-test/ado-scan-test-app",
+      "webUrl": "https://dev.azure.com/mondoo-ado-scan-test/scan-test/_git/ado-scan-test-app",
+      "isDisabled": false,
+      "isInMaintenance": false,
+      "defaultBranch": "refs/heads/main"
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000003",
+      "name": "ado-scan-test-empty",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/1a000000-0000-4000-8000-000000000001/_apis/git/repositories/2b000000-0000-4000-8000-000000000003",
+      "project": {
+        "id": "1a000000-0000-4000-8000-000000000001",
+        "name": "scan-test",
+        "state": "wellFormed",
+        "visibility": "private",
+        "lastUpdateTime": "2026-01-01T00:00:00.000Z"
+      },
+      "size": 0,
+      "remoteUrl": "https://mondoo-ado-scan-test@dev.azure.com/mondoo-ado-scan-test/scan-test/_git/ado-scan-test-empty",
+      "sshUrl": "git@ssh.dev.azure.com:v3/mondoo-ado-scan-test/scan-test/ado-scan-test-empty",
+      "webUrl": "https://dev.azure.com/mondoo-ado-scan-test/scan-test/_git/ado-scan-test-empty",
+      "isDisabled": false,
+      "isInMaintenance": false
+    },
+    {
+      "id": "2b000000-0000-4000-8000-000000000004",
+      "name": "ado-scan-test-retired",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/1a000000-0000-4000-8000-000000000001/_apis/git/repositories/2b000000-0000-4000-8000-000000000004",
+      "project": {
+        "id": "1a000000-0000-4000-8000-000000000001",
+        "name": "scan-test",
+        "state": "wellFormed",
+        "visibility": "private",
+        "lastUpdateTime": "2026-01-01T00:00:00.000Z"
+      },
+      "size": 2048,
+      "remoteUrl": "https://mondoo-ado-scan-test@dev.azure.com/mondoo-ado-scan-test/scan-test/_git/ado-scan-test-retired",
+      "sshUrl": "git@ssh.dev.azure.com:v3/mondoo-ado-scan-test/scan-test/ado-scan-test-retired",
+      "webUrl": "https://dev.azure.com/mondoo-ado-scan-test/scan-test/_git/ado-scan-test-retired",
+      "isDisabled": true,
+      "isInMaintenance": false,
+      "defaultBranch": "refs/heads/main"
+    }
+  ]
+}

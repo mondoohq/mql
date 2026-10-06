@@ -1,0 +1,80 @@
+{
+  "count": 10,
+  "value": [
+    {
+      "objectId": "3c000000-0000-4000-8000-000000000385",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000321",
+      "path": "/",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000001/items?path=%2F"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-000000000065",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000321",
+      "path": "/README.md",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000001/items?path=%2FREADME.md"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-000000000066",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000321",
+      "path": "/main.tf",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000001/items?path=%2Fmain.tf"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-000000000067",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000321",
+      "path": "/modules",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000001/items?path=%2Fmodules"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-000000000068",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000321",
+      "path": "/modules/network",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000001/items?path=%2Fmodules%2Fnetwork"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-000000000069",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000321",
+      "path": "/modules/network/main.tf",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000001/items?path=%2Fmodules%2Fnetwork%2Fmain.tf"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-00000000006a",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000321",
+      "path": "/k8s",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000001/items?path=%2Fk8s"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-00000000006b",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000321",
+      "path": "/k8s/pod.yaml",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000001/items?path=%2Fk8s%2Fpod.yaml"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-00000000006c",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000321",
+      "path": "/secrets",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000001/items?path=%2Fsecrets"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-00000000006d",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000321",
+      "path": "/secrets/.env",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000001/items?path=%2Fsecrets%2F.env"
+    }
+  ]
+}

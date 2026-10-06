@@ -1,0 +1,25 @@
+{
+  "count": 2,
+  "value": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "name": "scan-test",
+      "description": "Fabricated fixture project",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/projects/1a000000-0000-4000-8000-000000000001",
+      "state": "wellFormed",
+      "revision": 11,
+      "visibility": "private",
+      "lastUpdateTime": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "1a000000-0000-4000-8000-000000000002",
+      "name": "scan test",
+      "description": "Fabricated fixture project",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/projects/1a000000-0000-4000-8000-000000000002",
+      "state": "wellFormed",
+      "revision": 12,
+      "visibility": "private",
+      "lastUpdateTime": "2026-01-01T00:00:00.000Z"
+    }
+  ]
+}

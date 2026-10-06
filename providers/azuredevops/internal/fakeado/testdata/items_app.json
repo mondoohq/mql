@@ -1,0 +1,48 @@
+{
+  "count": 6,
+  "value": [
+    {
+      "objectId": "3c000000-0000-4000-8000-000000000386",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000322",
+      "path": "/",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000002/items?path=%2F"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-0000000000c9",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000322",
+      "path": "/README.md",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000002/items?path=%2FREADME.md"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-0000000000ca",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000322",
+      "path": "/SECURITY.md",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000002/items?path=%2FSECURITY.md"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-0000000000cb",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000322",
+      "path": "/app.py",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000002/items?path=%2Fapp.py"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-0000000000cc",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000322",
+      "path": "/requirements.txt",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000002/items?path=%2Frequirements.txt"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-0000000000cd",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000322",
+      "path": "/azure-pipelines.yml",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000002/items?path=%2Fazure-pipelines.yml"
+    }
+  ]
+}

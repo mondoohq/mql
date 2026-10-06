@@ -1,0 +1,9 @@
+{
+  "$id": "1",
+  "innerException": null,
+  "message": "VS403403: Cannot find any branches for the ado-scan-test-empty repository.",
+  "typeName": "Microsoft.TeamFoundation.Git.Server.GitItemNotFoundException, Microsoft.TeamFoundation.Git.Server",
+  "typeKey": "GitItemNotFoundException",
+  "errorCode": 0,
+  "eventId": 3000
+}

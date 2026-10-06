@@ -1,0 +1,58 @@
+{
+  "count": 7,
+  "value": [
+    {
+      "objectId": "3c000000-0000-4000-8000-00000000038a",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000326",
+      "path": "/",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000006/items?path=%2F"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-000000000259",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000326",
+      "path": "/README.md",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000006/items?path=%2FREADME.md"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-00000000025a",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000326",
+      "path": "/docs",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000006/items?path=%2Fdocs"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-00000000025b",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000326",
+      "path": "/docs/index.md",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000006/items?path=%2Fdocs%2Findex.md"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-00000000025c",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000326",
+      "path": "/.github",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000006/items?path=%2F.github"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-00000000025d",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000326",
+      "path": "/.github/workflows",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000006/items?path=%2F.github%2Fworkflows"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-00000000025e",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000326",
+      "path": "/.github/workflows/ci.yml",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000006/items?path=%2F.github%2Fworkflows%2Fci.yml"
+    }
+  ]
+}
