@@ -209,6 +209,9 @@ func (c *AzuredevopsConnection) GitCredential(ctx context.Context) (*vault.Crede
 }
 
 // ConnectionData reads the organization identity once and keeps it.
+//
+// The result is cached with a sync.Once, a failure included: an error is kept for
+// the life of the connection, so a retry needs a new connection.
 func (c *AzuredevopsConnection) ConnectionData(ctx context.Context) (*ConnectionData, error) {
 	c.dataOnce.Do(func() {
 		c.data, c.dataErr = c.client.ConnectionData(ctx)
@@ -224,6 +227,9 @@ func (c *AzuredevopsConnection) ConnectionData(ctx context.Context) (*Connection
 // on, so without this check a credential that reads nothing would look like an
 // organization that holds nothing. An organization with no projects at all is
 // empty, not an error.
+//
+// The result is cached with a sync.Once, a failure included: an error is kept for
+// the life of the connection, so a retry needs a new connection.
 func (c *AzuredevopsConnection) Listing(ctx context.Context) (*Listing, error) {
 	c.listOnce.Do(func() {
 		listing, err := c.client.Enumerate(ctx)

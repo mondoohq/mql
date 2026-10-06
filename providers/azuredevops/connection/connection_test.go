@@ -402,3 +402,36 @@ func TestNoCredentialAndNoServicePrincipalIsAnError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no credentials")
 }
+
+// A credential that is present but of a kind the personal access token path
+// cannot use must be named by its type. Saying "no credentials" sends the user
+// looking for a credential they already supplied.
+func TestAnUnusableCredentialTypeIsNamedAndNeverEchoed(t *testing.T) {
+	const secret = "fake-secret-that-must-never-be-printed"
+	cases := []struct {
+		name string
+		cred *vault.Credential
+		kind string
+	}{
+		{name: "bearer", cred: &vault.Credential{Type: vault.CredentialType_bearer, Secret: []byte(secret)}, kind: "bearer"},
+		{name: "pkcs12", cred: &vault.Credential{Type: vault.CredentialType_pkcs12, Secret: []byte(secret)}, kind: "pkcs12"},
+		{name: "bearer without a secret", cred: &vault.Credential{Type: vault.CredentialType_bearer}, kind: "bearer"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewAzuredevopsConnection(1, assetFor(map[string]string{OPTION_ORGANIZATION: fakeado.Org}, tc.cred))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "credential type "+tc.kind+" is not supported")
+			assert.Contains(t, err.Error(), "personal access token")
+			assert.NotContains(t, err.Error(), "no credentials")
+			assert.NotContains(t, err.Error(), secret)
+		})
+	}
+
+	t.Run("the authenticator reports the same", func(t *testing.T) {
+		_, err := NewAuthenticator(AuthOptions{Credential: &vault.Credential{Type: vault.CredentialType_bearer, Secret: []byte(secret)}})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "credential type bearer is not supported")
+		assert.NotContains(t, err.Error(), secret)
+	})
+}

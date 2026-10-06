@@ -102,7 +102,14 @@ func NewAuthenticator(opts AuthOptions) (*Authenticator, error) {
 		return nil, errors.New("azure devops: tenant-id and client-id must be set together")
 	}
 
-	if opts.Credential == nil || opts.Credential.Type != vault.CredentialType_password || len(opts.Credential.Secret) == 0 {
+	// Without a tenant and client only a personal access token can sign in. A
+	// credential of another kind is not "no credentials": name its type so the
+	// user knows what was received. Only the type is named, never the secret.
+	if opts.Credential != nil && opts.Credential.Type != vault.CredentialType_password {
+		return nil, fmt.Errorf("azure devops: credential type %s is not supported; supply a personal access token, "+
+			"or a tenant id and client id with a client secret or certificate", opts.Credential.Type)
+	}
+	if opts.Credential == nil || len(opts.Credential.Secret) == 0 {
 		return nil, errors.New("azure devops: no credentials, pass --token (or set AZURE_DEVOPS_TOKEN) " +
 			"or pass --tenant-id and --client-id with a client secret")
 	}
