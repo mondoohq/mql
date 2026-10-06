@@ -33,6 +33,10 @@ func TestRepoFilter(t *testing.T) {
 		{name: "blank entries are ignored", include: " , scan-test/* ,", project: "scan-test", repo: "x", want: true},
 		{name: "case-insensitive include", include: "Scan-Test/ADO-*", project: "scan-test", repo: "ado-scan-test-iac", want: true},
 		{name: "case-insensitive exclude", exclude: "scan-test/ado-scan-test-retired", project: "Scan-Test", repo: "ADO-Scan-Test-Retired", want: false},
+		{name: "trailing star does not cross the slash", include: "scan*", project: "scan-test", repo: "ado-scan-test-iac", want: false},
+		{name: "trailing star stays in the project segment", include: "scan*/*", project: "scan-test", repo: "ado-scan-test-iac", want: true},
+		{name: "question mark does not match the slash", include: "scan-test?ado-scan-test-app", project: "scan-test", repo: "ado-scan-test-app", want: false},
+		{name: "question mark matches one character in a segment", include: "scan?test/ado-scan-test-app", project: "scan test", repo: "ado-scan-test-app", want: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -60,9 +64,9 @@ func TestRepoFilterEmpty(t *testing.T) {
 func TestRepoFilterRejectsABadGlob(t *testing.T) {
 	_, err := NewRepoFilter("scan-test/[", "")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), OPTION_REPOS)
+	assert.Contains(t, err.Error(), "bad repos pattern")
 
 	_, err = NewRepoFilter("", "{unclosed")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), OPTION_REPOS_EXCLUDE)
+	assert.Contains(t, err.Error(), "bad repos-exclude pattern")
 }

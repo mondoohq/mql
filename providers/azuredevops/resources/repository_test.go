@@ -52,7 +52,7 @@ func TestRepositoryCloneURLCarriesNoUserInformation(t *testing.T) {
 	org := newOrganization(t, newRuntime(t, nil))
 	repo := repositoriesOf(t, org)[fakeado.RepoIacSpace]
 
-	assert.Equal(t, "https://dev.azure.com/mondoo-ado-scan-test/scan%20test/_git/ado-scan-test-iac", repo.CloneUrl.Data)
+	assert.Equal(t, "https://dev.azure.com/"+fakeado.Org+"/scan%20test/_git/ado-scan-test-iac", repo.CloneUrl.Data)
 	assert.NotContains(t, repo.CloneUrl.Data, "@")
 }
 

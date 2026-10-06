@@ -137,6 +137,46 @@ func TestParseCLITokenBeatsAnAmbientTenant(t *testing.T) {
 	assert.Equal(t, "fake-token", string(conf.Credentials[0].Secret))
 }
 
+// The same holds when the token, too, comes from the environment.
+func TestParseCLIEnvironmentTokenBeatsAnEnvironmentServicePrincipal(t *testing.T) {
+	clearEnv(t)
+	t.Setenv(envToken, "env-token")
+	t.Setenv(envTenantID, "00000000-0000-4000-8000-0000000000aa")
+	t.Setenv(envClientID, "00000000-0000-4000-8000-0000000000bb")
+	t.Setenv(envClientSecret, "fake-secret")
+
+	conf, err := parse(t, []string{"org", "mondoo-ado-scan-test"}, nil)
+	require.NoError(t, err)
+
+	assert.NotContains(t, conf.Options, connection.OPTION_TENANT_ID)
+	assert.NotContains(t, conf.Options, connection.OPTION_CLIENT_ID)
+	require.Len(t, conf.Credentials, 1)
+	assert.Equal(t, "env-token", string(conf.Credentials[0].Secret))
+}
+
+// Service principal flags are an explicit choice, so they win over a token,
+// and the user is told the token is not used.
+func TestParseCLIServicePrincipalFlagsBeatATokenAndWarn(t *testing.T) {
+	clearEnv(t)
+	logs := captureLogs(t)
+
+	conf, err := parse(t, []string{"org", "mondoo-ado-scan-test"}, map[string]*llx.Primitive{
+		"token":         llx.StringPrimitive("fake-token-value"),
+		"tenant-id":     llx.StringPrimitive("00000000-0000-4000-8000-0000000000aa"),
+		"client-id":     llx.StringPrimitive("00000000-0000-4000-8000-0000000000bb"),
+		"client-secret": llx.StringPrimitive("fake-secret"),
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, "00000000-0000-4000-8000-0000000000aa", conf.Options[connection.OPTION_TENANT_ID])
+	assert.Equal(t, "00000000-0000-4000-8000-0000000000bb", conf.Options[connection.OPTION_CLIENT_ID])
+	require.Len(t, conf.Credentials, 1)
+	assert.Equal(t, "fake-secret", string(conf.Credentials[0].Secret))
+	assert.Contains(t, logs.String(), "both a personal access token and a service principal were provided")
+	assert.NotContains(t, logs.String(), "fake-token-value")
+	assert.NotContains(t, logs.String(), "fake-secret")
+}
+
 // A token wins over a lone --client-secret, which would otherwise be dropped
 // without a word.
 func TestParseCLIWarnsThatATokenIgnoresTheClientSecret(t *testing.T) {
@@ -335,6 +375,7 @@ func TestConnectExplainsARejectedToken(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "personal access token")
+	assert.NotContains(t, err.Error(), "not-the-token", "the rejected token is not echoed")
 }
 
 func TestConnectVerifiesTheOrganizationOnce(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/azuredevops/connection"
 )
 
@@ -94,11 +95,27 @@ func TestConfigShape(t *testing.T) {
 		[]string{"organization", "repos", "terraform", "k8s-manifests"}, c.Discovery,
 		"all and auto are handled by the provider and not listed")
 
-	flags := map[string]bool{}
+	// Exactly these flags, all strings: a renamed, retyped or extra flag changes
+	// the command line users have scripted against.
+	flags := map[string]plugin.FlagType{}
 	for _, f := range c.Flags {
-		flags[f.Long] = true
+		flags[f.Long] = f.Type
 	}
-	for _, want := range []string{"token", "tenant-id", "client-id", "client-secret", "repos", "repos-exclude"} {
-		assert.True(t, flags[want], "missing flag %s", want)
-	}
+	assert.Equal(t, map[string]plugin.FlagType{
+		"token":         plugin.FlagType_String,
+		"tenant-id":     plugin.FlagType_String,
+		"client-id":     plugin.FlagType_String,
+		"client-secret": plugin.FlagType_String,
+		"repos":         plugin.FlagType_String,
+		"repos-exclude": plugin.FlagType_String,
+	}, flags)
+	assert.Len(t, c.Flags, 6, "no flag is listed twice")
+}
+
+func TestAnAccentedProjectNameMapsToAnUnderscore(t *testing.T) {
+	// The asset url alphabet has no accented letters, so each one becomes an
+	// underscore, as do the parentheses. The space is kept.
+	segments := connection.NewRepoPlatform("mondoo-ado-scan-test", "Équipe (EU)").TechnologyUrlSegments
+	require.Len(t, segments, 7)
+	assert.Equal(t, "_quipe _EU_", segments[5])
 }

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 // fakeTokenCredential hands out numbered tokens that live for lifetime. With
 // empty set it answers with an empty token and no error.
 type fakeTokenCredential struct {
+	mu       sync.Mutex
 	clock    *fakeClock
 	lifetime time.Duration
 	calls    int
@@ -34,6 +36,8 @@ type fakeTokenCredential struct {
 }
 
 func (f *fakeTokenCredential) GetToken(_ context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls++
 	f.scopes = append(f.scopes, opts.Scopes)
 	if f.err != nil {
@@ -252,4 +256,127 @@ func TestEachAuthenticatorMintsItsOwnToken(t *testing.T) {
 	// past the token's lifetime cannot break the other.
 	assert.Equal(t, 2, cred.calls)
 	assert.NotEqual(t, one, two)
+}
+
+func TestConcurrentCallersShareOneMintedToken(t *testing.T) {
+	// The jobs of one scan ask for the token at the same time. Run with -race.
+	auth, cred, _ := newEntraAuth(t, time.Hour)
+
+	const callers = 32
+	var wg sync.WaitGroup
+	tokens := make([]string, callers)
+	errs := make([]error, callers)
+	for i := range callers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tokens[i], errs[i] = auth.Token(context.Background())
+		}()
+	}
+	wg.Wait()
+
+	for i := range callers {
+		require.NoError(t, errs[i])
+		assert.Equal(t, "entra-token-1", tokens[i])
+	}
+	cred.mu.Lock()
+	defer cred.mu.Unlock()
+	assert.Equal(t, 1, cred.calls, "one mint serves every caller")
+}
+
+func TestAnEmptyFirstTokenIsAnError(t *testing.T) {
+	// With no token cached there is nothing to fall back on, so an empty answer
+	// fails the call instead of sending an empty bearer token.
+	auth, cred, _ := newEntraAuth(t, time.Hour)
+	cred.empty = true
+
+	tok, err := auth.Token(context.Background())
+	require.Error(t, err)
+	assert.Empty(t, tok)
+	assert.Contains(t, err.Error(), "Entra returned an empty token")
+
+	cred.empty = false
+	tok, err = auth.Token(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "entra-token-2", tok, "the next call mints again")
+}
+
+func TestEachAuthenticatorBuildsItsOwnEntraCredential(t *testing.T) {
+	build := func() *Authenticator {
+		auth, err := NewAuthenticator(AuthOptions{
+			TenantID:   "11111111-2222-3333-4444-555555555555",
+			ClientID:   "66666666-7777-8888-9999-000000000000",
+			Credential: vault.NewPasswordCredential("", "fake-client-secret"),
+		})
+		require.NoError(t, err)
+		return auth
+	}
+	first, second := build(), build()
+
+	assert.Equal(t, AuthEntra, first.Mode())
+	require.NotNil(t, first.cred)
+	require.NotNil(t, second.cred)
+	assert.NotSame(t, first.cred, second.cred, "no credential, and so no token cache, is shared")
+}
+
+func TestErrorsNeverCarryTheSecretOrTheToken(t *testing.T) {
+	const secret = "fake-secret-that-must-stay-hidden"
+	const tenant = "11111111-2222-3333-4444-555555555555"
+	const client = "66666666-7777-8888-9999-000000000000"
+
+	build := []struct {
+		name    string
+		opts    AuthOptions
+		wantErr string
+	}{
+		{
+			name:    "a tenant without a client",
+			opts:    AuthOptions{TenantID: tenant, Credential: vault.NewPasswordCredential("", secret)},
+			wantErr: "tenant-id and client-id must be set together",
+		},
+		{
+			name: "a certificate that does not parse",
+			opts: AuthOptions{TenantID: tenant, ClientID: client, Credential: &vault.Credential{
+				Type: vault.CredentialType_pkcs12, Secret: []byte(secret)}},
+			wantErr: "cannot build the Entra credential",
+		},
+		{
+			name: "a service principal with an unsupported credential",
+			opts: AuthOptions{TenantID: tenant, ClientID: client, Credential: &vault.Credential{
+				Type: vault.CredentialType_private_key, Secret: []byte(secret)}},
+			wantErr: "cannot build the Entra credential",
+		},
+		{
+			name: "a token of an unsupported type",
+			opts: AuthOptions{Credential: &vault.Credential{
+				Type: vault.CredentialType_private_key, Secret: []byte(secret)}},
+			wantErr: "is not supported",
+		},
+	}
+	for _, tc := range build {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewAuthenticator(tc.opts)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+			assert.NotContains(t, err.Error(), secret)
+		})
+	}
+
+	t.Run("a mint that fails after the token expired", func(t *testing.T) {
+		logs := captureLogs(t)
+		auth, cred, clock := newEntraAuth(t, time.Hour)
+		old, err := auth.Token(context.Background())
+		require.NoError(t, err)
+
+		cred.err = errors.New("invalid_client")
+		clock.now = clock.now.Add(50 * time.Minute)
+		_, err = auth.Token(context.Background())
+		require.NoError(t, err, "the unexpired token is kept")
+		clock.now = clock.now.Add(11 * time.Minute)
+		_, err = auth.Token(context.Background())
+		require.Error(t, err)
+
+		assert.NotContains(t, err.Error(), old)
+		assert.NotContains(t, logs.String(), old)
+	})
 }

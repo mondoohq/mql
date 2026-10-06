@@ -260,12 +260,19 @@ func TestDiscoverRepositoryExcludeFilter(t *testing.T) {
 	assert.ElementsMatch(t, []string{"scan-test/ado-scan-test-app", "legacy-apps/ado-scan-test-docs"}, names(assets))
 }
 
-func TestDiscoverWarnsWhenTheIncludeFilterMatchesNothing(t *testing.T) {
-	// no t.Parallel: the test points the global logger at a buffer
+// captureLogs points the global logger at a buffer for the rest of the test.
+// A test that uses it must not call t.Parallel.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
 	var logs bytes.Buffer
 	previous := log.Logger
 	log.Logger = zerolog.New(&logs)
 	t.Cleanup(func() { log.Logger = previous })
+	return &logs
+}
+
+func TestDiscoverWarnsWhenTheIncludeFilterMatchesNothing(t *testing.T) {
+	logs := captureLogs(t)
 
 	// the pattern has no slash, so it can never match "project/repository"
 	assets, _ := discoverAssets(t, map[string]string{connection.OPTION_REPOS: "ado-*"}, []string{"auto"})
@@ -276,6 +283,25 @@ func TestDiscoverWarnsWhenTheIncludeFilterMatchesNothing(t *testing.T) {
 	assert.Contains(t, out, "repository include filter matched no repositories")
 	assert.Contains(t, out, "project/repository")
 	assert.Contains(t, out, "scan-test/*")
+}
+
+func TestDiscoverStaysSilentWhenTheFilterMatches(t *testing.T) {
+	cases := map[string]map[string]string{
+		"an include filter that matches": {connection.OPTION_REPOS: "scan-test/*"},
+		// without an include list every repository the exclude list leaves is
+		// kept, so there is nothing to warn about
+		"an exclude-only filter": {connection.OPTION_REPOS_EXCLUDE: "*/ado-scan-test-iac"},
+	}
+	for name, options := range cases {
+		t.Run(name, func(t *testing.T) {
+			logs := captureLogs(t)
+
+			assets, _ := discoverAssets(t, options, []string{"repos"})
+
+			assert.NotEmpty(t, assets)
+			assert.NotContains(t, logs.String(), "matched no repositories")
+		})
+	}
 }
 
 func TestFailedTreeWalkKeepsTheRepositoryAsset(t *testing.T) {
@@ -315,6 +341,21 @@ func TestDiscoverEmptyRepositoryConnectionReadsNoTree(t *testing.T) {
 	// asked for by name, so the asset is there, but there is no tree to read
 	require.Len(t, assets, 1)
 	assert.Equal(t, "scan-test/ado-scan-test-empty", assets[0].Name)
+	for _, req := range srv.Requests() {
+		assert.NotContains(t, req, "/items")
+	}
+}
+
+func TestDiscoverDisabledRepositoryConnectionReadsNoTree(t *testing.T) {
+	assets, srv := discoverAssets(t, map[string]string{
+		connection.OPTION_PROJECT:    "scan-test",
+		connection.OPTION_REPOSITORY: "ado-scan-test-retired",
+	}, []string{"all"})
+
+	// asked for by name, so the asset is there, but a disabled repository's
+	// tree is not read and it has no IaC children
+	require.Len(t, assets, 1)
+	assert.Equal(t, "scan-test/ado-scan-test-retired", assets[0].Name)
 	for _, req := range srv.Requests() {
 		assert.NotContains(t, req, "/items")
 	}

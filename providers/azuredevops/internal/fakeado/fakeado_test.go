@@ -54,6 +54,29 @@ func TestAWrongTokenGetsTheSignInPage(t *testing.T) {
 	assert.Equal(t, http.StatusNonAuthoritativeInfo, res.StatusCode)
 }
 
+func TestARejectedCredentialOnAVersionedRouteGetsTheSignInPage(t *testing.T) {
+	// The credential is checked before anything else, so a versioned route
+	// answers a rejected or missing credential the same way connectionData does.
+	srv := New(t)
+
+	routes := []string{
+		base + "/_apis/projects?api-version=" + APIVersion,
+		base + "/scan-test/_apis/git/repositories?api-version=" + APIVersion,
+	}
+	credentials := map[string]string{
+		"a wrong bearer token": "Bearer not-the-" + BearerToken,
+		"no credential":        "",
+	}
+	for _, route := range routes {
+		for name, header := range credentials {
+			res, body := get(t, srv, route, header)
+			assert.Equal(t, http.StatusNonAuthoritativeInfo, res.StatusCode, "%s on %s", name, route)
+			assert.Contains(t, body, "Sign in", "%s on %s", name, route)
+			assert.NotContains(t, body, `"value"`, "%s on %s leaks no data", name, route)
+		}
+	}
+}
+
 func TestBothCredentialsAreAccepted(t *testing.T) {
 	srv := New(t)
 
@@ -118,6 +141,22 @@ func TestAnUnreadableProjectAnswers403(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, res.StatusCode)
 	assert.Contains(t, body, "TF401019")
+}
+
+func TestHideRepositoriesAnswers404ForThatListOnly(t *testing.T) {
+	srv := New(t)
+	srv.HideRepositories("legacy-apps")
+
+	res, body := get(t, srv, base+"/legacy-apps/_apis/git/repositories?api-version=7.1", basic(PAT))
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	assert.Contains(t, body, "TF401019")
+
+	res, _ = get(t, srv, base+"/scan-test/_apis/git/repositories?api-version=7.1", basic(PAT))
+	assert.Equal(t, http.StatusOK, res.StatusCode, "another project still lists its repositories")
+
+	res, body = get(t, srv, base+"/legacy-apps/_apis/git/repositories/"+RepoDocsID+"?api-version=7.1", basic(PAT))
+	assert.Equal(t, http.StatusOK, res.StatusCode, "only the list is hidden, not the repository")
+	assert.Contains(t, body, RepoDocsID)
 }
 
 func TestOneRepositoryIsFoundByNameOrID(t *testing.T) {
