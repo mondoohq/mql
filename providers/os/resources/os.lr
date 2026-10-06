@@ -18582,7 +18582,8 @@ zfs.dataset @defaults("name type usedBytes") {
 //
 // Locally cached AI models discovered from tools such as Ollama, Hugging
 // Face Hub, LM Studio, GPT4All, PyTorch Hub, Keras, TensorFlow Hub, and
-// Jan. Iterate `models` to audit which AI models are present on the
+// Jan, plus the Gemini Nano model Google Chrome downloads for its built-in
+// AI features. Iterate `models` to audit which AI models are present on the
 // system, their sizes, file formats, publishers, and licenses.
 ai @maturity("preview") {
   // All locally cached AI models across all supported sources
@@ -18594,7 +18595,7 @@ ai @maturity("preview") {
 // Single locally cached AI model. The `name` field identifies
 // the model and `source` indicates which tool cached it (for example
 // `"ollama"`, `"huggingface"`, `"lmstudio"`, `"gpt4all"`, `"pytorch"`,
-// `"keras"`, `"tfhub"`, or `"jan"`). Use `ai.models.where(source == "ollama")`
+// `"keras"`, `"tfhub"`, `"jan"`, or `"chrome"`). Use `ai.models.where(source == "ollama")`
 // to filter by source, or inspect `size` and `modifiedAt` to find the
 // largest or most recently used models on the system.
 private ai.model @defaults("name source") @maturity("preview") {
@@ -18604,7 +18605,7 @@ private ai.model @defaults("name source") @maturity("preview") {
   // keep a namespace other than library and a registry other than Ollama's own,
   // as in "someuser/smollm:135m" or "hf.co/bartowski/smollm2-135m-instruct-gguf:Q4_K_M".
   name string
-  // Source tool that cached this model (ollama, huggingface, lmstudio, gpt4all, pytorch, keras, tfhub, jan)
+  // Source tool that cached this model (ollama, huggingface, lmstudio, gpt4all, pytorch, keras, tfhub, jan, chrome)
   source string
   // Publisher or organization that released the model (e.g., "meta-llama", "google", "mistralai")
   vendor string
