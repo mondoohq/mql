@@ -34,8 +34,16 @@ The scaffold tool auto-registers the provider in `Makefile` and `DEVELOPMENT.md`
 ## Step 3: Complete Manual Registration
 
 After scaffolding, the provider must also be registered in:
-- `providers/defaults.go` — add a default entry (alphabetically)
+- `providers/defaults.go` — the default providers list. **Do not hand-edit it**: the file is generated
+  by `make providers/defaults`, which runs each provider's `gen/main.go` and builds the entry from its
+  `config/config.go` (name, ID, connection types, connectors). Run it once `config.go` has the final
+  connector `Use`/`Short`/`Aliases`, then check the diff touches only the new provider's entry.
 - `README.md` — add a row to the provider table (alphabetically)
+
+The defaults entry is what lets `mql shell <provider-id>` / `cnspec scan <provider-id>` on a fresh
+machine know the provider exists and where to download it. Leave it out and the provider is unusable
+from the tooling even after it is published. It reaches users only through an mql + cnspec release,
+not a merge — see the **`provider-release`** skill.
 
 ## Step 4: Initialize the Go Module
 
