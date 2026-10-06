@@ -38,6 +38,9 @@ type ExoscaleConnection struct {
 	client *v3.Client
 	// zoneFilter restricts the zones queried; empty means every zone.
 	zoneFilter []string
+	// Filters narrows the listed discovery-target resources by label
+	// (--filters), so discovery and queries see the same set.
+	Filters DiscoveryFilters
 
 	zonesOnce sync.Once
 	zones     []v3.Zone
@@ -78,6 +81,7 @@ func NewExoscaleConnection(id uint32, asset *inventory.Asset, conf *inventory.Co
 		asset:      asset,
 		client:     client,
 		zoneFilter: GetZones(conf),
+		Filters:    DiscoveryFiltersFromOpts(conf.Options),
 	}, nil
 }
 

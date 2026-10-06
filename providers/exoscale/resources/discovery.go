@@ -61,50 +61,55 @@ func Discover(runtime *plugin.Runtime) (*inventory.Inventory, error) {
 		list := ns.GetInstances()
 		if list.Error != nil {
 			skipTarget(list.Error)
-		}
-		for _, e := range list.Data {
-			r := e.(*mqlExoscaleComputeInstance)
-			children = append(children, discoveredChild{subAsset(connection.OptionInstance), r.Id.Data, "", r.Name.Data, r.Zone.Data, r.Labels.Data})
+		} else {
+			for _, e := range list.Data {
+				r := e.(*mqlExoscaleComputeInstance)
+				children = append(children, discoveredChild{subAsset(connection.OptionInstance), r.Id.Data, "", r.Name.Data, r.Zone.Data, r.Labels.Data})
+			}
 		}
 	}
 	if stringx.Contains(targets, connection.DiscoverySecurityGroups) {
 		list := ns.GetSecurityGroups()
 		if list.Error != nil {
 			skipTarget(list.Error)
-		}
-		for _, e := range list.Data {
-			r := e.(*mqlExoscaleSecurityGroup)
-			children = append(children, discoveredChild{subAsset(connection.OptionSecurityGroup), r.Id.Data, "", r.Name.Data, "", nil})
+		} else {
+			for _, e := range list.Data {
+				r := e.(*mqlExoscaleSecurityGroup)
+				children = append(children, discoveredChild{subAsset(connection.OptionSecurityGroup), r.Id.Data, "", r.Name.Data, "", nil})
+			}
 		}
 	}
 	if stringx.Contains(targets, connection.DiscoverySksClusters) {
 		list := ns.GetSksClusters()
 		if list.Error != nil {
 			skipTarget(list.Error)
-		}
-		for _, e := range list.Data {
-			r := e.(*mqlExoscaleSksCluster)
-			children = append(children, discoveredChild{subAsset(connection.OptionSksCluster), r.Id.Data, "", r.Name.Data, r.Zone.Data, r.Labels.Data})
+		} else {
+			for _, e := range list.Data {
+				r := e.(*mqlExoscaleSksCluster)
+				children = append(children, discoveredChild{subAsset(connection.OptionSksCluster), r.Id.Data, "", r.Name.Data, r.Zone.Data, r.Labels.Data})
+			}
 		}
 	}
 	if stringx.Contains(targets, connection.DiscoveryNlbs) {
 		list := ns.GetNlbs()
 		if list.Error != nil {
 			skipTarget(list.Error)
-		}
-		for _, e := range list.Data {
-			r := e.(*mqlExoscaleNlb)
-			children = append(children, discoveredChild{subAsset(connection.OptionNlb), r.Id.Data, "", r.Name.Data, r.Zone.Data, r.Labels.Data})
+		} else {
+			for _, e := range list.Data {
+				r := e.(*mqlExoscaleNlb)
+				children = append(children, discoveredChild{subAsset(connection.OptionNlb), r.Id.Data, "", r.Name.Data, r.Zone.Data, r.Labels.Data})
+			}
 		}
 	}
 	if stringx.Contains(targets, connection.DiscoveryDbaasServices) {
 		list := ns.GetDbaasServices()
 		if list.Error != nil {
 			skipTarget(list.Error)
-		}
-		for _, e := range list.Data {
-			r := e.(*mqlExoscaleDbaasService)
-			children = append(children, discoveredChild{subAsset(connection.OptionDbaasService), r.Name.Data, r.Zone.Data, r.Name.Data, r.Zone.Data, nil})
+		} else {
+			for _, e := range list.Data {
+				r := e.(*mqlExoscaleDbaasService)
+				children = append(children, discoveredChild{subAsset(connection.OptionDbaasService), r.Name.Data, r.Zone.Data, r.Name.Data, r.Zone.Data, nil})
+			}
 		}
 	}
 

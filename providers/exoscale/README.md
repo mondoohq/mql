@@ -63,6 +63,15 @@ The organization is the root asset. Discovery adds child assets for:
 cnspec scan exoscale --discover instances,sks-clusters
 ```
 
+Narrow the resources by label with `--filters`. `labels` keeps resources carrying any of the listed
+labels (`key=value`, or a bare `key` for any value); `exclude:labels` drops resources carrying any of
+them. The filters apply to queries as well as discovery. Security groups and DBaaS services carry no
+labels, so an include filter drops them.
+
+```shell
+cnspec scan exoscale --filters labels=env=prod,team --filters exclude:labels=tier=dev
+```
+
 ## Examples
 
 **Zones the connection queries**

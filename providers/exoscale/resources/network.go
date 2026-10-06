@@ -31,8 +31,15 @@ func (r *mqlExoscale) securityGroups() ([]any, error) {
 	if err != nil {
 		return nil, classifyError(err, "list-security-groups")
 	}
+	// Security groups carry no labels, so a label include filter drops them.
+	// A group referenced by an instance still resolves: the init fetches a
+	// group the list does not hold.
+	filters := conn(r.MqlRuntime).Filters
 	out := make([]any, 0, len(res.SecurityGroups))
 	for _, sg := range res.SecurityGroups {
+		if filters.IsFilteredOut(nil) {
+			continue
+		}
 		m, err := newMqlExoscaleSecurityGroup(r.MqlRuntime, sg)
 		if err != nil {
 			return nil, err

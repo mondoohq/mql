@@ -46,8 +46,12 @@ func (r *mqlExoscale) instances() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	filters := conn(r.MqlRuntime).Filters
 	out := make([]any, 0, len(items))
 	for _, it := range items {
+		if filters.IsFilteredOut(it.item.Labels) {
+			continue
+		}
 		res, err := newMqlExoscaleComputeInstance(r.MqlRuntime, it.zone, it.item)
 		if err != nil {
 			return nil, err

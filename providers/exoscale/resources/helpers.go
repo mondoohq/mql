@@ -156,6 +156,8 @@ func mergeZoneResults[T any](zones []string, results [][]T, errs []error, operat
 	if !answered && refusal != nil {
 		return nil, refusal
 	}
+	// Every zone that answered returned nothing: the resource genuinely does
+	// not exist in the queried zones, so the empty list is the answer.
 	return out, nil
 }
 

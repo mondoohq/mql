@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
@@ -49,6 +50,16 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 	}
 	if key != "" || secret != "" {
 		conf.Credentials = append(conf.Credentials, vault.NewPasswordCredential(key, secret))
+	}
+
+	// --filters keys the provider does not know are dropped, so a typo reads
+	// as a filter that did nothing rather than one that appears accepted.
+	if v, ok := flags["filters"]; ok {
+		for k, val := range v.Map {
+			if slices.Contains(connection.FilterOptKeys, k) {
+				conf.Options[k] = string(val.Value)
+			}
+		}
 	}
 
 	if v, ok := flags[connection.OPTION_ZONES]; ok && len(v.Array) != 0 {

@@ -38,7 +38,8 @@ Authenticate with an Exoscale API key and secret:
   cnspec shell exoscale --api-key EXO... --api-secret <secret>
 
 You can also set the %s and %s environment variables.
-Restrict the zones queried with --zones ch-gva-2,de-fra-1.
+Restrict the zones queried with --zones ch-gva-2,de-fra-1, and the
+discovered resources by label with --filters labels=env=prod.
 `, connection.EXOSCALE_API_KEY_VAR, connection.EXOSCALE_API_SECRET_VAR),
 			MinArgs: 0,
 			MaxArgs: 0,
@@ -68,6 +69,12 @@ Restrict the zones queried with --zones ch-gva-2,de-fra-1.
 					Long: connection.OPTION_ZONES,
 					Type: plugin.FlagType_List,
 					Desc: "Restrict the zones queried, for example ch-gva-2,de-fra-1 (env: EXOSCALE_ZONES)",
+				},
+				{
+					Long:    "filters",
+					Type:    plugin.FlagType_KeyValue,
+					Default: "",
+					Desc:    "Filter discovered resources by label, e.g., --filters labels=env=prod,team --filters exclude:labels=tier=dev",
 				},
 			},
 		},

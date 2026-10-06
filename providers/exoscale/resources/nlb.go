@@ -31,9 +31,13 @@ func (r *mqlExoscale) nlbs() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	filters := conn(r.MqlRuntime).Filters
 	out := make([]any, 0, len(items))
 	for _, it := range items {
 		lb := it.item
+		if filters.IsFilteredOut(lb.Labels) {
+			continue
+		}
 		res, err := CreateResource(r.MqlRuntime, "exoscale.nlb", map[string]*llx.RawData{
 			"__id":          llx.StringData("exoscale.nlb/" + string(lb.ID)),
 			"id":            llx.StringData(string(lb.ID)),

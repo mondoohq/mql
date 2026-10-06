@@ -38,9 +38,14 @@ func (r *mqlExoscale) dbaasServices() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	// DBaaS services carry no labels, so a label include filter drops them.
+	filters := conn(r.MqlRuntime).Filters
 	out := make([]any, 0, len(items))
 	for _, it := range items {
 		s := it.item
+		if filters.IsFilteredOut(nil) {
+			continue
+		}
 		// The record carries its own zone; prefer it over the endpoint asked.
 		zone := s.Zone
 		if zone == "" {
