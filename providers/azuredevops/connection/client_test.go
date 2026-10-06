@@ -1,0 +1,389 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package connection
+
+import (
+	"context"
+	"encoding/base64"
+	"net/http"
+	"net/http/httptest"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/azuredevops/internal/fakeado"
+)
+
+// staticToken is an Entra credential that always returns the same token.
+type staticToken struct{ token string }
+
+func (s staticToken) GetToken(context.Context, policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	return azcore.AccessToken{Token: s.token, ExpiresOn: time.Now().Add(time.Hour)}, nil
+}
+
+// sleeper records the waits a client asks for and does not wait.
+type sleeper struct {
+	mu    sync.Mutex
+	waits []time.Duration
+	err   error
+}
+
+func (s *sleeper) Sleep(_ context.Context, d time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.waits = append(s.waits, d)
+	return s.err
+}
+
+func entraAuth(t *testing.T, token string) *Authenticator {
+	t.Helper()
+	auth, err := NewAuthenticator(AuthOptions{
+		TenantID:        "11111111-2222-3333-4444-555555555555",
+		ClientID:        "66666666-7777-8888-9999-000000000000",
+		TokenCredential: staticToken{token: token},
+	})
+	require.NoError(t, err)
+	return auth
+}
+
+func patAuth(t *testing.T, pat string) *Authenticator {
+	t.Helper()
+	auth, err := NewAuthenticator(AuthOptions{Credential: vault.NewPasswordCredential("", pat)})
+	require.NoError(t, err)
+	return auth
+}
+
+func newFakeClient(t *testing.T, auth *Authenticator) (*Client, *fakeado.Server, *sleeper) {
+	t.Helper()
+	srv := fakeado.New(t)
+	sl := &sleeper{}
+	c, err := NewClient(fakeado.Org, auth, ClientOptions{Endpoint: srv.URL, Sleep: sl.Sleep})
+	require.NoError(t, err)
+	return c, srv, sl
+}
+
+func TestParseOrganization(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr string
+	}{
+		{name: "bare name", input: "mondoo-ado-scan-test", want: "mondoo-ado-scan-test"},
+		{name: "padded", input: "  mondoo-ado-scan-test \n", want: "mondoo-ado-scan-test"},
+		{name: "dev.azure.com url", input: "https://dev.azure.com/mondoo-ado-scan-test", want: "mondoo-ado-scan-test"},
+		{name: "dev.azure.com url with a project", input: "https://dev.azure.com/mondoo-ado-scan-test/scan-test/_git/repo", want: "mondoo-ado-scan-test"},
+		{name: "legacy visualstudio.com host", input: "https://mondoo-ado-scan-test.visualstudio.com/scan-test", want: "mondoo-ado-scan-test"},
+		{name: "legacy host in upper case", input: "https://Mondoo-Ado-Scan-Test.VisualStudio.com", want: "mondoo-ado-scan-test"},
+		{name: "empty", input: "", wantErr: "is empty"},
+		{name: "another host", input: "https://example.com/org", wantErr: "not an Azure DevOps Services address"},
+		{name: "path only", input: "https://dev.azure.com/", wantErr: "not a valid organization name"},
+		{name: "bad characters", input: "org/with/slash", wantErr: "not a valid organization name"},
+		{name: "leading dash", input: "-org", wantErr: "not a valid organization name"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ParseOrganization(tc.input)
+			if tc.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestEndpointMustBeLoopback(t *testing.T) {
+	for _, ok := range []string{"", "http://127.0.0.1:8080", "http://localhost:9000", "http://[::1]:7000"} {
+		_, err := validateEndpoint(ok)
+		assert.NoError(t, err, ok)
+	}
+	for _, bad := range []string{"https://dev.azure.com", "http://10.0.0.5", "http://evil.example", "ftp://127.0.0.1", "not a url"} {
+		_, err := validateEndpoint(bad)
+		assert.Error(t, err, bad)
+	}
+}
+
+func TestClientNeedsAValidOrganizationAndAnAuthenticator(t *testing.T) {
+	_, err := NewClient("bad/org", patAuth(t, "x"), ClientOptions{})
+	require.Error(t, err)
+	_, err = NewClient("good-org", nil, ClientOptions{})
+	require.Error(t, err)
+	c, err := NewClient("good-org", patAuth(t, "x"), ClientOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "https://dev.azure.com/good-org", c.BaseURL())
+}
+
+func TestConnectionDataWithAnEntraBearerToken(t *testing.T) {
+	c, _, _ := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+
+	data, err := c.ConnectionData(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "hosted", data.DeploymentType)
+	assert.Equal(t, "5e000000-0000-4000-8000-000000000001", data.InstanceID)
+}
+
+func TestConnectionDataWithAPAT(t *testing.T) {
+	c, _, _ := newFakeClient(t, patAuth(t, fakeado.PAT))
+
+	data, err := c.ConnectionData(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "hosted", data.DeploymentType)
+}
+
+func TestSignInPageAnswerIsAnUnauthorizedError(t *testing.T) {
+	c, _, sl := newFakeClient(t, patAuth(t, "a-token-the-server-does-not-know"))
+
+	_, err := c.ConnectionData(context.Background())
+	require.Error(t, err)
+	assert.True(t, IsUnauthorized(err), "got %v", err)
+	assert.True(t, IsNoAccess(err))
+	assert.Empty(t, sl.waits, "a rejected credential is not retried")
+}
+
+func TestProjectsFollowContinuationTokens(t *testing.T) {
+	c, srv, _ := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+
+	projects, err := c.Projects(context.Background())
+	require.NoError(t, err)
+
+	names := make([]string, 0, len(projects))
+	for _, p := range projects {
+		names = append(names, p.Name)
+	}
+	assert.Equal(t, []string{"scan-test", "scan test", "locked-down", "legacy-apps"}, names)
+
+	reqs := srv.Requests()
+	require.Len(t, reqs, 2)
+	assert.Contains(t, reqs[0], "api-version=7.1")
+	assert.NotContains(t, reqs[0], "continuationToken")
+	assert.Contains(t, reqs[1], "continuationToken=2")
+	assert.Equal(t, 4.0, c.CostUnits(), "two pages at cost 2 each")
+}
+
+func TestARepeatedContinuationTokenStopsTheWalk(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("x-ms-continuationtoken", "same-token-forever")
+		_, _ = w.Write([]byte(`{"count":1,"value":[{"id":"1a","name":"p"}]}`))
+	}))
+	t.Cleanup(srv.Close)
+	c, err := NewClient("any-org", patAuth(t, "x"), ClientOptions{Endpoint: srv.URL})
+	require.NoError(t, err)
+
+	_, err = c.Projects(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "repeated the continuation token")
+	assert.Equal(t, 2, calls, "the first page, then the page that repeats the token")
+}
+
+func TestRepositoriesOfAProjectWithASpace(t *testing.T) {
+	c, srv, _ := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+
+	repos, err := c.Repositories(context.Background(), "scan test")
+	require.NoError(t, err)
+	require.Len(t, repos, 1)
+	assert.Equal(t, "ado-scan-test-iac", repos[0].Name)
+	assert.Equal(t, "scan test", repos[0].Project.Name)
+	assert.Equal(t, "refs/heads/main", repos[0].DefaultBranch)
+
+	reqs := srv.Requests()
+	require.Len(t, reqs, 1)
+	assert.Contains(t, reqs[0], "/mondoo-ado-scan-test/scan test/_apis/git/repositories?api-version=7.1")
+}
+
+func TestCloneURLDropsTheUserInfo(t *testing.T) {
+	c, _, _ := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+
+	repos, err := c.Repositories(context.Background(), "scan test")
+	require.NoError(t, err)
+	require.Len(t, repos, 1)
+
+	assert.Contains(t, repos[0].RemoteURL, "mondoo-ado-scan-test@dev.azure.com", "the API embeds a user name")
+	assert.Equal(t,
+		"https://dev.azure.com/mondoo-ado-scan-test/scan%20test/_git/ado-scan-test-iac",
+		repos[0].HTTPURL())
+	assert.Empty(t, Repository{}.HTTPURL())
+}
+
+func TestAProjectThePrincipalCannotReadIsNoAccess(t *testing.T) {
+	c, _, sl := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+
+	_, err := c.Repositories(context.Background(), "locked-down")
+	require.Error(t, err)
+	assert.True(t, IsForbidden(err), "got %v", err)
+	assert.True(t, IsNoAccess(err))
+	assert.False(t, IsUnauthorized(err))
+	assert.Empty(t, sl.waits, "a 403 is not retried")
+}
+
+func TestOneRepositoryByNameOrID(t *testing.T) {
+	c, _, _ := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+
+	byName, err := c.Repository(context.Background(), "scan-test", "ado-scan-test-app")
+	require.NoError(t, err)
+	byID, err := c.Repository(context.Background(), "scan-test", fakeado.RepoAppID)
+	require.NoError(t, err)
+	assert.Equal(t, byName.ID, byID.ID)
+
+	_, err = c.Repository(context.Background(), "scan-test", "no-such-repo")
+	require.Error(t, err)
+	assert.Equal(t, http.StatusNotFound, apiStatus(err))
+}
+
+func TestOneProjectByName(t *testing.T) {
+	c, _, _ := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+
+	// a project on the second page, and one with a space in its name
+	for _, name := range []string{"legacy-apps", "scan test"} {
+		p, err := c.Project(context.Background(), name)
+		require.NoError(t, err)
+		assert.Equal(t, name, p.Name)
+		assert.NotEmpty(t, p.ID)
+	}
+
+	_, err := c.Project(context.Background(), "no-such-project")
+	require.Error(t, err)
+	assert.Equal(t, http.StatusNotFound, apiStatus(err))
+}
+
+func TestItemsListTheTree(t *testing.T) {
+	c, _, _ := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+
+	items, err := c.Items(context.Background(), "scan-test", fakeado.RepoIacID)
+	require.NoError(t, err)
+
+	var blobs []string
+	for _, it := range items {
+		if it.IsBlob() {
+			blobs = append(blobs, it.Path)
+		}
+	}
+	assert.ElementsMatch(t, []string{"/README.md", "/main.tf", "/modules/network/main.tf", "/k8s/pod.yaml", "/secrets/.env"}, blobs)
+}
+
+func TestItemsOfAnEmptyRepositoryIsRecognized(t *testing.T) {
+	c, _, _ := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+
+	_, err := c.Items(context.Background(), "scan-test", fakeado.RepoEmptyID)
+	require.Error(t, err)
+	assert.True(t, IsEmptyRepoError(err), "got %v", err)
+	assert.False(t, IsNoAccess(err))
+	assert.False(t, IsEmptyRepoError(&APIError{Status: http.StatusNotFound, Message: "TF401019: not found"}))
+}
+
+func TestRetryAfterHeaderIsHonored(t *testing.T) {
+	c, srv, sl := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+	srv.ThrottleNext("/_apis/projects", 2, "7")
+
+	projects, err := c.Projects(context.Background())
+	require.NoError(t, err)
+	assert.Len(t, projects, 4)
+	assert.Equal(t, []time.Duration{7 * time.Second, 7 * time.Second}, sl.waits)
+}
+
+func TestBackoffDoublesFromFiveSecondsToASixtySecondCap(t *testing.T) {
+	c, srv, sl := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+	srv.ThrottleNext("/_apis/projects", 5, "")
+
+	_, err := c.Projects(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []time.Duration{
+		5 * time.Second, 10 * time.Second, 20 * time.Second, 40 * time.Second, 60 * time.Second,
+	}, sl.waits)
+}
+
+func TestThrottlingThatNeverEndsGivesUp(t *testing.T) {
+	c, srv, sl := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+	srv.ThrottleNext("/_apis/projects", 100, "1")
+
+	_, err := c.Projects(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, http.StatusTooManyRequests, apiStatus(err))
+	assert.Len(t, sl.waits, maxRetries)
+}
+
+func TestARetryAfterBeyondFiveMinutesFailsAtOnce(t *testing.T) {
+	c, srv, sl := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+	srv.ThrottleNext("/_apis/projects", 1, "3600")
+
+	_, err := c.Projects(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, http.StatusTooManyRequests, apiStatus(err))
+	assert.Empty(t, sl.waits)
+}
+
+func TestCancellingDuringABackoffStopsTheCall(t *testing.T) {
+	c, srv, sl := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+	sl.err = context.Canceled
+	srv.ThrottleNext("/_apis/projects", 1, "")
+
+	_, err := c.Projects(context.Background())
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestAPIErrorNamesTheStatusAndPath(t *testing.T) {
+	err := &APIError{Status: 403, Path: "/scan-test/_apis/git/repositories", Message: "denied"}
+	assert.Equal(t, "azure devops: HTTP 403 on /scan-test/_apis/git/repositories: denied", err.Error())
+	assert.Equal(t, "azure devops: HTTP 404 on /x: Not Found", (&APIError{Status: 404, Path: "/x"}).Error())
+}
+
+func TestErrorsDoNotCarryTheCredential(t *testing.T) {
+	const pat = "a-token-the-server-does-not-know"
+	c, _, _ := newFakeClient(t, patAuth(t, pat))
+
+	_, err := c.ConnectionData(context.Background())
+	require.Error(t, err)
+
+	basicValue := base64.StdEncoding.EncodeToString([]byte(":" + pat))
+	assert.NotContains(t, err.Error(), pat)
+	assert.NotContains(t, err.Error(), basicValue)
+}
+
+func TestARedirectToTheSignInPageIsAnUnauthorizedError(t *testing.T) {
+	const pat = "a-token-the-server-does-not-know"
+
+	var mu sync.Mutex
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		mu.Unlock()
+		if r.URL.Path == "/_signin" {
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<html><body>Sign in to continue</body></html>"))
+			return
+		}
+		// Azure DevOps answers a bad Bearer token with a 302 to its sign-in page.
+		w.Header().Set("Location", "/_signin")
+		w.WriteHeader(http.StatusFound)
+	}))
+	t.Cleanup(srv.Close)
+	sl := &sleeper{}
+	c, err := NewClient("any-org", patAuth(t, pat), ClientOptions{Endpoint: srv.URL, Sleep: sl.Sleep})
+	require.NoError(t, err)
+
+	_, err = c.ConnectionData(context.Background())
+	require.Error(t, err)
+	assert.True(t, IsUnauthorized(err), "got %v", err)
+	assert.True(t, IsNoAccess(err))
+	assert.Empty(t, sl.waits, "a rejected credential is not retried")
+
+	basicValue := base64.StdEncoding.EncodeToString([]byte(":" + pat))
+	assert.NotContains(t, err.Error(), pat)
+	assert.NotContains(t, err.Error(), basicValue)
+	assert.NotContains(t, err.Error(), "_signin", "the Location header stays out of the error")
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"/any-org/_apis/connectionData"}, paths, "the sign-in page is never requested")
+}
