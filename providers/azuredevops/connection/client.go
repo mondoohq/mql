@@ -36,6 +36,9 @@ const (
 	maxBackoff     = 60 * time.Second
 	maxRetryAfter  = 5 * time.Minute
 	maxResponseLen = 128 << 20
+	// maxPages bounds one list walk. A server that hands out a new
+	// continuation token on every page would otherwise never end it.
+	maxPages = 1000
 )
 
 var orgNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*$`)
@@ -408,12 +411,13 @@ type listResponse[T any] struct {
 
 // listAll reads every page of a list endpoint. A page that carries an
 // x-ms-continuationtoken header is followed with continuationToken; a token
-// the server repeats ends the walk with an error instead of looping.
+// the server repeats, or more than maxPages pages, ends the walk with an error
+// instead of looping.
 func listAll[T any](ctx context.Context, c *Client, r request, pageSize int) ([]T, error) {
 	var all []T
 	seen := map[string]bool{}
 	token := ""
-	for {
+	for pages := 1; ; pages++ {
 		q := url.Values{}
 		for k, v := range r.query {
 			q[k] = v
@@ -439,6 +443,10 @@ func listAll[T any](ctx context.Context, c *Client, r request, pageSize int) ([]
 		if seen[next] || next == token {
 			return nil, fmt.Errorf("azure devops: %s repeated the continuation token, stopping to avoid a loop",
 				"/"+strings.Join(r.segments, "/"))
+		}
+		if pages >= maxPages {
+			return nil, fmt.Errorf("azure devops: %s returned more than %d pages, stopping to avoid a loop",
+				"/"+strings.Join(r.segments, "/"), maxPages)
 		}
 		seen[next] = true
 		token = next

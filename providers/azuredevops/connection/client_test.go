@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -229,6 +230,32 @@ func TestARepeatedContinuationTokenStopsTheWalk(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "repeated the continuation token")
 	assert.Equal(t, 2, calls, "the first page, then the page that repeats the token")
+}
+
+// A server that hands out a new continuation token on every page would keep the
+// walk going forever, since no token repeats.
+func TestAWalkStopsAtThePageCap(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		n := calls
+		mu.Unlock()
+		w.Header().Set("x-ms-continuationtoken", "token-"+strconv.Itoa(n))
+		_, _ = w.Write([]byte(`{"count":1,"value":[{"id":"1a","name":"p"}]}`))
+	}))
+	t.Cleanup(srv.Close)
+	c, err := NewClient("any-org", patAuth(t, "x"), ClientOptions{Endpoint: srv.URL})
+	require.NoError(t, err)
+
+	_, err = c.Projects(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "/_apis/projects")
+	assert.Contains(t, err.Error(), "1000 pages")
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 1000, calls)
 }
 
 func TestRepositoriesOfAProjectWithASpace(t *testing.T) {
