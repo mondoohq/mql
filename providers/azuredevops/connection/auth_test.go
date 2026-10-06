@@ -1,0 +1,193 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package connection
+
+import (
+	"context"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+)
+
+// fakeTokenCredential hands out numbered tokens that live for lifetime.
+type fakeTokenCredential struct {
+	clock    *fakeClock
+	lifetime time.Duration
+	calls    int
+	scopes   [][]string
+	err      error
+}
+
+func (f *fakeTokenCredential) GetToken(_ context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	f.calls++
+	f.scopes = append(f.scopes, opts.Scopes)
+	if f.err != nil {
+		return azcore.AccessToken{}, f.err
+	}
+	return azcore.AccessToken{
+		Token:     fmt.Sprintf("entra-token-%d", f.calls),
+		ExpiresOn: f.clock.now.Add(f.lifetime),
+	}, nil
+}
+
+type fakeClock struct{ now time.Time }
+
+func (c *fakeClock) Now() time.Time { return c.now }
+
+func newEntraAuth(t *testing.T, lifetime time.Duration) (*Authenticator, *fakeTokenCredential, *fakeClock) {
+	t.Helper()
+	clock := &fakeClock{now: time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)}
+	cred := &fakeTokenCredential{clock: clock, lifetime: lifetime}
+	auth, err := NewAuthenticator(AuthOptions{
+		TenantID:        "11111111-2222-3333-4444-555555555555",
+		ClientID:        "66666666-7777-8888-9999-000000000000",
+		TokenCredential: cred,
+		Now:             clock.Now,
+	})
+	require.NoError(t, err)
+	return auth, cred, clock
+}
+
+func TestEntraRequestsTheAzureDevOpsScope(t *testing.T) {
+	auth, cred, _ := newEntraAuth(t, time.Hour)
+
+	_, err := auth.Token(context.Background())
+	require.NoError(t, err)
+
+	require.Len(t, cred.scopes, 1)
+	assert.Equal(t, []string{"499b84ac-1321-427f-aa17-267ca6975798/.default"}, cred.scopes[0])
+}
+
+func TestEntraTokenRefreshesAtEightyPercentOfItsLifetime(t *testing.T) {
+	auth, cred, clock := newEntraAuth(t, time.Hour)
+	ctx := context.Background()
+
+	first, err := auth.Token(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "entra-token-1", first)
+
+	// 47m59s is before 80% of the hour: the cached token is reused.
+	clock.now = clock.now.Add(47*time.Minute + 59*time.Second)
+	again, err := auth.Token(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "entra-token-1", again)
+	assert.Equal(t, 1, cred.calls)
+
+	// 48m is exactly 80%: the next call mints a new token.
+	clock.now = clock.now.Add(time.Second)
+	refreshed, err := auth.Token(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "entra-token-2", refreshed)
+	assert.Equal(t, 2, cred.calls)
+}
+
+func TestEntraHeaderIsABearerToken(t *testing.T) {
+	auth, _, _ := newEntraAuth(t, time.Hour)
+
+	header, err := auth.AuthorizationHeader(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer entra-token-1", header)
+	assert.Equal(t, AuthEntra, auth.Mode())
+}
+
+func TestEntraMintFailureIsReported(t *testing.T) {
+	auth, cred, _ := newEntraAuth(t, time.Hour)
+	cred.err = errors.New("invalid_client")
+
+	_, err := auth.AuthorizationHeader(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot mint an Entra token")
+	assert.Contains(t, err.Error(), "invalid_client")
+}
+
+func TestPATHeaderIsBasicWithAnEmptyUser(t *testing.T) {
+	auth, err := NewAuthenticator(AuthOptions{Credential: vault.NewPasswordCredential("", "fake-pat-value")})
+	require.NoError(t, err)
+
+	header, err := auth.AuthorizationHeader(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "Basic "+base64.StdEncoding.EncodeToString([]byte(":fake-pat-value")), header)
+	assert.Equal(t, AuthPAT, auth.Mode())
+}
+
+func TestGitCredentialUsesANonEmptyUser(t *testing.T) {
+	pat, err := NewAuthenticator(AuthOptions{Credential: vault.NewPasswordCredential("", "fake-pat-value")})
+	require.NoError(t, err)
+	got, err := pat.GitCredential(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "oauth2", got.User)
+	assert.Equal(t, "fake-pat-value", string(got.Secret))
+
+	entra, _, _ := newEntraAuth(t, time.Hour)
+	got, err = entra.GitCredential(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "oauth2", got.User)
+	assert.Equal(t, "entra-token-1", string(got.Secret))
+}
+
+func TestAuthSelection(t *testing.T) {
+	password := vault.NewPasswordCredential("", "fake-secret")
+	cases := []struct {
+		name    string
+		opts    AuthOptions
+		mode    AuthMode
+		wantErr string
+	}{
+		{name: "tenant and client select Entra", opts: AuthOptions{
+			TenantID: "11111111-2222-3333-4444-555555555555", ClientID: "66666666-7777-8888-9999-000000000000", Credential: password}, mode: AuthEntra},
+		{name: "a password alone is a PAT", opts: AuthOptions{Credential: password}, mode: AuthPAT},
+		{name: "a tenant without a client", opts: AuthOptions{TenantID: "11111111-2222-3333-4444-555555555555", Credential: password},
+			wantErr: "tenant-id and client-id must be set together"},
+		{name: "a client without a tenant", opts: AuthOptions{ClientID: "66666666-7777-8888-9999-000000000000", Credential: password},
+			wantErr: "tenant-id and client-id must be set together"},
+		{name: "no credential at all", opts: AuthOptions{}, wantErr: "no credentials"},
+		{name: "an empty PAT", opts: AuthOptions{Credential: vault.NewPasswordCredential("", "")}, wantErr: "no credentials"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			auth, err := NewAuthenticator(tc.opts)
+			if tc.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.mode, auth.Mode())
+		})
+	}
+}
+
+func TestEachAuthenticatorMintsItsOwnToken(t *testing.T) {
+	clock := &fakeClock{now: time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)}
+	cred := &fakeTokenCredential{clock: clock, lifetime: time.Hour}
+	build := func() *Authenticator {
+		auth, err := NewAuthenticator(AuthOptions{
+			TenantID:        "11111111-2222-3333-4444-555555555555",
+			ClientID:        "66666666-7777-8888-9999-000000000000",
+			TokenCredential: cred,
+			Now:             clock.Now,
+		})
+		require.NoError(t, err)
+		return auth
+	}
+	first, second := build(), build()
+
+	one, err := first.Token(context.Background())
+	require.NoError(t, err)
+	two, err := second.Token(context.Background())
+	require.NoError(t, err)
+
+	// Two jobs for two repositories do not share a token, so one job running
+	// past the token's lifetime cannot break the other.
+	assert.Equal(t, 2, cred.calls)
+	assert.NotEqual(t, one, two)
+}
