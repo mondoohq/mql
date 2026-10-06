@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	_ shared.Connection = (*FileSystemConnection)(nil)
-	_ plugin.Closer     = (*FileSystemConnection)(nil)
+	_ shared.Connection              = (*FileSystemConnection)(nil)
+	_ shared.ConnectionWithMountPath = (*FileSystemConnection)(nil)
+	_ plugin.Closer                  = (*FileSystemConnection)(nil)
 )
 
 func NewFileSystemConnectionWithClose(id uint32, conf *inventory.Config, asset *inventory.Asset, closeFN func()) (*FileSystemConnection, error) {
@@ -109,6 +110,19 @@ func (c *FileSystemConnection) Identifier() (string, error) {
 		return "", errors.New("no platform id provided")
 	}
 	return c.tcPlatformId, nil
+}
+
+// MountPath returns the directory this connection reads, implementing
+// shared.ConnectionWithMountPath. It is empty unless the directory is the
+// scan target the user named: a device or snapshot scan reads each partition
+// through a filesystem connection too, but mounts it at a temporary directory
+// that changes on every run, so its path would give the same disk a new asset
+// on every scan.
+func (c *FileSystemConnection) MountPath() string {
+	if c.Conf == nil || c.Conf.Type != shared.Type_FileSystem.String() {
+		return ""
+	}
+	return c.MountedDir
 }
 
 func (c *FileSystemConnection) Name() string {
