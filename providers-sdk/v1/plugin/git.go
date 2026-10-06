@@ -112,3 +112,21 @@ func gitClone(gitUrl string) (string, func(), error) {
 
 	return cloneDir, closer, nil
 }
+
+// GitHeadRef names what is checked out in the clone at dir: the branch name
+// when HEAD is a branch, otherwise the commit hash. It returns "" when dir is
+// not a git repository.
+func GitHeadRef(dir string) string {
+	repo, err := git.PlainOpen(dir)
+	if err != nil {
+		return ""
+	}
+	head, err := repo.Head()
+	if err != nil {
+		return ""
+	}
+	if head.Name().IsBranch() {
+		return head.Name().Short()
+	}
+	return head.Hash().String()
+}
