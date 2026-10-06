@@ -109,7 +109,7 @@ func TestDetect_KeepsAPresetChildIdentity(t *testing.T) {
 	}
 
 	var ids []string
-	for _, org := range []string{"mondoo-ado-scan-test", "mondoo-ado-other-test"} {
+	for _, org := range []string{"fabrikam-fixture-org", "fabrikam-other-fixture-org"} {
 		child := newChild(org)
 		preset := child.PlatformIds[0]
 

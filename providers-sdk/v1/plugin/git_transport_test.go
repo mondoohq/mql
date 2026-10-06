@@ -30,9 +30,9 @@ func TestIsAzureDevOpsHost(t *testing.T) {
 		{"dev.azure.com", true},
 		{"DEV.AZURE.COM", true},
 		{"dev.azure.com.", true},
-		{"mondoo-ado-scan-test.visualstudio.com", true},
-		{"Mondoo-ADO-Scan-Test.VisualStudio.com", true},
-		{"mondoo-ado-scan-test.visualstudio.com.", true},
+		{"fabrikam-fixture-org.visualstudio.com", true},
+		{"Fabrikam-Fixture-Org.VisualStudio.com", true},
+		{"fabrikam-fixture-org.visualstudio.com.", true},
 		{"vs-ssh.visualstudio.com", true},
 
 		// everything else, including near misses and Azure DevOps Server
@@ -51,7 +51,7 @@ func TestIsAzureDevOpsHost(t *testing.T) {
 		{"notvisualstudio.com", false},
 		{"evildev.azure.com", false},
 		{"dev.azure.com.evil.example", false},
-		{"mondoo-ado-scan-test.visualstudio.com.evil.example", false},
+		{"fabrikam-fixture-org.visualstudio.com.evil.example", false},
 		{"tfs.corp.example", false},
 		{"127.0.0.1", false},
 		{"localhost", false},
@@ -251,9 +251,9 @@ func TestHostRoutedTransport_OtherHostsGetTheBaseSessionUntouched(t *testing.T) 
 
 func TestHostRoutedTransport_AzureDevOpsHostsGetTheAdjustedSession(t *testing.T) {
 	for _, raw := range []string{
-		"https://dev.azure.com/mondoo-ado-scan-test/scan-test/_git/ado-scan-test-iac",
-		"https://ci:token@dev.azure.com:443/mondoo-ado-scan-test/scan-test/_git/ado-scan-test-iac",
-		"https://Mondoo-ADO-Scan-Test.VisualStudio.com/scan-test/_git/ado-scan-test-iac",
+		"https://dev.azure.com/fabrikam-fixture-org/scan-test/_git/ado-scan-test-iac",
+		"https://ci:token@dev.azure.com:443/fabrikam-fixture-org/scan-test/_git/ado-scan-test-iac",
+		"https://Fabrikam-Fixture-Org.VisualStudio.com/scan-test/_git/ado-scan-test-iac",
 	} {
 		t.Run(raw, func(t *testing.T) {
 			session := &captureSession{}

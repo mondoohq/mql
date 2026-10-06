@@ -33,10 +33,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Fabricated fixture identity. These names exist nowhere; nothing here talks to
-// a real Azure DevOps organization.
+// Fabricated fixture identity, in the style of Microsoft's "Fabrikam" sample
+// names. Nothing here talks to a real Azure DevOps organization.
 const (
-	fixtureOrg     = "mondoo-ado-scan-test"
+	fixtureOrg     = "fabrikam-fixture-org"
 	fixtureProject = "scan-test"
 	fixtureRepo    = "ado-scan-test-iac"
 	fixtureToken   = "fixture-pat-not-a-secret"

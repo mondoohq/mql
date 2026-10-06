@@ -347,8 +347,8 @@ func gatewayWithChildren(children ...*inventory.Asset) *TrackedAsset {
 // repeated preset id as a duplicate.
 func TestAssetExplorerDiscoverChildrenHonorsPresetIdentity(t *testing.T) {
 	const (
-		idA = "//platformid.api.mondoo.app/runtime/terraform/domain/dev.azure.com/org/mondoo-ado-scan-test/project/scan-test/repo/ado-scan-test-iac"
-		idB = "//platformid.api.mondoo.app/runtime/terraform/domain/dev.azure.com/org/mondoo-ado-other-test/project/scan-test/repo/ado-scan-test-iac"
+		idA = "//platformid.api.mondoo.app/runtime/terraform/domain/dev.azure.com/org/fabrikam-fixture-org/project/scan-test/repo/ado-scan-test-iac"
+		idB = "//platformid.api.mondoo.app/runtime/terraform/domain/dev.azure.com/org/fabrikam-other-fixture-org/project/scan-test/repo/ado-scan-test-iac"
 	)
 	childA := &inventory.Asset{Name: "scan-test/ado-scan-test-iac", PlatformIds: []string{idA}}
 	childB := &inventory.Asset{Name: "scan-test/ado-scan-test-iac", PlatformIds: []string{idB}}
