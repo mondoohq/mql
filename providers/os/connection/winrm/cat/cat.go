@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -39,21 +40,54 @@ func (cat *Fs) Name() string {
 // has to survive both. Encoding removes the outer layer entirely and
 // SingleQuote covers the inner one.
 
-func getContentScript(name string) string {
-	return powershell.Encode("Get-Content -LiteralPath " + powershell.SingleQuote(name))
+// dirExitStatus is the exit status openScript ends with when the path is a
+// directory. Get-Content cannot read a directory, so without it a directory
+// failed to open as if it did not exist, and nothing could be listed.
+const dirExitStatus = 64
+
+// openScript reads a file, or reports a directory through dirExitStatus, in
+// one round trip. A missing path still fails in Get-Content, as before.
+func openScript(name string) string {
+	quoted := powershell.SingleQuote(name)
+	return powershell.Encode("if (Test-Path -LiteralPath " + quoted + " -PathType Container) { exit " +
+		strconv.Itoa(dirExitStatus) + " }; Get-Content -LiteralPath " + quoted)
 }
 
 func getItemScript(name string) string {
 	return powershell.Encode("Get-Item -LiteralPath " + powershell.SingleQuote(name) + " | ConvertTo-JSON")
 }
 
+// listDirScript lists a directory as a JSON array, one object per entry, with
+// what a FileInfo needs so that no entry has to be stat'ed separately. Times
+// are Unix milliseconds, which reads the same on Windows PowerShell and
+// PowerShell 7, whose ConvertTo-Json format dates differently. Output is UTF-8
+// because the console code page would turn a name like über.txt into one that
+// no longer exists. An entry that cannot be read is skipped; the errors are
+// written to stderr and fail the script only when nothing could be listed.
+func listDirScript(name string) string {
+	return powershell.Encode("[Console]::OutputEncoding = [Text.Encoding]::UTF8; $ev = $null; " +
+		"$e = @(Get-ChildItem -LiteralPath " + powershell.SingleQuote(name) + " -Force -ErrorAction SilentlyContinue -ErrorVariable ev | ForEach-Object { " +
+		"[pscustomobject]@{ " +
+		"Name = $_.Name; " +
+		"Length = $(if ($_.PSIsContainer) { 0 } else { $_.Length }); " +
+		"Attributes = [int]$_.Attributes; " +
+		"CreationTime = [DateTimeOffset]::new($_.CreationTimeUtc).ToUnixTimeMilliseconds(); " +
+		"LastAccessTime = [DateTimeOffset]::new($_.LastAccessTimeUtc).ToUnixTimeMilliseconds(); " +
+		"LastWriteTime = [DateTimeOffset]::new($_.LastWriteTimeUtc).ToUnixTimeMilliseconds() } }); " +
+		"ConvertTo-Json -InputObject $e -Compress; " +
+		"if ($ev -and $e.Count -eq 0) { [Console]::Error.WriteLine((($ev | ForEach-Object { $_.FullyQualifiedErrorId }) -join ' ')); exit 1 }")
+}
+
 func (cat *Fs) Open(name string) (afero.File, error) {
 	// NOTE: do not use type here since it does not work well with file names like 'C:\Program Files\New Text Document.txt'
-	cmd, err := cat.commandRunner.RunCommand(getContentScript(name))
+	cmd, err := cat.commandRunner.RunCommand(openScript(name))
 	if err != nil {
 		return nil, err
 	}
 
+	if cmd.ExitStatus == dirExitStatus {
+		return newDir(cat, name), nil
+	}
 	if cmd.ExitStatus != 0 {
 		return nil, os.ErrNotExist
 	}
@@ -82,7 +116,7 @@ func (cat *Fs) Stat(name string) (os.FileInfo, error) {
 	}
 
 	return &fileStat{
-		name:           item.BaseName,
+		name:           item.Name,
 		FileSize:       item.Length,
 		FileAttributes: item.Attributes,
 		CreationTime:   powershell.PSJsonTimestamp(item.CreationTime),
