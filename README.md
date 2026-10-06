@@ -113,6 +113,8 @@ To learn about Mondoo Platform, read the [Mondoo Platform docs](https://mondoo.c
 | AWS EC2 EBS volume            | `aws ec2 ebs volume`       | `mql shell aws ec2 ebs volume VOLUMEID`                                                                                                         |
 | AWS EC2 Instance Connect      | `aws ec2 instance-connect` | `mql shell aws ec2 instance-connect ec2-user@INSTANCEID`                                                                                        |
 | AWS EC2 instances             | `ssh`                      | `mql shell ssh user@host`                                                                                                                       |
+| Azure DevOps organizations    | `azuredevops org`          | `mql shell azuredevops org ORG_NAME --token PAT`                                                                                                |
+| Azure DevOps repositories     | `azuredevops repo`         | `mql shell azuredevops repo ORG_NAME/PROJECT/REPO --token PAT`                                                                                  |
 | Bitwarden organizations       | `bitwarden`                | `mql shell bitwarden --client-id CLIENT_ID --client-secret CLIENT_SECRET`                                                                       |
 | Cisco network devices         | `nd-ssh`                   | `mql shell nd-ssh admin@DEVICE_IP --password PASSWORD`                                                                                          |
 | Cisco Catalyst Center         | `ciscocatalyst`            | `mql shell ciscocatalyst --host HOST --user USER --password PASSWORD`                                                                           |

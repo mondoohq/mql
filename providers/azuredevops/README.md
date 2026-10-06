@@ -1,68 +1,143 @@
 # Azure DevOps Provider
 
-<!-- TODO: one to three sentences describing what this provider inventories and why
-     someone would query it (the security posture or assets it exposes). -->
-The `azuredevops` provider connects to Azure DevOps and inventories it through
-read-only queries.
+The `azuredevops` provider connects to an Azure DevOps Services organization
+(`dev.azure.com`) and inventories its projects and Git repositories through
+read-only REST queries. Use it to see which repositories exist, which ones can
+be scanned, and to scan the Terraform and Kubernetes manifests they hold.
+
+Azure DevOps Server (on-premises) is not supported.
 
 ## Prerequisites
 
-<!-- TODO (optional): required tooling, versions, network access, or account permissions.
-     Delete this section if there are none. -->
+- An Azure DevOps Services organization that the credential can read.
+- A personal access token (PAT) with the `Code (Read)` and `Project and Team
+  (Read)` scopes, or a Microsoft Entra service principal that was added to the
+  organization.
 
 ## Authentication
 
-<!-- TODO: how to authenticate. List the connection flags/arguments, and give one runnable
-     example per auth method. Use blockquote tips for how to obtain credentials. Keep it to a
-     few lines for a simple token/env-var provider. -->
-
 Arguments:
 
-- `--user` - the user to authenticate as.
-- `--ask-pass` - prompt for the password (or `--password`).
+- `org <name>` - an organization. The name or the `https://dev.azure.com/<name>` address works.
+- `repo <org>/<project>/<repo>` - a single repository.
+- `--token` - a personal access token. Also read from `AZURE_DEVOPS_TOKEN`.
+- `--tenant-id`, `--client-id`, `--client-secret` - a Microsoft Entra service principal. Also
+  read from `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET`.
+
+A token always wins over the `AZURE_*` variables, so a tenant that is set in the shell for
+another tool does not change how a scan authenticates.
 
 ```shell
-mql shell azuredevops --user USER --ask-pass
+mql shell azuredevops org my-organization --token PAT
 ```
+
+> Create a PAT under User settings, Personal access tokens, in the Azure DevOps portal.
+
+```shell
+mql shell azuredevops org my-organization \
+  --tenant-id TENANT_ID --client-id CLIENT_ID --client-secret CLIENT_SECRET
+```
+
+> Add the service principal to the organization under Organization settings, Users, before
+> you connect. Without that step Azure DevOps rejects every request.
 
 ## Usage
 
-Open an interactive shell:
+The organization connector produces an asset on the `azuredevops-org` platform and the
+repository connector one on the `azuredevops-repo` platform. Policies target repositories
+with `asset.platform == "azuredevops-repo"`.
+
+Azure DevOps treats organization names as case-insensitive, so the asset id lower-cases the
+organization (`MyOrg` and `myorg` are one asset). Project and repository names keep their case.
+
+Open an interactive shell on an organization:
 
 ```shell
-mql shell azuredevops
+mql shell azuredevops org my-organization --token PAT
+```
+
+Open a shell on one repository:
+
+```shell
+mql shell azuredevops repo my-organization/my-project/my-repo --token PAT
 ```
 
 ## Discovery
 
-<!-- TODO (optional): only for providers that emit child assets. Describe the asset model and
-     the `--discover` targets, with a scan example. Delete this section if the provider emits a
-     single asset. -->
+An organization scan emits an asset for the organization and one for each repository that
+has commits and is not disabled. Disabled and empty repositories are reported and skipped.
+A project the credential cannot read is reported and skipped, and does not fail the scan.
+
+| Target          | Emits                                                         |
+| --------------- | ------------------------------------------------------------- |
+| `auto`          | the organization and its repositories (the default)           |
+| `organization`  | the organization asset                                        |
+| `repos`         | one asset per repository                                      |
+| `terraform`     | a Terraform child for each repository that holds a `.tf` file |
+| `k8s-manifests` | a Kubernetes child for each repository that holds YAML files  |
+| `all`           | every target above                                            |
+
+```shell
+mql scan azuredevops org my-organization --token PAT --discover repos,terraform
+```
+
+Narrow the scan with `<project>/<repo>` patterns. The star does not cross the slash.
+
+```shell
+mql scan azuredevops org my-organization --token PAT \
+  --repos "my-project/*" --repos-exclude "my-project/archive-*"
+```
 
 ## Examples
 
-<!-- TODO: several labeled example queries. Each should have a short prose lead-in, a runnable
-     `mql>` query, and its real output. These are what new developers rely on most, so make them
-     copy-pasteable and representative of the provider's key resources. -->
-
-**Example query**
-
-Describe what this query returns.
+**List the projects of an organization**
 
 ```shell
-mql> azuredevops.<resource>
+mql> azuredevops.organization.projects { name visibility state }
 ```
+
+**List the repositories that can be scanned**
+
+```shell
+mql> azuredevops.organization.repositories.where(status == "ready") { fullName defaultBranch }
+```
+
+**Find the repositories that are skipped, and why**
+
+```shell
+mql> azuredevops.organization.repositories.where(status != "ready") { fullName status }
+```
+
+`status` is `ready`, `empty` (no commits yet) or `disabled`.
 
 ## Resources
 
-<!-- TODO (optional): a short pointer to the resources this provider exposes. Do NOT hand-list
-     every field; the resource reference is generated from the `.lr` schema comments. -->
+- `azuredevops.organization` - the organization, its `projects` and its `repositories`.
+- `azuredevops.project` - a project and its `repositories`.
+- `azuredevops.repository` - a Git repository, with its clone addresses and scan `status`.
+
+The resource reference is generated from the `.lr` schema comments.
 
 ## Verification
 
-<!-- TODO (optional): one or two quick queries that confirm the connection and permissions work,
-     plus what an empty result implies (e.g. missing read permission). -->
+Run this to confirm that the connection and the permissions work:
+
+```shell
+mql> azuredevops.organization { name id deploymentType }
+```
+
+`deploymentType` is `hosted` for Azure DevOps Services. An empty
+`azuredevops.organization.unreadableProjects` means the credential can read every project.
+A name in that list means the credential has no access to that project, and that project's
+repositories are not in the inventory.
 
 ## Troubleshooting
 
-<!-- TODO (optional): common errors and their fixes. Delete if not needed. -->
+- `401` or a message about the personal access token: the token expired, was revoked, or
+  belongs to another organization. Create a new one.
+- Every request fails for a service principal: the principal is not a user of the
+  organization yet. Add it under Organization settings, Users.
+- A repository is missing from a scan: look at `azuredevops.organization.repositories` for
+  its `status`. Only `ready` repositories are scanned.
+- `429` or slow scans: Azure DevOps throttles by cost per user. The provider backs off on its
+  own. Narrow the scan with `--repos` if it keeps happening.
