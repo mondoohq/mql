@@ -160,7 +160,8 @@ type ClientOptions struct {
 	// accepted, so a token can never be pointed at another host. Tests use it
 	// to reach an httptest server.
 	Endpoint string
-	// HTTPClient replaces the default client.
+	// HTTPClient replaces the default client. The client uses a copy of it that
+	// does not follow redirects.
 	HTTPClient *http.Client
 	// Sleep replaces the wait between retries. Tests make it instant.
 	Sleep func(ctx context.Context, d time.Duration) error
@@ -190,16 +191,18 @@ func NewClient(org string, auth *Authenticator, opts ClientOptions) (*Client, er
 		return nil, err
 	}
 
-	hc := opts.HTTPClient
-	if hc == nil {
-		hc = &http.Client{
-			Timeout: 2 * time.Minute,
-			// Azure DevOps answers a rejected Bearer token with a 302 to its
-			// sign-in page on the same host. Following it would turn a bad
-			// credential into a JSON decode error, so getOnce reads the 3xx itself.
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		}
+	// Azure DevOps answers a rejected Bearer token with a 302 to its sign-in
+	// page on the same host. Following it would turn a bad credential into a
+	// JSON decode error, so getOnce reads the 3xx itself. A caller's client is
+	// copied so that its own redirect policy is replaced without changing it.
+	var hc *http.Client
+	if opts.HTTPClient != nil {
+		copied := *opts.HTTPClient
+		hc = &copied
+	} else {
+		hc = &http.Client{Timeout: 2 * time.Minute}
 	}
+	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	sleep := opts.Sleep
 	if sleep == nil {
 		sleep = sleepContext

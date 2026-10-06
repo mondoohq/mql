@@ -394,25 +394,37 @@ func TestErrorsDoNotCarryTheCredential(t *testing.T) {
 	assert.NotContains(t, err.Error(), basicValue)
 }
 
-func TestARedirectToTheSignInPageIsAnUnauthorizedError(t *testing.T) {
-	const pat = "a-token-the-server-does-not-know"
-
+// signInRedirectServer answers every request but its sign-in page with a 302
+// to that page, as Azure DevOps answers a bad Bearer token. paths lists what
+// was requested.
+func signInRedirectServer(t *testing.T) (srv *httptest.Server, paths func() []string) {
+	t.Helper()
 	var mu sync.Mutex
-	var paths []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var seen []string
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		paths = append(paths, r.URL.Path)
+		seen = append(seen, r.URL.Path)
 		mu.Unlock()
 		if r.URL.Path == "/_signin" {
 			w.Header().Set("Content-Type", "text/html")
 			_, _ = w.Write([]byte("<html><body>Sign in to continue</body></html>"))
 			return
 		}
-		// Azure DevOps answers a bad Bearer token with a 302 to its sign-in page.
 		w.Header().Set("Location", "/_signin")
 		w.WriteHeader(http.StatusFound)
 	}))
 	t.Cleanup(srv.Close)
+	return srv, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), seen...)
+	}
+}
+
+func TestARedirectToTheSignInPageIsAnUnauthorizedError(t *testing.T) {
+	const pat = "a-token-the-server-does-not-know"
+
+	srv, paths := signInRedirectServer(t)
 	sl := &sleeper{}
 	c, err := NewClient("any-org", patAuth(t, pat), ClientOptions{Endpoint: srv.URL, Sleep: sl.Sleep})
 	require.NoError(t, err)
@@ -428,7 +440,25 @@ func TestARedirectToTheSignInPageIsAnUnauthorizedError(t *testing.T) {
 	assert.NotContains(t, err.Error(), basicValue)
 	assert.NotContains(t, err.Error(), "_signin", "the Location header stays out of the error")
 
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, []string{"/any-org/_apis/connectionData"}, paths, "the sign-in page is never requested")
+	assert.Equal(t, []string{"/any-org/_apis/connectionData"}, paths(), "the sign-in page is never requested")
+}
+
+// A client the caller passes in follows redirects by default. The client must
+// still read the 302 itself, and must not change the caller's client.
+func TestACallersHTTPClientDoesNotFollowTheSignInRedirect(t *testing.T) {
+	srv, paths := signInRedirectServer(t)
+	own := &http.Client{Timeout: time.Minute}
+	c, err := NewClient("any-org", patAuth(t, "a-token-the-server-does-not-know"), ClientOptions{
+		Endpoint:   srv.URL,
+		HTTPClient: own,
+		Sleep:      (&sleeper{}).Sleep,
+	})
+	require.NoError(t, err)
+
+	_, err = c.ConnectionData(context.Background())
+	require.Error(t, err)
+	assert.True(t, IsUnauthorized(err), "got %v", err)
+	assert.Equal(t, []string{"/any-org/_apis/connectionData"}, paths(), "the sign-in page is never requested")
+	assert.Nil(t, own.CheckRedirect, "the caller's client is left as it was")
+	assert.Equal(t, time.Minute, own.Timeout)
 }
