@@ -139,6 +139,7 @@ func TestGitClone_ErrorsNeverContainTheCredential(t *testing.T) {
 		{"user and token", fixtureToken, func(s string) *url.Userinfo { return url.UserPassword("ci", s) }},
 		{"token as the user name", fixtureToken, url.User},
 		{"token that needs escaping, as the user name", "p@ss/w rd+1%x", url.User},
+		{"token as the user name with an empty password", fixtureToken, func(s string) *url.Userinfo { return url.UserPassword(s, "") }},
 		{"token that needs escaping, as the password", "p@ss/w:rd 1+x", func(s string) *url.Userinfo { return url.UserPassword("ci", s) }},
 	}
 	for _, tt := range tests {
@@ -175,6 +176,22 @@ func TestRedactSecrets(t *testing.T) {
 	require.ErrorIs(t, redacted, cause, "the cause stays reachable")
 }
 
+// A secret can be a substring of its own escaped spelling ("tok%" inside
+// "tok%25"). Replacing the short one first would leave a fragment of the long
+// one behind, whatever order the caller listed them in.
+func TestRedactSecrets_ReplacesTheLongestSpellingFirst(t *testing.T) {
+	cause := errors.New("GET http://tok%25@host/x failed")
+
+	for _, secrets := range [][]string{{"tok%", "tok%25"}, {"tok%25", "tok%"}} {
+		given := append([]string(nil), secrets...)
+		redacted := redactSecrets(cause, given)
+
+		require.EqualError(t, redacted, "GET http://_obfuscated_@host/x failed")
+		require.Equal(t, secrets, given, "the caller's slice is not reordered")
+	}
+	require.EqualError(t, redactSecrets(cause, urlSecrets("https://tok%25@host/p")), "GET http://_obfuscated_@host/x failed")
+}
+
 func TestURLSecrets(t *testing.T) {
 	tests := []struct {
 		name string
@@ -184,8 +201,10 @@ func TestURLSecrets(t *testing.T) {
 		{"no credentials", "https://host/p", nil},
 		{"unparseable", "http://[::1", nil},
 		{"empty user", "https://@host/p", nil},
+		{"empty user and empty password", "https://:@host/p", nil},
 		{"user and password: the password is the secret", "https://ci:tok@host/p", []string{"tok"}},
 		{"token only: the user name is the secret", "https://tok@host/p", []string{"tok"}},
+		{"token and an empty password: the user name is the secret", "https://tok:@host/p", []string{"tok"}},
 		{"escaped spellings are listed too", "https://p%40ss:w%2Frd@host/p", []string{"w/rd", "w%2Frd"}},
 	}
 	for _, tt := range tests {

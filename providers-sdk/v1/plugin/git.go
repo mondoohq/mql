@@ -4,6 +4,7 @@
 package plugin
 
 import (
+	"cmp"
 	"net/url"
 	"os"
 	"slices"
@@ -133,17 +134,22 @@ func (e *redactedError) Error() string {
 
 func (e *redactedError) Unwrap() error { return e.cause }
 
-// redactSecrets returns err unchanged when there is nothing to hide.
+// redactSecrets returns err unchanged when there is nothing to hide. A secret
+// can be a substring of another spelling of itself ("tok%" inside "tok%25"), so
+// the longest spelling is replaced first; the caller's slice is left as given.
 func redactSecrets(err error, secrets []string) error {
 	if err == nil || len(secrets) == 0 {
 		return err
 	}
-	return &redactedError{cause: err, secrets: secrets}
+	longestFirst := slices.Clone(secrets)
+	slices.SortStableFunc(longestFirst, func(a, b string) int { return cmp.Compare(len(b), len(a)) })
+	return &redactedError{cause: err, secrets: longestFirst}
 }
 
 // urlSecrets lists the strings that carry the credential in rawURL's userinfo:
-// the password when there is one, otherwise the username, which NewGitClone
-// fills with the token when no user is configured. go-git copies the request
+// the password when there is a non-empty one, otherwise the username, which
+// NewGitClone fills with the token when no user is configured. An empty
+// password ("https://tok:@host") still sends the username as the credential. go-git copies the request
 // URL into its HTTP errors and redacts a password, but leaves a username-only
 // credential in place. The raw and URL-escaped spellings are both listed
 // because go-git prints the escaped one.
@@ -153,7 +159,7 @@ func urlSecrets(rawURL string) []string {
 		return nil
 	}
 	secret, hasPassword := u.User.Password()
-	if !hasPassword {
+	if !hasPassword || secret == "" {
 		secret = u.User.Username()
 	}
 	if secret == "" {
