@@ -1,4 +1,4 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package oauthlogin implements interactive CLI login as a public OAuth 2.0
@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/oauth2"
 )
@@ -239,17 +240,23 @@ func sanitizeParam(v string) string {
 		}
 		return r
 	}, strings.TrimSpace(v))
-	if len(v) > maxParamLen {
-		v = v[:maxParamLen]
-		for !isValidUTF8Prefix(v) {
-			v = v[:len(v)-1]
-		}
-	}
-	return v
+	return truncateUTF8(v, maxParamLen)
 }
 
-func isValidUTF8Prefix(s string) bool {
-	return strings.ToValidUTF8(s, "�") == s
+// truncateUTF8 shortens s to at most n bytes without splitting a rune.
+func truncateUTF8(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	s = s[:n]
+	for len(s) > 0 {
+		r, size := utf8.DecodeLastRuneInString(s)
+		if r != utf8.RuneError || size > 1 {
+			break
+		}
+		s = s[:len(s)-1]
+	}
+	return s
 }
 
 // tokenError turns an RFC 6749 error response into a readable error.

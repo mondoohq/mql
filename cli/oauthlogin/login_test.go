@@ -1,4 +1,4 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package oauthlogin
@@ -337,3 +337,100 @@ func assertResult(t *testing.T, f *fakeAS, res *Result) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func revokeTestKey(t *testing.T, f *fakeAS) string {
+	t.Helper()
+	key, err := GenerateKey()
+	require.NoError(t, err)
+	f.pubKey = &key.PublicKey
+	pemStr, err := EncodePrivateKeyPEM(key)
+	require.NoError(t, err)
+	return pemStr
+}
+
+func TestRevoke_NoContent(t *testing.T) {
+	f := newFakeAS(t)
+	f.revokeStatus = http.StatusNoContent
+	pemStr := revokeTestKey(t, f)
+	require.NoError(t, Revoke(context.Background(), f.srv.Client(), f.issuer(), "the-token", pemStr, false))
+}
+
+func TestRevoke_ErrorIncludesBodySnippet(t *testing.T) {
+	f := newFakeAS(t)
+	f.revokeStatus = http.StatusBadRequest
+	f.revokeBody = "{\"error\":\"unsupported_token_type\"}\n" + strings.Repeat("x", 1000)
+	pemStr := revokeTestKey(t, f)
+	err := Revoke(context.Background(), f.srv.Client(), f.issuer(), "the-token", pemStr, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "400")
+	assert.Contains(t, err.Error(), "unsupported_token_type")
+	assert.NotContains(t, err.Error(), "\n")
+	assert.Less(t, len(err.Error()), 300)
+}
+
+func TestLoopbackCallback_RejectsNonGET(t *testing.T) {
+	f := newFakeAS(t)
+	opts := testOptions(f, ModeBrowser)
+	posted := make(chan int, 1)
+	opts.OpenBrowser = func(u string) error {
+		parsed, err := url.Parse(u)
+		if err != nil {
+			return err
+		}
+		q := parsed.Query()
+		resp, err := http.Post(q.Get("redirect_uri"), "application/x-www-form-urlencoded",
+			strings.NewReader(url.Values{"code": {"x"}, "state": {q.Get("state")}}.Encode()))
+		if err != nil {
+			return err
+		}
+		resp.Body.Close()
+		posted <- resp.StatusCode
+		return f.authorize(u, nil)
+	}
+	res, err := Login(context.Background(), opts)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusMethodNotAllowed, <-posted)
+	assertResult(t, f, res)
+}
+
+func TestTruncateUTF8(t *testing.T) {
+	assert.Equal(t, "abc", truncateUTF8("abc", 5))
+	assert.Equal(t, "ab", truncateUTF8("abc", 2))
+	// "é" is two bytes; cutting inside it drops the partial rune.
+	assert.Equal(t, "a", truncateUTF8("aé", 2))
+	assert.Equal(t, "aé", truncateUTF8("aéb", 3))
+	// A three-byte rune cut after one or two bytes.
+	assert.Equal(t, "a", truncateUTF8("a€", 2))
+	assert.Equal(t, "a", truncateUTF8("a€", 3))
+	// A U+FFFD already in the input is kept.
+	assert.Equal(t, "a�", truncateUTF8("a�bc", 4))
+	assert.Equal(t, "", truncateUTF8("€", 1))
+}
+
+func TestDeviceProofWindow(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+
+	// The device code outlives the longest proof: the proof is capped and
+	// polling stops a margin before it expires.
+	lifetime, deadline := deviceProofWindow(now, now.Add(30*time.Minute))
+	assert.Equal(t, MaxKeyProofLifetime, lifetime)
+	assert.Equal(t, now.Add(MaxKeyProofLifetime-proofSafetyMargin), deadline)
+
+	// The device code expires first: polling runs until it expires and the
+	// proof stays valid a margin past that.
+	expiry := now.Add(10 * time.Minute)
+	lifetime, deadline = deviceProofWindow(now, expiry)
+	assert.Equal(t, 10*time.Minute+proofSafetyMargin, lifetime)
+	assert.Equal(t, expiry, deadline)
+	assert.True(t, now.Add(lifetime).After(deadline))
+
+	// Unknown expiry: the longest proof.
+	lifetime, deadline = deviceProofWindow(now, time.Time{})
+	assert.Equal(t, MaxKeyProofLifetime, lifetime)
+	assert.Equal(t, now.Add(MaxKeyProofLifetime-proofSafetyMargin), deadline)
+
+	// Already expired: a positive lifetime and no polling time left.
+	lifetime, deadline = deviceProofWindow(now, now.Add(-time.Minute))
+	assert.Equal(t, proofSafetyMargin, lifetime)
+	assert.Equal(t, now, deadline)
+}

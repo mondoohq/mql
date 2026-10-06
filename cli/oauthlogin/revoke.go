@@ -1,4 +1,4 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package oauthlogin
@@ -56,9 +56,17 @@ func Revoke(ctx context.Context, client *http.Client, issuer, accessToken, priva
 		return err
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("revocation failed: %s", resp.Status)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
 	}
-	return nil
+	if snippet := bodySnippet(body); snippet != "" {
+		return fmt.Errorf("revocation failed: %s: %s", resp.Status, snippet)
+	}
+	return fmt.Errorf("revocation failed: %s", resp.Status)
+}
+
+// bodySnippet returns a short, single-line excerpt of an error response body.
+func bodySnippet(body []byte) string {
+	return truncateUTF8(sanitizeParam(string(body)), 200)
 }
