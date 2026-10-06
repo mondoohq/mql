@@ -514,7 +514,34 @@ name {
 `)
 		require.Len(t, res.Resources, 1)
 		assert.Equal(t, "Resource title", res.Resources[0].title)
-		assert.Equal(t, "Wrapped prose\ncontinues here.\n\n| id | name |\n|---|---|\n| a | A |", res.Resources[0].desc)
+		assert.Equal(t, "Wrapped prose continues here.\n\n| id | name |\n|---|---|\n| a | A |", res.Resources[0].desc)
+	})
+
+	t.Run("reflows wrapped prose and keeps markdown blocks", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			lines []string
+			want  string
+		}{
+			{"single line", []string{"One line."}, "One line."},
+			{"wrapped prose", []string{"A sentence wrapped", "over two lines."}, "A sentence wrapped over two lines."},
+			{"paragraphs", []string{"First.", "", "Second", "wrapped."}, "First.\n\nSecond wrapped."},
+			{"prose after table", []string{"| a |", "|---|", "Trailing."}, "| a |\n|---|\nTrailing."},
+			{"list with wrapped item", []string{"Kinds:", "- one, which", "wraps", "- two", "1. three"}, "Kinds:\n- one, which wraps\n- two\n1. three"},
+			{"heading", []string{"# Head", "Body text", "wraps."}, "# Head\nBody text wraps."},
+			{"fenced code keeps lines and blanks", []string{"```", "a", "", "b", "```", "After."}, "```\na\n\nb\n```\nAfter."},
+			{"number without list marker", []string{"Retained for", "30 days."}, "Retained for 30 days."},
+			{"wrapped sentence starting with a number", []string{"Key size, for example", "256. 0 when unknown."}, "Key size, for example 256. 0 when unknown."},
+			{"numbered list after a blank line", []string{"Steps:", "", "2. two", "3. three"}, "Steps:\n\n2. two\n3. three"},
+			{"numbered list starting at 1", []string{"Steps:", "1. one", "2. two", "3. three"}, "Steps:\n1. one\n2. two\n3. three"},
+			{"wrapped line starting with >", []string{"Settings", "> Sharing on Ventura."}, "Settings > Sharing on Ventura."},
+			{"wrapped line starting with a hash", []string{"Issue", "#42 tracks it."}, "Issue #42 tracks it."},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				assert.Equal(t, tt.want, reflowDescription(tt.lines))
+			})
+		}
 	})
 
 	t.Run("resource with a list type", func(t *testing.T) {

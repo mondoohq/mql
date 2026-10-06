@@ -337,14 +337,72 @@ func extractTitleAndDescription(raw []CommentToken) (string, string) {
 	if len(rest) > 0 && rest[0].Text == "" {
 		rest = rest[1:]
 	}
-	// Keep the line breaks: descriptions are rendered as markdown, where a
-	// single newline reads as a space but tables and lists need their lines.
-	parts := make([]string, len(rest))
+	lines := make([]string, len(rest))
 	for i, c := range rest {
-		parts[i] = c.Text
+		lines[i] = c.Text
 	}
-	desc := strings.Join(parts, "\n")
-	return title, desc
+	return title, reflowDescription(lines)
+}
+
+// reflowDescription joins description comment lines into markdown. Lines
+// wrapped to fit the source are prose and join with a space, since renderers
+// may show a bare newline as a line break. Blank lines stay paragraph breaks,
+// and markdown block lines (table rows, list items, headings, fenced code)
+// keep their own line.
+func reflowDescription(lines []string) string {
+	var sb strings.Builder
+	inFence := false
+	prevBlock, prevItem := false, false
+	for i, line := range lines {
+		fence := strings.HasPrefix(line, "```")
+		item := !inFence && isMarkdownListItem(line, i == 0 || lines[i-1] == "" || prevItem)
+		block := inFence || fence || item || isMarkdownTableOrHeading(line)
+		switch {
+		case i == 0:
+		case inFence || fence:
+			sb.WriteString("\n")
+		case line == "" || lines[i-1] == "":
+			sb.WriteString("\n")
+		case block || (prevBlock && !prevItem):
+			sb.WriteString("\n")
+		default:
+			// Prose, including the wrapped continuation of a list item.
+			sb.WriteString(" ")
+		}
+		sb.WriteString(line)
+		if fence {
+			inFence = !inFence
+		}
+		prevBlock = block
+		// A list item's wrapped continuation lines still belong to it.
+		prevItem = item || (prevItem && line != "" && !block)
+	}
+	return sb.String()
+}
+
+// isMarkdownTableOrHeading reports whether a line is a table row or a heading,
+// which keep their own line.
+func isMarkdownTableOrHeading(line string) bool {
+	return strings.HasPrefix(line, "|") ||
+		(strings.HasPrefix(line, "#") && strings.HasPrefix(strings.TrimLeft(line, "#"), " "))
+}
+
+// isMarkdownListItem reports whether a line is a bullet or numbered list item.
+// As in CommonMark, a numbered item only interrupts prose when numbered 1, so
+// a sentence wrapped before "256. 0 when" stays prose. inList is set after a
+// blank line or another list item, where any number starts an item.
+func isMarkdownListItem(line string, inList bool) bool {
+	if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") || strings.HasPrefix(line, "+ ") {
+		return true
+	}
+	digits := 0
+	for digits < len(line) && line[digits] >= '0' && line[digits] <= '9' {
+		digits++
+	}
+	if digits == 0 || !strings.HasPrefix(line[digits:], ". ") {
+		return false
+	}
+	return inList || line[:digits] == "1"
 }
 
 // MaxTitleLength caps the rune count of a doc-comment title line. Titles
