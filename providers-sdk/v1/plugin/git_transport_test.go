@@ -36,6 +36,9 @@ func TestIsAzureDevOpsHost(t *testing.T) {
 		{"azure.com", false},
 		{"visualstudio.com", false},
 		{".visualstudio.com", false},
+		{"..visualstudio.com", false},
+		{"a.b.visualstudio.com", false},
+		{"org.vİsualstudio.com", false}, // U+0130 lowercases to "i" in Unicode-aware folding
 		{"notvisualstudio.com", false},
 		{"evildev.azure.com", false},
 		{"dev.azure.com.evil.example", false},

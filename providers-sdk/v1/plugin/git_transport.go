@@ -5,6 +5,7 @@ package plugin
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
 )
@@ -20,15 +21,23 @@ import (
 // DevOps hosts have their request adjusted.
 
 // isAzureDevOpsHost reports whether host is served by Azure DevOps Services:
-// dev.azure.com, or an organization host under visualstudio.com. host is a
-// bare hostname; go-git's transport.Endpoint.Host carries no port.
+// dev.azure.com, or <org>.visualstudio.com with exactly one non-empty
+// organization label. host is a bare hostname; go-git's transport.Endpoint.Host
+// carries no port. A host with any non-ASCII byte is never matched: Unicode case
+// folding would otherwise turn a lookalike such as "vİsualstudio" (U+0130) into
+// "visualstudio".
 func isAzureDevOpsHost(host string) bool {
+	for i := 0; i < len(host); i++ {
+		if host[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
 	host = strings.TrimSuffix(strings.ToLower(host), ".")
 	if host == "dev.azure.com" {
 		return true
 	}
-	const legacySuffix = ".visualstudio.com"
-	return strings.HasSuffix(host, legacySuffix) && len(host) > len(legacySuffix)
+	org, ok := strings.CutSuffix(host, ".visualstudio.com")
+	return ok && org != "" && !strings.Contains(org, ".")
 }
 
 // adjustAzureDevOpsCapabilities makes caps what Azure DevOps accepts: exactly
