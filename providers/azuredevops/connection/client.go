@@ -76,15 +76,22 @@ func RedactUserinfo(s string) string {
 
 // ParseOrganization returns the organization name from a bare name, from
 // https://dev.azure.com/<org>, or from the legacy https://<org>.visualstudio.com.
+// Both addresses are also taken without the scheme, as a browser's address bar
+// shows them.
 func ParseOrganization(input string) (string, error) {
 	s := strings.TrimSpace(input)
 	if s == "" {
 		return "", errors.New("azure devops: the organization is empty")
 	}
 
+	addr := s
+	if !strings.Contains(s, "://") && isSchemelessAddress(s) {
+		addr = "https://" + s
+	}
+
 	name := s
-	if strings.Contains(s, "://") {
-		u, err := url.Parse(s)
+	if strings.Contains(addr, "://") {
+		u, err := url.Parse(addr)
 		if err != nil {
 			// The parse error repeats the whole input, user information included.
 			return "", fmt.Errorf("azure devops: cannot parse the organization %q", RedactUserinfo(s))
@@ -104,6 +111,22 @@ func ParseOrganization(input string) (string, error) {
 		return "", fmt.Errorf("azure devops: %q is not a valid organization name", RedactUserinfo(name))
 	}
 	return name, nil
+}
+
+// isSchemelessAddress reports an Azure DevOps address typed without its scheme:
+// dev.azure.com/<org>[/...] or <org>.visualstudio.com[/...], in any case. An
+// address with user information is not taken: a browser never shows one, and
+// the name check refuses it with the user information left out of the error.
+func isSchemelessAddress(s string) bool {
+	lower := strings.ToLower(s)
+	if strings.HasPrefix(lower, "dev.azure.com/") {
+		return true
+	}
+	host := lower
+	if end := strings.IndexAny(host, "/?#"); end >= 0 {
+		host = host[:end]
+	}
+	return !strings.Contains(host, "@") && strings.HasSuffix(host, ".visualstudio.com")
 }
 
 // APIError is a non-success answer from Azure DevOps.

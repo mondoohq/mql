@@ -78,6 +78,13 @@ func TestParseCLIOrganizationFromAnAddress(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "mondoo-ado-scan-test", conf.Options[connection.OPTION_ORGANIZATION])
 
+	// as copied from a browser's address bar, without the scheme
+	for _, addr := range []string{"dev.azure.com/mondoo-ado-scan-test", "mondoo-ado-scan-test.visualstudio.com/scan-test"} {
+		conf, err = parse(t, []string{"org", addr}, flags)
+		require.NoError(t, err, addr)
+		assert.Equal(t, "mondoo-ado-scan-test", conf.Options[connection.OPTION_ORGANIZATION], addr)
+	}
+
 	_, err = parse(t, []string{"org", "https://example.com/mondoo-ado-scan-test"}, flags)
 	require.Error(t, err)
 }
@@ -253,6 +260,7 @@ func TestParseCLIErrorsLeaveAPastedTokenOut(t *testing.T) {
 		{"repo", pasted + "@org/project/repo"},
 		{"org", "https://user:" + pasted + "@example.com/org"},
 		{"org", "user:" + pasted + "@dev.azure.com"},
+		{"org", "user:" + pasted + "@dev.azure.com/org"},
 	} {
 		_, err := parse(t, args, flags)
 		require.Error(t, err, args[0])

@@ -92,6 +92,16 @@ func TestParseOrganization(t *testing.T) {
 		{name: "dev.azure.com url with a project", input: "https://dev.azure.com/mondoo-ado-scan-test/scan-test/_git/repo", want: "mondoo-ado-scan-test"},
 		{name: "legacy visualstudio.com host", input: "https://mondoo-ado-scan-test.visualstudio.com/scan-test", want: "mondoo-ado-scan-test"},
 		{name: "legacy host in upper case", input: "https://Mondoo-Ado-Scan-Test.VisualStudio.com", want: "mondoo-ado-scan-test"},
+		{name: "dev.azure.com without a scheme", input: "dev.azure.com/mondoo-ado-scan-test", want: "mondoo-ado-scan-test"},
+		{name: "dev.azure.com without a scheme, with a trailing slash", input: "dev.azure.com/mondoo-ado-scan-test/", want: "mondoo-ado-scan-test"},
+		{name: "dev.azure.com without a scheme, with a project and repository", input: "dev.azure.com/mondoo-ado-scan-test/scan-test/_git/repo", want: "mondoo-ado-scan-test"},
+		{name: "dev.azure.com without a scheme in upper case", input: "DEV.AZURE.COM/mondoo-ado-scan-test", want: "mondoo-ado-scan-test"},
+		{name: "legacy host without a scheme", input: "mondoo-ado-scan-test.visualstudio.com", want: "mondoo-ado-scan-test"},
+		{name: "legacy host without a scheme, with a project and repository", input: "mondoo-ado-scan-test.visualstudio.com/scan-test/_git/repo", want: "mondoo-ado-scan-test"},
+		{name: "legacy host without a scheme in upper case", input: "Mondoo-Ado-Scan-Test.VisualStudio.com/scan-test", want: "mondoo-ado-scan-test"},
+		{name: "dev.azure.com without a scheme or an organization", input: "dev.azure.com/", wantErr: "not a valid organization name"},
+		{name: "dev.azure.com alone", input: "dev.azure.com", wantErr: "not a valid organization name"},
+		{name: "another host without a scheme", input: "example.com/mondoo-ado-scan-test", wantErr: "not a valid organization name"},
 		{name: "empty", input: "", wantErr: "is empty"},
 		{name: "another host", input: "https://example.com/org", wantErr: "not an Azure DevOps Services address"},
 		{name: "path only", input: "https://dev.azure.com/", wantErr: "not a valid organization name"},
@@ -134,6 +144,11 @@ func TestErrorsLeaveTheUserInformationOfAnAddressOut(t *testing.T) {
 		"https://user:" + pastedSecret + "@dev.azure.com:badport/org",
 		"user:" + pastedSecret + "@dev.azure.com",
 		pastedSecret + "@dev.azure.com/org",
+		// without a scheme, an address with user information is not taken as
+		// an address
+		"user:" + pastedSecret + "@dev.azure.com/org",
+		"user:" + pastedSecret + "@org.visualstudio.com",
+		pastedSecret + "@org.visualstudio.com/project",
 	}
 	for _, input := range organizations {
 		_, err := ParseOrganization(input)

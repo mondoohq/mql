@@ -18,7 +18,8 @@ Azure DevOps Server (on-premises) is not supported.
 
 Arguments:
 
-- `org <name>` - an organization. The name or the `https://dev.azure.com/<name>` address works.
+- `org <name>` - an organization. The name works, and so does its `dev.azure.com/<name>` or
+  `<name>.visualstudio.com` address, with or without `https://`.
 - `repo <org>/<project>/<repo>` - a single repository.
 - `--token` - a personal access token. Also read from `AZURE_DEVOPS_TOKEN`.
 - `--tenant-id`, `--client-id`, `--client-secret` - a Microsoft Entra service principal. Also
