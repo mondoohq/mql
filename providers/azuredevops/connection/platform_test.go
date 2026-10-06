@@ -12,7 +12,7 @@ import (
 )
 
 // The repository id is minted by the server and by this provider from the
-// decoded names xgrep sends (X-PR1 pins the same string), so the golden value
+// decoded names xgrep sends (the xgrep side pins the same string), so the golden value
 // must not change without changing every side.
 func TestRepoIdentifierGolden(t *testing.T) {
 	got := NewRepoIdentifier("mondoo-ado-scan-test", "scan test", "ado-scan-test-iac")
