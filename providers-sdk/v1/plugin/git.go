@@ -94,7 +94,7 @@ func gitClone(gitUrl string) (string, func(), error) {
 		}
 		infoUrl = u.String()
 	}
-	secrets := urlSecrets(gitUrl)
+	secrets, userinfoNames := urlSecrets(gitUrl)
 
 	log.Info().Str("url", infoUrl).Str("path", cloneDir).Msg("git clone")
 	repo, err := git.PlainClone(cloneDir, false, &git.CloneOptions{
@@ -105,13 +105,13 @@ func gitClone(gitUrl string) (string, func(), error) {
 	})
 	if err != nil {
 		closer()
-		return "", nil, errors.Wrap(redactSecrets(err, secrets), "failed to clone git repo "+infoUrl)
+		return "", nil, errors.Wrap(redactSecrets(err, secrets, userinfoNames), "failed to clone git repo "+infoUrl)
 	}
 
 	ref, err := repo.Head()
 	if err != nil {
 		closer()
-		return "", nil, errors.Wrap(redactSecrets(err, secrets), "failed to get head of git repo "+infoUrl)
+		return "", nil, errors.Wrap(redactSecrets(err, secrets, userinfoNames), "failed to get head of git repo "+infoUrl)
 	}
 
 	log.Info().Str("url", infoUrl).Str("path", cloneDir).Str("head", ref.Hash().String()).Msg("finished git clone")
@@ -122,56 +122,85 @@ func gitClone(gitUrl string) (string, func(), error) {
 // redactedError reports its cause's text with secrets replaced, and keeps the
 // cause reachable through errors.Is and errors.As.
 type redactedError struct {
-	cause   error
-	secrets []string
+	cause      error
+	redactions []redaction
 }
+
+// A redaction replaces every occurrence of old in an error's text with new.
+type redaction struct{ old, new string }
 
 func (e *redactedError) Error() string {
 	text := e.cause.Error()
-	for _, secret := range e.secrets {
-		text = strings.ReplaceAll(text, secret, "_obfuscated_")
+	for _, r := range e.redactions {
+		text = strings.ReplaceAll(text, r.old, r.new)
 	}
 	return text
 }
 
 func (e *redactedError) Unwrap() error { return e.cause }
 
-// redactSecrets returns err unchanged when there is nothing to hide. A secret
-// can be a substring of another spelling of itself ("tok%" inside "tok%25"), so
-// the longest spelling is replaced first; the caller's slice is left as given.
-func redactSecrets(err error, secrets []string) error {
-	if err == nil || len(secrets) == 0 {
+// redactSecrets returns err unchanged when there is nothing to hide. Each
+// secret is replaced wherever it appears. Each user name is replaced only where
+// it opens a URL's userinfo ("//name:" or "//name@"), so a short name such as
+// "ci" is left alone elsewhere in the text. A spelling can be a substring of
+// another ("tok%" inside "tok%25"), so the longest is replaced first; the
+// caller's slices are left as given.
+func redactSecrets(err error, secrets, userinfoNames []string) error {
+	if err == nil || len(secrets)+len(userinfoNames) == 0 {
 		return err
 	}
-	longestFirst := slices.Clone(secrets)
-	slices.SortStableFunc(longestFirst, func(a, b string) int { return cmp.Compare(len(b), len(a)) })
-	return &redactedError{cause: err, secrets: longestFirst}
-}
-
-// urlSecrets lists the strings that carry the credential in rawURL's userinfo:
-// the password when there is a non-empty one, otherwise the username, which
-// NewGitClone fills with the token when no user is configured. An empty
-// password ("https://tok:@host") still sends the username as the credential. go-git copies the request
-// URL into its HTTP errors and redacts a password, but leaves a username-only
-// credential in place. The raw and URL-escaped spellings are both listed
-// because go-git prints the escaped one.
-func urlSecrets(rawURL string) []string {
-	u, err := url.Parse(rawURL)
-	if err != nil || u.User == nil {
-		return nil
+	redactions := make([]redaction, 0, len(secrets)+2*len(userinfoNames))
+	for _, secret := range secrets {
+		redactions = append(redactions, redaction{old: secret, new: "_obfuscated_"})
 	}
-	secret, hasPassword := u.User.Password()
-	if !hasPassword || secret == "" {
-		secret = u.User.Username()
-	}
-	if secret == "" {
-		return nil
-	}
-	secrets := []string{secret}
-	for _, escaped := range []string{url.PathEscape(secret), url.User(secret).String()} {
-		if !slices.Contains(secrets, escaped) {
-			secrets = append(secrets, escaped)
+	for _, name := range userinfoNames {
+		for _, next := range []string{":", "@"} {
+			redactions = append(redactions, redaction{old: "//" + name + next, new: "//_obfuscated_" + next})
 		}
 	}
-	return secrets
+	slices.SortStableFunc(redactions, func(a, b redaction) int { return cmp.Compare(len(b.old), len(a.old)) })
+	return &redactedError{cause: err, redactions: redactions}
+}
+
+// urlSecrets lists the spellings of the credential in rawURL's userinfo. go-git
+// copies the request URL into its HTTP errors and redacts a password, but
+// leaves the user name in place.
+//
+// secrets holds the password when there is a non-empty one, otherwise the user
+// name, which NewGitClone fills with the token when no user is configured. An
+// empty password ("https://tok:@host") still sends the user name as the
+// credential.
+//
+// userinfoNames holds the user name when it sits next to a non-empty password,
+// because either one can be the token: "https://ci:TOKEN@host", or a
+// placeholder password as in "https://TOKEN:x-oauth-basic@host".
+//
+// The raw and URL-escaped spellings are all listed, because go-git prints the
+// escaped ones.
+func urlSecrets(rawURL string) (secrets, userinfoNames []string) {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.User == nil {
+		return nil, nil
+	}
+	name := u.User.Username()
+	password, hasPassword := u.User.Password()
+	if !hasPassword || password == "" {
+		return spellings(name), nil
+	}
+	return spellings(password), spellings(name)
+}
+
+// spellings lists s as written and as url.PathEscape and url.User escape it,
+// without repeats. An empty s has none.
+func spellings(s string) []string {
+	if s == "" {
+		return nil
+	}
+	out := []string{s}
+	for _, escaped := range []string{url.PathEscape(s), url.User(s).String()} {
+		if !slices.Contains(out, escaped) {
+			out = append(out, escaped)
+		}
+	}
+	return out
 }

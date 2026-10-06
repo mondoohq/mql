@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -134,7 +135,9 @@ func TestNewGitClone_InputErrorsAreUnchanged(t *testing.T) {
 
 // go-git copies the request URL into its HTTP errors. It redacts a password but
 // not a username, and NewGitClone puts a token with no user name into the
-// username slot. A server error therefore used to print the token.
+// username slot. A server error therefore used to print the token. A
+// credential can also hold the token as the user name next to a placeholder
+// password ("https://TOKEN:x-oauth-basic@host").
 func TestGitClone_ErrorsNeverContainTheCredential(t *testing.T) {
 	resetGitTransport(t)
 	tests := []struct {
@@ -147,6 +150,8 @@ func TestGitClone_ErrorsNeverContainTheCredential(t *testing.T) {
 		{"token that needs escaping, as the user name", "p@ss/w rd+1%x", url.User},
 		{"token as the user name with an empty password", fixtureToken, func(s string) *url.Userinfo { return url.UserPassword(s, "") }},
 		{"token that needs escaping, as the password", "p@ss/w:rd 1+x", func(s string) *url.Userinfo { return url.UserPassword("ci", s) }},
+		{"token as the user name next to a placeholder password", fixtureToken, func(s string) *url.Userinfo { return url.UserPassword(s, "x-oauth-basic") }},
+		{"token that needs escaping, as the user name next to a placeholder password", "p@ss/w rd+1%x", func(s string) *url.Userinfo { return url.UserPassword(s, "x-oauth-basic") }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -167,6 +172,13 @@ func TestGitClone_ErrorsNeverContainTheCredential(t *testing.T) {
 			require.NotContains(t, err.Error(), tt.token)
 			require.NotContains(t, err.Error(), url.PathEscape(tt.token))
 			require.NotContains(t, err.Error(), url.User(tt.token).String())
+			// Nor does a fragment of it: the userinfo of every URL in the
+			// text, ours and go-git's, is replaced whole.
+			userinfos := regexp.MustCompile(`://([^/@"]*)@`).FindAllStringSubmatch(err.Error(), -1)
+			require.GreaterOrEqual(t, len(userinfos), 2, err.Error())
+			for _, m := range userinfos {
+				require.Contains(t, []string{"_obfuscated_", "_obfuscated_:REDACTED"}, m[1], err.Error())
+			}
 		})
 	}
 }
@@ -174,12 +186,27 @@ func TestGitClone_ErrorsNeverContainTheCredential(t *testing.T) {
 func TestRedactSecrets(t *testing.T) {
 	cause := errors.New("GET http://abc123@host/x failed")
 
-	require.NoError(t, redactSecrets(nil, []string{"abc123"}))
-	require.Same(t, cause, redactSecrets(cause, nil), "nothing to hide: the error is returned as is")
+	require.NoError(t, redactSecrets(nil, []string{"abc123"}, nil))
+	require.Same(t, cause, redactSecrets(cause, nil, nil), "nothing to hide: the error is returned as is")
 
-	redacted := redactSecrets(cause, []string{"abc123"})
+	redacted := redactSecrets(cause, []string{"abc123"}, nil)
 	require.EqualError(t, redacted, "GET http://_obfuscated_@host/x failed")
 	require.ErrorIs(t, redacted, cause, "the cause stays reachable")
+}
+
+// A user name next to a password is hidden where it opens a URL's userinfo and
+// nowhere else, so a short name like "ci" does not mangle the rest of the text.
+func TestRedactSecrets_UserNamesOnlyInUserinfo(t *testing.T) {
+	cause := errors.New(`GET "http://ci:REDACTED@host/ci/x" then "https://ci@host/y" failed: ci`)
+
+	redacted := redactSecrets(cause, nil, []string{"ci"})
+	require.EqualError(t, redacted, `GET "http://_obfuscated_:REDACTED@host/ci/x" then "https://_obfuscated_@host/y" failed: ci`)
+	require.ErrorIs(t, redacted, cause)
+
+	secrets, names := urlSecrets("https://TOKEN:x-oauth-basic@host/p")
+	require.EqualError(t,
+		redactSecrets(errors.New(`GET "http://TOKEN:REDACTED@host/p" (x-oauth-basic) failed`), secrets, names),
+		`GET "http://_obfuscated_:REDACTED@host/p" (_obfuscated_) failed`)
 }
 
 // A secret can be a substring of its own escaped spelling ("tok%" inside
@@ -190,32 +217,38 @@ func TestRedactSecrets_ReplacesTheLongestSpellingFirst(t *testing.T) {
 
 	for _, secrets := range [][]string{{"tok%", "tok%25"}, {"tok%25", "tok%"}} {
 		given := append([]string(nil), secrets...)
-		redacted := redactSecrets(cause, given)
+		redacted := redactSecrets(cause, given, nil)
 
 		require.EqualError(t, redacted, "GET http://_obfuscated_@host/x failed")
 		require.Equal(t, secrets, given, "the caller's slice is not reordered")
 	}
-	require.EqualError(t, redactSecrets(cause, urlSecrets("https://tok%25@host/p")), "GET http://_obfuscated_@host/x failed")
+	secrets, names := urlSecrets("https://tok%25@host/p")
+	require.EqualError(t, redactSecrets(cause, secrets, names), "GET http://_obfuscated_@host/x failed")
 }
 
 func TestURLSecrets(t *testing.T) {
 	tests := []struct {
-		name string
-		raw  string
-		want []string
+		name      string
+		raw       string
+		want      []string
+		wantNames []string
 	}{
-		{"no credentials", "https://host/p", nil},
-		{"unparseable", "http://[::1", nil},
-		{"empty user", "https://@host/p", nil},
-		{"empty user and empty password", "https://:@host/p", nil},
-		{"user and password: the password is the secret", "https://ci:tok@host/p", []string{"tok"}},
-		{"token only: the user name is the secret", "https://tok@host/p", []string{"tok"}},
-		{"token and an empty password: the user name is the secret", "https://tok:@host/p", []string{"tok"}},
-		{"escaped spellings are listed too", "https://p%40ss:w%2Frd@host/p", []string{"w/rd", "w%2Frd"}},
+		{"no credentials", "https://host/p", nil, nil},
+		{"unparseable", "http://[::1", nil, nil},
+		{"empty user", "https://@host/p", nil, nil},
+		{"empty user and empty password", "https://:@host/p", nil, nil},
+		{"user and password: the password is the secret", "https://ci:tok@host/p", []string{"tok"}, []string{"ci"}},
+		{"token only: the user name is the secret", "https://tok@host/p", []string{"tok"}, nil},
+		{"token and an empty password: the user name is the secret", "https://tok:@host/p", []string{"tok"}, nil},
+		{"escaped spellings are listed too", "https://p%40ss:w%2Frd@host/p", []string{"w/rd", "w%2Frd"}, []string{"p@ss", "p%40ss"}},
+		{"token and a placeholder password: both are hidden", "https://tok:x-oauth-basic@host/p", []string{"x-oauth-basic"}, []string{"tok"}},
+		{"empty user and a password: no user name to hide", "https://:tok@host/p", []string{"tok"}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, urlSecrets(tt.raw))
+			secrets, names := urlSecrets(tt.raw)
+			require.Equal(t, tt.want, secrets)
+			require.Equal(t, tt.wantNames, names)
 		})
 	}
 }
