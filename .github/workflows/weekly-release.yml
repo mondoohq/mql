@@ -58,6 +58,9 @@ jobs:
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
+        # An explicit `shell: bash` adds pipefail; the default shell would let
+        # tee swallow the script's exit status.
+        shell: bash
         run: .github/scripts/next-minor-release.sh | tee -a "$GITHUB_OUTPUT"
 
       - name: Summarize
@@ -166,7 +169,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": ":x: Weekly release failed, no tag was pushed. See the <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|workflow run>."
+                    "text": ":x: Weekly release failed. See the <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|workflow run>."
                   }
                 }
               ]
