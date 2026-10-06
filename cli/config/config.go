@@ -469,9 +469,10 @@ type CommonOpts struct {
 	// resolve through. Unset means "stable". See KeyUpdateChannel.
 	UpdateChannel string `json:"update_channel,omitempty" mapstructure:"update_channel"`
 
-	// Exceptions are the user-scope exceptions (cnspec ADR-0006). The same key
-	// in a context config, a mondoo.yml at a scanned root, is read separately
-	// by ParseContextConfig and never through this struct.
+	// Exceptions are the user-scope exceptions (cnspec ADR-0006), in preview:
+	// the shape may still change. The same key in a context config, a
+	// mondoo.yml at a scanned root, is read separately by ParseContextConfig
+	// and never through this struct.
 	Exceptions []Exception `json:"exceptions,omitempty" mapstructure:"exceptions"`
 }
 

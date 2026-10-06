@@ -26,7 +26,8 @@ const (
 	maxContextConfigSize = 1 << 20
 )
 
-// ContextConfigKeys are the top-level keys a context config may carry.
+// ContextConfigKeys are the top-level keys a context config may carry. Context
+// configs are in preview: this set may still change (cnspec ADR-0006).
 var ContextConfigKeys = map[string]struct{}{
 	"exceptions": {},
 }

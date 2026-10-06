@@ -192,6 +192,7 @@ type Asset struct {
 	// Resource-anchored relationships to other assets (ADR 030). Each edge
 	// names the counterparty asset and the resource on it that anchors the edge.
 	Relationships []*AssetRelationship `protobuf:"bytes,39,rep,name=relationships,proto3" json:"relationships,omitempty"`
+	// Preview: may still change (cnspec ADR-0006).
 	// The mondoo.yml found at the root this asset was scanned from, as the
 	// provider found it at connect time. Only the provider knows where that
 	// root is, which may be a temporary clone (cnspec ADR-0006).
@@ -370,6 +371,7 @@ func (x *Asset) GetContextConfig() *ContextConfig {
 	return nil
 }
 
+// Preview: may still change (cnspec ADR-0006).
 // ContextConfig is a config file found at a scanned root. The content is
 // carried unparsed: it is untrusted input, written by anyone who can change
 // the scanned repository, and consumers parse it into their own restricted
@@ -439,6 +441,7 @@ func (x *ContextConfig) GetAssetPath() string {
 	return ""
 }
 
+// Preview: may still change (cnspec ADR-0006).
 // ConfigOrigin names the file a context config was read from, so reports can
 // name the file that governed a result.
 type ConfigOrigin struct {

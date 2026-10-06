@@ -20,9 +20,10 @@ import (
 // the root they scan. It is the same name and schema as the client config.
 const ContextConfigFilename = inventory.ContextConfigFilename
 
-// Exception is one entry under the `exceptions` key of mondoo.yml. Only the
-// shape is defined here; what the fields mean, and which values are valid, is
-// up to the policy engine that applies them.
+// Exception is one entry under the `exceptions` key of mondoo.yml. Exceptions
+// are in preview: the shape may still change (cnspec ADR-0006). Only the shape
+// is defined here; what the fields mean, and which values are valid, is up to
+// the policy engine that applies them.
 type Exception struct {
 	// Title is free text, carried through when set. It is not an identifier.
 	Title string `json:"title,omitempty" yaml:"title,omitempty" mapstructure:"title"`
@@ -41,10 +42,11 @@ type Exception struct {
 	ValidUntil string `json:"valid_until,omitempty" yaml:"valid_until,omitempty" mapstructure:"valid_until"`
 }
 
-// ContextConfig is what a context config may carry. A context config is a
-// mondoo.yml found at a scanned root, so it is written by anyone who can change
-// the scanned repository; it is parsed into this struct and never into the
-// client configuration.
+// ContextConfig is what a context config may carry. Context configs are in
+// preview: what they may carry may still change (cnspec ADR-0006). A context
+// config is a mondoo.yml found at a scanned root, so it is written by anyone
+// who can change the scanned repository; it is parsed into this struct and
+// never into the client configuration.
 type ContextConfig struct {
 	Exceptions []Exception
 	// IgnoredKeys are top-level keys present in the file that a context config

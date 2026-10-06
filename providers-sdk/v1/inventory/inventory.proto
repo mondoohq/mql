@@ -91,12 +91,14 @@ message Asset {
   // names the counterparty asset and the resource on it that anchors the edge.
   repeated AssetRelationship relationships = 39;
 
+  // Preview: may still change (cnspec ADR-0006).
   // The mondoo.yml found at the root this asset was scanned from, as the
   // provider found it at connect time. Only the provider knows where that
   // root is, which may be a temporary clone (cnspec ADR-0006).
   ContextConfig context_config = 40;
 }
 
+// Preview: may still change (cnspec ADR-0006).
 // ContextConfig is a config file found at a scanned root. The content is
 // carried unparsed: it is untrusted input, written by anyone who can change
 // the scanned repository, and consumers parse it into their own restricted
@@ -112,6 +114,7 @@ message ContextConfig {
   string asset_path = 3;
 }
 
+// Preview: may still change (cnspec ADR-0006).
 // ConfigOrigin names the file a context config was read from, so reports can
 // name the file that governed a result.
 message ConfigOrigin {
