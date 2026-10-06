@@ -3,10 +3,15 @@
 
 name: Weekly release
 
-# Cuts the weekly mql release by pushing the next minor tag (v14.2.0 -> v14.3.0).
-# The tag push starts goreleaser.yml, which builds and publishes the release.
-# The tag is pushed with the deploy key: tags pushed with GITHUB_TOKEN do not
-# trigger workflows.
+# Cuts the weekly mql release (v14.2.0 -> v14.3.0) the way it was cut by hand:
+# it publishes a GitHub release with generated notes, which creates the tag.
+# The tag starts goreleaser.yml, which builds and attaches the artifacts; the
+# published release starts release-providers.yml. A tag alone is not enough:
+# goreleaser would create the release with GITHUB_TOKEN, and events from
+# GITHUB_TOKEN never start release-providers.yml.
+#
+# The release is created with the mondoo-mergebot app token for the same
+# reason: a tag or release made with GITHUB_TOKEN starts no workflow at all.
 #
 # What gets tagged, and why, is decided in .github/scripts/next-minor-release.sh
 # (unit-tested in .github/scripts/tests/).
@@ -49,7 +54,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ssh-key: ${{ secrets.CNQUERY_DEPLOY_KEY_PRIV }}
+          persist-credentials: false
           fetch-depth: 0
           ref: main
 
@@ -105,15 +110,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: .github/scripts/verify-tested.sh
 
-      - name: Push release tag
+      - name: Generate app token
+        id: app-token
+        if: ${{ steps.next.outputs.skip != 'true' && inputs.dry-run != true }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.MONDOO_MERGEBOT_APP_ID }}
+          private-key: ${{ secrets.MONDOO_MERGEBOT_APP_PRIVATE_KEY }}
+
+      - name: Publish the release
         id: tag
         if: ${{ steps.next.outputs.skip != 'true' && inputs.dry-run != true }}
         env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PREV: ${{ steps.next.outputs.prev }}
           NEXT: ${{ steps.next.outputs.next }}
           SHA: ${{ steps.next.outputs.sha }}
         run: |
-          git tag --no-sign "$NEXT" "$SHA"
-          git push origin "refs/tags/$NEXT"
+          gh release create "$NEXT" \
+            --target "$SHA" \
+            --title "$NEXT" \
+            --generate-notes \
+            --notes-start-tag "$PREV"
 
       - name: Notify Slack, released
         if: ${{ steps.tag.outcome == 'success' }}
