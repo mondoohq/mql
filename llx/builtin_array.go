@@ -703,9 +703,45 @@ func arrayFieldDuplicatesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref u
 			}
 		}
 
-		resList := []any{}
+		arr := make([]*RawData, len(list))
+		for k, v := range filteredList {
+			arr[k] = v
+		}
 
-		equalFunc, ok := types.Equal[filteredList[0].Type]
+		// The field's type comes from the first entry that has a typed value:
+		// an entry whose field failed or is a bare null carries no type.
+		var fieldType types.Type
+		var firstErr error
+		for i := range arr {
+			if arr[i].Error != nil {
+				if firstErr == nil {
+					firstErr = arr[i].Error
+				}
+				continue
+			}
+			if arr[i].Type == types.Nil || arr[i].Type == "" {
+				continue
+			}
+			fieldType = arr[i].Type
+			break
+		}
+		if fieldType == "" {
+			// no entry has a typed value: report the first failure, or no
+			// duplicates when every field is null
+			data := &RawData{Type: items.Type, Error: firstErr}
+			if firstErr == nil {
+				data.Type = bind.Type
+				data.Value = []any{}
+			}
+			e.cache.Store(ref, &stepCache{
+				Result:   data,
+				IsStatic: false,
+			})
+			e.triggerChain(ref, data)
+			return
+		}
+
+		equalFunc, ok := types.Equal[fieldType]
 		if !ok {
 			data := &RawData{
 				Type:  items.Type,
@@ -719,47 +755,8 @@ func arrayFieldDuplicatesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref u
 			return
 		}
 
-		arr := make([]*RawData, len(list))
-		for k, v := range filteredList {
-			arr[k] = v
-		}
-
-		// to track values of fields
-		existing := make(map[int]any)
-		// to track index of duplicate resources
-		duplicateIndices := []int{}
-		var found bool
-		var added bool
-		for i := 0; i < len(arr); i++ {
-			left := arr[i].Value
-
-			for j, v := range existing {
-				if equalFunc(left, v) {
-					found = true
-					// Track the index so that we can get the whole resource
-					duplicateIndices = append(duplicateIndices, i)
-					// check if j was already added to our list of indices
-					for di := range duplicateIndices {
-						if j == duplicateIndices[di] {
-							added = true
-						}
-					}
-					if !added {
-						duplicateIndices = append(duplicateIndices, j)
-					}
-					break
-				}
-			}
-
-			// value not found so we add it to list of things to check for dupes
-			if !found {
-				existing[i] = left
-			}
-		}
-
-		// Once we collect duplicate indices, make a list of resources
-		for i := range duplicateIndices {
-			idx := duplicateIndices[i]
+		resList := []any{}
+		for _, idx := range duplicateFieldIndices(arr, equalFunc) {
 			resList = append(resList, list[idx])
 		}
 
@@ -778,6 +775,38 @@ func arrayFieldDuplicatesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref u
 	}
 
 	return nil, 0, nil
+}
+
+// duplicateFieldIndices returns, in list order, the index of every entry whose
+// field value equals the field value of at least one other entry. Every group
+// of duplicates is reported, not only the first one. Entries whose field
+// failed to resolve have no value to compare and are left out.
+func duplicateFieldIndices(arr []*RawData, equalFunc func(any, any) bool) []int {
+	isDup := make([]bool, len(arr))
+	for i := range arr {
+		// an entry already matched an earlier one, so every entry equal to
+		// it is marked already (equality is transitive)
+		if isDup[i] || arr[i] == nil || arr[i].Error != nil {
+			continue
+		}
+		for j := i + 1; j < len(arr); j++ {
+			if isDup[j] || arr[j] == nil || arr[j].Error != nil {
+				continue
+			}
+			if equalFunc(arr[i].Value, arr[j].Value) {
+				isDup[i] = true
+				isDup[j] = true
+			}
+		}
+	}
+
+	res := []int{}
+	for i := range isDup {
+		if isDup[i] {
+			res = append(res, i)
+		}
+	}
+	return res
 }
 
 func arrayDuplicatesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {

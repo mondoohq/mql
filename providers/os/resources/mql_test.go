@@ -270,6 +270,38 @@ func TestListResource_Assertions(t *testing.T) {
 	})
 }
 
+// duplicates(field) returns every user that shares its uid or gid with another
+// user, for every duplicated value: the recording has two users with UID 0
+// (root, toor) and two with UID 4251, and gid groups 0, 1001 and 4251 (alice
+// only, so no group).
+func TestResource_duplicateFieldsAllGroups(t *testing.T) {
+	abs, err := filepath.Abs("testdata/users_duplicates.json")
+	require.NoError(t, err)
+	tr := testutils.InitTester(testutils.RecordingMock(abs))
+	tr.TestSimple(t, []testutils.SimpleTest{
+		{
+			Code:        "users.list.duplicates(uid).map(name)",
+			Expectation: []any{"root", "toor", "alice", "bob"},
+		},
+		{
+			Code:        "users.list.duplicates(uid).where(uid != 0).map(name)",
+			Expectation: []any{"alice", "bob"},
+		},
+		{
+			Code:        "users.list.duplicates(gid).map(name)",
+			Expectation: []any{"root", "toor", "carol", "dave"},
+		},
+		{
+			Code:        "users.list.duplicates(name).map(name)",
+			Expectation: []any{},
+		},
+		{
+			Code:        "users.list.map(uid).duplicates()",
+			Expectation: []any{int64(0), int64(4251)},
+		},
+	})
+}
+
 func TestResource_duplicateFields(t *testing.T) {
 	x := testutils.InitTester(testutils.LinuxMock())
 	x.TestSimple(t, []testutils.SimpleTest{
