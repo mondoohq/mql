@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -18,15 +19,28 @@ import (
 )
 
 // fakeRunner answers the scripts this package sends: openScript reports
-// dirs as directories and anything else as a file with content "hi", and
-// listDirScript answers with listing.
+// dirs as directories and anything else as a file with content "hi",
+// listDirScript answers with listFor (or listing), and getItemScript with
+// itemFor.
 type fakeRunner struct {
 	t        *testing.T
 	dirs     map[string]bool
 	listing  string
+	listFor  func(path string) string
+	itemFor  func(path string) string
 	exit     int
 	stderr   string
 	listRuns int
+}
+
+var reLiteralPath = regexp.MustCompile(`-LiteralPath '((?:[^']|'')*)'`)
+
+func scriptPath(script string) string {
+	m := reLiteralPath.FindStringSubmatch(script)
+	if m == nil {
+		return ""
+	}
+	return strings.ReplaceAll(m[1], "''", "'")
 }
 
 func (r *fakeRunner) RunCommand(command string) (*shared.Command, error) {
@@ -35,8 +49,16 @@ func (r *fakeRunner) RunCommand(command string) (*shared.Command, error) {
 	switch {
 	case strings.Contains(script, "Get-ChildItem"):
 		r.listRuns++
+		if r.listRuns > 20 {
+			r.t.Fatalf("listed %d directories, the walk is not terminating: %s", r.listRuns, scriptPath(script))
+		}
 		res.Stdout = bytes.NewBufferString(r.listing)
+		if r.listFor != nil {
+			res.Stdout = bytes.NewBufferString(r.listFor(scriptPath(script)))
+		}
 		res.ExitStatus = r.exit
+	case strings.Contains(script, "Get-Item "):
+		res.Stdout = bytes.NewBufferString(r.itemFor(scriptPath(script)))
 	case strings.Contains(script, "Test-Path"):
 		for dir := range r.dirs {
 			if strings.Contains(script, "'"+dir+"'") {
@@ -200,4 +222,83 @@ func TestParseDirListing(t *testing.T) {
 		_, err := parseDirListing([]byte(`[{"Name":`))
 		assert.Error(t, err)
 	})
+}
+
+// A user profile's AppData\Local holds the junction "Application Data", which
+// points back at AppData\Local itself. These answers are what Windows Server
+// 2025 gives for it: LinkType Junction, attributes 9238 (directory, reparse
+// point, hidden, system, not content indexed).
+const (
+	profileLocal     = `C:\Users\Administrator\AppData\Local`
+	localListing     = `[{"Name":"Application Data","Length":0,"Attributes":9238,"LastWriteTime":1754493390310,"LinkType":"Junction"},{"Name":"f.txt","Length":3,"Attributes":32,"LastWriteTime":1754493390310,"LinkType":null}]`
+	junctionGetItem  = `{"Name":"Application Data","Length":null,"Attributes":9238,"LinkType":"Junction","LastWriteTime":"\/Date(1754493390310)\/"}`
+	directoryGetItem = `{"Name":"Local","Length":null,"Attributes":16,"LinkType":null,"LastWriteTime":"\/Date(1754493390310)\/"}`
+	plainFileGetItem = `{"Name":"f.txt","Length":3,"Attributes":32,"LinkType":null,"LastWriteTime":"\/Date(1754493390310)\/"}`
+)
+
+func profileRunner(t *testing.T) *fakeRunner {
+	return &fakeRunner{
+		t:    t,
+		dirs: map[string]bool{profileLocal: true},
+		// every path through the junction lists the same directory again
+		listFor: func(string) string { return localListing },
+		itemFor: func(p string) string {
+			switch {
+			case strings.HasSuffix(p, "Application Data"):
+				return junctionGetItem
+			case strings.HasSuffix(p, "f.txt"):
+				return plainFileGetItem
+			}
+			return directoryGetItem
+		},
+	}
+}
+
+func TestWalkDoesNotFollowJunction(t *testing.T) {
+	runner := profileRunner(t)
+	var visited []string
+	err := afero.Walk(New(runner), profileLocal, func(p string, info os.FileInfo, err error) error {
+		require.NoError(t, err)
+		visited = append(visited, info.Name())
+		return nil
+	})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"Local", "Application Data", "f.txt"}, visited)
+	assert.Equal(t, 1, runner.listRuns)
+}
+
+func TestReaddirReportsJunctionAsLink(t *testing.T) {
+	f, err := New(profileRunner(t)).Open(profileLocal)
+	require.NoError(t, err)
+	entries, err := f.Readdir(-1)
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+
+	junction := entries[0]
+	assert.Equal(t, "Application Data", junction.Name())
+	assert.False(t, junction.IsDir())
+	assert.NotZero(t, junction.Mode()&os.ModeSymlink)
+	assert.Zero(t, entries[1].Mode()&os.ModeSymlink)
+}
+
+func TestStatFollowsJunctionLstatDoesNot(t *testing.T) {
+	catfs := New(profileRunner(t))
+	p := profileLocal + `\Application Data`
+
+	fi, err := catfs.Stat(p)
+	require.NoError(t, err)
+	assert.True(t, fi.IsDir())
+
+	lfi, ok, err := catfs.LstatIfPossible(p)
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.False(t, lfi.IsDir())
+	assert.NotZero(t, lfi.Mode()&os.ModeSymlink)
+}
+
+func TestReparseTag(t *testing.T) {
+	assert.Equal(t, uint32(IO_REPARSE_TAG_MOUNT_POINT), reparseTag("Junction"))
+	assert.Equal(t, uint32(IO_REPARSE_TAG_SYMLINK), reparseTag("SymbolicLink"))
+	assert.Zero(t, reparseTag("HardLink"))
+	assert.Zero(t, reparseTag(""))
 }

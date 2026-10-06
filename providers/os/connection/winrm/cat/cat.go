@@ -73,7 +73,8 @@ func listDirScript(name string) string {
 		"Attributes = [int]$_.Attributes; " +
 		"CreationTime = [DateTimeOffset]::new($_.CreationTimeUtc).ToUnixTimeMilliseconds(); " +
 		"LastAccessTime = [DateTimeOffset]::new($_.LastAccessTimeUtc).ToUnixTimeMilliseconds(); " +
-		"LastWriteTime = [DateTimeOffset]::new($_.LastWriteTimeUtc).ToUnixTimeMilliseconds() } }); " +
+		"LastWriteTime = [DateTimeOffset]::new($_.LastWriteTimeUtc).ToUnixTimeMilliseconds(); " +
+		"LinkType = $_.LinkType } }); " +
 		"ConvertTo-Json -InputObject $e -Compress; " +
 		"if ($ev -and $e.Count -eq 0) { [Console]::Error.WriteLine((($ev | ForEach-Object { $_.FullyQualifiedErrorId }) -join ' ')); exit 1 }")
 }
@@ -101,6 +102,20 @@ func (cat *Fs) Open(name string) (afero.File, error) {
 }
 
 func (cat *Fs) Stat(name string) (os.FileInfo, error) {
+	return cat.stat(name, false)
+}
+
+// LstatIfPossible reports a junction or symbolic link as the link itself, as
+// os.Lstat does, where Stat describes what it points to. afero.Walk uses it
+// when the filesystem has it, so a walk does not descend into a link: a user
+// profile holds junctions such as AppData\Local\Application Data that point
+// back at their own parent, and following one walks the same tree forever.
+func (cat *Fs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
+	fi, err := cat.stat(name, true)
+	return fi, true, err
+}
+
+func (cat *Fs) stat(name string, lstat bool) (os.FileInfo, error) {
 	cmd, err := cat.commandRunner.RunCommand(getItemScript(name))
 	if err != nil {
 		return nil, err
@@ -115,14 +130,31 @@ func (cat *Fs) Stat(name string) (os.FileInfo, error) {
 		return nil, err
 	}
 
-	return &fileStat{
+	fs := &fileStat{
 		name:           item.Name,
 		FileSize:       item.Length,
 		FileAttributes: item.Attributes,
 		CreationTime:   powershell.PSJsonTimestamp(item.CreationTime),
 		LastAccessTime: powershell.PSJsonTimestamp(item.LastAccessTime),
 		LastWriteTime:  powershell.PSJsonTimestamp(item.LastWriteTime),
-	}, nil
+	}
+	if lstat {
+		fs.Reserved0 = reparseTag(item.LinkType)
+	}
+	return fs, nil
+}
+
+// reparseTag maps PowerShell's LinkType to the reparse tag fileStat reads to
+// report a link. A hard link is an ordinary file, and so is a reparse point
+// of any other kind, such as a OneDrive placeholder.
+func reparseTag(linkType string) uint32 {
+	switch linkType {
+	case "Junction":
+		return IO_REPARSE_TAG_MOUNT_POINT
+	case "SymbolicLink":
+		return IO_REPARSE_TAG_SYMLINK
+	}
+	return 0
 }
 
 var NotImplemented = errors.New("not implemented")

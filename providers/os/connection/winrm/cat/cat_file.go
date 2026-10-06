@@ -144,6 +144,7 @@ type dirEntry struct {
 	CreationTime   *int64 `json:"CreationTime"`
 	LastAccessTime *int64 `json:"LastAccessTime"`
 	LastWriteTime  *int64 `json:"LastWriteTime"`
+	LinkType       string `json:"LinkType"`
 }
 
 // parseDirListing decodes the output of listDirScript. It also accepts a
@@ -175,6 +176,8 @@ func parseDirListing(data []byte) ([]os.FileInfo, error) {
 			CreationTime:   unixMilli(e.CreationTime),
 			LastAccessTime: unixMilli(e.LastAccessTime),
 			LastWriteTime:  unixMilli(e.LastWriteTime),
+			// entries describe the link, not its target, as os.ReadDir does
+			Reserved0: reparseTag(e.LinkType),
 		})
 	}
 	return entries, nil
