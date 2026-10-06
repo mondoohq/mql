@@ -29,6 +29,16 @@ const (
 	// DefaultEndpoint is the Azure DevOps Services REST host.
 	DefaultEndpoint = "https://dev.azure.com"
 
+	// RequestTimeout bounds one request of the default http client, from the
+	// dial to the end of the body.
+	RequestTimeout = 2 * time.Minute
+
+	// MaxRetryAfter is the longest Retry-After the client waits out. A longer
+	// one fails the request at once. A caller that bounds a call with its own
+	// deadline needs at least MaxRetryAfter plus two RequestTimeouts for a
+	// throttled request and its retry.
+	MaxRetryAfter = 5 * time.Minute
+
 	continuationHeader = "x-ms-continuationtoken"
 	costHeader         = "x-ratelimit-cost"
 	projectPageSize    = 100
@@ -36,7 +46,6 @@ const (
 	maxRetries     = 5
 	firstBackoff   = 5 * time.Second
 	maxBackoff     = 60 * time.Second
-	maxRetryAfter  = 5 * time.Minute
 	maxResponseLen = 128 << 20
 	// maxPages bounds one list walk. A server that hands out a new
 	// continuation token on every page would otherwise never end it.
@@ -205,7 +214,7 @@ func NewClient(org string, auth *Authenticator, opts ClientOptions) (*Client, er
 		copied := *opts.HTTPClient
 		hc = &copied
 	} else {
-		hc = &http.Client{Timeout: 2 * time.Minute}
+		hc = &http.Client{Timeout: RequestTimeout}
 	}
 	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	sleep := opts.Sleep
@@ -350,7 +359,7 @@ func (c *Client) getJSON(ctx context.Context, r request, out any) (http.Header, 
 		wait := backoff
 		if retryAfter > 0 {
 			wait = retryAfter
-			if wait > maxRetryAfter {
+			if wait > MaxRetryAfter {
 				return nil, err
 			}
 		} else {

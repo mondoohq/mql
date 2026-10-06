@@ -117,6 +117,15 @@ func TestWalkIacOfNoRepositoriesReadsNothing(t *testing.T) {
 	assert.Len(t, srv.Requests(), before, "no tree is read")
 }
 
+// A throttled tree read waits out the server's Retry-After and then asks again.
+// The walk budget of one repository has to cover both requests and the wait,
+// or the repository loses its IaC children whenever the organization is
+// throttled.
+func TestTheWalkBudgetOutlastsAThrottledRequestAndItsRetry(t *testing.T) {
+	assert.Greater(t, iacWalkTimeout, connection.MaxRetryAfter+connection.RequestTimeout)
+	assert.GreaterOrEqual(t, iacWalkTimeout, connection.MaxRetryAfter+2*connection.RequestTimeout)
+}
+
 func TestWalkIacCancelledRecordsTheCancelOnEveryRepository(t *testing.T) {
 	conn := connectionOf(newRuntime(t, nil))
 	listing, err := conn.Listing(apiContext())

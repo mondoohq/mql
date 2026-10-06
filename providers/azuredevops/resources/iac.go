@@ -7,7 +7,6 @@ import (
 	"context"
 	gopath "path"
 	"strings"
-	"time"
 
 	"go.mondoo.com/mql/providers/azuredevops/connection"
 	"golang.org/x/sync/errgroup"
@@ -16,8 +15,12 @@ import (
 const (
 	// iacWalkConcurrency bounds how many repository trees are read at once.
 	iacWalkConcurrency = 4
-	// iacWalkTimeout bounds the tree walk of one repository.
-	iacWalkTimeout = 2 * time.Minute
+	// iacWalkTimeout bounds the tree walk of one repository. It is derived from
+	// the client's own limits so that it outlasts a throttled request, the
+	// longest Retry-After the client waits out and the retried request. A
+	// shorter budget would drop a repository's IaC children exactly when the
+	// organization is throttled.
+	iacWalkTimeout = connection.MaxRetryAfter + 2*connection.RequestTimeout
 )
 
 // repoIac holds the IaC entry points found in the tree of one repository.
