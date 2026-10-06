@@ -375,3 +375,59 @@ func TestWalkAnchorsEveryAssetToItsDetection(t *testing.T) {
 type probeFunc func(child *inventory.Asset) (*plugin.ConnectRes, error)
 
 func (f probeFunc) Probe(child *inventory.Asset) (*plugin.ConnectRes, error) { return f(child) }
+
+func TestWalkGivesEveryAssetTheRootConfigAtItsPath(t *testing.T) {
+	files := map[string]string{
+		"infra/staging/main.tf":   "",
+		"infra/prod/main.tf":      "",
+		"services/api/Dockerfile": "",
+	}
+	cfg := &inventory.ContextConfig{
+		Content:   []byte(`{"exceptions":[]}`),
+		Origin:    &inventory.ConfigOrigin{Provider: "iac", Path: "/tree/mondoo.yml"},
+		AssetPath: ".",
+	}
+
+	// what each probe was handed, by path
+	probed := map[string]string{}
+	prober := probeFunc(func(child *inventory.Asset) (*plugin.ConnectRes, error) {
+		require.NotNil(t, child.ContextConfig, "the config is set before the probe, so a provider keeps it")
+		probed[child.Connections[0].Options["path"]] = child.ContextConfig.AssetPath
+		// a provider that builds a new asset, without the config
+		return accept(child.Connections[0].Options["path"]), nil
+	})
+
+	res := runWalk(t, files, Selection{OptIns: []plugin.TargetOptIn{
+		dirOptIn("terraform", "terraform", "*.tf"),
+		fileOptIn("docker-file", "docker-file", "Dockerfile"),
+	}}, Options{ContextConfig: cfg}, prober)
+
+	assert.Equal(t, map[string]string{
+		"/tree/infra/staging":           "infra/staging",
+		"/tree/infra/prod":              "infra/prod",
+		"/tree/services/api/Dockerfile": "services/api/Dockerfile",
+	}, probed)
+
+	paths := map[string]string{}
+	for _, a := range res.Assets {
+		require.NotNil(t, a.ContextConfig)
+		assert.Equal(t, "iac", a.ContextConfig.Origin.Provider)
+		paths[a.PlatformIds[0]] = a.ContextConfig.AssetPath
+	}
+	assert.Equal(t, map[string]string{
+		"/tree/infra/staging":           "infra/staging",
+		"/tree/infra/prod":              "infra/prod",
+		"/tree/services/api/Dockerfile": "services/api/Dockerfile",
+	}, paths)
+	assert.Equal(t, ".", cfg.AssetPath, "the root's config is not changed")
+}
+
+func TestContextConfigAt(t *testing.T) {
+	assert.Nil(t, contextConfigAt(nil, "x"))
+	root := &inventory.ContextConfig{AssetPath: "."}
+	assert.Equal(t, ".", contextConfigAt(root, "").AssetPath)
+	assert.Equal(t, "a/b", contextConfigAt(root, "a/b").AssetPath)
+	// a tree root that sits below its config's directory keeps that prefix
+	assert.Equal(t, "infra/a", contextConfigAt(&inventory.ContextConfig{AssetPath: "infra"}, "a").AssetPath)
+	assert.Equal(t, "a", contextConfigAt(&inventory.ContextConfig{}, "a").AssetPath)
+}

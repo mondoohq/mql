@@ -334,6 +334,13 @@ func (e *AssetExplorer) discoverChildren(parent *TrackedAsset) {
 			continue
 		}
 
+		// What an asset discovers lies within the root the asset was scanned
+		// from, so a child the provider gave no context config of its own is
+		// governed by its parent's, at the parent's path (cnspec ADR-0006).
+		if childAsset.ContextConfig == nil && parent.Asset.GetContextConfig() != nil {
+			childAsset.ContextConfig = parent.Asset.ContextConfig.CloneVT()
+		}
+
 		child := &TrackedAsset{
 			Asset:  childAsset,
 			State:  AssetDiscovered,

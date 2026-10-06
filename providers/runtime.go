@@ -303,6 +303,18 @@ func (r *Runtime) ConnectedProviderIDs() []string {
 	return ids
 }
 
+// keepContextConfig carries the context config of the asset a provider was
+// asked to connect onto the asset it answered with (cnspec ADR-0006). Most
+// providers answer with the asset they were given, which keeps it already; one
+// that builds a new asset would otherwise drop the config its discoverer read
+// at the scanned root. A config the provider set itself wins.
+func keepContextConfig(requested *inventory.Asset, res *plugin.ConnectRes) {
+	if requested.GetContextConfig() == nil || res == nil || res.Asset == nil || res.Asset.ContextConfig != nil {
+		return
+	}
+	res.Asset.ContextConfig = requested.ContextConfig.CloneVT()
+}
+
 func (r *Runtime) setProviderConnection(c *plugin.ConnectRes, err error) {
 	r.mu.Lock()
 	r.Provider.Connection = c
@@ -466,6 +478,7 @@ func (r *Runtime) Connect(req *plugin.ConnectReq) error {
 	if err != nil {
 		_, err = r.handlePluginError(err, r.Provider, "", "")
 	}
+	keepContextConfig(req.GetAsset(), conn)
 	r.setProviderConnection(conn, err)
 	if err != nil {
 		return err
