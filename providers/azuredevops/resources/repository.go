@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -39,13 +40,18 @@ func newRepository(runtime *plugin.Runtime, project string, r connection.Reposit
 	return res.(*mqlAzuredevopsRepository), nil
 }
 
-func stringArg(args map[string]*llx.RawData, key string) string {
-	if x, ok := args[key]; ok && x != nil {
-		if s, ok := x.Value.(string); ok {
-			return s
-		}
+// stringArg is the string argument key, or "" when it is not set. An argument
+// of another type is an error, so it cannot pass for a missing one.
+func stringArg(args map[string]*llx.RawData, key string) (string, error) {
+	x, ok := args[key]
+	if !ok || x == nil || x.Value == nil {
+		return "", nil
 	}
-	return ""
+	s, ok := x.Value.(string)
+	if !ok {
+		return "", fmt.Errorf("azuredevops.repository: %s must be a string", key)
+	}
+	return s, nil
 }
 
 // initAzuredevopsRepository resolves the repository a connection stands for,
@@ -56,8 +62,14 @@ func initAzuredevopsRepository(runtime *plugin.Runtime, args map[string]*llx.Raw
 	}
 
 	conn := connectionOf(runtime)
-	project := stringArg(args, "projectName")
-	name := stringArg(args, "name")
+	project, err := stringArg(args, "projectName")
+	if err != nil {
+		return nil, nil, err
+	}
+	name, err := stringArg(args, "name")
+	if err != nil {
+		return nil, nil, err
+	}
 	if project == "" {
 		project = conn.Project()
 	}
@@ -71,7 +83,7 @@ func initAzuredevopsRepository(runtime *plugin.Runtime, args map[string]*llx.Raw
 
 	repo, err := conn.Client().Repository(apiContext(), project, name)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("azure devops: cannot read repository %q in project %q: %w", name, project, err)
 	}
 	if repo.Project.Name != "" {
 		project = repo.Project.Name

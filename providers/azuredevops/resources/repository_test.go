@@ -93,6 +93,58 @@ func TestRepositoryInitWithoutAProjectFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "needs a project and a name")
 }
 
+func TestRepositoryInitRefusesANonStringArgument(t *testing.T) {
+	// a repository connection supplies both names, so a mistyped argument must
+	// fail rather than quietly fall back to the connection's repository
+	runtime := newRuntime(t, map[string]string{
+		connection.OPTION_PROJECT:    "scan test",
+		connection.OPTION_REPOSITORY: "ado-scan-test-iac",
+	})
+
+	for _, key := range []string{"projectName", "name"} {
+		t.Run(key, func(t *testing.T) {
+			args := map[string]*llx.RawData{
+				"projectName": llx.StringData("scan-test"),
+				"name":        llx.StringData("ado-scan-test-app"),
+			}
+			args[key] = llx.IntData(1)
+
+			_, err := NewResource(runtime, "azuredevops.repository", args)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), key+" must be a string")
+		})
+	}
+}
+
+func TestRepositoryInitNamesTheRepositoryItCannotRead(t *testing.T) {
+	tests := []struct {
+		name    string
+		project string
+		repo    string
+		status  int
+	}{
+		{name: "missing repository", project: "scan-test", repo: "no-such-repo", status: 404},
+		{name: "project the credential cannot read", project: "locked-down", repo: "hidden-repo", status: 403},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime := newRuntime(t, nil)
+
+			_, err := NewResource(runtime, "azuredevops.repository", map[string]*llx.RawData{
+				"projectName": llx.StringData(tc.project),
+				"name":        llx.StringData(tc.repo),
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), `"`+tc.repo+`"`)
+			assert.Contains(t, err.Error(), `"`+tc.project+`"`)
+
+			var apiErr *connection.APIError
+			require.ErrorAs(t, err, &apiErr)
+			assert.Equal(t, tc.status, apiErr.Status)
+		})
+	}
+}
+
 func TestRepositoryProject(t *testing.T) {
 	org := newOrganization(t, newRuntime(t, nil))
 	repo := repositoriesOf(t, org)[fakeado.RepoIacSpace]
