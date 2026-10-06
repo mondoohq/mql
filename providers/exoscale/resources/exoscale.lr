@@ -1,0 +1,883 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/exoscale"
+option go_package = "go.mondoo.com/mql/providers/exoscale/resources"
+option root = "exoscale"
+
+// Exoscale organization
+//
+// Root of the Exoscale provider, scoped to the organization the API key
+// belongs to. Organization-wide resources (security groups, anti-affinity
+// groups, SSH keys, IAM roles, API keys, users and the organization policy,
+// DNS domains) are listed once. Zonal resources (compute instances,
+// instance pools, templates, snapshots, private networks, elastic IPs,
+// network load balancers, SKS Kubernetes clusters, block storage, DBaaS
+// services, KMS keys) are collected from every zone the connection is
+// scoped to, and each carries its `zone`.
+exoscale @root {
+  // Zones the connection queries
+  zones() []exoscale.zone
+  // Compute instances in all zones
+  instances() []exoscale.compute.instance
+  // Compute instance types (sizes)
+  instanceTypes() []exoscale.compute.instanceType
+  // Instance pools in all zones
+  instancePools() []exoscale.compute.instancePool
+  // Private (organization-owned) instance templates in all zones
+  templates() []exoscale.compute.template
+  // Compute instance snapshots in all zones
+  snapshots() []exoscale.compute.snapshot
+  // Security groups
+  securityGroups() []exoscale.securityGroup
+  // Anti-affinity groups
+  antiAffinityGroups() []exoscale.antiAffinityGroup
+  // SSH keys
+  sshKeys() []exoscale.sshKey
+  // Private networks in all zones
+  privateNetworks() []exoscale.privateNetwork
+  // Elastic IPs in all zones
+  elasticIps() []exoscale.elasticIp
+  // Network load balancers in all zones
+  nlbs() []exoscale.nlb
+  // SKS Kubernetes clusters in all zones
+  sksClusters() []exoscale.sks.cluster
+  // Block storage volumes in all zones
+  blockStorageVolumes() []exoscale.blockStorage.volume
+  // Block storage snapshots in all zones
+  blockStorageSnapshots() []exoscale.blockStorage.snapshot
+  // Managed database (DBaaS) services in all zones
+  dbaasServices() []exoscale.dbaas.service
+  // KMS keys in all zones
+  kmsKeys() []exoscale.kms.key
+  // IAM roles
+  iamRoles() []exoscale.iam.role
+  // IAM API keys
+  iamApiKeys() []exoscale.iam.apiKey
+  // Organization users
+  iamUsers() []exoscale.iam.user
+  // Organization-wide IAM policy, applied to every API key and user
+  iamOrganizationPolicy() exoscale.iam.policy
+  // DNS domains
+  dnsDomains() []exoscale.dns.domain
+}
+
+// Exoscale organization account
+//
+// Identity of the organization the API key belongs to: its id, name,
+// country, and billing currency.
+exoscale.organization @defaults("name id") {
+  // Organization ID
+  id string
+  // Organization name
+  name string
+  // Country code of the organization
+  country string
+  // Billing currency
+  currency string
+}
+
+// Exoscale zone
+//
+// A zone (data center location) such as `ch-gva-2`, with its API and
+// Simple Object Storage (SOS) endpoints.
+exoscale.zone @defaults("name") {
+  // Zone name, for example ch-gva-2
+  name string
+  // API endpoint of the zone
+  apiEndpoint string
+  // Simple Object Storage (SOS) endpoint of the zone
+  sosEndpoint string
+}
+
+// Exoscale compute instance
+//
+// Virtual machine with its sizing, template, public and private addressing,
+// security groups, private networks, elastic IPs, anti-affinity groups,
+// attached block storage volumes, and boot security settings (secure boot,
+// TPM, disk encryption). Select a single instance by its id, for example
+// `exoscale.compute.instance(id: "a1b2c3d4-...")`.
+private exoscale.compute.instance @defaults("name zone state") {
+  init(id? string)
+  // Instance ID
+  id string
+  // Instance name
+  name string
+  // Zone the instance runs in
+  zone string
+  // Instance state
+  //
+  // One of running, stopped, starting, stopping, migrating, error, destroying, destroyed, or expunging.
+  state string
+  // Creation timestamp
+  created time
+  // Labels
+  labels map[string]string
+  // Instance type (size)
+  instanceType() exoscale.compute.instanceType
+  // Template the instance was created from
+  template() exoscale.compute.template
+  // Public IPv4 address; empty when the instance has no public IPv4 address
+  publicIp string
+  // Public IP assignment: inet4, dual (IPv4 and IPv6), or none
+  publicIpAssignment string
+  // Public IPv6 address; empty when IPv6 is not enabled
+  ipv6Address string
+  // MAC address of the public interface
+  macAddress() string
+  // Security groups attached to the instance
+  securityGroups() []exoscale.securityGroup
+  // Private networks the instance is attached to
+  privateNetworks() []exoscale.privateNetwork
+  // SSH keys installed on the instance at creation
+  sshKeys() []exoscale.sshKey
+  // Instance pool managing this instance; null for a standalone instance
+  instancePool() exoscale.compute.instancePool
+  // Root disk size in GiB
+  diskSize() int
+  // Whether the root disk is encrypted
+  diskEncrypted() bool
+  // Whether UEFI secure boot is enabled
+  securebootEnabled() bool
+  // Whether a virtual TPM is enabled
+  tpmEnabled() bool
+  // Whether IP forwarding is enabled on the instance
+  ipForwarding() bool
+  // Whether application-consistent snapshots are enabled
+  applicationConsistentSnapshotEnabled() bool
+  // Elastic IPs attached to the instance
+  elasticIps() []exoscale.elasticIp
+  // Anti-affinity groups the instance belongs to
+  antiAffinityGroups() []exoscale.antiAffinityGroup
+  // Snapshots of the instance
+  snapshots() []exoscale.compute.snapshot
+  // Block storage volumes attached to the instance
+  blockStorageVolumes() []exoscale.blockStorage.volume
+}
+
+// Exoscale compute instance type
+//
+// An instance size, named `family.size` (for example `standard.medium`),
+// with its CPU, GPU, and memory allocation and the zones it is offered in.
+private exoscale.compute.instanceType @defaults("name") {
+  // Instance type ID
+  id string
+  // Instance type name (family.size), for example standard.medium
+  name string
+  // Instance type family, for example standard, cpu, memory, or gpu
+  family string
+  // Instance type size, for example micro, medium, or large
+  size string
+  // Number of CPU cores
+  cpus int
+  // Number of GPUs
+  gpus int
+  // Memory in bytes
+  memory int
+  // Whether the organization is authorized to use this instance type
+  authorized bool
+  // Zones the instance type is available in
+  zones []string
+}
+
+// Exoscale compute instance template
+//
+// An operating system image used to create instances, with its family,
+// version, boot mode, default user, credential options, and visibility
+// (public Exoscale catalog or private to the organization).
+private exoscale.compute.template @defaults("name zone visibility") {
+  init(id? string, zone? string)
+  // Template ID
+  id string
+  // Zone the template is registered in
+  zone string
+  // Template name
+  name string
+  // Template description
+  description string
+  // Template family, for example ubuntu
+  family string
+  // Template version
+  version string
+  // Template build
+  build string
+  // Template maintainer
+  maintainer string
+  // Template checksum (MD5)
+  checksum string
+  // Source URL the template was registered from
+  url string
+  // Default login user
+  defaultUser string
+  // Template size in bytes
+  size int
+  // Boot mode: legacy or uefi
+  bootMode string
+  // Visibility: public (Exoscale catalog), private (organization), or platform (Exoscale-managed, such as SKS node images)
+  visibility string
+  // Whether a password is generated for instances created from the template
+  passwordEnabled bool
+  // Whether an SSH key is installed on instances created from the template
+  sshKeyEnabled bool
+  // Whether application-consistent snapshots are supported
+  applicationConsistentSnapshotEnabled bool
+  // Creation timestamp
+  created time
+}
+
+// Exoscale instance pool
+//
+// A group of identical compute instances managed together, with its size,
+// instance template, type, and network attachments.
+private exoscale.compute.instancePool @defaults("name zone state size") {
+  // Instance pool ID
+  id string
+  // Zone the instance pool runs in
+  zone string
+  // Instance pool name
+  name string
+  // Instance pool description
+  description string
+  // State: creating, destroying, running, scaling-up, scaling-down, suspended, updating, or error
+  state string
+  // Number of instances in the pool
+  size int
+  // Minimum number of instances kept running during updates
+  minAvailable int
+  // Labels
+  labels map[string]string
+  // Instance type of pool members
+  instanceType() exoscale.compute.instanceType
+  // Template of pool members
+  template() exoscale.compute.template
+  // Root disk size of pool members in GiB
+  diskSize int
+  // Name prefix of pool members
+  instancePrefix string
+  // Public IP assignment of pool members: inet4, dual, or none
+  publicIpAssignment string
+  // Whether IPv6 is enabled on pool members
+  ipv6Enabled bool
+  // Instances in the pool
+  instances() []exoscale.compute.instance
+  // Security groups attached to pool members
+  securityGroups() []exoscale.securityGroup
+  // Private networks attached to pool members
+  privateNetworks() []exoscale.privateNetwork
+  // Anti-affinity groups of pool members
+  antiAffinityGroups() []exoscale.antiAffinityGroup
+  // Elastic IPs attached to pool members
+  elasticIps() []exoscale.elasticIp
+  // SSH keys installed on pool members
+  sshKeys() []exoscale.sshKey
+}
+
+// Exoscale compute instance snapshot
+//
+// A point-in-time snapshot of a compute instance root disk, with its size,
+// state, and the instance it was taken from.
+private exoscale.compute.snapshot @defaults("name zone state") {
+  // Snapshot ID
+  id string
+  // Zone the snapshot is stored in
+  zone string
+  // Snapshot name
+  name string
+  // Snapshot size in GiB
+  size int
+  // State: snapshotting, deleted, exporting, ready, deleting, error, or exported
+  state string
+  // Creation timestamp
+  created time
+  // Whether the snapshot is application-consistent
+  applicationConsistent bool
+  // Instance the snapshot was taken from
+  instance() exoscale.compute.instance
+}
+
+// Exoscale security group
+//
+// Organization-wide stateful firewall rule set attached to compute
+// instances, instance pools, and SKS node pools. The `rules` field lists
+// ingress and egress rules with their protocol, port range, and source or
+// destination (a CIDR network or another security group).
+private exoscale.securityGroup @defaults("name") {
+  init(id? string)
+  // Security group ID
+  id string
+  // Security group name
+  name string
+  // Security group description
+  description string
+  // External source CIDRs added to the group (for example, a load balancer's addresses)
+  externalSources []string
+  // Ingress and egress rules
+  rules() []exoscale.securityGroup.rule
+}
+
+// Exoscale security group rule
+private exoscale.securityGroup.rule @defaults("direction protocol network startPort endPort") {
+  // Rule ID
+  id string
+  // Rule description
+  description string
+  // Traffic direction: ingress or egress
+  direction string
+  // Protocol: tcp, udp, icmp, icmpv6, ah, esp, gre, ipip, or all
+  protocol string
+  // First port of the range; 0 when the protocol has no ports
+  startPort int
+  // Last port of the range; 0 when the protocol has no ports
+  endPort int
+  // ICMP type; null for non-ICMP rules
+  icmpType int
+  // ICMP code; null for non-ICMP rules
+  icmpCode int
+  // Source (ingress) or destination (egress) network in CIDR notation; empty when the peer is a security group
+  network string
+  // Source (ingress) or destination (egress) security group; null when the peer is a CIDR network
+  securityGroup() exoscale.securityGroup
+}
+
+// Exoscale anti-affinity group
+//
+// Placement constraint that keeps member instances on distinct hypervisors.
+private exoscale.antiAffinityGroup @defaults("name") {
+  // Anti-affinity group ID
+  id string
+  // Anti-affinity group name
+  name string
+  // Anti-affinity group description
+  description string
+  // Instances in the group
+  instances() []exoscale.compute.instance
+}
+
+// Exoscale SSH key
+//
+// A public SSH key registered with the organization, identified by its name
+// and fingerprint.
+private exoscale.sshKey @defaults("name fingerprint") {
+  // SSH key name
+  name string
+  // SSH key fingerprint
+  fingerprint string
+}
+
+// Exoscale private network
+//
+// A zonal layer-2 network connecting instances privately, with its managed
+// DHCP range and options (DNS, NTP, routers).
+private exoscale.privateNetwork @defaults("name zone") {
+  // Private network ID
+  id string
+  // Zone of the private network
+  zone string
+  // Private network name
+  name string
+  // Private network description
+  description string
+  // First address of the managed DHCP range; empty for an unmanaged network
+  startIp string
+  // Last address of the managed DHCP range; empty for an unmanaged network
+  endIp string
+  // Netmask of the managed network; empty for an unmanaged network
+  netmask string
+  // Virtual network identifier (VNI)
+  vni int
+  // Labels
+  labels map[string]string
+  // DNS servers advertised by DHCP
+  dnsServers []string
+  // NTP servers advertised by DHCP
+  ntpServers []string
+  // Routers advertised by DHCP
+  routers []string
+  // DNS search domains advertised by DHCP
+  domainSearch []string
+  // Instances holding a DHCP lease on the network
+  instances() []exoscale.compute.instance
+}
+
+// Exoscale elastic IP
+//
+// A zonal public IP address that can move between instances, with its
+// optional health check (managed elastic IP).
+private exoscale.elasticIp @defaults("ip zone") {
+  // Elastic IP ID
+  id string
+  // Zone of the elastic IP
+  zone string
+  // IP address
+  ip string
+  // CIDR of the address
+  cidr string
+  // Address family: inet4 or inet6
+  addressFamily string
+  // Elastic IP description
+  description string
+  // Labels
+  labels map[string]string
+  // Health check mode: tcp, http, or https; empty when the elastic IP has no health check
+  healthcheckMode string
+  // Health check port; null without a health check
+  healthcheckPort int
+  // Health check URI (http and https modes)
+  healthcheckUri string
+  // Health check interval in seconds; null without a health check
+  healthcheckInterval int
+  // Health check timeout in seconds; null without a health check
+  healthcheckTimeout int
+  // Successful checks before a target is considered healthy; null without a health check
+  healthcheckStrikesOk int
+  // Failed checks before a target is considered unhealthy; null without a health check
+  healthcheckStrikesFail int
+  // TLS SNI sent by an https health check
+  healthcheckTlsSni string
+  // Whether an https health check skips TLS certificate verification; null without a health check
+  healthcheckTlsSkipVerify bool
+}
+
+// Exoscale network load balancer
+//
+// A zonal layer-4 load balancer (NLB) with a public IP and services that
+// forward traffic to instance pools.
+private exoscale.nlb @defaults("name zone ip") {
+  init(id? string)
+  // Load balancer ID
+  id string
+  // Zone of the load balancer
+  zone string
+  // Load balancer name
+  name string
+  // Load balancer description
+  description string
+  // Public IP address
+  ip string
+  // Address family: inet4 or inet6
+  addressFamily string
+  // State: creating, migrated, deleting, running, migrating, or error
+  state string
+  // Creation timestamp
+  created time
+  // Labels
+  labels map[string]string
+  // Services (listeners) of the load balancer
+  services() []exoscale.nlb.service
+}
+
+// Exoscale network load balancer service
+private exoscale.nlb.service @defaults("name protocol port targetPort") {
+  // Service ID
+  id string
+  // Service name
+  name string
+  // Service description
+  description string
+  // Port the load balancer listens on
+  port int
+  // Port traffic is forwarded to on the instances
+  targetPort int
+  // Protocol: tcp or udp
+  protocol string
+  // Load-balancing strategy: round-robin, maglev-hash, or source-hash
+  strategy string
+  // State: creating, deleting, running, updating, or error
+  state string
+  // Instance pool receiving the traffic
+  instancePool() exoscale.compute.instancePool
+  // Health check mode: tcp, http, or https
+  healthcheckMode string
+  // Health check port
+  healthcheckPort int
+  // Health check URI (http and https modes)
+  healthcheckUri string
+  // Health check interval in seconds
+  healthcheckInterval int
+  // Health check timeout in seconds
+  healthcheckTimeout int
+  // Retries before a target is considered unhealthy
+  healthcheckRetries int
+  // TLS SNI sent by an https health check
+  healthcheckTlsSni string
+}
+
+// Exoscale SKS Kubernetes cluster
+//
+// A managed Kubernetes (SKS) control plane with its version, service level,
+// CNI, add-ons, API server network allow-list, audit logging, OIDC
+// configuration, and node pools.
+private exoscale.sks.cluster @defaults("name zone version state") {
+  init(id? string)
+  // Cluster ID
+  id string
+  // Zone of the cluster
+  zone string
+  // Cluster name
+  name string
+  // Cluster description
+  description string
+  // Kubernetes version
+  version string
+  // Cluster state
+  //
+  // One of creating, running, upgrading, updating, suspending, resuming, deleting, error, rotating-ccm-credentials, rotating-csi-credentials, or rotating-karpenter-credentials.
+  state string
+  // Creation timestamp
+  created time
+  // Kubernetes API server endpoint
+  endpoint string
+  // Labels
+  labels map[string]string
+  // Service level: starter or pro
+  level string
+  // CNI plugin: calico, cilium, or empty when no CNI is installed
+  cni string
+  // Whether the control plane is upgraded to new patch versions automatically
+  autoUpgrade bool
+  // Whether kube-proxy is deployed
+  enableKubeProxy bool
+  // Kubernetes feature gates enabled on the control plane
+  featureGates []string
+  // Add-ons installed on the cluster, for example exoscale-cloud-controller or metrics-server
+  addons []string
+  // Networks (CIDRs) allowed to reach the Kubernetes API server
+  //
+  // A new cluster allows 0.0.0.0/0, which makes the API server reachable from any address. Null when the API reports no allow-list.
+  allowedNetworks []string
+  // Whether Kubernetes audit logging is enabled
+  auditEnabled bool
+  // Endpoint audit logs are sent to
+  auditEndpoint string
+  // OIDC issuer URL; empty when OIDC authentication is not configured
+  oidcIssuerUrl string
+  // OIDC client ID
+  oidcClientId string
+  // JWT claim used as the user name
+  oidcUsernameClaim string
+  // Prefix prepended to OIDC user names
+  oidcUsernamePrefix string
+  // JWT claim used as the user's groups
+  oidcGroupsClaim string
+  // Prefix prepended to OIDC group names
+  oidcGroupsPrefix string
+  // Claims that must be present in the ID token, with their required values
+  oidcRequiredClaim map[string]string
+  // Default security group created for the cluster's nodes
+  defaultSecurityGroup() exoscale.securityGroup
+  // Node pools of the cluster
+  nodepools() []exoscale.sks.nodepool
+}
+
+// Exoscale SKS node pool
+//
+// A group of Kubernetes worker nodes in an SKS cluster, backed by an
+// instance pool, with its size, instance type, template, network
+// attachments, Kubernetes labels, and taints.
+private exoscale.sks.nodepool @defaults("name zone version size") {
+  // Node pool ID
+  id string
+  // Zone of the node pool
+  zone string
+  // Node pool name
+  name string
+  // Node pool description
+  description string
+  // Number of nodes
+  size int
+  // State: renewing-token, creating, deleting, running, degraded, scaling, updating, or error
+  state string
+  // Kubernetes version of the nodes
+  version string
+  // Creation timestamp
+  created time
+  // Kubernetes labels applied to the nodes
+  labels map[string]string
+  // Kubernetes taints applied to the nodes, as key to value:effect
+  taints map[string]string
+  // Instance type of the nodes
+  instanceType() exoscale.compute.instanceType
+  // Template of the nodes
+  template() exoscale.compute.template
+  // Root disk size of the nodes in GiB
+  diskSize int
+  // Name prefix of the node instances
+  instancePrefix string
+  // Public IP assignment of the nodes: inet4 or dual
+  publicIpAssignment string
+  // Maximum number of pods per node; null when the default applies
+  kubeletMaxPods int
+  // Add-ons enabled on the node pool
+  addons []string
+  // Cluster the node pool belongs to
+  cluster() exoscale.sks.cluster
+  // Instance pool backing the node pool
+  instancePool() exoscale.compute.instancePool
+  // Security groups attached to the nodes
+  securityGroups() []exoscale.securityGroup
+  // Private networks attached to the nodes
+  privateNetworks() []exoscale.privateNetwork
+  // Anti-affinity groups of the nodes
+  antiAffinityGroups() []exoscale.antiAffinityGroup
+}
+
+// Exoscale block storage volume
+//
+// A zonal network block device attached to a compute instance, with its
+// size, encryption state, and snapshots.
+private exoscale.blockStorage.volume @defaults("name zone size state") {
+  // Volume ID
+  id string
+  // Zone of the volume
+  zone string
+  // Volume name
+  name string
+  // Volume size in GiB
+  size int
+  // Block size in bytes
+  blocksize int
+  // State: creating, snapshotting, deleted, deleting, detached, error, attaching, attached, or detaching
+  state string
+  // Creation timestamp
+  created time
+  // Whether the volume is encrypted
+  encrypted bool
+  // Labels
+  labels map[string]string
+  // Instance the volume is attached to; null when detached
+  instance() exoscale.compute.instance
+  // Snapshots of the volume
+  snapshots() []exoscale.blockStorage.snapshot
+}
+
+// Exoscale block storage snapshot
+//
+// A point-in-time snapshot of a block storage volume.
+private exoscale.blockStorage.snapshot @defaults("name zone state") {
+  // Snapshot ID
+  id string
+  // Zone of the snapshot
+  zone string
+  // Snapshot name
+  name string
+  // Snapshot size in GiB
+  size int
+  // Size of the source volume in GiB
+  volumeSize int
+  // State: allocated, creating, created, promoting, partially-destroyed, destroying, destroyed, or error
+  state string
+  // Creation timestamp
+  created time
+  // Labels
+  labels map[string]string
+  // Volume the snapshot was taken from
+  volume() exoscale.blockStorage.volume
+}
+
+// Exoscale managed database (DBaaS) service
+//
+// A managed database or data service (PostgreSQL, MySQL, Valkey, Kafka,
+// OpenSearch, Grafana, ClickHouse, Thanos), with its plan, node sizing,
+// termination protection, engine version, maintenance window, and the IP
+// allow-list (`ipFilter`) controlling who can connect.
+private exoscale.dbaas.service @defaults("name type zone state") {
+  init(name? string, zone? string)
+  // Service name, unique within the organization
+  name string
+  // Zone of the service
+  zone string
+  // Service type, for example pg, mysql, valkey, kafka, opensearch, grafana, clickhouse, or thanos
+  type string
+  // Service plan, for example hobbyist-2 or business-4
+  plan string
+  // State: running, rebuilding, rebalancing, or poweroff
+  state string
+  // Number of nodes
+  nodeCount int
+  // CPUs per node
+  nodeCpuCount int
+  // Memory per node in bytes
+  nodeMemory int
+  // Disk size in bytes
+  diskSize int
+  // Whether termination protection is enabled
+  terminationProtection bool
+  // Creation timestamp
+  created time
+  // Last update timestamp
+  updated time
+  // Engine version; null for service types without a version
+  version() string
+  // CIDRs allowed to connect to the service; 0.0.0.0/0 allows any source
+  ipFilter() []string
+  // Day of week of the maintenance window
+  maintenanceDow() string
+  // Start time (UTC) of the maintenance window
+  maintenanceTime() string
+}
+
+// Exoscale KMS key
+//
+// A key managed by the Exoscale Key Management Service, with its usage,
+// key spec, status, multi-zone replication, and automatic rotation settings.
+private exoscale.kms.key @defaults("name originZone status") {
+  // Key ID
+  id string
+  // Key name
+  name string
+  // Key description
+  description string
+  // Zone the key was created in
+  originZone string
+  // Whether the key is replicated to other zones
+  multiZone bool
+  // Zones the key is replicated to
+  replicas []string
+  // Key specification, for example AES_256
+  keySpec string
+  // Key usage, for example encrypt-decrypt
+  usage string
+  // Key material source: exoscale-kms or external-key-store
+  source string
+  // Status: enabled, disabled, or pending-deletion
+  status string
+  // Time of the last status change
+  statusSince time
+  // Creation timestamp
+  created time
+  // Scheduled deletion time; null when no deletion is scheduled
+  deleteAt time
+  // Whether the key material is rotated automatically
+  rotationEnabled bool
+  // Automatic rotation period in days
+  rotationPeriod int
+  // Time of the next automatic rotation; null when rotation is disabled
+  nextRotation time
+  // Number of manual rotations performed
+  manualRotationCount int
+}
+
+// Exoscale IAM role
+//
+// A role granting a policy to API keys and users, with its permissions and
+// whether it can be edited.
+private exoscale.iam.role @defaults("name") {
+  // Role ID
+  id string
+  // Role name
+  name string
+  // Role description
+  description string
+  // Whether the role can be edited (system roles cannot)
+  editable bool
+  // Labels
+  labels map[string]string
+  // Additional permissions granted by the role, for example reset-iam-organization-policy
+  permissions []string
+  // Maximum session TTL in seconds for assumed sessions
+  maxSessionTtl int
+  // IAM policy of the role
+  policy() exoscale.iam.policy
+}
+
+// Exoscale IAM policy
+//
+// The access policy of an IAM role or of the organization: a default
+// strategy (allow or deny) and per-service policies with optional
+// expression-based rules.
+private exoscale.iam.policy @defaults("defaultServiceStrategy") {
+  // Strategy for services without a service policy: allow or deny
+  defaultServiceStrategy string
+  // Per-service policies
+  services() []exoscale.iam.policy.service
+}
+
+// Exoscale IAM service policy
+private exoscale.iam.policy.service @defaults("name type") {
+  // Service name, for example compute, dbaas, iam, or sos
+  name string
+  // Policy type: allow, deny, or rules
+  type string
+  // Rules evaluated in order when type is rules
+  rules() []exoscale.iam.policy.rule
+}
+
+// Exoscale IAM service policy rule
+private exoscale.iam.policy.rule @defaults("action expression") {
+  // Action when the expression matches: allow or deny
+  action string
+  // CEL expression the rule matches on
+  expression string
+}
+
+// Exoscale IAM API key
+//
+// An API key with the IAM role it is bound to. Only the public key
+// identifier is exposed, never the secret.
+private exoscale.iam.apiKey @defaults("name key") {
+  // API key identifier (starts with EXO)
+  key string
+  // API key name
+  name string
+  // Creation timestamp
+  created time
+  // IAM role bound to the key
+  role() exoscale.iam.role
+}
+
+// Exoscale organization user
+//
+// A user of the organization with their IAM role, invitation state, SSO
+// use, and two-factor authentication status.
+private exoscale.iam.user @defaults("email") {
+  // User ID
+  id string
+  // User email address
+  email string
+  // Whether the user's invitation is still pending
+  pending bool
+  // Whether the user signs in through SSO
+  sso bool
+  // Whether two-factor authentication is enabled
+  twoFactorAuthentication bool
+  // IAM role of the user
+  role() exoscale.iam.role
+}
+
+// Exoscale DNS domain
+//
+// A DNS zone hosted by Exoscale DNS, with its records.
+private exoscale.dns.domain @defaults("name") {
+  // Domain ID
+  id string
+  // Domain name (Unicode)
+  name string
+  // Creation timestamp
+  created time
+  // DNS records of the domain
+  records() []exoscale.dns.domain.record
+}
+
+// Exoscale DNS record
+private exoscale.dns.domain.record @defaults("name type content") {
+  // Record ID
+  id string
+  // Record name, relative to the domain; empty for the apex
+  name string
+  // Record type, for example A, AAAA, CNAME, MX, TXT, or CAA
+  type string
+  // Record content
+  content string
+  // Time to live in seconds
+  ttl int
+  // Priority (MX and SRV records)
+  priority int
+  // Whether the record is managed by Exoscale (SOA and NS records)
+  systemRecord bool
+  // Creation timestamp
+  created time
+  // Last update timestamp
+  updated time
+}

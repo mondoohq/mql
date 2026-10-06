@@ -247,6 +247,7 @@ use (
    ./mql/providers/digitalocean
    ./mql/providers/dropbox
    ./mql/providers/elasticsearch
+   ./mql/providers/exoscale
    ./mql/providers/gcp
    ./mql/providers/github
    ./mql/providers/gitlab

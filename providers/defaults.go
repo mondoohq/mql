@@ -453,6 +453,22 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"exoscale": {
+		Provider: &plugin.Provider{
+			Name:            "exoscale",
+			ID:              "go.mondoo.com/mql/providers/exoscale",
+			ConnectionTypes: []string{"exoscale"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "exoscale",
+					Use:   "exoscale",
+					Short: "an Exoscale organization",
+				},
+			},
+		},
+	},
+
 	"fortios": {
 		Provider: &plugin.Provider{
 			Name:            "fortios",

@@ -128,6 +128,7 @@ To learn about Mondoo Platform, read the [Mondoo Platform docs](https://mondoo.c
 | DNS records                   | `host`                     | `mql shell host mondoo.com`                                                                                                                     |
 | Dropbox Business teams        | `dropbox`                  | `mql shell dropbox --token TEAM_TOKEN`                                                                                                          |
 | Elasticsearch cluster         | `elasticsearch`            | `mql shell elasticsearch localhost --user elastic --ask-pass`                                                                                   |
+| Exoscale organizations        | `exoscale`                 | `mql shell exoscale --api-key EXOSCALE_KEY --api-secret EXOSCALE_SECRET`                                                                        |
 | F5 BIG-IP load balancers      | `bigip`                    | `mql shell bigip --hostname HOST --user USER --password PASSWORD`                                                                               |
 | Fortinet FortiOS devices      | `fortios`                  | `mql shell fortios --hostname HOSTNAME --token TOKEN`                                                                                           |
 | GitHub organizations          | `github org`               | `mql shell github org mondoohq`                                                                                                                 |
