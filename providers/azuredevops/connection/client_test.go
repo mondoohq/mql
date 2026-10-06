@@ -112,6 +112,51 @@ func TestEndpointMustBeLoopback(t *testing.T) {
 	}
 }
 
+// pastedSecret stands in for a personal access token that a user pasted into
+// an address as its user information. No error may repeat it.
+const pastedSecret = "pastedpatvalue7q"
+
+func TestErrorsLeaveTheUserInformationOfAnAddressOut(t *testing.T) {
+	organizations := []string{
+		"https://user:" + pastedSecret + "@example.com/org",
+		"https://" + pastedSecret + "@example.com/org",
+		"https://user:" + pastedSecret + "@dev.azure.com:badport/org",
+		"user:" + pastedSecret + "@dev.azure.com",
+		pastedSecret + "@dev.azure.com/org",
+	}
+	for _, input := range organizations {
+		_, err := ParseOrganization(input)
+		require.Error(t, err, "organization %d", len(input))
+		assert.NotContains(t, err.Error(), pastedSecret)
+	}
+
+	endpoints := []string{
+		"http://user:" + pastedSecret + "@127.0.0.1:8080",
+		"http://" + pastedSecret + "@localhost:9000",
+		"http://user:" + pastedSecret + "@10.0.0.5",
+		"http://user:" + pastedSecret + "@127.0.0.1:badport",
+	}
+	for _, input := range endpoints {
+		_, err := validateEndpoint(input)
+		require.Error(t, err, "endpoint %d", len(input))
+		assert.NotContains(t, err.Error(), pastedSecret)
+	}
+}
+
+func TestRedactUserinfo(t *testing.T) {
+	cases := map[string]string{
+		"https://user:" + pastedSecret + "@dev.azure.com/org/p/_git/r": "https://dev.azure.com/org/p/_git/r",
+		"https://" + pastedSecret + "@dev.azure.com/org":               "https://dev.azure.com/org",
+		"user:" + pastedSecret + "@dev.azure.com/org":                  "dev.azure.com/org",
+		"http://127.0.0.1:8080/x?mail=a@b":                             "http://127.0.0.1:8080/x?mail=a@b",
+		"org/project/repo":                                             "org/project/repo",
+		"":                                                             "",
+	}
+	for input, want := range cases {
+		assert.Equal(t, want, RedactUserinfo(input))
+	}
+}
+
 func TestClientNeedsAValidOrganizationAndAnAuthenticator(t *testing.T) {
 	_, err := NewClient("bad/org", patAuth(t, "x"), ClientOptions{})
 	require.Error(t, err)

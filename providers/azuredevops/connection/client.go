@@ -40,6 +40,26 @@ const (
 
 var orgNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*$`)
 
+// RedactUserinfo drops the user information from an address, so that a token
+// pasted as https://user:<token>@dev.azure.com/... never reaches an error or a
+// log line. A personal access token can sit in the user name as well as in the
+// password, so the whole part before the last @ of the authority goes. It works
+// on text that does not parse as a URL too, with or without a scheme.
+func RedactUserinfo(s string) string {
+	prefix, rest := "", s
+	if i := strings.Index(s, "://"); i >= 0 {
+		prefix, rest = s[:i+3], s[i+3:]
+	}
+	end := strings.IndexAny(rest, "/?#")
+	if end < 0 {
+		end = len(rest)
+	}
+	if at := strings.LastIndex(rest[:end], "@"); at >= 0 {
+		rest = rest[at+1:]
+	}
+	return prefix + rest
+}
+
 // ParseOrganization returns the organization name from a bare name, from
 // https://dev.azure.com/<org>, or from the legacy https://<org>.visualstudio.com.
 func ParseOrganization(input string) (string, error) {
@@ -52,7 +72,8 @@ func ParseOrganization(input string) (string, error) {
 	if strings.Contains(s, "://") {
 		u, err := url.Parse(s)
 		if err != nil {
-			return "", fmt.Errorf("azure devops: cannot parse the organization %q: %w", input, err)
+			// The parse error repeats the whole input, user information included.
+			return "", fmt.Errorf("azure devops: cannot parse the organization %q", RedactUserinfo(s))
 		}
 		host := strings.ToLower(u.Hostname())
 		switch {
@@ -61,12 +82,12 @@ func ParseOrganization(input string) (string, error) {
 		case strings.HasSuffix(host, ".visualstudio.com"):
 			name = strings.TrimSuffix(host, ".visualstudio.com")
 		default:
-			return "", fmt.Errorf("azure devops: %q is not an Azure DevOps Services address", input)
+			return "", fmt.Errorf("azure devops: %q is not an Azure DevOps Services address", RedactUserinfo(s))
 		}
 	}
 
 	if !orgNamePattern.MatchString(name) {
-		return "", fmt.Errorf("azure devops: %q is not a valid organization name", name)
+		return "", fmt.Errorf("azure devops: %q is not a valid organization name", RedactUserinfo(name))
 	}
 	return name, nil
 }
@@ -192,20 +213,26 @@ func NewClient(org string, auth *Authenticator, opts ClientOptions) (*Client, er
 	}, nil
 }
 
-// validateEndpoint accepts the empty default or a loopback address.
+// validateEndpoint accepts the empty default or a loopback address. An address
+// with user information is refused, since the client would carry it into every
+// request address and so into the transport errors.
 func validateEndpoint(raw string) (string, error) {
 	if raw == "" {
 		return DefaultEndpoint, nil
 	}
+	shown := RedactUserinfo(raw)
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return "", fmt.Errorf("azure devops: %q is not a usable api endpoint", raw)
+		return "", fmt.Errorf("azure devops: %q is not a usable api endpoint", shown)
+	}
+	if u.User != nil {
+		return "", fmt.Errorf("azure devops: the api endpoint %q must not carry user information", shown)
 	}
 	switch u.Hostname() {
 	case "127.0.0.1", "localhost", "::1":
 		return strings.TrimRight(u.String(), "/"), nil
 	}
-	return "", fmt.Errorf("azure devops: the api endpoint %q must be a loopback address", raw)
+	return "", fmt.Errorf("azure devops: the api endpoint %q must be a loopback address", shown)
 }
 
 func sleepContext(ctx context.Context, d time.Duration) error {

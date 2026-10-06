@@ -63,7 +63,7 @@ func firstNonEmpty(flag, env string) string {
 func parseRepoArg(arg string) (org, project, repo string, err error) {
 	parts := strings.Split(arg, "/")
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return "", "", "", fmt.Errorf("invalid repository %q, use <organization>/<project>/<repository>", arg)
+		return "", "", "", fmt.Errorf("invalid repository %q, use <organization>/<project>/<repository>", connection.RedactUserinfo(arg))
 	}
 	org, err = connection.ParseOrganization(parts[0])
 	if err != nil {

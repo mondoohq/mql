@@ -169,6 +169,26 @@ func TestParseCLIRepository(t *testing.T) {
 	}
 }
 
+// A clone address with a token in it is a likely thing to paste, and the error
+// that rejects it must not print the token back.
+func TestParseCLIErrorsLeaveAPastedTokenOut(t *testing.T) {
+	clearEnv(t)
+	const pasted = "pastedpatvalue7q"
+	flags := map[string]*llx.Primitive{"token": llx.StringPrimitive("fake-token")}
+
+	for _, args := range [][]string{
+		{"repo", "https://user:" + pasted + "@dev.azure.com/org/project/_git/repo"},
+		{"repo", "user:" + pasted + "@dev.azure.com/org/project"},
+		{"repo", pasted + "@org/project/repo"},
+		{"org", "https://user:" + pasted + "@example.com/org"},
+		{"org", "user:" + pasted + "@dev.azure.com"},
+	} {
+		_, err := parse(t, args, flags)
+		require.Error(t, err, args[0])
+		assert.NotContains(t, err.Error(), pasted, args[0])
+	}
+}
+
 func TestParseCLIRejectsABadCommand(t *testing.T) {
 	clearEnv(t)
 	flags := map[string]*llx.Primitive{"token": llx.StringPrimitive("fake-token")}
