@@ -73,12 +73,11 @@ type StackitConnection struct {
 	projectParent string
 	projectLabels map[string]string
 
-	// configOpts includes WithRegion(region) — use for region-scoped services
-	// (iaas, ske, objectstorage, loadbalancer, postgres-flex, mongodb-flex).
-	configOpts []config.ConfigurationOption
-	// configOptsGlobal omits WithRegion — use for global / project-only
-	// services (resource-manager, dns, the rest of DBaaS, secrets-manager,
-	// observability, service-account). Those APIs reject WithRegion.
+	// configOptsGlobal configures every service client. It deliberately omits
+	// WithRegion: the current SDK APIs take the region as a per-call
+	// parameter (c.Region()) and reject a region in the client configuration
+	// with "this API does not support setting a region in the client
+	// configuration".
 	configOptsGlobal []config.ConfigurationOption
 
 	// routing tables reachable from the project's network areas, resolved once
@@ -215,7 +214,6 @@ func NewStackitConnection(id uint32, asset *inventory.Asset, conf *inventory.Con
 	}
 
 	globalOpts := buildAuthOptions(conf)
-	regionalOpts := append([]config.ConfigurationOption{config.WithRegion(region)}, globalOpts...)
 
 	conn := &StackitConnection{
 		Connection:       plugin.NewConnection(id, asset),
@@ -223,15 +221,13 @@ func NewStackitConnection(id uint32, asset *inventory.Asset, conf *inventory.Con
 		asset:            asset,
 		projectID:        projectID,
 		region:           region,
-		configOpts:       regionalOpts,
 		configOptsGlobal: globalOpts,
 	}
 	return conn, nil
 }
 
 // buildAuthOptions assembles the auth+endpoint options shared by every
-// service client. The caller is responsible for prepending WithRegion when the
-// target service is regional.
+// service client. No client takes WithRegion; each call passes the region.
 func buildAuthOptions(conf *inventory.Config) []config.ConfigurationOption {
 	var opts []config.ConfigurationOption
 
@@ -470,14 +466,14 @@ func (c *StackitConnection) DNS() (*dns.APIClient, error) {
 
 func (c *StackitConnection) ObjectStorage() (*objectstorage.APIClient, error) {
 	c.objectStorageOnce.Do(func() {
-		c.objectStorageClient, c.objectStorageErr = objectstorage.NewAPIClient(c.configOpts...)
+		c.objectStorageClient, c.objectStorageErr = objectstorage.NewAPIClient(c.configOptsGlobal...)
 	})
 	return c.objectStorageClient, c.objectStorageErr
 }
 
 func (c *StackitConnection) LoadBalancer() (*loadbalancer.APIClient, error) {
 	c.loadBalancerOnce.Do(func() {
-		c.loadBalancerClient, c.loadBalancerErr = loadbalancer.NewAPIClient(c.configOpts...)
+		c.loadBalancerClient, c.loadBalancerErr = loadbalancer.NewAPIClient(c.configOptsGlobal...)
 	})
 	return c.loadBalancerClient, c.loadBalancerErr
 }
@@ -491,7 +487,7 @@ func (c *StackitConnection) ResourceManager() (*resourcemanager.APIClient, error
 
 func (c *StackitConnection) PostgresFlex() (*postgresflex.APIClient, error) {
 	c.postgresFlexOnce.Do(func() {
-		c.postgresFlexClient, c.postgresFlexErr = postgresflex.NewAPIClient(c.configOpts...)
+		c.postgresFlexClient, c.postgresFlexErr = postgresflex.NewAPIClient(c.configOptsGlobal...)
 	})
 	return c.postgresFlexClient, c.postgresFlexErr
 }
@@ -542,7 +538,7 @@ func (c *StackitConnection) LogMe() (*logme.APIClient, error) {
 
 func (c *StackitConnection) SqlServerFlex() (*sqlserverflex.APIClient, error) {
 	c.sqlServerFlexOnce.Do(func() {
-		c.sqlServerFlexClient, c.sqlServerFlexErr = sqlserverflex.NewAPIClient(c.configOpts...)
+		c.sqlServerFlexClient, c.sqlServerFlexErr = sqlserverflex.NewAPIClient(c.configOptsGlobal...)
 	})
 	return c.sqlServerFlexClient, c.sqlServerFlexErr
 }
@@ -600,7 +596,7 @@ func (c *StackitConnection) TelemetryLink() (*telemetrylink.APIClient, error) {
 
 func (c *StackitConnection) ALB() (*alb.APIClient, error) {
 	c.albOnce.Do(func() {
-		c.albClient, c.albErr = alb.NewAPIClient(c.configOpts...)
+		c.albClient, c.albErr = alb.NewAPIClient(c.configOptsGlobal...)
 	})
 	return c.albClient, c.albErr
 }
@@ -609,21 +605,21 @@ func (c *StackitConnection) AlbWaf() (*albwaf.APIClient, error) {
 	c.albWafOnce.Do(func() {
 		// Mirrors ALB (same product family): the WAF API is region-scoped via
 		// the client config and also accepts the region as a per-call param.
-		c.albWafClient, c.albWafErr = albwaf.NewAPIClient(c.configOpts...)
+		c.albWafClient, c.albWafErr = albwaf.NewAPIClient(c.configOptsGlobal...)
 	})
 	return c.albWafClient, c.albWafErr
 }
 
 func (c *StackitConnection) Certificates() (*certificates.APIClient, error) {
 	c.certificatesOnce.Do(func() {
-		c.certificatesClient, c.certificatesErr = certificates.NewAPIClient(c.configOpts...)
+		c.certificatesClient, c.certificatesErr = certificates.NewAPIClient(c.configOptsGlobal...)
 	})
 	return c.certificatesClient, c.certificatesErr
 }
 
 func (c *StackitConnection) KMS() (*kms.APIClient, error) {
 	c.kmsOnce.Do(func() {
-		c.kmsClient, c.kmsErr = kms.NewAPIClient(c.configOpts...)
+		c.kmsClient, c.kmsErr = kms.NewAPIClient(c.configOptsGlobal...)
 	})
 	return c.kmsClient, c.kmsErr
 }
@@ -706,7 +702,7 @@ func (c *StackitConnection) ServiceEnablement() (*serviceenablement.APIClient, e
 // record lacks; the v2 client stays in place for the fields already shipped.
 func (c *StackitConnection) PostgresFlexV3() (*postgresflexv3.APIClient, error) {
 	c.postgresFlexV3Once.Do(func() {
-		c.postgresFlexV3Client, c.postgresFlexV3Err = postgresflexv3.NewAPIClient(c.configOpts...)
+		c.postgresFlexV3Client, c.postgresFlexV3Err = postgresflexv3.NewAPIClient(c.configOptsGlobal...)
 	})
 	return c.postgresFlexV3Client, c.postgresFlexV3Err
 }
@@ -715,7 +711,7 @@ func (c *StackitConnection) PostgresFlexV3() (*postgresflexv3.APIClient, error) 
 // client for the same reason as PostgresFlexV3.
 func (c *StackitConnection) SqlServerFlexV3() (*sqlserverflexv3.APIClient, error) {
 	c.sqlServerFlexV3Once.Do(func() {
-		c.sqlServerFlexV3Client, c.sqlServerFlexV3Err = sqlserverflexv3.NewAPIClient(c.configOpts...)
+		c.sqlServerFlexV3Client, c.sqlServerFlexV3Err = sqlserverflexv3.NewAPIClient(c.configOptsGlobal...)
 	})
 	return c.sqlServerFlexV3Client, c.sqlServerFlexV3Err
 }
