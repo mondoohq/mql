@@ -301,6 +301,24 @@ func TestOneProjectByName(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, apiStatus(err))
 }
 
+// Without its last segment the path of one project or repository is the list
+// endpoint, which would answer with a list that decodes into an empty struct.
+func TestAnEmptyNameIsRefusedBeforeAnyRequest(t *testing.T) {
+	c, srv, _ := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
+	ctx := context.Background()
+
+	_, err := c.Project(ctx, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "project name is empty")
+
+	for _, args := range [][2]string{{"scan-test", ""}, {"scan-test", "  "}, {"", "ado-scan-test-app"}} {
+		_, err = c.Repository(ctx, args[0], args[1])
+		require.Error(t, err, args)
+		assert.Contains(t, err.Error(), "name is empty", args)
+	}
+	assert.Empty(t, srv.Requests())
+}
+
 func TestItemsListTheTree(t *testing.T) {
 	c, _, _ := newFakeClient(t, entraAuth(t, fakeado.BearerToken))
 

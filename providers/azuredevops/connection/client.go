@@ -472,6 +472,14 @@ func (c *Client) Repositories(ctx context.Context, project string) ([]Repository
 
 // Repository reads one repository by name or id.
 func (c *Client) Repository(ctx context.Context, project, repo string) (*Repository, error) {
+	// Without the name the path is the list endpoint, which answers 200 with a
+	// list that decodes into an empty repository.
+	if strings.TrimSpace(project) == "" {
+		return nil, errors.New("azure devops: the project name is empty")
+	}
+	if strings.TrimSpace(repo) == "" {
+		return nil, errors.New("azure devops: the repository name is empty")
+	}
 	out := &Repository{}
 	if _, err := c.getJSON(ctx, request{segments: []string{project, "_apis", "git", "repositories", repo}}, out); err != nil {
 		return nil, err
@@ -481,6 +489,10 @@ func (c *Client) Repository(ctx context.Context, project, repo string) (*Reposit
 
 // Project reads one project by name or id.
 func (c *Client) Project(ctx context.Context, project string) (*Project, error) {
+	// Without the name the path is the list endpoint, as for Repository.
+	if strings.TrimSpace(project) == "" {
+		return nil, errors.New("azure devops: the project name is empty")
+	}
 	out := &Project{}
 	if _, err := c.getJSON(ctx, request{segments: []string{"_apis", "projects", project}}, out); err != nil {
 		return nil, err
