@@ -44,7 +44,10 @@ type ProjectListing struct {
 	Project Project
 	Repos   []Repository
 	// NoAccess is set, and Repos is empty, when the principal may not list the
-	// repositories of the project. It holds the answer Azure DevOps gave.
+	// repositories of the project. It holds the answer Azure DevOps gave. A
+	// project the credential cannot see holds a 404 here, so IsNoAccess(NoAccess)
+	// is false for it: detect an unreadable project with NoAccess != nil or with
+	// Listing.Unreadable, never with IsNoAccess.
 	NoAccess error
 }
 

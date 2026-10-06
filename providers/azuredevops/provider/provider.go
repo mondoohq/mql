@@ -87,7 +87,7 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 
 		switch conf.Type {
 		default:
-			conn, err = connection.NewAzuredevopsConnection(connId, asset, conf)
+			conn, err = connection.NewAzuredevopsConnection(connId, asset)
 		}
 		if err != nil {
 			return nil, err
@@ -121,8 +121,8 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 
 func (s *Service) detect(asset *inventory.Asset, conn *connection.AzuredevopsConnection) error {
 	// TODO: adjust asset detection
-	asset.Id = conn.Conf.Type
-	asset.Name = conn.Conf.Host
+	asset.Id = connection.NewOrgIdentifier(conn.Client().Org())
+	asset.Name = conn.Client().Org()
 
 	asset.Platform = &inventory.Platform{
 		Name:    "azuredevops",
