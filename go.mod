@@ -3,6 +3,8 @@ module go.mondoo.com/mql
 go 1.27.3
 
 require (
+	// pin v0.3.0
+	// encoding guard: providers/os/resources/purl TestPackageURLEncoding
 	cloud.google.com/go/logging v1.13.2
 	cloud.google.com/go/secretmanager v1.16.0
 	dario.cat/mergo v1.0.2
@@ -14,7 +16,6 @@ require (
 	github.com/GoogleCloudPlatform/berglas/v2 v2.0.2
 	github.com/Masterminds/semver v1.5.0
 	github.com/ProtonMail/go-crypto v1.5.2
-	// pin v0.3.0
 	github.com/alecthomas/participle v0.3.0
 	github.com/alecthomas/participle/v2 v2.1.4
 	github.com/aws/aws-sdk-go-v2 v1.47.8
@@ -76,11 +77,11 @@ require (
 	github.com/muesli/termenv v0.16.0
 	github.com/olekukonko/tablewriter v1.1.5
 	github.com/opencontainers/image-spec v1.1.1
-	// encoding guard: providers/os/resources/purl TestPackageURLEncoding
 	github.com/package-url/packageurl-go v0.1.7
 	github.com/pandatix/go-cvss v0.6.4
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pierrec/lz4/v4 v4.1.33
+	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/pkg/errors v0.9.1
 	github.com/pkg/sftp v1.13.12
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
@@ -111,6 +112,7 @@ require (
 	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e
 	golang.org/x/mod v0.42.0
 	golang.org/x/net v0.62.0
+	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
@@ -269,7 +271,6 @@ require (
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/petermattis/goid v0.0.0-20261108111446-7b06cb8d5a54 // indirect
 	github.com/pjbgf/sha1cd v0.7.0 // indirect
-	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/prometheus/client_model v0.6.3 // indirect
 	github.com/prometheus/common v0.72.0 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
@@ -309,7 +310,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.47.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.5 // indirect
 	go.yaml.in/yaml/v3 v3.0.6 // indirect
-	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	google.golang.org/api v0.278.0 // indirect
