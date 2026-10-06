@@ -209,31 +209,52 @@ func (r *mqlExoscaleComputeInstance) loadDetail() error {
 }
 
 func (r *mqlExoscaleComputeInstance) macAddress() (string, error) {
-	return r.MacAddress.Data, r.loadDetail()
+	if err := r.loadDetail(); err != nil {
+		return "", err
+	}
+	return r.MacAddress.Data, nil
 }
 
 func (r *mqlExoscaleComputeInstance) diskSize() (int64, error) {
-	return r.DiskSize.Data, r.loadDetail()
+	if err := r.loadDetail(); err != nil {
+		return 0, err
+	}
+	return r.DiskSize.Data, nil
 }
 
 func (r *mqlExoscaleComputeInstance) diskEncrypted() (bool, error) {
-	return r.DiskEncrypted.Data, r.loadDetail()
+	if err := r.loadDetail(); err != nil {
+		return false, err
+	}
+	return r.DiskEncrypted.Data, nil
 }
 
 func (r *mqlExoscaleComputeInstance) securebootEnabled() (bool, error) {
-	return r.SecurebootEnabled.Data, r.loadDetail()
+	if err := r.loadDetail(); err != nil {
+		return false, err
+	}
+	return r.SecurebootEnabled.Data, nil
 }
 
 func (r *mqlExoscaleComputeInstance) tpmEnabled() (bool, error) {
-	return r.TpmEnabled.Data, r.loadDetail()
+	if err := r.loadDetail(); err != nil {
+		return false, err
+	}
+	return r.TpmEnabled.Data, nil
 }
 
 func (r *mqlExoscaleComputeInstance) ipForwarding() (bool, error) {
-	return r.IpForwarding.Data, r.loadDetail()
+	if err := r.loadDetail(); err != nil {
+		return false, err
+	}
+	return r.IpForwarding.Data, nil
 }
 
 func (r *mqlExoscaleComputeInstance) applicationConsistentSnapshotEnabled() (bool, error) {
-	return r.ApplicationConsistentSnapshotEnabled.Data, r.loadDetail()
+	if err := r.loadDetail(); err != nil {
+		return false, err
+	}
+	return r.ApplicationConsistentSnapshotEnabled.Data, nil
 }
 
 func (r *mqlExoscaleComputeInstance) elasticIps() ([]any, error) {

@@ -218,17 +218,29 @@ func (r *mqlExoscaleDbaasService) applyDetail(d *dbaasDetail) {
 }
 
 func (r *mqlExoscaleDbaasService) version() (string, error) {
-	return r.Version.Data, r.loadDetail()
+	if err := r.loadDetail(); err != nil {
+		return "", err
+	}
+	return r.Version.Data, nil
 }
 
 func (r *mqlExoscaleDbaasService) ipFilter() ([]any, error) {
-	return r.IpFilter.Data, r.loadDetail()
+	if err := r.loadDetail(); err != nil {
+		return nil, err
+	}
+	return r.IpFilter.Data, nil
 }
 
 func (r *mqlExoscaleDbaasService) maintenanceDow() (string, error) {
-	return r.MaintenanceDow.Data, r.loadDetail()
+	if err := r.loadDetail(); err != nil {
+		return "", err
+	}
+	return r.MaintenanceDow.Data, nil
 }
 
 func (r *mqlExoscaleDbaasService) maintenanceTime() (string, error) {
-	return r.MaintenanceTime.Data, r.loadDetail()
+	if err := r.loadDetail(); err != nil {
+		return "", err
+	}
+	return r.MaintenanceTime.Data, nil
 }
