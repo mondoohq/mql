@@ -21,7 +21,7 @@ func (r *mqlStackitNetwork) nics() ([]any, error) {
 	resp, err := client.DefaultAPI.ListNics(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func (r *mqlStackitServer) networkInterfaces() ([]any, error) {
 	resp, err := client.DefaultAPI.ListServerNICs(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}

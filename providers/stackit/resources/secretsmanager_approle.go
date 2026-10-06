@@ -76,7 +76,7 @@ func (r *mqlStackitSecretsManagerInstance) approles() ([]any, error) {
 	resp, err := client.DefaultAPI.GetApproles(bgctx(), c.ProjectID(), r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func (r *mqlStackitSecretsManagerApprole) secretIds() ([]any, error) {
 	resp, err := client.DefaultAPI.ListApproleSecretIds(bgctx(), c.ProjectID(), r.cacheInstanceId, r.RoleId.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}

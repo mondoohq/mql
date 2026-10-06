@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/stackitcloud/stackit-sdk-go/core/config"
@@ -229,11 +231,30 @@ func NewStackitConnection(id uint32, asset *inventory.Asset, conf *inventory.Con
 	return conn, nil
 }
 
+// requestTimeout bounds a single STACKIT API request. The SDK's clients have
+// no timeout of their own, and the plugin runtime hands resources no context
+// to carry a deadline, so without it a request that never answers hangs the
+// scan. A var so tests can shrink it.
+var requestTimeout = 30 * time.Second
+
+// withRequestTimeout gives each service client its own HTTP client with
+// requestTimeout. It must allocate per client rather than share one: the SDK
+// replaces the client's Transport with that service's auth round tripper, so a
+// shared client would end up carrying whichever service was built last.
+// config.WithTimeout cannot be used instead, because the SDK only creates the
+// HTTP client after applying the options and that option dereferences it.
+func withRequestTimeout() config.ConfigurationOption {
+	return func(c *config.Configuration) error {
+		c.HTTPClient = &http.Client{Timeout: requestTimeout}
+		return nil
+	}
+}
+
 // buildAuthOptions assembles the auth+endpoint options shared by every
 // service client. The caller is responsible for prepending WithRegion when the
 // target service is regional.
 func buildAuthOptions(conf *inventory.Config) []config.ConfigurationOption {
-	var opts []config.ConfigurationOption
+	opts := []config.ConfigurationOption{withRequestTimeout()}
 
 	if endpoint, ok := getOptionValueFrom(conf.Options, EndpointEnvVar, OptionEndpoint); ok {
 		opts = append(opts, config.WithEndpoint(endpoint))

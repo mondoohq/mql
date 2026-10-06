@@ -124,7 +124,7 @@ func (r *mqlStackitKms) keyRings() ([]any, error) {
 	resp, err := client.DefaultAPI.ListKeyRings(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -208,7 +208,7 @@ func (r *mqlStackitKmsKeyRing) keys() ([]any, error) {
 	resp, err := client.DefaultAPI.ListKeys(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -260,7 +260,7 @@ func (r *mqlStackitKmsKey) versions() ([]any, error) {
 	resp, err := client.DefaultAPI.ListVersions(bgctx(), c.ProjectID(), c.Region(), r.KeyRingId.Data, r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -306,7 +306,7 @@ func (r *mqlStackitKmsKeyRing) wrappingKeys() ([]any, error) {
 	resp, err := client.DefaultAPI.ListWrappingKeys(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}

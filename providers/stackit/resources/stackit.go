@@ -47,7 +47,10 @@ func (r *mqlStackit) project() (*mqlStackitProject, error) {
 	resp, err := client.DefaultAPI.GetProject(bgctx(), c.ProjectID()).IncludeParents(true).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return markNull[mqlStackitProject](&r.Project)
+			if !plugin.StructuredErrors() {
+				return markNull[mqlStackitProject](&r.Project)
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -202,9 +205,16 @@ func (r *mqlStackitOrganization) fetchDetail() (*resourcemanager.OrganizationRes
 	}
 	resp, err := client.DefaultAPI.GetOrganization(bgctx(), r.Id.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			r.fetched.Store(true)
 			return nil, nil
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				r.fetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -379,9 +389,16 @@ func (r *mqlStackitFolder) fetchDetail() (*resourcemanager.GetFolderDetailsRespo
 	}
 	resp, err := client.DefaultAPI.GetFolderDetails(bgctx(), r.ContainerId.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			r.fetched.Store(true)
 			return nil, nil
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				r.fetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}

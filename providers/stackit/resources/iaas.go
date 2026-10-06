@@ -26,7 +26,7 @@ func (r *mqlStackit) servers() ([]any, error) {
 	resp, err := client.DefaultAPI.ListServers(bgctx(), c.ProjectID(), c.Region()).Details(true).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -303,7 +303,7 @@ func (r *mqlStackit) volumes() ([]any, error) {
 	resp, err := client.DefaultAPI.ListVolumes(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -552,7 +552,7 @@ func (r *mqlStackit) snapshots() ([]any, error) {
 	resp, err := client.DefaultAPI.ListSnapshotsInProject(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -625,7 +625,7 @@ func (r *mqlStackit) images() ([]any, error) {
 	resp, err := client.DefaultAPI.ListImages(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -720,9 +720,16 @@ func (r *mqlStackitImage) fetchShare() (*iaas.ImageShare, error) {
 	}
 	resp, err := client.DefaultAPI.GetImageShare(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			r.shareFetched.Store(true)
 			return nil, nil
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				r.shareFetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -779,7 +786,7 @@ func (r *mqlStackit) networks() ([]any, error) {
 	resp, err := client.DefaultAPI.ListNetworks(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -951,7 +958,7 @@ func (r *mqlStackit) publicIps() ([]any, error) {
 	resp, err := client.DefaultAPI.ListPublicIPs(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -1013,7 +1020,7 @@ func (r *mqlStackit) securityGroups() ([]any, error) {
 	resp, err := client.DefaultAPI.ListSecurityGroups(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -1099,7 +1106,7 @@ func (r *mqlStackitSecurityGroup) rules() ([]any, error) {
 		resp, err := client.DefaultAPI.ListSecurityGroupRules(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 		if err != nil {
 			if isAccessDenied(err) {
-				return []any{}, nil
+				return deniedList(err)
 			}
 			return nil, err
 		}
@@ -1188,7 +1195,7 @@ func (r *mqlStackit) keyPairs() ([]any, error) {
 	resp, err := client.DefaultAPI.ListKeyPairs(bgctx()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}

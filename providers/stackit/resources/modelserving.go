@@ -34,7 +34,7 @@ func (r *mqlStackitModelServing) tokens() ([]any, error) {
 	resp, err := client.DefaultAPI.ListTokens(bgctx(), c.Region(), c.ProjectID()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (r *mqlStackitModelServing) models() ([]any, error) {
 	resp, err := client.DefaultAPI.ListModels(bgctx(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}

@@ -95,7 +95,7 @@ func (r *mqlStackitIam) members() ([]any, error) {
 	resp, err := client.DefaultAPI.ListMembers(bgctx(), authResourceTypeProject, c.ProjectID()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (r *mqlStackitIam) roles() ([]any, error) {
 	resp, err := client.DefaultAPI.ListRoles(bgctx(), authResourceTypeProject, c.ProjectID()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}

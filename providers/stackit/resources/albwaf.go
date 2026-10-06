@@ -90,8 +90,11 @@ func (r *mqlStackit) albWafs() ([]any, error) {
 		}
 		resp, err := req.Execute()
 		if err != nil {
-			if isAccessDenied(err) || isNotFound(err) {
+			if isNotFound(err) {
 				return []any{}, nil
+			}
+			if isAccessDenied(err) {
+				return deniedList(err)
 			}
 			return nil, err
 		}
@@ -173,8 +176,14 @@ func (r *mqlStackitAlbWaf) managedRuleSet() (*mqlStackitAlbManagedRuleSet, error
 		// Degrade the auto-traversal from the parent WAF: a token that can list
 		// WAFs but lacks GetManagedRuleSet, or a set that was deleted (404),
 		// should read as null rather than fail the whole query.
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return markNull[mqlStackitAlbManagedRuleSet](&r.ManagedRuleSet)
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				return markNull[mqlStackitAlbManagedRuleSet](&r.ManagedRuleSet)
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -192,8 +201,14 @@ func (r *mqlStackitAlbWaf) customRuleGroup() (*mqlStackitAlbCustomRuleGroup, err
 		// Degrade the auto-traversal from the parent WAF: a token that can list
 		// WAFs but lacks GetCustomRuleGroup, or a group that was deleted (404),
 		// should read as null rather than fail the whole query.
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return markNull[mqlStackitAlbCustomRuleGroup](&r.CustomRuleGroup)
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				return markNull[mqlStackitAlbCustomRuleGroup](&r.CustomRuleGroup)
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -303,8 +318,11 @@ func (r *mqlStackitAlbManagedRuleSet) wafs() ([]any, error) {
 		}
 		resp, err := client.DefaultAPI.GetManagedRuleSet(bgctx(), c.ProjectID(), c.Region(), r.Name.Data).Execute()
 		if err != nil {
-			if isAccessDenied(err) || isNotFound(err) {
+			if isNotFound(err) {
 				return []any{}, nil
+			}
+			if isAccessDenied(err) {
+				return deniedList(err)
 			}
 			return nil, err
 		}
@@ -327,8 +345,14 @@ func (r *mqlStackitAlbManagedRuleSet) groups() (map[string]albwaf.MRSRuleGroup, 
 	}
 	resp, err := client.DefaultAPI.GetManagedRuleSet(bgctx(), c.ProjectID(), c.Region(), r.Name.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return nil, nil
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -417,8 +441,11 @@ func (r *mqlStackitAlbCustomRuleGroup) wafs() ([]any, error) {
 		}
 		resp, err := client.DefaultAPI.GetCustomRuleGroup(bgctx(), c.ProjectID(), c.Region(), r.Name.Data).Execute()
 		if err != nil {
-			if isAccessDenied(err) || isNotFound(err) {
+			if isNotFound(err) {
 				return []any{}, nil
+			}
+			if isAccessDenied(err) {
+				return deniedList(err)
 			}
 			return nil, err
 		}
@@ -441,8 +468,14 @@ func (r *mqlStackitAlbCustomRuleGroup) customRules() ([]albwaf.GetCustomRule, er
 	}
 	resp, err := client.DefaultAPI.GetCustomRuleGroup(bgctx(), c.ProjectID(), c.Region(), r.Name.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return nil, nil
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}

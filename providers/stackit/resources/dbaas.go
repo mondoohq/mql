@@ -44,7 +44,7 @@ func (r *mqlStackitPostgresFlex) instances() ([]any, error) {
 	resp, err := client.DefaultAPI.ListInstances(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -91,8 +91,11 @@ func (r *mqlStackitPostgresFlexInstance) fetchDetail() (*postgresflex.Instance, 
 	resp, err := client.DefaultAPI.GetInstance(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			r.fetched.Store(true)
-			return nil, nil
+			if !plugin.StructuredErrors() {
+				r.fetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -187,7 +190,7 @@ func (r *mqlStackitMongoDbFlex) instances() ([]any, error) {
 	resp, err := client.DefaultAPI.ListInstances(bgctx(), c.ProjectID(), c.Region()).Tag("").Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -231,8 +234,11 @@ func (r *mqlStackitMongoDbFlexInstance) fetchDetail() (*mongodbflex.Instance, er
 	resp, err := client.DefaultAPI.GetInstance(bgctx(), c.ProjectID(), r.Id.Data, c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			r.fetched.Store(true)
-			return nil, nil
+			if !plugin.StructuredErrors() {
+				r.fetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -313,7 +319,7 @@ func (r *mqlStackitOpenSearch) instances() ([]any, error) {
 	resp, err := client.DefaultAPI.ListInstances(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -348,7 +354,7 @@ func (r *mqlStackitMariaDb) instances() ([]any, error) {
 	resp, err := client.DefaultAPI.ListInstances(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -446,7 +452,7 @@ func (r *mqlStackitRedis) instances() ([]any, error) {
 	resp, err := client.DefaultAPI.ListInstances(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -481,7 +487,7 @@ func (r *mqlStackitRabbitMq) instances() ([]any, error) {
 	resp, err := client.DefaultAPI.ListInstances(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -516,7 +522,7 @@ func (r *mqlStackitSecretsManager) instances() ([]any, error) {
 	resp, err := client.DefaultAPI.ListInstances(bgctx(), c.ProjectID()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -639,7 +645,7 @@ func (r *mqlStackitSecretsManagerInstance) acls() ([]any, error) {
 	resp, err := client.DefaultAPI.ListACLs(bgctx(), c.ProjectID(), r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -669,7 +675,7 @@ func (r *mqlStackitSecretsManagerInstance) users() ([]any, error) {
 	resp, err := client.DefaultAPI.ListUsers(bgctx(), c.ProjectID(), r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -743,7 +749,7 @@ func (r *mqlStackitObservability) instances() ([]any, error) {
 	resp, err := client.DefaultAPI.ListInstances(bgctx(), c.ProjectID()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -788,8 +794,11 @@ func (r *mqlStackitObservabilityInstance) fetchDetail() (*observability.GetInsta
 	resp, err := client.DefaultAPI.GetInstance(bgctx(), r.Id.Data, c.ProjectID()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			r.fetched.Store(true)
-			return nil, nil
+			if !plugin.StructuredErrors() {
+				r.fetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -843,7 +852,7 @@ func (r *mqlStackitObservabilityInstance) acl() ([]any, error) {
 	resp, err := client.DefaultAPI.ListACL(bgctx(), r.Id.Data, c.ProjectID()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -874,8 +883,11 @@ func (r *mqlStackitObservabilityInstance) fetchGrafana() (*observability.Grafana
 	resp, err := client.DefaultAPI.GetGrafanaConfigs(bgctx(), r.Id.Data, c.ProjectID()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			r.grafanaFetched.Store(true)
-			return nil, nil
+			if !plugin.StructuredErrors() {
+				r.grafanaFetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -976,7 +988,7 @@ func (r *mqlStackitPostgresFlexInstance) users() ([]any, error) {
 	resp, err := client.DefaultAPI.ListUsers(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -1019,8 +1031,11 @@ func (r *mqlStackitPostgresFlexInstanceUser) fetchDetail() (*postgresflex.UserRe
 	resp, err := client.DefaultAPI.GetUser(bgctx(), c.ProjectID(), c.Region(), r.cacheInstanceId, r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			r.fetched.Store(true)
-			return nil, nil
+			if !plugin.StructuredErrors() {
+				r.fetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -1071,7 +1086,7 @@ func (r *mqlStackitMongoDbFlexInstance) users() ([]any, error) {
 	resp, err := client.DefaultAPI.ListUsers(bgctx(), c.ProjectID(), r.Id.Data, c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -1114,8 +1129,11 @@ func (r *mqlStackitMongoDbFlexInstanceUser) fetchDetail() (*mongodbflex.Instance
 	resp, err := client.DefaultAPI.GetUser(bgctx(), c.ProjectID(), r.cacheInstanceId, r.Id.Data, c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			r.fetched.Store(true)
-			return nil, nil
+			if !plugin.StructuredErrors() {
+				r.fetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -1174,7 +1192,7 @@ func (r *mqlStackitSqlServerFlexInstance) users() ([]any, error) {
 	resp, err := client.DefaultAPI.ListUsers(bgctx(), c.ProjectID(), r.Id.Data, c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -1220,8 +1238,11 @@ func (r *mqlStackitSqlServerFlexInstanceUser) fetchDetail() (*sqlserverflex.User
 	resp, err := client.DefaultAPI.GetUser(bgctx(), c.ProjectID(), r.cacheInstanceId, r.Id.Data, c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			r.fetched.Store(true)
-			return nil, nil
+			if !plugin.StructuredErrors() {
+				r.fetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -1531,7 +1552,7 @@ func (r *mqlStackitLogMe) instances() ([]any, error) {
 	resp, err := client.DefaultAPI.ListInstances(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -1608,7 +1629,7 @@ func (r *mqlStackitSqlServerFlex) instances() ([]any, error) {
 	resp, err := client.DefaultAPI.ListInstances(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -1652,8 +1673,11 @@ func (r *mqlStackitSqlServerFlexInstance) fetchDetail() (*sqlserverflex.Instance
 	resp, err := client.DefaultAPI.GetInstance(bgctx(), c.ProjectID(), r.Id.Data, c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			r.fetched.Store(true)
-			return nil, nil
+			if !plugin.StructuredErrors() {
+				r.fetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}

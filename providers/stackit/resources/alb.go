@@ -28,7 +28,7 @@ func (r *mqlStackit) albLoadBalancers() ([]any, error) {
 		resp, err := req.Execute()
 		if err != nil {
 			if isAccessDenied(err) {
-				return []any{}, nil
+				return deniedList(err)
 			}
 			return nil, err
 		}
