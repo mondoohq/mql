@@ -1170,16 +1170,39 @@ var sensitiveGlueConnectionPropertyKeys = map[string]struct{}{
 	"KAFKA_CLIENT_KEY_PASSWORD":      {},
 	"KAFKA_TRUSTSTORE_PASSWORD":      {},
 	"KAFKA_SASL_SCRAM_PASSWORD":      {},
+	"KAFKA_SASL_PLAIN_PASSWORD":      {},
 	"KAFKA_CLIENT_KEYSTORE":          {},
 	"KAFKA_SASL_GSSAPI_KEYTAB":       {},
 	"KAFKA_SASL_GSSAPI_KRB5_CONF":    {},
+
+	"ENCRYPTED_KAFKA_CLIENT_KEYSTORE_PASSWORD": {},
+	"ENCRYPTED_KAFKA_CLIENT_KEY_PASSWORD":      {},
+	"ENCRYPTED_KAFKA_SASL_PLAIN_PASSWORD":      {},
+	"ENCRYPTED_KAFKA_SASL_SCRAM_PASSWORD":      {},
+}
+
+// sensitiveGlueConnectionPropertyMarkers catches credential keys the list
+// above does not name yet, so a key Glue adds later is redacted by default.
+// SECRET_ID and *_SECRETS_ARN stay visible: they name a secret, not hold one.
+var sensitiveGlueConnectionPropertyMarkers = []string{"PASSWORD", "KEYSTORE", "KEYTAB"}
+
+func isSensitiveGlueConnectionProperty(key string) bool {
+	if _, ok := sensitiveGlueConnectionPropertyKeys[key]; ok {
+		return true
+	}
+	for _, marker := range sensitiveGlueConnectionPropertyMarkers {
+		if strings.Contains(key, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func redactedGlueConnectionProperties[K ~string](m map[K]string) map[string]any {
 	out := make(map[string]any, len(m))
 	for k, v := range m {
 		key := string(k)
-		if _, sensitive := sensitiveGlueConnectionPropertyKeys[key]; sensitive && v != "" {
+		if isSensitiveGlueConnectionProperty(key) && v != "" {
 			out[key] = "<redacted>"
 			continue
 		}

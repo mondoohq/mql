@@ -5,6 +5,8 @@ package resources
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -226,11 +228,37 @@ func (a *mqlAwsDatasyncTask) createdAt() (*time.Time, error) {
 
 // Locations
 
+// initAwsDatasyncLocation resolves a location referenced by ARN, as a task's
+// source and destination are, from the account's location list. Returning
+// the bare args instead built a location with only its ARN set, and because
+// init runs before the cache lookup, that blank copy also replaced the full
+// one aws.datasync.locations had cached under the same ARN.
 func initAwsDatasyncLocation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	// A location referenced by ARN from a task is a valid bare resource: the
-	// full detail is populated when aws.datasync.locations is queried (the
-	// cache keys align on ARN), otherwise only the ARN is known.
-	return args, nil, nil
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	arnRaw, ok := args["arn"]
+	if !ok || arnRaw == nil {
+		return nil, nil, errors.New("aws.datasync.location requires an arn")
+	}
+	wantArn, ok := arnRaw.Value.(string)
+	if !ok || wantArn == "" {
+		return nil, nil, errors.New("aws.datasync.location requires an arn")
+	}
+	svc, err := NewResource(runtime, "aws.datasync", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	locations := svc.(*mqlAwsDatasync).GetLocations()
+	if locations.Error != nil {
+		return nil, nil, locations.Error
+	}
+	for _, raw := range locations.Data {
+		if loc, ok := raw.(*mqlAwsDatasyncLocation); ok && loc.Arn.Data == wantArn {
+			return args, loc, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("aws.datasync.location with arn %q not found", wantArn)
 }
 
 func (a *mqlAwsDatasync) locations() ([]any, error) {

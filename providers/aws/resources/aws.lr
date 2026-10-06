@@ -12520,7 +12520,7 @@ private aws.cloudfront.keyValueStore @defaults("name status lastModifiedTime") {
   // Name of the key value store
   name string
   // Comment describing the key value store (empty when none was provided)
-  comment string
+  comment() string
   // Provisioning status of the key value store
   status string
   // ARN of the key value store
@@ -29296,7 +29296,7 @@ private aws.ssm.association @defaults("associationId name") {
   // Region where the association exists
   region string
   // Document version pinned by the association (`$DEFAULT`, `$LATEST`, or a numeric version)
-  documentVersion string
+  documentVersion() string
   // Managed node ID the association targets when not using the `targets` selector
   instanceId string
   // Targets for the association

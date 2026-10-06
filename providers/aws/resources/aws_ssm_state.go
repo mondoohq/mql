@@ -287,6 +287,9 @@ type mqlAwsSsmAssociationInternal struct {
 	fetched  bool
 	fetchErr error
 	lock     sync.Mutex
+	// cacheDocumentVersion is the version ListAssociations reported, which it
+	// often leaves out; DescribeAssociation fills it in otherwise.
+	cacheDocumentVersion *string
 }
 
 func (a *mqlAwsSsmAssociation) fetchDetail() error {
@@ -346,6 +349,13 @@ func (a *mqlAwsSsmAssociation) fetchDetail() error {
 	a.LastUpdatedAt = plugin.TValue[*time.Time]{Data: desc.LastUpdateAssociationDate, State: plugin.StateIsSet}
 	a.CalendarNames = plugin.TValue[[]any]{Data: convert.SliceAnyToInterface(desc.CalendarNames), State: plugin.StateIsSet}
 	a.AutomationTargetParameterName = plugin.TValue[string]{Data: convert.ToValue(desc.AutomationTargetParameterName), State: plugin.StateIsSet}
+	if a.cacheDocumentVersion == nil {
+		if desc.DocumentVersion != nil {
+			a.DocumentVersion = plugin.TValue[string]{Data: *desc.DocumentVersion, State: plugin.StateIsSet}
+		} else {
+			a.DocumentVersion = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+		}
+	}
 
 	a.fetched = true
 	return nil
@@ -363,6 +373,16 @@ func (a *mqlAwsSsmAssociation) populateEmptyDetail() {
 	a.LastUpdatedAt = plugin.TValue[*time.Time]{Data: nil, State: plugin.StateIsSet | plugin.StateIsNull}
 	a.CalendarNames = plugin.TValue[[]any]{Data: nil, State: plugin.StateIsSet | plugin.StateIsNull}
 	a.AutomationTargetParameterName = plugin.TValue[string]{Data: "", State: plugin.StateIsSet | plugin.StateIsNull}
+	if a.cacheDocumentVersion == nil {
+		a.DocumentVersion = plugin.TValue[string]{Data: "", State: plugin.StateIsSet | plugin.StateIsNull}
+	}
+}
+
+func (a *mqlAwsSsmAssociation) documentVersion() (string, error) {
+	if a.cacheDocumentVersion != nil {
+		return *a.cacheDocumentVersion, nil
+	}
+	return "", a.fetchDetail()
 }
 
 func (a *mqlAwsSsmAssociation) status() (any, error) {

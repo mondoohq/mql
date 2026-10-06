@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/bedrock"
+	bedrocktypes "github.com/aws/aws-sdk-go-v2/service/bedrock/types"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockagent"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
@@ -37,44 +38,48 @@ func (a *mqlAwsBedrock) getInferenceProfiles(conn *connection.AwsConnection) []*
 			svc := conn.Bedrock(region)
 			ctx := context.Background()
 			res := []any{}
-			paginator := bedrock.NewListInferenceProfilesPaginator(svc, &bedrock.ListInferenceProfilesInput{})
-			for paginator.HasMorePages() {
-				page, err := paginator.NextPage(ctx)
-				if err != nil {
-					if Is400AccessDeniedError(err) {
-						log.Warn().Str("region", region).Msg("error accessing region for AWS API")
-						return res, nil
-					}
-					if IsServiceNotAvailableInRegionError(err) {
-						log.Debug().Str("region", region).Msg("bedrock is not available in region")
-						return res, nil
-					}
-					return nil, err
-				}
-				for _, ip := range page.InferenceProfileSummaries {
-					modelArns := make([]any, 0, len(ip.Models))
-					for _, m := range ip.Models {
-						if m.ModelArn != nil {
-							modelArns = append(modelArns, *m.ModelArn)
-						}
-					}
-					mqlIP, err := CreateResource(a.MqlRuntime, "aws.bedrock.inferenceProfile", map[string]*llx.RawData{
-						"__id":        llx.StringDataPtr(ip.InferenceProfileArn),
-						"arn":         llx.StringDataPtr(ip.InferenceProfileArn),
-						"id":          llx.StringDataPtr(ip.InferenceProfileId),
-						"name":        llx.StringDataPtr(ip.InferenceProfileName),
-						"region":      llx.StringData(region),
-						"status":      llx.StringData(string(ip.Status)),
-						"type":        llx.StringData(string(ip.Type)),
-						"description": llx.StringDataPtr(ip.Description),
-						"modelArns":   llx.ArrayData(modelArns, types.String),
-						"createdAt":   llx.TimeDataPtr(ip.CreatedAt),
-						"updatedAt":   llx.TimeDataPtr(ip.UpdatedAt),
-					})
+			// Without a type filter the API returns only SYSTEM_DEFINED
+			// profiles, which hid every application profile users create.
+			for _, profileType := range bedrocktypes.InferenceProfileType("").Values() {
+				paginator := bedrock.NewListInferenceProfilesPaginator(svc, &bedrock.ListInferenceProfilesInput{TypeEquals: profileType})
+				for paginator.HasMorePages() {
+					page, err := paginator.NextPage(ctx)
 					if err != nil {
+						if Is400AccessDeniedError(err) {
+							log.Warn().Str("region", region).Msg("error accessing region for AWS API")
+							return res, nil
+						}
+						if IsServiceNotAvailableInRegionError(err) {
+							log.Debug().Str("region", region).Msg("bedrock is not available in region")
+							return res, nil
+						}
 						return nil, err
 					}
-					res = append(res, mqlIP)
+					for _, ip := range page.InferenceProfileSummaries {
+						modelArns := make([]any, 0, len(ip.Models))
+						for _, m := range ip.Models {
+							if m.ModelArn != nil {
+								modelArns = append(modelArns, *m.ModelArn)
+							}
+						}
+						mqlIP, err := CreateResource(a.MqlRuntime, "aws.bedrock.inferenceProfile", map[string]*llx.RawData{
+							"__id":        llx.StringDataPtr(ip.InferenceProfileArn),
+							"arn":         llx.StringDataPtr(ip.InferenceProfileArn),
+							"id":          llx.StringDataPtr(ip.InferenceProfileId),
+							"name":        llx.StringDataPtr(ip.InferenceProfileName),
+							"region":      llx.StringData(region),
+							"status":      llx.StringData(string(ip.Status)),
+							"type":        llx.StringData(string(ip.Type)),
+							"description": llx.StringDataPtr(ip.Description),
+							"modelArns":   llx.ArrayData(modelArns, types.String),
+							"createdAt":   llx.TimeDataPtr(ip.CreatedAt),
+							"updatedAt":   llx.TimeDataPtr(ip.UpdatedAt),
+						})
+						if err != nil {
+							return nil, err
+						}
+						res = append(res, mqlIP)
+					}
 				}
 			}
 			return jobpool.JobResult(res), nil

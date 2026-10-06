@@ -133,6 +133,13 @@ func newMqlAwsDmsReplicationInstance(runtime *plugin.Runtime, region, accountID 
 		if err != nil {
 			return nil, err
 		}
+		// Every unset pointer marshals as a null-valued key, so an instance
+		// with nothing pending would otherwise report a dict full of nulls.
+		for k, v := range dict {
+			if v == nil {
+				delete(dict, k)
+			}
+		}
 		if len(dict) > 0 {
 			pendingDict = dict
 		}

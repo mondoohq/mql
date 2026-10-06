@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -1138,6 +1139,11 @@ func (a *mqlAwsDocumentdb) getClusterParameterGroups(conn *connection.AwsConnect
 					return nil, err
 				}
 				for _, pg := range page.DBClusterParameterGroups {
+					// The docdb client shares the RDS API and returns the cluster
+					// parameter groups of every engine; keep DocumentDB's own.
+					if !isDocdbParameterGroupFamily(pg.DBParameterGroupFamily) {
+						continue
+					}
 					mqlPg, err := newMqlAwsDocumentdbClusterParameterGroup(a.MqlRuntime, region, pg)
 					if err != nil {
 						return nil, err
@@ -1150,6 +1156,13 @@ func (a *mqlAwsDocumentdb) getClusterParameterGroups(conn *connection.AwsConnect
 		tasks = append(tasks, jobpool.NewJob(f))
 	}
 	return tasks
+}
+
+// isDocdbParameterGroupFamily reports whether a parameter group family belongs
+// to DocumentDB ("docdb3.6", "docdb5.0", ...), as opposed to Aurora, RDS or
+// Neptune, which the shared API also returns.
+func isDocdbParameterGroupFamily(family *string) bool {
+	return family != nil && strings.HasPrefix(*family, docdbEngine)
 }
 
 func newMqlAwsDocumentdbClusterParameterGroup(runtime *plugin.Runtime, region string, pg docdb_types.DBClusterParameterGroup) (*mqlAwsDocumentdbClusterParameterGroup, error) {
@@ -1279,6 +1292,11 @@ func (a *mqlAwsDocumentdb) fetchGlobalClusters() ([]docdb_types.GlobalCluster, e
 				}
 				for _, gc := range page.GlobalClusters {
 					if gc.GlobalClusterArn == nil || seen[*gc.GlobalClusterArn] {
+						continue
+					}
+					// Like clusters and parameter groups, the shared API also
+					// returns Aurora global clusters.
+					if gc.Engine == nil || *gc.Engine != docdbEngine {
 						continue
 					}
 					seen[*gc.GlobalClusterArn] = true

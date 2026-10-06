@@ -659,7 +659,6 @@ func (a *mqlAwsSsm) getAssociations(conn *connection.AwsConnection) []*jobpool.J
 							"name":              llx.StringDataPtr(assoc.Name),
 							"associationName":   llx.StringDataPtr(assoc.AssociationName),
 							"region":            llx.StringData(region),
-							"documentVersion":   llx.StringDataPtr(assoc.DocumentVersion),
 							"instanceId":        llx.StringDataPtr(assoc.InstanceId),
 							"targets":           llx.ArrayData(targets, mqlTypes.Dict),
 							"schedule":          llx.StringDataPtr(assoc.ScheduleExpression),
@@ -669,6 +668,7 @@ func (a *mqlAwsSsm) getAssociations(conn *connection.AwsConnection) []*jobpool.J
 					if err != nil {
 						return nil, err
 					}
+					mqlAssoc.(*mqlAwsSsmAssociation).cacheDocumentVersion = assoc.DocumentVersion
 					res = append(res, mqlAssoc)
 				}
 			}

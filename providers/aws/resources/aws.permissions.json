@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "14.3.0",
-  "generated_at": "2026-10-05T21:00:19+02:00",
+  "version": "14.3.1",
+  "generated_at": "2026-10-05T15:25:43-07:00",
   "permissions": [
     "access-analyzer:GetFindingV2",
     "access-analyzer:ListAnalyzers",

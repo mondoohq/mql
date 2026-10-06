@@ -758,3 +758,7 @@ func (a *mqlAwsCloudfrontDistribution) enforcesHttps() (bool, error) {
 	}
 	return true, nil
 }
+
+type mqlAwsCloudfrontKeyValueStoreInternal struct {
+	cacheComment *string
+}

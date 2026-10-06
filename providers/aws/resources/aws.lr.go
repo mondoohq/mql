@@ -136290,7 +136290,7 @@ func (c *mqlAwsCloudfrontContinuousDeploymentPolicy) GetTrafficConfig() *plugin.
 type mqlAwsCloudfrontKeyValueStore struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAwsCloudfrontKeyValueStoreInternal it will be used here
+	mqlAwsCloudfrontKeyValueStoreInternal
 	Id               plugin.TValue[string]
 	Name             plugin.TValue[string]
 	Comment          plugin.TValue[string]
@@ -136345,7 +136345,9 @@ func (c *mqlAwsCloudfrontKeyValueStore) GetName() *plugin.TValue[string] {
 }
 
 func (c *mqlAwsCloudfrontKeyValueStore) GetComment() *plugin.TValue[string] {
-	return &c.Comment
+	return plugin.GetOrCompute[string](&c.Comment, func() (string, error) {
+		return c.comment()
+	})
 }
 
 func (c *mqlAwsCloudfrontKeyValueStore) GetStatus() *plugin.TValue[string] {
@@ -196729,7 +196731,9 @@ func (c *mqlAwsSsmAssociation) GetRegion() *plugin.TValue[string] {
 }
 
 func (c *mqlAwsSsmAssociation) GetDocumentVersion() *plugin.TValue[string] {
-	return &c.DocumentVersion
+	return plugin.GetOrCompute[string](&c.DocumentVersion, func() (string, error) {
+		return c.documentVersion()
+	})
 }
 
 func (c *mqlAwsSsmAssociation) GetInstanceId() *plugin.TValue[string] {

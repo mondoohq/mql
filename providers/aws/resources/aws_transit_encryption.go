@@ -14,14 +14,18 @@ import (
 // names and truthy values, so all known variants are recognized:
 //   - require_secure_transport: Aurora MySQL / MySQL (ON or 1)
 //   - rds.force_ssl:            Aurora PostgreSQL / PostgreSQL (1 or ON)
-//   - tls:                      DocumentDB (enabled)
+//   - tls:                      DocumentDB (enabled, tls1.2+, tls1.3+ or fips-140-3;
+//     every allowed value except disabled requires TLS)
 func paramIndicatesTLS(name, value string) bool {
 	v := strings.ToLower(strings.TrimSpace(value))
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "require_secure_transport", "rds.force_ssl":
 		return v == "on" || v == "1"
 	case "tls":
-		return v == "enabled"
+		switch v {
+		case "enabled", "tls1.2+", "tls1.3+", "fips-140-3":
+			return true
+		}
 	}
 	return false
 }

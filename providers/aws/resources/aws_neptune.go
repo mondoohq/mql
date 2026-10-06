@@ -103,7 +103,7 @@ func newMqlAwsNeptuneCluster(runtime *plugin.Runtime, region string, accountID s
 		map[string]*llx.RawData{
 			"__id":                             llx.StringDataPtr(cluster.DBClusterArn),
 			"arn":                              llx.StringDataPtr(cluster.DBClusterArn),
-			"name":                             llx.StringDataPtr(cluster.DatabaseName),
+			"name":                             llx.StringDataPtr(cluster.DBClusterIdentifier),
 			"clusterIdentifier":                llx.StringDataPtr(cluster.DBClusterIdentifier),
 			"globalClusterIdentifier":          llx.StringDataPtr(cluster.GlobalClusterIdentifier),
 			"engine":                           llx.StringDataPtr(cluster.Engine),
@@ -322,7 +322,7 @@ func newMqlAwsNeptuneInstance(runtime *plugin.Runtime, region string, instance n
 		map[string]*llx.RawData{
 			"__id":                             llx.StringDataPtr(instance.DBInstanceArn),
 			"arn":                              llx.StringDataPtr(instance.DBInstanceArn),
-			"name":                             llx.StringDataPtr(instance.DBName),
+			"name":                             llx.StringDataPtr(instance.DBInstanceIdentifier),
 			"clusterIdentifier":                llx.StringDataPtr(instance.DBClusterIdentifier),
 			"engine":                           llx.StringDataPtr(instance.Engine),
 			"engineVersion":                    llx.StringDataPtr(instance.EngineVersion),
