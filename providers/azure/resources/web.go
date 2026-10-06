@@ -796,6 +796,29 @@ func siteConfigCorsAllowedOrigins(props *web.SiteConfig) []any {
 	return origins
 }
 
+// addSiteConfigArgs sets the typed appsiteconfig fields read from the site
+// configuration. Every field is set on every path, to null when Azure omits it
+// (an app that never configured a cipher suite has no minTlsCipherSuite) or
+// when the response has no properties at all. A field left out of the args is
+// never set on the resource, and reading it then returns neither data nor
+// error.
+func addSiteConfigArgs(args map[string]*llx.RawData, props *web.SiteConfig) {
+	if props == nil {
+		props = &web.SiteConfig{}
+	}
+	args["minTlsVersion"] = llx.StringDataPtr(stringEnumPtr(props.MinTLSVersion))
+	args["ftpsState"] = llx.StringDataPtr(stringEnumPtr(props.FtpsState))
+	args["remoteDebuggingEnabled"] = llx.BoolDataPtr(props.RemoteDebuggingEnabled)
+	args["http20Enabled"] = llx.BoolDataPtr(props.Http20Enabled)
+	args["alwaysOn"] = llx.BoolDataPtr(props.AlwaysOn)
+	args["webSocketsEnabled"] = llx.BoolDataPtr(props.WebSocketsEnabled)
+	args["httpLoggingEnabled"] = llx.BoolDataPtr(props.HTTPLoggingEnabled)
+	args["detailedErrorLoggingEnabled"] = llx.BoolDataPtr(props.DetailedErrorLoggingEnabled)
+	args["autoHealEnabled"] = llx.BoolDataPtr(props.AutoHealEnabled)
+	args["minTlsCipherSuite"] = llx.StringDataPtr(stringEnumPtr(props.MinTLSCipherSuite))
+	args["scmMinTlsVersion"] = llx.StringDataPtr(stringEnumPtr(props.ScmMinTLSVersion))
+}
+
 func webAppSiteConfigToMql(runtime *plugin.Runtime, conn *connection.AzureConnection, id string) (*mqlAzureSubscriptionWebServiceAppsiteconfig, error) {
 	ctx := context.Background()
 	token := conn.Token()
@@ -837,27 +860,7 @@ func webAppSiteConfigToMql(runtime *plugin.Runtime, conn *connection.AzureConnec
 		"corsAllowedOrigins": llx.ArrayData(siteConfigCorsAllowedOrigins(entry.Properties), types.String),
 	}
 
-	if entry.Properties != nil {
-		if entry.Properties.MinTLSVersion != nil {
-			args["minTlsVersion"] = llx.StringData(string(*entry.Properties.MinTLSVersion))
-		}
-		if entry.Properties.FtpsState != nil {
-			args["ftpsState"] = llx.StringData(string(*entry.Properties.FtpsState))
-		}
-		args["remoteDebuggingEnabled"] = llx.BoolDataPtr(entry.Properties.RemoteDebuggingEnabled)
-		args["http20Enabled"] = llx.BoolDataPtr(entry.Properties.Http20Enabled)
-		args["alwaysOn"] = llx.BoolDataPtr(entry.Properties.AlwaysOn)
-		args["webSocketsEnabled"] = llx.BoolDataPtr(entry.Properties.WebSocketsEnabled)
-		args["httpLoggingEnabled"] = llx.BoolDataPtr(entry.Properties.HTTPLoggingEnabled)
-		args["detailedErrorLoggingEnabled"] = llx.BoolDataPtr(entry.Properties.DetailedErrorLoggingEnabled)
-		args["autoHealEnabled"] = llx.BoolDataPtr(entry.Properties.AutoHealEnabled)
-		if entry.Properties.MinTLSCipherSuite != nil {
-			args["minTlsCipherSuite"] = llx.StringData(string(*entry.Properties.MinTLSCipherSuite))
-		}
-		if entry.Properties.ScmMinTLSVersion != nil {
-			args["scmMinTlsVersion"] = llx.StringData(string(*entry.Properties.ScmMinTLSVersion))
-		}
-	}
+	addSiteConfigArgs(args, entry.Properties)
 
 	res, err := CreateResource(runtime, ResourceAzureSubscriptionWebServiceAppsiteconfig, args)
 	if err != nil {
@@ -1471,27 +1474,7 @@ func (a *mqlAzureSubscriptionWebServiceAppslot) configuration() (*mqlAzureSubscr
 		"corsAllowedOrigins": llx.ArrayData(siteConfigCorsAllowedOrigins(configuration.Properties), types.String),
 	}
 
-	if configuration.Properties != nil {
-		if configuration.Properties.MinTLSVersion != nil {
-			args["minTlsVersion"] = llx.StringData(string(*configuration.Properties.MinTLSVersion))
-		}
-		if configuration.Properties.FtpsState != nil {
-			args["ftpsState"] = llx.StringData(string(*configuration.Properties.FtpsState))
-		}
-		args["remoteDebuggingEnabled"] = llx.BoolDataPtr(configuration.Properties.RemoteDebuggingEnabled)
-		args["http20Enabled"] = llx.BoolDataPtr(configuration.Properties.Http20Enabled)
-		args["alwaysOn"] = llx.BoolDataPtr(configuration.Properties.AlwaysOn)
-		args["webSocketsEnabled"] = llx.BoolDataPtr(configuration.Properties.WebSocketsEnabled)
-		args["httpLoggingEnabled"] = llx.BoolDataPtr(configuration.Properties.HTTPLoggingEnabled)
-		args["detailedErrorLoggingEnabled"] = llx.BoolDataPtr(configuration.Properties.DetailedErrorLoggingEnabled)
-		args["autoHealEnabled"] = llx.BoolDataPtr(configuration.Properties.AutoHealEnabled)
-		if configuration.Properties.MinTLSCipherSuite != nil {
-			args["minTlsCipherSuite"] = llx.StringData(string(*configuration.Properties.MinTLSCipherSuite))
-		}
-		if configuration.Properties.ScmMinTLSVersion != nil {
-			args["scmMinTlsVersion"] = llx.StringData(string(*configuration.Properties.ScmMinTLSVersion))
-		}
-	}
+	addSiteConfigArgs(args, configuration.Properties)
 
 	res, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionWebServiceAppsiteconfig, args)
 	if err != nil {
