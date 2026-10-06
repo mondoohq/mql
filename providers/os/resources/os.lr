@@ -9881,19 +9881,27 @@ private sudoers.userSpec @defaults("users hosts commands") {
 
 // Sudoers default setting
 //
-// One `Defaults` directive from the sudoers configuration, giving the
+// One setting of a `Defaults` line from the sudoers configuration, giving the
 // parameter, its value and operation, the scope it applies at, and whether
-// it is negated. Covers hardening flags such as env_reset and secure_path.
+// it is negated. A line that sets several parameters, such as
+// `Defaults env_reset, timestamp_timeout=15`, yields one entry per parameter,
+// each with the line's file, lineNumber and raw. Covers hardening flags such
+// as env_reset and secure_path.
 private sudoers.default @defaults("parameter") {
   // File where this entry is defined
   file string
   // Line number in the file
   lineNumber int
   // Raw Defaults line
+  //
+  // The whole line, shared by every setting the line makes.
   raw string
   // Scope: global, user, host, command, or runas
   scope string
   // Target (user/host/command/runas this applies to, if not global)
+  //
+  // The scope's list as written without spaces, for example `alice,%wheel`
+  // for `Defaults:alice,%wheel`.
   target string
   // Parameter name (e.g., "env_reset", "secure_path")
   parameter string

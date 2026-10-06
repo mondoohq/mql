@@ -36,10 +36,14 @@ type UserSpec struct {
 	Commands    []string
 }
 
-// Default represents a Defaults entry in sudoers
+// Default represents one setting of a Defaults line in sudoers. A line that
+// sets several parameters (`Defaults env_reset, timestamp_timeout=15`) yields
+// one Default per parameter; they share File, LineNumber and Raw, and Index is
+// the setting's position in the line's list.
 type Default struct {
 	File       string
 	LineNumber int
+	Index      int
 	Raw        string
 	Scope      string
 	Target     string
@@ -157,20 +161,22 @@ func ParseDefaults(filePath string, content string) []Default {
 			continue
 		}
 
-		// Parse the Defaults line
-		scope, target, parameter, value, operation, negated := ParseDefaultsLine(line)
-
-		defaults = append(defaults, Default{
-			File:       filePath,
-			LineNumber: actualLineNum,
-			Raw:        line,
-			Scope:      scope,
-			Target:     target,
-			Parameter:  parameter,
-			Value:      value,
-			Operation:  operation,
-			Negated:    negated,
-		})
+		// One Defaults line sets every item of its comma-separated list
+		scope, target, settings := ParseDefaultsEntries(line)
+		for i, setting := range settings {
+			defaults = append(defaults, Default{
+				File:       filePath,
+				LineNumber: actualLineNum,
+				Index:      i,
+				Raw:        line,
+				Scope:      scope,
+				Target:     target,
+				Parameter:  setting.Parameter,
+				Value:      setting.Value,
+				Operation:  setting.Operation,
+				Negated:    setting.Negated,
+			})
+		}
 	}
 
 	return defaults
@@ -238,9 +244,42 @@ func ParseAliases(filePath string, content string) []Alias {
 	return aliases
 }
 
-// ParseDefaultsLine parses a Defaults line and extracts its components
+// DefaultSetting is one item of a Defaults line's parameter list.
+type DefaultSetting struct {
+	Parameter string
+	Value     string
+	// Operation is "=", "+=", "-=", or "" for a flag.
+	Operation string
+	Negated   bool
+}
+
+// ParseDefaultsLine parses a Defaults line and returns the components of its
+// first setting. Use ParseDefaultsEntries to read every setting of the line.
 // Returns: scope, target, parameter, value, operation, negated
 func ParseDefaultsLine(line string) (string, string, string, string, string, bool) {
+	scope, target, settings := ParseDefaultsEntries(line)
+	if len(settings) == 0 {
+		return scope, target, "", "", "", false
+	}
+	first := settings[0]
+	return scope, target, first.Parameter, first.Value, first.Operation, first.Negated
+}
+
+// ParseDefaultsEntries parses a Defaults line as sudoers(5) defines it:
+//
+//	Default_Entry ::= Default_Type Parameter_List
+//	Default_Type  ::= 'Defaults' | 'Defaults' '@' Host_List |
+//	                  'Defaults' ':' User_List | 'Defaults' '!' Cmnd_List |
+//	                  'Defaults' '>' Runas_List
+//	Parameter_List ::= Parameter | Parameter ',' Parameter_List
+//	Parameter     ::= Parameter '=' Value | Parameter '+=' Value |
+//	                  Parameter '-=' Value | '!'* Parameter
+//
+// It returns the scope (global, user, host, command or runas), the scope's
+// target list as written ("alice,bob"), and one DefaultSetting per item of
+// the parameter list. Commas inside a double-quoted value or escaped with a
+// backslash belong to the value.
+func ParseDefaultsEntries(line string) (string, string, []DefaultSetting) {
 	// Strip "Defaults" prefix. A scope specifier follows it directly
 	// ("Defaults!/usr/bin/su"); after whitespace, "!" negates a global
 	// parameter ("Defaults !authenticate").
@@ -262,47 +301,128 @@ func ParseDefaultsLine(line string) (string, string, string, string, string, boo
 			scope = "command"
 		}
 		if scope != "global" {
-			target, line = splitOnWhitespace(line[1:])
+			target, line = splitDefaultsTarget(line[1:])
 		}
 	}
 
-	line = strings.TrimSpace(line)
+	var settings []DefaultSetting
+	for _, item := range splitDefaultsList(line) {
+		if setting, ok := parseDefaultSetting(item); ok {
+			settings = append(settings, setting)
+		}
+	}
+	return scope, target, settings
+}
 
-	// Check for negation
-	negated := false
-	if strings.HasPrefix(line, "!") {
-		negated = true
-		line = strings.TrimPrefix(line, "!")
+// splitDefaultsTarget splits the target list of a scoped Defaults line from
+// its parameter list. The list ends at the first whitespace that is not next
+// to a comma, so "alice, bob !lecture" has the target "alice,bob".
+func splitDefaultsTarget(s string) (string, string) {
+	var items []string
+	rest := s
+	for {
+		item, after := splitOnWhitespace(rest)
+		after = strings.TrimLeft(after, " \t")
+		// "alice ,bob": the comma starts the remainder
+		for strings.HasPrefix(after, ",") {
+			item += ","
+			after = strings.TrimLeft(after[1:], " \t")
+		}
+		items = append(items, item)
+		rest = after
+		if !strings.HasSuffix(item, ",") || rest == "" {
+			break
+		}
+	}
+	return strings.Join(items, ""), rest
+}
+
+// splitDefaultsList splits a Defaults parameter list on the commas that
+// separate its items. A comma inside double quotes or escaped with a
+// backslash is part of a value.
+func splitDefaultsList(s string) []string {
+	var items []string
+	var cur strings.Builder
+	inQuote := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\\' && i+1 < len(s):
+			cur.WriteByte(c)
+			cur.WriteByte(s[i+1])
+			i++
+		case c == '"':
+			inQuote = !inQuote
+			cur.WriteByte(c)
+		case c == ',' && !inQuote:
+			items = append(items, cur.String())
+			cur.Reset()
+		default:
+			cur.WriteByte(c)
+		}
+	}
+	items = append(items, cur.String())
+
+	res := items[:0]
+	for _, item := range items {
+		if item = strings.TrimSpace(item); item != "" {
+			res = append(res, item)
+		}
+	}
+	return res
+}
+
+// parseDefaultSetting parses one item of a Defaults parameter list:
+// `flag`, `!flag`, `name=value`, `name+=value` or `name-=value`, with
+// optional whitespace around the operator.
+func parseDefaultSetting(item string) (DefaultSetting, bool) {
+	var res DefaultSetting
+
+	// sudo accepts repeated negation; each '!' toggles it
+	for strings.HasPrefix(item, "!") {
+		res.Negated = !res.Negated
+		item = strings.TrimLeft(item[1:], " \t")
 	}
 
-	// Parse parameter[operator]value
-	parameter := ""
-	value := ""
-	operation := ""
-
-	// Check for operators: =, +=, -=
-	if idx := strings.Index(line, "+="); idx != -1 {
-		parameter = strings.TrimSpace(line[:idx])
-		value = strings.TrimSpace(line[idx+2:])
-		operation = "+="
-	} else if idx := strings.Index(line, "-="); idx != -1 {
-		parameter = strings.TrimSpace(line[:idx])
-		value = strings.TrimSpace(line[idx+2:])
-		operation = "-="
-	} else if idx := strings.Index(line, "="); idx != -1 {
-		parameter = strings.TrimSpace(line[:idx])
-		value = strings.TrimSpace(line[idx+1:])
-		operation = "="
+	// The parameter name ends at the operator. Names are letters, digits and
+	// underscores, so the first '=' (with an optional '+' or '-' before it)
+	// is the operator, and an '=' in the value stays in the value.
+	if idx := strings.IndexByte(item, '='); idx != -1 {
+		name := item[:idx]
+		res.Operation = "="
+		if strings.HasSuffix(name, "+") {
+			res.Operation = "+="
+			name = name[:len(name)-1]
+		} else if strings.HasSuffix(name, "-") {
+			res.Operation = "-="
+			name = name[:len(name)-1]
+		}
+		res.Parameter = strings.TrimSpace(name)
+		res.Value = unquoteDefaultValue(strings.TrimSpace(item[idx+1:]))
 	} else {
-		// No operator, just a parameter (boolean flag)
-		parameter = strings.TrimSpace(line)
-		operation = ""
+		res.Parameter = strings.TrimSpace(item)
 	}
 
-	// Remove quotes from value if present
-	value = strings.Trim(value, "\"")
+	return res, res.Parameter != ""
+}
 
-	return scope, target, parameter, value, operation, negated
+// unquoteDefaultValue removes the double quotes around a value and the
+// backslashes that escape a character in it ("a\,b" is "a,b").
+func unquoteDefaultValue(v string) string {
+	if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+		v = v[1 : len(v)-1]
+	}
+	if !strings.Contains(v, "\\") {
+		return v
+	}
+	var b strings.Builder
+	for i := 0; i < len(v); i++ {
+		if v[i] == '\\' && i+1 < len(v) {
+			i++
+		}
+		b.WriteByte(v[i])
+	}
+	return b.String()
 }
 
 // splitOnWhitespace splits s at the first space or tab and returns the leading

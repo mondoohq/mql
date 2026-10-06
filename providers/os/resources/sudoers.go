@@ -71,13 +71,18 @@ func (se *mqlSudoersUserSpec) id() (string, error) {
 }
 
 func (sd *mqlSudoersDefault) id() (string, error) {
-	file := sd.File.Data
-	lineNum := strconv.FormatInt(sd.LineNumber.Data, 10)
+	return sudoersDefaultID(sd.File.Data, int(sd.LineNumber.Data), 0), nil
+}
 
-	// Create unique ID from file path and line number
-	id := file + ":" + lineNum + ":default"
-
-	return id, nil
+// sudoersDefaultID identifies one setting of a Defaults line by its file, line
+// and position in the line's parameter list. The first setting keeps the id a
+// whole line had before lines were split into their settings.
+func sudoersDefaultID(file string, lineNumber int, index int) string {
+	id := file + ":" + strconv.Itoa(lineNumber) + ":default"
+	if index > 0 {
+		id += ":" + strconv.Itoa(index)
+	}
+	return id
 }
 
 func (sa *mqlSudoersAlias) id() (string, error) {
@@ -380,6 +385,8 @@ func parseSudoersDefaults(runtime *plugin.Runtime, filePath string, content stri
 
 	for _, def := range parsed {
 		entry, err := CreateResource(runtime, "sudoers.default", map[string]*llx.RawData{
+			// one entry per setting: a line can set several parameters
+			"__id":       llx.StringData(sudoersDefaultID(def.File, def.LineNumber, def.Index)),
 			"file":       llx.StringData(def.File),
 			"lineNumber": llx.IntData(int64(def.LineNumber)),
 			"raw":        llx.StringData(def.Raw),

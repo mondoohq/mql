@@ -1,0 +1,12 @@
+# FreeBSD 14 with sudo from packages: /usr/local/etc/sudoers sets several
+# parameters per Defaults line, the way sudoers(5) allows.
+
+[files."/usr/local/etc/sudoers"]
+path = "/usr/local/etc/sudoers"
+content = """# sudoers file.
+Defaults env_reset, timestamp_timeout=15
+Defaults use_pty, logfile="/var/log/sudo.log"
+Defaults:%wheel !lecture, passwd_tries=2
+Defaults!/usr/sbin/pkg env_keep += "PKG_DBDIR, PKG_CACHEDIR"
+root ALL=(ALL:ALL) ALL
+"""
