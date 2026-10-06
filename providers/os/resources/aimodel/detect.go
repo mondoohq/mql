@@ -71,12 +71,33 @@ func Detectors() []Detector {
 	}
 }
 
-// DetectAll runs every detector and returns the combined results.
-func DetectAll(afs *afero.Afero, home, osFamily string, ollamaModelsDirs []string) []ModelInfo {
-	ctx := DetectContext{Fs: afs, Home: home, OSFamily: osFamily, OllamaModelsDirs: ollamaModelsDirs}
+// DetectAll runs every detector against each user home and returns the
+// combined results. Resolved Ollama stores already include every user's own
+// store besides the daemon's, so Ollama reads them once, which also keeps one
+// model reachable through two stores a single model. A model is reported once
+// per source and path, however many homes lead to it.
+func DetectAll(afs *afero.Afero, homes []string, osFamily string, ollamaModelsDirs []string) []ModelInfo {
 	var all []ModelInfo
+	seen := map[string]struct{}{}
+	add := func(models []ModelInfo) {
+		for _, m := range models {
+			key := m.Source + "\x00" + m.Path
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			all = append(all, m)
+		}
+	}
+
 	for _, d := range Detectors() {
-		all = append(all, d.Detect(ctx)...)
+		if _, ok := d.(*OllamaDetector); ok && len(ollamaModelsDirs) > 0 {
+			add(d.Detect(DetectContext{Fs: afs, OSFamily: osFamily, OllamaModelsDirs: ollamaModelsDirs}))
+			continue
+		}
+		for _, home := range homes {
+			add(d.Detect(DetectContext{Fs: afs, Home: home, OSFamily: osFamily}))
+		}
 	}
 	return all
 }

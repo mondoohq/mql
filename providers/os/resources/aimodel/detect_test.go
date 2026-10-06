@@ -608,7 +608,7 @@ func TestDetectAll(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, filepath.Join(snapshotDir, "model.safetensors"), make([]byte, 200), 0644))
 	require.NoError(t, afero.WriteFile(fs, filepath.Join(modelDir, "blobs/b1"), make([]byte, 200), 0644))
 
-	results := DetectAll(afs, home, "linux", nil)
+	results := DetectAll(afs, []string{home}, "linux", nil)
 	assert.GreaterOrEqual(t, len(results), 2)
 
 	sources := map[string]bool{}
@@ -617,6 +617,63 @@ func TestDetectAll(t *testing.T) {
 	}
 	assert.True(t, sources["ollama"])
 	assert.True(t, sources["huggingface"])
+}
+
+// A server scanned over SSH with nobody logged in has root's home first; the
+// models of every other user must still be found.
+func TestDetectAll_EveryHome(t *testing.T) {
+	afs, fs := newTestAfs()
+	for _, p := range []string{
+		"/home/ubuntu/.cache/huggingface/hub/models--dslim--bert-base-NER/blobs/b1",
+		"/home/alice/.keras/models/mymodel.h5",
+	} {
+		require.NoError(t, afero.WriteFile(fs, p, make([]byte, 10), 0o644))
+	}
+
+	results := DetectAll(afs, []string{"/root", "/home/ubuntu", "/home/alice"}, "linux", nil)
+
+	paths := map[string]string{}
+	for _, m := range results {
+		paths[m.Source] = m.Path
+	}
+	assert.Equal(t, map[string]string{
+		"huggingface": "/home/ubuntu/.cache/huggingface/hub/models--dslim--bert-base-NER",
+		"keras":       "/home/alice/.keras/models/mymodel.h5",
+	}, paths)
+}
+
+// Resolved Ollama stores already cover every home, so a model in them is
+// reported once, not once per home.
+func TestDetectAll_ResolvedOllamaStoresReadOnce(t *testing.T) {
+	afs, fs := newTestAfs()
+	writeOllamaManifest(t, fs, "/var/lib/ollama", "registry.ollama.ai", "library", "llama3", "latest")
+
+	results := DetectAll(afs, []string{"/root", "/home/ubuntu"}, "linux", []string{"/var/lib/ollama"})
+	require.Len(t, results, 1)
+	assert.Equal(t, "llama3:latest", results[0].Name)
+}
+
+// Without resolved stores each home's default store is read, and a copy in
+// each home is its own model.
+func TestDetectAll_OllamaDefaultStorePerHome(t *testing.T) {
+	afs, fs := newTestAfs()
+	for _, home := range []string{"/home/ubuntu", "/home/alice"} {
+		writeOllamaManifest(t, fs, filepath.Join(home, ".ollama/models"), "registry.ollama.ai", "library", "llama3", "latest")
+	}
+
+	results := DetectAll(afs, []string{"/home/ubuntu", "/home/alice"}, "linux", nil)
+	require.Len(t, results, 2)
+	assert.NotEqual(t, results[0].Path, results[1].Path)
+}
+
+// One home listed twice yields each model once: ai.model keys on source and
+// path, and a repeat would be a second list entry with the first one's values.
+func TestDetectAll_SameHomeTwice(t *testing.T) {
+	afs, fs := newTestAfs()
+	require.NoError(t, afero.WriteFile(fs, "/home/ubuntu/.keras/models/mymodel.h5", make([]byte, 10), 0o644))
+
+	results := DetectAll(afs, []string{"/home/ubuntu", "/home/ubuntu"}, "linux", nil)
+	assert.Len(t, results, 1)
 }
 
 func TestDetectFormatInDir(t *testing.T) {
@@ -718,9 +775,9 @@ func TestOllamaDetector_RelocatedStore(t *testing.T) {
 	writeJSON(t, fs, filepath.Join(store, "blobs/sha256-cfg1"), map[string]any{"model_family": "qwen3moe"})
 
 	// Looking in the default location finds nothing, which is the bug.
-	assert.Empty(t, DetectAll(afs, "/home/zero", "linux", nil))
+	assert.Empty(t, DetectAll(afs, []string{"/home/zero"}, "linux", nil))
 
-	results := DetectAll(afs, "/home/zero", "linux", []string{store})
+	results := DetectAll(afs, []string{"/home/zero"}, "linux", []string{store})
 	require.Len(t, results, 1)
 	assert.Equal(t, "qwen3-coder:30b", results[0].Name)
 	assert.Equal(t, "ollama", results[0].Source)
@@ -745,7 +802,7 @@ func TestOllamaDetector_DeduplicatesAcrossStores(t *testing.T) {
 		writeJSON(t, fs, filepath.Join(store, "blobs/sha256-cfg1"), map[string]any{"model_family": "llama"})
 	}
 
-	results := DetectAll(afs, "/home/zero", "linux",
+	results := DetectAll(afs, []string{"/home/zero"}, "linux",
 		[]string{"/var/lib/ollama", "/home/zero/.ollama/models"})
 	require.Len(t, results, 1)
 	assert.Equal(t, "llama3:latest", results[0].Name)
@@ -753,8 +810,8 @@ func TestOllamaDetector_DeduplicatesAcrossStores(t *testing.T) {
 
 func TestOllamaDetector_NoStore(t *testing.T) {
 	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
-	assert.Empty(t, DetectAll(afs, "/home/zero", "linux", []string{"/var/lib/ollama"}))
-	assert.Empty(t, DetectAll(afs, "", "linux", nil))
+	assert.Empty(t, DetectAll(afs, []string{"/home/zero"}, "linux", []string{"/var/lib/ollama"}))
+	assert.Empty(t, DetectAll(afs, nil, "linux", nil))
 }
 
 // writeOllamaManifest stores a manifest at the registry/namespace/model/tag
