@@ -282,6 +282,22 @@ func TestConnectWithoutDiscoveryHasNoInventory(t *testing.T) {
 	assert.Equal(t, "azuredevops.organization", res.Root)
 }
 
+// inventory.WithoutDiscovery leaves an empty Discovery on every asset it
+// connects, so a connect with no targets must not walk anything.
+func TestConnectWithNoTargetsReadsNoRepository(t *testing.T) {
+	srv := fakeado.New(t)
+	res, err := Init().Connect(connectReq(t, srv, map[string]string{
+		connection.OPTION_PROJECT:    "scan test",
+		connection.OPTION_REPOSITORY: "ado-scan-test-iac",
+	}, []string{}, fakeado.PAT), nil)
+	require.NoError(t, err)
+
+	assert.Nil(t, res.Inventory)
+	for _, req := range srv.Requests() {
+		assert.NotContains(t, req, "/_apis/git/repositories/", "a connect without targets read %s", req)
+	}
+}
+
 func TestConnectExplainsARejectedToken(t *testing.T) {
 	srv := fakeado.New(t)
 	_, err := Init().Connect(connectReq(t, srv, nil, []string{"auto"}, "not-the-token"), nil)

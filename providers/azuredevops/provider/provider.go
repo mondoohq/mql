@@ -284,8 +284,10 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.AzuredevopsCon
 func (s *Service) discover(conn *connection.AzuredevopsConnection) (*inventory.Inventory, error) {
 	defer logger.FuncDur(time.Now(), "provider.azuredevops.service.discover")
 
+	// inventory.WithoutDiscovery leaves an empty Discovery rather than none, and
+	// a connect made that way must not read anything.
 	conf := conn.Asset().Connections[0]
-	if conf.Discover == nil {
+	if conf.Discover == nil || len(conf.Discover.Targets) == 0 {
 		return nil, nil
 	}
 
