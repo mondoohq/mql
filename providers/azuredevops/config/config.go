@@ -24,7 +24,7 @@ var Config = plugin.Provider{
 		{
 			Name:      "azuredevops",
 			Use:       "azuredevops",
-			Short:     "Azure DevOps",
+			Short:     "an Azure DevOps organization or repository",
 			Discovery: []string{},
 			Flags:     []plugin.Flag{},
 		},
