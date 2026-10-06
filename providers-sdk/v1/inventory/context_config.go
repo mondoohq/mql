@@ -112,7 +112,8 @@ func FilterContextConfig(data []byte) (*FilteredContextConfig, error) {
 
 // ReadContextConfigFile reads the context config in dir. It returns nil, nil
 // when there is none. Only a regular file is read: in a cloned repository a
-// symlink named mondoo.yml could point at the client's own config.
+// symlink named mondoo.yml could point at the client's own config. A file
+// replaced between the check and the open is refused.
 func ReadContextConfigFile(dir string) (data []byte, path string, err error) {
 	path = filepath.Join(dir, ContextConfigFilename)
 	fi, err := os.Lstat(path)
@@ -134,6 +135,15 @@ func ReadContextConfigFile(dir string) (data []byte, path string, err error) {
 		return nil, path, err
 	}
 	defer f.Close()
+	// Open follows symlinks, so the file may have been swapped for one since
+	// the Lstat. The open file must be the one the Lstat saw.
+	ofi, err := f.Stat()
+	if err != nil {
+		return nil, path, err
+	}
+	if !os.SameFile(fi, ofi) {
+		return nil, path, fmt.Errorf("%s changed while it was being read", path)
+	}
 	data, err = io.ReadAll(io.LimitReader(f, maxContextConfigSize+1))
 	if err != nil {
 		return nil, path, err
