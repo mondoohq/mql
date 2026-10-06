@@ -2,4 +2,34 @@
 # SPDX-License-Identifier: BUSL-1.1
 
 azuredevops 14.0.0
-azuredevops.field 14.0.0
+azuredevops.organization 14.0.0
+azuredevops.organization.deploymentType 14.0.0
+azuredevops.organization.id 14.0.0
+azuredevops.organization.name 14.0.0
+azuredevops.organization.projects 14.0.0
+azuredevops.organization.repositories 14.0.0
+azuredevops.organization.unreadableProjects 14.0.0
+azuredevops.project 14.0.0
+azuredevops.project.description 14.0.0
+azuredevops.project.id 14.0.0
+azuredevops.project.lastUpdateTime 14.0.0
+azuredevops.project.name 14.0.0
+azuredevops.project.repositories 14.0.0
+azuredevops.project.state 14.0.0
+azuredevops.project.url 14.0.0
+azuredevops.project.visibility 14.0.0
+azuredevops.repository 14.0.0
+azuredevops.repository.cloneUrl 14.0.0
+azuredevops.repository.defaultBranch 14.0.0
+azuredevops.repository.fullName 14.0.0
+azuredevops.repository.id 14.0.0
+azuredevops.repository.isDisabled 14.0.0
+azuredevops.repository.isEmpty 14.0.0
+azuredevops.repository.isFork 14.0.0
+azuredevops.repository.name 14.0.0
+azuredevops.repository.project 14.0.0
+azuredevops.repository.projectName 14.0.0
+azuredevops.repository.size 14.0.0
+azuredevops.repository.sshUrl 14.0.0
+azuredevops.repository.status 14.0.0
+azuredevops.repository.webUrl 14.0.0

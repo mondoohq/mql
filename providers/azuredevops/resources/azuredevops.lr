@@ -1,15 +1,99 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/azuredevops"
 option go_package = "go.mondoo.com/mql/providers/azuredevops/resources"
 option root = "azuredevops"
 
 // Azure DevOps
 //
-// Namespace root for Azure DevOps queries. The organization and repository
-// resources replace its placeholder field in later commits.
-private azuredevops @root {
-  // Provider name, a placeholder until the real resources land
-  field() string
+// Namespace root for Azure DevOps queries, exposing the connected organization,
+// its projects, and its Git repositories.
+private azuredevops @root {}
+
+// Azure DevOps organization
+//
+// Azure DevOps Services organization, the top-level container for projects and
+// their Git repositories. Provides the `name` and `id` of the organization, its
+// `projects`, and the `repositories` of every project the credential can read.
+// Projects whose repositories the credential cannot list are named in
+// `unreadableProjects` and are left out of `repositories`.
+azuredevops.organization @defaults("name") @root {
+  // Organization name, as it appears in dev.azure.com/<name>
+  name string
+  // Organization ID, a GUID that Azure DevOps assigns
+  id string
+  // Deployment type that Azure DevOps reports, hosted for Azure DevOps Services
+  deploymentType string
+  // Projects of the organization
+  projects() []azuredevops.project
+  // Git repositories of every project the credential can read
+  repositories() []azuredevops.repository
+  // Names of the projects whose repositories the credential cannot list
+  unreadableProjects() []string
+}
+
+// Azure DevOps project
+//
+// Project of an Azure DevOps organization, the container that groups Git
+// repositories, pipelines, and work items. Provides the `name`, `visibility`,
+// and `state` of the project, and its Git `repositories`.
+azuredevops.project @defaults("name") {
+  // Project ID, a GUID that Azure DevOps assigns
+  id string
+  // Project name
+  name string
+  // Project description
+  description string
+  // Project state, for example wellFormed
+  state string
+  // Project visibility, private or public
+  visibility string
+  // REST API address of the project
+  url string
+  // Time of the last change to the project
+  lastUpdateTime time
+  // Git repositories of the project. Fails when the credential cannot read the project
+  repositories() []azuredevops.repository
+}
+
+// Azure DevOps repository
+//
+// Git repository in an Azure DevOps project. Provides the `fullName` as
+// project and repository, the `defaultBranch`, and whether the repository is
+// `isDisabled` or `isEmpty`. The `status` is ready, empty, or disabled, and
+// only a ready repository can be scanned. Select a repository with
+// `azuredevops.repository(projectName: "<project>", name: "<repository>")`.
+azuredevops.repository @defaults("fullName") @root {
+  init(projectName string, name string)
+  // Repository ID, a GUID that Azure DevOps assigns
+  id string
+  // Repository name, unique only within its project
+  name string
+  // Name of the project that holds the repository
+  projectName string
+  // Project and repository name joined by a slash
+  fullName string
+  // Default branch as a full ref, empty for a repository with no commits
+  defaultBranch string
+  // Repository size in bytes
+  size int
+  // Whether an administrator disabled the repository
+  isDisabled bool
+  // Whether the repository has no commits and so no default branch
+  isEmpty bool
+  // Whether the repository is a fork
+  isFork bool
+  // Scan status: ready, empty, or disabled
+  status string
+  // Address of the repository in the web portal
+  webUrl string
+  // SSH address for cloning
+  sshUrl string
+  // HTTPS address for cloning, without embedded user information
+  cloneUrl string
+  // Project that holds the repository
+  project() azuredevops.project
 }

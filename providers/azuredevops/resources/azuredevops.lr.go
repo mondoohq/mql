@@ -7,6 +7,7 @@ package resources
 
 import (
 	"errors"
+	"time"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -15,7 +16,10 @@ import (
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceAzuredevops string = "azuredevops"
+	ResourceAzuredevops             string = "azuredevops"
+	ResourceAzuredevopsOrganization string = "azuredevops.organization"
+	ResourceAzuredevopsProject      string = "azuredevops.project"
+	ResourceAzuredevopsRepository   string = "azuredevops.repository"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -25,6 +29,18 @@ func init() {
 		"azuredevops": {
 			// to override args, implement: initAzuredevops(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzuredevops,
+		},
+		"azuredevops.organization": {
+			Init:   initAzuredevopsOrganization,
+			Create: createAzuredevopsOrganization,
+		},
+		"azuredevops.project": {
+			// to override args, implement: initAzuredevopsProject(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzuredevopsProject,
+		},
+		"azuredevops.repository": {
+			Init:   initAzuredevopsRepository,
+			Create: createAzuredevopsRepository,
 		},
 	}
 }
@@ -97,8 +113,89 @@ func CreateResource(runtime *plugin.Runtime, name string, args map[string]*llx.R
 }
 
 var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
-	"azuredevops.field": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzuredevops).GetField()).ToDataRes(types.String)
+	"azuredevops.organization.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsOrganization).GetName()).ToDataRes(types.String)
+	},
+	"azuredevops.organization.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsOrganization).GetId()).ToDataRes(types.String)
+	},
+	"azuredevops.organization.deploymentType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsOrganization).GetDeploymentType()).ToDataRes(types.String)
+	},
+	"azuredevops.organization.projects": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsOrganization).GetProjects()).ToDataRes(types.Array(types.Resource("azuredevops.project")))
+	},
+	"azuredevops.organization.repositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsOrganization).GetRepositories()).ToDataRes(types.Array(types.Resource("azuredevops.repository")))
+	},
+	"azuredevops.organization.unreadableProjects": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsOrganization).GetUnreadableProjects()).ToDataRes(types.Array(types.String))
+	},
+	"azuredevops.project.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsProject).GetId()).ToDataRes(types.String)
+	},
+	"azuredevops.project.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsProject).GetName()).ToDataRes(types.String)
+	},
+	"azuredevops.project.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsProject).GetDescription()).ToDataRes(types.String)
+	},
+	"azuredevops.project.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsProject).GetState()).ToDataRes(types.String)
+	},
+	"azuredevops.project.visibility": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsProject).GetVisibility()).ToDataRes(types.String)
+	},
+	"azuredevops.project.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsProject).GetUrl()).ToDataRes(types.String)
+	},
+	"azuredevops.project.lastUpdateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsProject).GetLastUpdateTime()).ToDataRes(types.Time)
+	},
+	"azuredevops.project.repositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsProject).GetRepositories()).ToDataRes(types.Array(types.Resource("azuredevops.repository")))
+	},
+	"azuredevops.repository.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetId()).ToDataRes(types.String)
+	},
+	"azuredevops.repository.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetName()).ToDataRes(types.String)
+	},
+	"azuredevops.repository.projectName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetProjectName()).ToDataRes(types.String)
+	},
+	"azuredevops.repository.fullName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetFullName()).ToDataRes(types.String)
+	},
+	"azuredevops.repository.defaultBranch": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetDefaultBranch()).ToDataRes(types.String)
+	},
+	"azuredevops.repository.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetSize()).ToDataRes(types.Int)
+	},
+	"azuredevops.repository.isDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetIsDisabled()).ToDataRes(types.Bool)
+	},
+	"azuredevops.repository.isEmpty": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetIsEmpty()).ToDataRes(types.Bool)
+	},
+	"azuredevops.repository.isFork": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetIsFork()).ToDataRes(types.Bool)
+	},
+	"azuredevops.repository.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetStatus()).ToDataRes(types.String)
+	},
+	"azuredevops.repository.webUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetWebUrl()).ToDataRes(types.String)
+	},
+	"azuredevops.repository.sshUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetSshUrl()).ToDataRes(types.String)
+	},
+	"azuredevops.repository.cloneUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetCloneUrl()).ToDataRes(types.String)
+	},
+	"azuredevops.repository.project": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetProject()).ToDataRes(types.Resource("azuredevops.project"))
 	},
 }
 
@@ -116,8 +213,128 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzuredevops).__id, ok = v.Value.(string)
 		return
 	},
-	"azuredevops.field": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzuredevops).Field, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"azuredevops.organization.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsOrganization).__id, ok = v.Value.(string)
+		return
+	},
+	"azuredevops.organization.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsOrganization).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.organization.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsOrganization).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.organization.deploymentType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsOrganization).DeploymentType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.organization.projects": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsOrganization).Projects, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.organization.repositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsOrganization).Repositories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.organization.unreadableProjects": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsOrganization).UnreadableProjects, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.project.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsProject).__id, ok = v.Value.(string)
+		return
+	},
+	"azuredevops.project.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsProject).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.project.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsProject).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.project.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsProject).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.project.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsProject).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.project.visibility": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsProject).Visibility, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.project.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsProject).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.project.lastUpdateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsProject).LastUpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"azuredevops.project.repositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsProject).Repositories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).__id, ok = v.Value.(string)
+		return
+	},
+	"azuredevops.repository.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.projectName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).ProjectName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.fullName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).FullName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.defaultBranch": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).DefaultBranch, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.isDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).IsDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.isEmpty": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).IsEmpty, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.isFork": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).IsFork, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.webUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).WebUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.sshUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).SshUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.cloneUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).CloneUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.project": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).Project, ok = plugin.RawToTValue[*mqlAzuredevopsProject](v.Value, v.Error)
 		return
 	},
 }
@@ -149,7 +366,6 @@ type mqlAzuredevops struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAzuredevopsInternal it will be used here
-	Field plugin.TValue[string]
 }
 
 // createAzuredevops creates a new instance of this resource
@@ -189,8 +405,324 @@ func (c *mqlAzuredevops) MqlID() string {
 	return c.__id
 }
 
-func (c *mqlAzuredevops) GetField() *plugin.TValue[string] {
-	return plugin.GetOrCompute[string](&c.Field, func() (string, error) {
-		return c.field()
+// mqlAzuredevopsOrganization for the azuredevops.organization resource
+type mqlAzuredevopsOrganization struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzuredevopsOrganizationInternal it will be used here
+	Name               plugin.TValue[string]
+	Id                 plugin.TValue[string]
+	DeploymentType     plugin.TValue[string]
+	Projects           plugin.TValue[[]any]
+	Repositories       plugin.TValue[[]any]
+	UnreadableProjects plugin.TValue[[]any]
+}
+
+// createAzuredevopsOrganization creates a new instance of this resource
+func createAzuredevopsOrganization(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzuredevopsOrganization{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azuredevops.organization", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzuredevopsOrganization) MqlName() string {
+	return "azuredevops.organization"
+}
+
+func (c *mqlAzuredevopsOrganization) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzuredevopsOrganization) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzuredevopsOrganization) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzuredevopsOrganization) GetDeploymentType() *plugin.TValue[string] {
+	return &c.DeploymentType
+}
+
+func (c *mqlAzuredevopsOrganization) GetProjects() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Projects, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.organization", c.__id, "projects")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.projects()
+	})
+}
+
+func (c *mqlAzuredevopsOrganization) GetRepositories() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Repositories, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.organization", c.__id, "repositories")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.repositories()
+	})
+}
+
+func (c *mqlAzuredevopsOrganization) GetUnreadableProjects() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.UnreadableProjects, func() ([]any, error) {
+		return c.unreadableProjects()
+	})
+}
+
+// mqlAzuredevopsProject for the azuredevops.project resource
+type mqlAzuredevopsProject struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzuredevopsProjectInternal it will be used here
+	Id             plugin.TValue[string]
+	Name           plugin.TValue[string]
+	Description    plugin.TValue[string]
+	State          plugin.TValue[string]
+	Visibility     plugin.TValue[string]
+	Url            plugin.TValue[string]
+	LastUpdateTime plugin.TValue[*time.Time]
+	Repositories   plugin.TValue[[]any]
+}
+
+// createAzuredevopsProject creates a new instance of this resource
+func createAzuredevopsProject(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzuredevopsProject{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azuredevops.project", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzuredevopsProject) MqlName() string {
+	return "azuredevops.project"
+}
+
+func (c *mqlAzuredevopsProject) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzuredevopsProject) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzuredevopsProject) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzuredevopsProject) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAzuredevopsProject) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlAzuredevopsProject) GetVisibility() *plugin.TValue[string] {
+	return &c.Visibility
+}
+
+func (c *mqlAzuredevopsProject) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlAzuredevopsProject) GetLastUpdateTime() *plugin.TValue[*time.Time] {
+	return &c.LastUpdateTime
+}
+
+func (c *mqlAzuredevopsProject) GetRepositories() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Repositories, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.project", c.__id, "repositories")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.repositories()
+	})
+}
+
+// mqlAzuredevopsRepository for the azuredevops.repository resource
+type mqlAzuredevopsRepository struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzuredevopsRepositoryInternal it will be used here
+	Id            plugin.TValue[string]
+	Name          plugin.TValue[string]
+	ProjectName   plugin.TValue[string]
+	FullName      plugin.TValue[string]
+	DefaultBranch plugin.TValue[string]
+	Size          plugin.TValue[int64]
+	IsDisabled    plugin.TValue[bool]
+	IsEmpty       plugin.TValue[bool]
+	IsFork        plugin.TValue[bool]
+	Status        plugin.TValue[string]
+	WebUrl        plugin.TValue[string]
+	SshUrl        plugin.TValue[string]
+	CloneUrl      plugin.TValue[string]
+	Project       plugin.TValue[*mqlAzuredevopsProject]
+}
+
+// createAzuredevopsRepository creates a new instance of this resource
+func createAzuredevopsRepository(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzuredevopsRepository{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azuredevops.repository", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzuredevopsRepository) MqlName() string {
+	return "azuredevops.repository"
+}
+
+func (c *mqlAzuredevopsRepository) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzuredevopsRepository) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzuredevopsRepository) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzuredevopsRepository) GetProjectName() *plugin.TValue[string] {
+	return &c.ProjectName
+}
+
+func (c *mqlAzuredevopsRepository) GetFullName() *plugin.TValue[string] {
+	return &c.FullName
+}
+
+func (c *mqlAzuredevopsRepository) GetDefaultBranch() *plugin.TValue[string] {
+	return &c.DefaultBranch
+}
+
+func (c *mqlAzuredevopsRepository) GetSize() *plugin.TValue[int64] {
+	return &c.Size
+}
+
+func (c *mqlAzuredevopsRepository) GetIsDisabled() *plugin.TValue[bool] {
+	return &c.IsDisabled
+}
+
+func (c *mqlAzuredevopsRepository) GetIsEmpty() *plugin.TValue[bool] {
+	return &c.IsEmpty
+}
+
+func (c *mqlAzuredevopsRepository) GetIsFork() *plugin.TValue[bool] {
+	return &c.IsFork
+}
+
+func (c *mqlAzuredevopsRepository) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAzuredevopsRepository) GetWebUrl() *plugin.TValue[string] {
+	return &c.WebUrl
+}
+
+func (c *mqlAzuredevopsRepository) GetSshUrl() *plugin.TValue[string] {
+	return &c.SshUrl
+}
+
+func (c *mqlAzuredevopsRepository) GetCloneUrl() *plugin.TValue[string] {
+	return &c.CloneUrl
+}
+
+func (c *mqlAzuredevopsRepository) GetProject() *plugin.TValue[*mqlAzuredevopsProject] {
+	return plugin.GetOrCompute[*mqlAzuredevopsProject](&c.Project, func() (*mqlAzuredevopsProject, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.repository", c.__id, "project")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzuredevopsProject), nil
+			}
+		}
+
+		return c.project()
 	})
 }
