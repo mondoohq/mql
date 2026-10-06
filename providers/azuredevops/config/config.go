@@ -19,7 +19,7 @@ var Config = plugin.Provider{
 	Requires: []plugin.ProviderDep{
 		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
 	},
-	ConnectionTypes: []string{provider.DefaultConnectionType},
+	ConnectionTypes: []string{provider.ConnectionType},
 	Connectors: []plugin.Connector{
 		{
 			Name:      "azuredevops",
