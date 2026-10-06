@@ -469,3 +469,74 @@ func TestClone_OtherHostsKeepGoGitsDefaultRequest(t *testing.T) {
 	require.NotEmpty(t, adverts[0].Get("Authorization"))
 	require.Equal(t, adverts[0], adverts[1])
 }
+
+func TestClone_ConcurrentHostsDoNotInterfere(t *testing.T) {
+	resetGitTransport(t)
+	routeLoopbackAsADO(t)
+	ado := newFakeGitServer(t, fakeAzureDevOps, fixtureToken)
+	other := newFakeGitServer(t, fakeStandard, fixtureToken)
+	userinfo := "ci:" + fixtureToken
+	adoURL := ado.repoURL("127.0.0.1", userinfo)
+	otherURL := other.repoURL("localhost", userinfo)
+	filterBefore := slices.Clone(transport.UnsupportedCapabilities)
+
+	const perHost = 6
+	var wg sync.WaitGroup
+	errs := make(chan error, 2*perHost)
+	cloneOnce := func(url string) {
+		defer wg.Done()
+		dir, closer, err := gitClone(url)
+		if err != nil {
+			errs <- err
+			return
+		}
+		defer closer()
+		_, err = os.Stat(filepath.Join(dir, "main.tf"))
+		errs <- err
+	}
+	for i := 0; i < perHost; i++ {
+		wg.Add(2)
+		go cloneOnce(adoURL)
+		go cloneOnce(otherURL)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	adoReqs, otherReqs := ado.uploadPackRequests(), other.uploadPackRequests()
+	require.Len(t, adoReqs, perHost)
+	require.Len(t, otherReqs, perHost)
+	for _, r := range adoReqs {
+		require.Equal(t, []string{"agent", "multi_ack_detailed", "shallow", "side-band-64k"}, capSet(r.Caps))
+	}
+	for _, r := range otherReqs {
+		require.Equal(t, []string{"agent", "ofs-delta", "shallow", "side-band-64k"}, capSet(r.Caps))
+	}
+	require.Equal(t, filterBefore, transport.UnsupportedCapabilities,
+		"concurrent clones must leave go-git's process-global capability filter as they found it")
+}
+
+func TestClone_DoesNotTouchGoGitsGlobalCapabilityFilter(t *testing.T) {
+	resetGitTransport(t)
+	routeLoopbackAsADO(t)
+	ado := newFakeGitServer(t, fakeAzureDevOps, fixtureToken)
+	other := newFakeGitServer(t, fakeStandard, fixtureToken)
+	userinfo := "ci:" + fixtureToken
+
+	goGitDefault := []capability.Capability{capability.MultiACK, capability.MultiACKDetailed, capability.ThinPack}
+	filterBefore := slices.Clone(transport.UnsupportedCapabilities)
+	require.Equal(t, goGitDefault, filterBefore, "precondition: the filter starts as go-git ships it")
+
+	for _, url := range []string{ado.repoURL("127.0.0.1", userinfo), other.repoURL("localhost", userinfo)} {
+		_, closer, err := gitClone(url)
+		require.NoError(t, err)
+		closer()
+	}
+
+	require.Equal(t, filterBefore, transport.UnsupportedCapabilities,
+		"go-git's process-global filter must be exactly what it was before the clones")
+	require.Equal(t, goGitDefault, transport.UnsupportedCapabilities,
+		"go-git's process-global filter must be exactly what go-git ships")
+}
