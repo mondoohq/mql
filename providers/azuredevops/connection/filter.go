@@ -68,6 +68,13 @@ func (f *RepoFilter) Empty() bool {
 }
 
 // Keep reports whether the repository passes the filter.
+// HasInclude reports whether the filter has an include list. A filter with only
+// an exclude list keeps every repository it does not exclude, while one with an
+// include list keeps nothing that its patterns do not name.
+func (f *RepoFilter) HasInclude() bool {
+	return f != nil && len(f.include) > 0
+}
+
 func (f *RepoFilter) Keep(project, repo string) bool {
 	if f.Empty() {
 		return true
