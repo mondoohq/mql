@@ -4,9 +4,12 @@
 package provider
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
@@ -24,6 +27,16 @@ func clearEnv(t *testing.T) {
 	for _, k := range []string{envToken, envClientSecret, envTenantID, envClientID} {
 		t.Setenv(k, "")
 	}
+}
+
+// captureLogs collects what the provider logs for the rest of the test.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := log.Logger
+	log.Logger = zerolog.New(&buf)
+	t.Cleanup(func() { log.Logger = prev })
+	return &buf
 }
 
 func parse(t *testing.T, args []string, flags map[string]*llx.Primitive) (*inventory.Config, error) {
@@ -122,6 +135,24 @@ func TestParseCLITokenBeatsAnAmbientTenant(t *testing.T) {
 
 	assert.NotContains(t, conf.Options, connection.OPTION_TENANT_ID)
 	assert.Equal(t, "fake-token", string(conf.Credentials[0].Secret))
+}
+
+// A token wins over a lone --client-secret, which would otherwise be dropped
+// without a word.
+func TestParseCLIWarnsThatATokenIgnoresTheClientSecret(t *testing.T) {
+	clearEnv(t)
+	logs := captureLogs(t)
+
+	conf, err := parse(t, []string{"org", "mondoo-ado-scan-test"}, map[string]*llx.Primitive{
+		"token":         llx.StringPrimitive("fake-token"),
+		"client-secret": llx.StringPrimitive("fake-secret-value"),
+	})
+	require.NoError(t, err)
+
+	require.Len(t, conf.Credentials, 1)
+	assert.Equal(t, "fake-token", string(conf.Credentials[0].Secret))
+	assert.Contains(t, logs.String(), "--client-secret")
+	assert.NotContains(t, logs.String(), "fake-secret-value")
 }
 
 func TestParseCLIRejectsIncompleteCredentials(t *testing.T) {

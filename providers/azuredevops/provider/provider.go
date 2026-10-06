@@ -98,6 +98,9 @@ func credentials(flags map[string]*llx.Primitive, conf *inventory.Config) error 
 				"set the " + envToken + " environment variable, or use a service principal with --tenant-id, --client-id and --client-secret")
 		}
 		log.Debug().Msg("using an Azure DevOps personal access token")
+		if flagString(flags, "client-secret") != "" {
+			log.Warn().Msg("--client-secret is ignored without --tenant-id and --client-id, using the personal access token")
+		}
 		conf.Credentials = append(conf.Credentials, vault.NewPasswordCredential("", token))
 		return nil
 	}
