@@ -5,11 +5,21 @@ package connection
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
+	"errors"
+	"fmt"
+	"io"
+	stdlog "log"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -435,6 +445,123 @@ func TestACancelledRequestDoesNotTakeOnTheCauseAsItsAnswer(t *testing.T) {
 	assert.Empty(t, sl.waits, "a cancelled request is not retried")
 	assert.Zero(t, apiStatus(err), "the cause is not this request's answer")
 	assert.NotContains(t, err.Error(), "legacy-apps")
+}
+
+// dropConnectionServer closes the connection of the first drops requests
+// without an answer, which the client sees as a reset connection, and answers
+// the rest with the organization identity. It counts every request.
+func dropConnectionServer(t *testing.T, drops int32) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) <= drops {
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			_ = conn.Close()
+			return
+		}
+		_, _ = w.Write([]byte(`{"instanceId":"5e000000-0000-4000-8000-000000000001","deploymentType":"hosted"}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &requests
+}
+
+func TestADroppedConnectionIsRetried(t *testing.T) {
+	srv, requests := dropConnectionServer(t, 1)
+	sl := &sleeper{}
+	c, err := NewClient("any-org", patAuth(t, "x"), ClientOptions{Endpoint: srv.URL, Sleep: sl.Sleep})
+	require.NoError(t, err)
+
+	data, err := c.ConnectionData(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "hosted", data.DeploymentType)
+	assert.Equal(t, int32(2), requests.Load())
+	assert.Equal(t, []time.Duration{firstBackoff}, sl.waits)
+}
+
+func TestAConnectionThatKeepsDroppingGivesUp(t *testing.T) {
+	const pat = "a-token-that-never-gets-an-answer"
+	srv, requests := dropConnectionServer(t, 1000)
+	sl := &sleeper{}
+	c, err := NewClient("any-org", patAuth(t, pat), ClientOptions{Endpoint: srv.URL, Sleep: sl.Sleep})
+	require.NoError(t, err)
+
+	_, err = c.ConnectionData(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, int32(maxRetries+1), requests.Load())
+	assert.Equal(t, []time.Duration{
+		5 * time.Second, 10 * time.Second, 20 * time.Second, 40 * time.Second, 60 * time.Second,
+	}, sl.waits, "the same backoff as a 503")
+	assert.Contains(t, err.Error(), "/any-org/_apis/connectionData")
+	assert.Zero(t, apiStatus(err), "no answer is not an HTTP status")
+
+	basicValue := base64.StdEncoding.EncodeToString([]byte(":" + pat))
+	assert.NotContains(t, err.Error(), pat)
+	assert.NotContains(t, err.Error(), basicValue)
+	assert.NotContains(t, err.Error(), "Basic ")
+}
+
+func TestACertificateTheClientDoesNotTrustIsNotRetried(t *testing.T) {
+	var conns atomic.Int32
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("no request gets past the handshake")
+	}))
+	srv.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			conns.Add(1)
+		}
+	}
+	// The server logs every refused handshake; the test expects one.
+	srv.Config.ErrorLog = stdlog.New(io.Discard, "", 0)
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+
+	sl := &sleeper{}
+	c, err := NewClient("any-org", patAuth(t, "x"), ClientOptions{Endpoint: srv.URL, Sleep: sl.Sleep})
+	require.NoError(t, err)
+
+	_, err = c.ConnectionData(context.Background())
+	require.Error(t, err)
+	var verifyErr *tls.CertificateVerificationError
+	assert.ErrorAs(t, err, &verifyErr)
+	assert.Empty(t, sl.waits, "a certificate that is not trusted fails the same way every time")
+	assert.Equal(t, int32(1), conns.Load(), "one handshake")
+}
+
+func TestWhichTransportErrorsAreRetried(t *testing.T) {
+	get := func(err error) *transportError {
+		return &transportError{path: "/org/_apis/connectionData", err: &url.Error{Op: "Get", URL: "https://dev.azure.com/org/_apis/connectionData", Err: err}}
+	}
+	retried := map[string]error{
+		"reset":          syscall.ECONNRESET,
+		"refused":        syscall.ECONNREFUSED,
+		"eof":            io.EOF,
+		"dns":            &net.DNSError{Err: "no such host", Name: "dev.azure.com", IsNotFound: true},
+		"client timeout": errors.New("context deadline exceeded (Client.Timeout exceeded while awaiting headers)"),
+	}
+	for name, err := range retried {
+		assert.True(t, get(err).retryable(), name)
+	}
+
+	permanent := map[string]error{
+		"redirect loop":      errors.New("stopped after 10 redirects"),
+		"scheme":             errors.New(`unsupported protocol scheme "ftp"`),
+		"header":             errors.New(`net/http: invalid header field value for "Authorization"`),
+		"not trusted":        errors.New(`x509: "dev.azure.com" certificate is not trusted`),
+		"verification":       &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}},
+		"unknown authority":  x509.UnknownAuthorityError{},
+		"hostname":           x509.HostnameError{Host: "dev.azure.com"},
+		"invalid":            x509.CertificateInvalidError{Reason: x509.Expired},
+		"wrapped hostname":   fmt.Errorf("handshake: %w", x509.HostnameError{Host: "dev.azure.com"}),
+		"wrapped authority":  fmt.Errorf("handshake: %w", x509.UnknownAuthorityError{}),
+		"wrapped invalidity": fmt.Errorf("handshake: %w", x509.CertificateInvalidError{Reason: x509.Expired}),
+	}
+	for name, err := range permanent {
+		assert.False(t, get(err).retryable(), name)
+	}
 }
 
 func TestAPIErrorNamesTheStatusAndPath(t *testing.T) {

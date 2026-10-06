@@ -5,6 +5,8 @@ package connection
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -307,7 +309,9 @@ func (c *Client) urlFor(r request) string {
 	return b.String()
 }
 
-// getJSON runs one GET with retries and decodes the body into out.
+// getJSON runs one GET with retries and decodes the body into out. A 429, 502,
+// 503 or 504 answer and a request that got no answer at all are retried with
+// backoff, at most maxRetries times, while ctx is live.
 func (c *Client) getJSON(ctx context.Context, r request, out any) (http.Header, error) {
 	target := c.urlFor(r)
 	backoff := firstBackoff
@@ -324,25 +328,92 @@ func (c *Client) getJSON(ctx context.Context, r request, out any) (http.Header, 
 			return nil, fmt.Errorf("azure devops: GET /%s: %w", strings.Join(r.segments, "/"), ctxErr)
 		}
 		var apiErr *APIError
-		if !errors.As(err, &apiErr) || !apiErr.retryable() || attempt >= maxRetries {
+		var transErr *transportError
+		var retryAfter time.Duration
+		switch {
+		case errors.As(err, &apiErr):
+			if !apiErr.retryable() {
+				return nil, err
+			}
+			retryAfter = apiErr.RetryAfter
+		case errors.As(err, &transErr):
+			if !transErr.retryable() {
+				return nil, err
+			}
+		default:
+			return nil, err
+		}
+		if attempt >= maxRetries {
 			return nil, err
 		}
 
 		wait := backoff
-		if apiErr.RetryAfter > 0 {
-			wait = apiErr.RetryAfter
+		if retryAfter > 0 {
+			wait = retryAfter
 			if wait > maxRetryAfter {
 				return nil, err
 			}
 		} else {
 			backoff = min(backoff*2, maxBackoff)
 		}
-		log.Debug().Int("status", apiErr.Status).Dur("wait", wait).Int("attempt", attempt+1).
-			Msg("azure devops asked to slow down, retrying")
+		if apiErr != nil {
+			log.Debug().Int("status", apiErr.Status).Dur("wait", wait).Int("attempt", attempt+1).
+				Msg("azure devops asked to slow down, retrying")
+		} else {
+			log.Debug().Str("path", transErr.path).Dur("wait", wait).Int("attempt", attempt+1).
+				Msg("azure devops request got no answer, retrying")
+		}
 		if err := c.sleep(ctx, wait); err != nil {
 			return nil, err
 		}
 	}
+}
+
+// transportError is a request that got no answer from Azure DevOps: the
+// connection was refused or reset, the name did not resolve, or the request
+// timed out. It carries the request path, never the request headers.
+type transportError struct {
+	path string
+	err  error
+}
+
+func (e *transportError) Error() string {
+	return fmt.Sprintf("azure devops: GET %s: %v", e.path, e.err)
+}
+
+func (e *transportError) Unwrap() error { return e.err }
+
+// net/http has no typed error for these failures, so they are matched on the
+// message with the same patterns go-retryablehttp's DefaultRetryPolicy uses.
+var (
+	redirectsErrorRe     = regexp.MustCompile(`stopped after \d+ redirects\z`)
+	schemeErrorRe        = regexp.MustCompile(`unsupported protocol scheme`)
+	invalidHeaderErrorRe = regexp.MustCompile(`invalid header`)
+	notTrustedErrorRe    = regexp.MustCompile(`certificate is not trusted`)
+)
+
+// retryable reports whether the same request can get an answer next time. As
+// in go-retryablehttp's DefaultRetryPolicy, a redirect loop, an unsupported
+// scheme, an invalid header and a certificate the client does not trust fail
+// the same way on every attempt, so they are returned at once.
+func (e *transportError) retryable() bool {
+	var (
+		verifyErr    *tls.CertificateVerificationError
+		authorityErr x509.UnknownAuthorityError
+		hostnameErr  x509.HostnameError
+		invalidErr   x509.CertificateInvalidError
+	)
+	if errors.As(e.err, &verifyErr) || errors.As(e.err, &authorityErr) ||
+		errors.As(e.err, &hostnameErr) || errors.As(e.err, &invalidErr) {
+		return false
+	}
+	msg := e.err.Error()
+	for _, re := range []*regexp.Regexp{redirectsErrorRe, schemeErrorRe, invalidHeaderErrorRe, notTrustedErrorRe} {
+		if re.MatchString(msg) {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Client) getOnce(ctx context.Context, target string, segments []string, out any) (http.Header, error) {
@@ -361,7 +432,7 @@ func (c *Client) getOnce(ctx context.Context, target string, segments []string, 
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("azure devops: GET %s: %w", path, err)
+		return nil, &transportError{path: path, err: err}
 	}
 	defer resp.Body.Close()
 	c.addCost(resp.Header)
