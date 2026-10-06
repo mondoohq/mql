@@ -33,6 +33,9 @@ permissions:
 env:
   # C07QZDJFF89 == #release-coordination
   SLACK_BOT_CHANNEL_ID: "C07QZDJFF89"
+  # Every run that can tag reports to Slack, scheduled or started by hand.
+  # Dry runs stay quiet.
+  TRIGGER: ${{ github.event_name == 'schedule' && 'scheduled run' || format('started by {0}', github.triggering_actor) }}
 
 jobs:
   weekly-release:
@@ -113,7 +116,7 @@ jobs:
           git push origin "refs/tags/$NEXT"
 
       - name: Notify Slack, released
-        if: ${{ github.event_name == 'schedule' && steps.tag.outcome == 'success' }}
+        if: ${{ steps.tag.outcome == 'success' }}
         uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.postMessage
@@ -127,14 +130,14 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": ":rocket: Weekly release: tagged <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ steps.next.outputs.next }}|${{ steps.next.outputs.next }}> on `${{ steps.next.outputs.base }}` (<${{ github.server_url }}/${{ github.repository }}/commit/${{ steps.next.outputs.sha }}|${{ steps.next.outputs.commits }} commits> since ${{ steps.next.outputs.prev }})\nFollow the <${{ github.server_url }}/${{ github.repository }}/actions/workflows/goreleaser.yml|goreleaser runs>."
+                    "text": ":rocket: Weekly release: tagged <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ steps.next.outputs.next }}|${{ steps.next.outputs.next }}> on `${{ steps.next.outputs.base }}` (<${{ github.server_url }}/${{ github.repository }}/commit/${{ steps.next.outputs.sha }}|${{ steps.next.outputs.commits }} commits> since ${{ steps.next.outputs.prev }})\n(${{ env.TRIGGER }})\nFollow the <${{ github.server_url }}/${{ github.repository }}/actions/workflows/goreleaser.yml|goreleaser runs>."
                   }
                 }
               ]
             }
 
       - name: Notify Slack, nothing to release
-        if: ${{ github.event_name == 'schedule' && steps.next.outputs.skip == 'true' }}
+        if: ${{ steps.next.outputs.skip == 'true' && inputs.dry-run != true }}
         uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.postMessage
@@ -148,14 +151,14 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": ":zzz: Weekly release skipped: nothing new on `${{ steps.next.outputs.base }}` since ${{ steps.next.outputs.prev }}."
+                    "text": ":zzz: Weekly release skipped: nothing new on `${{ steps.next.outputs.base }}` since ${{ steps.next.outputs.prev }} (${{ env.TRIGGER }})."
                   }
                 }
               ]
             }
 
       - name: Notify Slack, failed
-        if: ${{ github.event_name == 'schedule' && failure() }}
+        if: ${{ failure() && inputs.dry-run != true }}
         uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.postMessage
@@ -169,7 +172,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": ":x: Weekly release failed. See the <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|workflow run>."
+                    "text": ":x: Weekly release failed. See the <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|workflow run> (${{ env.TRIGGER }})."
                   }
                 }
               ]
