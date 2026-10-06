@@ -17292,6 +17292,23 @@ windows.defender.threatDetection @defaults("threatId processName actionSuccess")
 // questions directly, letting an audit assert on one field instead of
 // enumerating vendors per platform. Agents are recognized on Windows, Linux,
 // and macOS.
+//
+// Recognized agents. Select one by its `id`, for example
+// `edr.products.where(id == "sentinelone")`. An agent not listed here is not
+// reported, so installed reads false on an asset protected only by an
+// unlisted product.
+//
+// | id | Product | Vendor | Category | Windows | Linux | macOS |
+// |---|---|---|---|:---:|:---:|:---:|
+// | `crowdstrike-falcon` | CrowdStrike Falcon | CrowdStrike | edr | ✓ | ✓ | ✓ |
+// | `sentinelone` | SentinelOne | SentinelOne | edr | ✓ | ✓ | ✓ |
+// | `eset` | ESET Endpoint Security | ESET | epp | ✓ | ✓ | ✓ |
+// | `microsoft-defender` | Microsoft Defender Antivirus | Microsoft | av | ✓ | | |
+// | `wazuh` | Wazuh Agent | Wazuh | edr | ✓ | ✓ | ✓ |
+// | `sophos` | Sophos Endpoint | Sophos | edr | ✓ | | |
+// | `cortex-xdr` | Cortex XDR | Palo Alto Networks | xdr | ✓ | ✓ | ✓ |
+// | `watchguard-epdr` | WatchGuard EPDR | WatchGuard | epp | ✓ | | |
+// | `malwarebytes` | Malwarebytes Endpoint Agent | Malwarebytes | epp | ✓ | | ✓ |
 edr @defaults("installed healthy") @maturity("preview") {
   // Every recognized endpoint security agent found on this asset
   products() []edr.product

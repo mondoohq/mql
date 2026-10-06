@@ -337,11 +337,13 @@ func extractTitleAndDescription(raw []CommentToken) (string, string) {
 	if len(rest) > 0 && rest[0].Text == "" {
 		rest = rest[1:]
 	}
+	// Keep the line breaks: descriptions are rendered as markdown, where a
+	// single newline reads as a space but tables and lists need their lines.
 	parts := make([]string, len(rest))
 	for i, c := range rest {
 		parts[i] = c.Text
 	}
-	desc := strings.Join(parts, " ")
+	desc := strings.Join(parts, "\n")
 	return title, desc
 }
 

@@ -496,6 +496,27 @@ name {
 		assert.Equal(t, "One of COST, USAGE, RI_UTILIZATION, RI_COVERAGE.", f.Desc)
 	})
 
+	t.Run("keeps description line breaks for markdown", func(t *testing.T) {
+		res := parse(t, `
+option provider = "test"
+
+// Resource title
+//
+// Wrapped prose
+// continues here.
+//
+// | id | name |
+// |---|---|
+// | a | A |
+name {
+	val type
+}
+`)
+		require.Len(t, res.Resources, 1)
+		assert.Equal(t, "Resource title", res.Resources[0].title)
+		assert.Equal(t, "Wrapped prose\ncontinues here.\n\n| id | name |\n|---|---|\n| a | A |", res.Resources[0].desc)
+	})
+
 	t.Run("resource with a list type", func(t *testing.T) {
 		res := parse(t, "name {\nfield []type\n}")
 		f := []*Field{
