@@ -385,13 +385,17 @@ func oauthLogin(apiEndpoint string, httpClient *http.Client, sysInfo *sysinfo.Sy
 	if binaryName == "" {
 		binaryName = "mql"
 	}
+	deviceName := sysInfo.Hostname
+	if deviceName == "" {
+		deviceName, _ = os.Hostname()
+	}
 
 	res, err := oauthlogin.Login(context.Background(), oauthlogin.Options{
 		Endpoint:    apiEndpoint,
 		Insecure:    flags.insecure,
 		Mode:        mode,
 		SpaceMrn:    flags.spaceMrn,
-		DeviceName:  sysInfo.Hostname,
+		DeviceName:  deviceName,
 		DeviceInfo:  fmt.Sprintf("%s %s %s/%s", binaryName, version, runtime.GOOS, runtime.GOARCH),
 		HTTPClient:  httpClient,
 		Interactive: term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd())),
