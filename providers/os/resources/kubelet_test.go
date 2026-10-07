@@ -562,25 +562,28 @@ func TestCreateConfiguration_LegacyFlagDefaults(t *testing.T) {
 	assert.Equal(t, 0.0, config["readOnlyPort"])
 }
 
-func TestKubeletProcessAllowedBySnapshot(t *testing.T) {
-	snapshot := func(uid, exe, mountNS, initMountNS string) string {
+func TestKubeletAdmissionSnapshotAllowed(t *testing.T) {
+	snapshot := func(uid, exe, mountNS, initMountNS, cmdline string) string {
 		return "Uid:\t" + uid + "\t" + uid + "\t" + uid + "\t" + uid + "\n" + exe + "\n" +
-			mountNS + "\n" + initMountNS + "\n" + "Uid:\t" + uid + "\t" + uid + "\t" + uid + "\t" + uid + "\n"
+			mountNS + "\n" + initMountNS + "\n" + "Uid:\t" + uid + "\t" + uid + "\t" + uid + "\t" + uid + "\n" + cmdline + " \n"
 	}
-	// a root or sudo scan reads the snapshot: only root's kubelet in init's
-	// mount namespace (captured on live nodes)
-	assert.True(t, kubeletProcessAllowedBySnapshot(
-		snapshot("0", "/snap/microk8s/9072/kubelite", "mnt:[4026531832]", "mnt:[4026531832]"), true), "MicroK8s")
-	assert.True(t, kubeletProcessAllowedBySnapshot(
-		snapshot("0", "/var/lib/rancher/k3s/data/d5316b544b0ddcf993305e38b2aee41dc79e8c5d963a8336f5d8df84e99fb426/bin/k3s",
-			"mnt:[4026531832]", "mnt:[4026531832]"), true), "K3s")
+	kubelite := "/snap/microk8s/9072/kubelite --kubelet-args-file=/var/snap/microk8s/9072/args/kubelet --start-control-plane=true"
+
+	// root's kubelite in init's mount namespace, as on a MicroK8s node
+	assert.True(t, kubeletAdmissionSnapshotAllowed(
+		snapshot("0", "/snap/microk8s/9072/kubelite", "mnt:[4026531832]", "mnt:[4026531832]", kubelite), kubelite))
 	// a user's own kubelite, whose --kubelet-args-file would be read as root
-	assert.False(t, kubeletProcessAllowedBySnapshot(
-		snapshot("1000", "/home/user/kubelite", "mnt:[4026531832]", "mnt:[4026531832]"), true))
+	fake := "/tmp/kubelite -c sleep 120; true --kubelet-args-file=/etc/shadow"
+	assert.False(t, kubeletAdmissionSnapshotAllowed(
+		snapshot("1000", "/usr/bin/bash", "mnt:[4026531832]", "mnt:[4026531832]", fake), fake))
 	// a container's kubelet seen from its host
-	assert.False(t, kubeletProcessAllowedBySnapshot(
-		snapshot("0", "/var/lib/minikube/binaries/v1.37.0/kubelet", "mnt:[4026532241]", "mnt:[4026531832]"), true))
-	// a non-root scan cannot read another user's link, and reads only what it
-	// already may
-	assert.True(t, kubeletProcessAllowedBySnapshot("", false))
+	mk := "/var/lib/minikube/binaries/v1.37.0/kubelet --config=/var/lib/kubelet/config.yaml"
+	assert.False(t, kubeletAdmissionSnapshotAllowed(
+		snapshot("0", "/var/lib/minikube/binaries/v1.37.0/kubelet", "mnt:[4026532241]", "mnt:[4026531832]", mk), mk))
+	// the pid now belongs to another root process than the one listed
+	assert.False(t, kubeletAdmissionSnapshotAllowed(
+		snapshot("0", "/usr/sbin/sshd", "mnt:[4026531832]", "mnt:[4026531832]", "sshd: /usr/sbin/sshd -D"), fake))
+	// the process exited before the snapshot: nothing to read
+	assert.False(t, kubeletAdmissionSnapshotAllowed("", kubelite))
+	assert.False(t, kubeletAdmissionSnapshotAllowed("Uid:\t0\t0\t0\t0\n", kubelite))
 }

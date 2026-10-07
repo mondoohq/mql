@@ -163,7 +163,7 @@ func microk8sKubeletFlags(content string, argsFile string) map[string]any {
 	flags := map[string]any{}
 	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "-") || strings.HasPrefix(line, "#") {
+		if !strings.HasPrefix(line, "-") {
 			continue
 		}
 		name, value, _ := strings.Cut(strings.TrimLeft(line, "-"), "=")

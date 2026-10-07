@@ -727,27 +727,43 @@ func getKubeletProcess(runtime *plugin.Runtime) (*mqlProcess, error) {
 // names (--config, --kubelet-args-file, K3s's --data-dir) may be read for it.
 // Processes are matched by name, and any user can start one named kubelet,
 // kubelite or "k3s server" with paths of their choosing, which a root or sudo
-// scan would then read with root's rights. See kubeletProcessAllowedBySnapshot.
+// scan would then read with root's rights.
+//
+// A privileged scan (one that can read /proc/1/exe, which only root can)
+// admits a process only when a snapshot shows root running it in init's
+// mount namespace, with the command line the process list reported, so a pid
+// that exited or was taken over since is refused. A snapshot that cannot be
+// read is refused too: the process may have exited on purpose to dodge the
+// check. A non-root scan admits the process, since every read then runs as
+// that same user, with no more rights than the scan already has.
 func kubeletProcessAllowed(runtime *plugin.Runtime, proc *mqlProcess) bool {
-	pid := proc.GetPid()
-	if pid.Error != nil {
-		return false
-	}
-	out, ok := runCommandQuiet(runtime, kubeletProcSnapshotCommand(pid.Data))
-	return kubeletProcessAllowedBySnapshot(out, ok)
-}
-
-// kubeletProcessAllowedBySnapshot decides kubeletProcessAllowed from the
-// output of kubeletProcSnapshotCommand. A snapshot the scan can read (a root
-// or sudo scan) admits only a process root runs in init's mount namespace. A
-// snapshot it cannot read (a non-root scan, which cannot read another user's
-// /proc/<pid>/exe) admits the process: every read then runs as that same
-// user, with no more rights than the scan already has.
-func kubeletProcessAllowedBySnapshot(out string, readable bool) bool {
-	if !readable {
+	_, privileged := runCommandQuiet(runtime, "readlink /proc/1/exe")
+	if !privileged {
 		return true
 	}
-	return parseKubeletProcSnapshot(out) != ""
+	pid := proc.GetPid()
+	command := proc.GetCommand()
+	if pid.Error != nil || command.Error != nil {
+		return false
+	}
+	out, ok := runCommandQuiet(runtime, kubeletProcSnapshotCommand(pid.Data)+
+		" && tr '\\0' ' ' < /proc/"+strconv.FormatInt(pid.Data, 10)+"/cmdline")
+	return ok && kubeletAdmissionSnapshotAllowed(out, command.Data)
+}
+
+// kubeletAdmissionSnapshotAllowed decides kubeletProcessAllowed on a
+// privileged scan from the output of kubeletProcSnapshotCommand followed by
+// the process's command line, which must be the command the process list
+// reported.
+func kubeletAdmissionSnapshotAllowed(out string, command string) bool {
+	lines := strings.SplitN(out, "\n", 6)
+	if len(lines) != 6 {
+		return false
+	}
+	if parseKubeletProcSnapshot(strings.Join(lines[:5], "\n")+"\n") == "" {
+		return false
+	}
+	return strings.Join(strings.Fields(lines[5]), " ") == strings.Join(strings.Fields(command), " ")
 }
 
 // kubeletFlags returns the kubelet's flags. A kubelet process of its own has
