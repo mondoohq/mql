@@ -496,10 +496,19 @@ func oauthLogin(apiEndpoint string, httpClient *http.Client, sysInfo *sysinfo.Sy
 // returns it. Fields that would take precedence over the new credential are
 // cleared.
 func applySessionConfig(res *oauthlogin.Result) *upstream.ServiceAccountCredentials {
-	for _, key := range []string{"agent_mrn", "token", "parent_mrn"} {
-		if viper.IsSet(key) {
-			viper.Set(key, nil)
+	stale := []string{"agent_mrn", "token", "parent_mrn"}
+	for _, key := range stale {
+		if !viper.IsSet(key) {
+			continue
 		}
+		if err := dropConfigKeys(stale...); err != nil {
+			log.Debug().Err(err).Msg("could not remove the registered client from the config")
+			// Empty values still keep them from taking precedence.
+			for _, k := range stale {
+				viper.Set(k, "")
+			}
+		}
+		break
 	}
 	values := res.ConfigValues()
 	for key, value := range values {

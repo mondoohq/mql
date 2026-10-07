@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"go.mondoo.com/mql/cli/config"
+	"go.mondoo.com/mql/cli/oauthlogin"
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 )
 
@@ -75,6 +76,68 @@ func TestApplyRegistrationConfig_ReplacesSession(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, newSpace, opts.GetScopeMrn())
 	assert.False(t, opts.IsOAuthSession())
+
+	if runtime.GOOS != "windows" {
+		fi, err := os.Stat(path)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
+	}
+}
+
+const registeredClientConfigYAML = `agent_mrn: //agents.api.mondoo.app/spaces/old-space/agents/a1
+api_endpoint: https://us.api.mondoo.com
+mrn: //agents.api.mondoo.app/spaces/old-space/serviceaccounts/sa1
+space_mrn: //captain.api.mondoo.app/spaces/old-space
+parent_mrn: //captain.api.mondoo.app/spaces/old-space
+token: old-registration-token
+private_key: old-key
+certificate: old-cert
+`
+
+// An interactive login over a registered client's config replaces the
+// registered client completely.
+func TestApplySessionConfig_ReplacesRegisteredClient(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	path := filepath.Join(t.TempDir(), "mondoo.yml")
+	require.NoError(t, os.WriteFile(path, []byte(registeredClientConfigYAML), 0o644))
+	viper.SetConfigFile(path)
+	require.NoError(t, viper.ReadInConfig())
+
+	const newSpace = "//captain.api.mondoo.app/spaces/new-space"
+	applySessionConfig(&oauthlogin.Result{
+		ServiceAccount: oauthlogin.ServiceAccount{
+			Mrn:         "//agents.api.mondoo.app/spaces/new-space/serviceaccounts/session1",
+			SpaceMrn:    newSpace,
+			ScopeMrn:    newSpace,
+			Certificate: "new-cert",
+			ApiEndpoint: "https://us.api.mondoo.com",
+		},
+		PrivateKeyPEM: "new-key",
+		Issuer:        "https://us.api.mondoo.com",
+		AccessToken:   "new-session",
+	})
+	restrictConfigPermissions(path)
+	require.NoError(t, config.StoreConfig())
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var stored map[string]any
+	require.NoError(t, yaml.Unmarshal(data, &stored))
+	for _, key := range []string{"agent_mrn", "token", "parent_mrn"} {
+		assert.NotContains(t, stored, key, "the registered client's %s is removed:\n%s", key, data)
+	}
+	assert.Equal(t, newSpace, stored["scope_mrn"])
+	assert.Equal(t, "new-key", stored["private_key"])
+
+	viper.Reset()
+	viper.SetConfigFile(path)
+	require.NoError(t, viper.ReadInConfig())
+	opts, err := config.Read()
+	require.NoError(t, err)
+	assert.True(t, opts.IsOAuthSession())
+	assert.Equal(t, newSpace, opts.GetScopeMrn())
 
 	if runtime.GOOS != "windows" {
 		fi, err := os.Stat(path)
