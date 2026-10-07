@@ -25,9 +25,8 @@ const (
 
 	// GitCredentialUser is the user name sent with a token over git smart-HTTP.
 	// Azure DevOps ignores the user name, but go-git falls back to putting the
-	// token in the user name when it is empty. Which non-empty value the Entra
-	// token needs has not been proven against a real organization; the clone
-	// check in the plan settles it.
+	// token in the user name when it is empty. Clones of a live organization
+	// with an Entra token as the password succeed with any non-empty user name.
 	GitCredentialUser = "oauth2"
 
 	// tokenRefreshFraction is how much of an Entra token's lifetime may pass

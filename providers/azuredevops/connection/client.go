@@ -477,13 +477,20 @@ func (c *Client) getOnce(ctx context.Context, target string, segments []string, 
 	switch {
 	case resp.StatusCode == http.StatusNonAuthoritativeInfo:
 		// A bad token can be answered with the HTML sign-in page and a 203.
+		// Seen on dev.azure.com; Azure DevOps Server is refused before this.
 		return nil, &APIError{Status: http.StatusUnauthorized, Path: path,
 			Message: "Azure DevOps answered with its sign-in page, so the credential was not accepted"}
-	case resp.StatusCode >= 300 && resp.StatusCode < 400:
-		// The client does not follow redirects. Neither the Location header nor
-		// the body goes into the error.
+	case resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusSeeOther:
+		// The sign-in redirect: a request without an accepted credential gets a
+		// 302 to the sign-in page. The client does not follow redirects, and
+		// neither the Location header nor the body goes into the error.
 		return nil, &APIError{Status: http.StatusUnauthorized, Path: path,
 			Message: "Azure DevOps redirected the request to its sign-in page, so the credential was not accepted"}
+	case resp.StatusCode >= 300 && resp.StatusCode < 400:
+		// Any other redirect (a moved API, for example) is not a credential
+		// problem, so it keeps its own status instead of reading as a 401.
+		return nil, &APIError{Status: resp.StatusCode, Path: path,
+			Message: "Azure DevOps answered with an unexpected redirect"}
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		if out == nil {
 			return resp.Header, nil

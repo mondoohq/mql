@@ -646,6 +646,31 @@ func TestARedirectToTheSignInPageIsAnUnauthorizedError(t *testing.T) {
 	assert.Equal(t, []string{"/any-org/_apis/connectionData"}, paths(), "the sign-in page is never requested")
 }
 
+// Only the sign-in redirect (302, 303) means a rejected credential. A moved
+// API answers 301, 307 or 308, which must keep its own status so the real
+// cause shows instead of "check your credential".
+func TestOtherRedirectsAreNotUnauthorized(t *testing.T) {
+	for _, code := range []int{http.StatusMovedPermanently, http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Location", "/elsewhere")
+				w.WriteHeader(code)
+			}))
+			t.Cleanup(srv.Close)
+			c, err := NewClient("any-org", patAuth(t, "a-token"), ClientOptions{Endpoint: srv.URL, Sleep: (&sleeper{}).Sleep})
+			require.NoError(t, err)
+
+			_, err = c.ConnectionData(context.Background())
+			require.Error(t, err)
+			assert.False(t, IsUnauthorized(err), "got %v", err)
+			var apiErr *APIError
+			require.ErrorAs(t, err, &apiErr)
+			assert.Equal(t, code, apiErr.Status)
+			assert.NotContains(t, err.Error(), "/elsewhere", "the Location header stays out of the error")
+		})
+	}
+}
+
 // A client the caller passes in follows redirects by default. The client must
 // still read the 302 itself, and must not change the caller's client.
 func TestACallersHTTPClientDoesNotFollowTheSignInRedirect(t *testing.T) {
