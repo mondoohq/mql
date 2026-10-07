@@ -526,6 +526,13 @@ type CliConfigAuthentication struct {
 	// AccessToken identifies an interactive login session for revocation. It
 	// carries no secret: using it requires the session's private key.
 	AccessToken string `json:"access_token,omitempty" mapstructure:"access_token"`
+	// Names of an interactive login session's user and space, recorded at
+	// login so a later login can say who is logged in. Display only.
+	UserEmail string `json:"user_email,omitempty" mapstructure:"user_email"`
+	UserName  string `json:"user_name,omitempty" mapstructure:"user_name"`
+	UserMrn   string `json:"user_mrn,omitempty" mapstructure:"user_mrn"`
+	SpaceName string `json:"space_name,omitempty" mapstructure:"space_name"`
+	OrgName   string `json:"org_name,omitempty" mapstructure:"org_name"`
 }
 
 // IsOAuthSession reports whether the credential came from an interactive login.

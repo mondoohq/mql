@@ -64,6 +64,7 @@ func TestLoginCmd_AllFlags(t *testing.T) {
 		{"no-browser", "", "false", "bool"},
 		{"space", "", "", "string"},
 		{"insecure", "", "false", "bool"},
+		{"force", "", "false", "bool"},
 	}
 
 	for _, ef := range expectedFlags {
