@@ -90,36 +90,61 @@ func parseContainerInfo(jsonData []byte) (*containerInfo, error) {
 
 // ctrBinaries are the containerd CLIs to try, in order. SUSE packages ctr as
 // containerd-ctr in /usr/sbin, which is not on a non-root PATH. Docker 18.09
-// and older bundle their own CLI as docker-containerd-ctr. RKE2 ships ctr in
-// /var/lib/rancher/rke2/bin, which is on no PATH.
-var ctrBinaries = []string{"ctr", "containerd-ctr", "/usr/sbin/containerd-ctr", "docker-containerd-ctr", "/var/lib/rancher/rke2/bin/ctr"}
+// and older bundle their own CLI as docker-containerd-ctr. The Kubernetes
+// distributions that run their own containerd ship ctr on no PATH: RKE2 in
+// /var/lib/rancher/rke2/bin, Canonical Kubernetes and MicroK8s in their snaps,
+// and k0s only as a subcommand of the k0s binary. K3s links ctr onto PATH.
+var ctrBinaries = [][]string{
+	{"ctr"},
+	{"containerd-ctr"},
+	{"/usr/sbin/containerd-ctr"},
+	{"docker-containerd-ctr"},
+	{"/var/lib/rancher/rke2/bin/ctr"},
+	{"/snap/k8s/current/bin/ctr"},
+	{"/snap/microk8s/current/bin/ctr"},
+	{"k0s", "ctr"},
+}
 
 const (
 	// containerdSocket is where a standalone containerd listens by default.
+	// Canonical Kubernetes uses it too.
 	containerdSocket = "/run/containerd/containerd.sock"
 	// dockerContainerdSocket is where dockerd's own containerd listens. dockerd
 	// starts one when no containerd serves containerdSocket (SUSE's
 	// containerd.service conflicts with docker.service, and Docker 18.09 and
 	// older always bundle one).
 	dockerContainerdSocket = "/run/docker/containerd/containerd.sock"
-	// rke2ContainerdSocket is where the containerd that RKE2 runs listens.
+	// rke2ContainerdSocket is where the containerd that RKE2 and K3s run
+	// listens.
 	rke2ContainerdSocket = "/run/k3s/containerd/containerd.sock"
+	// microk8sContainerdSocket is where MicroK8s's containerd listens.
+	microk8sContainerdSocket = "/var/snap/microk8s/common/run/containerd.sock"
+	// k0sContainerdSocket is where k0s's containerd listens.
+	k0sContainerdSocket = "/run/k0s/containerd.sock"
 )
+
+// otherContainerdSockets are the sockets of containerds that do not serve
+// containerdSocket, in order of preference.
+var otherContainerdSockets = []string{
+	dockerContainerdSocket,
+	rke2ContainerdSocket,
+	microk8sContainerdSocket,
+	k0sContainerdSocket,
+}
 
 // containerdAddressArgs returns the ctr arguments that select the containerd
 // socket. The default socket wins whenever it may exist, since dockerd adopts
 // a running containerd's socket. Only when it is missing does ctr need
-// --address: for dockerd's own socket when that is there (or hidden from this
-// user, whom ctr will then report as refused), otherwise for RKE2's.
+// --address, for the first other socket that is there (or hidden from this
+// user, whom ctr will then report as refused).
 func containerdAddressArgs(stat func(path string) error) []string {
 	if err := stat(containerdSocket); !errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
-	if err := stat(dockerContainerdSocket); !errors.Is(err, fs.ErrNotExist) {
-		return []string{"--address", dockerContainerdSocket}
-	}
-	if err := stat(rke2ContainerdSocket); !errors.Is(err, fs.ErrNotExist) {
-		return []string{"--address", rke2ContainerdSocket}
+	for _, socket := range otherContainerdSockets {
+		if err := stat(socket); !errors.Is(err, fs.ErrNotExist) {
+			return []string{"--address", socket}
+		}
 	}
 	return nil
 }
@@ -128,7 +153,7 @@ func containerdAddressArgs(stat func(path string) error) []string {
 func ctrCLIs(addressArgs []string) [][]string {
 	clis := make([][]string, 0, len(ctrBinaries))
 	for _, bin := range ctrBinaries {
-		clis = append(clis, append([]string{bin}, addressArgs...))
+		clis = append(clis, append(append([]string{}, bin...), addressArgs...))
 	}
 	return clis
 }
