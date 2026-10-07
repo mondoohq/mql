@@ -136,33 +136,57 @@ func validateCallback(q url.Values, state, issuer string, issRequired bool) call
 	return callbackResult{code: code}
 }
 
+// resultPage is the page the browser lands on after the login. It is
+// self-contained (the local listener may be the only server reachable) and
+// html/template escapes the message in the page and the frames in the script.
 var resultPage = template.Must(template.New("result").Parse(`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{if .OK}}Login complete{{else}}Login failed{{end}}</title>
+<title>{{if .OK}}Login complete{{else}}Login not completed{{end}}</title>
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f6f6f8;color:#1d1d24;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:16px;box-sizing:border-box}
-main{background:#fff;border-radius:12px;padding:32px;max-width:420px;box-shadow:0 2px 12px rgba(0,0,0,.08);text-align:center}
-h1{font-size:20px;margin:0 0 8px}
-p{margin:0;color:#55556a}
-@media (prefers-color-scheme:dark){body{background:#16161c;color:#ececf1}main{background:#22222b;box-shadow:none}p{color:#a6a6b8}}
+:root{--bg1:#f1ecff;--bg2:#e3f2ff;--card:#fff;--fg:#1d1d24;--muted:#55556a;--cat:#5b3fd0}
+.fail{--bg1:#ffeef0;--bg2:#f1edff;--cat:#b4361b}
+@media (prefers-color-scheme:dark){:root{--bg1:#1d1733;--bg2:#0f1a27;--card:#23222c;--fg:#ececf1;--muted:#a9a9bb;--cat:#c0b0ff}.fail{--bg1:#2c1719;--bg2:#17142a;--cat:#ffb48a}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--fg);background:linear-gradient(135deg,var(--bg1),var(--bg2))}
+main{background:var(--card);border-radius:20px;padding:32px 40px 36px;max-width:460px;width:100%;text-align:center;box-shadow:0 12px 40px rgba(40,20,90,.14);animation:pop .5s cubic-bezier(.2,.9,.3,1.3) both}
+pre{display:inline-block;margin:0 0 20px;text-align:left;font:48px/1.1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--cat)}
+h1{font-size:24px;margin:0 0 10px}
+p{margin:0 0 6px;color:var(--muted);line-height:1.45;overflow-wrap:anywhere}
+@keyframes pop{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:none}}
+@media (max-width:420px){pre{font-size:36px}main{padding:24px 20px 28px}}
+@media (prefers-reduced-motion:reduce){main{animation:none}}
 </style>
 </head>
-<body><main>
-{{if .OK}}<h1>&#10003; You are logged in</h1><p>You can close this window and return to the terminal.</p>
-{{else}}<h1>Login failed</h1><p>{{.Message}}</p><p>Return to the terminal and try again.</p>{{end}}
-</main></body>
+<body{{if not .OK}} class="fail"{{end}}><main>
+<pre id="cat" aria-hidden="true">{{.Still}}</pre>
+{{if .OK}}<h1>You're logged in</h1><p>You can close this tab and return to your terminal.</p>
+{{else}}<h1>Login not completed</h1><p>{{.Message}}</p><p>Return to your terminal for details.</p>{{end}}
+</main>
+<script>
+(function(){var f={{.Frames}},i=-1,el=document.getElementById("cat");
+if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+setInterval(function(){el.textContent=f[i=(i+1)%f.length]},{{.IntervalMS}})})();
+</script>
+</body>
 </html>
 `))
 
 func writeResultPage(w http.ResponseWriter, status int, ok bool, msg string) {
+	cat := catLove
+	if !ok {
+		cat = catCry
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_ = resultPage.Execute(w, struct {
-		OK      bool
-		Message string
-	}{ok, msg})
+		OK         bool
+		Message    string
+		Still      string
+		Frames     []string
+		IntervalMS int64
+	}{ok, msg, cat.joinedStill(), cat.joinedFrames(), catInterval.Milliseconds()})
 }

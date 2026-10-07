@@ -11,12 +11,12 @@ import (
 )
 
 const (
-	spinnerInterval = 120 * time.Millisecond
+	spinnerInterval = inlineCatInterval
 	// clearLine erases from the cursor to the end of the line.
 	clearLine = "\033[K"
 )
 
-var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+var spinnerFrames = inlineCatFrames
 
 // progress writes the login's user-facing lines. On a terminal it can show a
 // spinner on its own line below them; every line goes through progress, so a
