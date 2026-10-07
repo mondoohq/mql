@@ -141,7 +141,10 @@ private azuredevops.branch @defaults("name") {
 // blocking counts. Provides whether pull requests need approving reviews and
 // how many, whether a required reviewer policy applies, whether comments must
 // be resolved, and whether a build or status must pass. `policies` lists the
-// policies behind the summary.
+// policies behind the summary. `allowForcePushesEnabled`,
+// `enforceAdminsEnabled`, and `blockCreations` come from the Git repository
+// permissions at repository scope, so every branch of a repository gives the
+// same answer for them.
 private azuredevops.branchProtection @defaults("refName requiredApprovingReviewCount") {
   // Full ref of the protected branch, for example refs/heads/main
   refName string
@@ -157,6 +160,26 @@ private azuredevops.branchProtection @defaults("refName requiredApprovingReviewC
   requiredStatusChecksEnabled bool
   // Enabled, blocking policies that apply to the branch
   policies []azuredevops.policy
+  // Whether an identity other than a service identity may force push to the repository
+  //
+  // True when a user or group other than a build or release service identity
+  // is allowed Force push at repository scope. Reports a forbidden error when
+  // the credential cannot read the permissions.
+  allowForcePushesEnabled() bool
+  // Whether no identity other than a service identity may bypass the branch policies
+  //
+  // Azure DevOps has no setting that applies the policies to administrators
+  // too. True when no user or group other than a build or release service
+  // identity is allowed Bypass policies when pushing or Bypass policies when
+  // completing pull requests at repository scope. Reports a forbidden error
+  // when the credential cannot read the permissions.
+  enforceAdminsEnabled() bool
+  // Whether the Contributors group of the project may not create branches in the repository
+  //
+  // Read at repository scope. Reports a forbidden error when the credential
+  // cannot read the permissions or the group; null when the project has no
+  // Contributors group.
+  blockCreations() bool
 }
 
 // Azure DevOps branch policy

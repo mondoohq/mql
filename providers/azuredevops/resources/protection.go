@@ -98,5 +98,7 @@ func (b *mqlAzuredevopsBranch) protectionRules() (*mqlAzuredevopsBranchProtectio
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlAzuredevopsBranchProtection), nil
+	rules := res.(*mqlAzuredevopsBranchProtection)
+	rules.repo = b.repo
+	return rules, nil
 }

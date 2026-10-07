@@ -90,9 +90,24 @@ var projectPolicies = map[string]string{
 // repoRefs maps a repository id to its ref list fixture. Every other readable
 // repository answers an empty list.
 var repoRefs = map[string]string{
-	RepoIacID: "refs_iac.json",
-	RepoAppID: "refs_app.json",
+	RepoIacID:  "refs_iac.json",
+	RepoAppID:  "refs_app.json",
+	RepoDocsID: "refs_docs.json",
 }
+
+// Fabricated descriptors of the scan-test groups and build service that the
+// access control list fixture names. The identity search finds the three
+// groups; it finds no group of any other project.
+const (
+	ContributorsDescriptor  = "Microsoft.TeamFoundation.Identity;S-1-9-1000000000-1000000001-1000000002-1000000003-1000000004-1-1000000011"
+	ReadersDescriptor       = "Microsoft.TeamFoundation.Identity;S-1-9-1000000000-1000000001-1000000002-1000000003-1000000004-1-1000000012"
+	ProjectAdminsDescriptor = "Microsoft.TeamFoundation.Identity;S-1-9-1000000000-1000000001-1000000002-1000000003-1000000004-1-1000000013"
+	BuildServiceDescriptor  = "Microsoft.TeamFoundation.ServiceIdentity;5e000000-0000-4000-8000-000000000001:Build:1a000000-0000-4000-8000-000000000001"
+)
+
+// gitNamespace is the Git repositories security namespace, the only one the
+// access control list route serves.
+const gitNamespace = "2e9eb7ed-3c0a-47d4-87c1-0ffdd275fd87"
 
 const signInPage = "<html><head><title>Sign In</title></head><body>Sign in to continue</body></html>"
 
@@ -316,6 +331,8 @@ func (s *Server) handleAdvSec(w http.ResponseWriter, r *http.Request, segs []str
 
 func (s *Server) handleVSSPS(w http.ResponseWriter, r *http.Request, segs []string) {
 	switch {
+	case len(segs) == 2 && segs[0] == "_apis" && segs[1] == "identities":
+		s.identities(w, r)
 	default:
 		serveFixture(w, http.StatusNotFound, "error_forbidden.json")
 	}
@@ -337,6 +354,8 @@ func (s *Server) handleMain(w http.ResponseWriter, r *http.Request, segs []strin
 		s.refs(w, r, segs[0], segs[4])
 	case len(segs) == 4 && segs[1] == "_apis" && segs[2] == "policy" && segs[3] == "configurations":
 		s.policies(w, segs[0])
+	case len(segs) == 3 && segs[0] == "_apis" && segs[1] == "accesscontrollists":
+		s.accessControlLists(w, r, segs[2])
 	default:
 		serveFixture(w, http.StatusNotFound, "error_forbidden.json")
 	}
@@ -471,6 +490,57 @@ func (s *Server) policies(w http.ResponseWriter, project string) {
 		return
 	}
 	serveFixture(w, http.StatusOK, file)
+}
+
+// accessControlLists serves the lists of the Git repositories namespace. With
+// recurse=false only the list of the token itself comes back, and a token with
+// no list gives an empty one, as the real service does.
+func (s *Server) accessControlLists(w http.ResponseWriter, r *http.Request, namespace string) {
+	type acl struct {
+		InheritPermissions bool                       `json:"inheritPermissions"`
+		Token              string                     `json:"token"`
+		Aces               map[string]json.RawMessage `json:"acesDictionary"`
+	}
+	var list struct {
+		Value []acl `json:"value"`
+	}
+	if strings.EqualFold(namespace, gitNamespace) {
+		mustDecode("acls_git.json", &list)
+	}
+	token := r.URL.Query().Get("token")
+	recurse := r.URL.Query().Get("recurse") == "true"
+	kept := []acl{}
+	for _, a := range list.Value {
+		if strings.EqualFold(a.Token, token) || (recurse && strings.HasPrefix(strings.ToLower(a.Token), strings.ToLower(token)+"/")) {
+			kept = append(kept, a)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": len(kept), "value": kept})
+}
+
+// identities serves the General search of the identity service: the
+// identities whose providerDisplayName is the filter value, in any letter
+// case.
+func (s *Server) identities(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	if q.Get("searchFilter") != "General" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "searchFilter is not supported"})
+		return
+	}
+	var list struct {
+		Value []json.RawMessage `json:"value"`
+	}
+	mustDecode("identities.json", &list)
+	kept := []json.RawMessage{}
+	for _, raw := range list.Value {
+		var head struct {
+			ProviderDisplayName string `json:"providerDisplayName"`
+		}
+		if err := json.Unmarshal(raw, &head); err == nil && strings.EqualFold(head.ProviderDisplayName, q.Get("filterValue")) {
+			kept = append(kept, raw)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": len(kept), "value": kept})
 }
 
 func serveFixture(w http.ResponseWriter, status int, name string) {

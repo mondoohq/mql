@@ -10,6 +10,9 @@ azuredevops.branch.name 14.0.0
 azuredevops.branch.protectionRules 14.0.0
 azuredevops.branch.refName 14.0.0
 azuredevops.branchProtection 14.0.0
+azuredevops.branchProtection.allowForcePushesEnabled 14.0.0
+azuredevops.branchProtection.blockCreations 14.0.0
+azuredevops.branchProtection.enforceAdminsEnabled 14.0.0
 azuredevops.branchProtection.policies 14.0.0
 azuredevops.branchProtection.refName 14.0.0
 azuredevops.branchProtection.requireCodeOwnerReviews 14.0.0

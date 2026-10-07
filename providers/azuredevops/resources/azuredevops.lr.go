@@ -260,6 +260,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azuredevops.branchProtection.policies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsBranchProtection).GetPolicies()).ToDataRes(types.Array(types.Resource("azuredevops.policy")))
 	},
+	"azuredevops.branchProtection.allowForcePushesEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranchProtection).GetAllowForcePushesEnabled()).ToDataRes(types.Bool)
+	},
+	"azuredevops.branchProtection.enforceAdminsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranchProtection).GetEnforceAdminsEnabled()).ToDataRes(types.Bool)
+	},
+	"azuredevops.branchProtection.blockCreations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranchProtection).GetBlockCreations()).ToDataRes(types.Bool)
+	},
 	"azuredevops.policy.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsPolicy).GetId()).ToDataRes(types.Int)
 	},
@@ -491,6 +500,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azuredevops.branchProtection.policies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzuredevopsBranchProtection).Policies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branchProtection.allowForcePushesEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranchProtection).AllowForcePushesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branchProtection.enforceAdminsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranchProtection).EnforceAdminsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branchProtection.blockCreations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranchProtection).BlockCreations, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"azuredevops.policy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1041,7 +1062,7 @@ func (c *mqlAzuredevopsBranch) GetProtectionRules() *plugin.TValue[*mqlAzuredevo
 type mqlAzuredevopsBranchProtection struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAzuredevopsBranchProtectionInternal it will be used here
+	mqlAzuredevopsBranchProtectionInternal
 	RefName                               plugin.TValue[string]
 	RequiredPullRequestReviewsEnabled     plugin.TValue[bool]
 	RequiredApprovingReviewCount          plugin.TValue[int64]
@@ -1049,6 +1070,9 @@ type mqlAzuredevopsBranchProtection struct {
 	RequiredConversationResolutionEnabled plugin.TValue[bool]
 	RequiredStatusChecksEnabled           plugin.TValue[bool]
 	Policies                              plugin.TValue[[]any]
+	AllowForcePushesEnabled               plugin.TValue[bool]
+	EnforceAdminsEnabled                  plugin.TValue[bool]
+	BlockCreations                        plugin.TValue[bool]
 }
 
 // createAzuredevopsBranchProtection creates a new instance of this resource
@@ -1109,6 +1133,24 @@ func (c *mqlAzuredevopsBranchProtection) GetRequiredStatusChecksEnabled() *plugi
 
 func (c *mqlAzuredevopsBranchProtection) GetPolicies() *plugin.TValue[[]any] {
 	return &c.Policies
+}
+
+func (c *mqlAzuredevopsBranchProtection) GetAllowForcePushesEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowForcePushesEnabled, func() (bool, error) {
+		return c.allowForcePushesEnabled()
+	})
+}
+
+func (c *mqlAzuredevopsBranchProtection) GetEnforceAdminsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnforceAdminsEnabled, func() (bool, error) {
+		return c.enforceAdminsEnabled()
+	})
+}
+
+func (c *mqlAzuredevopsBranchProtection) GetBlockCreations() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.BlockCreations, func() (bool, error) {
+		return c.blockCreations()
+	})
 }
 
 // mqlAzuredevopsPolicy for the azuredevops.policy resource

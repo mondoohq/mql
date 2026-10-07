@@ -243,6 +243,10 @@ type Client struct {
 
 	// policies caches the branch policies of each project.
 	policies memo[[]PolicyConfiguration]
+	// acls caches the Git repositories access control list of each token.
+	acls memo[*AccessControlList]
+	// groups caches the project groups found by name.
+	groups memo[*Identity]
 }
 
 // NewClient builds a client for one organization.

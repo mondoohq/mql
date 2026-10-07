@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -291,4 +292,53 @@ func TestDenyAnswersForbiddenOnlyForTheMatchingPath(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, res.StatusCode)
 	res, _ = get(t, srv, repo+"/items?api-version="+APIVersion, basic(PAT))
 	assert.Equal(t, http.StatusOK, res.StatusCode)
+}
+
+func TestAccessControlListsAnswerOnlyTheAskedToken(t *testing.T) {
+	srv := New(t)
+	acls := base + "/_apis/accesscontrollists/" + gitNamespace + "?api-version=" + APIVersion + "&token="
+
+	type list struct {
+		Value []struct {
+			Token string `json:"token"`
+		} `json:"value"`
+	}
+	read := func(query string) list {
+		t.Helper()
+		res, body := get(t, srv, acls+query, basic(PAT))
+		require.Equal(t, http.StatusOK, res.StatusCode)
+		var l list
+		require.NoError(t, json.Unmarshal([]byte(body), &l))
+		return l
+	}
+
+	project := "repoV2/" + ProjectScanTestID
+	one := read(url.QueryEscape(project) + "&recurse=false")
+	require.Len(t, one.Value, 1)
+	assert.Equal(t, project, one.Value[0].Token)
+
+	assert.Len(t, read(url.QueryEscape(project)+"&recurse=true").Value, 3, "recurse adds the repository lists")
+	assert.Empty(t, read(url.QueryEscape("repoV2/"+ProjectLegacyAppsID)+"&recurse=false").Value, "a token with no list")
+}
+
+func TestIdentitiesFindAGroupByItsName(t *testing.T) {
+	srv := New(t)
+	search := "/vssps" + base + "/_apis/identities?api-version=" + APIVersion + "&searchFilter=General&queryMembership=None&filterValue="
+
+	type list struct {
+		Value []struct {
+			Descriptor string `json:"descriptor"`
+		} `json:"value"`
+	}
+	res, body := get(t, srv, search+url.QueryEscape(`[scan-test]\contributors`), basic(PAT))
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	var found list
+	require.NoError(t, json.Unmarshal([]byte(body), &found))
+	require.Len(t, found.Value, 1)
+	assert.Equal(t, ContributorsDescriptor, found.Value[0].Descriptor)
+
+	_, body = get(t, srv, search+url.QueryEscape(`[legacy-apps]\Contributors`), basic(PAT))
+	var none list
+	require.NoError(t, json.Unmarshal([]byte(body), &none))
+	assert.Empty(t, none.Value)
 }
