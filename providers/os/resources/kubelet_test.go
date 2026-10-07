@@ -4,16 +4,115 @@
 package resources
 
 import (
+	"encoding/json"
 	"errors"
 	"io/fs"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/resources/processes"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 )
+
+// TestCreateConfigurationMatchesConfigz checks the merged kubelet config
+// against what the running kubelet itself reported. Each fixture under
+// testdata/kubelet was captured from a live node: the kubelet's command line
+// (argv.txt), its config file (config), and its /configz (configz.json),
+// which is the configuration the kubelet actually runs with.
+func TestCreateConfigurationMatchesConfigz(t *testing.T) {
+	// The kubelet decides these itself at startup, from the host rather than
+	// from its config or flags, so the config cannot say them.
+	selfSignedServingCert := map[string]string{
+		"tlsCertFile":       "generated in --cert-dir when no serving cert is configured",
+		"tlsPrivateKeyFile": "generated in --cert-dir when no serving cert is configured",
+	}
+	for _, tc := range []struct {
+		node    string
+		minor   int
+		derived map[string]string
+	}{
+		{"flatcar", 37, selfSignedServingCert},  // Flatcar 4757.2.1 with kubeadm 1.37.1
+		{"minikube", 37, selfSignedServingCert}, // minikube 1.39 node, Kubernetes 1.37.0
+		{"k0s", 36, nil},                        // k0s 1.36.4
+		{"nixos", 36, nil},                      // NixOS 26.05 services.kubernetes, 1.36.3
+		// Canonical Kubernetes 1.32.13, configured by flags alone. Its own
+		// kubelet build picks the systemd-resolved file; upstream defaults to
+		// /etc/resolv.conf and no flag sets it.
+		{"canonical", 32, map[string]string{"resolvConf": "chosen by Canonical's kubelet build"}},
+	} {
+		t.Run(tc.node, func(t *testing.T) {
+			dir := filepath.Join("testdata", "kubelet", tc.node)
+			argv, err := os.ReadFile(filepath.Join(dir, "argv.txt"))
+			require.NoError(t, err)
+			configFile, err := os.ReadFile(filepath.Join(dir, "config"))
+			if errors.Is(err, fs.ErrNotExist) {
+				configFile = nil
+			} else {
+				require.NoError(t, err)
+			}
+			configzRaw, err := os.ReadFile(filepath.Join(dir, "configz.json"))
+			require.NoError(t, err)
+
+			flagSet := processes.FlagSet{}
+			require.NoError(t, flagSet.ParseCommand(strings.Join(strings.Fields(string(argv)), " ")))
+			flags := map[string]any{}
+			for k, v := range flagSet.Map() {
+				flags[k] = v
+			}
+
+			config, err := createConfiguration(flags, string(configFile), tc.minor)
+			require.NoError(t, err)
+
+			var configz map[string]any
+			require.NoError(t, json.Unmarshal(configzRaw, &configz))
+			// compare through JSON so numbers and nested maps have one form
+			got := map[string]any{}
+			b, err := json.Marshal(config)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(b, &got))
+
+			for key, want := range configz {
+				if key == "kind" || key == "apiVersion" {
+					continue
+				}
+				if _, ok := tc.derived[key]; ok {
+					continue
+				}
+				have, ok := got[key]
+				if !ok {
+					// The config map leaves out fields at their zero value,
+					// which configz lists (enableSystemLogQuery: false).
+					assert.True(t, isZeroJSON(want), "%s: missing, kubelet runs with %v", key, want)
+					continue
+				}
+				assert.Equal(t, want, have, key)
+			}
+		})
+	}
+}
+
+// isZeroJSON reports whether a decoded JSON value is its type's zero value.
+func isZeroJSON(v any) bool {
+	return v == nil || reflect.ValueOf(v).IsZero() ||
+		(reflect.ValueOf(v).Kind() == reflect.Map || reflect.ValueOf(v).Kind() == reflect.Slice) && reflect.ValueOf(v).Len() == 0
+}
+
+func TestKubeletMinorVersion(t *testing.T) {
+	assert.Equal(t, 36, kubeletMinorVersion("v1.36.4+k0s"))
+	assert.Equal(t, 37, kubeletMinorVersion("v1.37.0"))
+	assert.Equal(t, 35, kubeletMinorVersion("v1.35.7+rke2r1"))
+	assert.Equal(t, 32, kubeletMinorVersion("v1.32.13"))
+	assert.Equal(t, 0, kubeletMinorVersion(""))
+	assert.Equal(t, 0, kubeletMinorVersion("v2.0.0"))
+	assert.Equal(t, 0, kubeletMinorVersion("unknown"))
+}
 
 // mergeDeprecatedFlagsIntoConfig used to read the wrong map key for
 // "manifest-url-header" (a literal tab), which both dropped the value and
@@ -235,7 +334,7 @@ func TestKubeletValueCoercion(t *testing.T) {
 // the values from the release-1.34 defaults (the oldest supported Kubernetes
 // release) so an accidental regression in kubelet_defaults.go is caught.
 func TestCreateConfiguration_Defaults_1_34(t *testing.T) {
-	config, err := createConfiguration(map[string]any{}, "")
+	config, err := createConfiguration(map[string]any{}, "", 0)
 	require.NoError(t, err)
 
 	// values bumped in newer releases (were 5 / 10 in 1.25)
@@ -260,20 +359,80 @@ func TestCreateConfiguration_Defaults_1_34(t *testing.T) {
 // Feature-gated defaults must stay unset unless the operator explicitly
 // enabled the gate, and must be applied when it is.
 func TestSetDefaults_FeatureGatedDefaults(t *testing.T) {
+	// an unknown version gets the 1.34 defaults: both gates off
 	off := &kubeletconfigv1beta1.KubeletConfiguration{}
-	SetDefaults_KubeletConfiguration(off)
+	SetDefaults_KubeletConfiguration(off, 0)
 	assert.Empty(t, off.ImagePullCredentialsVerificationPolicy)
 	assert.Nil(t, off.CrashLoopBackOff.MaxContainerRestartPeriod)
 
+	// on when the operator enables them
 	on := &kubeletconfigv1beta1.KubeletConfiguration{
 		FeatureGates: map[string]bool{
 			"KubeletEnsureSecretPulledImages": true,
 			"KubeletCrashLoopBackOffMax":      true,
 		},
 	}
-	SetDefaults_KubeletConfiguration(on)
+	SetDefaults_KubeletConfiguration(on, 0)
 	assert.Equal(t, kubeletconfigv1beta1.NeverVerifyPreloadedImages, on.ImagePullCredentialsVerificationPolicy)
 	assert.NotNil(t, on.CrashLoopBackOff.MaxContainerRestartPeriod)
+
+	// on by default from 1.35
+	v135 := &kubeletconfigv1beta1.KubeletConfiguration{}
+	SetDefaults_KubeletConfiguration(v135, 35)
+	assert.Equal(t, kubeletconfigv1beta1.NeverVerifyPreloadedImages, v135.ImagePullCredentialsVerificationPolicy)
+	assert.NotNil(t, v135.CrashLoopBackOff.MaxContainerRestartPeriod)
+
+	// and off again when the operator disables them
+	disabled := &kubeletconfigv1beta1.KubeletConfiguration{
+		FeatureGates: map[string]bool{
+			"KubeletEnsureSecretPulledImages": false,
+			"KubeletCrashLoopBackOffMax":      false,
+		},
+	}
+	SetDefaults_KubeletConfiguration(disabled, 37)
+	assert.Empty(t, disabled.ImagePullCredentialsVerificationPolicy)
+	assert.Nil(t, disabled.CrashLoopBackOff.MaxContainerRestartPeriod)
+}
+
+// Defaults that changed after 1.34 follow the kubelet's version.
+func TestSetDefaults_ByVersion(t *testing.T) {
+	v134 := &kubeletconfigv1beta1.KubeletConfiguration{}
+	SetDefaults_KubeletConfiguration(v134, 34)
+	assert.False(t, *v134.FailCgroupV1)
+	assert.Equal(t, 0.9, *v134.MemoryThrottlingFactor)
+	assert.Empty(t, v134.MemoryReservationPolicy)
+
+	v136 := &kubeletconfigv1beta1.KubeletConfiguration{}
+	SetDefaults_KubeletConfiguration(v136, 36)
+	assert.True(t, *v136.FailCgroupV1)
+	assert.Equal(t, 0.9, *v136.MemoryThrottlingFactor)
+	assert.Equal(t, kubeletconfigv1beta1.NoneMemoryReservationPolicy, v136.MemoryReservationPolicy)
+
+	v137 := &kubeletconfigv1beta1.KubeletConfiguration{}
+	SetDefaults_KubeletConfiguration(v137, 37)
+	assert.True(t, *v137.FailCgroupV1)
+	assert.Nil(t, v137.MemoryThrottlingFactor, "no longer defaulted in 1.37")
+
+	// a value the file sets is kept
+	set := &kubeletconfigv1beta1.KubeletConfiguration{FailCgroupV1: ptrBool(false)}
+	SetDefaults_KubeletConfiguration(set, 37)
+	assert.False(t, *set.FailCgroupV1)
+}
+
+func ptrBool(b bool) *bool { return &b }
+
+// kubeadm writes explicit zero durations into config.yaml, which the kubelet
+// replaces with its defaults.
+func TestCreateConfiguration_ZeroValuesTakeDefaults(t *testing.T) {
+	config, err := createConfiguration(map[string]any{}, "apiVersion: kubelet.config.k8s.io/v1beta1\nkind: KubeletConfiguration\nstreamingConnectionIdleTimeout: 0s\nsyncFrequency: 0s\n", 37)
+	require.NoError(t, err)
+	assert.Equal(t, "4h0m0s", config["streamingConnectionIdleTimeout"])
+	assert.Equal(t, "1m0s", config["syncFrequency"])
+
+	// an evictionHard the file sets replaces the default map
+	config, err = createConfiguration(map[string]any{}, "evictionHard:\n  nodefs.available: \"0%\"\n", 37)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"nodefs.available": "0%"}, config["evictionHard"])
 }
 
 // When an authentication block already exists (e.g. from the applied defaults),

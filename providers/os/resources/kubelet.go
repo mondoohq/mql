@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"reflect"
 	"strconv"
 	"strings"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 
 	"sigs.k8s.io/yaml"
@@ -74,12 +76,36 @@ func (m *mqlKubelet) configuration() (map[string]any, error) {
 	if m.Process.Data.GetFlags() != nil {
 		kubeletFlags = m.Process.Data.GetFlags().Data
 	}
+	// The defaults depend on the kubelet's version. Without one (the version
+	// cannot be read), the oldest supported release's defaults apply.
+	minor := 0
+	if version := m.GetVersion(); version.Error == nil {
+		minor = kubeletMinorVersion(version.Data)
+	}
 	// I cannot re-use "mqlFile" here, as it is not read at this point in time
-	configuration, err := createConfiguration(kubeletFlags, configFileData)
+	configuration, err := createConfiguration(kubeletFlags, configFileData, minor)
 	if err != nil {
 		return nil, err
 	}
 	return configuration, nil
+}
+
+// kubeletMinorVersion returns the minor version of a kubelet version such as
+// "v1.36.4+k0s" (36), or 0 when it is not a Kubernetes 1.x version.
+func kubeletMinorVersion(version string) int {
+	rest, ok := strings.CutPrefix(strings.TrimPrefix(version, "v"), "1.")
+	if !ok {
+		return 0
+	}
+	digits := rest
+	if i := strings.IndexFunc(rest, func(r rune) bool { return r < '0' || r > '9' }); i >= 0 {
+		digits = rest[:i]
+	}
+	minor, err := strconv.Atoi(digits)
+	if err != nil {
+		return 0
+	}
+	return minor
 }
 
 // kubeletConfigContent returns the content of the kubelet config file. A file
@@ -108,12 +134,19 @@ func kubeletConfigContent(content *plugin.TValue[string]) (string, error) {
 	return "", content.Error
 }
 
-// createConfiguration applies the kubelet defaults to the config and then
-// merges the kubelet flags and the kubelet config file into a single map
-// This map is representing the running state of the kubelet config
-func createConfiguration(kubeletFlags map[string]any, configFileContent string) (map[string]any, error) {
+// createConfiguration builds the running kubelet config the way the kubelet
+// does: it decodes the config file, fills the fields the file leaves at their
+// zero value with the defaults of the kubelet's minor version, and then
+// merges the kubelet flags on top.
+//
+// The defaults come after the file, not before it. kubeadm writes explicit
+// zero values such as "streamingConnectionIdleTimeout: 0s" and
+// "syncFrequency: 0s", which the kubelet treats as unset and replaces with
+// its defaults (4h and 1m). Decoding the file over the defaults reported
+// those zeros instead. A map the file sets, such as evictionHard, likewise
+// replaces the default map rather than being merged into it.
+func createConfiguration(kubeletFlags map[string]any, configFileContent string, minor int) (map[string]any, error) {
 	kubeletConfig := kubeletconfigv1beta1.KubeletConfiguration{}
-	SetDefaults_KubeletConfiguration(&kubeletConfig)
 
 	// AKS has no kubelet config file
 	if configFileContent != "" {
@@ -122,6 +155,7 @@ func createConfiguration(kubeletFlags map[string]any, configFileContent string) 
 			return nil, fmt.Errorf("error when converting file content into KubeletConfiguration: %v", err)
 		}
 	}
+	SetDefaults_KubeletConfiguration(&kubeletConfig, minor)
 
 	options, err := convert.JsonToDict(kubeletConfig)
 	if err != nil {
@@ -144,7 +178,70 @@ func createConfiguration(kubeletFlags map[string]any, configFileContent string) 
 		return nil, fmt.Errorf("error applying precedence for deprecated flags to KubeletConfig: %v", err)
 	}
 
+	coerceToKubeletTypes(options, reflect.TypeOf(kubeletconfigv1beta1.KubeletConfiguration{}))
 	return options, nil
+}
+
+var durationType = reflect.TypeOf(metav1.Duration{})
+
+// coerceToKubeletTypes converts the string values that flags put into the
+// config map to the types the config file uses for the same fields: a flag
+// such as --anonymous-auth=false arrives as "false", where the config holds
+// false, so a check for == false failed on a kubelet configured by flags
+// (Canonical Kubernetes). Booleans, numbers and comma-separated lists
+// (--cluster-dns) are converted; a value that does not parse is left as it
+// is. Fields are matched by their JSON name, nested structs included.
+func coerceToKubeletTypes(m map[string]any, t reflect.Type) {
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if name == "" || name == "-" {
+			continue
+		}
+		v, ok := m[name]
+		if !ok {
+			continue
+		}
+		ft := field.Type
+		for ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if sub, ok := v.(map[string]any); ok {
+			if ft.Kind() == reflect.Struct && ft != durationType {
+				coerceToKubeletTypes(sub, ft)
+			}
+			continue
+		}
+		s, ok := v.(string)
+		if !ok {
+			continue
+		}
+		switch ft.Kind() {
+		case reflect.Bool:
+			if b, err := strconv.ParseBool(s); err == nil {
+				m[name] = b
+			}
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+				m[name] = float64(n)
+			}
+		case reflect.Float32, reflect.Float64:
+			if f, err := strconv.ParseFloat(s, 64); err == nil {
+				m[name] = f
+			}
+		case reflect.Slice:
+			if ft.Elem().Kind() == reflect.String {
+				list := []any{}
+				for _, item := range strings.Split(s, ",") {
+					if item = strings.TrimSpace(item); item != "" {
+						list = append(list, item)
+					}
+				}
+				m[name] = list
+			}
+		}
+	}
 }
 
 // configValue walks the merged kubelet configuration following the given keys

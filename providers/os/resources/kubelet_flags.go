@@ -48,6 +48,23 @@ func mergeFlagsIntoConfig(kubeletConfig map[string]any, flags map[string]any) er
 		}
 	}
 
+	// --container-runtime-endpoint is also the config file's
+	// containerRuntimeEndpoint (Canonical Kubernetes sets it only as a flag).
+	if v, ok := flags["container-runtime-endpoint"]; ok {
+		kubeletConfig["containerRuntimeEndpoint"] = v
+	}
+
+	// -v / --v sets the log verbosity of the kubelet's logging config (k0s
+	// passes --v=1).
+	if v, ok := flags["v"]; ok {
+		logging := map[string]any{}
+		if existing, ok := kubeletConfig["logging"].(map[string]any); ok {
+			logging = existing
+		}
+		logging["verbosity"] = v
+		kubeletConfig["logging"] = logging
+	}
+
 	if _, ok := flags["node-labels"]; ok {
 		nodeLabels := map[string]string{}
 		for _, label := range strings.Split(flags["node-labels"].(string), ",") {

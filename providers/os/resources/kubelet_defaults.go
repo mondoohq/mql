@@ -16,10 +16,13 @@ limitations under the License.
 
 // https://github.com/kubernetes/kubernetes/blob/release-1.34/pkg/kubelet/apis/config/v1beta1/defaults.go
 //
-// Pinned to release-1.34, the oldest Kubernetes release that is still
-// supported upstream. The constants and the eviction defaults that upstream
-// keeps in dependency-heavy packages (k8s.io/kubernetes/...) are inlined here
-// so this package does not have to depend on the full Kubernetes tree.
+// Based on release-1.34, the oldest Kubernetes release that is still supported
+// upstream, with the defaults that changed up to release-1.37 applied by the
+// kubelet's minor version (see SetDefaults_KubeletConfiguration). An unknown
+// version gets the release-1.34 defaults. The constants and the eviction
+// defaults that upstream keeps in dependency-heavy packages
+// (k8s.io/kubernetes/...) are inlined here so this package does not have to
+// depend on the full Kubernetes tree.
 package resources
 
 import (
@@ -79,10 +82,11 @@ const (
 // https://github.com/kubernetes/kubernetes/blob/release-1.34/pkg/kubelet/apis/config/v1beta1/defaults_linux.go
 // DefaultEvictionHard includes default options for hard eviction on Linux nodes.
 var DefaultEvictionHard = map[string]string{
-	"memory.available":  "100Mi",
-	"nodefs.available":  "10%",
-	"nodefs.inodesFree": "5%",
-	"imagefs.available": "15%",
+	"memory.available":   "100Mi",
+	"nodefs.available":   "10%",
+	"nodefs.inodesFree":  "5%",
+	"imagefs.available":  "15%",
+	"imagefs.inodesFree": "5%",
 }
 
 var (
@@ -92,19 +96,24 @@ var (
 	DefaultNodeAllocatableEnforcement = []string{"pods"}
 )
 
-// featureGateEnabled reports whether the named feature gate is explicitly
-// enabled in the kubelet's FeatureGates map. Upstream resolves feature-gate
-// defaults through k8s.io/kubernetes, which we deliberately do not depend on;
-// instead we only honor gates the operator set explicitly, which is enough to
-// reflect the effective config of any node we scan.
-func featureGateEnabled(obj *kubeletconfigv1beta1.KubeletConfiguration, name string) bool {
-	if obj.FeatureGates == nil {
-		return false
+// featureGateEnabled reports whether the named feature gate is on for a
+// kubelet of the given minor version. A gate the kubelet's FeatureGates map
+// sets explicitly wins. Otherwise the gate is on from the minor version
+// upstream turned it on by default (defaultOnSince); upstream resolves those
+// defaults through k8s.io/kubernetes, which this package does not depend on,
+// so the versions are recorded here. An unknown version (0) gets the
+// release-1.34 default.
+func featureGateEnabled(obj *kubeletconfigv1beta1.KubeletConfiguration, name string, minor, defaultOnSince int) bool {
+	if enabled, ok := obj.FeatureGates[name]; ok {
+		return enabled
 	}
-	return obj.FeatureGates[name]
+	return minor >= defaultOnSince
 }
 
-func SetDefaults_KubeletConfiguration(obj *kubeletconfigv1beta1.KubeletConfiguration) {
+// SetDefaults_KubeletConfiguration fills the fields the kubelet leaves at
+// their zero value with the defaults of a kubelet of the given minor version
+// (36 for 1.36). An unknown version (0) gets the release-1.34 defaults.
+func SetDefaults_KubeletConfiguration(obj *kubeletconfigv1beta1.KubeletConfiguration, minor int) {
 	if obj.EnableServer == nil {
 		obj.EnableServer = ptr.To(true)
 	}
@@ -326,10 +335,16 @@ func SetDefaults_KubeletConfiguration(obj *kubeletconfigv1beta1.KubeletConfigura
 		obj.SeccompDefault = ptr.To(false)
 	}
 	if obj.FailCgroupV1 == nil {
-		obj.FailCgroupV1 = ptr.To(false)
+		// true from 1.35
+		obj.FailCgroupV1 = ptr.To(minor >= 35)
 	}
-	if obj.MemoryThrottlingFactor == nil {
+	// no longer defaulted from 1.37
+	if obj.MemoryThrottlingFactor == nil && minor < 37 {
 		obj.MemoryThrottlingFactor = ptr.To(DefaultMemoryThrottlingFactor)
+	}
+	// defaulted from 1.36
+	if obj.MemoryReservationPolicy == "" && minor >= 36 {
+		obj.MemoryReservationPolicy = kubeletconfigv1beta1.NoneMemoryReservationPolicy
 	}
 	if obj.RegisterNode == nil {
 		obj.RegisterNode = ptr.To(true)
@@ -344,15 +359,14 @@ func SetDefaults_KubeletConfiguration(obj *kubeletconfigv1beta1.KubeletConfigura
 		obj.PodLogsDir = DefaultPodLogsDir
 	}
 
-	// The following defaults are guarded by feature gates upstream. We only
-	// apply them when the operator explicitly enabled the gate (see
-	// featureGateEnabled), since we do not model upstream gate default states.
-	if featureGateEnabled(obj, "KubeletCrashLoopBackOffMax") {
+	// The following defaults are guarded by feature gates upstream, both on by
+	// default from 1.35 (see featureGateEnabled).
+	if featureGateEnabled(obj, "KubeletCrashLoopBackOffMax", minor, 35) {
 		if obj.CrashLoopBackOff.MaxContainerRestartPeriod == nil {
 			obj.CrashLoopBackOff.MaxContainerRestartPeriod = &metav1.Duration{Duration: MaxContainerBackOff}
 		}
 	}
-	if featureGateEnabled(obj, "KubeletEnsureSecretPulledImages") {
+	if featureGateEnabled(obj, "KubeletEnsureSecretPulledImages", minor, 35) {
 		if obj.ImagePullCredentialsVerificationPolicy == "" {
 			obj.ImagePullCredentialsVerificationPolicy = kubeletconfigv1beta1.NeverVerifyPreloadedImages
 		}
