@@ -61,7 +61,6 @@ func TestLoginCmd_AllFlags(t *testing.T) {
 		{"api-endpoint", "", "", "string"},
 		{"timer", "", "0", "int"},
 		{"splay", "", "0", "int"},
-		{"device", "", "false", "bool"},
 		{"no-browser", "", "false", "bool"},
 		{"space", "", "", "string"},
 		{"insecure", "", "false", "bool"},
