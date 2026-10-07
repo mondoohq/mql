@@ -182,11 +182,11 @@ func createConfiguration(kubeletFlags map[string]any, configFileContent string, 
 		return nil, fmt.Errorf("error when converting KubeletConfig into dict: %v", err)
 	}
 
-	// JSON marshalling of KubeletConfiguration does not include fields with zero/null values
-	// But "0" is an important value for the kubelet, so we need to add it manually
-	if kubeletConfig.ReadOnlyPort == 0 {
-		options["readOnlyPort"] = 0.0
-	}
+	// The JSON of KubeletConfiguration leaves out every field at its zero
+	// value (omitempty), so readOnlyPort: 0 or enableSystemLogQuery: false
+	// read as null, and a check for == false failed on a kubelet that runs
+	// with false. The kubelet holds those fields as plain values.
+	addKubeletZeroValues(options, reflect.TypeOf(kubeletConfig), minor)
 
 	err = mergeFlagsIntoConfig(options, kubeletFlags)
 	if err != nil {
@@ -203,6 +203,74 @@ func createConfiguration(kubeletFlags map[string]any, configFileContent string, 
 }
 
 var durationType = reflect.TypeOf(metav1.Duration{})
+
+// kubeletUnsetMeansZero lists the optional (pointer) config fields that the
+// kubelet holds as plain values, so that left unset they run as their zero
+// value; /configz reports them that way. Other optional fields left unset
+// mean something else (singleProcessOOMKill: decided by the cgroup version,
+// maxParallelImagePulls: no limit) or are a feature left off (tracing,
+// userNamespaces), and stay out.
+var kubeletUnsetMeansZero = map[string]bool{
+	"enableSystemLogQuery": true,
+}
+
+// addKubeletZeroValues adds the fields of the config type t that m leaves
+// out at their zero value (false, 0, "", "0s", an empty list or map), as the
+// kubelet runs with them. Nested structs are filled the same way. Optional
+// fields are added only when kubeletUnsetMeansZero lists them.
+func addKubeletZeroValues(m map[string]any, t reflect.Type, minor int) {
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if name == "" || name == "-" || !field.IsExported() {
+			continue
+		}
+		ft := field.Type
+		optional := ft.Kind() == reflect.Pointer
+		for ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if v, ok := m[name]; ok {
+			if sub, ok := v.(map[string]any); ok && ft.Kind() == reflect.Struct && ft != durationType {
+				addKubeletZeroValues(sub, ft, minor)
+			}
+			continue
+		}
+		if optional && !kubeletUnsetMeansZero[name] {
+			continue
+		}
+		if zero, ok := kubeletZeroValue(ft, minor); ok {
+			m[name] = zero
+		}
+	}
+}
+
+// kubeletZeroValue is the value addKubeletZeroValues adds for a field of type
+// t, in the form the JSON of the config uses.
+func kubeletZeroValue(t reflect.Type, minor int) (any, bool) {
+	if t == durationType {
+		return metav1.Duration{}.Duration.String(), true
+	}
+	switch t.Kind() {
+	case reflect.Bool:
+		return false, true
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return 0.0, true
+	case reflect.String:
+		return "", true
+	case reflect.Slice:
+		return []any{}, true
+	case reflect.Map:
+		return map[string]any{}, true
+	case reflect.Struct:
+		sub := map[string]any{}
+		addKubeletZeroValues(sub, t, minor)
+		return sub, true
+	}
+	return nil, false
+}
 
 // coerceToKubeletTypes converts the string values that flags put into the
 // config map to the types the config file uses for the same fields: a flag

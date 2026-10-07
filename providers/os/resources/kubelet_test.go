@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -118,22 +117,67 @@ func TestCreateConfigurationMatchesConfigz(t *testing.T) {
 					continue
 				}
 				have, ok := got[key]
-				if !ok {
-					// The config map leaves out fields at their zero value,
-					// which configz lists (enableSystemLogQuery: false).
-					assert.True(t, isZeroJSON(want), "%s: missing, kubelet runs with %v", key, want)
+				if !assert.True(t, ok, "%s: missing, kubelet runs with %v", key, want) {
 					continue
 				}
-				assert.Equal(t, want, have, key)
+				assertConfigzValue(t, key, want, have)
 			}
+
 		})
 	}
 }
 
-// isZeroJSON reports whether a decoded JSON value is its type's zero value.
-func isZeroJSON(v any) bool {
-	return v == nil || reflect.ValueOf(v).IsZero() ||
-		(reflect.ValueOf(v).Kind() == reflect.Map || reflect.ValueOf(v).Kind() == reflect.Slice) && reflect.ValueOf(v).Len() == 0
+// assertConfigzValue compares a value mql reports with the one /configz
+// reports. In nested structs /configz leaves out fields at their zero value,
+// which mql reports, so an extra key must hold a zero value and every key
+// /configz has must match.
+func assertConfigzValue(t *testing.T, key string, want, have any) {
+	t.Helper()
+	wantMap, ok := want.(map[string]any)
+	if !ok {
+		assert.Equal(t, want, have, key)
+		return
+	}
+	haveMap, ok := have.(map[string]any)
+	if !assert.True(t, ok, "%s: want an object, have %v", key, have) {
+		return
+	}
+	for k, w := range wantMap {
+		h, ok := haveMap[k]
+		if assert.True(t, ok, "%s.%s: missing, kubelet runs with %v", key, k, w) {
+			assertConfigzValue(t, key+"."+k, w, h)
+		}
+	}
+	for k, h := range haveMap {
+		if _, ok := wantMap[k]; !ok {
+			assert.True(t, isZeroConfigValue(h), "%s.%s: reported %v, which the kubelet does not have", key, k, h)
+		}
+	}
+}
+
+// isZeroConfigValue reports whether a decoded config value is a zero value:
+// false, 0, "", "0s", an empty list, or an object holding only zero values.
+func isZeroConfigValue(v any) bool {
+	switch v := v.(type) {
+	case nil:
+		return true
+	case bool:
+		return !v
+	case float64:
+		return v == 0
+	case string:
+		return v == "" || v == "0s"
+	case []any:
+		return len(v) == 0
+	case map[string]any:
+		for _, x := range v {
+			if !isZeroConfigValue(x) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 func TestKubeletMinorVersion(t *testing.T) {
@@ -586,4 +630,27 @@ func TestKubeletAdmissionSnapshotAllowed(t *testing.T) {
 	// the process exited before the snapshot: nothing to read
 	assert.False(t, kubeletAdmissionSnapshotAllowed("", kubelite))
 	assert.False(t, kubeletAdmissionSnapshotAllowed("Uid:\t0\t0\t0\t0\n", kubelite))
+}
+
+// Fields at their zero value are reported, as the kubelet runs with them,
+// rather than left out of the map (where a check for == false read null).
+func TestCreateConfiguration_ReportsZeroValues(t *testing.T) {
+	config, err := createConfiguration(map[string]any{"config": "/var/lib/kubelet/config.yaml"},
+		"failSwapOn: false\nreadOnlyPort: 0\n", nil, 37)
+	require.NoError(t, err)
+
+	assert.Equal(t, false, config["failSwapOn"])
+	assert.Equal(t, 0.0, config["readOnlyPort"])
+	assert.Equal(t, false, config["enableSystemLogQuery"], "unset, and the kubelet runs it as false")
+	assert.Equal(t, false, config["rotateCertificates"])
+	assert.Equal(t, "", config["tlsCertFile"])
+	assert.Equal(t, []any{}, config["allowedUnsafeSysctls"])
+	assert.Equal(t, map[string]any{}, config["systemReserved"])
+	assert.Equal(t, "", config["authentication"].(map[string]any)["x509"].(map[string]any)["clientCAFile"], "nested fields too")
+
+	// unset optional fields that mean something other than zero stay out
+	assert.NotContains(t, config, "singleProcessOOMKill", "unset: decided by the cgroup version")
+	assert.NotContains(t, config, "maxParallelImagePulls", "unset: no limit")
+	assert.NotContains(t, config, "tracing")
+	assert.NotContains(t, config, "memoryThrottlingFactor", "not defaulted from 1.37")
 }
