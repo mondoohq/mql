@@ -1,5 +1,5 @@
 {
-  "count": 7,
+  "count": 8,
   "value": [
     {
       "objectId": "3c000000-0000-4000-8000-00000000038a",
@@ -53,6 +53,13 @@
       "commitId": "3c000000-0000-4000-8000-000000000326",
       "path": "/.github/workflows/ci.yml",
       "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000006/items?path=%2F.github%2Fworkflows%2Fci.yml"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-00000000025f",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000326",
+      "path": "/.github/SECURITY.md",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000006/items?path=%2F.github%2FSECURITY.md"
     }
   ]
 }

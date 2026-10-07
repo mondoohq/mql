@@ -377,6 +377,35 @@ func TestAdvancedSecurityIsOffUntilEnabled(t *testing.T) {
 	assert.Contains(t, body, `"alertType": "secret"`)
 }
 
+func TestHideItemAnswers404ByPathAndKeepsTheEntryInTheTree(t *testing.T) {
+	srv := New(t)
+	srv.HideItem(RepoAppID, "/azure-pipelines.yml")
+	items := base + "/scan-test/_apis/git/repositories/" + RepoAppID + "/items?api-version=" + APIVersion
+
+	res, body := get(t, srv, items+"&path=%2Fazure-pipelines.yml", basic(PAT))
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	assert.Contains(t, body, "TF401174")
+	res, _ = get(t, srv, items+"&path=%2FSECURITY.md", basic(PAT))
+	assert.Equal(t, http.StatusOK, res.StatusCode, "another file is still read")
+	_, body = get(t, srv, items, basic(PAT))
+	assert.Contains(t, body, "/azure-pipelines.yml", "the tree still lists the hidden file")
+}
+
+func TestAnswerAdvancedSecurityOffRefusesOnlyTheMatchingPath(t *testing.T) {
+	srv := New(t)
+	srv.EnableAdvancedSecurity(RepoAppID)
+	srv.AnswerAdvancedSecurityOff("/enablement")
+	repo := "/advsec" + base + "/scan-test/_apis/"
+	enablement := repo + "management/repositories/" + RepoAppID + "/enablement?api-version=" + AdvSecAPIVersion
+	alerts := repo + "alert/repositories/" + RepoAppID + "/alerts?api-version=" + AdvSecAPIVersion
+
+	res, body := get(t, srv, enablement, basic(PAT))
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	assert.Contains(t, body, "VS2150009")
+	res, _ = get(t, srv, alerts, basic(PAT))
+	assert.Equal(t, http.StatusOK, res.StatusCode, "the alert route is not matched")
+}
+
 func TestServiceHooksListEverySubscriptionOfTheOrganization(t *testing.T) {
 	srv := New(t)
 

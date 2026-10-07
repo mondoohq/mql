@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -153,6 +154,8 @@ type Server struct {
 	denied      []string
 	droppedACLs map[string]bool
 	advsec      map[string]bool
+	advsecOff   []string
+	hiddenItems []string
 }
 
 type throttle struct {
@@ -217,6 +220,36 @@ func (s *Server) DropAccessControlList(token string) {
 		s.droppedACLs = map[string]bool{}
 	}
 	s.droppedACLs[strings.ToLower(token)] = true
+}
+
+// AnswerAdvancedSecurityOff answers HTTP 400 VS2150009, the answer for a
+// repository Advanced Security is off for, to every request whose decoded path
+// ends in suffix. The query string is ignored.
+func (s *Server) AnswerAdvancedSecurityOff(suffix string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.advsecOff = append(s.advsecOff, suffix)
+}
+
+func (s *Server) advancedSecurityOffFor(path string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.ContainsFunc(s.advsecOff, func(suffix string) bool { return strings.HasSuffix(path, suffix) })
+}
+
+// HideItem makes one file of a repository answer 404 TF401174 when it is read
+// by path, as a file does that was deleted after the tree was listed. The tree
+// still lists it. The path match ignores letter case.
+func (s *Server) HideItem(repoID, itemPath string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hiddenItems = append(s.hiddenItems, repoID+itemPath)
+}
+
+func (s *Server) itemHidden(repoID, itemPath string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.ContainsFunc(s.hiddenItems, func(h string) bool { return strings.EqualFold(h, repoID+itemPath) })
 }
 
 func (s *Server) accessControlListDropped(token string) bool {
@@ -326,6 +359,10 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.pathDenied(r.URL.Path) {
 		serveFixture(w, http.StatusForbidden, "error_forbidden.json")
+		return
+	}
+	if s.advancedSecurityOffFor(r.URL.Path) {
+		serveFixture(w, http.StatusBadRequest, "error_advsec_disabled.json")
 		return
 	}
 
@@ -537,8 +574,8 @@ func (s *Server) items(w http.ResponseWriter, r *http.Request, project, repoID s
 }
 
 // item serves one entry of a tree fixture, matching its path the way Azure
-// DevOps does, without regard to case. A path the tree does not have answers
-// 404 TF401174.
+// DevOps does, without regard to case. A path the tree does not have, or that
+// HideItem hid, answers 404 TF401174.
 func (s *Server) item(w http.ResponseWriter, repoID, treeFile, itemPath string, withContent bool) {
 	var tree struct {
 		Value []map[string]any `json:"value"`
@@ -546,7 +583,7 @@ func (s *Server) item(w http.ResponseWriter, repoID, treeFile, itemPath string, 
 	mustDecode(treeFile, &tree)
 	for _, it := range tree.Value {
 		p, _ := it["path"].(string)
-		if !strings.EqualFold(p, itemPath) {
+		if !strings.EqualFold(p, itemPath) || s.itemHidden(repoID, p) {
 			continue
 		}
 		if withContent {

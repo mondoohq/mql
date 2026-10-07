@@ -73,8 +73,9 @@ func (p *mqlAzuredevopsProject) environments() ([]any, error) {
 }
 
 // protectionRules lists the checks of the environment. preventSelfReview is true
-// only for an approval whose settings keep the requester from approving; any
-// other check type reports false.
+// only for an approval whose settings keep the requester from approving, and
+// minRequiredApprovers is read only from an approval; any other check type
+// reports false and 0.
 func (e *mqlAzuredevopsEnvironment) protectionRules() ([]any, error) {
 	checks, err := connectionOf(e.MqlRuntime).Client().EnvironmentChecks(apiContext(), e.projectName, e.Id.Data)
 	if err != nil {
@@ -84,13 +85,17 @@ func (e *mqlAzuredevopsEnvironment) protectionRules() ([]any, error) {
 	out := make([]any, 0, len(checks))
 	for _, c := range checks {
 		approval := strings.EqualFold(c.Type.ID, connection.CheckTypeApproval)
+		minRequiredApprovers := int64(0)
+		if approval {
+			minRequiredApprovers = c.MinRequiredApprovers()
+		}
 		res, err := CreateResource(e.MqlRuntime, "azuredevops.environmentProtectionRule", map[string]*llx.RawData{
 			"__id":                 llx.StringData("azuredevops.environmentProtectionRule/" + e.__id + "/" + strconv.FormatInt(c.ID, 10)),
 			"id":                   llx.IntData(c.ID),
 			"type":                 llx.StringData(c.Type.Name),
 			"typeId":               llx.StringData(strings.ToLower(c.Type.ID)),
 			"preventSelfReview":    llx.BoolData(approval && c.RequesterCannotBeApprover()),
-			"minRequiredApprovers": llx.IntData(c.MinRequiredApprovers()),
+			"minRequiredApprovers": llx.IntData(minRequiredApprovers),
 			"settings":             llx.DictData(checkSettings(c.Settings)),
 		})
 		if err != nil {

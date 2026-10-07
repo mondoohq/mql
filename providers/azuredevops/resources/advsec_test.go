@@ -96,3 +96,41 @@ func TestAlertsTheCredentialCannotReadAreForbidden(t *testing.T) {
 	alerts := as.Data.GetAlerts()
 	assert.ErrorIs(t, alerts.Error, llx.ErrForbidden)
 }
+
+// Advanced Security answers 400 VS2150009 for a repository it is off for. The
+// enablement route is read as off, not as an error, and the alerts stay null
+// without a request.
+func TestAnEnablementRouteThatAnswersNotEnabledReadsAsOff(t *testing.T) {
+	runtime, srv := newDiscoveryRuntime(t, nil, nil)
+	srv.AnswerAdvancedSecurityOff("/enablement")
+	repo := repositoriesOf(t, newOrganization(t, runtime))[fakeado.RepoAppID]
+
+	as := repo.GetAdvancedSecurity()
+	require.NoError(t, as.Error)
+	require.False(t, as.IsNull())
+	assert.False(t, as.Data.Enabled.Data)
+	assert.Nil(t, as.Data.EnablementLastChangedDate.Data)
+
+	alerts := as.Data.GetAlerts()
+	require.NoError(t, alerts.Error)
+	assert.True(t, alerts.IsNull(), "a check of the alerts must not pass on a repository nothing scans")
+	assert.Zero(t, alertRequests(srv), "no alert request when Advanced Security is off")
+}
+
+// When the enablement route says on and the alert route then answers the same
+// 400, the alerts are null, not an error and not an empty list.
+func TestAnAlertRouteThatAnswersNotEnabledGivesNullAlerts(t *testing.T) {
+	runtime, srv := newDiscoveryRuntime(t, nil, nil)
+	srv.EnableAdvancedSecurity(fakeado.RepoAppID)
+	srv.AnswerAdvancedSecurityOff("/alerts")
+	repo := repositoriesOf(t, newOrganization(t, runtime))[fakeado.RepoAppID]
+
+	as := repo.GetAdvancedSecurity()
+	require.NoError(t, as.Error)
+	assert.True(t, as.Data.Enabled.Data)
+
+	alerts := as.Data.GetAlerts()
+	require.NoError(t, alerts.Error)
+	assert.True(t, alerts.IsNull())
+	assert.Equal(t, 1, alertRequests(srv), "the alert route was asked once")
+}

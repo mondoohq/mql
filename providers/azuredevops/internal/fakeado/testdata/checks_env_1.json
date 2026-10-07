@@ -28,6 +28,7 @@
         "displayName": "Business hours",
         "definitionRef": { "id": "5e000000-0000-4000-8000-000000000002", "name": "evaluateBusinessHours", "version": "0.0.1" },
         "requesterCannotBeApprover": true,
+        "minRequiredApprovers": 2,
         "inputs": {
           "timeZone": "UTC",
           "function": "https://checks.example.invalid/api/gate?code=fabricated-function-key-0001",

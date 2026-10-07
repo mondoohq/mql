@@ -82,6 +82,23 @@ func TestEnvironmentApprovalsAndTheirSelfReviewSetting(t *testing.T) {
 	assert.Empty(t, checksOf(t, envs["sandbox"]), "an environment with no checks has an empty list")
 }
 
+// The Task Check of the production environment carries minRequiredApprovers in
+// its settings. A check that is not an approval needs no approvers, so the typed
+// field is zero whatever the settings say, and the settings dict keeps the key.
+func TestOnlyAnApprovalReportsMinRequiredApprovers(t *testing.T) {
+	envs := environmentsOf(t, projectNamed(t, newRuntime(t, nil), "legacy-apps"))
+	production := checksOf(t, envs["production"])
+	require.Len(t, production, 2)
+	approval, task := production[0], production[1]
+	require.Equal(t, "Task Check", task.Type.Data)
+
+	settings, ok := task.Settings.Data.(map[string]any)
+	require.True(t, ok, "the settings are a dict")
+	assert.EqualValues(t, 2, settings["minRequiredApprovers"], "the settings dict keeps the key")
+	assert.Zero(t, task.MinRequiredApprovers.Data, "a check that is not an approval gives 0, even when its settings say minRequiredApprovers")
+	assert.Equal(t, int64(1), approval.MinRequiredApprovers.Data, "an approval reports its own count")
+}
+
 // A check type can carry a secret in its settings, such as the key of a function
 // check. The settings dict keeps only the keys that carry none.
 func TestEnvironmentCheckSettingsCarryNoSecret(t *testing.T) {

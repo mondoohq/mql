@@ -201,7 +201,9 @@ private azuredevops.branchProtection @defaults("refName requiredApprovingReviewC
   //
   // True when a user or group other than a build or release service identity
   // is allowed Force push at repository scope. Reports a forbidden error when
-  // the credential cannot read the permissions.
+  // the credential cannot read the permissions. Null when the permissions are
+  // unknown: the project has no permission list of its own, or the repository
+  // has no project ID.
   allowForcePushesEnabled() bool
   // Whether no identity other than a service identity may bypass the branch policies
   //
@@ -209,13 +211,16 @@ private azuredevops.branchProtection @defaults("refName requiredApprovingReviewC
   // too. True when no user or group other than a build or release service
   // identity is allowed Bypass policies when pushing or Bypass policies when
   // completing pull requests at repository scope. Reports a forbidden error
-  // when the credential cannot read the permissions.
+  // when the credential cannot read the permissions. Null when the permissions
+  // are unknown: the project has no permission list of its own, or the
+  // repository has no project ID.
   enforceAdminsEnabled() bool
   // Whether the Contributors group of the project may not create branches in the repository
   //
   // Read at repository scope. Reports a forbidden error when the credential
-  // cannot read the permissions or the group; null when the project has no
-  // Contributors group.
+  // cannot read the permissions or the group. Null when the project has no
+  // Contributors group, or when the permissions are unknown: the project has no
+  // permission list of its own, or the repository has no project ID.
   blockCreations() bool
 }
 

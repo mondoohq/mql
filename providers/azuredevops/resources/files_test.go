@@ -130,6 +130,16 @@ func TestTheStrongRepositoryHasASecurityPolicyAndAScanningPipeline(t *testing.T)
 	}
 }
 
+func TestASecurityPolicyOutsideTheRootIsFound(t *testing.T) {
+	repo := repositoriesOf(t, newOrganization(t, newRuntime(t, nil)))[fakeado.RepoDocsID]
+
+	sec := repo.GetSecurityFile()
+	require.NoError(t, sec.Error)
+	require.NotNil(t, sec.Data)
+	assert.True(t, sec.Data.Exists.Data)
+	assert.Equal(t, "/.github/SECURITY.md", sec.Data.Path.Data, "the path of the file that was found, not the root default")
+}
+
 func TestAnEmptyRepositoryHasNoFilesAndNoRequest(t *testing.T) {
 	runtime, srv := newDiscoveryRuntime(t, nil, nil)
 	repo := repositoriesOf(t, newOrganization(t, runtime))[fakeado.RepoEmptyID]
@@ -175,6 +185,27 @@ func TestAnUnreadableFileReportsItsContentForbidden(t *testing.T) {
 	srv.DenyItems(fakeado.RepoAppID)
 	content := pipes.Data[0].(*mqlAzuredevopsFile).GetContent()
 	assert.ErrorIs(t, content.Error, llx.ErrForbidden)
+}
+
+// A file the tree lists exists, so a content read that finds nothing is a plain
+// error, not a forbidden error and not a null set without one: a null would
+// read as an empty file and fail a check on a file that is there.
+func TestAFileTheItemRouteCannotFindGivesAPlainErrorOnItsContent(t *testing.T) {
+	runtime, srv := newDiscoveryRuntime(t, nil, nil)
+	repo := repositoriesOf(t, newOrganization(t, runtime))[fakeado.RepoAppID]
+
+	pipes := repo.GetPipelineFiles()
+	require.NoError(t, pipes.Error)
+	require.Len(t, pipes.Data, 1)
+	file := pipes.Data[0].(*mqlAzuredevopsFile)
+	require.True(t, file.Exists.Data)
+
+	srv.HideItem(fakeado.RepoAppID, "/azure-pipelines.yml")
+	content := file.GetContent()
+	require.Error(t, content.Error)
+	assert.True(t, connection.IsNotFound(content.Error), "the 404 of the item route")
+	assert.NotErrorIs(t, content.Error, llx.ErrForbidden, "a missing item is not a refusal")
+	assert.Empty(t, content.Data)
 }
 
 func TestFileHelpers(t *testing.T) {
