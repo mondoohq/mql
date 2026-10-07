@@ -11,6 +11,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
 	"golang.org/x/term"
 )
@@ -51,10 +52,10 @@ func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, key *ecdsa.
 
 	// Polling starts right away: the code can be approved on another device
 	// without pressing Enter. Enter opens the browser at any time meanwhile.
-	// Echo is off while waiting, so pressing Enter does not move the cursor
-	// off the spinner line.
+	// While waiting the terminal reads keys unechoed, so Enter is seen as
+	// "\r" or "\n" and does not move the cursor off the spinner line.
 	if promptEnter {
-		if restore := disableInputEcho(o.In); restore != nil {
+		if restore := terminalKeyInput(o.In); restore != nil {
 			defer restore()
 		}
 	}
@@ -98,9 +99,9 @@ func openVerificationURI(pr *progress, openBrowser func(string) error, uri strin
 	pr.AfterEnter("✓ Opened %s", uri)
 }
 
-// disableInputEcho turns off echo when in is a terminal and returns the func
-// that turns it back on, or nil when echo was not changed.
-func disableInputEcho(in io.Reader) func() {
+// terminalKeyInput switches in to key-by-key input when it is a terminal and
+// returns the func that restores it, or nil when nothing was changed.
+func terminalKeyInput(in io.Reader) func() {
 	f, ok := in.(interface{ Fd() uintptr })
 	if !ok {
 		return nil
@@ -109,19 +110,28 @@ func disableInputEcho(in io.Reader) func() {
 	if !term.IsTerminal(fd) {
 		return nil
 	}
-	restore, err := disableEcho(fd)
+	restore, err := keyInput(fd)
 	if err != nil {
+		log.Debug().Err(err).Msg("could not switch the terminal to key input")
 		return nil
 	}
 	return restore
 }
 
-// waitForEnter calls fn once a line is read from in. The read is not
-// cancelled when the login finishes first; the process exits right after.
+// waitForEnter calls fn once Enter ("\r" or "\n") is read from in. The read
+// is not cancelled when the login finishes first; the process exits right
+// after.
 func waitForEnter(in io.Reader, fn func()) {
 	r := bufio.NewReader(in)
-	if _, err := r.ReadString('\n'); err != nil {
-		return
+	for {
+		b, err := r.ReadByte()
+		if err != nil {
+			log.Debug().Err(err).Msg("stopped waiting for Enter")
+			return
+		}
+		if b == '\r' || b == '\n' {
+			fn()
+			return
+		}
 	}
-	fn()
 }
