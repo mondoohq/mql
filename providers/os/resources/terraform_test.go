@@ -1,4 +1,4 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package resources
@@ -27,7 +27,7 @@ func writeLock(t *testing.T, afs *afero.Afero, path string) {
 	require.NoError(t, afero.WriteFile(afs, path, []byte(testLock), 0o644))
 }
 
-func names(files []string) []string {
+func slashPaths(files []string) []string {
 	out := make([]string, 0, len(files))
 	for _, f := range files {
 		out = append(out, filepath.ToSlash(f))
@@ -50,7 +50,7 @@ func TestCollectTerraformPackagesWalksTree(t *testing.T) {
 		"/repo/.terraform.lock.hcl",
 		"/repo/envs/prod/.terraform.lock.hcl",
 		"/repo/envs/staging/.terraform.lock.hcl",
-	}, names(files))
+	}, slashPaths(files))
 	// Three workspaces pinning the same provider is one component with three
 	// pieces of evidence, not three components.
 	require.Equal(t, 1, len(deps))
@@ -69,7 +69,7 @@ func TestCollectTerraformPackagesSkipsDownloadedModules(t *testing.T) {
 
 	_, files := collectTerraformPackages(afs, "/repo")
 
-	assert.Equal(t, []string{"/repo/.terraform.lock.hcl"}, names(files))
+	assert.Equal(t, []string{"/repo/.terraform.lock.hcl"}, slashPaths(files))
 }
 
 func TestCollectTerraformPackagesBoundsDepth(t *testing.T) {
@@ -86,7 +86,7 @@ func TestCollectTerraformPackagesBoundsDepth(t *testing.T) {
 
 	// The shallow one is found; the one past the cap is not, so a walk against
 	// an OS connection cannot descend without bound.
-	assert.Equal(t, []string{"/repo/.terraform.lock.hcl"}, names(files))
+	assert.Equal(t, []string{"/repo/.terraform.lock.hcl"}, slashPaths(files))
 }
 
 func TestCollectTerraformPackagesAcceptsFilePath(t *testing.T) {

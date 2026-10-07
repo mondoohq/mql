@@ -1,4 +1,4 @@
-# ADR 047: Terraform module and configuration inventory
+# ADR 050: Terraform module and configuration inventory
 
 **Status:** Accepted
 **Date:** 2026-09-25
