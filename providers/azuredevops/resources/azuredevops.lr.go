@@ -23,6 +23,8 @@ const (
 	ResourceAzuredevopsBranch           string = "azuredevops.branch"
 	ResourceAzuredevopsBranchProtection string = "azuredevops.branchProtection"
 	ResourceAzuredevopsPolicy           string = "azuredevops.policy"
+	ResourceAzuredevopsAdvancedSecurity string = "azuredevops.advancedSecurity"
+	ResourceAzuredevopsAlert            string = "azuredevops.alert"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -56,6 +58,14 @@ func init() {
 		"azuredevops.policy": {
 			// to override args, implement: initAzuredevopsPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzuredevopsPolicy,
+		},
+		"azuredevops.advancedSecurity": {
+			// to override args, implement: initAzuredevopsAdvancedSecurity(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzuredevopsAdvancedSecurity,
+		},
+		"azuredevops.alert": {
+			// to override args, implement: initAzuredevopsAlert(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzuredevopsAlert,
 		},
 	}
 }
@@ -221,6 +231,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azuredevops.repository.policies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsRepository).GetPolicies()).ToDataRes(types.Array(types.Resource("azuredevops.policy")))
 	},
+	"azuredevops.repository.advancedSecurity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetAdvancedSecurity()).ToDataRes(types.Resource("azuredevops.advancedSecurity"))
+	},
 	"azuredevops.branch.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsBranch).GetName()).ToDataRes(types.String)
 	},
@@ -289,6 +302,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azuredevops.policy.settings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsPolicy).GetSettings()).ToDataRes(types.Dict)
+	},
+	"azuredevops.advancedSecurity.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsAdvancedSecurity).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"azuredevops.advancedSecurity.enablementLastChangedDate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsAdvancedSecurity).GetEnablementLastChangedDate()).ToDataRes(types.Time)
+	},
+	"azuredevops.advancedSecurity.alerts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsAdvancedSecurity).GetAlerts()).ToDataRes(types.Array(types.Resource("azuredevops.alert")))
+	},
+	"azuredevops.alert.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsAlert).GetId()).ToDataRes(types.Int)
+	},
+	"azuredevops.alert.alertType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsAlert).GetAlertType()).ToDataRes(types.String)
+	},
+	"azuredevops.alert.severity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsAlert).GetSeverity()).ToDataRes(types.String)
+	},
+	"azuredevops.alert.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsAlert).GetState()).ToDataRes(types.String)
+	},
+	"azuredevops.alert.title": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsAlert).GetTitle()).ToDataRes(types.String)
+	},
+	"azuredevops.alert.gitRef": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsAlert).GetGitRef()).ToDataRes(types.String)
+	},
+	"azuredevops.alert.firstSeenDate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsAlert).GetFirstSeenDate()).ToDataRes(types.Time)
 	},
 }
 
@@ -442,6 +485,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzuredevopsRepository).Policies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azuredevops.repository.advancedSecurity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).AdvancedSecurity, ok = plugin.RawToTValue[*mqlAzuredevopsAdvancedSecurity](v.Value, v.Error)
+		return
+	},
 	"azuredevops.branch.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzuredevopsBranch).__id, ok = v.Value.(string)
 		return
@@ -544,6 +591,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azuredevops.policy.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzuredevopsPolicy).Settings, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.advancedSecurity.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsAdvancedSecurity).__id, ok = v.Value.(string)
+		return
+	},
+	"azuredevops.advancedSecurity.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsAdvancedSecurity).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.advancedSecurity.enablementLastChangedDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsAdvancedSecurity).EnablementLastChangedDate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"azuredevops.advancedSecurity.alerts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsAdvancedSecurity).Alerts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.alert.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsAlert).__id, ok = v.Value.(string)
+		return
+	},
+	"azuredevops.alert.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsAlert).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azuredevops.alert.alertType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsAlert).AlertType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.alert.severity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsAlert).Severity, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.alert.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsAlert).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.alert.title": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsAlert).Title, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.alert.gitRef": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsAlert).GitRef, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.alert.firstSeenDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsAlert).FirstSeenDate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 }
@@ -815,23 +910,24 @@ type mqlAzuredevopsRepository struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAzuredevopsRepositoryInternal it will be used here
-	Id            plugin.TValue[string]
-	Name          plugin.TValue[string]
-	ProjectName   plugin.TValue[string]
-	ProjectId     plugin.TValue[string]
-	FullName      plugin.TValue[string]
-	DefaultBranch plugin.TValue[string]
-	Size          plugin.TValue[int64]
-	IsDisabled    plugin.TValue[bool]
-	IsEmpty       plugin.TValue[bool]
-	IsFork        plugin.TValue[bool]
-	Status        plugin.TValue[string]
-	WebUrl        plugin.TValue[string]
-	SshUrl        plugin.TValue[string]
-	CloneUrl      plugin.TValue[string]
-	Project       plugin.TValue[*mqlAzuredevopsProject]
-	Branches      plugin.TValue[[]any]
-	Policies      plugin.TValue[[]any]
+	Id               plugin.TValue[string]
+	Name             plugin.TValue[string]
+	ProjectName      plugin.TValue[string]
+	ProjectId        plugin.TValue[string]
+	FullName         plugin.TValue[string]
+	DefaultBranch    plugin.TValue[string]
+	Size             plugin.TValue[int64]
+	IsDisabled       plugin.TValue[bool]
+	IsEmpty          plugin.TValue[bool]
+	IsFork           plugin.TValue[bool]
+	Status           plugin.TValue[string]
+	WebUrl           plugin.TValue[string]
+	SshUrl           plugin.TValue[string]
+	CloneUrl         plugin.TValue[string]
+	Project          plugin.TValue[*mqlAzuredevopsProject]
+	Branches         plugin.TValue[[]any]
+	Policies         plugin.TValue[[]any]
+	AdvancedSecurity plugin.TValue[*mqlAzuredevopsAdvancedSecurity]
 }
 
 // createAzuredevopsRepository creates a new instance of this resource
@@ -972,6 +1068,22 @@ func (c *mqlAzuredevopsRepository) GetPolicies() *plugin.TValue[[]any] {
 		}
 
 		return c.policies()
+	})
+}
+
+func (c *mqlAzuredevopsRepository) GetAdvancedSecurity() *plugin.TValue[*mqlAzuredevopsAdvancedSecurity] {
+	return plugin.GetOrCompute[*mqlAzuredevopsAdvancedSecurity](&c.AdvancedSecurity, func() (*mqlAzuredevopsAdvancedSecurity, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.repository", c.__id, "advancedSecurity")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzuredevopsAdvancedSecurity), nil
+			}
+		}
+
+		return c.advancedSecurity()
 	})
 }
 
@@ -1225,4 +1337,144 @@ func (c *mqlAzuredevopsPolicy) GetScope() *plugin.TValue[[]any] {
 
 func (c *mqlAzuredevopsPolicy) GetSettings() *plugin.TValue[any] {
 	return &c.Settings
+}
+
+// mqlAzuredevopsAdvancedSecurity for the azuredevops.advancedSecurity resource
+type mqlAzuredevopsAdvancedSecurity struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAzuredevopsAdvancedSecurityInternal
+	Enabled                   plugin.TValue[bool]
+	EnablementLastChangedDate plugin.TValue[*time.Time]
+	Alerts                    plugin.TValue[[]any]
+}
+
+// createAzuredevopsAdvancedSecurity creates a new instance of this resource
+func createAzuredevopsAdvancedSecurity(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzuredevopsAdvancedSecurity{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azuredevops.advancedSecurity", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzuredevopsAdvancedSecurity) MqlName() string {
+	return "azuredevops.advancedSecurity"
+}
+
+func (c *mqlAzuredevopsAdvancedSecurity) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzuredevopsAdvancedSecurity) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlAzuredevopsAdvancedSecurity) GetEnablementLastChangedDate() *plugin.TValue[*time.Time] {
+	return &c.EnablementLastChangedDate
+}
+
+func (c *mqlAzuredevopsAdvancedSecurity) GetAlerts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Alerts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.advancedSecurity", c.__id, "alerts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.alerts()
+	})
+}
+
+// mqlAzuredevopsAlert for the azuredevops.alert resource
+type mqlAzuredevopsAlert struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzuredevopsAlertInternal it will be used here
+	Id            plugin.TValue[int64]
+	AlertType     plugin.TValue[string]
+	Severity      plugin.TValue[string]
+	State         plugin.TValue[string]
+	Title         plugin.TValue[string]
+	GitRef        plugin.TValue[string]
+	FirstSeenDate plugin.TValue[*time.Time]
+}
+
+// createAzuredevopsAlert creates a new instance of this resource
+func createAzuredevopsAlert(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzuredevopsAlert{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azuredevops.alert", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzuredevopsAlert) MqlName() string {
+	return "azuredevops.alert"
+}
+
+func (c *mqlAzuredevopsAlert) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzuredevopsAlert) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlAzuredevopsAlert) GetAlertType() *plugin.TValue[string] {
+	return &c.AlertType
+}
+
+func (c *mqlAzuredevopsAlert) GetSeverity() *plugin.TValue[string] {
+	return &c.Severity
+}
+
+func (c *mqlAzuredevopsAlert) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlAzuredevopsAlert) GetTitle() *plugin.TValue[string] {
+	return &c.Title
+}
+
+func (c *mqlAzuredevopsAlert) GetGitRef() *plugin.TValue[string] {
+	return &c.GitRef
+}
+
+func (c *mqlAzuredevopsAlert) GetFirstSeenDate() *plugin.TValue[*time.Time] {
+	return &c.FirstSeenDate
 }

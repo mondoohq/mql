@@ -355,3 +355,24 @@ func TestDropAccessControlListAnswersNoListForThatTokenOnly(t *testing.T) {
 	_, body = get(t, srv, acls+url.QueryEscape(project+"/"+RepoIacID), basic(PAT))
 	assert.Contains(t, body, project+"/"+RepoIacID, "the repository list is still served")
 }
+
+func TestAdvancedSecurityIsOffUntilEnabled(t *testing.T) {
+	srv := New(t)
+	repo := "/advsec" + base + "/scan-test/_apis/"
+	enablement := repo + "management/repositories/" + RepoAppID + "/enablement?api-version=" + AdvSecAPIVersion
+	alerts := repo + "alert/repositories/" + RepoAppID + "/alerts?api-version=" + AdvSecAPIVersion
+
+	res, body := get(t, srv, enablement, basic(PAT))
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Contains(t, body, `"advSecEnabled":false`)
+	res, body = get(t, srv, alerts, basic(PAT))
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	assert.Contains(t, body, "VS2150009")
+
+	srv.EnableAdvancedSecurity(RepoAppID)
+	_, body = get(t, srv, enablement, basic(PAT))
+	assert.Contains(t, body, `"advSecEnabled":true`)
+	res, body = get(t, srv, alerts, basic(PAT))
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Contains(t, body, `"alertType": "secret"`)
+}

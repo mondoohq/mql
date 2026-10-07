@@ -247,6 +247,8 @@ type Client struct {
 	acls memo[*AccessControlList]
 	// groups caches the project groups found by name.
 	groups memo[*Identity]
+	// enablements caches the Advanced Security state of each repository.
+	enablements memo[*AdvSecEnablement]
 }
 
 // NewClient builds a client for one organization.

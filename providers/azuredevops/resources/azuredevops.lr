@@ -112,6 +112,11 @@ azuredevops.repository @defaults("fullName") @root {
   // project, deleted ones left out. Reports a forbidden error when the
   // credential cannot read the policies of the project.
   policies() []azuredevops.policy
+  // Advanced Security state of the repository
+  //
+  // Reports a forbidden error when the credential cannot read it. When
+  // Advanced Security is off, `enabled` is false and `alerts` is null.
+  advancedSecurity() azuredevops.advancedSecurity
 }
 
 // Azure DevOps branch
@@ -207,4 +212,41 @@ private azuredevops.policy @defaults("typeName enabled blocking") {
   scope []dict
   // Settings of the policy type, without the scope, for example minimumApproverCount for the minimum reviewers policy
   settings dict
+}
+
+// Azure DevOps Advanced Security
+//
+// GitHub Advanced Security for Azure DevOps state of one Git repository.
+// Provides whether it is `enabled`, when that last changed, and the `alerts`
+// it raised. `alerts` is null when Advanced Security is off, so a check of the
+// alerts does not apply rather than passing on an empty list.
+private azuredevops.advancedSecurity @defaults("enabled") {
+  // Whether Advanced Security is turned on for the repository
+  enabled bool
+  // Time Advanced Security was last turned on or off, null when it never was
+  enablementLastChangedDate time
+  // Alerts of the repository, of every state. Null when Advanced Security is off; reports a forbidden error when the credential cannot read them
+  alerts() []azuredevops.alert
+}
+
+// Azure DevOps Advanced Security alert
+//
+// Alert that Advanced Security raised for a Git repository: a leaked secret, a
+// code scanning result, or a vulnerable dependency. Provides the `alertType`,
+// `severity`, `state`, and `title` of the alert.
+private azuredevops.alert @defaults("alertType severity state title") {
+  // Alert ID, unique within the repository
+  id int
+  // Kind of alert: secret, code, or dependency
+  alertType string
+  // Severity: critical, high, medium, low, note, warning, error, or undefined
+  severity string
+  // State: active, dismissed, fixed, or autoDismissed
+  state string
+  // Short description of the alert
+  title string
+  // Ref the alert was found on, for example refs/heads/main
+  gitRef string
+  // Time the alert was first seen, null when unknown
+  firstSeenDate time
 }

@@ -105,6 +105,16 @@ const (
 	BuildServiceDescriptor  = "Microsoft.TeamFoundation.ServiceIdentity;5e000000-0000-4000-8000-000000000001:Build:1a000000-0000-4000-8000-000000000001"
 )
 
+// repoAlerts maps a repository id to its Advanced Security alert fixture. A
+// repository with Advanced Security on and no entry has no alerts.
+var repoAlerts = map[string]string{
+	RepoAppID: "alerts_app.json",
+}
+
+// AdvSecEnabledSince is the date the enablement route reports for a
+// repository that EnableAdvancedSecurity turned on.
+const AdvSecEnabledSince = "2026-01-01T00:00:00Z"
+
 // gitNamespace is the Git repositories security namespace, the only one the
 // access control list route serves.
 const gitNamespace = "2e9eb7ed-3c0a-47d4-87c1-0ffdd275fd87"
@@ -122,6 +132,7 @@ type Server struct {
 	hiddenRepos map[string]bool
 	denied      []string
 	droppedACLs map[string]bool
+	advsec      map[string]bool
 }
 
 type throttle struct {
@@ -209,6 +220,24 @@ func (s *Server) itemsDenied(repoID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.deniedItems[repoID]
+}
+
+// EnableAdvancedSecurity turns Advanced Security on for one repository. It is
+// off for every repository until then: the enablement route says so and the
+// alert route answers 400 VS2150009.
+func (s *Server) EnableAdvancedSecurity(repoID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.advsec == nil {
+		s.advsec = map[string]bool{}
+	}
+	s.advsec[repoID] = true
+}
+
+func (s *Server) advSecOn(repoID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.advsec[repoID]
 }
 
 // HideRepositories makes the repository list of one project answer HTTP 404
@@ -343,6 +372,10 @@ func apiVersionFor(svc service, segs []string) string {
 
 func (s *Server) handleAdvSec(w http.ResponseWriter, r *http.Request, segs []string) {
 	switch {
+	case len(segs) == 6 && segs[1] == "_apis" && segs[2] == "management" && segs[3] == "repositories" && segs[5] == "enablement":
+		s.enablement(w, segs[0], segs[4])
+	case len(segs) == 6 && segs[1] == "_apis" && segs[2] == "alert" && segs[3] == "repositories" && segs[5] == "alerts":
+		s.alerts(w, segs[0], segs[4])
 	default:
 		serveFixture(w, http.StatusNotFound, "error_forbidden.json")
 	}
@@ -504,6 +537,38 @@ func (s *Server) policies(w http.ResponseWriter, project string) {
 		return
 	}
 	file, ok := projectPolicies[project]
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"count": 0, "value": []any{}})
+		return
+	}
+	serveFixture(w, http.StatusOK, file)
+}
+
+// enablement serves the Advanced Security state of a repository. A repository
+// that was never turned on reports the year-one date, without a zone, that
+// Azure DevOps uses for a date that was never set.
+func (s *Server) enablement(w http.ResponseWriter, project, repoID string) {
+	if _, ok := projectRepos[project]; !ok {
+		serveFixture(w, http.StatusForbidden, "error_forbidden.json")
+		return
+	}
+	if !s.advSecOn(repoID) {
+		writeJSON(w, http.StatusOK, map[string]any{"advSecEnabled": false, "advSecEnablementLastChangedDate": "0001-01-01T00:00:00"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"advSecEnabled": true, "advSecEnablementLastChangedDate": AdvSecEnabledSince})
+}
+
+func (s *Server) alerts(w http.ResponseWriter, project, repoID string) {
+	if _, ok := projectRepos[project]; !ok {
+		serveFixture(w, http.StatusForbidden, "error_forbidden.json")
+		return
+	}
+	if !s.advSecOn(repoID) {
+		serveFixture(w, http.StatusBadRequest, "error_advsec_disabled.json")
+		return
+	}
+	file, ok := repoAlerts[repoID]
 	if !ok {
 		writeJSON(w, http.StatusOK, map[string]any{"count": 0, "value": []any{}})
 		return

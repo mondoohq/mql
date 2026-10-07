@@ -1,0 +1,41 @@
+{
+  "count": 4,
+  "value": [
+    {
+      "alertId": 1,
+      "alertType": "secret",
+      "severity": "critical",
+      "state": "active",
+      "title": "Fabricated AWS access key",
+      "gitRef": "refs/heads/main",
+      "firstSeenDate": "2026-01-02T00:00:00Z"
+    },
+    {
+      "alertId": 2,
+      "alertType": "code",
+      "severity": "high",
+      "state": "fixed",
+      "title": "SQL injection",
+      "gitRef": "refs/heads/main",
+      "firstSeenDate": "2026-01-03T00:00:00Z"
+    },
+    {
+      "alertId": 3,
+      "alertType": "dependency",
+      "severity": "critical",
+      "state": "active",
+      "title": "PyYAML arbitrary code execution",
+      "gitRef": "refs/heads/main",
+      "firstSeenDate": "2026-01-04T00:00:00Z"
+    },
+    {
+      "alertId": 4,
+      "alertType": "dependency",
+      "severity": "high",
+      "state": "dismissed",
+      "title": "requests credential leak",
+      "gitRef": "refs/heads/main",
+      "firstSeenDate": "2026-01-05T00:00:00Z"
+    }
+  ]
+}

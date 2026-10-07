@@ -2,6 +2,18 @@
 # SPDX-License-Identifier: BUSL-1.1
 
 azuredevops 14.0.0
+azuredevops.advancedSecurity 14.0.0
+azuredevops.advancedSecurity.alerts 14.0.0
+azuredevops.advancedSecurity.enabled 14.0.0
+azuredevops.advancedSecurity.enablementLastChangedDate 14.0.0
+azuredevops.alert 14.0.0
+azuredevops.alert.alertType 14.0.0
+azuredevops.alert.firstSeenDate 14.0.0
+azuredevops.alert.gitRef 14.0.0
+azuredevops.alert.id 14.0.0
+azuredevops.alert.severity 14.0.0
+azuredevops.alert.state 14.0.0
+azuredevops.alert.title 14.0.0
 azuredevops.branch 14.0.0
 azuredevops.branch.headCommitSha 14.0.0
 azuredevops.branch.isDefault 14.0.0
@@ -45,6 +57,7 @@ azuredevops.project.state 14.0.0
 azuredevops.project.url 14.0.0
 azuredevops.project.visibility 14.0.0
 azuredevops.repository 14.0.0
+azuredevops.repository.advancedSecurity 14.0.0
 azuredevops.repository.branches 14.0.0
 azuredevops.repository.cloneUrl 14.0.0
 azuredevops.repository.defaultBranch 14.0.0

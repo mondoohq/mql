@@ -1,0 +1,9 @@
+{
+  "$id": "1",
+  "innerException": null,
+  "message": "VS2150009: Advanced Security is not enabled for this repository.",
+  "typeName": "Microsoft.VisualStudio.Services.AdvancedSecurity.AdvancedSecurityNotEnabledException, Microsoft.VisualStudio.Services.AdvancedSecurity",
+  "typeKey": "AdvancedSecurityNotEnabledException",
+  "errorCode": 0,
+  "eventId": 3000
+}
