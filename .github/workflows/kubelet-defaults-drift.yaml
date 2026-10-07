@@ -1,0 +1,78 @@
+name: Check upstream kubelet defaults
+
+# kubelet.configuration reports what a kubelet runs with by applying the
+# kubelet's defaults, which providers/os/resources/kubelet_defaults.go copies
+# from upstream Kubernetes. Upstream changes those defaults between minor
+# versions, and nothing else says when. This compares every release branch
+# with the recorded baseline once a week and opens (or updates) an issue when
+# a new minor version appears or a copied source changed.
+
+on:
+  schedule:
+    - cron: "17 7 * * 2" # every tuesday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ISSUE_TITLE: "Upstream Kubernetes changed the kubelet defaults mql copies"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Import environment variables from file
+        run: cat ".github/env" >> "$GITHUB_ENV"
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "${{ env.golang-version }}"
+          check-latest: true
+          cache: false
+
+      # Exits 2 when upstream changed, 1 when the check itself failed. A
+      # failed check fails the run instead of filing an issue about it.
+      - name: Compare with upstream
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          go run ./providers/os/resources/kubeletupstream -report "${RUNNER_TEMP}/report.md"
+          rc=$?
+          set -e
+          if [ "${rc}" -eq 2 ]; then
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+          elif [ "${rc}" -ne 0 ]; then
+            exit "${rc}"
+          fi
+          cat "${RUNNER_TEMP}/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update the issue
+        if: steps.check.outputs.drift == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            # an issue body holds at most 65536 characters
+            head -c 60000 "${RUNNER_TEMP}/report.md"
+            echo
+            echo "Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > "${RUNNER_TEMP}/body.md"
+
+          number=$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open \
+            --search "\"${ISSUE_TITLE}\" in:title" --json number,title \
+            --jq "map(select(.title == env.ISSUE_TITLE))[0].number // empty")
+          if [ -n "${number}" ]; then
+            gh issue edit "${number}" --repo "${GITHUB_REPOSITORY}" --body-file "${RUNNER_TEMP}/body.md"
+          else
+            gh issue create --repo "${GITHUB_REPOSITORY}" --title "${ISSUE_TITLE}" --body-file "${RUNNER_TEMP}/body.md"
+          fi
