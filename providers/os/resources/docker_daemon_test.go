@@ -88,6 +88,10 @@ func TestDockerTLS(t *testing.T) {
 		tls, tlsVerify bool
 	}{
 		{"none", map[string]any{}, false, false},
+		// dockerd copies tls into an unset tlsverify (cmd/dockerd/daemon.go:
+		// "if conf.TLSVerify == nil && conf.TLS != nil"); verified live on
+		// docker:29-dind started with --tls alone, which answers a client
+		// without a certificate with "tlsv13 alert certificate required"
 		{"tls alone verifies", map[string]any{"tls": true}, true, true},
 		{"tls off", map[string]any{"tls": false}, false, false},
 		{"tlsverify", map[string]any{"tlsverify": true}, true, true},

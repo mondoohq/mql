@@ -8062,8 +8062,9 @@ docker.daemon @defaults("configFile.path hosts") {
   tls() bool
   // Whether the Engine API requires and verifies client certificates
   //
-  // From `tlsverify`, otherwise from `tls`. False when TLS is off, so a TCP
-  // listener in `hosts` with this false accepts unauthenticated clients.
+  // From `tlsverify`, otherwise from `tls`: `tls` alone also verifies client
+  // certificates. False when TLS is off, so a TCP listener in `hosts` with
+  // this false accepts unauthenticated clients.
   tlsVerify() bool
   // CA certificate file client certificates are verified against (`tlscacert`); null when not configured
   tlsCaCert() file
