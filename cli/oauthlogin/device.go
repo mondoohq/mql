@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"errors"
+	"fmt"
 	"io"
 	"time"
 
@@ -27,12 +28,23 @@ func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, key *ecdsa.
 	if err != nil {
 		return nil, tokenError(err)
 	}
-	if da.DeviceCode == "" || da.UserCode == "" || da.VerificationURI == "" {
+	userCode := DisplayText(da.UserCode)
+	if da.DeviceCode == "" || userCode == "" || da.VerificationURI == "" {
 		return nil, errors.New("device authorization response is incomplete")
+	}
+	// The verification URIs are shown and opened in the browser, so they
+	// must use https (http only for a loopback server, or with --insecure).
+	if err := CheckServerURL(da.VerificationURI, o.Insecure); err != nil {
+		return nil, fmt.Errorf("device authorization response has an unusable verification_uri: %w", err)
+	}
+	if da.VerificationURIComplete != "" {
+		if err := CheckServerURL(da.VerificationURIComplete, o.Insecure); err != nil {
+			return nil, fmt.Errorf("device authorization response has an unusable verification_uri_complete: %w", err)
+		}
 	}
 
 	pr := newProgress(o.Out, o.Interactive)
-	pr.Println("! First copy your one-time code: %s", da.UserCode)
+	pr.Println("! First copy your one-time code: %s", userCode)
 	promptEnter := o.Interactive && offerBrowser
 	if promptEnter {
 		pr.Println("Press Enter to open %s in your browser...", da.VerificationURI)

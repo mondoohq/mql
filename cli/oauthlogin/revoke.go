@@ -68,5 +68,5 @@ func Revoke(ctx context.Context, client *http.Client, issuer, accessToken, priva
 
 // bodySnippet returns a short, single-line excerpt of an error response body.
 func bodySnippet(body []byte) string {
-	return truncateUTF8(sanitizeParam(string(body)), 200)
+	return truncateUTF8(DisplayText(string(body)), 200)
 }

@@ -82,6 +82,10 @@ type SessionInfo struct {
 // example "✓ Logged in as jane@example.com · space acme/prod · valid until
 // 2026-10-06 13:00 CEST (1h)".
 func (s SessionInfo) Summary(headline string, now time.Time) string {
+	// The names come from the server.
+	for _, f := range []*string{&s.UserEmail, &s.UserName, &s.UserMrn, &s.SpaceName, &s.OrgName, &s.SpaceMrn} {
+		*f = DisplayText(*f)
+	}
 	who := s.UserEmail
 	if who == "" {
 		who = s.UserName
