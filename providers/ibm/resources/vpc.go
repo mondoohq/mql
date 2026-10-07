@@ -1026,8 +1026,9 @@ func (r *mqlIbmVpcLoadBalancer) resourceGroup() (*mqlIbmResourceGroup, error) {
 // ---- volumes ----
 
 type mqlIbmVpcVolumeInternal struct {
-	cacheResourceGroupID string
-	cacheInstanceIDs     []string
+	cacheResourceGroupID  string
+	cacheInstanceIDs      []string
+	cacheEncryptionKeyCRN string
 }
 
 func (r *mqlIbm) vpcVolumes() ([]any, error) {
@@ -1068,6 +1069,9 @@ func (r *mqlIbm) vpcVolumes() ([]any, error) {
 		}
 		m := res.(*mqlIbmVpcVolume)
 		m.cacheResourceGroupID = resourceGroupID(v.ResourceGroup)
+		if v.EncryptionKey != nil {
+			m.cacheEncryptionKeyCRN = derefStr(v.EncryptionKey.CRN)
+		}
 		for _, a := range v.VolumeAttachments {
 			if a.Instance != nil && a.Instance.ID != nil {
 				m.cacheInstanceIDs = append(m.cacheInstanceIDs, *a.Instance.ID)
@@ -1080,6 +1084,10 @@ func (r *mqlIbm) vpcVolumes() ([]any, error) {
 
 func (r *mqlIbmVpcVolume) resourceGroup() (*mqlIbmResourceGroup, error) {
 	return resourceGroupByID(r.MqlRuntime, r.cacheResourceGroupID, &r.ResourceGroup)
+}
+
+func (r *mqlIbmVpcVolume) encryptionKey() (*mqlIbmKmsKey, error) {
+	return kmsKeyByCRN(r.MqlRuntime, r.cacheEncryptionKeyCRN, &r.EncryptionKey)
 }
 
 func (r *mqlIbmVpcVolume) instances() ([]any, error) {

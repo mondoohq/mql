@@ -46,6 +46,15 @@ const (
 	ResourceIbmPowerNetwork         string = "ibm.power.network"
 	ResourceIbmPowerVolume          string = "ibm.power.volume"
 	ResourceIbmPowerImage           string = "ibm.power.image"
+	ResourceIbmCosBucket            string = "ibm.cos.bucket"
+	ResourceIbmKmsInstance          string = "ibm.kms.instance"
+	ResourceIbmKmsKey               string = "ibm.kms.key"
+	ResourceIbmKmsKeyRegistration   string = "ibm.kms.key.registration"
+	ResourceIbmAtrackerTarget       string = "ibm.atracker.target"
+	ResourceIbmAtrackerRoute        string = "ibm.atracker.route"
+	ResourceIbmAtrackerRouteRule    string = "ibm.atracker.route.rule"
+	ResourceIbmAtrackerSettings     string = "ibm.atracker.settings"
+	ResourceIbmDatabase             string = "ibm.database"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -171,6 +180,42 @@ func init() {
 		"ibm.power.image": {
 			// to override args, implement: initIbmPowerImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createIbmPowerImage,
+		},
+		"ibm.cos.bucket": {
+			// to override args, implement: initIbmCosBucket(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmCosBucket,
+		},
+		"ibm.kms.instance": {
+			// to override args, implement: initIbmKmsInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmKmsInstance,
+		},
+		"ibm.kms.key": {
+			// to override args, implement: initIbmKmsKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmKmsKey,
+		},
+		"ibm.kms.key.registration": {
+			// to override args, implement: initIbmKmsKeyRegistration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmKmsKeyRegistration,
+		},
+		"ibm.atracker.target": {
+			// to override args, implement: initIbmAtrackerTarget(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmAtrackerTarget,
+		},
+		"ibm.atracker.route": {
+			// to override args, implement: initIbmAtrackerRoute(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmAtrackerRoute,
+		},
+		"ibm.atracker.route.rule": {
+			// to override args, implement: initIbmAtrackerRouteRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmAtrackerRouteRule,
+		},
+		"ibm.atracker.settings": {
+			// to override args, implement: initIbmAtrackerSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmAtrackerSettings,
+		},
+		"ibm.database": {
+			// to override args, implement: initIbmDatabase(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmDatabase,
 		},
 	}
 }
@@ -308,6 +353,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.powerWorkspaces": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbm).GetPowerWorkspaces()).ToDataRes(types.Array(types.Resource("ibm.power.workspace")))
+	},
+	"ibm.cosBuckets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbm).GetCosBuckets()).ToDataRes(types.Array(types.Resource("ibm.cos.bucket")))
+	},
+	"ibm.kmsInstances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbm).GetKmsInstances()).ToDataRes(types.Array(types.Resource("ibm.kms.instance")))
+	},
+	"ibm.kmsKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbm).GetKmsKeys()).ToDataRes(types.Array(types.Resource("ibm.kms.key")))
+	},
+	"ibm.atrackerTargets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbm).GetAtrackerTargets()).ToDataRes(types.Array(types.Resource("ibm.atracker.target")))
+	},
+	"ibm.atrackerRoutes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbm).GetAtrackerRoutes()).ToDataRes(types.Array(types.Resource("ibm.atracker.route")))
+	},
+	"ibm.atrackerSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbm).GetAtrackerSettings()).ToDataRes(types.Resource("ibm.atracker.settings"))
+	},
+	"ibm.databases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbm).GetDatabases()).ToDataRes(types.Array(types.Resource("ibm.database")))
 	},
 	"ibm.iam.accountSettings.mfa": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmIamAccountSettings).GetMfa()).ToDataRes(types.String)
@@ -1071,6 +1137,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.vpc.volume.encryption": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcVolume).GetEncryption()).ToDataRes(types.String)
 	},
+	"ibm.vpc.volume.encryptionKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcVolume).GetEncryptionKey()).ToDataRes(types.Resource("ibm.kms.key"))
+	},
 	"ibm.vpc.volume.status": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcVolume).GetStatus()).ToDataRes(types.String)
 	},
@@ -1359,6 +1428,384 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.power.image.accessTags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerImage).GetAccessTags()).ToDataRes(types.Array(types.String))
 	},
+	"ibm.cos.bucket.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetName()).ToDataRes(types.String)
+	},
+	"ibm.cos.bucket.crn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetCrn()).ToDataRes(types.String)
+	},
+	"ibm.cos.bucket.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetLocation()).ToDataRes(types.String)
+	},
+	"ibm.cos.bucket.storageClass": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetStorageClass()).ToDataRes(types.String)
+	},
+	"ibm.cos.bucket.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.cos.bucket.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.cos.bucket.objectCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetObjectCount()).ToDataRes(types.Int)
+	},
+	"ibm.cos.bucket.bytesUsed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetBytesUsed()).ToDataRes(types.Int)
+	},
+	"ibm.cos.bucket.hardQuota": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetHardQuota()).ToDataRes(types.Int)
+	},
+	"ibm.cos.bucket.allowedIps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetAllowedIps()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.cos.bucket.deniedIps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetDeniedIps()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.cos.bucket.allowedNetworkTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetAllowedNetworkTypes()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.cos.bucket.activityTrackingReadDataEvents": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetActivityTrackingReadDataEvents()).ToDataRes(types.Bool)
+	},
+	"ibm.cos.bucket.activityTrackingWriteDataEvents": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetActivityTrackingWriteDataEvents()).ToDataRes(types.Bool)
+	},
+	"ibm.cos.bucket.activityTrackingManagementEvents": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetActivityTrackingManagementEvents()).ToDataRes(types.Bool)
+	},
+	"ibm.cos.bucket.usageMetricsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetUsageMetricsEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.cos.bucket.requestMetricsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetRequestMetricsEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.cos.bucket.kmsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetKmsEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.cos.bucket.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetKmsKey()).ToDataRes(types.Resource("ibm.kms.key"))
+	},
+	"ibm.cos.bucket.versioning": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetVersioning()).ToDataRes(types.String)
+	},
+	"ibm.cos.bucket.objectLockEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetObjectLockEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.cos.bucket.retentionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetRetentionEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.cos.bucket.retentionDefaultDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetRetentionDefaultDays()).ToDataRes(types.Int)
+	},
+	"ibm.cos.bucket.retentionMinimumDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetRetentionMinimumDays()).ToDataRes(types.Int)
+	},
+	"ibm.cos.bucket.retentionMaximumDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetRetentionMaximumDays()).ToDataRes(types.Int)
+	},
+	"ibm.cos.bucket.permanentRetentionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetPermanentRetentionEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.cos.bucket.publicAcl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetPublicAcl()).ToDataRes(types.Bool)
+	},
+	"ibm.cos.bucket.websiteEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetWebsiteEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.cos.bucket.isPublic": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetIsPublic()).ToDataRes(types.Bool)
+	},
+	"ibm.cos.bucket.instance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetInstance()).ToDataRes(types.Resource("ibm.resourceInstance"))
+	},
+	"ibm.cos.bucket.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.cos.bucket.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCosBucket).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.kms.instance.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetId()).ToDataRes(types.String)
+	},
+	"ibm.kms.instance.guid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetGuid()).ToDataRes(types.String)
+	},
+	"ibm.kms.instance.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetName()).ToDataRes(types.String)
+	},
+	"ibm.kms.instance.service": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetService()).ToDataRes(types.String)
+	},
+	"ibm.kms.instance.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetRegion()).ToDataRes(types.String)
+	},
+	"ibm.kms.instance.dualAuthDeleteEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetDualAuthDeleteEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.instance.rotationEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetRotationEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.instance.rotationIntervalMonth": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetRotationIntervalMonth()).ToDataRes(types.Int)
+	},
+	"ibm.kms.instance.metricsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetMetricsEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.instance.allowedNetwork": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetAllowedNetwork()).ToDataRes(types.String)
+	},
+	"ibm.kms.instance.allowedIpEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetAllowedIpEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.instance.allowedIps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetAllowedIps()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.kms.instance.keyCreateImportAccessEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetKeyCreateImportAccessEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.instance.createRootKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetCreateRootKey()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.instance.createStandardKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetCreateStandardKey()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.instance.importRootKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetImportRootKey()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.instance.importStandardKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetImportStandardKey()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.instance.enforceToken": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetEnforceToken()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.instance.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetResourceGroup()).ToDataRes(types.Resource("ibm.resourceGroup"))
+	},
+	"ibm.kms.instance.keys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetKeys()).ToDataRes(types.Array(types.Resource("ibm.kms.key")))
+	},
+	"ibm.kms.instance.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.kms.instance.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsInstance).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.kms.key.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetId()).ToDataRes(types.String)
+	},
+	"ibm.kms.key.crn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetCrn()).ToDataRes(types.String)
+	},
+	"ibm.kms.key.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetName()).ToDataRes(types.String)
+	},
+	"ibm.kms.key.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetDescription()).ToDataRes(types.String)
+	},
+	"ibm.kms.key.standardKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetStandardKey()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.key.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetState()).ToDataRes(types.String)
+	},
+	"ibm.kms.key.imported": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetImported()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.key.keyRingId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetKeyRingId()).ToDataRes(types.String)
+	},
+	"ibm.kms.key.algorithmType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetAlgorithmType()).ToDataRes(types.String)
+	},
+	"ibm.kms.key.deleted": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetDeleted()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.key.rotationEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetRotationEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.key.rotationIntervalMonth": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetRotationIntervalMonth()).ToDataRes(types.Int)
+	},
+	"ibm.kms.key.dualAuthDeleteEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetDualAuthDeleteEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.key.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.kms.key.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetCreatedBy()).ToDataRes(types.String)
+	},
+	"ibm.kms.key.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.kms.key.lastRotatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetLastRotatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.kms.key.expiresAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetExpiresAt()).ToDataRes(types.Time)
+	},
+	"ibm.kms.key.instance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetInstance()).ToDataRes(types.Resource("ibm.kms.instance"))
+	},
+	"ibm.kms.key.registrations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKey).GetRegistrations()).ToDataRes(types.Array(types.Resource("ibm.kms.key.registration")))
+	},
+	"ibm.kms.key.registration.resourceCrn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKeyRegistration).GetResourceCrn()).ToDataRes(types.String)
+	},
+	"ibm.kms.key.registration.preventKeyDeletion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKeyRegistration).GetPreventKeyDeletion()).ToDataRes(types.Bool)
+	},
+	"ibm.kms.key.registration.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKeyRegistration).GetDescription()).ToDataRes(types.String)
+	},
+	"ibm.kms.key.registration.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmKmsKeyRegistration).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.atracker.target.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetId()).ToDataRes(types.String)
+	},
+	"ibm.atracker.target.crn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetCrn()).ToDataRes(types.String)
+	},
+	"ibm.atracker.target.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetName()).ToDataRes(types.String)
+	},
+	"ibm.atracker.target.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetType()).ToDataRes(types.String)
+	},
+	"ibm.atracker.target.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetRegion()).ToDataRes(types.String)
+	},
+	"ibm.atracker.target.writeStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetWriteStatus()).ToDataRes(types.String)
+	},
+	"ibm.atracker.target.lastFailureAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetLastFailureAt()).ToDataRes(types.Time)
+	},
+	"ibm.atracker.target.lastFailureReason": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetLastFailureReason()).ToDataRes(types.String)
+	},
+	"ibm.atracker.target.serviceToServiceEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetServiceToServiceEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.atracker.target.cosEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetCosEndpoint()).ToDataRes(types.String)
+	},
+	"ibm.atracker.target.managedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetManagedBy()).ToDataRes(types.String)
+	},
+	"ibm.atracker.target.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.atracker.target.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.atracker.target.cosBucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetCosBucket()).ToDataRes(types.Resource("ibm.cos.bucket"))
+	},
+	"ibm.atracker.target.destination": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerTarget).GetDestination()).ToDataRes(types.Resource("ibm.resourceInstance"))
+	},
+	"ibm.atracker.route.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerRoute).GetId()).ToDataRes(types.String)
+	},
+	"ibm.atracker.route.crn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerRoute).GetCrn()).ToDataRes(types.String)
+	},
+	"ibm.atracker.route.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerRoute).GetName()).ToDataRes(types.String)
+	},
+	"ibm.atracker.route.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerRoute).GetVersion()).ToDataRes(types.Int)
+	},
+	"ibm.atracker.route.managedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerRoute).GetManagedBy()).ToDataRes(types.String)
+	},
+	"ibm.atracker.route.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerRoute).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.atracker.route.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerRoute).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.atracker.route.rules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerRoute).GetRules()).ToDataRes(types.Array(types.Resource("ibm.atracker.route.rule")))
+	},
+	"ibm.atracker.route.rule.locations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerRouteRule).GetLocations()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.atracker.route.rule.targets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerRouteRule).GetTargets()).ToDataRes(types.Array(types.Resource("ibm.atracker.target")))
+	},
+	"ibm.atracker.settings.permittedTargetRegions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerSettings).GetPermittedTargetRegions()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.atracker.settings.metadataRegionPrimary": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerSettings).GetMetadataRegionPrimary()).ToDataRes(types.String)
+	},
+	"ibm.atracker.settings.metadataRegionBackup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerSettings).GetMetadataRegionBackup()).ToDataRes(types.String)
+	},
+	"ibm.atracker.settings.privateApiEndpointOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerSettings).GetPrivateApiEndpointOnly()).ToDataRes(types.Bool)
+	},
+	"ibm.atracker.settings.defaultTargets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmAtrackerSettings).GetDefaultTargets()).ToDataRes(types.Array(types.Resource("ibm.atracker.target")))
+	},
+	"ibm.database.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetId()).ToDataRes(types.String)
+	},
+	"ibm.database.guid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetGuid()).ToDataRes(types.String)
+	},
+	"ibm.database.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetName()).ToDataRes(types.String)
+	},
+	"ibm.database.service": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetService()).ToDataRes(types.String)
+	},
+	"ibm.database.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetType()).ToDataRes(types.String)
+	},
+	"ibm.database.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetRegion()).ToDataRes(types.String)
+	},
+	"ibm.database.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetState()).ToDataRes(types.String)
+	},
+	"ibm.database.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetVersion()).ToDataRes(types.String)
+	},
+	"ibm.database.publicEndpointEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetPublicEndpointEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.database.privateEndpointEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetPrivateEndpointEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.database.allowlist": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetAllowlist()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.database.memberCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetMemberCount()).ToDataRes(types.Int)
+	},
+	"ibm.database.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.database.diskEncryptionKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetDiskEncryptionKey()).ToDataRes(types.Resource("ibm.kms.key"))
+	},
+	"ibm.database.backupEncryptionKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetBackupEncryptionKey()).ToDataRes(types.Resource("ibm.kms.key"))
+	},
+	"ibm.database.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetResourceGroup()).ToDataRes(types.Resource("ibm.resourceGroup"))
+	},
+	"ibm.database.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.database.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmDatabase).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -1461,6 +1908,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.powerWorkspaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbm).PowerWorkspaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cosBuckets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbm).CosBuckets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.kmsInstances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbm).KmsInstances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.kmsKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbm).KmsKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.atrackerTargets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbm).AtrackerTargets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.atrackerRoutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbm).AtrackerRoutes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.atrackerSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbm).AtrackerSettings, ok = plugin.RawToTValue[*mqlIbmAtrackerSettings](v.Value, v.Error)
+		return
+	},
+	"ibm.databases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbm).Databases, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.iam.accountSettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2567,6 +3042,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmVpcVolume).Encryption, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"ibm.vpc.volume.encryptionKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcVolume).EncryptionKey, ok = plugin.RawToTValue[*mqlIbmKmsKey](v.Value, v.Error)
+		return
+	},
 	"ibm.vpc.volume.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmVpcVolume).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -2979,6 +3458,546 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmPowerImage).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"ibm.cos.bucket.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.cos.bucket.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.crn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).Crn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.storageClass": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).StorageClass, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.objectCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).ObjectCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.bytesUsed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).BytesUsed, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.hardQuota": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).HardQuota, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.allowedIps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).AllowedIps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.deniedIps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).DeniedIps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.allowedNetworkTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).AllowedNetworkTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.activityTrackingReadDataEvents": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).ActivityTrackingReadDataEvents, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.activityTrackingWriteDataEvents": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).ActivityTrackingWriteDataEvents, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.activityTrackingManagementEvents": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).ActivityTrackingManagementEvents, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.usageMetricsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).UsageMetricsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.requestMetricsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).RequestMetricsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.kmsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).KmsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).KmsKey, ok = plugin.RawToTValue[*mqlIbmKmsKey](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.versioning": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).Versioning, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.objectLockEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).ObjectLockEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.retentionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).RetentionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.retentionDefaultDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).RetentionDefaultDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.retentionMinimumDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).RetentionMinimumDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.retentionMaximumDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).RetentionMaximumDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.permanentRetentionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).PermanentRetentionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.publicAcl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).PublicAcl, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.websiteEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).WebsiteEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.isPublic": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).IsPublic, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.instance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).Instance, ok = plugin.RawToTValue[*mqlIbmResourceInstance](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cos.bucket.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCosBucket).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.kms.instance.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.guid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).Guid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.service": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).Service, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.dualAuthDeleteEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).DualAuthDeleteEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.rotationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).RotationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.rotationIntervalMonth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).RotationIntervalMonth, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.metricsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).MetricsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.allowedNetwork": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).AllowedNetwork, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.allowedIpEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).AllowedIpEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.allowedIps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).AllowedIps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.keyCreateImportAccessEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).KeyCreateImportAccessEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.createRootKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).CreateRootKey, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.createStandardKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).CreateStandardKey, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.importRootKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).ImportRootKey, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.importStandardKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).ImportStandardKey, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.enforceToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).EnforceToken, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.resourceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).ResourceGroup, ok = plugin.RawToTValue[*mqlIbmResourceGroup](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.keys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).Keys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.instance.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsInstance).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.kms.key.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.crn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).Crn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.standardKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).StandardKey, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.imported": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).Imported, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.keyRingId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).KeyRingId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.algorithmType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).AlgorithmType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.deleted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).Deleted, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.rotationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).RotationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.rotationIntervalMonth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).RotationIntervalMonth, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.dualAuthDeleteEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).DualAuthDeleteEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).CreatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.lastRotatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).LastRotatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.expiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).ExpiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.instance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).Instance, ok = plugin.RawToTValue[*mqlIbmKmsInstance](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.registrations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKey).Registrations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.registration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKeyRegistration).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.kms.key.registration.resourceCrn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKeyRegistration).ResourceCrn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.registration.preventKeyDeletion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKeyRegistration).PreventKeyDeletion, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.registration.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKeyRegistration).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.kms.key.registration.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmKmsKeyRegistration).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.atracker.target.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.crn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).Crn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.writeStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).WriteStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.lastFailureAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).LastFailureAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.lastFailureReason": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).LastFailureReason, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.serviceToServiceEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).ServiceToServiceEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.cosEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).CosEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.managedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).ManagedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.cosBucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).CosBucket, ok = plugin.RawToTValue[*mqlIbmCosBucket](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.target.destination": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerTarget).Destination, ok = plugin.RawToTValue[*mqlIbmResourceInstance](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.route.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerRoute).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.atracker.route.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerRoute).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.route.crn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerRoute).Crn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.route.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerRoute).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.route.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerRoute).Version, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.route.managedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerRoute).ManagedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.route.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerRoute).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.route.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerRoute).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.route.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerRoute).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.route.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerRouteRule).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.atracker.route.rule.locations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerRouteRule).Locations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.route.rule.targets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerRouteRule).Targets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.settings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerSettings).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.atracker.settings.permittedTargetRegions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerSettings).PermittedTargetRegions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.settings.metadataRegionPrimary": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerSettings).MetadataRegionPrimary, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.settings.metadataRegionBackup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerSettings).MetadataRegionBackup, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.settings.privateApiEndpointOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerSettings).PrivateApiEndpointOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.atracker.settings.defaultTargets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmAtrackerSettings).DefaultTargets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.database.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.database.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.database.guid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).Guid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.database.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.database.service": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).Service, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.database.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.database.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.database.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.database.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.database.publicEndpointEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).PublicEndpointEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.database.privateEndpointEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).PrivateEndpointEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.database.allowlist": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).Allowlist, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.database.memberCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).MemberCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.database.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.database.diskEncryptionKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).DiskEncryptionKey, ok = plugin.RawToTValue[*mqlIbmKmsKey](v.Value, v.Error)
+		return
+	},
+	"ibm.database.backupEncryptionKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).BackupEncryptionKey, ok = plugin.RawToTValue[*mqlIbmKmsKey](v.Value, v.Error)
+		return
+	},
+	"ibm.database.resourceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).ResourceGroup, ok = plugin.RawToTValue[*mqlIbmResourceGroup](v.Value, v.Error)
+		return
+	},
+	"ibm.database.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.database.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmDatabase).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -3030,6 +4049,13 @@ type mqlIbm struct {
 	VpcSshKeys           plugin.TValue[[]any]
 	VpcFlowLogCollectors plugin.TValue[[]any]
 	PowerWorkspaces      plugin.TValue[[]any]
+	CosBuckets           plugin.TValue[[]any]
+	KmsInstances         plugin.TValue[[]any]
+	KmsKeys              plugin.TValue[[]any]
+	AtrackerTargets      plugin.TValue[[]any]
+	AtrackerRoutes       plugin.TValue[[]any]
+	AtrackerSettings     plugin.TValue[*mqlIbmAtrackerSettings]
+	Databases            plugin.TValue[[]any]
 }
 
 // createIbm creates a new instance of this resource
@@ -3406,6 +4432,118 @@ func (c *mqlIbm) GetPowerWorkspaces() *plugin.TValue[[]any] {
 		}
 
 		return c.powerWorkspaces()
+	})
+}
+
+func (c *mqlIbm) GetCosBuckets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CosBuckets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm", c.__id, "cosBuckets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.cosBuckets()
+	})
+}
+
+func (c *mqlIbm) GetKmsInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.KmsInstances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm", c.__id, "kmsInstances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.kmsInstances()
+	})
+}
+
+func (c *mqlIbm) GetKmsKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.KmsKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm", c.__id, "kmsKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.kmsKeys()
+	})
+}
+
+func (c *mqlIbm) GetAtrackerTargets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AtrackerTargets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm", c.__id, "atrackerTargets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.atrackerTargets()
+	})
+}
+
+func (c *mqlIbm) GetAtrackerRoutes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AtrackerRoutes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm", c.__id, "atrackerRoutes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.atrackerRoutes()
+	})
+}
+
+func (c *mqlIbm) GetAtrackerSettings() *plugin.TValue[*mqlIbmAtrackerSettings] {
+	return plugin.GetOrCompute[*mqlIbmAtrackerSettings](&c.AtrackerSettings, func() (*mqlIbmAtrackerSettings, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm", c.__id, "atrackerSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmAtrackerSettings), nil
+			}
+		}
+
+		return c.atrackerSettings()
+	})
+}
+
+func (c *mqlIbm) GetDatabases() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Databases, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm", c.__id, "databases")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.databases()
 	})
 }
 
@@ -5915,6 +7053,7 @@ type mqlIbmVpcVolume struct {
 	Iops            plugin.TValue[int64]
 	Profile         plugin.TValue[string]
 	Encryption      plugin.TValue[string]
+	EncryptionKey   plugin.TValue[*mqlIbmKmsKey]
 	Status          plugin.TValue[string]
 	AttachmentState plugin.TValue[string]
 	CreatedAt       plugin.TValue[*time.Time]
@@ -5990,6 +7129,22 @@ func (c *mqlIbmVpcVolume) GetProfile() *plugin.TValue[string] {
 
 func (c *mqlIbmVpcVolume) GetEncryption() *plugin.TValue[string] {
 	return &c.Encryption
+}
+
+func (c *mqlIbmVpcVolume) GetEncryptionKey() *plugin.TValue[*mqlIbmKmsKey] {
+	return plugin.GetOrCompute[*mqlIbmKmsKey](&c.EncryptionKey, func() (*mqlIbmKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.vpc.volume", c.__id, "encryptionKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmKmsKey), nil
+			}
+		}
+
+		return c.encryptionKey()
+	})
 }
 
 func (c *mqlIbmVpcVolume) GetStatus() *plugin.TValue[string] {
@@ -6938,6 +8093,1255 @@ func (c *mqlIbmPowerImage) GetTags() *plugin.TValue[[]any] {
 }
 
 func (c *mqlIbmPowerImage) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
+// mqlIbmCosBucket for the ibm.cos.bucket resource
+type mqlIbmCosBucket struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmCosBucketInternal
+	Name                             plugin.TValue[string]
+	Crn                              plugin.TValue[string]
+	Location                         plugin.TValue[string]
+	StorageClass                     plugin.TValue[string]
+	CreatedAt                        plugin.TValue[*time.Time]
+	UpdatedAt                        plugin.TValue[*time.Time]
+	ObjectCount                      plugin.TValue[int64]
+	BytesUsed                        plugin.TValue[int64]
+	HardQuota                        plugin.TValue[int64]
+	AllowedIps                       plugin.TValue[[]any]
+	DeniedIps                        plugin.TValue[[]any]
+	AllowedNetworkTypes              plugin.TValue[[]any]
+	ActivityTrackingReadDataEvents   plugin.TValue[bool]
+	ActivityTrackingWriteDataEvents  plugin.TValue[bool]
+	ActivityTrackingManagementEvents plugin.TValue[bool]
+	UsageMetricsEnabled              plugin.TValue[bool]
+	RequestMetricsEnabled            plugin.TValue[bool]
+	KmsEnabled                       plugin.TValue[bool]
+	KmsKey                           plugin.TValue[*mqlIbmKmsKey]
+	Versioning                       plugin.TValue[string]
+	ObjectLockEnabled                plugin.TValue[bool]
+	RetentionEnabled                 plugin.TValue[bool]
+	RetentionDefaultDays             plugin.TValue[int64]
+	RetentionMinimumDays             plugin.TValue[int64]
+	RetentionMaximumDays             plugin.TValue[int64]
+	PermanentRetentionEnabled        plugin.TValue[bool]
+	PublicAcl                        plugin.TValue[bool]
+	WebsiteEnabled                   plugin.TValue[bool]
+	IsPublic                         plugin.TValue[bool]
+	Instance                         plugin.TValue[*mqlIbmResourceInstance]
+	Tags                             plugin.TValue[[]any]
+	AccessTags                       plugin.TValue[[]any]
+}
+
+// createIbmCosBucket creates a new instance of this resource
+func createIbmCosBucket(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmCosBucket{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.cos.bucket", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmCosBucket) MqlName() string {
+	return "ibm.cos.bucket"
+}
+
+func (c *mqlIbmCosBucket) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmCosBucket) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmCosBucket) GetCrn() *plugin.TValue[string] {
+	return &c.Crn
+}
+
+func (c *mqlIbmCosBucket) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlIbmCosBucket) GetStorageClass() *plugin.TValue[string] {
+	return &c.StorageClass
+}
+
+func (c *mqlIbmCosBucket) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlIbmCosBucket) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.UpdatedAt, func() (*time.Time, error) {
+		return c.updatedAt()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetObjectCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ObjectCount, func() (int64, error) {
+		return c.objectCount()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetBytesUsed() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.BytesUsed, func() (int64, error) {
+		return c.bytesUsed()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetHardQuota() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.HardQuota, func() (int64, error) {
+		return c.hardQuota()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetAllowedIps() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedIps, func() ([]any, error) {
+		return c.allowedIps()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetDeniedIps() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DeniedIps, func() ([]any, error) {
+		return c.deniedIps()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetAllowedNetworkTypes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedNetworkTypes, func() ([]any, error) {
+		return c.allowedNetworkTypes()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetActivityTrackingReadDataEvents() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ActivityTrackingReadDataEvents, func() (bool, error) {
+		return c.activityTrackingReadDataEvents()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetActivityTrackingWriteDataEvents() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ActivityTrackingWriteDataEvents, func() (bool, error) {
+		return c.activityTrackingWriteDataEvents()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetActivityTrackingManagementEvents() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ActivityTrackingManagementEvents, func() (bool, error) {
+		return c.activityTrackingManagementEvents()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetUsageMetricsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.UsageMetricsEnabled, func() (bool, error) {
+		return c.usageMetricsEnabled()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetRequestMetricsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RequestMetricsEnabled, func() (bool, error) {
+		return c.requestMetricsEnabled()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetKmsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.KmsEnabled, func() (bool, error) {
+		return c.kmsEnabled()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetKmsKey() *plugin.TValue[*mqlIbmKmsKey] {
+	return plugin.GetOrCompute[*mqlIbmKmsKey](&c.KmsKey, func() (*mqlIbmKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.cos.bucket", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetVersioning() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Versioning, func() (string, error) {
+		return c.versioning()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetObjectLockEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ObjectLockEnabled, func() (bool, error) {
+		return c.objectLockEnabled()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetRetentionEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RetentionEnabled, func() (bool, error) {
+		return c.retentionEnabled()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetRetentionDefaultDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.RetentionDefaultDays, func() (int64, error) {
+		return c.retentionDefaultDays()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetRetentionMinimumDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.RetentionMinimumDays, func() (int64, error) {
+		return c.retentionMinimumDays()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetRetentionMaximumDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.RetentionMaximumDays, func() (int64, error) {
+		return c.retentionMaximumDays()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetPermanentRetentionEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.PermanentRetentionEnabled, func() (bool, error) {
+		return c.permanentRetentionEnabled()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetPublicAcl() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.PublicAcl, func() (bool, error) {
+		return c.publicAcl()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetWebsiteEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.WebsiteEnabled, func() (bool, error) {
+		return c.websiteEnabled()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetIsPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsPublic, func() (bool, error) {
+		return c.isPublic()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetInstance() *plugin.TValue[*mqlIbmResourceInstance] {
+	return plugin.GetOrCompute[*mqlIbmResourceInstance](&c.Instance, func() (*mqlIbmResourceInstance, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.cos.bucket", c.__id, "instance")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmResourceInstance), nil
+			}
+		}
+
+		return c.instance()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmCosBucket) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
+// mqlIbmKmsInstance for the ibm.kms.instance resource
+type mqlIbmKmsInstance struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmKmsInstanceInternal
+	Id                           plugin.TValue[string]
+	Guid                         plugin.TValue[string]
+	Name                         plugin.TValue[string]
+	Service                      plugin.TValue[string]
+	Region                       plugin.TValue[string]
+	DualAuthDeleteEnabled        plugin.TValue[bool]
+	RotationEnabled              plugin.TValue[bool]
+	RotationIntervalMonth        plugin.TValue[int64]
+	MetricsEnabled               plugin.TValue[bool]
+	AllowedNetwork               plugin.TValue[string]
+	AllowedIpEnabled             plugin.TValue[bool]
+	AllowedIps                   plugin.TValue[[]any]
+	KeyCreateImportAccessEnabled plugin.TValue[bool]
+	CreateRootKey                plugin.TValue[bool]
+	CreateStandardKey            plugin.TValue[bool]
+	ImportRootKey                plugin.TValue[bool]
+	ImportStandardKey            plugin.TValue[bool]
+	EnforceToken                 plugin.TValue[bool]
+	ResourceGroup                plugin.TValue[*mqlIbmResourceGroup]
+	Keys                         plugin.TValue[[]any]
+	Tags                         plugin.TValue[[]any]
+	AccessTags                   plugin.TValue[[]any]
+}
+
+// createIbmKmsInstance creates a new instance of this resource
+func createIbmKmsInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmKmsInstance{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.kms.instance", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmKmsInstance) MqlName() string {
+	return "ibm.kms.instance"
+}
+
+func (c *mqlIbmKmsInstance) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmKmsInstance) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmKmsInstance) GetGuid() *plugin.TValue[string] {
+	return &c.Guid
+}
+
+func (c *mqlIbmKmsInstance) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmKmsInstance) GetService() *plugin.TValue[string] {
+	return &c.Service
+}
+
+func (c *mqlIbmKmsInstance) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlIbmKmsInstance) GetDualAuthDeleteEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.DualAuthDeleteEnabled, func() (bool, error) {
+		return c.dualAuthDeleteEnabled()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetRotationEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RotationEnabled, func() (bool, error) {
+		return c.rotationEnabled()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetRotationIntervalMonth() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.RotationIntervalMonth, func() (int64, error) {
+		return c.rotationIntervalMonth()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetMetricsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.MetricsEnabled, func() (bool, error) {
+		return c.metricsEnabled()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetAllowedNetwork() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AllowedNetwork, func() (string, error) {
+		return c.allowedNetwork()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetAllowedIpEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowedIpEnabled, func() (bool, error) {
+		return c.allowedIpEnabled()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetAllowedIps() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedIps, func() ([]any, error) {
+		return c.allowedIps()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetKeyCreateImportAccessEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.KeyCreateImportAccessEnabled, func() (bool, error) {
+		return c.keyCreateImportAccessEnabled()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetCreateRootKey() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CreateRootKey, func() (bool, error) {
+		return c.createRootKey()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetCreateStandardKey() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CreateStandardKey, func() (bool, error) {
+		return c.createStandardKey()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetImportRootKey() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ImportRootKey, func() (bool, error) {
+		return c.importRootKey()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetImportStandardKey() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ImportStandardKey, func() (bool, error) {
+		return c.importStandardKey()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetEnforceToken() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnforceToken, func() (bool, error) {
+		return c.enforceToken()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetResourceGroup() *plugin.TValue[*mqlIbmResourceGroup] {
+	return plugin.GetOrCompute[*mqlIbmResourceGroup](&c.ResourceGroup, func() (*mqlIbmResourceGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.kms.instance", c.__id, "resourceGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmResourceGroup), nil
+			}
+		}
+
+		return c.resourceGroup()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Keys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.kms.instance", c.__id, "keys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.keys()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmKmsInstance) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
+// mqlIbmKmsKey for the ibm.kms.key resource
+type mqlIbmKmsKey struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmKmsKeyInternal
+	Id                    plugin.TValue[string]
+	Crn                   plugin.TValue[string]
+	Name                  plugin.TValue[string]
+	Description           plugin.TValue[string]
+	StandardKey           plugin.TValue[bool]
+	State                 plugin.TValue[string]
+	Imported              plugin.TValue[bool]
+	KeyRingId             plugin.TValue[string]
+	AlgorithmType         plugin.TValue[string]
+	Deleted               plugin.TValue[bool]
+	RotationEnabled       plugin.TValue[bool]
+	RotationIntervalMonth plugin.TValue[int64]
+	DualAuthDeleteEnabled plugin.TValue[bool]
+	CreatedAt             plugin.TValue[*time.Time]
+	CreatedBy             plugin.TValue[string]
+	UpdatedAt             plugin.TValue[*time.Time]
+	LastRotatedAt         plugin.TValue[*time.Time]
+	ExpiresAt             plugin.TValue[*time.Time]
+	Instance              plugin.TValue[*mqlIbmKmsInstance]
+	Registrations         plugin.TValue[[]any]
+}
+
+// createIbmKmsKey creates a new instance of this resource
+func createIbmKmsKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmKmsKey{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.kms.key", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmKmsKey) MqlName() string {
+	return "ibm.kms.key"
+}
+
+func (c *mqlIbmKmsKey) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmKmsKey) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmKmsKey) GetCrn() *plugin.TValue[string] {
+	return &c.Crn
+}
+
+func (c *mqlIbmKmsKey) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmKmsKey) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlIbmKmsKey) GetStandardKey() *plugin.TValue[bool] {
+	return &c.StandardKey
+}
+
+func (c *mqlIbmKmsKey) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlIbmKmsKey) GetImported() *plugin.TValue[bool] {
+	return &c.Imported
+}
+
+func (c *mqlIbmKmsKey) GetKeyRingId() *plugin.TValue[string] {
+	return &c.KeyRingId
+}
+
+func (c *mqlIbmKmsKey) GetAlgorithmType() *plugin.TValue[string] {
+	return &c.AlgorithmType
+}
+
+func (c *mqlIbmKmsKey) GetDeleted() *plugin.TValue[bool] {
+	return &c.Deleted
+}
+
+func (c *mqlIbmKmsKey) GetRotationEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RotationEnabled, func() (bool, error) {
+		return c.rotationEnabled()
+	})
+}
+
+func (c *mqlIbmKmsKey) GetRotationIntervalMonth() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.RotationIntervalMonth, func() (int64, error) {
+		return c.rotationIntervalMonth()
+	})
+}
+
+func (c *mqlIbmKmsKey) GetDualAuthDeleteEnabled() *plugin.TValue[bool] {
+	return &c.DualAuthDeleteEnabled
+}
+
+func (c *mqlIbmKmsKey) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlIbmKmsKey) GetCreatedBy() *plugin.TValue[string] {
+	return &c.CreatedBy
+}
+
+func (c *mqlIbmKmsKey) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlIbmKmsKey) GetLastRotatedAt() *plugin.TValue[*time.Time] {
+	return &c.LastRotatedAt
+}
+
+func (c *mqlIbmKmsKey) GetExpiresAt() *plugin.TValue[*time.Time] {
+	return &c.ExpiresAt
+}
+
+func (c *mqlIbmKmsKey) GetInstance() *plugin.TValue[*mqlIbmKmsInstance] {
+	return plugin.GetOrCompute[*mqlIbmKmsInstance](&c.Instance, func() (*mqlIbmKmsInstance, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.kms.key", c.__id, "instance")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmKmsInstance), nil
+			}
+		}
+
+		return c.instance()
+	})
+}
+
+func (c *mqlIbmKmsKey) GetRegistrations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Registrations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.kms.key", c.__id, "registrations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.registrations()
+	})
+}
+
+// mqlIbmKmsKeyRegistration for the ibm.kms.key.registration resource
+type mqlIbmKmsKeyRegistration struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIbmKmsKeyRegistrationInternal it will be used here
+	ResourceCrn        plugin.TValue[string]
+	PreventKeyDeletion plugin.TValue[bool]
+	Description        plugin.TValue[string]
+	CreatedAt          plugin.TValue[*time.Time]
+}
+
+// createIbmKmsKeyRegistration creates a new instance of this resource
+func createIbmKmsKeyRegistration(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmKmsKeyRegistration{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.kms.key.registration", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmKmsKeyRegistration) MqlName() string {
+	return "ibm.kms.key.registration"
+}
+
+func (c *mqlIbmKmsKeyRegistration) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmKmsKeyRegistration) GetResourceCrn() *plugin.TValue[string] {
+	return &c.ResourceCrn
+}
+
+func (c *mqlIbmKmsKeyRegistration) GetPreventKeyDeletion() *plugin.TValue[bool] {
+	return &c.PreventKeyDeletion
+}
+
+func (c *mqlIbmKmsKeyRegistration) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlIbmKmsKeyRegistration) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+// mqlIbmAtrackerTarget for the ibm.atracker.target resource
+type mqlIbmAtrackerTarget struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmAtrackerTargetInternal
+	Id                      plugin.TValue[string]
+	Crn                     plugin.TValue[string]
+	Name                    plugin.TValue[string]
+	Type                    plugin.TValue[string]
+	Region                  plugin.TValue[string]
+	WriteStatus             plugin.TValue[string]
+	LastFailureAt           plugin.TValue[*time.Time]
+	LastFailureReason       plugin.TValue[string]
+	ServiceToServiceEnabled plugin.TValue[bool]
+	CosEndpoint             plugin.TValue[string]
+	ManagedBy               plugin.TValue[string]
+	CreatedAt               plugin.TValue[*time.Time]
+	UpdatedAt               plugin.TValue[*time.Time]
+	CosBucket               plugin.TValue[*mqlIbmCosBucket]
+	Destination             plugin.TValue[*mqlIbmResourceInstance]
+}
+
+// createIbmAtrackerTarget creates a new instance of this resource
+func createIbmAtrackerTarget(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmAtrackerTarget{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.atracker.target", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmAtrackerTarget) MqlName() string {
+	return "ibm.atracker.target"
+}
+
+func (c *mqlIbmAtrackerTarget) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmAtrackerTarget) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmAtrackerTarget) GetCrn() *plugin.TValue[string] {
+	return &c.Crn
+}
+
+func (c *mqlIbmAtrackerTarget) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmAtrackerTarget) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlIbmAtrackerTarget) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlIbmAtrackerTarget) GetWriteStatus() *plugin.TValue[string] {
+	return &c.WriteStatus
+}
+
+func (c *mqlIbmAtrackerTarget) GetLastFailureAt() *plugin.TValue[*time.Time] {
+	return &c.LastFailureAt
+}
+
+func (c *mqlIbmAtrackerTarget) GetLastFailureReason() *plugin.TValue[string] {
+	return &c.LastFailureReason
+}
+
+func (c *mqlIbmAtrackerTarget) GetServiceToServiceEnabled() *plugin.TValue[bool] {
+	return &c.ServiceToServiceEnabled
+}
+
+func (c *mqlIbmAtrackerTarget) GetCosEndpoint() *plugin.TValue[string] {
+	return &c.CosEndpoint
+}
+
+func (c *mqlIbmAtrackerTarget) GetManagedBy() *plugin.TValue[string] {
+	return &c.ManagedBy
+}
+
+func (c *mqlIbmAtrackerTarget) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlIbmAtrackerTarget) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlIbmAtrackerTarget) GetCosBucket() *plugin.TValue[*mqlIbmCosBucket] {
+	return plugin.GetOrCompute[*mqlIbmCosBucket](&c.CosBucket, func() (*mqlIbmCosBucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.atracker.target", c.__id, "cosBucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmCosBucket), nil
+			}
+		}
+
+		return c.cosBucket()
+	})
+}
+
+func (c *mqlIbmAtrackerTarget) GetDestination() *plugin.TValue[*mqlIbmResourceInstance] {
+	return plugin.GetOrCompute[*mqlIbmResourceInstance](&c.Destination, func() (*mqlIbmResourceInstance, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.atracker.target", c.__id, "destination")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmResourceInstance), nil
+			}
+		}
+
+		return c.destination()
+	})
+}
+
+// mqlIbmAtrackerRoute for the ibm.atracker.route resource
+type mqlIbmAtrackerRoute struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmAtrackerRouteInternal
+	Id        plugin.TValue[string]
+	Crn       plugin.TValue[string]
+	Name      plugin.TValue[string]
+	Version   plugin.TValue[int64]
+	ManagedBy plugin.TValue[string]
+	CreatedAt plugin.TValue[*time.Time]
+	UpdatedAt plugin.TValue[*time.Time]
+	Rules     plugin.TValue[[]any]
+}
+
+// createIbmAtrackerRoute creates a new instance of this resource
+func createIbmAtrackerRoute(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmAtrackerRoute{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.atracker.route", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmAtrackerRoute) MqlName() string {
+	return "ibm.atracker.route"
+}
+
+func (c *mqlIbmAtrackerRoute) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmAtrackerRoute) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmAtrackerRoute) GetCrn() *plugin.TValue[string] {
+	return &c.Crn
+}
+
+func (c *mqlIbmAtrackerRoute) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmAtrackerRoute) GetVersion() *plugin.TValue[int64] {
+	return &c.Version
+}
+
+func (c *mqlIbmAtrackerRoute) GetManagedBy() *plugin.TValue[string] {
+	return &c.ManagedBy
+}
+
+func (c *mqlIbmAtrackerRoute) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlIbmAtrackerRoute) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlIbmAtrackerRoute) GetRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Rules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.atracker.route", c.__id, "rules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.rules()
+	})
+}
+
+// mqlIbmAtrackerRouteRule for the ibm.atracker.route.rule resource
+type mqlIbmAtrackerRouteRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmAtrackerRouteRuleInternal
+	Locations plugin.TValue[[]any]
+	Targets   plugin.TValue[[]any]
+}
+
+// createIbmAtrackerRouteRule creates a new instance of this resource
+func createIbmAtrackerRouteRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmAtrackerRouteRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.atracker.route.rule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmAtrackerRouteRule) MqlName() string {
+	return "ibm.atracker.route.rule"
+}
+
+func (c *mqlIbmAtrackerRouteRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmAtrackerRouteRule) GetLocations() *plugin.TValue[[]any] {
+	return &c.Locations
+}
+
+func (c *mqlIbmAtrackerRouteRule) GetTargets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Targets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.atracker.route.rule", c.__id, "targets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.targets()
+	})
+}
+
+// mqlIbmAtrackerSettings for the ibm.atracker.settings resource
+type mqlIbmAtrackerSettings struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmAtrackerSettingsInternal
+	PermittedTargetRegions plugin.TValue[[]any]
+	MetadataRegionPrimary  plugin.TValue[string]
+	MetadataRegionBackup   plugin.TValue[string]
+	PrivateApiEndpointOnly plugin.TValue[bool]
+	DefaultTargets         plugin.TValue[[]any]
+}
+
+// createIbmAtrackerSettings creates a new instance of this resource
+func createIbmAtrackerSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmAtrackerSettings{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.atracker.settings", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmAtrackerSettings) MqlName() string {
+	return "ibm.atracker.settings"
+}
+
+func (c *mqlIbmAtrackerSettings) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmAtrackerSettings) GetPermittedTargetRegions() *plugin.TValue[[]any] {
+	return &c.PermittedTargetRegions
+}
+
+func (c *mqlIbmAtrackerSettings) GetMetadataRegionPrimary() *plugin.TValue[string] {
+	return &c.MetadataRegionPrimary
+}
+
+func (c *mqlIbmAtrackerSettings) GetMetadataRegionBackup() *plugin.TValue[string] {
+	return &c.MetadataRegionBackup
+}
+
+func (c *mqlIbmAtrackerSettings) GetPrivateApiEndpointOnly() *plugin.TValue[bool] {
+	return &c.PrivateApiEndpointOnly
+}
+
+func (c *mqlIbmAtrackerSettings) GetDefaultTargets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DefaultTargets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.atracker.settings", c.__id, "defaultTargets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.defaultTargets()
+	})
+}
+
+// mqlIbmDatabase for the ibm.database resource
+type mqlIbmDatabase struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmDatabaseInternal
+	Id                     plugin.TValue[string]
+	Guid                   plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	Service                plugin.TValue[string]
+	Type                   plugin.TValue[string]
+	Region                 plugin.TValue[string]
+	State                  plugin.TValue[string]
+	Version                plugin.TValue[string]
+	PublicEndpointEnabled  plugin.TValue[bool]
+	PrivateEndpointEnabled plugin.TValue[bool]
+	Allowlist              plugin.TValue[[]any]
+	MemberCount            plugin.TValue[int64]
+	CreatedAt              plugin.TValue[*time.Time]
+	DiskEncryptionKey      plugin.TValue[*mqlIbmKmsKey]
+	BackupEncryptionKey    plugin.TValue[*mqlIbmKmsKey]
+	ResourceGroup          plugin.TValue[*mqlIbmResourceGroup]
+	Tags                   plugin.TValue[[]any]
+	AccessTags             plugin.TValue[[]any]
+}
+
+// createIbmDatabase creates a new instance of this resource
+func createIbmDatabase(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmDatabase{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.database", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmDatabase) MqlName() string {
+	return "ibm.database"
+}
+
+func (c *mqlIbmDatabase) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmDatabase) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmDatabase) GetGuid() *plugin.TValue[string] {
+	return &c.Guid
+}
+
+func (c *mqlIbmDatabase) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmDatabase) GetService() *plugin.TValue[string] {
+	return &c.Service
+}
+
+func (c *mqlIbmDatabase) GetType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Type, func() (string, error) {
+		return c.compute_type()
+	})
+}
+
+func (c *mqlIbmDatabase) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlIbmDatabase) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlIbmDatabase) GetVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
+		return c.version()
+	})
+}
+
+func (c *mqlIbmDatabase) GetPublicEndpointEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.PublicEndpointEnabled, func() (bool, error) {
+		return c.publicEndpointEnabled()
+	})
+}
+
+func (c *mqlIbmDatabase) GetPrivateEndpointEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.PrivateEndpointEnabled, func() (bool, error) {
+		return c.privateEndpointEnabled()
+	})
+}
+
+func (c *mqlIbmDatabase) GetAllowlist() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Allowlist, func() ([]any, error) {
+		return c.allowlist()
+	})
+}
+
+func (c *mqlIbmDatabase) GetMemberCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MemberCount, func() (int64, error) {
+		return c.memberCount()
+	})
+}
+
+func (c *mqlIbmDatabase) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlIbmDatabase) GetDiskEncryptionKey() *plugin.TValue[*mqlIbmKmsKey] {
+	return plugin.GetOrCompute[*mqlIbmKmsKey](&c.DiskEncryptionKey, func() (*mqlIbmKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.database", c.__id, "diskEncryptionKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmKmsKey), nil
+			}
+		}
+
+		return c.diskEncryptionKey()
+	})
+}
+
+func (c *mqlIbmDatabase) GetBackupEncryptionKey() *plugin.TValue[*mqlIbmKmsKey] {
+	return plugin.GetOrCompute[*mqlIbmKmsKey](&c.BackupEncryptionKey, func() (*mqlIbmKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.database", c.__id, "backupEncryptionKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmKmsKey), nil
+			}
+		}
+
+		return c.backupEncryptionKey()
+	})
+}
+
+func (c *mqlIbmDatabase) GetResourceGroup() *plugin.TValue[*mqlIbmResourceGroup] {
+	return plugin.GetOrCompute[*mqlIbmResourceGroup](&c.ResourceGroup, func() (*mqlIbmResourceGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.database", c.__id, "resourceGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmResourceGroup), nil
+			}
+		}
+
+		return c.resourceGroup()
+	})
+}
+
+func (c *mqlIbmDatabase) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmDatabase) GetAccessTags() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
 		return c.accessTags()
 	})

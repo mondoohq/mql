@@ -1,15 +1,17 @@
 # IBM Cloud Provider
 
 The `ibm` provider connects to an [IBM Cloud](https://cloud.ibm.com/) account and inventories its
-IAM configuration, resource groups and instances, VPC infrastructure, and Power Virtual Server
-workspaces through read-only API calls. Use it to audit account settings such as MFA and session
+IAM configuration, resource groups and instances, VPC infrastructure, Power Virtual Server
+workspaces, Cloud Object Storage buckets, Key Protect keys, Activity Tracker Event Routing, and
+IBM Cloud Databases through read-only API calls. Use it to audit account settings such as MFA and session
 limits, who holds which roles, network exposure in VPCs, and Power Virtual Server workloads.
 
 ## Prerequisites
 
 An IBM Cloud API key. A key whose identity has the Viewer role on IAM Identity, IAM Access Groups,
-and the services you query, plus Reader on VPC Infrastructure and Power Virtual Server, is enough.
-The provider only reads.
+and the services you query, plus Reader on VPC Infrastructure, Power Virtual Server, Key Protect,
+Activity Tracker Event Routing, and IBM Cloud Databases, is enough. Reading a bucket's firewall and
+activity tracking settings needs the Manager role on Cloud Object Storage. The provider only reads.
 
 ## Authentication
 
@@ -125,6 +127,30 @@ mql> ibm.vpcs.where(tags.none(_ == /^owner:/)) { name region tags }
 
 Tags are read once per scan through Global Search, for resource groups, resource instances, VPC
 resources, and Power Virtual Server resources.
+
+**Buckets without a customer-managed key or activity tracking**
+
+```shell
+mql> ibm.cosBuckets.where(!kmsEnabled || !activityTrackingManagementEvents) { name location kmsKey { name } }
+```
+
+**Root keys that do not rotate**
+
+```shell
+mql> ibm.kmsKeys.where(!standardKey && !rotationEnabled) { name instance { name } registrations { resourceCrn } }
+```
+
+**Is every region's audit trail routed somewhere?**
+
+```shell
+mql> ibm.atrackerRoutes { name rules { locations targets { name type writeStatus } } }
+```
+
+**Databases reachable from any address**
+
+```shell
+mql> ibm.databases.where(publicEndpointEnabled && allowlist.length == 0) { name type version region }
+```
 
 **Power Virtual Server workspaces and their images**
 

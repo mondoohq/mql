@@ -18,7 +18,9 @@ option root = "ibm"
 // flow log collectors) is collected from every VPC region the connection is
 // scoped to, and each object carries its `region`. Power Virtual Server
 // workspaces are found through the resource controller and queried in their
-// own zone.
+// own zone. Cloud Object Storage buckets, Key Protect keys, Activity Tracker
+// Event Routing, and IBM Cloud Databases cover data protection and audit
+// logging.
 ibm @root {
   // Account ID
   accountId string
@@ -64,6 +66,20 @@ ibm @root {
   vpcFlowLogCollectors() []ibm.vpc.flowLogCollector
   // Power Virtual Server workspaces
   powerWorkspaces() []ibm.power.workspace
+  // Cloud Object Storage buckets of every Cloud Object Storage instance
+  cosBuckets() []ibm.cos.bucket
+  // Key Protect and Hyper Protect Crypto Services instances
+  kmsInstances() []ibm.kms.instance
+  // Keys of every Key Protect and Hyper Protect Crypto Services instance
+  kmsKeys() []ibm.kms.key
+  // Activity Tracker Event Routing targets
+  atrackerTargets() []ibm.atracker.target
+  // Activity Tracker Event Routing routes
+  atrackerRoutes() []ibm.atracker.route
+  // Activity Tracker Event Routing account settings
+  atrackerSettings() ibm.atracker.settings
+  // IBM Cloud Databases deployments
+  databases() []ibm.database
 }
 
 // IBM Cloud IAM account settings
@@ -729,6 +745,8 @@ private ibm.vpc.volume @defaults("name zone capacity") {
   profile string
   // Encryption type: provider_managed or user_managed (customer-managed key)
   encryption string
+  // Customer-managed key encrypting the volume; null when IBM manages the key
+  encryptionKey() ibm.kms.key
   // Status, for example available
   status string
   // Attachment state: attached, unattached, or unusable
@@ -969,6 +987,326 @@ private ibm.power.image @defaults("name operatingSystem state") {
   storageType string
   // Creation timestamp
   createdAt time
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud Object Storage bucket
+//
+// A bucket in a Cloud Object Storage instance with its location and storage
+// class, firewall, activity tracking and metrics, encryption key, versioning,
+// retention, and public exposure. A bucket is public when its ACL grants
+// AllUsers access or when the account's Public Access group is granted access
+// to it.
+private ibm.cos.bucket @defaults("name location storageClass") {
+  // Bucket name
+  name string
+  // Bucket CRN
+  crn string
+  // Location of the bucket, for example us-south (regional), us (cross region), or ams03 (single site)
+  location string
+  // Storage class, for example standard, smart, vault, or cold
+  storageClass string
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt() time
+  // Number of objects in the bucket
+  objectCount() int
+  // Bytes stored in the bucket
+  bytesUsed() int
+  // Maximum bytes the bucket may hold; null when unlimited
+  hardQuota() int
+  // IP addresses and ranges allowed to access the bucket; empty when no firewall is set
+  allowedIps() []string
+  // IP addresses and ranges denied access to the bucket
+  deniedIps() []string
+  // Network types allowed to access the bucket: public, private, or direct; empty when all are allowed
+  allowedNetworkTypes() []string
+  // Whether read data events are sent to Activity Tracker
+  activityTrackingReadDataEvents() bool
+  // Whether write data events are sent to Activity Tracker
+  activityTrackingWriteDataEvents() bool
+  // Whether management events are sent to Activity Tracker
+  activityTrackingManagementEvents() bool
+  // Whether usage metrics are sent to IBM Cloud Monitoring
+  usageMetricsEnabled() bool
+  // Whether request metrics are sent to IBM Cloud Monitoring
+  requestMetricsEnabled() bool
+  // Whether the bucket is encrypted with a customer-managed key from Key Protect or Hyper Protect Crypto Services
+  kmsEnabled() bool
+  // Customer-managed root key encrypting the bucket; null when IBM manages the key
+  kmsKey() ibm.kms.key
+  // Versioning status: Enabled or Suspended; empty when versioning was never enabled
+  versioning() string
+  // Whether object lock is enabled
+  objectLockEnabled() bool
+  // Whether an immutable retention policy is enabled
+  retentionEnabled() bool
+  // Default retention period in days; null without a retention policy
+  retentionDefaultDays() int
+  // Minimum retention period in days; null without a retention policy
+  retentionMinimumDays() int
+  // Maximum retention period in days; null without a retention policy
+  retentionMaximumDays() int
+  // Whether permanent retention can be set on objects
+  permanentRetentionEnabled() bool
+  // Whether the bucket ACL grants access to all users
+  publicAcl() bool
+  // Whether the bucket serves a static website
+  websiteEnabled() bool
+  // Whether anyone on the internet can access the bucket, through its ACL or the Public Access group
+  isPublic() bool
+  // Cloud Object Storage instance the bucket belongs to
+  instance() ibm.resourceInstance
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud key management instance
+//
+// A Key Protect or Hyper Protect Crypto Services instance with its
+// instance-wide policies (rotation, dual authorization for deletion, allowed
+// network and IP addresses, key creation and import access, metrics) and its
+// keys.
+private ibm.kms.instance @defaults("name region service") {
+  // Instance CRN
+  id string
+  // Instance GUID
+  guid string
+  // Instance name
+  name string
+  // Service: kms (Key Protect) or hs-crypto (Hyper Protect Crypto Services)
+  service string
+  // Region of the instance
+  region string
+  // Whether deleting a key requires approval by a second user
+  dualAuthDeleteEnabled() bool
+  // Whether the instance rotation policy is enabled for root keys
+  rotationEnabled() bool
+  // Rotation interval in months set by the instance rotation policy; null when it is not set
+  rotationIntervalMonth() int
+  // Whether metrics are sent to IBM Cloud Monitoring
+  metricsEnabled() bool
+  // Networks the instance accepts requests from: public-and-private or private-only; null when no policy is set
+  allowedNetwork() string
+  // Whether requests are restricted to the allowed IP addresses
+  allowedIpEnabled() bool
+  // IP addresses and ranges allowed to call the instance
+  allowedIps() []string
+  // Whether the key creation and import access policy is enabled
+  keyCreateImportAccessEnabled() bool
+  // Whether root keys can be created
+  createRootKey() bool
+  // Whether standard keys can be created
+  createStandardKey() bool
+  // Whether root keys can be imported
+  importRootKey() bool
+  // Whether standard keys can be imported
+  importStandardKey() bool
+  // Whether imported keys must use an import token
+  enforceToken() bool
+  // Resource group of the instance
+  resourceGroup() ibm.resourceGroup
+  // Keys in the instance
+  keys() []ibm.kms.key
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud key management key
+//
+// A root or standard key in a Key Protect or Hyper Protect Crypto Services
+// instance with its state, rotation policy and last rotation, expiration,
+// dual authorization for deletion, and the resources it protects.
+private ibm.kms.key @defaults("name standardKey state") {
+  // Key ID
+  id string
+  // Key CRN
+  crn string
+  // Key name
+  name string
+  // Key description
+  description string
+  // Whether this is a standard key; root keys wrap other keys and never leave the service
+  standardKey bool
+  // State: preActivation, active, suspended, deactivated, or destroyed
+  state string
+  // Whether the key material was imported rather than generated by the service
+  imported bool
+  // Key ring the key belongs to
+  keyRingId string
+  // Algorithm, for example AES
+  algorithmType string
+  // Whether the key has been deleted
+  deleted bool
+  // Whether the key's own rotation policy rotates it automatically; standard keys never rotate
+  rotationEnabled() bool
+  // Rotation interval in months from the key's own rotation policy; null when the key has none
+  rotationIntervalMonth() int
+  // Whether deleting the key requires approval by a second user
+  dualAuthDeleteEnabled bool
+  // Creation timestamp
+  createdAt time
+  // IAM ID of the identity that created the key
+  createdBy string
+  // Last update timestamp
+  updatedAt time
+  // Last rotation timestamp; null when the key was never rotated
+  lastRotatedAt time
+  // Expiration timestamp; null when the key does not expire
+  expiresAt time
+  // Instance the key belongs to
+  instance() ibm.kms.instance
+  // Resources protected by the key
+  registrations() []ibm.kms.key.registration
+}
+
+// IBM Cloud key management key registration
+private ibm.kms.key.registration @defaults("resourceCrn preventKeyDeletion") {
+  // CRN of the resource protected by the key
+  resourceCrn string
+  // Whether the registration prevents the key from being deleted
+  preventKeyDeletion bool
+  // Registration description
+  description string
+  // Creation timestamp
+  createdAt time
+}
+
+// IBM Cloud Activity Tracker Event Routing target
+//
+// A destination for audit events: a Cloud Object Storage bucket, a Cloud Logs
+// instance, an Event Streams topic, or an App Configuration instance, with the
+// status of its last write.
+private ibm.atracker.target @defaults("name type writeStatus") {
+  // Target ID
+  id string
+  // Target CRN
+  crn string
+  // Target name
+  name string
+  // Target type: cloud_object_storage, cloud_logs, event_streams, or app_config
+  type string
+  // Region of the target
+  region string
+  // Status of the last write: success or failed
+  writeStatus string
+  // Time of the last failed write; null when writing never failed
+  lastFailureAt time
+  // Reason for the last failed write
+  lastFailureReason string
+  // Whether the target authenticates with a service-to-service authorization instead of an API key
+  serviceToServiceEnabled bool
+  // Cloud Object Storage endpoint the target writes to; empty for other target types
+  cosEndpoint string
+  // Who manages the target: account or enterprise
+  managedBy string
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+  // Cloud Object Storage bucket the target writes to; null for other target types
+  cosBucket() ibm.cos.bucket
+  // Service instance receiving the events (Cloud Object Storage, Cloud Logs, Event Streams, or App Configuration)
+  destination() ibm.resourceInstance
+}
+
+// IBM Cloud Activity Tracker Event Routing route
+//
+// A route that sends the audit events of selected locations to targets. A
+// location of `*` selects every location, and `global` selects the events of
+// global services such as IAM.
+private ibm.atracker.route @defaults("name") {
+  // Route ID
+  id string
+  // Route CRN
+  crn string
+  // Route name
+  name string
+  // Route version
+  version int
+  // Who manages the route: account or enterprise
+  managedBy string
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+  // Rules in the route
+  rules() []ibm.atracker.route.rule
+}
+
+// IBM Cloud Activity Tracker Event Routing route rule
+private ibm.atracker.route.rule @defaults("locations") {
+  // Locations whose events the rule routes, for example us-south, global, or *
+  locations []string
+  // Targets the events are sent to
+  targets() []ibm.atracker.target
+}
+
+// IBM Cloud Activity Tracker Event Routing settings
+//
+// Account-wide routing settings: the default targets that receive events no
+// route matches, the regions targets may be created in, where routing
+// metadata is stored, and whether only the private API endpoint is accepted.
+private ibm.atracker.settings @defaults("metadataRegionPrimary privateApiEndpointOnly") {
+  // Regions targets may be created in; empty when any region is permitted
+  permittedTargetRegions []string
+  // Region storing the routing metadata
+  metadataRegionPrimary string
+  // Backup region for the routing metadata
+  metadataRegionBackup string
+  // Whether the routing API accepts only private endpoint requests
+  privateApiEndpointOnly bool
+  // Targets receiving events that no route matches
+  defaultTargets() []ibm.atracker.target
+}
+
+// IBM Cloud Databases deployment
+//
+// A managed database deployment (PostgreSQL, MySQL, Redis, MongoDB,
+// Elasticsearch, etcd, RabbitMQ, and others) with its version, public and
+// private endpoints, IP allowlist, disk and backup encryption keys, and
+// member count.
+private ibm.database @defaults("name type version region") {
+  // Deployment CRN
+  id string
+  // Deployment GUID
+  guid string
+  // Deployment name
+  name string
+  // Service name, for example databases-for-postgresql
+  service string
+  // Database type, for example postgresql
+  type() string
+  // Region of the deployment
+  region string
+  // State, for example active
+  state string
+  // Database version, for example 16
+  version() string
+  // Whether the deployment is reachable through public endpoints
+  publicEndpointEnabled() bool
+  // Whether the deployment is reachable through private endpoints
+  privateEndpointEnabled() bool
+  // IP addresses and ranges allowed to connect; empty when every address is allowed
+  allowlist() []string
+  // Number of members (nodes) in the deployment
+  memberCount() int
+  // Creation timestamp
+  createdAt time
+  // Key Protect or Hyper Protect Crypto Services key encrypting the disks; null when IBM manages the key
+  diskEncryptionKey() ibm.kms.key
+  // Key Protect or Hyper Protect Crypto Services key encrypting the backups; null when IBM manages the key
+  backupEncryptionKey() ibm.kms.key
+  // Resource group of the deployment
+  resourceGroup() ibm.resourceGroup
   // User tags, for example env:prod
   tags() []string
   // Access management tags, which IAM policies can grant access by

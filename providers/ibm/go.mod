@@ -6,7 +6,11 @@ go 1.26.8
 
 require (
 	github.com/IBM-Cloud/power-go-client v1.17.0
+	github.com/IBM/cloud-databases-go-sdk v0.8.1
 	github.com/IBM/go-sdk-core/v5 v5.24.0
+	github.com/IBM/ibm-cos-sdk-go v1.15.1
+	github.com/IBM/ibm-cos-sdk-go-config/v2 v2.3.1
+	github.com/IBM/keyprotect-go-client v1.0.1
 	github.com/IBM/platform-services-go-sdk v0.103.4
 	github.com/IBM/vpc-go-sdk v0.92.0
 	github.com/go-openapi/runtime v0.28.0
@@ -83,6 +87,7 @@ require (
 	github.com/hashicorp/yamux v0.1.2 // indirect
 	github.com/hokaccha/go-prettyjson v0.0.0-20211117102719-0474bc63780f // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/kevinburke/ssh_config v1.6.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect

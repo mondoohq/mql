@@ -145,3 +145,11 @@ func TestAdvances(t *testing.T) {
 	assert.False(t, advances(&a, &a), "an unchanged cursor would loop forever")
 	assert.False(t, advances(&a, nil), "no cursor is the last page")
 }
+
+func TestCrnSegment(t *testing.T) {
+	crn := "crn:v1:bluemix:public:cloud-object-storage:global:a/acc:guid:bucket:logs"
+	assert.Equal(t, "cloud-object-storage", crnSegment(crn, 4))
+	assert.Equal(t, "guid", crnSegment(crn, 7))
+	assert.Equal(t, "bucket", crnSegment(crn, 8))
+	assert.Equal(t, "", crnSegment(crn, 12))
+}

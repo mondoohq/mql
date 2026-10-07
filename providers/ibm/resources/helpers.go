@@ -348,6 +348,42 @@ func asJSON(in any, out any) error {
 	return json.Unmarshal(b, out)
 }
 
+// getJSON reads an API path the SDK models lossily, or not at all, into out
+// through the service's own client, so it shares its authentication, retries,
+// and timeout.
+func getJSON(svc *core.BaseService, path string, headers map[string]string, out any) error {
+	b := core.NewRequestBuilder(core.GET)
+	if _, err := b.ResolveRequestURL(svc.Options.URL, path, nil); err != nil {
+		return err
+	}
+	b.AddHeader("Accept", "application/json")
+	for k, v := range headers {
+		b.AddHeader(k, v)
+	}
+	req, err := b.Build()
+	if err != nil {
+		return err
+	}
+	var raw json.RawMessage
+	if _, err := svc.Request(req, &raw); err != nil {
+		return err
+	}
+	if len(raw) == 0 {
+		return nil
+	}
+	return json.Unmarshal(raw, out)
+}
+
+// crnSegment returns a segment of a CRN:
+// crn:v1:bluemix:public:<service 4>:<location 5>:a/<account 6>:<instance 7>:<type 8>:<resource 9>
+func crnSegment(crn string, i int) string {
+	parts := strings.Split(crn, ":")
+	if i < len(parts) {
+		return parts[i]
+	}
+	return ""
+}
+
 // pageToken extracts the paging token from the next-page URL the IAM APIs
 // return.
 func pageToken(next *string, param string) *string {

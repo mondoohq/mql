@@ -6,6 +6,7 @@ package connection
 import (
 	"errors"
 	"fmt"
+	"github.com/IBM/ibm-cos-sdk-go/aws/awserr"
 	"net/http"
 	"testing"
 
@@ -45,4 +46,19 @@ func TestStatusCodePowerErrors(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, StatusCode(errors.New("error: Rate Limited. Please try again later")))
 	assert.Equal(t, 0, StatusCode(errors.New("dial tcp: connection refused")))
 	assert.Equal(t, 0, StatusCode(nil))
+}
+
+func TestStatusCodeCosErrors(t *testing.T) {
+	denied := awserr.NewRequestFailure(awserr.New("AccessDenied", "Access Denied", nil), 403, "req-1")
+	assert.Equal(t, 403, StatusCode(denied))
+	assert.Equal(t, 0, StatusCode(awserr.New("RequestError", "send request failed", nil)), "a transport failure carries no status")
+}
+
+func TestDatabasesEndpoint(t *testing.T) {
+	assert.Equal(t, "https://api.eu-de.databases.cloud.ibm.com/v5/ibm", DatabasesEndpoint("eu-de"))
+}
+
+func TestCosEndpoint(t *testing.T) {
+	assert.Equal(t, "https://s3.us-south.cloud-object-storage.appdomain.cloud", CosEndpoint("us-south"))
+	assert.Equal(t, "https://s3.ams03.cloud-object-storage.appdomain.cloud", CosEndpoint("ams03"))
 }
