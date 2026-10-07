@@ -24,9 +24,10 @@ limitations under the License.
 // (k8s.io/kubernetes/...) are inlined here so this package does not have to
 // depend on the full Kubernetes tree.
 //
-// kubeletupstream/baseline.json records the upstream sources this file was
-// last checked against. A weekly workflow (kubelet-defaults-drift.yaml) opens
-// an issue when a new release branch appears or those sources change.
+// scripts/kubelet-defaults-drift/baseline.json records the upstream sources
+// this file was last checked against. A weekly workflow
+// (kubelet-defaults-drift.yaml) opens an issue when a new release branch
+// appears or those sources change.
 package resources
 
 import (

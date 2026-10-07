@@ -46,7 +46,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set +e
-          go run ./providers/os/resources/kubeletupstream -report "${RUNNER_TEMP}/report.md"
+          go run ./scripts/kubelet-defaults-drift -report "${RUNNER_TEMP}/report.md"
           rc=$?
           set -e
           if [ "${rc}" -eq 2 ]; then

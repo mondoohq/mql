@@ -1,7 +1,7 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-// Command kubeletupstream checks whether upstream Kubernetes changed the
+// Command kubelet-defaults-drift checks whether upstream Kubernetes changed the
 // kubelet defaults that providers/os/resources/kubelet_defaults.go copies.
 //
 // It reads every release-1.N branch of kubernetes/kubernetes from the oldest
@@ -11,8 +11,8 @@
 //
 // Usage, from the repository root:
 //
-//	go run ./providers/os/resources/kubeletupstream -report report.md
-//	go run ./providers/os/resources/kubeletupstream -update
+//	go run ./scripts/kubelet-defaults-drift -report report.md
+//	go run ./scripts/kubelet-defaults-drift -update
 //
 // It exits 0 when nothing changed, 2 when something did, and 1 on error.
 // -update rewrites the baseline from the current release branches. Run it in
@@ -43,7 +43,7 @@ const (
 var errNotFound = errors.New("not found")
 
 func main() {
-	baselinePath := flag.String("baseline", "providers/os/resources/kubeletupstream/baseline.json", "baseline file")
+	baselinePath := flag.String("baseline", "scripts/kubelet-defaults-drift/baseline.json", "baseline file")
 	defaultsPath := flag.String("defaults", "providers/os/resources/kubelet_defaults.go", "kubelet_defaults.go, for the feature gates it reads")
 	reportPath := flag.String("report", "", "write a markdown report here")
 	update := flag.Bool("update", false, "rewrite the baseline from the current release branches")
@@ -159,7 +159,7 @@ func (u *upstream) get(url string) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("User-Agent", "mql-kubeletupstream")
+		req.Header.Set("User-Agent", "mql-kubelet-defaults-drift")
 		if u.token != "" {
 			req.Header.Set("Authorization", "Bearer "+u.token)
 		}
@@ -269,7 +269,7 @@ func (u *upstream) report(b Baseline, minors map[int]string, items []item, findi
 	sb.WriteString("`providers/os/resources/kubelet_defaults.go` copies the kubelet's defaults from upstream Kubernetes. " +
 		"These upstream sources differ from the baseline it was last checked against. " +
 		"Update `kubelet_defaults.go` and the `TestSetDefaults_ByVersion` cases, add a `/configz` fixture for a new minor version, " +
-		"and run `go run ./providers/os/resources/kubeletupstream -update` in the same pull request.\n")
+		"and run `go run ./scripts/kubelet-defaults-drift -update` in the same pull request.\n")
 
 	byID := map[string]item{}
 	for _, it := range items {
