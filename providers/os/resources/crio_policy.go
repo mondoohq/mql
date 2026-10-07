@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -181,8 +182,22 @@ func (p *mqlCrioImagePolicy) file() (*mqlFile, error) {
 	return f.(*mqlFile), nil
 }
 
+type mqlCrioImagePolicyInternal struct {
+	lock      sync.Mutex
+	fetched   bool
+	parsed    crioPolicy
+	policyErr error
+}
+
+// policy reads and parses the policy file once for all of its fields.
 func (p *mqlCrioImagePolicy) policy() (crioPolicy, error) {
-	return parseCrioPolicy(readKubeletFile(p.MqlRuntime, p.Path.Data))
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if !p.fetched {
+		p.parsed, p.policyErr = parseCrioPolicy(readKubeletFile(p.MqlRuntime, p.Path.Data))
+		p.fetched = true
+	}
+	return p.parsed, p.policyErr
 }
 
 func (p *mqlCrioImagePolicy) defaultRequirements() ([]any, error) {
@@ -267,7 +282,8 @@ type crioRuntimeHandler struct {
 }
 
 // crioRuntimeHandlers returns the runtime handlers of a configuration, by
-// name. An empty runtime_type is CRI-O's default, oci.
+// name. An empty runtime_type is CRI-O's default, oci. An entry that is not a
+// table is not a handler and is left out.
 func crioRuntimeHandlers(cfg map[string]any) []crioRuntimeHandler {
 	runtimes, _ := crioConfigValue(cfg, "runtime", "runtimes").(map[string]any)
 	names := make([]string, 0, len(runtimes))
@@ -277,7 +293,10 @@ func crioRuntimeHandlers(cfg map[string]any) []crioRuntimeHandler {
 	sort.Strings(names)
 	res := []crioRuntimeHandler{}
 	for _, name := range names {
-		t, _ := runtimes[name].(map[string]any)
+		t, ok := runtimes[name].(map[string]any)
+		if !ok {
+			continue
+		}
 		h := crioRuntimeHandler{Name: name}
 		h.Path, _ = t["runtime_path"].(string)
 		h.Type, _ = t["runtime_type"].(string)

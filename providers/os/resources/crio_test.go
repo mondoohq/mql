@@ -242,4 +242,12 @@ func TestCrioRuntimeHandlers(t *testing.T) {
 	assert.Empty(t, runc.AllowedAnnotations)
 
 	assert.Empty(t, crioRuntimeHandlers(map[string]any{}))
+
+	notTable := map[string]any{"crio": map[string]any{"runtime": map[string]any{"runtimes": map[string]any{
+		"crun":   map[string]any{"runtime_path": "/usr/bin/crun"},
+		"broken": "not a table",
+	}}}}
+	handlers = crioRuntimeHandlers(notTable)
+	require.Len(t, handlers, 1)
+	assert.Equal(t, "crun", handlers[0].Name)
 }

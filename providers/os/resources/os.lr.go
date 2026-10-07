@@ -67191,7 +67191,7 @@ func (c *mqlCrio) GetRuntimes() *plugin.TValue[[]any] {
 type mqlCrioImagePolicy struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlCrioImagePolicyInternal it will be used here
+	mqlCrioImagePolicyInternal
 	Path                plugin.TValue[string]
 	Namespace           plugin.TValue[string]
 	File                plugin.TValue[*mqlFile]
