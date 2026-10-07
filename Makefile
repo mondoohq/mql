@@ -228,7 +228,6 @@ PROVIDERS := \
 	digitalocean \
 	dropbox \
 	elasticsearch \
-	exoscale \
 	gcp \
 	github \
 	gitlab \
@@ -238,7 +237,6 @@ PROVIDERS := \
 	helm \
 	hetzner \
 	huggingface \
-	ibm \
 	ipinfo \
 	ipmi \
 	iru \
@@ -330,6 +328,26 @@ providers/permissions:
 	@go run providers-sdk/v1/util/permissions/permissions.go providers/aws
 	@go run providers-sdk/v1/util/permissions/permissions.go providers/gcp
 	@go run providers-sdk/v1/util/permissions/permissions.go providers/azure
+
+# Check that the generated permission manifests can be used to build a role or
+# policy, in two halves. check/catalog asks each cloud's own permission list
+# about every entry: AWS's Service Reference (public), Google's
+# queryTestablePermissions (gcloud login, GCP_PROJECT, GCP_ORGANIZATION) and
+# Azure's provider operation registry (az login). check/live then has each
+# cloud accept the whole manifest itself: IAM Access Analyzer over the AWS
+# policies (aws login), custom roles created and deleted on GCP (iam.roles.create
+# on GCP_PROJECT and GCP_ORGANIZATION) and on Azure (roleDefinitions/write at
+# AZURE_CHECK_SCOPE, e.g. /subscriptions/<id>).
+providers/permissions/check: providers/permissions/check/catalog providers/permissions/check/live
+
+providers/permissions/check/catalog:
+	@go run ./providers-sdk/v1/util/permissions/validate
+
+providers/permissions/check/live:
+	@scripts/test-iam-permissions.sh aws-check
+	@scripts/test-iam-permissions.sh gcp-check
+	@test -n "$(AZURE_CHECK_SCOPE)" || { echo "set AZURE_CHECK_SCOPE (e.g. /subscriptions/<id>)"; exit 1; }
+	@scripts/test-iam-permissions.sh azure-check "$(AZURE_CHECK_SCOPE)"
 
 providers/test:
 	@$(call testProvider, providers/core)
