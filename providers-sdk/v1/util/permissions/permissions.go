@@ -36,10 +36,6 @@ type PermissionDetail struct {
 	Action     string `json:"action"`
 	SourceFile string `json:"source_file"`
 	Scope      string `json:"scope,omitempty"`
-	// SDK names the SDK call the permission was derived from, for Azure:
-	// "<import path> <Client>.<Method>". The validator reads that call's URL
-	// path from the SDK source and derives the operation Azure names for it.
-	SDK string `json:"sdk,omitempty"`
 
 	// overridden is an internal dedup hint (never serialized): true when the
 	// Permission came from an override map rather than the natural derivation of
@@ -138,22 +134,15 @@ func main() {
 		if details[i].Action != details[j].Action {
 			return details[i].Action < details[j].Action
 		}
-		if details[i].SDK != details[j].SDK {
-			return details[i].SDK < details[j].SDK
-		}
 		return details[i].Scope < details[j].Scope
 	})
 
-	// Deduplicate details (same permission + source file + SDK call). The SDK
-	// call is part of the key so that every distinct Azure call behind a
-	// permission keeps its row: the validator checks each call's URL path, and
-	// a client's Get and List may legitimately share a permission while a
-	// third method on the same client needs another.
+	// Deduplicate details (same permission + source file)
 	if len(details) > 0 {
 		deduped := []PermissionDetail{details[0]}
 		for i := 1; i < len(details); i++ {
 			prev := deduped[len(deduped)-1]
-			if details[i].Permission != prev.Permission || details[i].SourceFile != prev.SourceFile || details[i].SDK != prev.SDK {
+			if details[i].Permission != prev.Permission || details[i].SourceFile != prev.SourceFile {
 				deduped = append(deduped, details[i])
 			}
 		}
@@ -1864,16 +1853,19 @@ func extractAzurePermissions(root string) []PermissionDetail {
 				if o, ok := azureMethodPermissionOverrides[resourceType+"."+methodName]; ok {
 					perm = o
 				}
-				sdk := sdkPackage + " " + clientType + "." + methodName
-				if o, ok := azureSDKPermissionOverrides[sdk]; ok {
+				if o, ok := azureSDKPermissionOverrides[sdkPackage+" "+clientType+"."+methodName]; ok {
 					perm = o
+				}
+				// An empty permission at this point means the operation is one no
+				// provider registers (see azureUnregisteredOperations): emit nothing.
+				if perm == "" {
+					return
 				}
 				details = append(details, PermissionDetail{
 					Permission: perm,
 					Service:    armProvider,
 					Action:     methodName,
 					SourceFile: fileName,
-					SDK:        sdk,
 				})
 			}
 
@@ -2085,19 +2077,17 @@ func azureServiceToARM(service string) string {
 // providers that share one (NamespacesClient in armeventhub and
 // armservicebus). Every right-hand side is the operation derived from the
 // call's ARM URL path in the SDK source, which is how Azure names operations
-// and what the validator checks each entry against. Two of them are not
-// registered with Azure Resource Manager (the legacy single-server PostgreSQL
-// configurations read, which the provider still calls, and the Azure Files
-// snapshot read): the validator reports those as real but refused in custom
-// roles.
+// and what the validator checks each entry against. An empty value means the
+// operation is not registered with Azure Resource Manager (see
+// azureUnregisteredOperations) and nothing is emitted.
 var azureSDKPermissionOverrides = map[string]string{
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 AccountsClient.NewListModelsPager":             "Microsoft.CognitiveServices/accounts/models/read",
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2 ConfigurationsClient.NewListByServerPager":              "Microsoft.DBforMySQL/flexibleServers/configurations/read",
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2 DatabasesClient.NewListByServerPager":                   "Microsoft.DBforMySQL/flexibleServers/databases/read",
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2 ServersClient.NewListPager":                             "Microsoft.DBforMySQL/flexibleServers/read",
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresql DatabasesClient.NewListByServerPager":                           "Microsoft.DBforPostgreSQL/servers/databases/read",
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresql FirewallRulesClient.NewListByServerPager":                       "Microsoft.DBforPostgreSQL/servers/firewallRules/read",
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresql ServersClient.NewListPager":                                     "Microsoft.DBforPostgreSQL/servers/read",
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresql DatabasesClient.NewListByServerPager":                           "",
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresql FirewallRulesClient.NewListByServerPager":                       "",
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresql ServersClient.NewListPager":                                     "",
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 SQLResourcesClient.NewListSQLDatabasesPager":                         "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/read",
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2 ClustersClient.NewListCalloutPoliciesPager":                            "Microsoft.Kusto/clusters/listCalloutPolicies/action",
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PrivateLinkServicesClient.NewListPrivateEndpointConnectionsPager": "Microsoft.Network/privateLinkServices/privateEndpointConnections/read",
@@ -2111,7 +2101,7 @@ var azureSDKPermissionOverrides = map[string]string{
 	// is retired, and the provider still calls it.)
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2 ConfigurationsClient.Get":                                   "Microsoft.DBforMySQL/flexibleServers/configurations/read",
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2 FirewallRulesClient.NewListByServerPager":                   "Microsoft.DBforMySQL/flexibleServers/firewallRules/read",
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresql ConfigurationsClient.NewListByServerPager":                          "Microsoft.DBforPostgreSQL/servers/configurations/read",
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresql ConfigurationsClient.NewListByServerPager":                          "",
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventhub/armeventhub NamespacesClient.NewListAuthorizationRulesPager":                        "Microsoft.EventHub/namespaces/authorizationRules/read",
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventhub/armeventhub EventHubsClient.NewListAuthorizationRulesPager":                         "Microsoft.EventHub/namespaces/eventhubs/authorizationRules/read",
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicebus/armservicebus NamespacesClient.NewListAuthorizationRulesPager":                    "Microsoft.ServiceBus/namespaces/authorizationRules/read",
@@ -2122,7 +2112,7 @@ var azureSDKPermissionOverrides = map[string]string{
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/operationalinsights/armoperationalinsights/v3 QueriesClient.NewListPager":                    "Microsoft.OperationalInsights/queryPacks/queries/read",
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/policyinsights/armpolicyinsights PolicyStatesClient.NewListQueryResultsForSubscriptionPager": "Microsoft.PolicyInsights/policyStates/queryResults/action",
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources/v4 Client.NewListPager":                                               "Microsoft.Resources/subscriptions/resources/read",
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/fileshares/armfileshares FileShareSnapshotsClient.NewListByFileSharePager":                   "Microsoft.FileShares/fileShares/fileShareSnapshots/read",
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/fileshares/armfileshares FileShareSnapshotsClient.NewListByFileSharePager":                   "",
 }
 
 // azureMethodPermissionOverrides maps "<ResourceType>.<Method>" to the correct
@@ -2141,16 +2131,17 @@ var azureMethodPermissionOverrides = map[string]string{
 
 	// The Cassandra, Gremlin, Table and MongoMI resource clients each serve
 	// role-assignment and role-definition reads that the client name derives to a
-	// coarse <api>Resources/read; redirect them to the correct databaseAccounts
-	// sub-resource, matching the SQLResources entries above.
-	"CassandraResources.NewListCassandraRoleAssignmentsPager": "Microsoft.DocumentDB/databaseAccounts/cassandraRoleAssignments/read",
-	"CassandraResources.NewListCassandraRoleDefinitionsPager": "Microsoft.DocumentDB/databaseAccounts/cassandraRoleDefinitions/read",
-	"GremlinResources.NewListGremlinRoleAssignmentsPager":     "Microsoft.DocumentDB/databaseAccounts/gremlinRoleAssignments/read",
-	"GremlinResources.NewListGremlinRoleDefinitionsPager":     "Microsoft.DocumentDB/databaseAccounts/gremlinRoleDefinitions/read",
-	"TableResources.NewListTableRoleAssignmentsPager":         "Microsoft.DocumentDB/databaseAccounts/tableRoleAssignments/read",
-	"TableResources.NewListTableRoleDefinitionsPager":         "Microsoft.DocumentDB/databaseAccounts/tableRoleDefinitions/read",
-	"MongoMIResources.NewListMongoMIRoleAssignmentsPager":     "Microsoft.DocumentDB/databaseAccounts/mongoMIRoleAssignments/read",
-	"MongoMIResources.NewListMongoMIRoleDefinitionsPager":     "Microsoft.DocumentDB/databaseAccounts/mongoMIRoleDefinitions/read",
+	// coarse <api>Resources/read. Their operations
+	// (databaseAccounts/<api>RoleAssignments/read and so on) are preview and not
+	// registered with ARM, so nothing is emitted (see azureUnregisteredOperations).
+	"CassandraResources.NewListCassandraRoleAssignmentsPager": "",
+	"CassandraResources.NewListCassandraRoleDefinitionsPager": "",
+	"GremlinResources.NewListGremlinRoleAssignmentsPager":     "",
+	"GremlinResources.NewListGremlinRoleDefinitionsPager":     "",
+	"TableResources.NewListTableRoleAssignmentsPager":         "",
+	"TableResources.NewListTableRoleDefinitionsPager":         "",
+	"MongoMIResources.NewListMongoMIRoleAssignmentsPager":     "",
+	"MongoMIResources.NewListMongoMIRoleDefinitionsPager":     "",
 
 	// armlocks lives under the resourcemanager/resources directory, so the
 	// service derives to Microsoft.Resources; locks are actually governed by
@@ -2194,6 +2185,30 @@ var azureMethodPermissionOverrides = map[string]string{
 	"VnetConnections.NewListBySandboxGroupPager": "Microsoft.App/sandboxGroups/vnetConnections/read",
 }
 
+// azureUnregisteredOperations documents the operations the provider calls for
+// which no resource provider has registered an operation with Azure Resource
+// Manager (`az provider operation list` does not list them). Azure refuses an
+// unregistered operation in a custom role with InvalidActionOrNotAction, so a
+// manifest naming one could not be used to build a role; the overrides below
+// therefore map each to "", and nothing is emitted. Checked 2026-10-07; when
+// Azure registers one, drop its empty override so it is emitted again.
+//
+//	Microsoft.Authorization/classicAdministrators/read        retired API; iam.go still lists classic administrators
+//	Microsoft.Security/autoProvisioningSettings/read          retired API; cloud_defender.go still reads it
+//	Microsoft.Security/regulatoryComplianceStandards/read     API exists, operation never registered
+//	Microsoft.Security/regulatoryComplianceStandards/regulatoryComplianceControls/read
+//	Microsoft.DBforPostgreSQL/serverGroupsv2/read             only child operations are registered
+//	Microsoft.DBforPostgreSQL/servers/{,configurations,databases,firewallRules}/read
+//	                                                          retired single-server API; postgresql.go still uses it
+//	Microsoft.DocumentDB/databaseAccounts/{cassandra,gremlin,table,mongoMI}Role{Assignments,Definitions}/read
+//	                                                          preview data-plane RBAC APIs
+//	Microsoft.FileShares/fileShares/fileShareSnapshots/read   preview
+var azureUnregisteredOperations = map[string]string{
+	"Microsoft.Authorization/classicAdministrators/read":    "",
+	"Microsoft.Security/autoProvisioningSettings/read":      "",
+	"Microsoft.Security/regulatoryComplianceStandards/read": "",
+}
+
 // azurePermissionOverrides maps generated permission strings to the correct
 // Azure RBAC permission. Many Azure SDK client names don't include parent
 // resource paths (e.g., servers/) or use different names than the ARM API.
@@ -2207,7 +2222,7 @@ var azurePermissionOverrides = map[string]string{
 	"Microsoft.Cache/patchSchedules/read": "Microsoft.Cache/redis/patchSchedules/read",
 
 	// Cosmos DB for PostgreSQL: SDK package maps to different ARM resource type
-	"Microsoft.DBforPostgreSQL/clusters/read": "Microsoft.DBforPostgreSQL/serverGroupsv2/read",
+	"Microsoft.DBforPostgreSQL/clusters/read": "",
 
 	// MySQL: sub-resources need servers/ parent path
 	"Microsoft.DBforMySQL/configurations/read": "Microsoft.DBforMySQL/servers/configurations/read",
@@ -2535,7 +2550,7 @@ var azurePermissionOverrides = map[string]string{
 	// and regulatory compliance controls are children of their parents.
 	"Microsoft.Security/contacts/read":                     "Microsoft.Security/securityContacts/read",
 	"Microsoft.Security/subAssessments/read":               "Microsoft.Security/assessments/subAssessments/read",
-	"Microsoft.Security/regulatoryComplianceControls/read": "Microsoft.Security/regulatoryComplianceStandards/regulatoryComplianceControls/read",
+	"Microsoft.Security/regulatoryComplianceControls/read": "",
 }
 
 // azurePermission constructs the RBAC permission string.
@@ -2546,6 +2561,9 @@ func azurePermission(armProvider, resourceType string) string {
 
 	// Check for overrides where SDK names don't match ARM resource types
 	if override, ok := azurePermissionOverrides[perm]; ok {
+		return override
+	}
+	if override, ok := azureUnregisteredOperations[perm]; ok {
 		return override
 	}
 	return perm
