@@ -111,35 +111,33 @@ func NewRepoPlatform(org, project string) *inventory.Platform {
 	return pf
 }
 
-// orgSegment is the organization as it appears in a platform id. Azure
-// DevOps treats organization names as case-insensitive, so dev.azure.com/MyOrg
-// and dev.azure.com/myorg are one organization and must give one asset. The
-// project and repository names keep their case, because the service does.
-func orgSegment(org string) string {
-	return url.PathEscape(strings.ToLower(org))
+// idSegment is one segment of a platform id. Azure DevOps names are
+// case-insensitive, so a name typed two ways is one segment; it is escaped
+// because project names may hold spaces.
+func idSegment(name string) string {
+	return url.PathEscape(strings.ToLower(name))
 }
 
 // NewOrgIdentifier is the platform id of an organization asset.
 func NewOrgIdentifier(org string) string {
-	return identifierPrefix + orgSegment(org)
+	return identifierPrefix + idSegment(org)
 }
 
 // NewRepoIdentifier is the platform id of a repository asset. The project is
 // part of the id because a repository name is unique only within its project.
-// Every segment is escaped, because project names may hold spaces, and the
-// organization is lower-cased. xgrep sends decoded names and a lower-case
-// organization and never builds the id itself, so the server and this provider
-// each mint it, and both tests pin the same golden value.
+// Every segment is lower-cased and escaped. xgrep sends decoded names and never
+// builds the id itself, so the server and this provider each mint it, and both
+// tests pin the same golden value.
 func NewRepoIdentifier(org, project, repo string) string {
-	return identifierPrefix + orgSegment(org) +
-		"/project/" + url.PathEscape(project) +
-		"/repository/" + url.PathEscape(repo)
+	return identifierPrefix + idSegment(org) +
+		"/project/" + idSegment(project) +
+		"/repository/" + idSegment(repo)
 }
 
 // NewTerraformRepoIdentifier is the preset platform id of a repository's
 // terraform-hcl-git child.
 func NewTerraformRepoIdentifier(org, project, repo string) string {
-	return terraformIdentifierPrefix + orgSegment(org) +
-		"/project/" + url.PathEscape(project) +
-		"/repo/" + url.PathEscape(repo)
+	return terraformIdentifierPrefix + idSegment(org) +
+		"/project/" + idSegment(project) +
+		"/repo/" + idSegment(repo)
 }

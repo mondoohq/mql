@@ -42,10 +42,10 @@ func TestTerraformRepoIdentifierGolden(t *testing.T) {
 		got)
 }
 
-// Azure DevOps treats organization names as case-insensitive, so one
-// organization typed two ways must be one asset. The project and repository
-// keep their case.
-func TestIdentifiersLowerCaseTheOrganization(t *testing.T) {
+// Azure DevOps treats organization, project and repository names as
+// case-insensitive, so one repository typed two ways must be one asset. The
+// golden value is shared with the server's etl/etlinventory tests.
+func TestIdentifiersLowerCaseEveryName(t *testing.T) {
 	assert.Equal(t, NewOrgIdentifier("mondoo-ado-scan-test"), NewOrgIdentifier("Mondoo-ADO-Scan-Test"))
 	assert.Equal(t,
 		NewRepoIdentifier("mondoo-ado-scan-test", "scan test", "ado-scan-test-iac"),
@@ -54,9 +54,11 @@ func TestIdentifiersLowerCaseTheOrganization(t *testing.T) {
 		NewTerraformRepoIdentifier("mondoo-ado-scan-test", "scan test", "ado-scan-test-iac"),
 		NewTerraformRepoIdentifier("Mondoo-Ado-Scan-Test", "scan test", "ado-scan-test-iac"))
 	assert.Equal(t,
-		"//platformid.api.mondoo.app/runtime/azuredevops/organization/mondoo-ado-scan-test/project/Scan%20Test/repository/ADO-Scan-Test-IaC",
-		NewRepoIdentifier("Mondoo-ADO-Scan-Test", "Scan Test", "ADO-Scan-Test-IaC"),
-		"only the organization is lower-cased")
+		"//platformid.api.mondoo.app/runtime/azuredevops/organization/mondoo-ado-scan-test/project/scan%20test/repository/ado-scan-test-iac",
+		NewRepoIdentifier("Mondoo-ADO-Scan-Test", "Scan Test", "ADO-Scan-Test-IaC"))
+	assert.Equal(t,
+		"//platformid.api.mondoo.app/runtime/terraform/domain/dev.azure.com/org/mondoo-ado-scan-test/project/scan%20test/repo/ado-scan-test-iac",
+		NewTerraformRepoIdentifier("Mondoo-ADO-Scan-Test", "Scan Test", "ADO-Scan-Test-IaC"))
 }
 
 func TestPlatformCatalog(t *testing.T) {

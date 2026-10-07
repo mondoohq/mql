@@ -55,8 +55,9 @@ The organization connector produces an asset on the `azuredevops-org` platform a
 repository connector one on the `azuredevops-repo` platform. Policies target repositories
 with `asset.platform == "azuredevops-repo"`.
 
-Azure DevOps treats organization names as case-insensitive, so the asset id lower-cases the
-organization (`MyOrg` and `myorg` are one asset). Project and repository names keep their case.
+Azure DevOps treats organization, project and repository names as case-insensitive, so the
+asset id lower-cases all three (`MyOrg/App` and `myorg/app` are one asset). Asset names keep
+the case Azure DevOps reports.
 
 Open an interactive shell on an organization. The default `auto` target also emits every
 repository, and `mql shell` connects to one asset, so ask for the organization alone:
