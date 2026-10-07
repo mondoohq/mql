@@ -4,9 +4,18 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"math/rand"
+	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -16,6 +25,7 @@ import (
 	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/cli/config"
 	cli_errors "go.mondoo.com/mql/cli/errors"
+	"go.mondoo.com/mql/cli/oauthlogin"
 	"go.mondoo.com/mql/providers"
 	"go.mondoo.com/mql/providers-sdk/v1/sysinfo"
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
@@ -25,6 +35,8 @@ import (
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/plugins/authentication/statictoken"
 	"go.mondoo.com/ranger-rpc/status"
+	"golang.org/x/term"
+	"sigs.k8s.io/yaml"
 )
 
 var (
@@ -32,30 +44,62 @@ var (
 	tokenExpiredErr    = errors.New("The token is expired")
 )
 
+// registrationTokenEnv supplies the registration token when --token is not set.
+const registrationTokenEnv = "MONDOO_REGISTRATION_TOKEN"
+
+// errNoCredentials is returned when login has neither a registration token
+// nor usable credentials and cannot ask the user, because it does not run in
+// a terminal.
+var errNoCredentials = errors.New("no credentials")
+
 func init() {
 	rootCmd.AddCommand(LoginCmd)
-	LoginCmd.Flags().StringP("token", "t", "", "Set a client registration token")
+	LoginCmd.Flags().StringP("token", "t", "", "Set a client registration token (default $"+registrationTokenEnv+")")
 	LoginCmd.Flags().StringToString("annotation", nil, "Set the client annotations")
 	LoginCmd.Flags().String("updates-url", "", "Set the updates URL for mql and provider updates")
 	LoginCmd.Flags().String("name", "", "Set asset name")
 	LoginCmd.Flags().String("api-endpoint", "", "Set the Mondoo API endpoint")
 	LoginCmd.Flags().Int("timer", 0, "Set the scan interval in minutes")
 	LoginCmd.Flags().Int("splay", 0, "Randomize the timer by up to this many minutes")
+	LoginCmd.Flags().Bool("no-browser", false, "Do not open a browser on this machine; log in with a one-time code instead")
+	LoginCmd.Flags().String("space", "", "Preselect this space MRN on the approval page")
+	LoginCmd.Flags().Bool("insecure", false, "Allow browser login over unencrypted http to a non-loopback server")
+	LoginCmd.Flags().Bool("force", false, "Log in again even if a valid login session exists")
+}
+
+// oauthLoginFlags are the options of the interactive (browser or device) login.
+type oauthLoginFlags struct {
+	noBrowser  bool
+	spaceMrn   string
+	insecure   bool
+	force      bool // log in again even if the config holds a valid session
+	binaryName string
+	// interactive reports whether stdin and stderr are terminals, so the
+	// login can ask the user.
+	interactive bool
 }
 
 var LoginCmd = &cobra.Command{
 	Use:     "login",
 	Aliases: []string{"register"},
-	Short:   "Register with Mondoo Platform",
+	Short:   "Log in to Mondoo Platform",
 	Long: `
-Log in to Mondoo Platform using a registration token. To pass in the token, use
-the '--token' flag.
+Log in to Mondoo Platform.
 
-You can generate a new registration token on the Mondoo Dashboard. Go to
-https://app.mondoo.com -> Space -> Settings -> Registration Token. Copy the token and pass it in
-using the '--token' argument.
+Without arguments, login opens your browser and asks you to approve the login
+and pick a space. The result is a short-lived credential for this machine; run
+login again when it expires. While the credential is valid, login only
+confirms it; use '--force' to log in again. If the browser does not open or
+runs on another machine, open the URL login shows in any browser and paste the
+code it displays. On a machine without a browser (for example over SSH), or
+with '--no-browser', login prints a one-time code to enter at a URL on any
+device instead. This interactive login needs a terminal.
 
-You remain logged in until you explicitly log out using the 'logout' subcommand.
+To register this machine permanently, use a registration token instead and pass
+it with '--token' or the MONDOO_REGISTRATION_TOKEN environment variable; '--token'
+takes precedence. You can generate a registration token in the Mondoo Console:
+Space -> Settings -> Registration Token. A registered client remains logged in
+until you explicitly log out using the 'logout' subcommand.
 	`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		_ = viper.BindPFlag("api_endpoint", cmd.Flags().Lookup("api-endpoint"))
@@ -63,13 +107,24 @@ You remain logged in until you explicitly log out using the 'logout' subcommand.
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		defer providers.Coordinator.Shutdown()
-		token, _ := cmd.Flags().GetString("token")
+		flagToken, _ := cmd.Flags().GetString("token")
+		token, tokenSource := registrationToken(flagToken, os.Getenv)
+		if tokenSource != "" {
+			log.Debug().Str("source", tokenSource).Msg("using a registration token")
+		}
 		annotations, _ := cmd.Flags().GetStringToString("annotation")
 		updatesURL, _ := cmd.Flags().GetString("updates-url")
 		timer, _ := cmd.Flags().GetInt("timer")
 		splay, _ := cmd.Flags().GetInt("splay")
 		apiEndpointOverride, _ := cmd.Flags().GetString("api-endpoint")
-		err := register(token, annotations, updatesURL, timer, splay, apiEndpointOverride)
+		var oauthFlags oauthLoginFlags
+		oauthFlags.noBrowser, _ = cmd.Flags().GetBool("no-browser")
+		oauthFlags.spaceMrn, _ = cmd.Flags().GetString("space")
+		oauthFlags.insecure, _ = cmd.Flags().GetBool("insecure")
+		oauthFlags.force, _ = cmd.Flags().GetBool("force")
+		oauthFlags.binaryName = cmd.Root().Name()
+		oauthFlags.interactive = term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd()))
+		err := register(token, annotations, updatesURL, timer, splay, apiEndpointOverride, oauthFlags)
 		if err != nil {
 			// A login failure is not a usage error: don't print the help text,
 			// and don't let cobra repeat an error we log ourselves.
@@ -79,6 +134,9 @@ You remain logged in until you explicitly log out using the 'logout' subcommand.
 			if err == tokenValidationErr {
 				log.Error().Msg(err.Error())
 				return cli_errors.ExitCode1WithoutError
+			}
+			if errors.Is(err, errNoCredentials) {
+				return cli_errors.NewCommandError(err, 1)
 			}
 			defer func() {
 				opts, optsErr := config.Read()
@@ -113,9 +171,22 @@ You remain logged in until you explicitly log out using the 'logout' subcommand.
 	},
 }
 
-func register(token string, annotations map[string]string, updatesURL string, timer int, splay int, apiEndpointOverride string) error {
+func register(token string, annotations map[string]string, updatesURL string, timer int, splay int, apiEndpointOverride string, oauthFlags oauthLoginFlags) error {
 	var err error
 	var credential *upstream.ServiceAccountCredentials
+	var session *oauthlogin.Result
+	var replaced *replacedSession
+
+	// Without a token or usable credentials, login has to ask the user; fail
+	// before any other work when it cannot. An existing login session is
+	// checked later: when it is still valid, login does not ask.
+	if token == "" {
+		if opts, optsErr := config.Read(); optsErr == nil && !opts.HasCredentials() {
+			if err := checkCanLogInInteractively(oauthFlags); err != nil {
+				return err
+			}
+		}
+	}
 
 	// determine information about the client
 	sysInfo, err := sysinfo.Get()
@@ -133,9 +204,12 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 		return cli_errors.NewCommandError(errors.Wrap(err, "could not parse proxy URL"), 1)
 	}
 
-	// we handle three cases here:
+	// we handle these cases here:
 	// 1. user has a token provided
-	// 2. user has no token provided, but has a service account file is already there
+	// 2. user has no token provided, but a registered client config is already there
+	// 3. user has no token provided, but a service account config is already there
+	// 4. user has no token provided and no usable credentials, or only an
+	//    interactive login session: run the interactive (OAuth) login
 	//
 	if token != "" {
 		// print token details
@@ -203,12 +277,7 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 
 		log.Debug().Msg("store configuration")
 		// update configuration file, api-endpoint is set automatically
-		viper.Set("agent_mrn", confirmation.AgentMrn)
-		viper.Set("api_endpoint", confirmation.Credential.ApiEndpoint)
-		viper.Set("space_mrn", confirmation.Credential.GetParentMrn())
-		viper.Set("mrn", confirmation.Credential.Mrn)
-		viper.Set("private_key", confirmation.Credential.PrivateKey)
-		viper.Set("certificate", confirmation.Credential.Certificate)
+		applyRegistrationConfig(confirmation.AgentMrn, confirmation.Credential)
 		viper.Set("annotations", annotations)
 		if updatesURL != "" {
 			viper.Set("updates_url", updatesURL)
@@ -227,8 +296,8 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 			log.Warn().Msg("could not load configuration, please use --token or --config with the appropriate values")
 			return cli_errors.ExitCode1WithoutError
 		}
-		// print the used config to the user
-		config.DisplayUsedConfig()
+		// print the used config to the user; login creates a missing file
+		config.DisplayUsedConfigForLogin()
 
 		httpClient, err = opts.GetHttpClient()
 		if err != nil {
@@ -236,7 +305,30 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 			return cli_errors.ExitCode1WithoutError
 		}
 
-		if opts.AgentMrn != "" {
+		if opts.IsOAuthSession() || !opts.HasCredentials() {
+			now := time.Now()
+			keep, err := existingSession(context.Background(), opts, apiEndpointOverride, oauthFlags.force, now, httpClient, pingSession)
+			if err != nil {
+				return cli_errors.NewCommandError(err, 1)
+			}
+			if keep {
+				fmt.Fprintln(os.Stderr, alreadyLoggedInMessage(opts, oauthFlags.binaryName, now))
+				return nil
+			}
+			if err := checkCanLogInInteractively(oauthFlags); err != nil {
+				return err
+			}
+			replaced = sessionToReplace(opts, now)
+			if apiEndpoint == "" {
+				apiEndpoint = opts.UpstreamApiEndpoint()
+			}
+			session, err = oauthLogin(apiEndpoint, httpClient, sysInfo, oauthFlags)
+			if err != nil {
+				return cli_errors.NewCommandError(err, 1)
+			}
+			credential = applySessionConfig(session)
+			apiEndpoint = credential.ApiEndpoint
+		} else if opts.AgentMrn != "" {
 			// already authenticated
 			log.Info().Msg("client is already logged in, skipping")
 			credential = opts.GetServiceCredential()
@@ -289,6 +381,10 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 		}
 	}
 
+	if session != nil || token != "" {
+		// Both write a private key to the config.
+		restrictConfigPermissions(viper.ConfigFileUsed())
+	}
 	err = config.StoreConfig()
 	if err != nil {
 		log.Warn().Err(err).Msg("could not write mondoo configuration")
@@ -315,8 +411,189 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 		return cli_errors.ExitCode1WithoutError
 	}
 
+	if session != nil {
+		fmt.Fprintln(os.Stderr, session.Summary(time.Now()))
+		// The new credential is saved; the replaced session is no longer
+		// needed and should not stay valid on the server.
+		revokeReplaced(context.Background(), replaced, session.AccessToken, httpClient, revokeSession)
+		return nil
+	}
+
 	log.Info().Msgf("client %s has logged in successfully", viper.Get("agent_mrn"))
 	return nil
+}
+
+// registrationToken returns the registration token to log in with and where it
+// came from: the --token flag, else the registrationTokenEnv environment
+// variable. Both empty returns "", "".
+func registrationToken(flagToken string, getenv func(string) string) (string, string) {
+	if token := strings.TrimSpace(flagToken); token != "" {
+		return token, "--token"
+	}
+	if token := strings.TrimSpace(getenv(registrationTokenEnv)); token != "" {
+		return token, registrationTokenEnv
+	}
+	return "", ""
+}
+
+// checkCanLogInInteractively fails right away when login would have to ask
+// the user but does not run in a terminal (CI, scripts, piped input), instead
+// of waiting for an approval nobody can give.
+func checkCanLogInInteractively(flags oauthLoginFlags) error {
+	if flags.interactive {
+		return nil
+	}
+	binaryName := flags.binaryName
+	if binaryName == "" {
+		binaryName = "mql"
+	}
+	return fmt.Errorf("%w: run `%s login` in a terminal, or pass a registration token with --token or %s", errNoCredentials, binaryName, registrationTokenEnv)
+}
+
+// oauthLogin runs the interactive login against the server at apiEndpoint.
+func oauthLogin(apiEndpoint string, httpClient *http.Client, sysInfo *sysinfo.SystemInfo, flags oauthLoginFlags) (*oauthlogin.Result, error) {
+	mode := oauthlogin.ModeAuto
+	if flags.noBrowser {
+		mode = oauthlogin.ModeDevice
+	}
+	version := config.RunningVersion()
+	if version == "" {
+		version = mql.GetVersion()
+	}
+	binaryName := flags.binaryName
+	if binaryName == "" {
+		binaryName = "mql"
+	}
+	deviceName := sysInfo.Hostname
+	if deviceName == "" {
+		deviceName, _ = os.Hostname()
+	}
+
+	// Ctrl-C cancels the login instead of killing the process, so the
+	// terminal settings changed while waiting are restored.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	res, err := oauthlogin.Login(ctx, oauthlogin.Options{
+		Endpoint:    apiEndpoint,
+		Insecure:    flags.insecure,
+		Mode:        mode,
+		SpaceMrn:    flags.spaceMrn,
+		DeviceName:  deviceName,
+		DeviceInfo:  fmt.Sprintf("%s %s %s/%s", binaryName, version, runtime.GOOS, runtime.GOARCH),
+		HTTPClient:  httpClient,
+		Interactive: flags.interactive,
+	})
+	if err != nil && ctx.Err() != nil {
+		return nil, errors.New("login canceled")
+	}
+	if errors.Is(err, oauthlogin.ErrBrowserLoginDisabled) {
+		return nil, fmt.Errorf("%w — use `%s login --token`", err, binaryName)
+	}
+	return res, err
+}
+
+// applySessionConfig stages an interactive login's credential in viper and
+// returns it. Fields that would take precedence over the new credential are
+// cleared.
+func applySessionConfig(res *oauthlogin.Result) *upstream.ServiceAccountCredentials {
+	stale := []string{"agent_mrn", "token", "parent_mrn"}
+	for _, key := range stale {
+		if !viper.IsSet(key) {
+			continue
+		}
+		if err := dropConfigKeys(stale...); err != nil {
+			log.Debug().Err(err).Msg("could not remove the registered client from the config")
+			// Empty values still keep them from taking precedence.
+			for _, k := range stale {
+				viper.Set(k, "")
+			}
+		}
+		break
+	}
+	values := res.ConfigValues()
+	for key, value := range values {
+		viper.Set(key, value)
+	}
+	return &upstream.ServiceAccountCredentials{
+		Mrn:         res.ServiceAccount.Mrn,
+		ParentMrn:   res.ServiceAccount.ScopeMrn,
+		ScopeMrn:    res.ServiceAccount.ScopeMrn,
+		PrivateKey:  res.PrivateKeyPEM,
+		Certificate: res.ServiceAccount.Certificate,
+		ApiEndpoint: values["api_endpoint"].(string),
+	}
+}
+
+// applyRegistrationConfig stages a registered client's credential in viper.
+// What an interactive login session left in the config is removed: scope_mrn
+// would take precedence over the new space, and the auth block would make
+// logout revoke a session that no longer applies.
+func applyRegistrationConfig(agentMrn string, cred *upstream.ServiceAccountCredentials) {
+	if viper.IsSet("auth") || viper.IsSet("scope_mrn") {
+		if err := dropConfigKeys("auth", "scope_mrn"); err != nil {
+			log.Debug().Err(err).Msg("could not remove the login session from the config")
+			// At least keep the stale scope from overriding the new space.
+			viper.Set("scope_mrn", cred.GetParentMrn())
+		}
+	}
+	viper.Set("agent_mrn", agentMrn)
+	viper.Set("api_endpoint", cred.ApiEndpoint)
+	viper.Set("space_mrn", cred.GetParentMrn())
+	viper.Set("mrn", cred.Mrn)
+	viper.Set("private_key", cred.PrivateKey)
+	viper.Set("certificate", cred.Certificate)
+}
+
+// dropConfigKeys removes top-level keys from the loaded configuration.
+// viper.Set only overrides a key: a nil override does not hide what was read
+// from the config file, so WriteConfig would write it back. The loaded
+// settings are replaced by the current ones without those keys instead.
+func dropConfigKeys(keys ...string) error {
+	for _, key := range keys {
+		if viper.IsSet(key) {
+			viper.Set(key, nil)
+		}
+	}
+	settings := viper.AllSettings()
+	for _, key := range keys {
+		delete(settings, key)
+	}
+	var data []byte
+	var err error
+	if strings.EqualFold(filepath.Ext(viper.ConfigFileUsed()), ".json") {
+		data, err = json.Marshal(settings)
+	} else {
+		data, err = yaml.Marshal(settings)
+	}
+	if err != nil {
+		return err
+	}
+	return viper.ReadConfig(bytes.NewReader(data))
+}
+
+// restrictConfigPermissions makes the config readable by its owner only before
+// a private key is written to it. The writer keeps an existing file's mode, so
+// the key is never readable by others, not even briefly. Best effort.
+func restrictConfigPermissions(path string) {
+	if path == "" || runtime.GOOS == "windows" {
+		return
+	}
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			log.Debug().Err(err).Str("path", path).Msg("could not create config directory")
+			return
+		}
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			log.Debug().Err(err).Str("path", path).Msg("could not create config file")
+			return
+		}
+		_ = f.Close()
+		return
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		log.Debug().Err(err).Str("path", path).Msg("could not restrict config file permissions")
+	}
 }
 
 func registerAgent(ctx context.Context, client *upstream.AgentManagerClient, req *upstream.AgentRegistrationRequest) (*upstream.AgentRegistrationConfirmation, error) {

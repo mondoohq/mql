@@ -5,10 +5,14 @@ package config
 
 import (
 	"bytes"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/go-viper/mapstructure/v2"
@@ -17,6 +21,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/cli/oauthlogin"
 	"go.mondoo.com/mql/logger"
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 )
@@ -42,6 +47,10 @@ const (
 
 	AUTH_METHOD_SSH = "ssh"
 	AUTH_METHOD_WIF = "wif"
+	// AUTH_METHOD_OAUTH marks a short-lived session credential issued by an
+	// interactive login. The credential itself is used like any other service
+	// account; the marker only drives renewal, expiry hints and revocation.
+	AUTH_METHOD_OAUTH = oauthlogin.AuthMethod
 )
 
 // Init initializes and loads the mondoo config
@@ -183,9 +192,24 @@ func InitViperConfig() {
 }
 
 func DisplayUsedConfig() {
+	displayUsedConfig(false)
+}
+
+// DisplayUsedConfigForLogin is DisplayUsedConfig for commands that create the
+// configuration file, such as login. A --config file that does not exist yet is
+// the normal case there, so it is only logged at debug level.
+func DisplayUsedConfigForLogin() {
+	displayUsedConfig(true)
+}
+
+func displayUsedConfig(missingFileOK bool) {
 	// print config file
 	if !LoadedConfig && len(UserProvidedPath) > 0 {
-		log.Warn().Msg("could not load configuration file " + UserProvidedPath)
+		if missingFileOK {
+			log.Debug().Msg("configuration file " + UserProvidedPath + " does not exist yet, it will be created")
+		} else {
+			log.Warn().Msg("could not load configuration file " + UserProvidedPath)
+		}
 	} else if LoadedConfig {
 		log.Info().Msg("loaded configuration from " + viper.ConfigFileUsed() + " using source " + Source)
 	} else if Source == configSourceBase64 {
@@ -269,6 +293,20 @@ var runningVersion atomic.Value // string
 // before anything resolves a channel.
 func SetRunningVersion(version string) {
 	runningVersion.Store(version)
+}
+
+// RunningVersion returns the version recorded with SetRunningVersion, or "".
+func RunningVersion() string {
+	return getRunningVersion()
+}
+
+// binaryName is the name the user invoked this program as.
+func binaryName() string {
+	name := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
+	if name == "" || name == "." {
+		return "mql"
+	}
+	return name
 }
 
 // getRunningVersion returns the recorded version, or "" if none was set.
@@ -483,6 +521,62 @@ type WIF struct {
 
 type CliConfigAuthentication struct {
 	Method string `json:"method,omitempty" mapstructure:"method"`
+	// Issuer is the authorization server of an interactive login session.
+	Issuer string `json:"issuer,omitempty" mapstructure:"issuer"`
+	// AccessToken identifies an interactive login session for revocation. It
+	// carries no secret: using it requires the session's private key.
+	AccessToken string `json:"access_token,omitempty" mapstructure:"access_token"`
+	// Names of an interactive login session's user and space, recorded at
+	// login so a later login can say who is logged in. Display only.
+	UserEmail string `json:"user_email,omitempty" mapstructure:"user_email"`
+	UserName  string `json:"user_name,omitempty" mapstructure:"user_name"`
+	UserMrn   string `json:"user_mrn,omitempty" mapstructure:"user_mrn"`
+	SpaceName string `json:"space_name,omitempty" mapstructure:"space_name"`
+	OrgName   string `json:"org_name,omitempty" mapstructure:"org_name"`
+}
+
+// IsOAuthSession reports whether the credential came from an interactive login.
+func (c *CommonOpts) IsOAuthSession() bool {
+	return c.Authentication != nil && c.Authentication.Method == AUTH_METHOD_OAUTH
+}
+
+// ClearCredentials drops every credential field, keeping unrelated settings.
+func (c *CommonOpts) ClearCredentials() {
+	c.AgentMrn = ""
+	c.ServiceAccountMrn = ""
+	c.PrivateKey = ""
+	c.Certificate = ""
+	c.Token = ""
+	c.SpaceMrn = ""
+	c.ScopeMrn = ""
+	c.ParentMrn = ""
+	c.Authentication = nil
+}
+
+// HasCredentials reports whether the config holds anything to authenticate
+// with, without performing any credential exchange.
+func (c *CommonOpts) HasCredentials() bool {
+	if c.Authentication != nil && (c.Authentication.Method == AUTH_METHOD_SSH || c.Authentication.Method == AUTH_METHOD_WIF) {
+		return true
+	}
+	return c.ServiceAccountMrn != "" || c.PrivateKey != "" || c.Certificate != "" || c.Token != ""
+}
+
+// SessionExpiry returns when an interactive login session's certificate
+// expires. ok is false for other credentials or an unreadable certificate.
+func (c *CommonOpts) SessionExpiry() (time.Time, bool) {
+	if !c.IsOAuthSession() || c.Certificate == "" {
+		return time.Time{}, false
+	}
+	block, _ := pem.Decode([]byte(c.Certificate))
+	if block == nil {
+		return time.Time{}, false
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return cert.NotAfter, true
 }
 
 // GetStrict reports the configured default for strict mode. Unset means
@@ -549,6 +643,10 @@ func (c *CommonOpts) GetServiceCredential() *upstream.ServiceAccountCredentials 
 	// return nil when no service account is defined
 	if c.ServiceAccountMrn == "" && c.PrivateKey == "" && c.Certificate == "" {
 		return nil
+	}
+
+	if notAfter, ok := c.SessionExpiry(); ok && time.Now().After(notAfter) {
+		log.Warn().Msgf("session expired — run `%s login`", binaryName())
 	}
 
 	return &upstream.ServiceAccountCredentials{
