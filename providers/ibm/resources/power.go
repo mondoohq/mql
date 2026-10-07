@@ -31,8 +31,27 @@ func (r *mqlIbmPowerWorkspace) id() (string, error) {
 	return "ibm.power.workspace/" + r.Crn.Data, nil
 }
 
+// powerWorkspaces is every workspace, narrowed by --filters.
 func (r *mqlIbm) powerWorkspaces() ([]any, error) {
-	items, err := listResourceInstances(r.MqlRuntime)
+	all, err := allPowerWorkspaces(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	return filterByTags(r.MqlRuntime, all, func(w *mqlIbmPowerWorkspace) string { return w.Crn.Data })
+}
+
+// allPowerWorkspaces lists every workspace once per connection, ignoring
+// --filters, for references that must not be hidden by a filter.
+func allPowerWorkspaces(runtime *plugin.Runtime) ([]any, error) {
+	v, err := conn(runtime).Memo("all/powerWorkspaces", func() (any, error) { return listPowerWorkspaces(runtime) })
+	if err != nil {
+		return nil, err
+	}
+	return v.([]any), nil
+}
+
+func listPowerWorkspaces(runtime *plugin.Runtime) ([]any, error) {
+	items, err := listResourceInstances(runtime)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +60,7 @@ func (r *mqlIbm) powerWorkspaces() ([]any, error) {
 		if derefStr(ri.ResourceID) != powerServiceID {
 			continue
 		}
-		res, err := CreateResource(r.MqlRuntime, "ibm.power.workspace", map[string]*llx.RawData{
+		res, err := CreateResource(runtime, "ibm.power.workspace", map[string]*llx.RawData{
 			"__id":      llx.StringData("ibm.power.workspace/" + derefStr(ri.CRN)),
 			"id":        strData(ri.GUID),
 			"crn":       strData(ri.CRN),
@@ -72,15 +91,11 @@ func initIbmPowerWorkspace(runtime *plugin.Runtime, args map[string]*llx.RawData
 	if crn == "" {
 		return nil, nil, errors.New(`ibm.power.workspace requires a crn, for example ibm.power.workspace(crn: "crn:v1:bluemix:public:power-iaas:...")`)
 	}
-	ns, err := root(runtime)
+	all, err := allPowerWorkspaces(runtime)
 	if err != nil {
 		return nil, nil, err
 	}
-	list := ns.GetPowerWorkspaces()
-	if list.Error != nil {
-		return nil, nil, list.Error
-	}
-	for _, e := range list.Data {
+	for _, e := range all {
 		if w := e.(*mqlIbmPowerWorkspace); w.Crn.Data == crn {
 			return args, w, nil
 		}

@@ -38,7 +38,8 @@ Authenticate with an IBM Cloud API key:
   cnspec shell ibm --api-key-file apikey.json
 
 You can also set the %s environment variable.
-Restrict the VPC regions queried with --regions us-south,eu-de.
+Restrict the VPC regions queried with --regions us-south,eu-de, and narrow
+discovered resources by tag with --filters tags=env:prod.
 `, connection.APIKeyEnvVar),
 			MinArgs: 0,
 			MaxArgs: 0,
@@ -66,6 +67,12 @@ Restrict the VPC regions queried with --regions us-south,eu-de.
 					Long: connection.OptionRegions,
 					Type: plugin.FlagType_List,
 					Desc: "Restrict the VPC regions queried, for example us-south,eu-de (env: IBMCLOUD_REGIONS)",
+				},
+				{
+					Long:    "filters",
+					Type:    plugin.FlagType_KeyValue,
+					Default: "",
+					Desc:    "Filter discovered resources by tag, e.g., --filters tags=env:prod,team --filters exclude:tags=env:dev",
 				},
 			},
 		},

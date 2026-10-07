@@ -116,6 +116,12 @@ private ibm.resourceGroup @defaults("name") {
   default bool
   // Creation timestamp
   createdAt time
+  // Last update timestamp
+  updatedAt time
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Cloud resource instance
@@ -146,10 +152,16 @@ private ibm.resourceInstance @defaults("name service region state") {
   locked bool
   // Creation timestamp
   createdAt time
+  // Last update timestamp
+  updatedAt time
   // IAM ID of the identity that created the instance
   createdBy string
   // Resource group the instance belongs to
   resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Cloud IAM access group
@@ -344,6 +356,10 @@ private ibm.vpc @defaults("name region") {
   defaultNetworkAcl() ibm.vpc.networkAcl
   // Subnets of the VPC
   subnets() []ibm.vpc.subnet
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Cloud VPC subnet
@@ -381,13 +397,18 @@ private ibm.vpc.subnet @defaults("name ipv4CidrBlock zone") {
   publicGateway() ibm.vpc.publicGateway
   // Resource group of the subnet
   resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Cloud VPC virtual server instance
 //
 // A virtual server in a VPC with its profile, image, boot security (secure
 // boot, confidential computing), instance metadata service configuration, and
-// attached volumes.
+// attached volumes. The `exposure` field combines its floating IPs and security
+// group rules into an internet-reachability verdict.
 private ibm.vpc.instance @defaults("name zone status") {
   init(id? string)
   // Instance ID
@@ -430,6 +451,33 @@ private ibm.vpc.instance @defaults("name zone status") {
   resourceGroup() ibm.resourceGroup
   // Volumes attached to the instance
   volumes() []ibm.vpc.volume
+  // Security groups attached to the instance's network interfaces
+  securityGroups() []ibm.vpc.securityGroup
+  // Floating IPs bound to the instance's network interfaces
+  floatingIps() []ibm.vpc.floatingIp
+  // Internet exposure: a floating IP combined with a security group rule that admits any address
+  exposure() ibm.network.exposure
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud network exposure
+//
+// Whether a VPC instance is reachable from the internet: one of its network
+// interfaces has a floating IP, and a security group attached to it admits
+// inbound traffic from any address. The instance counts as internet-reachable
+// only when both hold. Network ACLs are not taken into account.
+private ibm.network.exposure @defaults("internetReachable hasPublicIp") {
+  // Whether the instance is reachable from the internet (a floating IP and a security group rule that admits any address)
+  internetReachable bool
+  // Whether a floating IP is bound to one of the instance's network interfaces
+  hasPublicIp bool
+  // Whether an attached security group admits inbound traffic from any address (0.0.0.0/0 or ::/0)
+  securityGroupAllowsIngress bool
+  // Inbound security group rules that admit traffic from any address
+  openIngressRules []ibm.vpc.securityGroup.rule
 }
 
 // IBM Cloud VPC security group
@@ -456,6 +504,10 @@ private ibm.vpc.securityGroup @defaults("name region") {
   resourceGroup() ibm.resourceGroup
   // Inbound and outbound rules
   rules() []ibm.vpc.securityGroup.rule
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Cloud VPC security group rule
@@ -507,6 +559,10 @@ private ibm.vpc.networkAcl @defaults("name region") {
   rules() []ibm.vpc.networkAcl.rule
   // Subnets the network ACL is applied to
   subnets() []ibm.vpc.subnet
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Cloud VPC network ACL rule
@@ -568,6 +624,10 @@ private ibm.vpc.floatingIp @defaults("address zone") {
   createdAt time
   // Resource group of the floating IP
   resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Cloud VPC public gateway
@@ -595,6 +655,10 @@ private ibm.vpc.publicGateway @defaults("name zone address") {
   vpc() ibm.vpc
   // Resource group of the public gateway
   resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Cloud VPC load balancer
@@ -634,6 +698,10 @@ private ibm.vpc.loadBalancer @defaults("name region isPublic") {
   subnets() []ibm.vpc.subnet
   // Resource group of the load balancer
   resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Cloud VPC block storage volume
@@ -669,6 +737,10 @@ private ibm.vpc.volume @defaults("name zone capacity") {
   resourceGroup() ibm.resourceGroup
   // Instances the volume is attached to
   instances() []ibm.vpc.instance
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Cloud VPC SSH key
@@ -694,6 +766,10 @@ private ibm.vpc.sshKey @defaults("name type length") {
   createdAt time
   // Resource group of the SSH key
   resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Cloud VPC flow log collector
@@ -727,6 +803,10 @@ private ibm.vpc.flowLogCollector @defaults("name active targetResourceType") {
   vpc() ibm.vpc
   // Resource group of the collector
   resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Power Virtual Server workspace
@@ -757,6 +837,10 @@ private ibm.power.workspace @defaults("name zone state") {
   volumes() []ibm.power.volume
   // Boot images available in the workspace
   images() []ibm.power.image
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Power Virtual Server instance
@@ -800,6 +884,10 @@ private ibm.power.instance @defaults("name status osType") {
   networks() []ibm.power.network
   // Volumes attached to the instance
   volumes() []ibm.power.volume
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Power Virtual Server network
@@ -821,6 +909,10 @@ private ibm.power.network @defaults("name type") {
   mtu int
   // Whether DHCP is managed by Power Virtual Server
   dhcpManaged bool
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Power Virtual Server storage volume
@@ -850,6 +942,10 @@ private ibm.power.volume @defaults("name size state") {
   createdAt time
   // Instances the volume is attached to
   instances() []ibm.power.instance
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }
 
 // IBM Power Virtual Server boot image
@@ -871,4 +967,8 @@ private ibm.power.image @defaults("name operatingSystem state") {
   storageType string
   // Creation timestamp
   createdAt time
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
 }

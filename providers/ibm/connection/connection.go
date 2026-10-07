@@ -15,6 +15,7 @@ import (
 
 	"github.com/IBM-Cloud/power-go-client/ibmpisession"
 	"github.com/IBM/go-sdk-core/v5/core"
+	"github.com/IBM/platform-services-go-sdk/globalsearchv2"
 	"github.com/IBM/platform-services-go-sdk/iamaccessgroupsv2"
 	"github.com/IBM/platform-services-go-sdk/iamidentityv1"
 	"github.com/IBM/platform-services-go-sdk/iampolicymanagementv1"
@@ -51,6 +52,9 @@ type IbmConnection struct {
 	accountID string
 	// regionFilter restricts the VPC regions queried; empty means all.
 	regionFilter []string
+	// Filters narrows the listed discovery-target resources by tag
+	// (--filters), so discovery and queries see the same set.
+	Filters DiscoveryFilters
 
 	clientsOnce         sync.Once
 	clientsErr          error
@@ -59,6 +63,7 @@ type IbmConnection struct {
 	iamPolicyManagement *iampolicymanagementv1.IamPolicyManagementV1
 	resourceController  *resourcecontrollerv2.ResourceControllerV2
 	resourceManager     *resourcemanagerv2.ResourceManagerV2
+	globalSearch        *globalsearchv2.GlobalSearchV2
 
 	regionsOnce sync.Once
 	regions     []vpcv1.Region
@@ -95,6 +100,7 @@ func NewIbmConnection(id uint32, asset *inventory.Asset, conf *inventory.Config)
 		asset:        asset,
 		auth:         auth,
 		regionFilter: GetRegions(conf),
+		Filters:      DiscoveryFiltersFromOpts(conf.Options),
 	}, nil
 }
 
@@ -160,6 +166,11 @@ func (c *IbmConnection) initClients() error {
 			return
 		}
 		configure(c.resourceManager.Service)
+		if c.globalSearch, err = globalsearchv2.NewGlobalSearchV2(&globalsearchv2.GlobalSearchV2Options{Authenticator: c.auth}); err != nil {
+			c.clientsErr = err
+			return
+		}
+		configure(c.globalSearch.Service)
 	})
 	return c.clientsErr
 }
@@ -181,6 +192,7 @@ func (c *IbmConnection) ResourceController() *resourcecontrollerv2.ResourceContr
 func (c *IbmConnection) ResourceManager() *resourcemanagerv2.ResourceManagerV2 {
 	return c.resourceManager
 }
+func (c *IbmConnection) GlobalSearch() *globalsearchv2.GlobalSearchV2 { return c.globalSearch }
 
 // VpcRegions lists the VPC regions to query, once per connection, narrowed to
 // the --regions filter. A filter naming a region that does not exist is an

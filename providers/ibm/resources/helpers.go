@@ -193,11 +193,41 @@ func resolveOne[R any](field *plugin.TValue[R], list *plugin.TValue[[]any], id s
 	if list.Error != nil {
 		return zero, list.Error
 	}
-	if r, ok := pickOneByID(list.Data, id, idOf); ok {
+	return resolveIn(field, list.Data, id, idOf)
+}
+
+// resolveIn resolves a typed reference through an already-read list, null
+// when the target is not listed.
+func resolveIn[R any](field *plugin.TValue[R], list []any, id string, idOf func(R) string) (R, error) {
+	if r, ok := pickOneByID(list, id, idOf); ok {
 		return r, nil
 	}
 	nullResource(field)
+	var zero R
 	return zero, nil
+}
+
+// filterByTags narrows a list to the resources --filters keeps. The tag index
+// is only read when a filter is set.
+func filterByTags[R any](runtime *plugin.Runtime, list []any, crnOf func(R) string) ([]any, error) {
+	if !conn(runtime).Filters.HasFilters() {
+		return list, nil
+	}
+	out := make([]any, 0, len(list))
+	for _, e := range list {
+		r, ok := e.(R)
+		if !ok {
+			continue
+		}
+		skip, err := filteredOut(runtime, crnOf(r))
+		if err != nil {
+			return nil, err
+		}
+		if !skip {
+			out = append(out, e)
+		}
+	}
+	return out, nil
 }
 
 // stringArg reads a string init argument; an absent or non-string one is "".

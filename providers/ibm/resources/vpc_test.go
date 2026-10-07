@@ -119,3 +119,63 @@ func TestInstanceArgsWithoutMetadataService(t *testing.T) {
 	assert.Nil(t, args["enableSecureBoot"].Value)
 	assert.Nil(t, args["createdAt"].Value)
 }
+
+func TestInstanceInterfaceIDs(t *testing.T) {
+	legacy := unmarshal[vpcv1.Instance](t, `{
+		"id": "i-1",
+		"primary_network_interface": {"id": "nic-1", "name": "eth0"},
+		"network_interfaces": [{"id": "nic-1", "name": "eth0"}, {"id": "nic-2", "name": "eth1"}],
+		"network_attachments": []
+	}`, vpcv1.UnmarshalInstance)
+	assert.ElementsMatch(t, []string{"nic-1", "nic-1", "nic-2"}, instanceInterfaceIDs(*legacy))
+
+	attached := unmarshal[vpcv1.Instance](t, `{
+		"id": "i-2",
+		"primary_network_attachment": {"id": "att-1", "name": "a", "virtual_network_interface": {"id": "vni-1", "name": "v"}},
+		"network_attachments": [{"id": "att-1", "name": "a", "virtual_network_interface": {"id": "vni-1", "name": "v"}}],
+		"network_interfaces": [{"id": "att-1", "name": "a"}]
+	}`, vpcv1.UnmarshalInstance)
+	ids := instanceInterfaceIDs(*attached)
+	assert.Contains(t, ids, "vni-1", "security groups and floating IPs target the virtual network interface")
+	assert.Contains(t, ids, "att-1")
+
+	assert.Empty(t, instanceInterfaceIDs(vpcv1.Instance{}))
+}
+
+func TestSecurityGroupTargetIDs(t *testing.T) {
+	sg := unmarshal[vpcv1.SecurityGroup](t, `{
+		"id": "sg-1", "rules": [],
+		"targets": [
+			{"id": "nic-1", "name": "eth0", "resource_type": "network_interface"},
+			{"id": "vni-1", "name": "v", "resource_type": "virtual_network_interface", "crn": "crn:vni-1"},
+			{"id": "lb-1", "name": "lb", "crn": "crn:lb-1"}
+		]}`, vpcv1.UnmarshalSecurityGroup)
+	ids, err := securityGroupTargetIDs(sg.Targets)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"nic-1", "vni-1", "lb-1"}, ids)
+}
+
+func TestFloatingIPTargetID(t *testing.T) {
+	f := unmarshal[vpcv1.FloatingIP](t, `{
+		"id": "fip-1", "address": "198.51.100.7",
+		"target": {"id": "vni-1", "name": "v", "resource_type": "virtual_network_interface", "crn": "crn:vni-1"}
+	}`, vpcv1.UnmarshalFloatingIP)
+	var target targetRef
+	require.NoError(t, asJSON(f.Target, &target))
+	assert.Equal(t, "vni-1", target.ID)
+	assert.Equal(t, "virtual_network_interface", target.ResourceType)
+}
+
+func TestRuleOpenToInternet(t *testing.T) {
+	assert.True(t, ruleOpenToInternet("inbound", "0.0.0.0/0"))
+	assert.True(t, ruleOpenToInternet("inbound", " ::/0 "))
+	assert.False(t, ruleOpenToInternet("outbound", "0.0.0.0/0"), "egress does not expose the instance")
+	assert.False(t, ruleOpenToInternet("inbound", "10.0.0.0/8"))
+	assert.False(t, ruleOpenToInternet("inbound", ""), "a security group or address remote has no CIDR")
+}
+
+func TestSharesID(t *testing.T) {
+	assert.True(t, sharesID([]string{"a", "b"}, []string{"c", "b"}))
+	assert.False(t, sharesID([]string{"a"}, []string{"b"}))
+	assert.False(t, sharesID([]string{""}, []string{""}), "an empty id never matches")
+}

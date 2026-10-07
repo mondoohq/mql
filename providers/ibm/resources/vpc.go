@@ -6,12 +6,15 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/IBM/vpc-go-sdk/vpcv1"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/ibm/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // ---- regions ----
@@ -223,14 +226,35 @@ type mqlIbmVpcInstanceInternal struct {
 	cacheVpcID           string
 	cacheResourceGroupID string
 	cacheVolumeIDs       []string
+	cacheInterfaceIDs    []string
 }
 
 func (r *mqlIbmVpcInstance) id() (string, error) {
 	return "ibm.vpc.instance/" + r.Crn.Data, nil
 }
 
+// vpcInstances is every instance, narrowed by --filters.
 func (r *mqlIbm) vpcInstances() ([]any, error) {
-	items, err := listAllRegions(r.MqlRuntime, "is.instance.instance.list", func(c *vpcv1.VpcV1) ([]vpcv1.Instance, error) {
+	all, err := allVpcInstances(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	return filterByTags(r.MqlRuntime, all, func(i *mqlIbmVpcInstance) string { return i.Crn.Data })
+}
+
+// allVpcInstances lists every instance once per connection, ignoring
+// --filters: references from volumes and discovered assets resolve through it,
+// and a filter must not hide what they point at.
+func allVpcInstances(runtime *plugin.Runtime) ([]any, error) {
+	v, err := conn(runtime).Memo("all/vpcInstances", func() (any, error) { return listVpcInstances(runtime) })
+	if err != nil {
+		return nil, err
+	}
+	return v.([]any), nil
+}
+
+func listVpcInstances(runtime *plugin.Runtime) ([]any, error) {
+	items, err := listAllRegions(runtime, "is.instance.instance.list", func(c *vpcv1.VpcV1) ([]vpcv1.Instance, error) {
 		pager, err := c.NewInstancesPager(&vpcv1.ListInstancesOptions{})
 		if err != nil {
 			return nil, err
@@ -242,13 +266,14 @@ func (r *mqlIbm) vpcInstances() ([]any, error) {
 	}
 	out := make([]any, 0, len(items))
 	for _, it := range items {
-		res, err := CreateResource(r.MqlRuntime, "ibm.vpc.instance", instanceArgs(it.region, it.item))
+		res, err := CreateResource(runtime, "ibm.vpc.instance", instanceArgs(it.region, it.item))
 		if err != nil {
 			return nil, err
 		}
 		m := res.(*mqlIbmVpcInstance)
 		m.cacheVpcID = vpcID(it.item.VPC)
 		m.cacheResourceGroupID = resourceGroupID(it.item.ResourceGroup)
+		m.cacheInterfaceIDs = instanceInterfaceIDs(it.item)
 		for _, a := range it.item.VolumeAttachments {
 			if a.Volume != nil && a.Volume.ID != nil {
 				m.cacheVolumeIDs = append(m.cacheVolumeIDs, *a.Volume.ID)
@@ -311,15 +336,11 @@ func initIbmVpcInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	if id == "" && crn == "" {
 		return nil, nil, errors.New(`ibm.vpc.instance requires an id, for example ibm.vpc.instance(id: "0717_...")`)
 	}
-	ns, err := root(runtime)
+	all, err := allVpcInstances(runtime)
 	if err != nil {
 		return nil, nil, err
 	}
-	list := ns.GetVpcInstances()
-	if list.Error != nil {
-		return nil, nil, list.Error
-	}
-	for _, e := range list.Data {
+	for _, e := range all {
 		i := e.(*mqlIbmVpcInstance)
 		if (id != "" && i.Id.Data == id) || (crn != "" && i.Crn.Data == crn) {
 			return args, i, nil
@@ -334,6 +355,131 @@ func (r *mqlIbmVpcInstance) vpc() (*mqlIbmVpc, error) {
 
 func (r *mqlIbmVpcInstance) resourceGroup() (*mqlIbmResourceGroup, error) {
 	return resourceGroupByID(r.MqlRuntime, r.cacheResourceGroupID, &r.ResourceGroup)
+}
+
+// instanceInterfaceIDs collects the ids a floating IP or a security group
+// names when it targets the instance: legacy network interfaces, and network
+// attachments with their virtual network interfaces. An instance on network
+// attachments also lists read-only network interfaces carrying the attachment
+// ids, so the set overlaps; duplicates are harmless.
+func instanceInterfaceIDs(i vpcv1.Instance) []string {
+	var out []string
+	add := func(id *string) {
+		if id != nil && *id != "" {
+			out = append(out, *id)
+		}
+	}
+	addAttachment := func(a *vpcv1.InstanceNetworkAttachmentReference) {
+		if a == nil {
+			return
+		}
+		add(a.ID)
+		if a.VirtualNetworkInterface != nil {
+			add(a.VirtualNetworkInterface.ID)
+		}
+	}
+	if i.PrimaryNetworkInterface != nil {
+		add(i.PrimaryNetworkInterface.ID)
+	}
+	for _, n := range i.NetworkInterfaces {
+		add(n.ID)
+	}
+	addAttachment(i.PrimaryNetworkAttachment)
+	for idx := range i.NetworkAttachments {
+		addAttachment(&i.NetworkAttachments[idx])
+	}
+	return out
+}
+
+func (r *mqlIbmVpcInstance) securityGroups() ([]any, error) {
+	all, err := allVpcSecurityGroups(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	out := []any{}
+	for _, e := range all {
+		if sg := e.(*mqlIbmVpcSecurityGroup); sharesID(sg.cacheTargetIDs, r.cacheInterfaceIDs) {
+			out = append(out, sg)
+		}
+	}
+	return out, nil
+}
+
+func (r *mqlIbmVpcInstance) floatingIps() ([]any, error) {
+	ns, err := root(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	list := ns.GetVpcFloatingIps()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	out := []any{}
+	for _, e := range list.Data {
+		if f := e.(*mqlIbmVpcFloatingIp); f.cacheTargetID != "" && slices.Contains(r.cacheInterfaceIDs, f.cacheTargetID) {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
+// exposure combines the instance's floating IPs with the inbound rules of its
+// security groups that admit any address.
+func (r *mqlIbmVpcInstance) exposure() (*mqlIbmNetworkExposure, error) {
+	fips := r.GetFloatingIps()
+	if fips.Error != nil {
+		return nil, fips.Error
+	}
+	sgs := r.GetSecurityGroups()
+	if sgs.Error != nil {
+		return nil, sgs.Error
+	}
+	openRules := []any{}
+	for _, e := range sgs.Data {
+		sg := e.(*mqlIbmVpcSecurityGroup)
+		rules := sg.GetRules()
+		if rules.Error != nil {
+			return nil, rules.Error
+		}
+		for _, re := range rules.Data {
+			rule := re.(*mqlIbmVpcSecurityGroupRule)
+			if ruleOpenToInternet(rule.Direction.Data, rule.RemoteCidr.Data) {
+				openRules = append(openRules, rule)
+			}
+		}
+	}
+	hasPublicIP := len(fips.Data) > 0
+	sgAllows := len(openRules) > 0
+	res, err := CreateResource(r.MqlRuntime, "ibm.network.exposure", map[string]*llx.RawData{
+		"__id":                       llx.StringData("ibm.vpc.instance/" + r.Crn.Data + "/exposure"),
+		"internetReachable":          llx.BoolData(hasPublicIP && sgAllows),
+		"hasPublicIp":                llx.BoolData(hasPublicIP),
+		"securityGroupAllowsIngress": llx.BoolData(sgAllows),
+		"openIngressRules":           llx.ArrayData(openRules, types.Resource("ibm.vpc.securityGroup.rule")),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlIbmNetworkExposure), nil
+}
+
+// ruleOpenToInternet reports whether a security group rule admits inbound
+// traffic from any address.
+func ruleOpenToInternet(direction, remoteCidr string) bool {
+	if direction != "inbound" {
+		return false
+	}
+	c := strings.TrimSpace(remoteCidr)
+	return c == "0.0.0.0/0" || c == "::/0"
+}
+
+func sharesID(a, b []string) bool {
+	for _, x := range a {
+		if x != "" && slices.Contains(b, x) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *mqlIbmVpcInstance) volumes() ([]any, error) {
@@ -354,6 +500,7 @@ type mqlIbmVpcSecurityGroupInternal struct {
 	cacheVpcID           string
 	cacheResourceGroupID string
 	cacheRules           []securityGroupRule
+	cacheTargetIDs       []string
 }
 
 // securityGroupRule is every variant of a security group rule read through
@@ -387,12 +534,49 @@ func decodeSecurityGroupRules(rules []vpcv1.SecurityGroupRuleIntf) ([]securityGr
 	return out, nil
 }
 
+// securityGroupTargetIDs reads the ids of the network interfaces, virtual
+// network interfaces, load balancers, and endpoint gateways a group is
+// attached to, whatever their variant.
+func securityGroupTargetIDs(targets []vpcv1.SecurityGroupTargetReferenceIntf) ([]string, error) {
+	out := make([]string, 0, len(targets))
+	for _, t := range targets {
+		var ref targetRef
+		if err := asJSON(t, &ref); err != nil {
+			return nil, err
+		}
+		if ref.ID != "" {
+			out = append(out, ref.ID)
+		}
+	}
+	return out, nil
+}
+
 func (r *mqlIbmVpcSecurityGroup) id() (string, error) {
 	return "ibm.vpc.securityGroup/" + r.Crn.Data, nil
 }
 
+// vpcSecurityGroups is every security group, narrowed by --filters.
 func (r *mqlIbm) vpcSecurityGroups() ([]any, error) {
-	items, err := listAllRegions(r.MqlRuntime, "is.security-group.security-group.list", func(c *vpcv1.VpcV1) ([]vpcv1.SecurityGroup, error) {
+	all, err := allVpcSecurityGroups(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	return filterByTags(r.MqlRuntime, all, func(sg *mqlIbmVpcSecurityGroup) string { return sg.Crn.Data })
+}
+
+// allVpcSecurityGroups lists every security group once per connection,
+// ignoring --filters: rule remotes, load balancers, instances, and their
+// exposure resolve through it, and a filter must not hide an open group.
+func allVpcSecurityGroups(runtime *plugin.Runtime) ([]any, error) {
+	v, err := conn(runtime).Memo("all/vpcSecurityGroups", func() (any, error) { return listVpcSecurityGroups(runtime) })
+	if err != nil {
+		return nil, err
+	}
+	return v.([]any), nil
+}
+
+func listVpcSecurityGroups(runtime *plugin.Runtime) ([]any, error) {
+	items, err := listAllRegions(runtime, "is.security-group.security-group.list", func(c *vpcv1.VpcV1) ([]vpcv1.SecurityGroup, error) {
 		pager, err := c.NewSecurityGroupsPager(&vpcv1.ListSecurityGroupsOptions{})
 		if err != nil {
 			return nil, err
@@ -409,7 +593,7 @@ func (r *mqlIbm) vpcSecurityGroups() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		res, err := CreateResource(r.MqlRuntime, "ibm.vpc.securityGroup", map[string]*llx.RawData{
+		res, err := CreateResource(runtime, "ibm.vpc.securityGroup", map[string]*llx.RawData{
 			"__id":        llx.StringData("ibm.vpc.securityGroup/" + derefStr(sg.CRN)),
 			"id":          strData(sg.ID),
 			"crn":         strData(sg.CRN),
@@ -425,6 +609,9 @@ func (r *mqlIbm) vpcSecurityGroups() ([]any, error) {
 		m.cacheVpcID = vpcID(sg.VPC)
 		m.cacheResourceGroupID = resourceGroupID(sg.ResourceGroup)
 		m.cacheRules = rules
+		if m.cacheTargetIDs, err = securityGroupTargetIDs(sg.Targets); err != nil {
+			return nil, err
+		}
 		out = append(out, m)
 	}
 	return out, nil
@@ -442,15 +629,11 @@ func initIbmVpcSecurityGroup(runtime *plugin.Runtime, args map[string]*llx.RawDa
 	if id == "" && crn == "" {
 		return nil, nil, errors.New(`ibm.vpc.securityGroup requires an id, for example ibm.vpc.securityGroup(id: "r006-...")`)
 	}
-	ns, err := root(runtime)
+	all, err := allVpcSecurityGroups(runtime)
 	if err != nil {
 		return nil, nil, err
 	}
-	list := ns.GetVpcSecurityGroups()
-	if list.Error != nil {
-		return nil, nil, list.Error
-	}
-	for _, e := range list.Data {
+	for _, e := range all {
 		sg := e.(*mqlIbmVpcSecurityGroup)
 		if (id != "" && sg.Id.Data == id) || (crn != "" && sg.Crn.Data == crn) {
 			return args, sg, nil
@@ -460,11 +643,15 @@ func initIbmVpcSecurityGroup(runtime *plugin.Runtime, args map[string]*llx.RawDa
 }
 
 func securityGroupByID(runtime *plugin.Runtime, id string, field *plugin.TValue[*mqlIbmVpcSecurityGroup]) (*mqlIbmVpcSecurityGroup, error) {
-	ns, err := root(runtime)
+	if id == "" {
+		nullResource(field)
+		return nil, nil
+	}
+	all, err := allVpcSecurityGroups(runtime)
 	if err != nil {
 		return nil, err
 	}
-	return resolveOne(field, ns.GetVpcSecurityGroups(), id, func(s *mqlIbmVpcSecurityGroup) string { return s.Id.Data })
+	return resolveIn(field, all, id, func(s *mqlIbmVpcSecurityGroup) string { return s.Id.Data })
 }
 
 func (r *mqlIbmVpcSecurityGroup) vpc() (*mqlIbmVpc, error) {
@@ -517,15 +704,11 @@ func (r *mqlIbmVpcSecurityGroupRule) remoteSecurityGroup() (*mqlIbmVpcSecurityGr
 }
 
 func securityGroupsByID(runtime *plugin.Runtime, ids []string) ([]any, error) {
-	ns, err := root(runtime)
+	all, err := allVpcSecurityGroups(runtime)
 	if err != nil {
 		return nil, err
 	}
-	list := ns.GetVpcSecurityGroups()
-	if list.Error != nil {
-		return nil, list.Error
-	}
-	return pickByID(list.Data, ids, func(s *mqlIbmVpcSecurityGroup) string { return s.Id.Data }), nil
+	return pickByID(all, ids, func(s *mqlIbmVpcSecurityGroup) string { return s.Id.Data }), nil
 }
 
 // ---- network ACLs ----
@@ -650,10 +833,12 @@ func (r *mqlIbmVpcNetworkAcl) rules() ([]any, error) {
 
 type mqlIbmVpcFloatingIpInternal struct {
 	cacheResourceGroupID string
+	cacheTargetID        string
 }
 
 // targetRef is a polymorphic target reference read through its JSON form.
 type targetRef struct {
+	ID           string `json:"id"`
 	ResourceType string `json:"resource_type"`
 	Name         string `json:"name"`
 }
@@ -694,7 +879,9 @@ func (r *mqlIbm) vpcFloatingIps() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		res.(*mqlIbmVpcFloatingIp).cacheResourceGroupID = resourceGroupID(f.ResourceGroup)
+		m := res.(*mqlIbmVpcFloatingIp)
+		m.cacheResourceGroupID = resourceGroupID(f.ResourceGroup)
+		m.cacheTargetID = target.ID
 		out = append(out, res)
 	}
 	return out, nil
@@ -896,15 +1083,11 @@ func (r *mqlIbmVpcVolume) resourceGroup() (*mqlIbmResourceGroup, error) {
 }
 
 func (r *mqlIbmVpcVolume) instances() ([]any, error) {
-	ns, err := root(r.MqlRuntime)
+	all, err := allVpcInstances(r.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
-	list := ns.GetVpcInstances()
-	if list.Error != nil {
-		return nil, list.Error
-	}
-	return pickByID(list.Data, r.cacheInstanceIDs, func(i *mqlIbmVpcInstance) string { return i.Id.Data }), nil
+	return pickByID(all, r.cacheInstanceIDs, func(i *mqlIbmVpcInstance) string { return i.Id.Data }), nil
 }
 
 // ---- SSH keys ----

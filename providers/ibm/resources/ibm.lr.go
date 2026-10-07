@@ -30,6 +30,7 @@ const (
 	ResourceIbmVpc                  string = "ibm.vpc"
 	ResourceIbmVpcSubnet            string = "ibm.vpc.subnet"
 	ResourceIbmVpcInstance          string = "ibm.vpc.instance"
+	ResourceIbmNetworkExposure      string = "ibm.network.exposure"
 	ResourceIbmVpcSecurityGroup     string = "ibm.vpc.securityGroup"
 	ResourceIbmVpcSecurityGroupRule string = "ibm.vpc.securityGroup.rule"
 	ResourceIbmVpcNetworkAcl        string = "ibm.vpc.networkAcl"
@@ -106,6 +107,10 @@ func init() {
 		"ibm.vpc.instance": {
 			Init:   initIbmVpcInstance,
 			Create: createIbmVpcInstance,
+		},
+		"ibm.network.exposure": {
+			// to override args, implement: initIbmNetworkExposure(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmNetworkExposure,
 		},
 		"ibm.vpc.securityGroup": {
 			Init:   initIbmVpcSecurityGroup,
@@ -358,6 +363,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.resourceGroup.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmResourceGroup).GetCreatedAt()).ToDataRes(types.Time)
 	},
+	"ibm.resourceGroup.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmResourceGroup).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.resourceGroup.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmResourceGroup).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.resourceGroup.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmResourceGroup).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
 	"ibm.resourceInstance.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmResourceInstance).GetId()).ToDataRes(types.String)
 	},
@@ -391,11 +405,20 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.resourceInstance.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmResourceInstance).GetCreatedAt()).ToDataRes(types.Time)
 	},
+	"ibm.resourceInstance.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmResourceInstance).GetUpdatedAt()).ToDataRes(types.Time)
+	},
 	"ibm.resourceInstance.createdBy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmResourceInstance).GetCreatedBy()).ToDataRes(types.String)
 	},
 	"ibm.resourceInstance.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmResourceInstance).GetResourceGroup()).ToDataRes(types.Resource("ibm.resourceGroup"))
+	},
+	"ibm.resourceInstance.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmResourceInstance).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.resourceInstance.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmResourceInstance).GetAccessTags()).ToDataRes(types.Array(types.String))
 	},
 	"ibm.iam.accessGroup.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmIamAccessGroup).GetId()).ToDataRes(types.String)
@@ -604,6 +627,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.vpc.subnets": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpc).GetSubnets()).ToDataRes(types.Array(types.Resource("ibm.vpc.subnet")))
 	},
+	"ibm.vpc.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpc).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpc).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
 	"ibm.vpc.subnet.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcSubnet).GetId()).ToDataRes(types.String)
 	},
@@ -648,6 +677,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.vpc.subnet.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcSubnet).GetResourceGroup()).ToDataRes(types.Resource("ibm.resourceGroup"))
+	},
+	"ibm.vpc.subnet.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcSubnet).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.subnet.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcSubnet).GetAccessTags()).ToDataRes(types.Array(types.String))
 	},
 	"ibm.vpc.instance.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcInstance).GetId()).ToDataRes(types.String)
@@ -709,6 +744,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.vpc.instance.volumes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcInstance).GetVolumes()).ToDataRes(types.Array(types.Resource("ibm.vpc.volume")))
 	},
+	"ibm.vpc.instance.securityGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcInstance).GetSecurityGroups()).ToDataRes(types.Array(types.Resource("ibm.vpc.securityGroup")))
+	},
+	"ibm.vpc.instance.floatingIps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcInstance).GetFloatingIps()).ToDataRes(types.Array(types.Resource("ibm.vpc.floatingIp")))
+	},
+	"ibm.vpc.instance.exposure": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcInstance).GetExposure()).ToDataRes(types.Resource("ibm.network.exposure"))
+	},
+	"ibm.vpc.instance.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcInstance).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.instance.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcInstance).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.network.exposure.internetReachable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmNetworkExposure).GetInternetReachable()).ToDataRes(types.Bool)
+	},
+	"ibm.network.exposure.hasPublicIp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmNetworkExposure).GetHasPublicIp()).ToDataRes(types.Bool)
+	},
+	"ibm.network.exposure.securityGroupAllowsIngress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmNetworkExposure).GetSecurityGroupAllowsIngress()).ToDataRes(types.Bool)
+	},
+	"ibm.network.exposure.openIngressRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmNetworkExposure).GetOpenIngressRules()).ToDataRes(types.Array(types.Resource("ibm.vpc.securityGroup.rule")))
+	},
 	"ibm.vpc.securityGroup.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcSecurityGroup).GetId()).ToDataRes(types.String)
 	},
@@ -735,6 +797,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.vpc.securityGroup.rules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcSecurityGroup).GetRules()).ToDataRes(types.Array(types.Resource("ibm.vpc.securityGroup.rule")))
+	},
+	"ibm.vpc.securityGroup.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcSecurityGroup).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.securityGroup.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcSecurityGroup).GetAccessTags()).ToDataRes(types.Array(types.String))
 	},
 	"ibm.vpc.securityGroup.rule.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcSecurityGroupRule).GetId()).ToDataRes(types.String)
@@ -795,6 +863,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.vpc.networkAcl.subnets": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcNetworkAcl).GetSubnets()).ToDataRes(types.Array(types.Resource("ibm.vpc.subnet")))
+	},
+	"ibm.vpc.networkAcl.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcNetworkAcl).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.networkAcl.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcNetworkAcl).GetAccessTags()).ToDataRes(types.Array(types.String))
 	},
 	"ibm.vpc.networkAcl.rule.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcNetworkAclRule).GetId()).ToDataRes(types.String)
@@ -871,6 +945,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.vpc.floatingIp.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcFloatingIp).GetResourceGroup()).ToDataRes(types.Resource("ibm.resourceGroup"))
 	},
+	"ibm.vpc.floatingIp.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcFloatingIp).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.floatingIp.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcFloatingIp).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
 	"ibm.vpc.publicGateway.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcPublicGateway).GetId()).ToDataRes(types.String)
 	},
@@ -900,6 +980,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.vpc.publicGateway.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcPublicGateway).GetResourceGroup()).ToDataRes(types.Resource("ibm.resourceGroup"))
+	},
+	"ibm.vpc.publicGateway.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcPublicGateway).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.publicGateway.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcPublicGateway).GetAccessTags()).ToDataRes(types.Array(types.String))
 	},
 	"ibm.vpc.loadBalancer.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcLoadBalancer).GetId()).ToDataRes(types.String)
@@ -949,6 +1035,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.vpc.loadBalancer.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcLoadBalancer).GetResourceGroup()).ToDataRes(types.Resource("ibm.resourceGroup"))
 	},
+	"ibm.vpc.loadBalancer.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcLoadBalancer).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.loadBalancer.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcLoadBalancer).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
 	"ibm.vpc.volume.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcVolume).GetId()).ToDataRes(types.String)
 	},
@@ -991,6 +1083,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.vpc.volume.instances": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcVolume).GetInstances()).ToDataRes(types.Array(types.Resource("ibm.vpc.instance")))
 	},
+	"ibm.vpc.volume.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcVolume).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.volume.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcVolume).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
 	"ibm.vpc.sshKey.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcSshKey).GetId()).ToDataRes(types.String)
 	},
@@ -1017,6 +1115,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.vpc.sshKey.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcSshKey).GetResourceGroup()).ToDataRes(types.Resource("ibm.resourceGroup"))
+	},
+	"ibm.vpc.sshKey.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcSshKey).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.sshKey.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcSshKey).GetAccessTags()).ToDataRes(types.Array(types.String))
 	},
 	"ibm.vpc.flowLogCollector.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcFlowLogCollector).GetId()).ToDataRes(types.String)
@@ -1057,6 +1161,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.vpc.flowLogCollector.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmVpcFlowLogCollector).GetResourceGroup()).ToDataRes(types.Resource("ibm.resourceGroup"))
 	},
+	"ibm.vpc.flowLogCollector.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcFlowLogCollector).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.vpc.flowLogCollector.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmVpcFlowLogCollector).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
 	"ibm.power.workspace.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerWorkspace).GetId()).ToDataRes(types.String)
 	},
@@ -1089,6 +1199,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.power.workspace.images": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerWorkspace).GetImages()).ToDataRes(types.Array(types.Resource("ibm.power.image")))
+	},
+	"ibm.power.workspace.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerWorkspace).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.power.workspace.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerWorkspace).GetAccessTags()).ToDataRes(types.Array(types.String))
 	},
 	"ibm.power.instance.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerInstance).GetId()).ToDataRes(types.String)
@@ -1141,6 +1257,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.power.instance.volumes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerInstance).GetVolumes()).ToDataRes(types.Array(types.Resource("ibm.power.volume")))
 	},
+	"ibm.power.instance.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerInstance).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.power.instance.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerInstance).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
 	"ibm.power.network.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerNetwork).GetId()).ToDataRes(types.String)
 	},
@@ -1161,6 +1283,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.power.network.dhcpManaged": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerNetwork).GetDhcpManaged()).ToDataRes(types.Bool)
+	},
+	"ibm.power.network.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetwork).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.power.network.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerNetwork).GetAccessTags()).ToDataRes(types.Array(types.String))
 	},
 	"ibm.power.volume.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerVolume).GetId()).ToDataRes(types.String)
@@ -1195,6 +1323,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.power.volume.instances": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerVolume).GetInstances()).ToDataRes(types.Array(types.Resource("ibm.power.instance")))
 	},
+	"ibm.power.volume.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerVolume).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.power.volume.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerVolume).GetAccessTags()).ToDataRes(types.Array(types.String))
+	},
 	"ibm.power.image.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerImage).GetId()).ToDataRes(types.String)
 	},
@@ -1215,6 +1349,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.power.image.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmPowerImage).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.power.image.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerImage).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.power.image.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmPowerImage).GetAccessTags()).ToDataRes(types.Array(types.String))
 	},
 }
 
@@ -1400,6 +1540,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmResourceGroup).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"ibm.resourceGroup.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmResourceGroup).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.resourceGroup.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmResourceGroup).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.resourceGroup.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmResourceGroup).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"ibm.resourceInstance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmResourceInstance).__id, ok = v.Value.(string)
 		return
@@ -1448,12 +1600,24 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmResourceInstance).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"ibm.resourceInstance.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmResourceInstance).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"ibm.resourceInstance.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmResourceInstance).CreatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"ibm.resourceInstance.resourceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmResourceInstance).ResourceGroup, ok = plugin.RawToTValue[*mqlIbmResourceGroup](v.Value, v.Error)
+		return
+	},
+	"ibm.resourceInstance.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmResourceInstance).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.resourceInstance.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmResourceInstance).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.iam.accessGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1764,6 +1928,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmVpc).Subnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"ibm.vpc.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpc).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpc).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"ibm.vpc.subnet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmVpcSubnet).__id, ok = v.Value.(string)
 		return
@@ -1826,6 +1998,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.vpc.subnet.resourceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmVpcSubnet).ResourceGroup, ok = plugin.RawToTValue[*mqlIbmResourceGroup](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.subnet.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcSubnet).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.subnet.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcSubnet).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.vpc.instance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1912,6 +2092,46 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmVpcInstance).Volumes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"ibm.vpc.instance.securityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcInstance).SecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.instance.floatingIps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcInstance).FloatingIps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.instance.exposure": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcInstance).Exposure, ok = plugin.RawToTValue[*mqlIbmNetworkExposure](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.instance.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcInstance).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.instance.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcInstance).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.network.exposure.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmNetworkExposure).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.network.exposure.internetReachable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmNetworkExposure).InternetReachable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.network.exposure.hasPublicIp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmNetworkExposure).HasPublicIp, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.network.exposure.securityGroupAllowsIngress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmNetworkExposure).SecurityGroupAllowsIngress, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.network.exposure.openIngressRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmNetworkExposure).OpenIngressRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"ibm.vpc.securityGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmVpcSecurityGroup).__id, ok = v.Value.(string)
 		return
@@ -1950,6 +2170,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.vpc.securityGroup.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmVpcSecurityGroup).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.securityGroup.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcSecurityGroup).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.securityGroup.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcSecurityGroup).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.vpc.securityGroup.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2038,6 +2266,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.vpc.networkAcl.subnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmVpcNetworkAcl).Subnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.networkAcl.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcNetworkAcl).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.networkAcl.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcNetworkAcl).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.vpc.networkAcl.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2148,6 +2384,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmVpcFloatingIp).ResourceGroup, ok = plugin.RawToTValue[*mqlIbmResourceGroup](v.Value, v.Error)
 		return
 	},
+	"ibm.vpc.floatingIp.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcFloatingIp).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.floatingIp.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcFloatingIp).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"ibm.vpc.publicGateway.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmVpcPublicGateway).__id, ok = v.Value.(string)
 		return
@@ -2190,6 +2434,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.vpc.publicGateway.resourceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmVpcPublicGateway).ResourceGroup, ok = plugin.RawToTValue[*mqlIbmResourceGroup](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.publicGateway.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcPublicGateway).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.publicGateway.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcPublicGateway).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.vpc.loadBalancer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2260,6 +2512,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmVpcLoadBalancer).ResourceGroup, ok = plugin.RawToTValue[*mqlIbmResourceGroup](v.Value, v.Error)
 		return
 	},
+	"ibm.vpc.loadBalancer.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcLoadBalancer).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.loadBalancer.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcLoadBalancer).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"ibm.vpc.volume.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmVpcVolume).__id, ok = v.Value.(string)
 		return
@@ -2320,6 +2580,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmVpcVolume).Instances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"ibm.vpc.volume.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcVolume).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.volume.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcVolume).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"ibm.vpc.sshKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmVpcSshKey).__id, ok = v.Value.(string)
 		return
@@ -2358,6 +2626,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.vpc.sshKey.resourceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmVpcSshKey).ResourceGroup, ok = plugin.RawToTValue[*mqlIbmResourceGroup](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.sshKey.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcSshKey).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.sshKey.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcSshKey).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.vpc.flowLogCollector.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2416,6 +2692,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmVpcFlowLogCollector).ResourceGroup, ok = plugin.RawToTValue[*mqlIbmResourceGroup](v.Value, v.Error)
 		return
 	},
+	"ibm.vpc.flowLogCollector.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcFlowLogCollector).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.vpc.flowLogCollector.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmVpcFlowLogCollector).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"ibm.power.workspace.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmPowerWorkspace).__id, ok = v.Value.(string)
 		return
@@ -2462,6 +2746,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.power.workspace.images": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmPowerWorkspace).Images, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.workspace.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerWorkspace).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.workspace.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerWorkspace).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.power.instance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2536,6 +2828,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmPowerInstance).Volumes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"ibm.power.instance.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerInstance).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.instance.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerInstance).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"ibm.power.network.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmPowerNetwork).__id, ok = v.Value.(string)
 		return
@@ -2566,6 +2866,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.power.network.dhcpManaged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmPowerNetwork).DhcpManaged, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.power.network.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetwork).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.network.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerNetwork).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.power.volume.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2616,6 +2924,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmPowerVolume).Instances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"ibm.power.volume.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerVolume).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.volume.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerVolume).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"ibm.power.image.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmPowerImage).__id, ok = v.Value.(string)
 		return
@@ -2646,6 +2962,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.power.image.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmPowerImage).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.power.image.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerImage).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.power.image.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmPowerImage).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 }
@@ -3184,12 +3508,15 @@ type mqlIbmResourceGroup struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlIbmResourceGroupInternal it will be used here
-	Id        plugin.TValue[string]
-	Name      plugin.TValue[string]
-	Crn       plugin.TValue[string]
-	State     plugin.TValue[string]
-	Default   plugin.TValue[bool]
-	CreatedAt plugin.TValue[*time.Time]
+	Id         plugin.TValue[string]
+	Name       plugin.TValue[string]
+	Crn        plugin.TValue[string]
+	State      plugin.TValue[string]
+	Default    plugin.TValue[bool]
+	CreatedAt  plugin.TValue[*time.Time]
+	UpdatedAt  plugin.TValue[*time.Time]
+	Tags       plugin.TValue[[]any]
+	AccessTags plugin.TValue[[]any]
 }
 
 // createIbmResourceGroup creates a new instance of this resource
@@ -3248,6 +3575,22 @@ func (c *mqlIbmResourceGroup) GetCreatedAt() *plugin.TValue[*time.Time] {
 	return &c.CreatedAt
 }
 
+func (c *mqlIbmResourceGroup) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlIbmResourceGroup) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmResourceGroup) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
 // mqlIbmResourceInstance for the ibm.resourceInstance resource
 type mqlIbmResourceInstance struct {
 	MqlRuntime *plugin.Runtime
@@ -3264,8 +3607,11 @@ type mqlIbmResourceInstance struct {
 	ResourcePlanId plugin.TValue[string]
 	Locked         plugin.TValue[bool]
 	CreatedAt      plugin.TValue[*time.Time]
+	UpdatedAt      plugin.TValue[*time.Time]
 	CreatedBy      plugin.TValue[string]
 	ResourceGroup  plugin.TValue[*mqlIbmResourceGroup]
+	Tags           plugin.TValue[[]any]
+	AccessTags     plugin.TValue[[]any]
 }
 
 // createIbmResourceInstance creates a new instance of this resource
@@ -3344,6 +3690,10 @@ func (c *mqlIbmResourceInstance) GetCreatedAt() *plugin.TValue[*time.Time] {
 	return &c.CreatedAt
 }
 
+func (c *mqlIbmResourceInstance) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
 func (c *mqlIbmResourceInstance) GetCreatedBy() *plugin.TValue[string] {
 	return &c.CreatedBy
 }
@@ -3361,6 +3711,18 @@ func (c *mqlIbmResourceInstance) GetResourceGroup() *plugin.TValue[*mqlIbmResour
 		}
 
 		return c.resourceGroup()
+	})
+}
+
+func (c *mqlIbmResourceInstance) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmResourceInstance) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
 	})
 }
 
@@ -3991,6 +4353,8 @@ type mqlIbmVpc struct {
 	DefaultSecurityGroup plugin.TValue[*mqlIbmVpcSecurityGroup]
 	DefaultNetworkAcl    plugin.TValue[*mqlIbmVpcNetworkAcl]
 	Subnets              plugin.TValue[[]any]
+	Tags                 plugin.TValue[[]any]
+	AccessTags           plugin.TValue[[]any]
 }
 
 // createIbmVpc creates a new instance of this resource
@@ -4117,6 +4481,18 @@ func (c *mqlIbmVpc) GetSubnets() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlIbmVpc) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmVpc) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
 // mqlIbmVpcSubnet for the ibm.vpc.subnet resource
 type mqlIbmVpcSubnet struct {
 	MqlRuntime *plugin.Runtime
@@ -4137,6 +4513,8 @@ type mqlIbmVpcSubnet struct {
 	NetworkAcl                plugin.TValue[*mqlIbmVpcNetworkAcl]
 	PublicGateway             plugin.TValue[*mqlIbmVpcPublicGateway]
 	ResourceGroup             plugin.TValue[*mqlIbmResourceGroup]
+	Tags                      plugin.TValue[[]any]
+	AccessTags                plugin.TValue[[]any]
 }
 
 // createIbmVpcSubnet creates a new instance of this resource
@@ -4279,6 +4657,18 @@ func (c *mqlIbmVpcSubnet) GetResourceGroup() *plugin.TValue[*mqlIbmResourceGroup
 	})
 }
 
+func (c *mqlIbmVpcSubnet) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmVpcSubnet) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
 // mqlIbmVpcInstance for the ibm.vpc.instance resource
 type mqlIbmVpcInstance struct {
 	MqlRuntime *plugin.Runtime
@@ -4304,6 +4694,11 @@ type mqlIbmVpcInstance struct {
 	Vpc                             plugin.TValue[*mqlIbmVpc]
 	ResourceGroup                   plugin.TValue[*mqlIbmResourceGroup]
 	Volumes                         plugin.TValue[[]any]
+	SecurityGroups                  plugin.TValue[[]any]
+	FloatingIps                     plugin.TValue[[]any]
+	Exposure                        plugin.TValue[*mqlIbmNetworkExposure]
+	Tags                            plugin.TValue[[]any]
+	AccessTags                      plugin.TValue[[]any]
 }
 
 // createIbmVpcInstance creates a new instance of this resource
@@ -4459,6 +4854,125 @@ func (c *mqlIbmVpcInstance) GetVolumes() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlIbmVpcInstance) GetSecurityGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SecurityGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.vpc.instance", c.__id, "securityGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.securityGroups()
+	})
+}
+
+func (c *mqlIbmVpcInstance) GetFloatingIps() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.FloatingIps, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.vpc.instance", c.__id, "floatingIps")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.floatingIps()
+	})
+}
+
+func (c *mqlIbmVpcInstance) GetExposure() *plugin.TValue[*mqlIbmNetworkExposure] {
+	return plugin.GetOrCompute[*mqlIbmNetworkExposure](&c.Exposure, func() (*mqlIbmNetworkExposure, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.vpc.instance", c.__id, "exposure")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmNetworkExposure), nil
+			}
+		}
+
+		return c.exposure()
+	})
+}
+
+func (c *mqlIbmVpcInstance) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmVpcInstance) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
+// mqlIbmNetworkExposure for the ibm.network.exposure resource
+type mqlIbmNetworkExposure struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIbmNetworkExposureInternal it will be used here
+	InternetReachable          plugin.TValue[bool]
+	HasPublicIp                plugin.TValue[bool]
+	SecurityGroupAllowsIngress plugin.TValue[bool]
+	OpenIngressRules           plugin.TValue[[]any]
+}
+
+// createIbmNetworkExposure creates a new instance of this resource
+func createIbmNetworkExposure(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmNetworkExposure{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.network.exposure", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmNetworkExposure) MqlName() string {
+	return "ibm.network.exposure"
+}
+
+func (c *mqlIbmNetworkExposure) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmNetworkExposure) GetInternetReachable() *plugin.TValue[bool] {
+	return &c.InternetReachable
+}
+
+func (c *mqlIbmNetworkExposure) GetHasPublicIp() *plugin.TValue[bool] {
+	return &c.HasPublicIp
+}
+
+func (c *mqlIbmNetworkExposure) GetSecurityGroupAllowsIngress() *plugin.TValue[bool] {
+	return &c.SecurityGroupAllowsIngress
+}
+
+func (c *mqlIbmNetworkExposure) GetOpenIngressRules() *plugin.TValue[[]any] {
+	return &c.OpenIngressRules
+}
+
 // mqlIbmVpcSecurityGroup for the ibm.vpc.securityGroup resource
 type mqlIbmVpcSecurityGroup struct {
 	MqlRuntime *plugin.Runtime
@@ -4473,6 +4987,8 @@ type mqlIbmVpcSecurityGroup struct {
 	Vpc           plugin.TValue[*mqlIbmVpc]
 	ResourceGroup plugin.TValue[*mqlIbmResourceGroup]
 	Rules         plugin.TValue[[]any]
+	Tags          plugin.TValue[[]any]
+	AccessTags    plugin.TValue[[]any]
 }
 
 // createIbmVpcSecurityGroup creates a new instance of this resource
@@ -4581,6 +5097,18 @@ func (c *mqlIbmVpcSecurityGroup) GetRules() *plugin.TValue[[]any] {
 		}
 
 		return c.rules()
+	})
+}
+
+func (c *mqlIbmVpcSecurityGroup) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmVpcSecurityGroup) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
 	})
 }
 
@@ -4704,6 +5232,8 @@ type mqlIbmVpcNetworkAcl struct {
 	ResourceGroup plugin.TValue[*mqlIbmResourceGroup]
 	Rules         plugin.TValue[[]any]
 	Subnets       plugin.TValue[[]any]
+	Tags          plugin.TValue[[]any]
+	AccessTags    plugin.TValue[[]any]
 }
 
 // createIbmVpcNetworkAcl creates a new instance of this resource
@@ -4819,6 +5349,18 @@ func (c *mqlIbmVpcNetworkAcl) GetSubnets() *plugin.TValue[[]any] {
 		}
 
 		return c.subnets()
+	})
+}
+
+func (c *mqlIbmVpcNetworkAcl) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmVpcNetworkAcl) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
 	})
 }
 
@@ -4947,6 +5489,8 @@ type mqlIbmVpcFloatingIp struct {
 	TargetName         plugin.TValue[string]
 	CreatedAt          plugin.TValue[*time.Time]
 	ResourceGroup      plugin.TValue[*mqlIbmResourceGroup]
+	Tags               plugin.TValue[[]any]
+	AccessTags         plugin.TValue[[]any]
 }
 
 // createIbmVpcFloatingIp creates a new instance of this resource
@@ -5037,6 +5581,18 @@ func (c *mqlIbmVpcFloatingIp) GetResourceGroup() *plugin.TValue[*mqlIbmResourceG
 	})
 }
 
+func (c *mqlIbmVpcFloatingIp) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmVpcFloatingIp) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
 // mqlIbmVpcPublicGateway for the ibm.vpc.publicGateway resource
 type mqlIbmVpcPublicGateway struct {
 	MqlRuntime *plugin.Runtime
@@ -5052,6 +5608,8 @@ type mqlIbmVpcPublicGateway struct {
 	CreatedAt     plugin.TValue[*time.Time]
 	Vpc           plugin.TValue[*mqlIbmVpc]
 	ResourceGroup plugin.TValue[*mqlIbmResourceGroup]
+	Tags          plugin.TValue[[]any]
+	AccessTags    plugin.TValue[[]any]
 }
 
 // createIbmVpcPublicGateway creates a new instance of this resource
@@ -5150,6 +5708,18 @@ func (c *mqlIbmVpcPublicGateway) GetResourceGroup() *plugin.TValue[*mqlIbmResour
 	})
 }
 
+func (c *mqlIbmVpcPublicGateway) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmVpcPublicGateway) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
 // mqlIbmVpcLoadBalancer for the ibm.vpc.loadBalancer resource
 type mqlIbmVpcLoadBalancer struct {
 	MqlRuntime *plugin.Runtime
@@ -5171,6 +5741,8 @@ type mqlIbmVpcLoadBalancer struct {
 	SecurityGroups        plugin.TValue[[]any]
 	Subnets               plugin.TValue[[]any]
 	ResourceGroup         plugin.TValue[*mqlIbmResourceGroup]
+	Tags                  plugin.TValue[[]any]
+	AccessTags            plugin.TValue[[]any]
 }
 
 // createIbmVpcLoadBalancer creates a new instance of this resource
@@ -5305,6 +5877,18 @@ func (c *mqlIbmVpcLoadBalancer) GetResourceGroup() *plugin.TValue[*mqlIbmResourc
 	})
 }
 
+func (c *mqlIbmVpcLoadBalancer) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmVpcLoadBalancer) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
 // mqlIbmVpcVolume for the ibm.vpc.volume resource
 type mqlIbmVpcVolume struct {
 	MqlRuntime *plugin.Runtime
@@ -5324,6 +5908,8 @@ type mqlIbmVpcVolume struct {
 	CreatedAt       plugin.TValue[*time.Time]
 	ResourceGroup   plugin.TValue[*mqlIbmResourceGroup]
 	Instances       plugin.TValue[[]any]
+	Tags            plugin.TValue[[]any]
+	AccessTags      plugin.TValue[[]any]
 }
 
 // createIbmVpcVolume creates a new instance of this resource
@@ -5438,6 +6024,18 @@ func (c *mqlIbmVpcVolume) GetInstances() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlIbmVpcVolume) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmVpcVolume) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
 // mqlIbmVpcSshKey for the ibm.vpc.sshKey resource
 type mqlIbmVpcSshKey struct {
 	MqlRuntime *plugin.Runtime
@@ -5452,6 +6050,8 @@ type mqlIbmVpcSshKey struct {
 	Fingerprint   plugin.TValue[string]
 	CreatedAt     plugin.TValue[*time.Time]
 	ResourceGroup plugin.TValue[*mqlIbmResourceGroup]
+	Tags          plugin.TValue[[]any]
+	AccessTags    plugin.TValue[[]any]
 }
 
 // createIbmVpcSshKey creates a new instance of this resource
@@ -5534,6 +6134,18 @@ func (c *mqlIbmVpcSshKey) GetResourceGroup() *plugin.TValue[*mqlIbmResourceGroup
 	})
 }
 
+func (c *mqlIbmVpcSshKey) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmVpcSshKey) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
 // mqlIbmVpcFlowLogCollector for the ibm.vpc.flowLogCollector resource
 type mqlIbmVpcFlowLogCollector struct {
 	MqlRuntime *plugin.Runtime
@@ -5552,6 +6164,8 @@ type mqlIbmVpcFlowLogCollector struct {
 	CreatedAt          plugin.TValue[*time.Time]
 	Vpc                plugin.TValue[*mqlIbmVpc]
 	ResourceGroup      plugin.TValue[*mqlIbmResourceGroup]
+	Tags               plugin.TValue[[]any]
+	AccessTags         plugin.TValue[[]any]
 }
 
 // createIbmVpcFlowLogCollector creates a new instance of this resource
@@ -5662,6 +6276,18 @@ func (c *mqlIbmVpcFlowLogCollector) GetResourceGroup() *plugin.TValue[*mqlIbmRes
 	})
 }
 
+func (c *mqlIbmVpcFlowLogCollector) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmVpcFlowLogCollector) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
 // mqlIbmPowerWorkspace for the ibm.power.workspace resource
 type mqlIbmPowerWorkspace struct {
 	MqlRuntime *plugin.Runtime
@@ -5678,6 +6304,8 @@ type mqlIbmPowerWorkspace struct {
 	Networks      plugin.TValue[[]any]
 	Volumes       plugin.TValue[[]any]
 	Images        plugin.TValue[[]any]
+	Tags          plugin.TValue[[]any]
+	AccessTags    plugin.TValue[[]any]
 }
 
 // createIbmPowerWorkspace creates a new instance of this resource
@@ -5821,6 +6449,18 @@ func (c *mqlIbmPowerWorkspace) GetImages() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlIbmPowerWorkspace) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmPowerWorkspace) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
 // mqlIbmPowerInstance for the ibm.power.instance resource
 type mqlIbmPowerInstance struct {
 	MqlRuntime *plugin.Runtime
@@ -5843,6 +6483,8 @@ type mqlIbmPowerInstance struct {
 	Image           plugin.TValue[*mqlIbmPowerImage]
 	Networks        plugin.TValue[[]any]
 	Volumes         plugin.TValue[[]any]
+	Tags            plugin.TValue[[]any]
+	AccessTags      plugin.TValue[[]any]
 }
 
 // createIbmPowerInstance creates a new instance of this resource
@@ -5981,6 +6623,18 @@ func (c *mqlIbmPowerInstance) GetVolumes() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlIbmPowerInstance) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmPowerInstance) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
 // mqlIbmPowerNetwork for the ibm.power.network resource
 type mqlIbmPowerNetwork struct {
 	MqlRuntime *plugin.Runtime
@@ -5993,6 +6647,8 @@ type mqlIbmPowerNetwork struct {
 	VlanId      plugin.TValue[int64]
 	Mtu         plugin.TValue[int64]
 	DhcpManaged plugin.TValue[bool]
+	Tags        plugin.TValue[[]any]
+	AccessTags  plugin.TValue[[]any]
 }
 
 // createIbmPowerNetwork creates a new instance of this resource
@@ -6055,6 +6711,18 @@ func (c *mqlIbmPowerNetwork) GetDhcpManaged() *plugin.TValue[bool] {
 	return &c.DhcpManaged
 }
 
+func (c *mqlIbmPowerNetwork) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmPowerNetwork) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
 // mqlIbmPowerVolume for the ibm.power.volume resource
 type mqlIbmPowerVolume struct {
 	MqlRuntime *plugin.Runtime
@@ -6071,6 +6739,8 @@ type mqlIbmPowerVolume struct {
 	ReplicationEnabled plugin.TValue[bool]
 	CreatedAt          plugin.TValue[*time.Time]
 	Instances          plugin.TValue[[]any]
+	Tags               plugin.TValue[[]any]
+	AccessTags         plugin.TValue[[]any]
 }
 
 // createIbmPowerVolume creates a new instance of this resource
@@ -6161,6 +6831,18 @@ func (c *mqlIbmPowerVolume) GetInstances() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlIbmPowerVolume) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmPowerVolume) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
+}
+
 // mqlIbmPowerImage for the ibm.power.image resource
 type mqlIbmPowerImage struct {
 	MqlRuntime *plugin.Runtime
@@ -6173,6 +6855,8 @@ type mqlIbmPowerImage struct {
 	State           plugin.TValue[string]
 	StorageType     plugin.TValue[string]
 	CreatedAt       plugin.TValue[*time.Time]
+	Tags            plugin.TValue[[]any]
+	AccessTags      plugin.TValue[[]any]
 }
 
 // createIbmPowerImage creates a new instance of this resource
@@ -6233,4 +6917,16 @@ func (c *mqlIbmPowerImage) GetStorageType() *plugin.TValue[string] {
 
 func (c *mqlIbmPowerImage) GetCreatedAt() *plugin.TValue[*time.Time] {
 	return &c.CreatedAt
+}
+
+func (c *mqlIbmPowerImage) GetTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
+		return c.tags()
+	})
+}
+
+func (c *mqlIbmPowerImage) GetAccessTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
+		return c.accessTags()
+	})
 }

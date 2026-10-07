@@ -59,6 +59,15 @@ The account is the root asset. Discovery adds child assets for:
 cnspec scan ibm --api-key-file apikey.json --discover power-workspaces
 ```
 
+Narrow the discovered instances, security groups, and workspaces by tag with `--filters`. A
+`key:value` selector matches that tag, a bare `key` matches the plain tag and any value of it, and
+both user and access management tags count. The same filter narrows `ibm.vpcInstances`,
+`ibm.vpcSecurityGroups`, and `ibm.powerWorkspaces` in queries.
+
+```shell
+cnspec scan ibm --api-key-file apikey.json --filters tags=env:prod --filters exclude:tags=team:sandbox
+```
+
 ## Examples
 
 **Account IAM settings**
@@ -98,6 +107,24 @@ mql> ibm.vpcSecurityGroups { name rules.where(direction == "inbound" && remoteCi
 ```shell
 mql> ibm.vpcInstances.where(enableSecureBoot != true || metadataServiceProtocol != "https") { name region }
 ```
+
+**Instances reachable from the internet**
+
+```shell
+mql> ibm.vpcInstances.where(exposure.internetReachable) { name floatingIps { address } exposure { openIngressRules { protocol portMin portMax } } }
+```
+
+`exposure` combines the floating IPs bound to the instance's network interfaces with the inbound
+rules of their security groups that admit any address. Network ACLs are not taken into account.
+
+**Resources without an owner tag**
+
+```shell
+mql> ibm.vpcs.where(tags.none(_ == /^owner:/)) { name region tags }
+```
+
+Tags are read once per scan through Global Search, for resource groups, resource instances, VPC
+resources, and Power Virtual Server resources.
 
 **Power Virtual Server workspaces and their images**
 

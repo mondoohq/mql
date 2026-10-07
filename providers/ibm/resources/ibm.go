@@ -41,6 +41,7 @@ func (r *mqlIbm) resourceGroups() ([]any, error) {
 			"state":     strData(g.State),
 			"default":   llx.BoolDataPtr(g.Default),
 			"createdAt": dateTimeData(g.CreatedAt),
+			"updatedAt": dateTimeData(g.UpdatedAt),
 		})
 		if err != nil {
 			return nil, err
@@ -107,6 +108,7 @@ func (r *mqlIbm) resourceInstances() ([]any, error) {
 			"resourcePlanId": strData(ri.ResourcePlanID),
 			"locked":         llx.BoolDataPtr(ri.Locked),
 			"createdAt":      dateTimeData(ri.CreatedAt),
+			"updatedAt":      dateTimeData(ri.UpdatedAt),
 			"createdBy":      strData(ri.CreatedBy),
 		})
 		if err != nil {
