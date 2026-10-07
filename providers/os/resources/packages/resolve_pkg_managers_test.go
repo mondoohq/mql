@@ -139,9 +139,9 @@ func TestResolveSystemPkgManagersChainguardByName(t *testing.T) {
 	assert.Equal(t, []string{"apk Package Manager"}, managerNames(pms))
 }
 
-// The same for the other two hardened-image distros, for the same reason.
+// The same for the other hardened-image distros, for the same reason.
 func TestResolveSystemPkgManagersHardenedImageDistrosByName(t *testing.T) {
-	for _, name := range []string{"minimos", "echo"} {
+	for _, name := range []string{"minimos", "echo", "cleanstart"} {
 		t.Run(name, func(t *testing.T) {
 			conn := newProbeConn(t, &inventory.Platform{
 				Name:   name,

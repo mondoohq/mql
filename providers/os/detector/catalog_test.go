@@ -80,6 +80,7 @@ func TestCatalogPlatforms(t *testing.T) {
 	// this can honestly assert until one can be.
 	assert.True(t, byName["minimos"], "minimos should be a catalogued platform")
 	assert.True(t, byName["echo"], "echo should be a catalogued platform")
+	assert.True(t, byName["cleanstart"], "cleanstart should be a catalogued platform")
 
 	// darwin is a kernel and a family, never a platform of its own
 	assert.True(t, byName["macos"], "macos should be a catalogued platform")
