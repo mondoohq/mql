@@ -258,6 +258,9 @@ const (
 	ResourceCrioImagePolicyRequirement                    string = "crio.imagePolicy.requirement"
 	ResourceCrioRuntime                                   string = "crio.runtime"
 	ResourceCrioContainer                                 string = "crio.container"
+	ResourceContainersRegistries                          string = "containers.registries"
+	ResourceContainersRegistry                            string = "containers.registry"
+	ResourceContainersRegistryMirror                      string = "containers.registry.mirror"
 	ResourcePodman                                        string = "podman"
 	ResourcePodmanContainer                               string = "podman.container"
 	ResourcePodmanImage                                   string = "podman.image"
@@ -1654,6 +1657,18 @@ func init() {
 		"crio.container": {
 			// to override args, implement: initCrioContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createCrioContainer,
+		},
+		"containers.registries": {
+			// to override args, implement: initContainersRegistries(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainersRegistries,
+		},
+		"containers.registry": {
+			// to override args, implement: initContainersRegistry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainersRegistry,
+		},
+		"containers.registry.mirror": {
+			// to override args, implement: initContainersRegistryMirror(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainersRegistryMirror,
 		},
 		"podman": {
 			// to override args, implement: initPodman(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -9444,6 +9459,48 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"crio.container.created": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrioContainer).GetCreated()).ToDataRes(types.Time)
+	},
+	"containers.registries.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistries).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"containers.registries.unqualifiedSearchRegistries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistries).GetUnqualifiedSearchRegistries()).ToDataRes(types.Array(types.String))
+	},
+	"containers.registries.shortNameMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistries).GetShortNameMode()).ToDataRes(types.String)
+	},
+	"containers.registries.aliases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistries).GetAliases()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"containers.registries.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistries).GetList()).ToDataRes(types.Array(types.Resource("containers.registry")))
+	},
+	"containers.registry.prefix": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistry).GetPrefix()).ToDataRes(types.String)
+	},
+	"containers.registry.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistry).GetLocation()).ToDataRes(types.String)
+	},
+	"containers.registry.insecure": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistry).GetInsecure()).ToDataRes(types.Bool)
+	},
+	"containers.registry.blocked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistry).GetBlocked()).ToDataRes(types.Bool)
+	},
+	"containers.registry.mirrorByDigestOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistry).GetMirrorByDigestOnly()).ToDataRes(types.Bool)
+	},
+	"containers.registry.mirrors": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistry).GetMirrors()).ToDataRes(types.Array(types.Resource("containers.registry.mirror")))
+	},
+	"containers.registry.mirror.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistryMirror).GetLocation()).ToDataRes(types.String)
+	},
+	"containers.registry.mirror.insecure": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistryMirror).GetInsecure()).ToDataRes(types.Bool)
+	},
+	"containers.registry.mirror.pullFromMirror": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistryMirror).GetPullFromMirror()).ToDataRes(types.String)
 	},
 	"podman.installed": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPodman).GetInstalled()).ToDataRes(types.Bool)
@@ -27642,6 +27699,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"crio.container.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCrioContainer).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"containers.registries.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistries).__id, ok = v.Value.(string)
+		return
+	},
+	"containers.registries.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistries).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.registries.unqualifiedSearchRegistries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistries).UnqualifiedSearchRegistries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.registries.shortNameMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistries).ShortNameMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.registries.aliases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistries).Aliases, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"containers.registries.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistries).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.registry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).__id, ok = v.Value.(string)
+		return
+	},
+	"containers.registry.prefix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).Prefix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.registry.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.registry.insecure": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).Insecure, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.registry.blocked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).Blocked, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.registry.mirrorByDigestOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).MirrorByDigestOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.registry.mirrors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).Mirrors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.registry.mirror.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistryMirror).__id, ok = v.Value.(string)
+		return
+	},
+	"containers.registry.mirror.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistryMirror).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.registry.mirror.insecure": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistryMirror).Insecure, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.registry.mirror.pullFromMirror": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistryMirror).PullFromMirror, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"podman.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -67618,6 +67743,223 @@ func (c *mqlCrioContainer) GetLabels() *plugin.TValue[map[string]any] {
 
 func (c *mqlCrioContainer) GetCreated() *plugin.TValue[*time.Time] {
 	return &c.Created
+}
+
+// mqlContainersRegistries for the containers.registries resource
+type mqlContainersRegistries struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlContainersRegistriesInternal
+	Files                       plugin.TValue[[]any]
+	UnqualifiedSearchRegistries plugin.TValue[[]any]
+	ShortNameMode               plugin.TValue[string]
+	Aliases                     plugin.TValue[map[string]any]
+	List                        plugin.TValue[[]any]
+}
+
+// createContainersRegistries creates a new instance of this resource
+func createContainersRegistries(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainersRegistries{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containers.registries", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainersRegistries) MqlName() string {
+	return "containers.registries"
+}
+
+func (c *mqlContainersRegistries) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainersRegistries) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containers.registries", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.files()
+	})
+}
+
+func (c *mqlContainersRegistries) GetUnqualifiedSearchRegistries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.UnqualifiedSearchRegistries, func() ([]any, error) {
+		return c.unqualifiedSearchRegistries()
+	})
+}
+
+func (c *mqlContainersRegistries) GetShortNameMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ShortNameMode, func() (string, error) {
+		return c.shortNameMode()
+	})
+}
+
+func (c *mqlContainersRegistries) GetAliases() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Aliases, func() (map[string]any, error) {
+		return c.aliases()
+	})
+}
+
+func (c *mqlContainersRegistries) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containers.registries", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlContainersRegistry for the containers.registry resource
+type mqlContainersRegistry struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlContainersRegistryInternal it will be used here
+	Prefix             plugin.TValue[string]
+	Location           plugin.TValue[string]
+	Insecure           plugin.TValue[bool]
+	Blocked            plugin.TValue[bool]
+	MirrorByDigestOnly plugin.TValue[bool]
+	Mirrors            plugin.TValue[[]any]
+}
+
+// createContainersRegistry creates a new instance of this resource
+func createContainersRegistry(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainersRegistry{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containers.registry", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainersRegistry) MqlName() string {
+	return "containers.registry"
+}
+
+func (c *mqlContainersRegistry) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainersRegistry) GetPrefix() *plugin.TValue[string] {
+	return &c.Prefix
+}
+
+func (c *mqlContainersRegistry) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlContainersRegistry) GetInsecure() *plugin.TValue[bool] {
+	return &c.Insecure
+}
+
+func (c *mqlContainersRegistry) GetBlocked() *plugin.TValue[bool] {
+	return &c.Blocked
+}
+
+func (c *mqlContainersRegistry) GetMirrorByDigestOnly() *plugin.TValue[bool] {
+	return &c.MirrorByDigestOnly
+}
+
+func (c *mqlContainersRegistry) GetMirrors() *plugin.TValue[[]any] {
+	return &c.Mirrors
+}
+
+// mqlContainersRegistryMirror for the containers.registry.mirror resource
+type mqlContainersRegistryMirror struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlContainersRegistryMirrorInternal it will be used here
+	Location       plugin.TValue[string]
+	Insecure       plugin.TValue[bool]
+	PullFromMirror plugin.TValue[string]
+}
+
+// createContainersRegistryMirror creates a new instance of this resource
+func createContainersRegistryMirror(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainersRegistryMirror{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containers.registry.mirror", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainersRegistryMirror) MqlName() string {
+	return "containers.registry.mirror"
+}
+
+func (c *mqlContainersRegistryMirror) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainersRegistryMirror) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlContainersRegistryMirror) GetInsecure() *plugin.TValue[bool] {
+	return &c.Insecure
+}
+
+func (c *mqlContainersRegistryMirror) GetPullFromMirror() *plugin.TValue[string] {
+	return &c.PullFromMirror
 }
 
 // mqlPodman for the podman resource

@@ -8198,6 +8198,61 @@ crio.container @defaults("name podName podNamespace") {
   created time
 }
 
+// Container image registries configuration
+//
+// The containers-registries.conf(5) configuration that Podman, Buildah,
+// Skopeo and CRI-O read: /etc/containers/registries.conf, or
+// /usr/share/containers/registries.conf when it is absent, and the drop-ins in
+// the registries.conf.d directories, merged in name order as these tools merge
+// them for root. Each entry is the configuration for one registry or
+// repository prefix: `containers.registries.where(insecure)` lists the ones
+// pulled from without TLS verification, and `blocked` marks the ones pulls are
+// refused from. `unqualifiedSearchRegistries` lists where a short image name
+// is looked up, `shortNameMode` how a short name found in several of them is
+// resolved, and `aliases` the short names mapped to fully qualified images.
+containers.registries {
+  []containers.registry
+  // Configuration files, in the order they are applied
+  files() []file
+  // Registries a short image name is looked up in, in order
+  unqualifiedSearchRegistries() []string
+  // How a short image name found in several registries is resolved
+  //
+  // "enforcing" fails the pull unless a user picks the registry, "permissive"
+  // falls back to trying every registry in `unqualifiedSearchRegistries` when
+  // there is no terminal to ask, and "disabled" always tries them all. When
+  // the configuration sets none, the tools use "permissive", which is reported.
+  shortNameMode() string
+  // Short image names and the fully qualified images they stand for (for example "fedora": "registry.fedoraproject.org/fedora")
+  aliases() map[string]string
+}
+
+// Configuration for one container image registry or repository prefix
+containers.registry @defaults("prefix location insecure blocked") {
+  // Image names this entry applies to (for example "docker.io", "example.com/team" or "*.example.com")
+  prefix string
+  // Where images are pulled from; empty for a wildcard prefix that pulls each image from where it names
+  location string
+  // Whether images are pulled over plain HTTP or TLS with an unverified certificate
+  insecure bool
+  // Whether pulling images is refused
+  blocked bool
+  // Whether mirrors are only used for images pulled by digest
+  mirrorByDigestOnly bool
+  // Mirrors tried before `location`, in order
+  mirrors []containers.registry.mirror
+}
+
+// Mirror of a container image registry
+containers.registry.mirror @defaults("location insecure") {
+  // Where images are pulled from
+  location string
+  // Whether images are pulled over plain HTTP or TLS with an unverified certificate
+  insecure bool
+  // Which pulls use the mirror: "all", "digest-only" or "tag-only"
+  pullFromMirror string
+}
+
 // Podman container engine
 //
 // Workloads managed by Podman, together with the engine settings that apply to
