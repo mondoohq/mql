@@ -11,7 +11,8 @@ name: Permission Manifests
 # gcp.go and azure.go for the sources), then has each cloud accept the whole
 # manifest itself (scripts/test-iam-permissions.sh): IAM Access Analyzer over
 # the AWS policies, a custom role created and deleted on GCP and on Azure. It
-# runs when a manifest or the tooling changes.
+# runs when a manifest or the tooling changes, one job per cloud, so a failure
+# names the cloud and the clouds do not wait on each other.
 #
 # The identities, all reached through OIDC federation from this repository: an
 # AWS role allowed access-analyzer:ValidatePolicy; a GCP service account that
@@ -19,8 +20,8 @@ name: Permission Manifests
 # on both (roles/iam.roleAdmin and roles/iam.organizationRoleAdmin on a dev
 # project and org); an Azure app registration with roleDefinitions/write and
 # delete at a dev scope (User Access Administrator on a dev subscription). A
-# pull request from a fork has no secrets and checks AWS against the public
-# list only, with a warning.
+# pull request from a fork has no secrets: the GCP and Azure jobs are skipped
+# and the AWS job checks the public list only, each with a warning.
 on:
   pull_request:
     paths:
@@ -44,16 +45,44 @@ permissions:
   id-token: write # for the two cloud logins
 
 jobs:
-  validate:
-    name: Check manifests against the clouds' permission lists
+  # Secrets are empty on a pull request from a fork; the clouds that need them
+  # are then skipped rather than failed. A job cannot read secrets in its own
+  # `if`, so this job turns them into outputs for the three below.
+  scope:
+    name: Decide what can be checked
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
+    outputs:
+      aws: ${{ steps.scope.outputs.aws }}
+      gcp: ${{ steps.scope.outputs.gcp }}
+      azure: ${{ steps.scope.outputs.azure }}
+    steps:
+      - id: scope
+        env:
+          HAS_AWS: ${{ secrets.PERMISSIONS_AWS_ROLE_ARN != '' }}
+          HAS_GCP: ${{ secrets.PERMISSIONS_GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.PERMISSIONS_GCP_SERVICE_ACCOUNT != '' && secrets.PERMISSIONS_GCP_PROJECT != '' && secrets.PERMISSIONS_GCP_ORGANIZATION != '' }}
+          HAS_AZURE: ${{ secrets.PERMISSIONS_AZURE_CLIENT_ID != '' && secrets.PERMISSIONS_AZURE_TENANT_ID != '' && secrets.PERMISSIONS_AZURE_SCOPE != '' }}
+        run: |
+          if [ "$HAS_AWS" != "true" ]; then echo "::warning::AWS manifest checked against the public list only: no AWS credentials in this run"; fi
+          if [ "$HAS_GCP" != "true" ]; then echo "::warning::GCP manifest not checked: no GCP credentials in this run"; fi
+          if [ "$HAS_AZURE" != "true" ]; then echo "::warning::Azure manifest not checked: no Azure credentials in this run"; fi
+          {
+            echo "aws=$HAS_AWS"
+            echo "gcp=$HAS_GCP"
+            echo "azure=$HAS_AZURE"
+          } >> "$GITHUB_OUTPUT"
+
+  aws:
+    name: AWS manifest
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Import environment variables from file
-        run: cat ".github/env" >> $GITHUB_ENV
+        run: cat ".github/env" >> "$GITHUB_ENV"
 
       - name: Install Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -62,33 +91,42 @@ jobs:
           check-latest: true
           cache: false
 
-      # Secrets are empty on a pull request from a fork; the clouds that need
-      # them are then skipped rather than failed.
-      - name: Decide what can be validated
-        id: scope
-        env:
-          HAS_AWS: ${{ secrets.PERMISSIONS_AWS_ROLE_ARN != '' }}
-          HAS_GCP: ${{ secrets.PERMISSIONS_GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.PERMISSIONS_GCP_SERVICE_ACCOUNT != '' && secrets.PERMISSIONS_GCP_PROJECT != '' && secrets.PERMISSIONS_GCP_ORGANIZATION != '' }}
-          HAS_AZURE: ${{ secrets.PERMISSIONS_AZURE_CLIENT_ID != '' && secrets.PERMISSIONS_AZURE_TENANT_ID != '' && secrets.PERMISSIONS_AZURE_SCOPE != '' }}
-        run: |
-          providers="providers/aws"
-          if [ "$HAS_AWS" != "true" ]; then echo "::warning::AWS manifest checked against the public list only: no AWS credentials in this run"; fi
-          if [ "$HAS_GCP" = "true" ]; then providers="$providers providers/gcp"; else echo "::warning::GCP manifest not validated: no GCP credentials in this run"; fi
-          if [ "$HAS_AZURE" = "true" ]; then providers="$providers providers/azure"; else echo "::warning::Azure manifest not validated: no Azure credentials in this run"; fi
-          echo "providers=$providers" >> "$GITHUB_OUTPUT"
-          echo "aws=$HAS_AWS" >> "$GITHUB_OUTPUT"
-          echo "gcp=$HAS_GCP" >> "$GITHUB_OUTPUT"
-          echo "azure=$HAS_AZURE" >> "$GITHUB_OUTPUT"
-
       - name: Authenticate to AWS
-        if: ${{ steps.scope.outputs.aws == 'true' }}
+        if: ${{ needs.scope.outputs.aws == 'true' }}
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ secrets.PERMISSIONS_AWS_ROLE_ARN }}
           aws-region: us-east-1
 
+      # The Service Reference is public; this half runs with or without credentials.
+      - name: Check the manifest against the Service Reference
+        run: go run ./providers-sdk/v1/util/permissions/validate providers/aws
+
+      - name: IAM Access Analyzer accepts the manifest
+        if: ${{ needs.scope.outputs.aws == 'true' }}
+        run: scripts/test-iam-permissions.sh aws-check
+
+  gcp:
+    name: GCP manifest
+    needs: scope
+    if: ${{ needs.scope.outputs.gcp == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Import environment variables from file
+        run: cat ".github/env" >> "$GITHUB_ENV"
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "${{ env.golang-version }}"
+          check-latest: true
+          cache: false
+
       - name: Authenticate to Google Cloud
-        if: ${{ steps.scope.outputs.gcp == 'true' }}
         id: gcp-auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
@@ -96,8 +134,43 @@ jobs:
           service_account: ${{ secrets.PERMISSIONS_GCP_SERVICE_ACCOUNT }}
           token_format: access_token
 
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Check the manifest against queryTestablePermissions
+        env:
+          GCP_ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
+          GCP_PROJECT: ${{ secrets.PERMISSIONS_GCP_PROJECT }}
+          GCP_ORGANIZATION: ${{ secrets.PERMISSIONS_GCP_ORGANIZATION }}
+        run: go run ./providers-sdk/v1/util/permissions/validate providers/gcp
+
+      - name: IAM accepts the manifest as custom roles (created and deleted)
+        env:
+          GCP_PROJECT: ${{ secrets.PERMISSIONS_GCP_PROJECT }}
+          GCP_ORGANIZATION: ${{ secrets.PERMISSIONS_GCP_ORGANIZATION }}
+        run: scripts/test-iam-permissions.sh gcp-check
+
+  azure:
+    name: Azure manifest
+    needs: scope
+    if: ${{ needs.scope.outputs.azure == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Import environment variables from file
+        run: cat ".github/env" >> "$GITHUB_ENV"
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "${{ env.golang-version }}"
+          check-latest: true
+          cache: false
+
       - name: Authenticate to Azure
-        if: ${{ steps.scope.outputs.azure == 'true' }}
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.PERMISSIONS_AZURE_CLIENT_ID }}
@@ -105,39 +178,15 @@ jobs:
           allow-no-subscriptions: true
 
       - name: Read the Azure access token
-        if: ${{ steps.scope.outputs.azure == 'true' }}
         run: |
           token=$(az account get-access-token --resource https://management.azure.com --query accessToken -o tsv)
           echo "::add-mask::$token"
           echo "AZURE_ACCESS_TOKEN=$token" >> "$GITHUB_ENV"
 
-      - name: Check the manifests against the clouds' permission lists
-        env:
-          PROVIDERS: ${{ steps.scope.outputs.providers }}
-          GCP_ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
-          GCP_PROJECT: ${{ secrets.PERMISSIONS_GCP_PROJECT }}
-          GCP_ORGANIZATION: ${{ secrets.PERMISSIONS_GCP_ORGANIZATION }}
-        run: go run ./providers-sdk/v1/util/permissions/validate $PROVIDERS
+      - name: Check the manifest against the provider operation registry
+        run: go run ./providers-sdk/v1/util/permissions/validate providers/azure
 
-      # The second half: the clouds accept the manifests themselves.
-      - name: AWS accepts the manifest (IAM Access Analyzer)
-        if: ${{ steps.scope.outputs.aws == 'true' }}
-        run: scripts/test-iam-permissions.sh aws-check
-
-      - name: Set up gcloud
-        if: ${{ steps.scope.outputs.gcp == 'true' }}
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-
-      - name: GCP accepts the manifest (custom roles created and deleted)
-        if: ${{ steps.scope.outputs.gcp == 'true' }}
-        env:
-          GCP_ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
-          GCP_PROJECT: ${{ secrets.PERMISSIONS_GCP_PROJECT }}
-          GCP_ORGANIZATION: ${{ secrets.PERMISSIONS_GCP_ORGANIZATION }}
-        run: scripts/test-iam-permissions.sh gcp-check
-
-      - name: Azure accepts the manifest (custom role created and deleted)
-        if: ${{ steps.scope.outputs.azure == 'true' }}
+      - name: Azure accepts the manifest as a custom role (created and deleted)
         env:
           AZURE_SCOPE: ${{ secrets.PERMISSIONS_AZURE_SCOPE }}
         run: scripts/test-iam-permissions.sh azure-check "$AZURE_SCOPE"
