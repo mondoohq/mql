@@ -201,6 +201,12 @@ func (m *mqlKubelet) podPidsLimit() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	// the configuration has the kubelet's default (-1, unlimited) applied, so
+	// only a configuration without the key at all lacks it
+	if v == nil {
+		m.PodPidsLimit.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
 	return kubeletInt(v), nil
 }
 

@@ -86,4 +86,6 @@ func TestKubeletBooleanFieldsReadDefaults(t *testing.T) {
 	assert.Equal(t, true, config["enableProfilingHandler"])
 	assert.Equal(t, false, config["enableSystemLogQuery"])
 	assert.Equal(t, false, config["seccompDefault"])
+	// unlimited, not 0
+	assert.Equal(t, -1.0, config["podPidsLimit"])
 }
