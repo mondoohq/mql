@@ -71,6 +71,9 @@ type Connection struct {
 	openSession func() (*psSession, error)
 	// rawRunner replaces runRawCommand in tests
 	rawRunner func(command string) (*shared.Command, error)
+	// bottlerocket is set when the connection reaches a Bottlerocket host
+	// through its admin container (bottlerocket.go)
+	bottlerocket *bottlerocketHost
 }
 
 func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) (*Connection, error) {
@@ -131,6 +134,15 @@ func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) (*
 		}
 	}
 
+	// A Bottlerocket admin container is scanned as the host it runs on.
+	// Windows has no such container, and its shell would only fail the probe.
+	if !res.isWindowsSSHServer() {
+		if err := res.detectBottlerocketAdminContainer(); err != nil {
+			res.Close()
+			return nil, err
+		}
+	}
+
 	// verify connection
 	vErr := res.verify()
 	// NOTE: for now we do not enforce connection verification to ensure we cover edge-cases
@@ -164,7 +176,11 @@ func (p *Connection) Capabilities() shared.Capabilities {
 
 func (c *Connection) RunCommand(command string) (*shared.Command, error) {
 	sudo := c.Sudo != nil && c.Sudo.Active
-	if sudo {
+	if c.entersHost() {
+		command = shared.BuildHostNamespacesCommand(c.Sudo, bottlerocketAdminShell, command)
+		// the command is wrapped like an elevated one
+		sudo = true
+	} else if sudo {
 		command = shared.BuildSudoCommand(c.Sudo, command)
 	}
 	// Every path takes a slot. A sudo command does not start with
@@ -260,7 +276,9 @@ func (c *Connection) FileSystem() afero.Fs {
 	//	return t.fs
 	//}
 
-	if c.Sudo != nil && c.Sudo.Active {
+	// sftp would read the files as the user and, in a Bottlerocket admin
+	// container, the container's files
+	if (c.Sudo != nil && c.Sudo.Active) || c.entersHost() {
 		c.fs = cat.New(c)
 		return c.fs
 	}
@@ -355,7 +373,7 @@ func (c *Connection) FileInfo(path string) (shared.FileInfoDetails, error) {
 
 func (c *Connection) extractOwnership(stat os.FileInfo) (uid, gid int64) {
 	uid, gid = -1, -1
-	if c.Sudo != nil || c.UseScpFilesystem {
+	if c.Sudo != nil || c.UseScpFilesystem || c.entersHost() {
 		if si, ok := stat.Sys().(*shared.FileInfo); ok {
 			uid = si.Uid
 			gid = si.Gid

@@ -750,6 +750,33 @@ func TestBottlerocketReleaseFileStillEnriches(t *testing.T) {
 	assert.Equal(t, bottlerocket, leaf)
 }
 
+// adminContainerConn is a connection that reached a Bottlerocket host through
+// its admin container, as the SSH connection reports it.
+type adminContainerConn struct {
+	*mock.Connection
+	admin bool
+}
+
+func (c adminContainerConn) BottlerocketAdminContainer() bool { return c.admin }
+
+// A scan through the admin container says so in the platform metadata; any
+// other connection to Bottlerocket leaves the key out.
+func TestBottlerocketAdminContainerMetadata(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-bottlerocket-ebs.toml"))
+	require.NoError(t, err)
+
+	pf, ok := DetectOS(adminContainerConn{Connection: mockConn, admin: true})
+	require.True(t, ok)
+	assert.Equal(t, "bottlerocket", pf.Name)
+	assert.Equal(t, BottlerocketAccessAdminContainer, pf.Metadata[MetadataBottlerocketAccess])
+
+	pf, ok = DetectOS(adminContainerConn{Connection: mockConn, admin: false})
+	require.True(t, ok)
+	assert.Equal(t, "bottlerocket", pf.Name)
+	_, set := pf.Metadata[MetadataBottlerocketAccess]
+	assert.False(t, set)
+}
+
 func TestScientificLinuxDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-scientific.toml")
 	assert.Nil(t, err, "was able to create the provider")
