@@ -181,6 +181,8 @@ func TestDeviceFlow(t *testing.T) {
 	assert.Contains(t, out.String(), "! First copy your one-time code: WDJB-MJHT")
 	assert.Contains(t, out.String(), "https://console.example.com/activate")
 	assert.NotContains(t, out.String(), "Press Enter", "no prompt when not interactive")
+	assert.Contains(t, out.String(), "Open https://console.example.com/activate in a browser and enter the code.\nWaiting for authorization...\n")
+	assert.NotContains(t, out.String(), "\r", "no spinner when not interactive")
 
 	// request parameters
 	assert.Equal(t, ClientID, f.authForm.Get("client_id"))

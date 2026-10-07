@@ -69,11 +69,12 @@ func loopbackFlow(ctx context.Context, o *Options, md *Metadata, cfg *oauth2.Con
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	fmt.Fprintf(o.Out, "Opening your browser to log in. If it does not open, visit this URL:\n\n  %s\n\n", authURL)
+	pr := newProgress(o.Out, o.Interactive)
+	pr.Println("Opening your browser to log in. If it does not open, visit this URL:\n\n  %s\n", authURL)
 	if err := o.OpenBrowser(authURL); err != nil {
-		fmt.Fprintln(o.Out, "Could not open a browser; open the URL above manually.")
+		pr.Println("Could not open a browser; open the URL above manually.")
 	}
-	stop := startSpinner(o.Out, o.Interactive, "Waiting for authorization in the browser...")
+	stop := pr.Spin("Waiting for authorization in the browser...")
 
 	var res callbackResult
 	timer := time.NewTimer(o.LoopbackTimeout)
