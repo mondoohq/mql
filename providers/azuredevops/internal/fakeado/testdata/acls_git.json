@@ -1,5 +1,5 @@
 {
-  "count": 3,
+  "count": 4,
   "value": [
     {
       "inheritPermissions": true,
@@ -22,7 +22,7 @@
         },
         "Microsoft.TeamFoundation.ServiceIdentity;5e000000-0000-4000-8000-000000000001:Build:1a000000-0000-4000-8000-000000000001": {
           "descriptor": "Microsoft.TeamFoundation.ServiceIdentity;5e000000-0000-4000-8000-000000000001:Build:1a000000-0000-4000-8000-000000000001",
-          "allow": 16630,
+          "allow": 16638,
           "deny": 0
         }
       }
@@ -46,6 +46,17 @@
           "descriptor": "Microsoft.TeamFoundation.Identity;S-1-9-1000000000-1000000001-1000000002-1000000003-1000000004-1-1000000011",
           "allow": 0,
           "deny": 16
+        }
+      }
+    },
+    {
+      "inheritPermissions": false,
+      "token": "repoV2/1a000000-0000-4000-8000-000000000004/2b000000-0000-4000-8000-000000000006",
+      "acesDictionary": {
+        "Microsoft.TeamFoundation.Identity;S-1-9-1000000000-1000000001-1000000002-1000000003-1000000004-1-1000000012": {
+          "descriptor": "Microsoft.TeamFoundation.Identity;S-1-9-1000000000-1000000001-1000000002-1000000003-1000000004-1-1000000012",
+          "allow": 2,
+          "deny": 0
         }
       }
     }

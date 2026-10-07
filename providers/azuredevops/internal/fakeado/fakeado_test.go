@@ -342,3 +342,16 @@ func TestIdentitiesFindAGroupByItsName(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(body), &none))
 	assert.Empty(t, none.Value)
 }
+
+func TestDropAccessControlListAnswersNoListForThatTokenOnly(t *testing.T) {
+	srv := New(t)
+	project := "repoV2/" + ProjectScanTestID
+	srv.DropAccessControlList(project)
+	acls := base + "/_apis/accesscontrollists/" + gitNamespace + "?api-version=" + APIVersion + "&recurse=false&token="
+
+	_, body := get(t, srv, acls+url.QueryEscape(project), basic(PAT))
+	assert.JSONEq(t, `{"count":0,"value":[]}`, body)
+
+	_, body = get(t, srv, acls+url.QueryEscape(project+"/"+RepoIacID), basic(PAT))
+	assert.Contains(t, body, project+"/"+RepoIacID, "the repository list is still served")
+}

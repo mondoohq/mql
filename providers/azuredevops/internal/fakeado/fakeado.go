@@ -121,6 +121,7 @@ type Server struct {
 	deniedItems map[string]bool
 	hiddenRepos map[string]bool
 	denied      []string
+	droppedACLs map[string]bool
 }
 
 type throttle struct {
@@ -173,6 +174,24 @@ func (s *Server) Deny(suffix string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.denied = append(s.denied, suffix)
+}
+
+// DropAccessControlList makes the access control list of one token vanish: the
+// route answers an empty list for it, as it does for a token that never had
+// one. The match ignores letter case.
+func (s *Server) DropAccessControlList(token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.droppedACLs == nil {
+		s.droppedACLs = map[string]bool{}
+	}
+	s.droppedACLs[strings.ToLower(token)] = true
+}
+
+func (s *Server) accessControlListDropped(token string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.droppedACLs[strings.ToLower(token)]
 }
 
 func (s *Server) pathDenied(path string) bool {
@@ -511,6 +530,9 @@ func (s *Server) accessControlLists(w http.ResponseWriter, r *http.Request, name
 	recurse := r.URL.Query().Get("recurse") == "true"
 	kept := []acl{}
 	for _, a := range list.Value {
+		if s.accessControlListDropped(a.Token) {
+			continue
+		}
 		if strings.EqualFold(a.Token, token) || (recurse && strings.HasPrefix(strings.ToLower(a.Token), strings.ToLower(token)+"/")) {
 			kept = append(kept, a)
 		}

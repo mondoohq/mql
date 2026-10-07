@@ -89,6 +89,32 @@ func TestEffectiveAllow(t *testing.T) {
 	}
 }
 
+func TestEffectiveAllowKeepsOneIdentitysDenyFromAnother(t *testing.T) {
+	const a = "Microsoft.TeamFoundation.Identity;S-1-9-1"
+	const b = "Microsoft.TeamFoundation.Identity;S-1-9-2"
+	chain := []*AccessControlList{{InheritPermissions: true, Aces: map[string]AccessControlEntry{
+		a: {Descriptor: a, Allow: 0, Deny: 8},
+		b: {Descriptor: b, Allow: 8, Deny: 0},
+	}}}
+
+	got := EffectiveAllow(chain)
+	assert.Equal(t, int64(0), got[strings.ToLower(a)], "the denied identity is not allowed")
+	assert.Equal(t, int64(8), got[strings.ToLower(b)], "another identity's deny does not reach it")
+}
+
+func TestEffectiveAllowFoldsDescriptorsOfDifferentCaseToOneKey(t *testing.T) {
+	const project = "Microsoft.TeamFoundation.Identity;S-1-9-1-ABC"
+	const repo = "microsoft.teamfoundation.identity;s-1-9-1-abc"
+	chain := []*AccessControlList{
+		{InheritPermissions: true, Aces: map[string]AccessControlEntry{project: {Descriptor: project, Allow: 16 | 8}}},
+		{InheritPermissions: true, Aces: map[string]AccessControlEntry{repo: {Descriptor: repo, Deny: 16}}},
+	}
+
+	got := EffectiveAllow(chain)
+	assert.Len(t, got, 1, "one identity, one key")
+	assert.Equal(t, int64(8), got[strings.ToLower(project)], "the repository deny beats the project allow")
+}
+
 func TestIsServiceIdentity(t *testing.T) {
 	assert.True(t, IsServiceIdentity(fakeado.BuildServiceDescriptor))
 	assert.True(t, IsServiceIdentity(strings.ToLower(fakeado.BuildServiceDescriptor)))
