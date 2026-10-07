@@ -14,7 +14,6 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/os/connection/dockerclient"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/types"
@@ -63,9 +62,11 @@ func (p *mqlDocker) images() ([]any, error) {
 		return nil, err
 	}
 
+	defer cl.Close()
+
 	imageListRes, err := cl.ImageList(context.Background(), client.ImageListOptions{})
 	if err != nil {
-		return nil, err
+		return nil, classifyDockerError(err)
 	}
 	dImages := imageListRes.Items
 
@@ -102,9 +103,11 @@ func (p *mqlDocker) containers() ([]any, error) {
 		return nil, err
 	}
 
+	defer cl.Close()
+
 	dContainers, err := listAllDockerContainers(context.Background(), cl)
 	if err != nil {
-		return nil, err
+		return nil, classifyDockerError(err)
 	}
 
 	containers := make([]any, len(dContainers))
@@ -208,20 +211,6 @@ func (p *mqlDockerImage) id() (string, error) {
 
 func (p *mqlDockerContainer) id() (string, error) {
 	return p.Id.Data, nil
-}
-
-func (p *mqlDockerContainer) hostConfig() (any, error) {
-	cl, err := dockerClient(p.MqlRuntime)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := cl.ContainerInspect(context.Background(), p.Id.Data, client.ContainerInspectOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	return convert.JsonToDict(res.Container.HostConfig)
 }
 
 // dockerClient builds a client from the provider process's own environment, so

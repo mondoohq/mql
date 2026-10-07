@@ -7956,11 +7956,17 @@ docker.image {
 // Single Docker container on the host
 //
 // A container on the Docker host, running or stopped, with its `state`,
-// `status`, source `image`, startup `command`, `labels`, and the embedded
-// Linux operating system running inside it (queryable through `os`).
-// `hostConfig` exposes the daemon-side runtime settings such as privilege,
-// capabilities, and mounts. Filter by state, for example
-// `docker.containers.where(state == "running")`.
+// `status`, source `image`, startup `command`, and `labels`. The confinement
+// settings describe what the container can reach on the host: `privileged`
+// disables nearly every confinement at once, `capAdd` and `capDrop` adjust the
+// capability set, `seccompProfile`, `apparmorProfile`, and `noNewPrivileges`
+// report the process restrictions, and the namespace modes (`networkMode`,
+// `pidMode`, `ipcMode`, `utsMode`, `usernsMode`, `cgroupnsMode`) report which
+// host namespaces it shares. `mounts`, `devices`, and `ports` list what of the
+// host is exposed inside it, for example
+// `docker.containers.none(mounts.any(hostPath == "/var/run/docker.sock"))`
+// finds containers that control the Docker daemon. Filter by state, for
+// example `docker.containers.where(state == "running")`.
 docker.container @defaults("names.first status"){
   // The running container as its own asset
   //
@@ -7998,6 +8004,170 @@ docker.container @defaults("names.first status"){
   // bindings, bind mounts, and restart policy. Central to container-hardening
   // audits, for example checking `hostConfig["Privileged"] == false`.
   hostConfig() dict
+  // Image the container was created from
+  //
+  // Null when the image is no longer stored on the host.
+  sourceImage() docker.image
+  // Whether the container runs privileged
+  //
+  // A privileged container keeps every capability, drops the seccomp and device
+  // restrictions, and can reach host devices directly, so it is close to
+  // running as root on the host.
+  privileged() bool
+  // Capabilities requested in addition to the engine default (e.g., CAP_NET_ADMIN)
+  capAdd() []string
+  // Capabilities requested to be removed from the engine default (e.g., ALL)
+  capDrop() []string
+  // Security options applied to the container
+  //
+  // Entries such as `seccomp=unconfined`, `apparmor=unconfined`,
+  // `label=disable`, or `no-new-privileges`, as passed to the engine. A custom
+  // seccomp profile appears as `seccomp=` followed by the profile's JSON.
+  securityOptions() []string
+  // Seccomp profile the container runs with
+  //
+  // One of `default` (the engine's default profile), `unconfined` (no seccomp
+  // filtering, either requested or because the container is privileged), or
+  // `custom` (a profile supplied with the container).
+  seccompProfile() string
+  // AppArmor profile the container runs with
+  //
+  // For example `docker-default` or `unconfined`. Empty when the host does not
+  // use AppArmor.
+  apparmorProfile() string
+  // Whether the container's processes are prevented from gaining privileges
+  //
+  // True when the container was started with the `no-new-privileges` security
+  // option, which stops setuid binaries and file capabilities from raising the
+  // privileges of a process. False when the option is absent, even if the
+  // daemon applies it to every container by default.
+  noNewPrivileges() bool
+  // Whether the container's root filesystem is read-only
+  readOnlyRootfs() bool
+  // Account the main process runs as, empty when it runs as root
+  //
+  // Set by the container or, when it sets none, by the image's `USER`, for
+  // example `1000:1000` or `nginx`.
+  user() string
+  // Network mode (e.g., bridge, host, none, container:<id>)
+  networkMode() string
+  // PID namespace mode, `host` when it shares the host's processes, empty when private
+  pidMode() string
+  // IPC namespace mode (e.g., private, shareable, host, container:<id>)
+  ipcMode() string
+  // UTS namespace mode, `host` when it shares the host's hostname, empty when private
+  utsMode() string
+  // User namespace mode, empty when the container uses the daemon's setting
+  //
+  // `host` turns off user namespace remapping for this container when the
+  // daemon enables it.
+  usernsMode() string
+  // Cgroup namespace mode (e.g., private, host)
+  cgroupnsMode() string
+  // Restart policy name (e.g., no, always, on-failure, unless-stopped)
+  restartPolicy() string
+  // Number of restart attempts the on-failure restart policy makes, 0 when unlimited or unused
+  restartMaxRetries() int
+  // Memory limit in bytes, null when the container's memory is unlimited
+  memoryLimit() int
+  // CPU shares relative to other containers, null when left at the engine default (1024)
+  cpuShares() int
+  // CPU quota in billionths of a CPU (e.g., 500000000 for half a CPU), null when unlimited
+  nanoCpus() int
+  // Maximum number of processes in the container, null when unlimited
+  pidsLimit() int
+  // Resource limits set for the container's processes
+  //
+  // Only the limits set on the container itself; the rest come from the
+  // daemon's defaults.
+  ulimits() []docker.container.ulimit
+  // Whether the container has a health check
+  //
+  // False when neither the container nor its image defines one, or when it was
+  // disabled with `--no-healthcheck`.
+  hasHealthcheck() bool
+  // Health check command, for example ["CMD-SHELL", "curl -f http://localhost/"]
+  //
+  // The first entry is `CMD` or `CMD-SHELL`, or `NONE` when the image's health
+  // check is disabled. Empty when there is none.
+  healthcheckTest() []string
+  // Seconds between health checks, null when the container has no health check
+  //
+  // Reports the engine default of 30 when the health check does not set one.
+  healthcheckInterval() int
+  // Health status (e.g., starting, healthy, unhealthy), null when the container has no health check or is not running
+  healthStatus() string
+  // Ports published on the host
+  //
+  // The bindings the container was created with, also reported when it is
+  // stopped. `ports.where(allInterfaces)` lists the ports reachable on every
+  // host interface rather than on one address such as 127.0.0.1.
+  ports() []docker.container.port
+  // Host devices exposed inside the container
+  devices() []docker.container.device
+  // Volumes, bind mounts, and tmpfs mounts in the container
+  mounts() []docker.container.mount
+}
+
+// Resource limit set for a Docker container
+private docker.container.ulimit @defaults("name soft hard") {
+  // Limit name (e.g., nofile, nproc, core)
+  name string
+  // Soft limit, -1 when unlimited
+  soft int
+  // Hard limit, -1 when unlimited
+  hard int
+}
+
+// Port a Docker container publishes on the host
+private docker.container.port @defaults("hostIp hostPort containerPort protocol") {
+  // Host address the port is bound to, empty when bound to every interface
+  hostIp string
+  // Host port, 0 when the engine picks a free port when the container starts
+  hostPort int
+  // Port inside the container
+  containerPort int
+  // Protocol: tcp, udp, or sctp
+  protocol string
+  // Whether the port is reachable on every host interface
+  //
+  // True when `hostIp` is empty, `0.0.0.0`, or `::`.
+  allInterfaces bool
+}
+
+// Host device exposed inside a Docker container
+private docker.container.device @defaults("hostPath containerPath") {
+  // Device path on the host
+  hostPath string
+  // Device path inside the container
+  containerPath string
+  // Device cgroup permissions, a combination of r (read), w (write), and m (mknod)
+  permissions string
+}
+
+// Mount in a Docker container
+//
+// One volume, bind mount, or tmpfs mount. `hostPath` is the host side of a bind
+// mount or the storage location of a volume, so
+// `mounts.where(type == "bind" && hostPath == "/var/run/docker.sock")` finds a
+// container that can control the Docker daemon.
+docker.container.mount @defaults("type containerPath hostPath readOnly") {
+  // Mount type: bind, volume, tmpfs, image, npipe, or cluster
+  type string
+  // Volume name, empty for other mount types
+  name string
+  // Path on the host that is mounted, empty for a tmpfs mount
+  hostPath string
+  // Path inside the container
+  containerPath string
+  // Whether the mount is read-only
+  readOnly bool
+  // Mode options supplied with the mount (e.g., ro, z, Z)
+  mode string
+  // Mount propagation (e.g., rprivate, rshared, rslave), empty when not applicable
+  propagation string
+  // Volume driver (e.g., local), empty for other mount types
+  driver string
 }
 
 // Docker Engine daemon configuration
