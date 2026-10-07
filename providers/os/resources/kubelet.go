@@ -186,7 +186,7 @@ func createConfiguration(kubeletFlags map[string]any, configFileContent string, 
 	// value (omitempty), so readOnlyPort: 0 or enableSystemLogQuery: false
 	// read as null, and a check for == false failed on a kubelet that runs
 	// with false. The kubelet holds those fields as plain values.
-	addKubeletZeroValues(options, reflect.TypeOf(kubeletConfig), minor)
+	addKubeletZeroValues(options, reflect.TypeOf(kubeletConfig))
 
 	err = mergeFlagsIntoConfig(options, kubeletFlags)
 	if err != nil {
@@ -218,7 +218,7 @@ var kubeletUnsetMeansZero = map[string]bool{
 // out at their zero value (false, 0, "", "0s", an empty list or map), as the
 // kubelet runs with them. Nested structs are filled the same way. Optional
 // fields are added only when kubeletUnsetMeansZero lists them.
-func addKubeletZeroValues(m map[string]any, t reflect.Type, minor int) {
+func addKubeletZeroValues(m map[string]any, t reflect.Type) {
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
@@ -232,14 +232,14 @@ func addKubeletZeroValues(m map[string]any, t reflect.Type, minor int) {
 		}
 		if v, ok := m[name]; ok {
 			if sub, ok := v.(map[string]any); ok && ft.Kind() == reflect.Struct && ft != durationType {
-				addKubeletZeroValues(sub, ft, minor)
+				addKubeletZeroValues(sub, ft)
 			}
 			continue
 		}
 		if optional && !kubeletUnsetMeansZero[name] {
 			continue
 		}
-		if zero, ok := kubeletZeroValue(ft, minor); ok {
+		if zero, ok := kubeletZeroValue(ft); ok {
 			m[name] = zero
 		}
 	}
@@ -247,7 +247,7 @@ func addKubeletZeroValues(m map[string]any, t reflect.Type, minor int) {
 
 // kubeletZeroValue is the value addKubeletZeroValues adds for a field of type
 // t, in the form the JSON of the config uses.
-func kubeletZeroValue(t reflect.Type, minor int) (any, bool) {
+func kubeletZeroValue(t reflect.Type) (any, bool) {
 	if t == durationType {
 		return metav1.Duration{}.Duration.String(), true
 	}
@@ -266,7 +266,7 @@ func kubeletZeroValue(t reflect.Type, minor int) (any, bool) {
 		return map[string]any{}, true
 	case reflect.Struct:
 		sub := map[string]any{}
-		addKubeletZeroValues(sub, t, minor)
+		addKubeletZeroValues(sub, t)
 		return sub, true
 	}
 	return nil, false
