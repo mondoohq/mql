@@ -75,3 +75,13 @@ azuredevops.repository.size 14.0.0
 azuredevops.repository.sshUrl 14.0.0
 azuredevops.repository.status 14.0.0
 azuredevops.repository.webUrl 14.0.0
+azuredevops.repository.webhooks 14.0.0
+azuredevops.webhook 14.0.0
+azuredevops.webhook.active 14.0.0
+azuredevops.webhook.consumerId 14.0.0
+azuredevops.webhook.eventType 14.0.0
+azuredevops.webhook.host 14.0.0
+azuredevops.webhook.id 14.0.0
+azuredevops.webhook.isHttps 14.0.0
+azuredevops.webhook.scheme 14.0.0
+azuredevops.webhook.status 14.0.0

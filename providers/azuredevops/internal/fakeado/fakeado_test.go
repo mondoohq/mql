@@ -376,3 +376,11 @@ func TestAdvancedSecurityIsOffUntilEnabled(t *testing.T) {
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	assert.Contains(t, body, `"alertType": "secret"`)
 }
+
+func TestServiceHooksListEverySubscriptionOfTheOrganization(t *testing.T) {
+	srv := New(t)
+
+	res, body := get(t, srv, base+"/_apis/hooks/subscriptions?api-version="+APIVersion, basic(PAT))
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Contains(t, body, `"count": 7`)
+}

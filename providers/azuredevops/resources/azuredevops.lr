@@ -117,6 +117,12 @@ azuredevops.repository @defaults("fullName") @root {
   // Reports a forbidden error when the credential cannot read it. When
   // Advanced Security is off, `enabled` is false and `alerts` is null.
   advancedSecurity() azuredevops.advancedSecurity
+  // Service hooks that send the events of the repository to an address
+  //
+  // Every service hook of the project that names the repository, or that sends
+  // code events of every repository of the project, and has a target address.
+  // Reports a forbidden error when the credential cannot read the service hooks.
+  webhooks() []azuredevops.webhook
 }
 
 // Azure DevOps branch
@@ -249,4 +255,30 @@ private azuredevops.alert @defaults("alertType severity state title") {
   gitRef string
   // Time the alert was first seen, null when unknown
   firstSeenDate time
+}
+
+// Azure DevOps service hook
+//
+// Service hook subscription that sends the events of a Git repository to an
+// address outside Azure DevOps, such as a web hook. Provides the `eventType`,
+// the `consumerId`, whether it is `active`, and the `scheme` and `host` of the
+// target address. The full address is left out, since its path or query can
+// carry a secret.
+private azuredevops.webhook @defaults("eventType host isHttps") {
+  // Subscription ID, a GUID that Azure DevOps assigns
+  id string
+  // Event that triggers the hook, for example git.push
+  eventType string
+  // Service that receives the events, for example webHooks
+  consumerId string
+  // Subscription status, for example enabled or disabledBySystem
+  status string
+  // Whether the hook still sends events: enabled, or on probation after recent failures
+  active bool
+  // Scheme of the target address in lower case, for example https
+  scheme string
+  // Host and port of the target address, without user information
+  host string
+  // Whether the target address uses HTTPS
+  isHttps bool
 }

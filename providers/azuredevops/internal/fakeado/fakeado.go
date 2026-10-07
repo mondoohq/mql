@@ -408,6 +408,8 @@ func (s *Server) handleMain(w http.ResponseWriter, r *http.Request, segs []strin
 		s.policies(w, segs[0])
 	case len(segs) == 3 && segs[0] == "_apis" && segs[1] == "accesscontrollists":
 		s.accessControlLists(w, r, segs[2])
+	case len(segs) == 3 && segs[0] == "_apis" && segs[1] == "hooks" && segs[2] == "subscriptions":
+		serveFixture(w, http.StatusOK, "hooks.json")
 	default:
 		serveFixture(w, http.StatusNotFound, "error_forbidden.json")
 	}

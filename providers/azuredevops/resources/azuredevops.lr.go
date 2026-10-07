@@ -25,6 +25,7 @@ const (
 	ResourceAzuredevopsPolicy           string = "azuredevops.policy"
 	ResourceAzuredevopsAdvancedSecurity string = "azuredevops.advancedSecurity"
 	ResourceAzuredevopsAlert            string = "azuredevops.alert"
+	ResourceAzuredevopsWebhook          string = "azuredevops.webhook"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -66,6 +67,10 @@ func init() {
 		"azuredevops.alert": {
 			// to override args, implement: initAzuredevopsAlert(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzuredevopsAlert,
+		},
+		"azuredevops.webhook": {
+			// to override args, implement: initAzuredevopsWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzuredevopsWebhook,
 		},
 	}
 }
@@ -234,6 +239,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azuredevops.repository.advancedSecurity": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsRepository).GetAdvancedSecurity()).ToDataRes(types.Resource("azuredevops.advancedSecurity"))
 	},
+	"azuredevops.repository.webhooks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetWebhooks()).ToDataRes(types.Array(types.Resource("azuredevops.webhook")))
+	},
 	"azuredevops.branch.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsBranch).GetName()).ToDataRes(types.String)
 	},
@@ -332,6 +340,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azuredevops.alert.firstSeenDate": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsAlert).GetFirstSeenDate()).ToDataRes(types.Time)
+	},
+	"azuredevops.webhook.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsWebhook).GetId()).ToDataRes(types.String)
+	},
+	"azuredevops.webhook.eventType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsWebhook).GetEventType()).ToDataRes(types.String)
+	},
+	"azuredevops.webhook.consumerId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsWebhook).GetConsumerId()).ToDataRes(types.String)
+	},
+	"azuredevops.webhook.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsWebhook).GetStatus()).ToDataRes(types.String)
+	},
+	"azuredevops.webhook.active": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsWebhook).GetActive()).ToDataRes(types.Bool)
+	},
+	"azuredevops.webhook.scheme": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsWebhook).GetScheme()).ToDataRes(types.String)
+	},
+	"azuredevops.webhook.host": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsWebhook).GetHost()).ToDataRes(types.String)
+	},
+	"azuredevops.webhook.isHttps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsWebhook).GetIsHttps()).ToDataRes(types.Bool)
 	},
 }
 
@@ -489,6 +521,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzuredevopsRepository).AdvancedSecurity, ok = plugin.RawToTValue[*mqlAzuredevopsAdvancedSecurity](v.Value, v.Error)
 		return
 	},
+	"azuredevops.repository.webhooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).Webhooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azuredevops.branch.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzuredevopsBranch).__id, ok = v.Value.(string)
 		return
@@ -639,6 +675,42 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azuredevops.alert.firstSeenDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzuredevopsAlert).FirstSeenDate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"azuredevops.webhook.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsWebhook).__id, ok = v.Value.(string)
+		return
+	},
+	"azuredevops.webhook.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsWebhook).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.webhook.eventType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsWebhook).EventType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.webhook.consumerId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsWebhook).ConsumerId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.webhook.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsWebhook).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.webhook.active": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsWebhook).Active, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.webhook.scheme": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsWebhook).Scheme, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.webhook.host": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsWebhook).Host, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.webhook.isHttps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsWebhook).IsHttps, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 }
@@ -928,6 +1000,7 @@ type mqlAzuredevopsRepository struct {
 	Branches         plugin.TValue[[]any]
 	Policies         plugin.TValue[[]any]
 	AdvancedSecurity plugin.TValue[*mqlAzuredevopsAdvancedSecurity]
+	Webhooks         plugin.TValue[[]any]
 }
 
 // createAzuredevopsRepository creates a new instance of this resource
@@ -1084,6 +1157,22 @@ func (c *mqlAzuredevopsRepository) GetAdvancedSecurity() *plugin.TValue[*mqlAzur
 		}
 
 		return c.advancedSecurity()
+	})
+}
+
+func (c *mqlAzuredevopsRepository) GetWebhooks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Webhooks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.repository", c.__id, "webhooks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.webhooks()
 	})
 }
 
@@ -1477,4 +1566,83 @@ func (c *mqlAzuredevopsAlert) GetGitRef() *plugin.TValue[string] {
 
 func (c *mqlAzuredevopsAlert) GetFirstSeenDate() *plugin.TValue[*time.Time] {
 	return &c.FirstSeenDate
+}
+
+// mqlAzuredevopsWebhook for the azuredevops.webhook resource
+type mqlAzuredevopsWebhook struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzuredevopsWebhookInternal it will be used here
+	Id         plugin.TValue[string]
+	EventType  plugin.TValue[string]
+	ConsumerId plugin.TValue[string]
+	Status     plugin.TValue[string]
+	Active     plugin.TValue[bool]
+	Scheme     plugin.TValue[string]
+	Host       plugin.TValue[string]
+	IsHttps    plugin.TValue[bool]
+}
+
+// createAzuredevopsWebhook creates a new instance of this resource
+func createAzuredevopsWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzuredevopsWebhook{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azuredevops.webhook", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzuredevopsWebhook) MqlName() string {
+	return "azuredevops.webhook"
+}
+
+func (c *mqlAzuredevopsWebhook) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzuredevopsWebhook) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzuredevopsWebhook) GetEventType() *plugin.TValue[string] {
+	return &c.EventType
+}
+
+func (c *mqlAzuredevopsWebhook) GetConsumerId() *plugin.TValue[string] {
+	return &c.ConsumerId
+}
+
+func (c *mqlAzuredevopsWebhook) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAzuredevopsWebhook) GetActive() *plugin.TValue[bool] {
+	return &c.Active
+}
+
+func (c *mqlAzuredevopsWebhook) GetScheme() *plugin.TValue[string] {
+	return &c.Scheme
+}
+
+func (c *mqlAzuredevopsWebhook) GetHost() *plugin.TValue[string] {
+	return &c.Host
+}
+
+func (c *mqlAzuredevopsWebhook) GetIsHttps() *plugin.TValue[bool] {
+	return &c.IsHttps
 }

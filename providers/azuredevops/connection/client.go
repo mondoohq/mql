@@ -249,6 +249,8 @@ type Client struct {
 	groups memo[*Identity]
 	// enablements caches the Advanced Security state of each repository.
 	enablements memo[*AdvSecEnablement]
+	// subscriptions caches the service hook subscriptions of the organization.
+	subscriptions memo[[]Subscription]
 }
 
 // NewClient builds a client for one organization.
