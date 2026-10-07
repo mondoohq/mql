@@ -79,7 +79,7 @@ func TestProgress_SpinnerNeverOverwritesPrompt(t *testing.T) {
 
 	// the spinner is drawn below the prompt; the Enter line replaces the
 	// spinner line and the spinner moves below it
-	assert.Contains(t, got, "\n\r⠋ Waiting for authorization...\033[K")
+	assert.Contains(t, got, "\n\r=^.^=/ Waiting for authorization...\033[K")
 	assert.Contains(t, got, "\r✓ Opened https://example.com/activate\033[K\n\r")
 	assert.NotContains(t, got, "\033[A", "the cursor never moves up into the prompt")
 	// the spinner clears its own line when it stops
