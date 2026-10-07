@@ -8,12 +8,11 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"errors"
-	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
+	"golang.org/x/term"
 )
 
 // proofSafetyMargin stops polling a little before the proof expires, so the
@@ -30,16 +29,13 @@ func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, key *ecdsa.
 		return nil, errors.New("device authorization response is incomplete")
 	}
 
-	fmt.Fprintf(o.Out, "! First copy your one-time code: %s\n", da.UserCode)
-	if o.Interactive && BrowserPlausible(o.Getenv, o.GOOS) {
-		fmt.Fprintf(o.Out, "Press Enter to open %s in your browser... ", da.VerificationURI)
-		go waitForEnter(o.In, func() {
-			if err := o.OpenBrowser(da.VerificationURI); err != nil {
-				fmt.Fprintf(o.Out, "\nCould not open a browser; visit %s manually.\n", da.VerificationURI)
-			}
-		})
+	pr := newProgress(o.Out, o.Interactive)
+	pr.Println("! First copy your one-time code: %s", da.UserCode)
+	promptEnter := o.Interactive && BrowserPlausible(o.Getenv, o.GOOS)
+	if promptEnter {
+		pr.Println("Press Enter to open %s in your browser...", da.VerificationURI)
 	} else {
-		fmt.Fprintf(o.Out, "Open %s in a browser and enter the code.\n", da.VerificationURI)
+		pr.Println("Open %s in a browser and enter the code.", da.VerificationURI)
 	}
 
 	// One proof covers the whole poll window, so it must not outlive the
@@ -53,7 +49,19 @@ func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, key *ecdsa.
 	pollCtx, cancel := context.WithDeadline(ctx, pollDeadline)
 	defer cancel()
 
-	stop := startSpinner(o.Out, o.Interactive, "Waiting for authorization...")
+	// Polling starts right away: the code can be approved on another device
+	// without pressing Enter. Enter opens the browser at any time meanwhile.
+	// Echo is off while waiting, so pressing Enter does not move the cursor
+	// off the spinner line.
+	if promptEnter {
+		if restore := disableInputEcho(o.In); restore != nil {
+			defer restore()
+		}
+	}
+	stop := pr.Spin("Waiting for authorization...")
+	if promptEnter {
+		go waitForEnter(o.In, func() { openVerificationURI(pr, o.OpenBrowser, da.VerificationURI) })
+	}
 	tok, err := cfg.DeviceAccessToken(pollCtx, da, oauth2.SetAuthURLParam("mondoo_key_proof", proof))
 	stop()
 	if err != nil {
@@ -81,44 +89,39 @@ func deviceProofWindow(now, expiry time.Time) (time.Duration, time.Time) {
 	return lifetime, now.Add(lifetime - proofSafetyMargin)
 }
 
+// openVerificationURI opens uri in the browser after the user pressed Enter.
+func openVerificationURI(pr *progress, openBrowser func(string) error, uri string) {
+	if err := openBrowser(uri); err != nil {
+		pr.AfterEnter("Could not open a browser; open %s and enter the code.", uri)
+		return
+	}
+	pr.AfterEnter("✓ Opened %s", uri)
+}
+
+// disableInputEcho turns off echo when in is a terminal and returns the func
+// that turns it back on, or nil when echo was not changed.
+func disableInputEcho(in io.Reader) func() {
+	f, ok := in.(interface{ Fd() uintptr })
+	if !ok {
+		return nil
+	}
+	fd := int(f.Fd())
+	if !term.IsTerminal(fd) {
+		return nil
+	}
+	restore, err := disableEcho(fd)
+	if err != nil {
+		return nil
+	}
+	return restore
+}
+
+// waitForEnter calls fn once a line is read from in. The read is not
+// cancelled when the login finishes first; the process exits right after.
 func waitForEnter(in io.Reader, fn func()) {
 	r := bufio.NewReader(in)
 	if _, err := r.ReadString('\n'); err != nil {
 		return
 	}
 	fn()
-}
-
-// startSpinner shows msg with a spinner on a terminal, or once otherwise. The
-// returned func stops it and clears the line.
-func startSpinner(out io.Writer, interactive bool, msg string) func() {
-	if !interactive {
-		fmt.Fprintln(out, msg)
-		return func() {}
-	}
-	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-	done := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		t := time.NewTicker(120 * time.Millisecond)
-		defer t.Stop()
-		for i := 0; ; i++ {
-			fmt.Fprintf(out, "\r%s %s", frames[i%len(frames)], msg)
-			select {
-			case <-done:
-				fmt.Fprint(out, "\r\033[K")
-				return
-			case <-t.C:
-			}
-		}
-	}()
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			close(done)
-			wg.Wait()
-		})
-	}
 }

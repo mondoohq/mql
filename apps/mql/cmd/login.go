@@ -9,9 +9,11 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -261,8 +263,8 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 			log.Warn().Msg("could not load configuration, please use --token or --config with the appropriate values")
 			return cli_errors.ExitCode1WithoutError
 		}
-		// print the used config to the user
-		config.DisplayUsedConfig()
+		// print the used config to the user; login creates a missing file
+		config.DisplayUsedConfigForLogin()
 
 		httpClient, err = opts.GetHttpClient()
 		if err != nil {
@@ -390,7 +392,11 @@ func oauthLogin(apiEndpoint string, httpClient *http.Client, sysInfo *sysinfo.Sy
 		deviceName, _ = os.Hostname()
 	}
 
-	res, err := oauthlogin.Login(context.Background(), oauthlogin.Options{
+	// Ctrl-C cancels the login instead of killing the process, so the
+	// terminal settings changed while waiting are restored.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	res, err := oauthlogin.Login(ctx, oauthlogin.Options{
 		Endpoint:    apiEndpoint,
 		Insecure:    flags.insecure,
 		Mode:        mode,
@@ -400,6 +406,9 @@ func oauthLogin(apiEndpoint string, httpClient *http.Client, sysInfo *sysinfo.Sy
 		HTTPClient:  httpClient,
 		Interactive: term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd())),
 	})
+	if err != nil && ctx.Err() != nil {
+		return nil, errors.New("login canceled")
+	}
 	if errors.Is(err, oauthlogin.ErrBrowserLoginDisabled) {
 		return nil, fmt.Errorf("%w — use `%s login --token`", err, binaryName)
 	}
