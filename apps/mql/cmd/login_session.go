@@ -57,10 +57,13 @@ func pingSession(ctx context.Context, apiEndpoint string, httpClient *http.Clien
 	return err
 }
 
-// revokeSession revokes a session credential. The issuer was accepted when
-// the session was created, so it is not refused now.
-func revokeSession(ctx context.Context, httpClient *http.Client, issuer, accessToken, privateKeyPEM string) error {
-	return oauthlogin.Revoke(ctx, httpClient, issuer, accessToken, privateKeyPEM, true)
+// revokeSession returns a revoker for session credentials. The revocation
+// endpoint must use https, or http to a loopback server; insecure (the
+// --insecure flag) also allows http to other servers.
+func revokeSession(insecure bool) sessionRevoker {
+	return func(ctx context.Context, httpClient *http.Client, issuer, accessToken, privateKeyPEM string) error {
+		return oauthlogin.Revoke(ctx, httpClient, issuer, accessToken, privateKeyPEM, insecure)
+	}
 }
 
 // existingSession decides whether login keeps the interactive login session

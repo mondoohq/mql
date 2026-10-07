@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/viper"
 	"go.mondoo.com/mql/cli/config"
 	cli_errors "go.mondoo.com/mql/cli/errors"
-	"go.mondoo.com/mql/cli/oauthlogin"
 	"go.mondoo.com/mql/providers"
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 	rangerUtils "go.mondoo.com/mql/utils/ranger"
@@ -23,6 +22,7 @@ import (
 func init() {
 	rootCmd.AddCommand(LogoutCmd)
 	LogoutCmd.Flags().Bool("force", false, "Force the logout without confirmation")
+	LogoutCmd.Flags().Bool("insecure", false, "Allow revoking a login session over unencrypted http to a non-loopback server")
 }
 
 var LogoutCmd = &cobra.Command{
@@ -52,7 +52,8 @@ ensure the credentials cannot be used in the future.
 		// A short-lived interactive login session has no registered client to
 		// unregister: revoke it and drop the credential.
 		if opts.IsOAuthSession() {
-			return logoutSession(opts)
+			insecure, _ := cmd.Flags().GetBool("insecure")
+			return logoutSession(opts, insecure)
 		}
 
 		// check valid client authentication
@@ -136,7 +137,7 @@ ensure the credentials cannot be used in the future.
 
 // logoutSession revokes an interactive login session on the server (best
 // effort) and removes its credential from the config.
-func logoutSession(opts *config.Config) error {
+func logoutSession(opts *config.Config, insecure bool) error {
 	mrn := opts.ServiceAccountMrn
 
 	issuer := opts.Authentication.Issuer
@@ -148,9 +149,9 @@ func logoutSession(opts *config.Config) error {
 		log.Warn().Err(err).Msg("could not create http client, the session is only removed locally")
 	} else {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		// The issuer was accepted when the session was created; don't refuse
-		// to revoke it now.
-		err = oauthlogin.Revoke(ctx, httpClient, issuer, opts.Authentication.AccessToken, opts.PrivateKey, true)
+		// The revocation endpoint must use https, or http to a loopback
+		// server, unless --insecure is set.
+		err = revokeSession(insecure)(ctx, httpClient, issuer, opts.Authentication.AccessToken, opts.PrivateKey)
 		cancel()
 		if err != nil {
 			log.Warn().Err(err).Msg("could not revoke the session on the server, it expires on its own")
