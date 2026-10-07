@@ -30,6 +30,13 @@ type PermissionManifest struct {
 }
 
 // PermissionDetail describes a single extracted API call and its mapped permission.
+//
+// Permission is the IAM permission the call needs; Action is the SDK operation
+// the provider calls. They are usually the same name, and differ where the
+// cloud authorizes several operations with one permission (AWS GetFindingV2
+// is authorized by access-analyzer:GetFinding; every API Gateway read by
+// apigateway:GET) or names the permission after the resource rather than the
+// method (GCP, Azure).
 type PermissionDetail struct {
 	Permission string `json:"permission"`
 	Service    string `json:"service"`

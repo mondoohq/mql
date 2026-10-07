@@ -361,26 +361,50 @@ var validatedGCPPermissions = []string{
 	"workflows.workflows.list",
 }
 
-type permissionManifest struct {
-	Permissions []string `json:"permissions"`
+// validatedGCPOrgLevelPermissions is the same for the manifest's
+// org_level_permissions: permissions that are granted on an organization, not
+// a project, because the resource they read lives there (folders, the
+// organization itself, custom org-policy constraints, workforce identity
+// pools). Every entry was confirmed present at organization scope and absent or
+// not applicable at project scope with queryTestablePermissions (2026-10-07).
+var validatedGCPOrgLevelPermissions = []string{
+	"iam.googleapis.com/workforcePoolProviders.list",
+	"iam.googleapis.com/workforcePools.list",
+	"orgpolicy.customConstraints.list",
+	"resourcemanager.folders.get",
+	"resourcemanager.folders.getIamPolicy",
+	"resourcemanager.folders.list",
+	"resourcemanager.organizations.get",
+	"resourcemanager.organizations.getIamPolicy",
+	"resourcemanager.projects.list",
 }
 
-func TestGCPPermissionsMatchValidatedList(t *testing.T) {
+type permissionManifest struct {
+	Permissions         []string `json:"permissions"`
+	OrgLevelPermissions []string `json:"org_level_permissions"`
+}
+
+func readGCPManifest(t *testing.T) permissionManifest {
+	t.Helper()
 	data, err := os.ReadFile("gcp.permissions.json")
 	require.NoError(t, err, "failed to read gcp.permissions.json")
-
 	var manifest permissionManifest
 	require.NoError(t, json.Unmarshal(data, &manifest), "failed to parse gcp.permissions.json")
+	return manifest
+}
 
-	actual := make([]string, len(manifest.Permissions))
-	copy(actual, manifest.Permissions)
+// assertPermissionsMatch compares one manifest list with its validated list
+// and names every entry on only one side.
+func assertPermissionsMatch(t *testing.T, list string, manifestPerms, validated []string) {
+	t.Helper()
+	actual := make([]string, len(manifestPerms))
+	copy(actual, manifestPerms)
 	sort.Strings(actual)
 
-	expected := make([]string, len(validatedGCPPermissions))
-	copy(expected, validatedGCPPermissions)
+	expected := make([]string, len(validated))
+	copy(expected, validated)
 	sort.Strings(expected)
 
-	// Build sets for detailed diff
 	actualSet := map[string]bool{}
 	for _, p := range actual {
 		actualSet[p] = true
@@ -403,17 +427,25 @@ func TestGCPPermissionsMatchValidatedList(t *testing.T) {
 	}
 
 	if len(unexpected) > 0 {
-		t.Errorf("unexpected permissions in manifest (not in validated list):\n")
+		t.Errorf("unexpected %s in manifest (not in validated list):\n", list)
 		for _, p := range unexpected {
 			t.Errorf("  - %s", p)
 		}
 	}
 	if len(missing) > 0 {
-		t.Errorf("missing permissions from manifest (expected but not found):\n")
+		t.Errorf("missing %s from manifest (expected but not found):\n", list)
 		for _, p := range missing {
 			t.Errorf("  - %s", p)
 		}
 	}
 
-	assert.Equal(t, expected, actual, "permissions in gcp.permissions.json must exactly match the validated list")
+	assert.Equal(t, expected, actual, "%s in gcp.permissions.json must exactly match the validated list", list)
+}
+
+func TestGCPPermissionsMatchValidatedList(t *testing.T) {
+	assertPermissionsMatch(t, "permissions", readGCPManifest(t).Permissions, validatedGCPPermissions)
+}
+
+func TestGCPOrgLevelPermissionsMatchValidatedList(t *testing.T) {
+	assertPermissionsMatch(t, "org_level_permissions", readGCPManifest(t).OrgLevelPermissions, validatedGCPOrgLevelPermissions)
 }
