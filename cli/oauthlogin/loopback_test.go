@@ -37,17 +37,45 @@ func TestResultPage_Success(t *testing.T) {
 	assert.Contains(t, page, "@media (prefers-reduced-motion:reduce)")
 	assert.Contains(t, page, `matchMedia("(prefers-reduced-motion: reduce)")`)
 	assert.NotContains(t, page, "Login not completed")
+	assertDesignTokens(t, page)
 }
 
 func TestResultPage_FailureEscapesMessage(t *testing.T) {
 	page := renderResultPage(t, http.StatusBadRequest, false, `login failed: <script>alert("x")</script>`)
 
 	assert.Contains(t, page, "Login not completed")
-	assert.Contains(t, page, "login failed: &lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;")
+	assert.Contains(t, page, "Login failed: &lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;")
 	assert.NotContains(t, page, `<script>alert`)
 	assert.Contains(t, page, `( T.T )`)
 	assert.Contains(t, page, `class="fail"`)
 	assert.Contains(t, page, "@media (prefers-reduced-motion:reduce)")
+	assertDesignTokens(t, page)
+}
+
+func TestResultPage_FailureCapitalizesReason(t *testing.T) {
+	page := renderResultPage(t, http.StatusBadRequest, false, "the login request was denied")
+	assert.Contains(t, page, "<p>The login request was denied</p>")
+}
+
+func TestCapitalizeFirst(t *testing.T) {
+	assert.Equal(t, "", capitalizeFirst(""))
+	assert.Equal(t, "The login request was denied", capitalizeFirst("the login request was denied"))
+	assert.Equal(t, "Already Upper", capitalizeFirst("Already Upper"))
+	assert.Equal(t, "Über ok", capitalizeFirst("über ok"))
+	assert.Equal(t, "<x>", capitalizeFirst("<x>"))
+}
+
+// assertDesignTokens checks the light and dark design-system colors are in the page.
+func assertDesignTokens(t *testing.T, page string) {
+	t.Helper()
+	for _, tok := range []string{
+		"--canvas:#f7f5f2", "--surface:#fbfaf9", "--border:color-mix(in srgb,#6d6862 20%,transparent)",
+		"--text-primary:#050504", "--text-secondary:#6d6862", "--action:#793f99", "--negative:#cf0f2b",
+		"--canvas:#04040a", "--surface:#1b1b22", "--border:color-mix(in srgb,#9494a4 20%,transparent)",
+		"--text-primary:#fcfcfd", "--text-secondary:#9494a4", "--action:#b76ed8", "--negative:#f8444d",
+	} {
+		assert.Contains(t, page, tok)
+	}
 }
 
 func TestCatFrames_FixedSize(t *testing.T) {
