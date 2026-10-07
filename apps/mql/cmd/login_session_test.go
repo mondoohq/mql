@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -213,4 +214,67 @@ func TestSameServer(t *testing.T) {
 	assert.False(t, sameServer("https://eu.api.mondoo.com", "https://us.api.mondoo.com"))
 	assert.False(t, sameServer("http://127.0.0.1:8990", "http://localhost:8989"))
 	assert.False(t, sameServer("https://us.api.mondoo.com"))
+}
+
+// Revoking a session needs https, or http to a loopback server, unless
+// --insecure is set.
+func TestRevokeSession_Transport(t *testing.T) {
+	opts := sessionConfig(t, time.Now().Add(time.Hour))
+	ctx := context.Background()
+
+	err := revokeSession(false)(ctx, http.DefaultClient, "http://mondoo.invalid", "old-session", opts.PrivateKey)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unencrypted http")
+
+	err = revokeSession(true)(ctx, http.DefaultClient, "http://mondoo.invalid", "old-session", opts.PrivateKey)
+	require.Error(t, err, "nothing answers at mondoo.invalid")
+	assert.NotContains(t, err.Error(), "unencrypted http", "--insecure allows http")
+
+	// A loopback server needs no --insecure; the metadata lists its http
+	// revocation endpoint.
+	var revoked bool
+	mux := http.NewServeMux()
+	srv := httptestServer(t, mux)
+	mux.HandleFunc(oauthlogin.WellKnownPath, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"issuer":"` + srv + `","token_endpoint":"` + srv + `/oauth/token","revocation_endpoint":"` + srv + `/oauth/revoke"}`))
+	})
+	mux.HandleFunc("/oauth/revoke", func(w http.ResponseWriter, r *http.Request) { revoked = true })
+	require.NoError(t, revokeSession(false)(ctx, http.DefaultClient, srv, "old-session", opts.PrivateKey))
+	assert.True(t, revoked)
+
+	// A remote server must not list an http revocation endpoint.
+	revoked = false
+	mux2 := http.NewServeMux()
+	srv2 := httptestServer(t, mux2)
+	mux2.HandleFunc(oauthlogin.WellKnownPath, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"issuer":"` + srv2 + `","token_endpoint":"` + srv2 + `/oauth/token","revocation_endpoint":"http://revoke.example.com/oauth/revoke"}`))
+	})
+	err = revokeSession(false)(ctx, http.DefaultClient, srv2, "old-session", opts.PrivateKey)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unencrypted http")
+}
+
+// A registration token login over an interactive login session revokes the
+// session once the registered client is saved.
+func TestRegistrationRevokesReplacedSession(t *testing.T) {
+	now := time.Now()
+	opts := sessionConfig(t, now.Add(time.Hour))
+	old := sessionToReplace(opts, now)
+	require.NotNil(t, old)
+
+	var tokens []string
+	revokeReplaced(context.Background(), old, "", nil, func(_ context.Context, _ *http.Client, _, token, _ string) error {
+		tokens = append(tokens, token)
+		return nil
+	})
+	assert.Equal(t, []string{"old-session"}, tokens)
+}
+
+func httptestServer(t *testing.T, h http.Handler) string {
+	t.Helper()
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	return srv.URL
 }

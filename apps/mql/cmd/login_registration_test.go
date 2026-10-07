@@ -55,7 +55,6 @@ func TestApplyRegistrationConfig_ReplacesSession(t *testing.T) {
 		Certificate: "new-cert",
 		ApiEndpoint: "https://us.api.mondoo.com",
 	})
-	restrictConfigPermissions(path)
 	require.NoError(t, config.StoreConfig())
 
 	data, err := os.ReadFile(path)
@@ -118,7 +117,6 @@ func TestApplySessionConfig_ReplacesRegisteredClient(t *testing.T) {
 		Issuer:        "https://us.api.mondoo.com",
 		AccessToken:   "new-session",
 	})
-	restrictConfigPermissions(path)
 	require.NoError(t, config.StoreConfig())
 
 	data, err := os.ReadFile(path)

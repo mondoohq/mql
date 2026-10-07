@@ -4,9 +4,12 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -18,6 +21,10 @@ import (
 
 // list of field keys to avoid writing to disk
 var fieldKeysToOmit = []string{"force"}
+
+// credentialKeys are the config keys that hold a secret. A config with any of
+// them set is written readable by its owner only.
+var credentialKeys = []string{"private_key", "token"}
 
 // MarshalConfig serializes cfg using the serialization format implied by the
 // config file path's extension: a ".json" path produces JSON, everything else
@@ -36,9 +43,25 @@ func MarshalConfig(path string, cfg *Config) ([]byte, error) {
 	return yaml.Marshal(cfg)
 }
 
+// StoreConfig writes the loaded configuration to the config file.
+//
+// A configuration that holds a credential is written to a temporary file that
+// is readable by its owner only (mode 0600; on Windows an access control list
+// for the current user, SYSTEM and Administrators) and then renamed over the
+// config file. If owner-only access cannot be set, or the config path is a
+// symbolic link, nothing is written and an error is returned.
 func StoreConfig() error {
 	path := viper.ConfigFileUsed()
 	log.Info().Str("path", path).Msg("saving config")
+
+	// omit fields before storing the configuration
+	for _, field := range fieldKeysToOmit {
+		viper.Set(field, nil)
+	}
+
+	if hasCredential() {
+		return storeOwnerOnly(path)
+	}
 
 	// create new file if it does not exist
 	osFs := afero.NewOsFs()
@@ -59,10 +82,115 @@ func StoreConfig() error {
 		return errors.Wrap(err, "failed to check stats for mondoo config")
 	}
 
-	// omit fields before storing the configuration
-	for _, field := range fieldKeysToOmit {
-		viper.Set(field, nil)
+	return viper.WriteConfig()
+}
+
+func hasCredential() bool {
+	for _, key := range credentialKeys {
+		if viper.GetString(key) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// storeOwnerOnly writes the loaded configuration to path through a temporary
+// file in the same directory that only its owner can access.
+func storeOwnerOnly(path string) error {
+	if path == "" {
+		return errors.New("failed to save mondoo config: no config file path")
+	}
+	data, err := encodeSettings(path)
+	if err != nil {
+		return errors.Wrap(err, "failed to save mondoo config")
+	}
+	return WriteOwnerOnlyFile(path, data)
+}
+
+// encodeSettings serializes the loaded configuration in the format of path's
+// extension, as viper.WriteConfig does.
+func encodeSettings(path string) ([]byte, error) {
+	format := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
+	if format == "" {
+		format = "yaml"
+	}
+	if !slices.Contains(viper.SupportedExts, format) {
+		return nil, viper.UnsupportedConfigError(format)
+	}
+	v := viper.New()
+	v.SetConfigType(format)
+	if err := v.MergeConfigMap(viper.AllSettings()); err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := v.WriteConfigTo(&buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// WriteOwnerOnlyFile replaces the file at path with data, readable and
+// writable by its owner only. The data is written to a temporary file in the
+// same directory, restricted before anything is written to it, and renamed
+// over path, so path never holds partial content. An existing file keeps its
+// owner where the platform allows it.
+//
+// It refuses to write when path is a symbolic link or not a regular file, and
+// when owner-only access cannot be set.
+func WriteOwnerOnlyFile(path string, data []byte) error {
+	var existing fs.FileInfo
+	fi, err := os.Lstat(path)
+	switch {
+	case err == nil:
+		if fi.Mode()&fs.ModeSymlink != 0 {
+			return errors.Newf("refusing to write credentials to %s: it is a symbolic link; replace it with a regular file or use --config to point to the file itself", path)
+		}
+		if !fi.Mode().IsRegular() {
+			return errors.Newf("refusing to write credentials to %s: it is not a regular file", path)
+		}
+		existing = fi
+	case errors.Is(err, fs.ErrNotExist):
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return errors.Wrap(err, "failed to create the mondoo config directory")
+		}
+	default:
+		return errors.Wrapf(err, "failed to check %s", path)
 	}
 
-	return viper.WriteConfig()
+	// os.CreateTemp creates the file with mode 0600.
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*.tmp")
+	if err != nil {
+		return errors.Wrap(err, "failed to save mondoo config")
+	}
+	tmpName := tmp.Name()
+	renamed := false
+	defer func() {
+		if !renamed {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	if err := restrictToOwner(tmp); err != nil {
+		tmp.Close()
+		return errors.Wrapf(err, "refusing to write credentials to %s: could not make the file readable by its owner only", path)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return errors.Wrap(err, "failed to save mondoo config")
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return errors.Wrap(err, "failed to save mondoo config")
+	}
+	if err := tmp.Close(); err != nil {
+		return errors.Wrap(err, "failed to save mondoo config")
+	}
+	if existing != nil {
+		preserveOwner(tmpName, existing)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return errors.Wrap(err, "failed to save mondoo config")
+	}
+	renamed = true
+	return nil
 }

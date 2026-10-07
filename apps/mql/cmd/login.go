@@ -275,6 +275,12 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 			return cli_errors.NewCommandError(errors.Wrap(err, "failed to log in client"), 1)
 		}
 
+		// The registered client replaces an interactive login session in the
+		// config; revoke it once the new credential is saved.
+		if opts, optsErr := config.Read(); optsErr == nil {
+			replaced = sessionToReplace(opts, time.Now())
+		}
+
 		log.Debug().Msg("store configuration")
 		// update configuration file, api-endpoint is set automatically
 		applyRegistrationConfig(confirmation.AgentMrn, confirmation.Credential)
@@ -381,13 +387,11 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 		}
 	}
 
-	if session != nil || token != "" {
-		// Both write a private key to the config.
-		restrictConfigPermissions(viper.ConfigFileUsed())
-	}
+	// StoreConfig writes a config holding a private key readable by its owner
+	// only, and refuses to write it when that cannot be ensured.
 	err = config.StoreConfig()
 	if err != nil {
-		log.Warn().Err(err).Msg("could not write mondoo configuration")
+		log.Error().Err(err).Msg("could not write mondoo configuration")
 		return cli_errors.ExitCode1WithoutError
 	}
 
@@ -415,8 +419,12 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 		fmt.Fprintln(os.Stderr, session.Summary(time.Now()))
 		// The new credential is saved; the replaced session is no longer
 		// needed and should not stay valid on the server.
-		revokeReplaced(context.Background(), replaced, session.AccessToken, httpClient, revokeSession)
+		revokeReplaced(context.Background(), replaced, session.AccessToken, httpClient, revokeSession(oauthFlags.insecure))
 		return nil
+	}
+	if replaced != nil {
+		// A registration token replaced an interactive login session.
+		revokeReplaced(context.Background(), replaced, "", httpClient, revokeSession(oauthFlags.insecure))
 	}
 
 	log.Info().Msgf("client %s has logged in successfully", viper.Get("agent_mrn"))
@@ -569,31 +577,6 @@ func dropConfigKeys(keys ...string) error {
 		return err
 	}
 	return viper.ReadConfig(bytes.NewReader(data))
-}
-
-// restrictConfigPermissions makes the config readable by its owner only before
-// a private key is written to it. The writer keeps an existing file's mode, so
-// the key is never readable by others, not even briefly. Best effort.
-func restrictConfigPermissions(path string) {
-	if path == "" || runtime.GOOS == "windows" {
-		return
-	}
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			log.Debug().Err(err).Str("path", path).Msg("could not create config directory")
-			return
-		}
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err != nil {
-			log.Debug().Err(err).Str("path", path).Msg("could not create config file")
-			return
-		}
-		_ = f.Close()
-		return
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not restrict config file permissions")
-	}
 }
 
 func registerAgent(ctx context.Context, client *upstream.AgentManagerClient, req *upstream.AgentRegistrationRequest) (*upstream.AgentRegistrationConfirmation, error) {
