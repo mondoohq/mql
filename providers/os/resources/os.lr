@@ -8072,6 +8072,100 @@ crio {
   allowedDevices() []string
   // Containers CRI-O runs, without the pod sandboxes that hold them
   containers() []crio.container
+  // Image signature policy CRI-O verifies pulled images against
+  //
+  // From `crio.image.signature_policy`, by default /etc/containers/policy.json.
+  // Null when the policy file cannot be read.
+  signaturePolicy() crio.imagePolicy
+  // Signature policies for the pods of single Kubernetes namespaces
+  //
+  // The `<namespace>.json` files in `crio.image.signature_policy_dir`. A pod in
+  // a namespace with its own policy is verified against that policy instead of
+  // `signaturePolicy`.
+  namespaceSignaturePolicies() []crio.imagePolicy
+  // Runtime handlers CRI-O can run containers with
+  runtimes() []crio.runtime
+}
+
+// CRI-O image signature policy
+//
+// A containers-policy.json(5) file: the requirements images must meet to be
+// pulled, by default (`defaultRequirements`) and per registry or repository
+// (`scopes`). A requirement of type insecureAcceptAnything pulls images
+// without verifying any signature.
+crio.imagePolicy @defaults("path namespace") {
+  // Path of the policy file
+  path string
+  // Kubernetes namespace the policy applies to; empty for the node-wide policy
+  namespace string
+  // Policy file
+  file() file
+  // Requirements for images no scope matches
+  defaultRequirements() []crio.imagePolicy.requirement
+  // Registries and repositories with requirements of their own
+  scopes() []crio.imagePolicy.scope
+}
+
+// Registry or repository of a CRI-O image signature policy with requirements of its own
+crio.imagePolicy.scope @defaults("transport scope") {
+  // Transport the scope belongs to (for example "docker")
+  transport string
+  // Registry, repository or image the requirements apply to; empty for the transport's default
+  scope string
+  // Requirements images in the scope must meet
+  requirements() []crio.imagePolicy.requirement
+}
+
+// Requirement of a CRI-O image signature policy
+crio.imagePolicy.requirement @defaults("type") {
+  // Requirement type
+  //
+  // One of insecureAcceptAnything, reject, signedBy (GPG), or sigstoreSigned.
+  type string
+  // Kind of key a signedBy requirement verifies with (for example "GPGKeys")
+  keyType string
+  // Files holding the public keys signatures are verified with
+  keyPaths []string
+  // Whether the public key is given inline in the policy file
+  inlineKey bool
+  // Certificate authority that issues Fulcio certificates for keyless sigstore signatures
+  fulcioCAPath string
+  // OIDC issuer a keyless sigstore signature's certificate must name
+  fulcioOIDCIssuer string
+  // Email a keyless sigstore signature's certificate must name
+  fulcioSubjectEmail string
+  // Files holding the Rekor public keys transparency log entries are verified with
+  rekorPublicKeyPaths []string
+  // How the signed image identity must match the pulled image
+  //
+  // Holds the type (for example "matchRepoDigestOrExact") and its settings.
+  signedIdentity dict
+}
+
+// CRI-O runtime handler
+//
+// A `[crio.runtime.runtimes.<name>]` entry: the low-level runtime CRI-O runs a
+// container with when a pod's RuntimeClass names it, or by default.
+crio.runtime @defaults("name path") {
+  // Handler name, as a RuntimeClass names it (for example "crun")
+  name string
+  // Path of the runtime binary
+  path string
+  // Runtime type: oci (the default), vm (for example Kata Containers), or pod
+  type string
+  // Root directory the runtime keeps container state in
+  root string
+  // Path of the monitor that supervises containers (conmon)
+  monitorPath string
+  // Annotations a pod may set to change how the runtime runs its containers
+  //
+  // Each one hands a pod a capability, for example "io.containers.trace-syscall"
+  // or "io.kubernetes.cri-o.userns-mode".
+  allowedAnnotations []string
+  // Whether privileged containers run without the host's devices
+  privilegedWithoutHostDevices bool
+  // Whether this is the handler containers use when they ask for none
+  isDefault bool
 }
 
 // CRI-O container

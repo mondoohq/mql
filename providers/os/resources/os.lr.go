@@ -253,6 +253,10 @@ const (
 	ResourceContainerd                                    string = "containerd"
 	ResourceContainerdContainer                           string = "containerd.container"
 	ResourceCrio                                          string = "crio"
+	ResourceCrioImagePolicy                               string = "crio.imagePolicy"
+	ResourceCrioImagePolicyScope                          string = "crio.imagePolicy.scope"
+	ResourceCrioImagePolicyRequirement                    string = "crio.imagePolicy.requirement"
+	ResourceCrioRuntime                                   string = "crio.runtime"
 	ResourceCrioContainer                                 string = "crio.container"
 	ResourcePodman                                        string = "podman"
 	ResourcePodmanContainer                               string = "podman.container"
@@ -1630,6 +1634,22 @@ func init() {
 		"crio": {
 			// to override args, implement: initCrio(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createCrio,
+		},
+		"crio.imagePolicy": {
+			// to override args, implement: initCrioImagePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCrioImagePolicy,
+		},
+		"crio.imagePolicy.scope": {
+			// to override args, implement: initCrioImagePolicyScope(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCrioImagePolicyScope,
+		},
+		"crio.imagePolicy.requirement": {
+			// to override args, implement: initCrioImagePolicyRequirement(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCrioImagePolicyRequirement,
+		},
+		"crio.runtime": {
+			// to override args, implement: initCrioRuntime(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCrioRuntime,
 		},
 		"crio.container": {
 			// to override args, implement: initCrioContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -9301,6 +9321,90 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"crio.containers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrio).GetContainers()).ToDataRes(types.Array(types.Resource("crio.container")))
+	},
+	"crio.signaturePolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetSignaturePolicy()).ToDataRes(types.Resource("crio.imagePolicy"))
+	},
+	"crio.namespaceSignaturePolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetNamespaceSignaturePolicies()).ToDataRes(types.Array(types.Resource("crio.imagePolicy")))
+	},
+	"crio.runtimes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetRuntimes()).ToDataRes(types.Array(types.Resource("crio.runtime")))
+	},
+	"crio.imagePolicy.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicy).GetPath()).ToDataRes(types.String)
+	},
+	"crio.imagePolicy.namespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicy).GetNamespace()).ToDataRes(types.String)
+	},
+	"crio.imagePolicy.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicy).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"crio.imagePolicy.defaultRequirements": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicy).GetDefaultRequirements()).ToDataRes(types.Array(types.Resource("crio.imagePolicy.requirement")))
+	},
+	"crio.imagePolicy.scopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicy).GetScopes()).ToDataRes(types.Array(types.Resource("crio.imagePolicy.scope")))
+	},
+	"crio.imagePolicy.scope.transport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicyScope).GetTransport()).ToDataRes(types.String)
+	},
+	"crio.imagePolicy.scope.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicyScope).GetScope()).ToDataRes(types.String)
+	},
+	"crio.imagePolicy.scope.requirements": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicyScope).GetRequirements()).ToDataRes(types.Array(types.Resource("crio.imagePolicy.requirement")))
+	},
+	"crio.imagePolicy.requirement.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicyRequirement).GetType()).ToDataRes(types.String)
+	},
+	"crio.imagePolicy.requirement.keyType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicyRequirement).GetKeyType()).ToDataRes(types.String)
+	},
+	"crio.imagePolicy.requirement.keyPaths": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicyRequirement).GetKeyPaths()).ToDataRes(types.Array(types.String))
+	},
+	"crio.imagePolicy.requirement.inlineKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicyRequirement).GetInlineKey()).ToDataRes(types.Bool)
+	},
+	"crio.imagePolicy.requirement.fulcioCAPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicyRequirement).GetFulcioCAPath()).ToDataRes(types.String)
+	},
+	"crio.imagePolicy.requirement.fulcioOIDCIssuer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicyRequirement).GetFulcioOIDCIssuer()).ToDataRes(types.String)
+	},
+	"crio.imagePolicy.requirement.fulcioSubjectEmail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicyRequirement).GetFulcioSubjectEmail()).ToDataRes(types.String)
+	},
+	"crio.imagePolicy.requirement.rekorPublicKeyPaths": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicyRequirement).GetRekorPublicKeyPaths()).ToDataRes(types.Array(types.String))
+	},
+	"crio.imagePolicy.requirement.signedIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImagePolicyRequirement).GetSignedIdentity()).ToDataRes(types.Dict)
+	},
+	"crio.runtime.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetName()).ToDataRes(types.String)
+	},
+	"crio.runtime.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetPath()).ToDataRes(types.String)
+	},
+	"crio.runtime.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetType()).ToDataRes(types.String)
+	},
+	"crio.runtime.root": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetRoot()).ToDataRes(types.String)
+	},
+	"crio.runtime.monitorPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetMonitorPath()).ToDataRes(types.String)
+	},
+	"crio.runtime.allowedAnnotations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetAllowedAnnotations()).ToDataRes(types.Array(types.String))
+	},
+	"crio.runtime.privilegedWithoutHostDevices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetPrivilegedWithoutHostDevices()).ToDataRes(types.Bool)
+	},
+	"crio.runtime.isDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetIsDefault()).ToDataRes(types.Bool)
 	},
 	"crio.container.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrioContainer).GetId()).ToDataRes(types.String)
@@ -27354,6 +27458,134 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"crio.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCrio).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.signaturePolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).SignaturePolicy, ok = plugin.RawToTValue[*mqlCrioImagePolicy](v.Value, v.Error)
+		return
+	},
+	"crio.namespaceSignaturePolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).NamespaceSignaturePolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.runtimes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).Runtimes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"crio.imagePolicy.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicy).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.namespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicy).Namespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicy).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.defaultRequirements": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicy).DefaultRequirements, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.scopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicy).Scopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.scope.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyScope).__id, ok = v.Value.(string)
+		return
+	},
+	"crio.imagePolicy.scope.transport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyScope).Transport, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.scope.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyScope).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.scope.requirements": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyScope).Requirements, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.requirement.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyRequirement).__id, ok = v.Value.(string)
+		return
+	},
+	"crio.imagePolicy.requirement.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyRequirement).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.requirement.keyType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyRequirement).KeyType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.requirement.keyPaths": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyRequirement).KeyPaths, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.requirement.inlineKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyRequirement).InlineKey, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.requirement.fulcioCAPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyRequirement).FulcioCAPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.requirement.fulcioOIDCIssuer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyRequirement).FulcioOIDCIssuer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.requirement.fulcioSubjectEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyRequirement).FulcioSubjectEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.requirement.rekorPublicKeyPaths": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyRequirement).RekorPublicKeyPaths, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.imagePolicy.requirement.signedIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImagePolicyRequirement).SignedIdentity, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).__id, ok = v.Value.(string)
+		return
+	},
+	"crio.runtime.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.root": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).Root, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.monitorPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).MonitorPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.allowedAnnotations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).AllowedAnnotations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.privilegedWithoutHostDevices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).PrivilegedWithoutHostDevices, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.isDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).IsDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"crio.container.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -66766,18 +66998,21 @@ type mqlCrio struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlCrioInternal it will be used here
-	Version             plugin.TValue[string]
-	ConfigFiles         plugin.TValue[[]any]
-	Configuration       plugin.TValue[any]
-	DefaultRuntime      plugin.TValue[string]
-	SeccompProfile      plugin.TValue[string]
-	ApparmorProfile     plugin.TValue[string]
-	Selinux             plugin.TValue[bool]
-	DefaultCapabilities plugin.TValue[[]any]
-	DefaultSysctls      plugin.TValue[[]any]
-	ReadOnly            plugin.TValue[bool]
-	AllowedDevices      plugin.TValue[[]any]
-	Containers          plugin.TValue[[]any]
+	Version                    plugin.TValue[string]
+	ConfigFiles                plugin.TValue[[]any]
+	Configuration              plugin.TValue[any]
+	DefaultRuntime             plugin.TValue[string]
+	SeccompProfile             plugin.TValue[string]
+	ApparmorProfile            plugin.TValue[string]
+	Selinux                    plugin.TValue[bool]
+	DefaultCapabilities        plugin.TValue[[]any]
+	DefaultSysctls             plugin.TValue[[]any]
+	ReadOnly                   plugin.TValue[bool]
+	AllowedDevices             plugin.TValue[[]any]
+	Containers                 plugin.TValue[[]any]
+	SignaturePolicy            plugin.TValue[*mqlCrioImagePolicy]
+	NamespaceSignaturePolicies plugin.TValue[[]any]
+	Runtimes                   plugin.TValue[[]any]
 }
 
 // createCrio creates a new instance of this resource
@@ -66902,6 +67137,383 @@ func (c *mqlCrio) GetContainers() *plugin.TValue[[]any] {
 
 		return c.containers()
 	})
+}
+
+func (c *mqlCrio) GetSignaturePolicy() *plugin.TValue[*mqlCrioImagePolicy] {
+	return plugin.GetOrCompute[*mqlCrioImagePolicy](&c.SignaturePolicy, func() (*mqlCrioImagePolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio", c.__id, "signaturePolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlCrioImagePolicy), nil
+			}
+		}
+
+		return c.signaturePolicy()
+	})
+}
+
+func (c *mqlCrio) GetNamespaceSignaturePolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NamespaceSignaturePolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio", c.__id, "namespaceSignaturePolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.namespaceSignaturePolicies()
+	})
+}
+
+func (c *mqlCrio) GetRuntimes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Runtimes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio", c.__id, "runtimes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.runtimes()
+	})
+}
+
+// mqlCrioImagePolicy for the crio.imagePolicy resource
+type mqlCrioImagePolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCrioImagePolicyInternal it will be used here
+	Path                plugin.TValue[string]
+	Namespace           plugin.TValue[string]
+	File                plugin.TValue[*mqlFile]
+	DefaultRequirements plugin.TValue[[]any]
+	Scopes              plugin.TValue[[]any]
+}
+
+// createCrioImagePolicy creates a new instance of this resource
+func createCrioImagePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCrioImagePolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("crio.imagePolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCrioImagePolicy) MqlName() string {
+	return "crio.imagePolicy"
+}
+
+func (c *mqlCrioImagePolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCrioImagePolicy) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlCrioImagePolicy) GetNamespace() *plugin.TValue[string] {
+	return &c.Namespace
+}
+
+func (c *mqlCrioImagePolicy) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio.imagePolicy", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.file()
+	})
+}
+
+func (c *mqlCrioImagePolicy) GetDefaultRequirements() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DefaultRequirements, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio.imagePolicy", c.__id, "defaultRequirements")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.defaultRequirements()
+	})
+}
+
+func (c *mqlCrioImagePolicy) GetScopes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Scopes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio.imagePolicy", c.__id, "scopes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.scopes()
+	})
+}
+
+// mqlCrioImagePolicyScope for the crio.imagePolicy.scope resource
+type mqlCrioImagePolicyScope struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCrioImagePolicyScopeInternal it will be used here
+	Transport    plugin.TValue[string]
+	Scope        plugin.TValue[string]
+	Requirements plugin.TValue[[]any]
+}
+
+// createCrioImagePolicyScope creates a new instance of this resource
+func createCrioImagePolicyScope(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCrioImagePolicyScope{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("crio.imagePolicy.scope", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCrioImagePolicyScope) MqlName() string {
+	return "crio.imagePolicy.scope"
+}
+
+func (c *mqlCrioImagePolicyScope) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCrioImagePolicyScope) GetTransport() *plugin.TValue[string] {
+	return &c.Transport
+}
+
+func (c *mqlCrioImagePolicyScope) GetScope() *plugin.TValue[string] {
+	return &c.Scope
+}
+
+func (c *mqlCrioImagePolicyScope) GetRequirements() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Requirements, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio.imagePolicy.scope", c.__id, "requirements")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.requirements()
+	})
+}
+
+// mqlCrioImagePolicyRequirement for the crio.imagePolicy.requirement resource
+type mqlCrioImagePolicyRequirement struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCrioImagePolicyRequirementInternal it will be used here
+	Type                plugin.TValue[string]
+	KeyType             plugin.TValue[string]
+	KeyPaths            plugin.TValue[[]any]
+	InlineKey           plugin.TValue[bool]
+	FulcioCAPath        plugin.TValue[string]
+	FulcioOIDCIssuer    plugin.TValue[string]
+	FulcioSubjectEmail  plugin.TValue[string]
+	RekorPublicKeyPaths plugin.TValue[[]any]
+	SignedIdentity      plugin.TValue[any]
+}
+
+// createCrioImagePolicyRequirement creates a new instance of this resource
+func createCrioImagePolicyRequirement(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCrioImagePolicyRequirement{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("crio.imagePolicy.requirement", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCrioImagePolicyRequirement) MqlName() string {
+	return "crio.imagePolicy.requirement"
+}
+
+func (c *mqlCrioImagePolicyRequirement) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCrioImagePolicyRequirement) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlCrioImagePolicyRequirement) GetKeyType() *plugin.TValue[string] {
+	return &c.KeyType
+}
+
+func (c *mqlCrioImagePolicyRequirement) GetKeyPaths() *plugin.TValue[[]any] {
+	return &c.KeyPaths
+}
+
+func (c *mqlCrioImagePolicyRequirement) GetInlineKey() *plugin.TValue[bool] {
+	return &c.InlineKey
+}
+
+func (c *mqlCrioImagePolicyRequirement) GetFulcioCAPath() *plugin.TValue[string] {
+	return &c.FulcioCAPath
+}
+
+func (c *mqlCrioImagePolicyRequirement) GetFulcioOIDCIssuer() *plugin.TValue[string] {
+	return &c.FulcioOIDCIssuer
+}
+
+func (c *mqlCrioImagePolicyRequirement) GetFulcioSubjectEmail() *plugin.TValue[string] {
+	return &c.FulcioSubjectEmail
+}
+
+func (c *mqlCrioImagePolicyRequirement) GetRekorPublicKeyPaths() *plugin.TValue[[]any] {
+	return &c.RekorPublicKeyPaths
+}
+
+func (c *mqlCrioImagePolicyRequirement) GetSignedIdentity() *plugin.TValue[any] {
+	return &c.SignedIdentity
+}
+
+// mqlCrioRuntime for the crio.runtime resource
+type mqlCrioRuntime struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCrioRuntimeInternal it will be used here
+	Name                         plugin.TValue[string]
+	Path                         plugin.TValue[string]
+	Type                         plugin.TValue[string]
+	Root                         plugin.TValue[string]
+	MonitorPath                  plugin.TValue[string]
+	AllowedAnnotations           plugin.TValue[[]any]
+	PrivilegedWithoutHostDevices plugin.TValue[bool]
+	IsDefault                    plugin.TValue[bool]
+}
+
+// createCrioRuntime creates a new instance of this resource
+func createCrioRuntime(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCrioRuntime{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("crio.runtime", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCrioRuntime) MqlName() string {
+	return "crio.runtime"
+}
+
+func (c *mqlCrioRuntime) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCrioRuntime) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlCrioRuntime) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlCrioRuntime) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlCrioRuntime) GetRoot() *plugin.TValue[string] {
+	return &c.Root
+}
+
+func (c *mqlCrioRuntime) GetMonitorPath() *plugin.TValue[string] {
+	return &c.MonitorPath
+}
+
+func (c *mqlCrioRuntime) GetAllowedAnnotations() *plugin.TValue[[]any] {
+	return &c.AllowedAnnotations
+}
+
+func (c *mqlCrioRuntime) GetPrivilegedWithoutHostDevices() *plugin.TValue[bool] {
+	return &c.PrivilegedWithoutHostDevices
+}
+
+func (c *mqlCrioRuntime) GetIsDefault() *plugin.TValue[bool] {
+	return &c.IsDefault
 }
 
 // mqlCrioContainer for the crio.container resource
