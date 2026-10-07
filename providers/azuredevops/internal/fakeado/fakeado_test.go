@@ -384,3 +384,29 @@ func TestServiceHooksListEverySubscriptionOfTheOrganization(t *testing.T) {
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	assert.Contains(t, body, `"count": 7`)
 }
+
+func TestEnvironmentChecksCarrySettingsOnlyWhenAsked(t *testing.T) {
+	srv := New(t)
+	checks := base + "/legacy-apps/_apis/pipelines/checks/configurations?api-version=" + PreviewAPIVersion + "&resourceType=environment&resourceId=1"
+
+	res, body := get(t, srv, checks, basic(PAT))
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Contains(t, body, `"Approval"`)
+	assert.NotContains(t, body, "requesterCannotBeApprover")
+
+	_, body = get(t, srv, checks+"&%24expand=settings", basic(PAT))
+	assert.Contains(t, body, `"requesterCannotBeApprover":false`)
+
+	res, _ = get(t, srv, base+"/legacy-apps/_apis/pipelines/checks/configurations?api-version="+PreviewAPIVersion, basic(PAT))
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+}
+
+func TestEnvironmentsOfAProjectWithNoneAreEmpty(t *testing.T) {
+	srv := New(t)
+
+	res, body := get(t, srv, base+"/scan-test/_apis/distributedtask/environments?api-version="+PreviewAPIVersion, basic(PAT))
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Contains(t, body, `"count":0`)
+	_, body = get(t, srv, base+"/legacy-apps/_apis/distributedtask/environments?api-version="+PreviewAPIVersion, basic(PAT))
+	assert.Contains(t, body, `"production"`)
+}

@@ -16,16 +16,18 @@ import (
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceAzuredevops                 string = "azuredevops"
-	ResourceAzuredevopsOrganization     string = "azuredevops.organization"
-	ResourceAzuredevopsProject          string = "azuredevops.project"
-	ResourceAzuredevopsRepository       string = "azuredevops.repository"
-	ResourceAzuredevopsBranch           string = "azuredevops.branch"
-	ResourceAzuredevopsBranchProtection string = "azuredevops.branchProtection"
-	ResourceAzuredevopsPolicy           string = "azuredevops.policy"
-	ResourceAzuredevopsAdvancedSecurity string = "azuredevops.advancedSecurity"
-	ResourceAzuredevopsAlert            string = "azuredevops.alert"
-	ResourceAzuredevopsWebhook          string = "azuredevops.webhook"
+	ResourceAzuredevops                          string = "azuredevops"
+	ResourceAzuredevopsOrganization              string = "azuredevops.organization"
+	ResourceAzuredevopsProject                   string = "azuredevops.project"
+	ResourceAzuredevopsRepository                string = "azuredevops.repository"
+	ResourceAzuredevopsBranch                    string = "azuredevops.branch"
+	ResourceAzuredevopsBranchProtection          string = "azuredevops.branchProtection"
+	ResourceAzuredevopsPolicy                    string = "azuredevops.policy"
+	ResourceAzuredevopsAdvancedSecurity          string = "azuredevops.advancedSecurity"
+	ResourceAzuredevopsAlert                     string = "azuredevops.alert"
+	ResourceAzuredevopsWebhook                   string = "azuredevops.webhook"
+	ResourceAzuredevopsEnvironment               string = "azuredevops.environment"
+	ResourceAzuredevopsEnvironmentProtectionRule string = "azuredevops.environmentProtectionRule"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -71,6 +73,14 @@ func init() {
 		"azuredevops.webhook": {
 			// to override args, implement: initAzuredevopsWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzuredevopsWebhook,
+		},
+		"azuredevops.environment": {
+			// to override args, implement: initAzuredevopsEnvironment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzuredevopsEnvironment,
+		},
+		"azuredevops.environmentProtectionRule": {
+			// to override args, implement: initAzuredevopsEnvironmentProtectionRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzuredevopsEnvironmentProtectionRule,
 		},
 	}
 }
@@ -184,6 +194,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azuredevops.project.repositories": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsProject).GetRepositories()).ToDataRes(types.Array(types.Resource("azuredevops.repository")))
+	},
+	"azuredevops.project.environments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsProject).GetEnvironments()).ToDataRes(types.Array(types.Resource("azuredevops.environment")))
 	},
 	"azuredevops.repository.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsRepository).GetId()).ToDataRes(types.String)
@@ -365,6 +378,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azuredevops.webhook.isHttps": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsWebhook).GetIsHttps()).ToDataRes(types.Bool)
 	},
+	"azuredevops.environment.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsEnvironment).GetId()).ToDataRes(types.Int)
+	},
+	"azuredevops.environment.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsEnvironment).GetName()).ToDataRes(types.String)
+	},
+	"azuredevops.environment.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsEnvironment).GetDescription()).ToDataRes(types.String)
+	},
+	"azuredevops.environment.protectionRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsEnvironment).GetProtectionRules()).ToDataRes(types.Array(types.Resource("azuredevops.environmentProtectionRule")))
+	},
+	"azuredevops.environmentProtectionRule.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsEnvironmentProtectionRule).GetId()).ToDataRes(types.Int)
+	},
+	"azuredevops.environmentProtectionRule.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsEnvironmentProtectionRule).GetType()).ToDataRes(types.String)
+	},
+	"azuredevops.environmentProtectionRule.typeId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsEnvironmentProtectionRule).GetTypeId()).ToDataRes(types.String)
+	},
+	"azuredevops.environmentProtectionRule.preventSelfReview": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsEnvironmentProtectionRule).GetPreventSelfReview()).ToDataRes(types.Bool)
+	},
+	"azuredevops.environmentProtectionRule.minRequiredApprovers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsEnvironmentProtectionRule).GetMinRequiredApprovers()).ToDataRes(types.Int)
+	},
+	"azuredevops.environmentProtectionRule.settings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsEnvironmentProtectionRule).GetSettings()).ToDataRes(types.Dict)
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -443,6 +486,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azuredevops.project.repositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzuredevopsProject).Repositories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.project.environments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsProject).Environments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azuredevops.repository.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -713,6 +760,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzuredevopsWebhook).IsHttps, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"azuredevops.environment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsEnvironment).__id, ok = v.Value.(string)
+		return
+	},
+	"azuredevops.environment.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsEnvironment).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azuredevops.environment.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsEnvironment).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.environment.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsEnvironment).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.environment.protectionRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsEnvironment).ProtectionRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.environmentProtectionRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsEnvironmentProtectionRule).__id, ok = v.Value.(string)
+		return
+	},
+	"azuredevops.environmentProtectionRule.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsEnvironmentProtectionRule).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azuredevops.environmentProtectionRule.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsEnvironmentProtectionRule).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.environmentProtectionRule.typeId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsEnvironmentProtectionRule).TypeId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.environmentProtectionRule.preventSelfReview": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsEnvironmentProtectionRule).PreventSelfReview, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.environmentProtectionRule.minRequiredApprovers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsEnvironmentProtectionRule).MinRequiredApprovers, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azuredevops.environmentProtectionRule.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsEnvironmentProtectionRule).Settings, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -894,6 +989,7 @@ type mqlAzuredevopsProject struct {
 	Url            plugin.TValue[string]
 	LastUpdateTime plugin.TValue[*time.Time]
 	Repositories   plugin.TValue[[]any]
+	Environments   plugin.TValue[[]any]
 }
 
 // createAzuredevopsProject creates a new instance of this resource
@@ -974,6 +1070,22 @@ func (c *mqlAzuredevopsProject) GetRepositories() *plugin.TValue[[]any] {
 		}
 
 		return c.repositories()
+	})
+}
+
+func (c *mqlAzuredevopsProject) GetEnvironments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Environments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.project", c.__id, "environments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.environments()
 	})
 }
 
@@ -1645,4 +1757,144 @@ func (c *mqlAzuredevopsWebhook) GetHost() *plugin.TValue[string] {
 
 func (c *mqlAzuredevopsWebhook) GetIsHttps() *plugin.TValue[bool] {
 	return &c.IsHttps
+}
+
+// mqlAzuredevopsEnvironment for the azuredevops.environment resource
+type mqlAzuredevopsEnvironment struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAzuredevopsEnvironmentInternal
+	Id              plugin.TValue[int64]
+	Name            plugin.TValue[string]
+	Description     plugin.TValue[string]
+	ProtectionRules plugin.TValue[[]any]
+}
+
+// createAzuredevopsEnvironment creates a new instance of this resource
+func createAzuredevopsEnvironment(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzuredevopsEnvironment{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azuredevops.environment", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzuredevopsEnvironment) MqlName() string {
+	return "azuredevops.environment"
+}
+
+func (c *mqlAzuredevopsEnvironment) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzuredevopsEnvironment) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlAzuredevopsEnvironment) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzuredevopsEnvironment) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAzuredevopsEnvironment) GetProtectionRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ProtectionRules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.environment", c.__id, "protectionRules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.protectionRules()
+	})
+}
+
+// mqlAzuredevopsEnvironmentProtectionRule for the azuredevops.environmentProtectionRule resource
+type mqlAzuredevopsEnvironmentProtectionRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzuredevopsEnvironmentProtectionRuleInternal it will be used here
+	Id                   plugin.TValue[int64]
+	Type                 plugin.TValue[string]
+	TypeId               plugin.TValue[string]
+	PreventSelfReview    plugin.TValue[bool]
+	MinRequiredApprovers plugin.TValue[int64]
+	Settings             plugin.TValue[any]
+}
+
+// createAzuredevopsEnvironmentProtectionRule creates a new instance of this resource
+func createAzuredevopsEnvironmentProtectionRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzuredevopsEnvironmentProtectionRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azuredevops.environmentProtectionRule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzuredevopsEnvironmentProtectionRule) MqlName() string {
+	return "azuredevops.environmentProtectionRule"
+}
+
+func (c *mqlAzuredevopsEnvironmentProtectionRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzuredevopsEnvironmentProtectionRule) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlAzuredevopsEnvironmentProtectionRule) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlAzuredevopsEnvironmentProtectionRule) GetTypeId() *plugin.TValue[string] {
+	return &c.TypeId
+}
+
+func (c *mqlAzuredevopsEnvironmentProtectionRule) GetPreventSelfReview() *plugin.TValue[bool] {
+	return &c.PreventSelfReview
+}
+
+func (c *mqlAzuredevopsEnvironmentProtectionRule) GetMinRequiredApprovers() *plugin.TValue[int64] {
+	return &c.MinRequiredApprovers
+}
+
+func (c *mqlAzuredevopsEnvironmentProtectionRule) GetSettings() *plugin.TValue[any] {
+	return &c.Settings
 }

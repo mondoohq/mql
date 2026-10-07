@@ -251,6 +251,10 @@ type Client struct {
 	enablements memo[*AdvSecEnablement]
 	// subscriptions caches the service hook subscriptions of the organization.
 	subscriptions memo[[]Subscription]
+	// environments caches the pipeline environments of each project.
+	environments memo[[]Environment]
+	// checks caches the checks of each environment.
+	checks memo[[]CheckConfiguration]
 }
 
 // NewClient builds a client for one organization.

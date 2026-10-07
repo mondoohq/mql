@@ -61,6 +61,8 @@ azuredevops.project @defaults("name") {
   lastUpdateTime time
   // Git repositories of the project. Fails when the credential cannot read the project
   repositories() []azuredevops.repository
+  // Pipeline environments of the project, such as production. Reports a forbidden error when the credential cannot read them
+  environments() []azuredevops.environment
 }
 
 // Azure DevOps repository
@@ -281,4 +283,43 @@ private azuredevops.webhook @defaults("eventType host isHttps") {
   host string
   // Whether the target address uses HTTPS
   isHttps bool
+}
+
+// Azure DevOps environment
+//
+// Pipeline environment of an Azure DevOps project, such as production or
+// staging, that deployment jobs target. Its `protectionRules` are the checks a
+// pipeline run must pass before it deploys to the environment, such as an
+// approval.
+private azuredevops.environment @defaults("name") {
+  // Environment ID, unique within the organization
+  id int
+  // Environment name
+  name string
+  // Environment description
+  description string
+  // Checks a pipeline run must pass before it deploys to the environment. Reports a forbidden error when the credential cannot read them
+  protectionRules() []azuredevops.environmentProtectionRule
+}
+
+// Azure DevOps environment check
+//
+// Check that guards deployments to a pipeline environment, the Azure DevOps
+// counterpart of an environment protection rule. The `type` names the check,
+// for example Approval or Task Check. For an approval, `preventSelfReview`
+// tells whether the person who ran the pipeline is kept from approving it, and
+// `minRequiredApprovers` how many approvers must sign off.
+private azuredevops.environmentProtectionRule @defaults("type") {
+  // Check configuration ID
+  id int
+  // Display name of the check type, for example Approval
+  type string
+  // Check type ID, a GUID that is the same in every organization
+  typeId string
+  // Whether the person who ran the pipeline may not approve the deployment. False for a check that is not an approval
+  preventSelfReview bool
+  // Approvals an approval check needs, where zero means every approver must approve
+  minRequiredApprovers int
+  // Settings of the check type, for example approvers and instructions for an approval
+  settings dict
 }

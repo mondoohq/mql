@@ -32,6 +32,18 @@ azuredevops.branchProtection.requiredApprovingReviewCount 14.0.0
 azuredevops.branchProtection.requiredConversationResolutionEnabled 14.0.0
 azuredevops.branchProtection.requiredPullRequestReviewsEnabled 14.0.0
 azuredevops.branchProtection.requiredStatusChecksEnabled 14.0.0
+azuredevops.environment 14.0.0
+azuredevops.environment.description 14.0.0
+azuredevops.environment.id 14.0.0
+azuredevops.environment.name 14.0.0
+azuredevops.environment.protectionRules 14.0.0
+azuredevops.environmentProtectionRule 14.0.0
+azuredevops.environmentProtectionRule.id 14.0.0
+azuredevops.environmentProtectionRule.minRequiredApprovers 14.0.0
+azuredevops.environmentProtectionRule.preventSelfReview 14.0.0
+azuredevops.environmentProtectionRule.settings 14.0.0
+azuredevops.environmentProtectionRule.type 14.0.0
+azuredevops.environmentProtectionRule.typeId 14.0.0
 azuredevops.organization 14.0.0
 azuredevops.organization.deploymentType 14.0.0
 azuredevops.organization.id 14.0.0
@@ -49,6 +61,7 @@ azuredevops.policy.type 14.0.0
 azuredevops.policy.typeName 14.0.0
 azuredevops.project 14.0.0
 azuredevops.project.description 14.0.0
+azuredevops.project.environments 14.0.0
 azuredevops.project.id 14.0.0
 azuredevops.project.lastUpdateTime 14.0.0
 azuredevops.project.name 14.0.0

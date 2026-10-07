@@ -105,6 +105,19 @@ const (
 	BuildServiceDescriptor  = "Microsoft.TeamFoundation.ServiceIdentity;5e000000-0000-4000-8000-000000000001:Build:1a000000-0000-4000-8000-000000000001"
 )
 
+// projectEnvironments maps a project to its environment fixture. Every other
+// readable project has no environments.
+var projectEnvironments = map[string]string{
+	"legacy-apps": "environments_legacy-apps.json",
+}
+
+// environmentChecks maps an environment id to its check fixture. Every other
+// environment has no checks.
+var environmentChecks = map[string]string{
+	"1": "checks_env_1.json",
+	"2": "checks_env_2.json",
+}
+
 // repoAlerts maps a repository id to its Advanced Security alert fixture. A
 // repository with Advanced Security on and no entry has no alerts.
 var repoAlerts = map[string]string{
@@ -410,6 +423,10 @@ func (s *Server) handleMain(w http.ResponseWriter, r *http.Request, segs []strin
 		s.accessControlLists(w, r, segs[2])
 	case len(segs) == 3 && segs[0] == "_apis" && segs[1] == "hooks" && segs[2] == "subscriptions":
 		serveFixture(w, http.StatusOK, "hooks.json")
+	case len(segs) == 4 && segs[1] == "_apis" && segs[2] == "distributedtask" && segs[3] == "environments":
+		s.environments(w, segs[0])
+	case len(segs) == 5 && segs[1] == "_apis" && segs[2] == "pipelines" && segs[3] == "checks" && segs[4] == "configurations":
+		s.checks(w, r, segs[0])
 	default:
 		serveFixture(w, http.StatusNotFound, "error_forbidden.json")
 	}
@@ -576,6 +593,49 @@ func (s *Server) alerts(w http.ResponseWriter, project, repoID string) {
 		return
 	}
 	serveFixture(w, http.StatusOK, file)
+}
+
+func (s *Server) environments(w http.ResponseWriter, project string) {
+	if _, ok := projectRepos[project]; !ok {
+		serveFixture(w, http.StatusForbidden, "error_forbidden.json")
+		return
+	}
+	file, ok := projectEnvironments[project]
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"count": 0, "value": []any{}})
+		return
+	}
+	serveFixture(w, http.StatusOK, file)
+}
+
+// checks serves the checks of one environment. Like Azure DevOps, it leaves the
+// settings out unless the request asks for them with $expand=settings.
+func (s *Server) checks(w http.ResponseWriter, r *http.Request, project string) {
+	if _, ok := projectRepos[project]; !ok {
+		serveFixture(w, http.StatusForbidden, "error_forbidden.json")
+		return
+	}
+	q := r.URL.Query()
+	if q.Get("resourceType") != "environment" || q.Get("resourceId") == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "resourceType and resourceId are required"})
+		return
+	}
+	file, ok := environmentChecks[q.Get("resourceId")]
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"count": 0, "value": []any{}})
+		return
+	}
+	var list struct {
+		Count int              `json:"count"`
+		Value []map[string]any `json:"value"`
+	}
+	mustDecode(file, &list)
+	if q.Get("$expand") != "settings" {
+		for _, c := range list.Value {
+			delete(c, "settings")
+		}
+	}
+	writeJSON(w, http.StatusOK, list)
 }
 
 // accessControlLists serves the lists of the Git repositories namespace. With

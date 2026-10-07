@@ -1,0 +1,23 @@
+{
+  "count": 3,
+  "value": [
+    {
+      "id": 1,
+      "name": "production",
+      "description": "Production deployments",
+      "project": { "id": "1a000000-0000-4000-8000-000000000004", "name": "legacy-apps" }
+    },
+    {
+      "id": 2,
+      "name": "staging",
+      "description": "",
+      "project": { "id": "1a000000-0000-4000-8000-000000000004", "name": "legacy-apps" }
+    },
+    {
+      "id": 3,
+      "name": "sandbox",
+      "description": "No checks",
+      "project": { "id": "1a000000-0000-4000-8000-000000000004", "name": "legacy-apps" }
+    }
+  ]
+}
