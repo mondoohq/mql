@@ -95,7 +95,7 @@ func NewPackageURL(pf *inventory.Platform, t Type, name, version string, modifie
 			purlNamespace = "opensuse"
 		case "opensuse-microos":
 			purlNamespace = "opensuse"
-		case "sles":
+		case "sles", "sl-micro":
 			purlNamespace = "suse"
 		}
 		if purlNamespace != "" {

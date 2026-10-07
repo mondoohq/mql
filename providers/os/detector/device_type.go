@@ -87,6 +87,7 @@ var serverPlatformNames = map[string]bool{
 	"gardenlinux":      true,
 	"opensuse-microos": true,
 	"photon":           true,
+	"sl-micro":         true,
 	"suse-microos":     true,
 	"talos":            true,
 }

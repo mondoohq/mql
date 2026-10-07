@@ -82,6 +82,10 @@ func TestCatalogPlatforms(t *testing.T) {
 	assert.True(t, byName["echo"], "echo should be a catalogued platform")
 	assert.True(t, byName["cleanstart"], "cleanstart should be a catalogued platform")
 
+	// SUSE Linux Micro 6 sets ID=sl-micro (6.0, 6.1) or ID=sles (6.2), and is
+	// reported as sl-micro either way.
+	assert.True(t, byName["sl-micro"], "sl-micro should be a catalogued platform")
+
 	// darwin is a kernel and a family, never a platform of its own
 	assert.True(t, byName["macos"], "macos should be a catalogued platform")
 	assert.False(t, byName["darwin"], "darwin should not be a catalogued platform")

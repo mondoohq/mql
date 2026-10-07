@@ -1,0 +1,35 @@
+# Captured from registry.suse.com/suse/sl-micro/6.2/base-os-container:latest.
+# From 6.2 on, SUSE Linux Micro sets ID=sles and the SLES 16 VERSION_ID, and
+# names itself only in SUSE_SUPPORT_PRODUCT and SUSE_SUPPORT_PRODUCT_VERSION.
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[files."/etc/os-release"]
+content = """
+# The NAME and PRETTY_NAME fields have been chosen to state compatibility between our products.
+# The use of "SLES" and "SUSE Linux Enterprise" rather than a more generic name is due to backward compatibility with existing OS detection code in applications of third party vendors.
+NAME="SLES"
+PRETTY_NAME="SUSE Linux Enterprise Server 16.0"
+VARIANT="Micro"
+VARIANT_ID="transactional"
+VERSION="16.0"
+VERSION_ID="16.0"
+ANSI_COLOR="0;32"
+ID="sles"
+ID_LIKE="suse opensuse sle-micro sl-micro microos opensuse-microos"
+CPE_NAME="cpe:/o:suse:sles:16:16.0"
+SUSE_SUPPORT_PRODUCT="SUSE Linux Micro"
+SUSE_SUPPORT_PRODUCT_VERSION="6.2"
+SUSE_PRETTY_NAME="SUSE Linux Micro 6.2"
+HOME_URL="https://www.suse.com/products/micro/"
+DOCUMENTATION_URL="https://documentation.suse.com/sl-micro/6.2/"
+LOGO="distributor-logo"
+IMAGE_REPO="suse/sl-micro/6.2/base-os-container"
+IMAGE_TAG="2.3.1-8.93"
+IMAGE="registry.suse.com/suse/sl-micro/6.2/base-os-container:2.3.1-8.93"
+TIMESTAMP=20261005183148
+GRUB_ENTRY_NAME="SUSE Linux Micro"
+"""

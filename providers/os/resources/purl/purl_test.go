@@ -320,6 +320,19 @@ func TestPackageURLString(t *testing.T) {
 		assert.Equal(t, expected, p.String())
 	})
 
+	// SUSE Linux Micro packages are SUSE's, like SLES ones.
+	t.Run("SUSE Linux Micro package", func(t *testing.T) {
+		platform := &inventory.Platform{
+			Name:    "sl-micro",
+			Arch:    "x86_64",
+			Version: "6.2",
+			Labels:  map[string]string{detector.LabelDistroID: "sl-micro"},
+		}
+		p := purl.NewPackageURL(platform, purl.TypeRPM, "testpkg", "1.0.0")
+		expected := "pkg:rpm/suse/testpkg@1.0.0?arch=x86_64&distro=sl-micro-6.2"
+		assert.Equal(t, expected, p.String())
+	})
+
 	// matches what openSUSE's own build service emits for MicroOS packages:
 	// the namespace collapses to opensuse and the product stays in the distro
 	// qualifier.

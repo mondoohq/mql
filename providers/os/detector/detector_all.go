@@ -18,6 +18,9 @@ import (
 
 const (
 	LabelDistroID = "distro-id"
+	// LabelHarvesterVersion is the Harvester release a SUSE Linux Micro node
+	// runs, from /etc/harvester-release.yaml.
+	LabelHarvesterVersion = "harvester/version"
 )
 
 // Operating Systems
@@ -1115,20 +1118,45 @@ var sles = &PlatformResolver{
 	},
 }
 
-// suseMicroOs claims both transactional SUSE systems: SUSE Linux Enterprise
-// Micro, which sets ID=suse-microos, and openSUSE MicroOS, which sets
-// ID=opensuse-microos. They share a read-only root, transactional-update and
-// zypper, so every consumer in the provider treats them alike, and the
-// services manager already dispatches on both names.
+// suseMicroOs claims the transactional SUSE systems: SUSE Linux Enterprise
+// Micro 5, which sets ID=suse-microos, SUSE Linux Micro 6, reported as
+// sl-micro, and openSUSE MicroOS, which sets ID=opensuse-microos. They share a
+// read-only root, transactional-update and zypper, so every consumer in the
+// provider treats them alike, and the services manager dispatches on all three
+// names.
+//
+// SUSE Linux Micro 6.0 and 6.1 set ID=sl-micro. 6.2 sets ID=sles and
+// VERSION_ID=16.0, the SLES 16 code base it is built from, and names itself
+// only in SUSE_SUPPORT_PRODUCT and SUSE_SUPPORT_PRODUCT_VERSION. Left to the
+// sles resolver it reported as SLES 16.0, so this runs before sles and moves
+// it back to sl-micro with its own version. Harvester nodes run SUSE Linux
+// Micro 6.2 and only replace PRETTY_NAME, so they resolve here too.
 var suseMicroOs = &PlatformResolver{
 	Name:     "suse-microos",
 	IsFamily: false,
-	Emits:    []string{"suse-microos", "opensuse-microos"},
+	Emits:    []string{"suse-microos", "opensuse-microos", "sl-micro"},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
-		if pf.Name == "suse-microos" || pf.Name == "opensuse-microos" {
-			return true, nil
+		switch pf.Name {
+		case "suse-microos", "opensuse-microos", "sl-micro":
+		case "sles":
+			osr, err := NewOSReleaseDetector(conn).osrelease()
+			if err != nil || !isSlMicro(osr) {
+				return false, nil
+			}
+			renameSlMicro(pf, osr)
+			if baseproduct := getSlesBaseProduct(conn); baseproduct != "" {
+				pf.Metadata["suse/baseproduct"] = baseproduct
+			}
+		default:
+			return false, nil
 		}
-		return false, nil
+
+		if pf.Name == "sl-micro" {
+			if version := harvesterVersion(conn); version != "" {
+				pf.Metadata[LabelHarvesterVersion] = version
+			}
+		}
+		return true, nil
 	},
 }
 
@@ -1705,7 +1733,8 @@ var debianFamily = &PlatformResolver{
 var suseFamily = &PlatformResolver{
 	Name:     "suse",
 	IsFamily: true,
-	Children: []*PlatformResolver{opensuse, sles, suseMicroOs},
+	// NOTE: suseMicroOs runs before sles. SUSE Linux Micro 6.2 sets ID=sles.
+	Children: []*PlatformResolver{opensuse, suseMicroOs, sles},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		return true, nil
 	},

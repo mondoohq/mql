@@ -631,6 +631,63 @@ func TestSuse5MicroDetector(t *testing.T) {
 	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
 }
 
+// SUSE Linux Micro 6.0 and 6.1 set ID=sl-micro, which no resolver claimed, so
+// they carried no suse family.
+func TestSlMicro6Detector(t *testing.T) {
+	for _, tc := range []struct {
+		fixture string
+		version string
+		title   string
+	}{
+		{"./testdata/detect-sl-micro-6.0.toml", "6.0", "SUSE Linux Micro 6.0"},
+		{"./testdata/detect-sl-micro-6.1.toml", "6.1", "SUSE Linux Micro 6.1"},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			di, err := detectPlatformFromMock(tc.fixture)
+			require.NoError(t, err)
+
+			assert.Equal(t, "sl-micro", di.Name)
+			assert.Equal(t, tc.version, di.Version)
+			assert.Equal(t, tc.title, di.Title)
+			assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+		})
+	}
+}
+
+// SUSE Linux Micro 6.2 sets ID=sles and VERSION_ID=16.0, and was reported as
+// SLES 16.0.
+func TestSlMicro62IsNotSles(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-sl-micro-6.2.toml")
+	require.NoError(t, err)
+
+	assert.Equal(t, "sl-micro", di.Name)
+	assert.Equal(t, "6.2", di.Version, "the SUSE Linux Micro version, not the SLES one")
+	assert.Equal(t, "SUSE Linux Micro 6.2", di.Title, "SUSE's SLES title is replaced")
+	assert.Equal(t, "sl-micro", di.Metadata[LabelDistroID], "the distro id 6.0 and 6.1 set, so package URLs do not read sles-6.2")
+	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+}
+
+// A Harvester node is SUSE Linux Micro 6.2 with its own PRETTY_NAME, which
+// stays as the title.
+func TestHarvesterNodeDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-harvester-1.8.toml")
+	require.NoError(t, err)
+
+	assert.Equal(t, "sl-micro", di.Name)
+	assert.Equal(t, "6.2", di.Version)
+	assert.Equal(t, "Harvester v1.8.2", di.Title)
+	assert.Equal(t, "v1.8.2", di.Metadata[LabelHarvesterVersion])
+	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+}
+
+// A plain SUSE Linux Micro system is not a Harvester node.
+func TestSlMicroWithoutHarvesterRelease(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-sl-micro-6.2.toml")
+	require.NoError(t, err)
+
+	assert.NotContains(t, di.Metadata, LabelHarvesterVersion)
+}
+
 // openSUSE MicroOS sets ID=opensuse-microos, which no resolver claimed: the
 // suse family's only micro leaf matched SLE Micro's ID=suse-microos. Detection
 // fell through to the generic resolver, so the platform carried no suse family

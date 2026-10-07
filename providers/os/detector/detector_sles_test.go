@@ -4,6 +4,7 @@
 package detector
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -172,4 +173,22 @@ func TestSlesBaseProduct(t *testing.T) {
 	// Test with a valid base product
 	baseProduct := getSlesBaseProduct(conn)
 	assert.Equal(t, "suse_sap", baseProduct)
+}
+
+func TestParseHarvesterVersion(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"release file", "harvester: v1.8.2\nharvesterChart: 1.8.2\nos: Harvester v1.8.2\n", "v1.8.2"},
+		{"quoted", "harvester: 'v1.7.0'\n", "v1.7.0"},
+		{"nested key is not the release", "rancherDependencies:\n  harvester: v9.9.9\n", ""},
+		{"no harvester key", "harvesterChart: 1.8.2\nos: Harvester v1.8.2\n", ""},
+		{"empty", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, parseHarvesterVersion(strings.NewReader(tc.content)))
+		})
+	}
 }
