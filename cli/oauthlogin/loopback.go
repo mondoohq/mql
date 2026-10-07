@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/oauth2"
 )
@@ -146,17 +148,18 @@ var resultPage = template.Must(template.New("result").Parse(`<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{if .OK}}Login complete{{else}}Login not completed{{end}}</title>
 <style>
-:root{--bg1:#f1ecff;--bg2:#e3f2ff;--card:#fff;--fg:#1d1d24;--muted:#55556a;--cat:#5b3fd0}
-.fail{--bg1:#ffeef0;--bg2:#f1edff;--cat:#b4361b}
-@media (prefers-color-scheme:dark){:root{--bg1:#1d1733;--bg2:#0f1a27;--card:#23222c;--fg:#ececf1;--muted:#a9a9bb;--cat:#c0b0ff}.fail{--bg1:#2c1719;--bg2:#17142a;--cat:#ffb48a}}
+/* Colors from Mondoo's design system */
+:root{--canvas:#f7f5f2;--surface:#fbfaf9;--border:color-mix(in srgb,#6d6862 20%,transparent);--text-primary:#050504;--text-secondary:#6d6862;--action:#793f99;--negative:#cf0f2b;--accent:var(--action);--shadow:0 1px 2px rgba(5,5,4,.04),0 4px 16px rgba(5,5,4,.05)}
+@media (prefers-color-scheme:dark){:root{--canvas:#04040a;--surface:#1b1b22;--border:color-mix(in srgb,#9494a4 20%,transparent);--text-primary:#fcfcfd;--text-secondary:#9494a4;--action:#b76ed8;--negative:#f8444d;--shadow:none}}
+.fail{--accent:var(--negative)}
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--fg);background:linear-gradient(135deg,var(--bg1),var(--bg2))}
-main{background:var(--card);border-radius:20px;padding:32px 40px 36px;max-width:460px;width:100%;text-align:center;box-shadow:0 12px 40px rgba(40,20,90,.14);animation:pop .5s cubic-bezier(.2,.9,.3,1.3) both}
-pre{display:inline-block;margin:0 0 20px;text-align:left;font:48px/1.1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--cat)}
-h1{font-size:24px;margin:0 0 10px}
-p{margin:0 0 6px;color:var(--muted);line-height:1.45;overflow-wrap:anywhere}
-@keyframes pop{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:none}}
-@media (max-width:420px){pre{font-size:36px}main{padding:24px 20px 28px}}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;font-family:"Atkinson Hyperlegible Next",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text-secondary);background:radial-gradient(circle at 50% 50%,color-mix(in srgb,var(--accent) 8%,transparent),transparent 60%) var(--canvas)}
+main{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:40px 40px 36px;max-width:460px;width:100%;text-align:center;box-shadow:var(--shadow);animation:pop .4s ease-out both}
+pre{display:inline-block;margin:0 0 20px;text-align:left;font:48px/1.1 "IBM Plex Mono","Fira Code","Cascadia Mono",ui-monospace,monospace;color:var(--accent)}
+h1{font:600 24px/1.25 "Mona Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0 0 10px;color:var(--text-primary)}
+p{margin:0 0 6px;line-height:1.5;overflow-wrap:anywhere}
+@keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (max-width:420px){pre{font-size:36px}main{padding:28px 20px}}
 @media (prefers-reduced-motion:reduce){main{animation:none}}
 </style>
 </head>
@@ -188,5 +191,15 @@ func writeResultPage(w http.ResponseWriter, status int, ok bool, msg string) {
 		Still      string
 		Frames     []string
 		IntervalMS int64
-	}{ok, msg, cat.joinedStill(), cat.joinedFrames(), catInterval.Milliseconds()})
+	}{ok, capitalizeFirst(msg), cat.joinedStill(), cat.joinedFrames(), catInterval.Milliseconds()})
+}
+
+// capitalizeFirst upper-cases the first letter of msg for display, leaving
+// the rest untouched.
+func capitalizeFirst(msg string) string {
+	r, n := utf8.DecodeRuneInString(msg)
+	if n == 0 || r == utf8.RuneError {
+		return msg
+	}
+	return string(unicode.ToUpper(r)) + msg[n:]
 }
