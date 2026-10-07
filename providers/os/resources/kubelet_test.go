@@ -98,6 +98,22 @@ func TestParseKubeletVersion(t *testing.T) {
 	assert.Equal(t, "", parseKubeletVersion(""))
 }
 
+func TestResolveKubeletExecutable(t *testing.T) {
+	rke2 := func() (string, error) { return "/var/lib/rancher/rke2/bin/kubelet", nil }
+	failed := func() (string, error) { return "", errors.New("readlink failed") }
+	notCalled := func() (string, error) {
+		t.Fatal("an absolute executable must not be resolved")
+		return "", nil
+	}
+
+	// RKE2 starts kubelet by bare name from a directory off PATH
+	assert.Equal(t, "/var/lib/rancher/rke2/bin/kubelet", resolveKubeletExecutable("kubelet", rke2))
+	assert.Equal(t, "/usr/bin/kubelet", resolveKubeletExecutable("/usr/bin/kubelet", notCalled))
+	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet", failed), "an unreadable link keeps the reported name")
+	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet", func() (string, error) { return "", nil }),
+		"an empty link keeps the reported name")
+}
+
 func TestKubeletValueCoercion(t *testing.T) {
 	// flags arrive as strings, config/defaults as native types
 	assert.True(t, kubeletBool(true))

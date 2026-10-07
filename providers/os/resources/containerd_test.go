@@ -208,6 +208,12 @@ func TestCtrCommand(t *testing.T) {
 		ctrCommand(clis[3], "-n", "g08ns", "containers", "info", "c-run"))
 	// building a command line leaves the CLI untouched for the next call
 	assert.Equal(t, []string{"docker-containerd-ctr", "--address", "/run/docker/containerd/containerd.sock"}, clis[3])
+
+	// RKE2's ctr is on no PATH and its containerd listens under /run/k3s
+	clis = ctrCLIs([]string{"--address", rke2ContainerdSocket})
+	assert.Equal(t,
+		"/var/lib/rancher/rke2/bin/ctr --address /run/k3s/containerd/containerd.sock namespaces list -q",
+		ctrCommand(clis[4], "namespaces", "list", "-q"))
 }
 
 func TestContainerdAddressArgs(t *testing.T) {
@@ -245,6 +251,18 @@ func TestContainerdAddressArgs(t *testing.T) {
 	// socket shows, while /run/docker is 0700 and refuses the stat
 	assert.Equal(t, dockerAddress, containerdAddressArgs(statFrom(map[string]error{
 		dockerContainerdSocket: fs.ErrPermission,
+	})))
+
+	// RKE2 (a Harvester v1.8.2 node): only RKE2's containerd runs, under
+	// /run/k3s, and /run/containerd does not exist
+	assert.Equal(t, []string{"--address", "/run/k3s/containerd/containerd.sock"},
+		containerdAddressArgs(statFrom(map[string]error{
+			rke2ContainerdSocket: nil,
+		})))
+	// a standalone containerd next to RKE2 keeps the default socket
+	assert.Nil(t, containerdAddressArgs(statFrom(map[string]error{
+		containerdSocket:     nil,
+		rke2ContainerdSocket: nil,
 	})))
 
 	// no containerd runs at all: ctr reports the default socket

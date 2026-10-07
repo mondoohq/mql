@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path"
 	"strconv"
 	"strings"
 
@@ -342,11 +343,14 @@ func (m *mqlKubelet) version() (string, error) {
 	if exe.Data == "" {
 		return "", nil
 	}
+	exePath := resolveKubeletExecutable(exe.Data, func() (string, error) {
+		return m.readProcExe(proc.Data)
+	})
 
 	// Single-quote the executable path so paths with spaces or shell
 	// metacharacters are passed through unchanged; embedded single quotes
 	// are escaped the POSIX way ('\'').
-	quotedExe := "'" + strings.ReplaceAll(exe.Data, "'", `'\''`) + "'"
+	quotedExe := "'" + strings.ReplaceAll(exePath, "'", `'\''`) + "'"
 	o, err := CreateResource(m.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(quotedExe + " --version"),
 	})
@@ -360,6 +364,45 @@ func (m *mqlKubelet) version() (string, error) {
 		return "", errors.New("failed to determine kubelet version: " + cmd.GetStderr().Data)
 	}
 	return parseKubeletVersion(cmd.GetStdout().Data), nil
+}
+
+// resolveKubeletExecutable returns the path to run for kubelet --version. On
+// Linux the process list reports the bare name from /proc/<pid>/status, which
+// only runs when kubelet is on PATH. RKE2 keeps kubelet in
+// /var/lib/rancher/rke2/bin, off PATH, so a bare name is resolved through
+// /proc/<pid>/exe, and kept when that cannot be read.
+func resolveKubeletExecutable(exe string, readProcExe func() (string, error)) string {
+	if path.IsAbs(exe) {
+		return exe
+	}
+	resolved, err := readProcExe()
+	if err != nil || !path.IsAbs(resolved) {
+		return exe
+	}
+	return resolved
+}
+
+// readProcExe reads the /proc/<pid>/exe link of a process. It runs as a
+// command of its own so that it gets sudo: the link of a root process is not
+// readable by another user.
+func (m *mqlKubelet) readProcExe(proc *mqlProcess) (string, error) {
+	pid := proc.GetPid()
+	if pid.Error != nil {
+		return "", pid.Error
+	}
+	o, err := CreateResource(m.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData("readlink /proc/" + strconv.FormatInt(pid.Data, 10) + "/exe"),
+	})
+	if err != nil {
+		return "", err
+	}
+	cmd := o.(*mqlCommand)
+	if exit := cmd.GetExitcode(); exit.Error != nil {
+		return "", exit.Error
+	} else if exit.Data != 0 {
+		return "", errors.New("readlink failed: " + cmd.GetStderr().Data)
+	}
+	return strings.TrimSpace(cmd.GetStdout().Data), nil
 }
 
 func getKubeletProcess(runtime *plugin.Runtime) (*mqlProcess, error) {

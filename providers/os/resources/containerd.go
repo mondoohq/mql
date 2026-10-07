@@ -90,8 +90,9 @@ func parseContainerInfo(jsonData []byte) (*containerInfo, error) {
 
 // ctrBinaries are the containerd CLIs to try, in order. SUSE packages ctr as
 // containerd-ctr in /usr/sbin, which is not on a non-root PATH. Docker 18.09
-// and older bundle their own CLI as docker-containerd-ctr.
-var ctrBinaries = []string{"ctr", "containerd-ctr", "/usr/sbin/containerd-ctr", "docker-containerd-ctr"}
+// and older bundle their own CLI as docker-containerd-ctr. RKE2 ships ctr in
+// /var/lib/rancher/rke2/bin, which is on no PATH.
+var ctrBinaries = []string{"ctr", "containerd-ctr", "/usr/sbin/containerd-ctr", "docker-containerd-ctr", "/var/lib/rancher/rke2/bin/ctr"}
 
 const (
 	// containerdSocket is where a standalone containerd listens by default.
@@ -101,21 +102,26 @@ const (
 	// containerd.service conflicts with docker.service, and Docker 18.09 and
 	// older always bundle one).
 	dockerContainerdSocket = "/run/docker/containerd/containerd.sock"
+	// rke2ContainerdSocket is where the containerd that RKE2 runs listens.
+	rke2ContainerdSocket = "/run/k3s/containerd/containerd.sock"
 )
 
 // containerdAddressArgs returns the ctr arguments that select the containerd
 // socket. The default socket wins whenever it may exist, since dockerd adopts
-// a running containerd's socket. Only when it is missing and dockerd's own
-// socket is there (or hidden from this user, whom ctr will then report as
-// refused) does ctr need --address.
+// a running containerd's socket. Only when it is missing does ctr need
+// --address: for dockerd's own socket when that is there (or hidden from this
+// user, whom ctr will then report as refused), otherwise for RKE2's.
 func containerdAddressArgs(stat func(path string) error) []string {
 	if err := stat(containerdSocket); !errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
-	if err := stat(dockerContainerdSocket); errors.Is(err, fs.ErrNotExist) {
-		return nil
+	if err := stat(dockerContainerdSocket); !errors.Is(err, fs.ErrNotExist) {
+		return []string{"--address", dockerContainerdSocket}
 	}
-	return []string{"--address", dockerContainerdSocket}
+	if err := stat(rke2ContainerdSocket); !errors.Is(err, fs.ErrNotExist) {
+		return []string{"--address", rke2ContainerdSocket}
+	}
+	return nil
 }
 
 // ctrCLIs returns the containerd command lines to try, in order.
