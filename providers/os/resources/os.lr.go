@@ -250,6 +250,8 @@ const (
 	ResourceDockerFileOnbuild                             string = "docker.file.onbuild"
 	ResourceDockerImage                                   string = "docker.image"
 	ResourceDockerContainer                               string = "docker.container"
+	ResourceDockerDaemon                                  string = "docker.daemon"
+	ResourceDockerDaemonUlimit                            string = "docker.daemon.ulimit"
 	ResourceContainerd                                    string = "containerd"
 	ResourceContainerdContainer                           string = "containerd.container"
 	ResourceCrio                                          string = "crio"
@@ -1626,6 +1628,14 @@ func init() {
 		"docker.container": {
 			// to override args, implement: initDockerContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createDockerContainer,
+		},
+		"docker.daemon": {
+			Init:   initDockerDaemon,
+			Create: createDockerDaemon,
+		},
+		"docker.daemon.ulimit": {
+			// to override args, implement: initDockerDaemonUlimit(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDockerDaemonUlimit,
 		},
 		"containerd": {
 			// to override args, implement: initContainerd(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -8859,6 +8869,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"docker.containers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDocker).GetContainers()).ToDataRes(types.Array(types.Resource("docker.container")))
 	},
+	"docker.daemon": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDocker).GetDaemon()).ToDataRes(types.Resource("docker.daemon"))
+	},
 	"docker.file.file": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerFile).GetFile()).ToDataRes(types.Resource("file"))
 	},
@@ -9278,6 +9291,111 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"docker.container.hostConfig": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerContainer).GetHostConfig()).ToDataRes(types.Dict)
+	},
+	"docker.daemon.configFile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetConfigFile()).ToDataRes(types.Resource("file"))
+	},
+	"docker.daemon.process": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetProcess()).ToDataRes(types.Resource("process"))
+	},
+	"docker.daemon.configuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetConfiguration()).ToDataRes(types.Dict)
+	},
+	"docker.daemon.icc": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetIcc()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.usernsRemap": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetUsernsRemap()).ToDataRes(types.String)
+	},
+	"docker.daemon.liveRestore": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetLiveRestore()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.noNewPrivileges": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetNoNewPrivileges()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.userlandProxy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetUserlandProxy()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.logDriver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetLogDriver()).ToDataRes(types.String)
+	},
+	"docker.daemon.logOpts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetLogOpts()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"docker.daemon.logLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetLogLevel()).ToDataRes(types.String)
+	},
+	"docker.daemon.insecureRegistries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetInsecureRegistries()).ToDataRes(types.Array(types.String))
+	},
+	"docker.daemon.registryMirrors": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetRegistryMirrors()).ToDataRes(types.Array(types.String))
+	},
+	"docker.daemon.authorizationPlugins": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetAuthorizationPlugins()).ToDataRes(types.Array(types.String))
+	},
+	"docker.daemon.hosts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetHosts()).ToDataRes(types.Array(types.String))
+	},
+	"docker.daemon.tls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetTls()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.tlsVerify": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetTlsVerify()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.tlsCaCert": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetTlsCaCert()).ToDataRes(types.Resource("file"))
+	},
+	"docker.daemon.tlsCert": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetTlsCert()).ToDataRes(types.Resource("file"))
+	},
+	"docker.daemon.tlsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetTlsKey()).ToDataRes(types.Resource("file"))
+	},
+	"docker.daemon.seccompProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetSeccompProfile()).ToDataRes(types.String)
+	},
+	"docker.daemon.selinuxEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetSelinuxEnabled()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.defaultUlimits": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetDefaultUlimits()).ToDataRes(types.Array(types.Resource("docker.daemon.ulimit")))
+	},
+	"docker.daemon.cgroupParent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetCgroupParent()).ToDataRes(types.String)
+	},
+	"docker.daemon.dataRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetDataRoot()).ToDataRes(types.String)
+	},
+	"docker.daemon.storageDriver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetStorageDriver()).ToDataRes(types.String)
+	},
+	"docker.daemon.experimental": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetExperimental()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.iptables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetIptables()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.ipForward": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetIpForward()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.defaultRuntime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetDefaultRuntime()).ToDataRes(types.String)
+	},
+	"docker.daemon.runtimes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetRuntimes()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"docker.daemon.features": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetFeatures()).ToDataRes(types.Map(types.String, types.Bool))
+	},
+	"docker.daemon.ulimit.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemonUlimit).GetName()).ToDataRes(types.String)
+	},
+	"docker.daemon.ulimit.soft": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemonUlimit).GetSoft()).ToDataRes(types.Int)
+	},
+	"docker.daemon.ulimit.hard": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemonUlimit).GetHard()).ToDataRes(types.Int)
 	},
 	"containerd.containers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainerd).GetContainers()).ToDataRes(types.Array(types.Resource("containerd.container")))
@@ -26812,6 +26930,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDocker).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"docker.daemon": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDocker).Daemon, ok = plugin.RawToTValue[*mqlDockerDaemon](v.Value, v.Error)
+		return
+	},
 	"docker.file.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDockerFile).__id, ok = v.Value.(string)
 		return
@@ -27454,6 +27576,154 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"docker.container.hostConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDockerContainer).HostConfig, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.daemon.configFile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).ConfigFile, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.process": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Process, ok = plugin.RawToTValue[*mqlProcess](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.configuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Configuration, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.icc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Icc, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.usernsRemap": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).UsernsRemap, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.liveRestore": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).LiveRestore, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.noNewPrivileges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).NoNewPrivileges, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.userlandProxy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).UserlandProxy, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.logDriver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).LogDriver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.logOpts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).LogOpts, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.logLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).LogLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.insecureRegistries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).InsecureRegistries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.registryMirrors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).RegistryMirrors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.authorizationPlugins": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).AuthorizationPlugins, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.hosts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Hosts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.tls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Tls, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.tlsVerify": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).TlsVerify, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.tlsCaCert": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).TlsCaCert, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.tlsCert": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).TlsCert, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.tlsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).TlsKey, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.seccompProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).SeccompProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.selinuxEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).SelinuxEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.defaultUlimits": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).DefaultUlimits, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.cgroupParent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).CgroupParent, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.dataRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).DataRoot, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.storageDriver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).StorageDriver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.experimental": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Experimental, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.iptables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Iptables, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.ipForward": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).IpForward, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.defaultRuntime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).DefaultRuntime, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.runtimes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Runtimes, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.features": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Features, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.ulimit.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemonUlimit).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.daemon.ulimit.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemonUlimit).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.ulimit.soft": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemonUlimit).Soft, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.ulimit.hard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemonUlimit).Hard, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"containerd.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -65211,6 +65481,7 @@ type mqlDocker struct {
 	// optional: if you define mqlDockerInternal it will be used here
 	Images     plugin.TValue[[]any]
 	Containers plugin.TValue[[]any]
+	Daemon     plugin.TValue[*mqlDockerDaemon]
 }
 
 // createDocker creates a new instance of this resource
@@ -65274,6 +65545,22 @@ func (c *mqlDocker) GetContainers() *plugin.TValue[[]any] {
 		}
 
 		return c.containers()
+	})
+}
+
+func (c *mqlDocker) GetDaemon() *plugin.TValue[*mqlDockerDaemon] {
+	return plugin.GetOrCompute[*mqlDockerDaemon](&c.Daemon, func() (*mqlDockerDaemon, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker", c.__id, "daemon")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDockerDaemon), nil
+			}
+		}
+
+		return c.daemon()
 	})
 }
 
@@ -67055,6 +67342,383 @@ func (c *mqlDockerContainer) GetHostConfig() *plugin.TValue[any] {
 	return plugin.GetOrCompute[any](&c.HostConfig, func() (any, error) {
 		return c.hostConfig()
 	})
+}
+
+// mqlDockerDaemon for the docker.daemon resource
+type mqlDockerDaemon struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDockerDaemonInternal
+	ConfigFile           plugin.TValue[*mqlFile]
+	Process              plugin.TValue[*mqlProcess]
+	Configuration        plugin.TValue[any]
+	Icc                  plugin.TValue[bool]
+	UsernsRemap          plugin.TValue[string]
+	LiveRestore          plugin.TValue[bool]
+	NoNewPrivileges      plugin.TValue[bool]
+	UserlandProxy        plugin.TValue[bool]
+	LogDriver            plugin.TValue[string]
+	LogOpts              plugin.TValue[map[string]any]
+	LogLevel             plugin.TValue[string]
+	InsecureRegistries   plugin.TValue[[]any]
+	RegistryMirrors      plugin.TValue[[]any]
+	AuthorizationPlugins plugin.TValue[[]any]
+	Hosts                plugin.TValue[[]any]
+	Tls                  plugin.TValue[bool]
+	TlsVerify            plugin.TValue[bool]
+	TlsCaCert            plugin.TValue[*mqlFile]
+	TlsCert              plugin.TValue[*mqlFile]
+	TlsKey               plugin.TValue[*mqlFile]
+	SeccompProfile       plugin.TValue[string]
+	SelinuxEnabled       plugin.TValue[bool]
+	DefaultUlimits       plugin.TValue[[]any]
+	CgroupParent         plugin.TValue[string]
+	DataRoot             plugin.TValue[string]
+	StorageDriver        plugin.TValue[string]
+	Experimental         plugin.TValue[bool]
+	Iptables             plugin.TValue[bool]
+	IpForward            plugin.TValue[bool]
+	DefaultRuntime       plugin.TValue[string]
+	Runtimes             plugin.TValue[map[string]any]
+	Features             plugin.TValue[map[string]any]
+}
+
+// createDockerDaemon creates a new instance of this resource
+func createDockerDaemon(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerDaemon{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.daemon", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerDaemon) MqlName() string {
+	return "docker.daemon"
+}
+
+func (c *mqlDockerDaemon) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerDaemon) GetConfigFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.ConfigFile, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.daemon", c.__id, "configFile")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.configFile()
+	})
+}
+
+func (c *mqlDockerDaemon) GetProcess() *plugin.TValue[*mqlProcess] {
+	return plugin.GetOrCompute[*mqlProcess](&c.Process, func() (*mqlProcess, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.daemon", c.__id, "process")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlProcess), nil
+			}
+		}
+
+		return c.process()
+	})
+}
+
+func (c *mqlDockerDaemon) GetConfiguration() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Configuration, func() (any, error) {
+		return c.configuration()
+	})
+}
+
+func (c *mqlDockerDaemon) GetIcc() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Icc, func() (bool, error) {
+		return c.icc()
+	})
+}
+
+func (c *mqlDockerDaemon) GetUsernsRemap() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.UsernsRemap, func() (string, error) {
+		return c.usernsRemap()
+	})
+}
+
+func (c *mqlDockerDaemon) GetLiveRestore() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.LiveRestore, func() (bool, error) {
+		return c.liveRestore()
+	})
+}
+
+func (c *mqlDockerDaemon) GetNoNewPrivileges() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.NoNewPrivileges, func() (bool, error) {
+		return c.noNewPrivileges()
+	})
+}
+
+func (c *mqlDockerDaemon) GetUserlandProxy() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.UserlandProxy, func() (bool, error) {
+		return c.userlandProxy()
+	})
+}
+
+func (c *mqlDockerDaemon) GetLogDriver() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.LogDriver, func() (string, error) {
+		return c.logDriver()
+	})
+}
+
+func (c *mqlDockerDaemon) GetLogOpts() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.LogOpts, func() (map[string]any, error) {
+		return c.logOpts()
+	})
+}
+
+func (c *mqlDockerDaemon) GetLogLevel() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.LogLevel, func() (string, error) {
+		return c.logLevel()
+	})
+}
+
+func (c *mqlDockerDaemon) GetInsecureRegistries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.InsecureRegistries, func() ([]any, error) {
+		return c.insecureRegistries()
+	})
+}
+
+func (c *mqlDockerDaemon) GetRegistryMirrors() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RegistryMirrors, func() ([]any, error) {
+		return c.registryMirrors()
+	})
+}
+
+func (c *mqlDockerDaemon) GetAuthorizationPlugins() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AuthorizationPlugins, func() ([]any, error) {
+		return c.authorizationPlugins()
+	})
+}
+
+func (c *mqlDockerDaemon) GetHosts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Hosts, func() ([]any, error) {
+		return c.hosts()
+	})
+}
+
+func (c *mqlDockerDaemon) GetTls() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Tls, func() (bool, error) {
+		return c.tls()
+	})
+}
+
+func (c *mqlDockerDaemon) GetTlsVerify() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.TlsVerify, func() (bool, error) {
+		return c.tlsVerify()
+	})
+}
+
+func (c *mqlDockerDaemon) GetTlsCaCert() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.TlsCaCert, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.daemon", c.__id, "tlsCaCert")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.tlsCaCert()
+	})
+}
+
+func (c *mqlDockerDaemon) GetTlsCert() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.TlsCert, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.daemon", c.__id, "tlsCert")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.tlsCert()
+	})
+}
+
+func (c *mqlDockerDaemon) GetTlsKey() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.TlsKey, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.daemon", c.__id, "tlsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.tlsKey()
+	})
+}
+
+func (c *mqlDockerDaemon) GetSeccompProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SeccompProfile, func() (string, error) {
+		return c.seccompProfile()
+	})
+}
+
+func (c *mqlDockerDaemon) GetSelinuxEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SelinuxEnabled, func() (bool, error) {
+		return c.selinuxEnabled()
+	})
+}
+
+func (c *mqlDockerDaemon) GetDefaultUlimits() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DefaultUlimits, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.daemon", c.__id, "defaultUlimits")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.defaultUlimits()
+	})
+}
+
+func (c *mqlDockerDaemon) GetCgroupParent() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CgroupParent, func() (string, error) {
+		return c.cgroupParent()
+	})
+}
+
+func (c *mqlDockerDaemon) GetDataRoot() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DataRoot, func() (string, error) {
+		return c.dataRoot()
+	})
+}
+
+func (c *mqlDockerDaemon) GetStorageDriver() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.StorageDriver, func() (string, error) {
+		return c.storageDriver()
+	})
+}
+
+func (c *mqlDockerDaemon) GetExperimental() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Experimental, func() (bool, error) {
+		return c.experimental()
+	})
+}
+
+func (c *mqlDockerDaemon) GetIptables() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Iptables, func() (bool, error) {
+		return c.iptables()
+	})
+}
+
+func (c *mqlDockerDaemon) GetIpForward() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IpForward, func() (bool, error) {
+		return c.ipForward()
+	})
+}
+
+func (c *mqlDockerDaemon) GetDefaultRuntime() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DefaultRuntime, func() (string, error) {
+		return c.defaultRuntime()
+	})
+}
+
+func (c *mqlDockerDaemon) GetRuntimes() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Runtimes, func() (map[string]any, error) {
+		return c.runtimes()
+	})
+}
+
+func (c *mqlDockerDaemon) GetFeatures() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Features, func() (map[string]any, error) {
+		return c.features()
+	})
+}
+
+// mqlDockerDaemonUlimit for the docker.daemon.ulimit resource
+type mqlDockerDaemonUlimit struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDockerDaemonUlimitInternal it will be used here
+	Name plugin.TValue[string]
+	Soft plugin.TValue[int64]
+	Hard plugin.TValue[int64]
+}
+
+// createDockerDaemonUlimit creates a new instance of this resource
+func createDockerDaemonUlimit(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerDaemonUlimit{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.daemon.ulimit", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerDaemonUlimit) MqlName() string {
+	return "docker.daemon.ulimit"
+}
+
+func (c *mqlDockerDaemonUlimit) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerDaemonUlimit) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDockerDaemonUlimit) GetSoft() *plugin.TValue[int64] {
+	return &c.Soft
+}
+
+func (c *mqlDockerDaemonUlimit) GetHard() *plugin.TValue[int64] {
+	return &c.Hard
 }
 
 // mqlContainerd for the containerd resource

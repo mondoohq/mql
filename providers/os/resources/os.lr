@@ -7418,12 +7418,15 @@ private cgroup @defaults("path unitType memoryMax") {
 // and labels; `containers` lists running and stopped containers with their
 // state, image, command, and labels. Use it to audit what is deployed on a
 // Docker host, for example `docker.containers.where(status == /Up/)` for
-// currently running workloads.
+// currently running workloads. `daemon` reports the configuration the Docker
+// daemon runs with.
 docker {
   // All Docker images stored on the host
   images() []docker.image
   // All Docker containers on the host, running and stopped
   containers() []docker.container
+  // Configuration of the Docker Engine daemon on the host
+  daemon() docker.daemon
 }
 
 // Dockerfile parser
@@ -7995,6 +7998,120 @@ docker.container @defaults("names.first status"){
   // bindings, bind mounts, and restart policy. Central to container-hardening
   // audits, for example checking `hostConfig["Privileged"] == false`.
   hostConfig() dict
+}
+
+// Docker Engine daemon configuration
+//
+// The settings dockerd runs with, read from its configuration file
+// (`configFile`, /etc/docker/daemon.json unless the running dockerd names
+// another with `--config-file`) and the command-line flags of the running
+// `process`. It reads files and the process list, not the Docker API, so it
+// works over SSH and on images and mounted filesystems where nothing is
+// running. Settings neither source sets report the value dockerd uses by
+// default, as each field says. The headline audit is a TCP listener in
+// `hosts` without `tlsVerify`, for example
+// `docker.daemon { hosts.where(_ == /^tcp:/).length == 0 || tlsVerify }`.
+docker.daemon @defaults("configFile.path hosts") {
+  // Daemon configuration file
+  //
+  // The file the running dockerd's `--config-file` flag names, otherwise
+  // /etc/docker/daemon.json. Reported even when it does not exist, since
+  // dockerd runs without one.
+  configFile() file
+  // Running dockerd process; null when dockerd is not running or the process list cannot be read
+  process() process
+  // Settings from the configuration file and the process flags
+  //
+  // Keyed by the configuration file's keys. Flags appear under the key their
+  // setting has in the file (`--host` as `hosts`, `--log-opt` as `log-opts`).
+  // dockerd refuses to start when a setting is in both, so a flag only fills
+  // in what the file leaves out. Holds only what is set, no defaults.
+  configuration() dict
+  // Whether containers on the default bridge network can talk to each other; dockerd's default is true
+  icc() bool
+  // User and group that container root is remapped to (`userns-remap`); empty when user namespace remapping is off
+  usernsRemap() string
+  // Whether containers keep running while dockerd is down or restarting; dockerd's default is false
+  liveRestore() bool
+  // Whether containers run with no-new-privileges unless they opt out; dockerd's default is false
+  noNewPrivileges() bool
+  // Whether published ports are forwarded through the userland proxy process; dockerd's default is true
+  userlandProxy() bool
+  // Default logging driver for containers; dockerd's default is "json-file"
+  logDriver() string
+  // Default options of the logging driver (for example "max-size": "10m")
+  logOpts() map[string]string
+  // Logging level of the daemon itself; dockerd's default is "info"
+  logLevel() string
+  // Registries the daemon reaches over plain HTTP or without verifying their TLS certificate
+  insecureRegistries() []string
+  // Registry mirrors the daemon pulls Docker Hub images through
+  registryMirrors() []string
+  // Authorization plugins every Engine API request is checked against
+  authorizationPlugins() []string
+  // Addresses the Engine API listens on
+  //
+  // As configured, for example "unix:///var/run/docker.sock", "fd://" (the
+  // socket systemd passes in) or "tcp://0.0.0.0:2376". When none is
+  // configured dockerd listens on "unix:///var/run/docker.sock" alone, which
+  // is what this reports then.
+  hosts() []string
+  // Whether the Engine API serves TLS on its TCP listeners
+  //
+  // Set by `tls`, and turned on by any `tlsverify` setting, true or false.
+  tls() bool
+  // Whether the Engine API requires and verifies client certificates
+  //
+  // From `tlsverify`, otherwise from `tls`. False when TLS is off, so a TCP
+  // listener in `hosts` with this false accepts unauthenticated clients.
+  tlsVerify() bool
+  // CA certificate file client certificates are verified against (`tlscacert`); null when not configured
+  tlsCaCert() file
+  // Server certificate file the Engine API presents (`tlscert`); null when not configured
+  tlsCert() file
+  // Private key file of the server certificate (`tlskey`); null when not configured
+  tlsKey() file
+  // Seccomp profile containers get unless they set one
+  //
+  // "builtin" is Docker's default profile, which dockerd uses when none is
+  // configured. "unconfined" turns seccomp off; any other value is the path of
+  // a profile file.
+  seccompProfile() string
+  // Whether dockerd applies SELinux labels to containers; dockerd's default is false
+  selinuxEnabled() bool
+  // Default resource limits for containers
+  defaultUlimits() []docker.daemon.ulimit
+  // Parent cgroup of all containers; empty when dockerd uses its default for the cgroup driver
+  cgroupParent() string
+  // Root directory of the daemon's persistent state; dockerd's default is "/var/lib/docker"
+  dataRoot() string
+  // Storage driver for images and containers; empty when dockerd picks one itself
+  storageDriver() string
+  // Whether experimental daemon features are on; dockerd's default is false
+  experimental() bool
+  // Whether dockerd manages iptables rules for container networking; dockerd's default is true
+  iptables() bool
+  // Whether dockerd turns on IP forwarding in the kernel; dockerd's default is true
+  ipForward() bool
+  // Runtime containers use unless they ask for another; dockerd's default is "runc"
+  defaultRuntime() string
+  // Runtimes registered besides the built-in ones
+  //
+  // The runtime's name mapped to its binary (`path`) or, for a runtime with
+  // its own containerd shim, its `runtimeType`.
+  runtimes() map[string]string
+  // Daemon features turned on (true) or off (false), for example "containerd-snapshotter"
+  features() map[string]bool
+}
+
+// Default resource limit of the Docker daemon
+private docker.daemon.ulimit @defaults("name soft hard") {
+  // Resource name (for example "nofile" or "nproc")
+  name string
+  // Soft limit
+  soft int
+  // Hard limit
+  hard int
 }
 
 // containerd host

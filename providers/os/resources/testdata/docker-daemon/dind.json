@@ -1,0 +1,6 @@
+{
+  "no-new-privileges": true,
+  "registry-mirrors": ["https://mirror.gcr.io"],
+  "features": {"containerd-snapshotter": false},
+  "seccomp-profile": "unconfined"
+}
