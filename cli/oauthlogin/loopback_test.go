@@ -6,6 +6,7 @@ package oauthlogin
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"unicode/utf8"
 
@@ -37,6 +38,7 @@ func TestResultPage_Success(t *testing.T) {
 	assert.Contains(t, page, "@media (prefers-reduced-motion:reduce)")
 	assert.Contains(t, page, `matchMedia("(prefers-reduced-motion: reduce)")`)
 	assert.NotContains(t, page, "Login not completed")
+	assertMondooLogo(t, page)
 	assertDesignTokens(t, page)
 }
 
@@ -49,7 +51,18 @@ func TestResultPage_FailureEscapesMessage(t *testing.T) {
 	assert.Contains(t, page, `( T.T )`)
 	assert.Contains(t, page, `class="fail"`)
 	assert.Contains(t, page, "@media (prefers-reduced-motion:reduce)")
+	assertMondooLogo(t, page)
 	assertDesignTokens(t, page)
+}
+
+// assertMondooLogo checks the wordmark is in the page, unescaped, at the top of
+// the card.
+func assertMondooLogo(t *testing.T, page string) {
+	t.Helper()
+	assert.Contains(t, page, "<main>\n<svg class=\"logo\" viewBox=\"0 0 185 36\"")
+	assert.Contains(t, page, `role="img" aria-label="Mondoo">`)
+	assert.Contains(t, page, `<circle cx="29.7878" cy="18.5086" r="11.486" fill="currentColor"/>`)
+	assert.Equal(t, 8, strings.Count(page, `<path d="`))
 }
 
 func TestResultPage_FailureCapitalizesReason(t *testing.T) {
