@@ -257,7 +257,9 @@ func TestContainerdAddressArgs(t *testing.T) {
 	// /run/k3s, and /run/containerd does not exist
 	assert.Equal(t, []string{"--address", "/run/k3s/containerd/containerd.sock"},
 		containerdAddressArgs(statFrom(map[string]error{
-			rke2ContainerdSocket: nil,
+			containerdSocket:       fs.ErrNotExist,
+			dockerContainerdSocket: fs.ErrNotExist,
+			rke2ContainerdSocket:   nil,
 		})))
 	// a standalone containerd next to RKE2 keeps the default socket
 	assert.Nil(t, containerdAddressArgs(statFrom(map[string]error{
