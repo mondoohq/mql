@@ -4,7 +4,9 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -34,6 +36,7 @@ import (
 	"go.mondoo.com/ranger-rpc/plugins/authentication/statictoken"
 	"go.mondoo.com/ranger-rpc/status"
 	"golang.org/x/term"
+	"sigs.k8s.io/yaml"
 )
 
 var (
@@ -274,12 +277,7 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 
 		log.Debug().Msg("store configuration")
 		// update configuration file, api-endpoint is set automatically
-		viper.Set("agent_mrn", confirmation.AgentMrn)
-		viper.Set("api_endpoint", confirmation.Credential.ApiEndpoint)
-		viper.Set("space_mrn", confirmation.Credential.GetParentMrn())
-		viper.Set("mrn", confirmation.Credential.Mrn)
-		viper.Set("private_key", confirmation.Credential.PrivateKey)
-		viper.Set("certificate", confirmation.Credential.Certificate)
+		applyRegistrationConfig(confirmation.AgentMrn, confirmation.Credential)
 		viper.Set("annotations", annotations)
 		if updatesURL != "" {
 			viper.Set("updates_url", updatesURL)
@@ -383,7 +381,8 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 		}
 	}
 
-	if session != nil {
+	if session != nil || token != "" {
+		// Both write a private key to the config.
 		restrictConfigPermissions(viper.ConfigFileUsed())
 	}
 	err = config.StoreConfig()
@@ -514,6 +513,53 @@ func applySessionConfig(res *oauthlogin.Result) *upstream.ServiceAccountCredenti
 		Certificate: res.ServiceAccount.Certificate,
 		ApiEndpoint: values["api_endpoint"].(string),
 	}
+}
+
+// applyRegistrationConfig stages a registered client's credential in viper.
+// What an interactive login session left in the config is removed: scope_mrn
+// would take precedence over the new space, and the auth block would make
+// logout revoke a session that no longer applies.
+func applyRegistrationConfig(agentMrn string, cred *upstream.ServiceAccountCredentials) {
+	if viper.IsSet("auth") || viper.IsSet("scope_mrn") {
+		if err := dropConfigKeys("auth", "scope_mrn"); err != nil {
+			log.Debug().Err(err).Msg("could not remove the login session from the config")
+			// At least keep the stale scope from overriding the new space.
+			viper.Set("scope_mrn", cred.GetParentMrn())
+		}
+	}
+	viper.Set("agent_mrn", agentMrn)
+	viper.Set("api_endpoint", cred.ApiEndpoint)
+	viper.Set("space_mrn", cred.GetParentMrn())
+	viper.Set("mrn", cred.Mrn)
+	viper.Set("private_key", cred.PrivateKey)
+	viper.Set("certificate", cred.Certificate)
+}
+
+// dropConfigKeys removes top-level keys from the loaded configuration.
+// viper.Set only overrides a key: a nil override does not hide what was read
+// from the config file, so WriteConfig would write it back. The loaded
+// settings are replaced by the current ones without those keys instead.
+func dropConfigKeys(keys ...string) error {
+	for _, key := range keys {
+		if viper.IsSet(key) {
+			viper.Set(key, nil)
+		}
+	}
+	settings := viper.AllSettings()
+	for _, key := range keys {
+		delete(settings, key)
+	}
+	var data []byte
+	var err error
+	if strings.EqualFold(filepath.Ext(viper.ConfigFileUsed()), ".json") {
+		data, err = json.Marshal(settings)
+	} else {
+		data, err = yaml.Marshal(settings)
+	}
+	if err != nil {
+		return err
+	}
+	return viper.ReadConfig(bytes.NewReader(data))
 }
 
 // restrictConfigPermissions makes the config readable by its owner only before
