@@ -86,9 +86,11 @@ Log in to Mondoo Platform.
 Without arguments, login opens your browser and asks you to approve the login
 and pick a space. The result is a short-lived credential for this machine; run
 login again when it expires. While the credential is valid, login only
-confirms it; use '--force' to log in again. On a machine without a browser (for example over
-SSH), or with '--no-browser', login prints a one-time code to enter at a URL on
-any device instead. This interactive login needs a terminal.
+confirms it; use '--force' to log in again. If the browser does not open or
+runs on another machine, open the URL login shows in any browser and paste the
+code it displays. On a machine without a browser (for example over SSH), or
+with '--no-browser', login prints a one-time code to enter at a URL on any
+device instead. This interactive login needs a terminal.
 
 To register this machine permanently, use a registration token instead and pass
 it with '--token' or the MONDOO_REGISTRATION_TOKEN environment variable; '--token'

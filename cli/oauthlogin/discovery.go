@@ -35,6 +35,11 @@ type Metadata struct {
 	CodeChallengeMethodsSupported              []string `json:"code_challenge_methods_supported"`
 	ScopesSupported                            []string `json:"scopes_supported"`
 	AuthorizationResponseIssParameterSupported bool     `json:"authorization_response_iss_parameter_supported"`
+	// ManualRedirectURI is a redirect URI on the server that shows the
+	// authorization code for the user to paste into the CLI, so the browser
+	// login works from a browser on another machine. Empty when the server
+	// does not offer it.
+	ManualRedirectURI string `json:"mondoo_manual_redirect_uri"`
 }
 
 // NormalizeEndpoint canonicalizes a server URL: scheme and host are lowercased,
@@ -154,7 +159,26 @@ func Discover(ctx context.Context, client *http.Client, endpoint string, insecur
 			return nil, err
 		}
 	}
+	if md.ManualRedirectURI != "" {
+		if err := checkManualRedirectURI(md.ManualRedirectURI, insecure); err != nil {
+			log.Debug().Err(err).Msg("ignoring the manual redirect URI")
+			md.ManualRedirectURI = ""
+		}
+	}
 	return &md, nil
+}
+
+// checkManualRedirectURI accepts an absolute http(s) URL without fragment that
+// passes the transport check.
+func checkManualRedirectURI(raw string, insecure bool) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return err
+	}
+	if !u.IsAbs() || u.Host == "" || u.Fragment != "" || u.User != nil {
+		return fmt.Errorf("%q is not an absolute URL without fragment", raw)
+	}
+	return checkTransport(raw, insecure, false)
 }
 
 func sameIssuer(a, b string) bool {

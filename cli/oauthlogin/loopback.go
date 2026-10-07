@@ -4,19 +4,23 @@
 package oauthlogin
 
 import (
+	"bufio"
 	"context"
 	"crypto/ecdsa"
 	"crypto/subtle"
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
 )
 
@@ -42,7 +46,20 @@ func loopbackFlow(ctx context.Context, o *Options, md *Metadata, cfg *oauth2.Con
 
 	state := randomString(32)
 	verifier := oauth2.GenerateVerifier()
-	authURL := cfg.AuthCodeURL(state, append(params, oauth2.S256ChallengeOption(verifier))...)
+	authParams := append(append([]oauth2.AuthCodeOption{}, params...), oauth2.S256ChallengeOption(verifier))
+	authURL := cfg.AuthCodeURL(state, authParams...)
+
+	// The manual URL is the same authorization request, but the server sends
+	// the browser to a page that shows the code to paste into the terminal.
+	// It works from a browser on any machine. Pasting needs a terminal.
+	var manualCfg *oauth2.Config
+	var manualURL string
+	if md.ManualRedirectURI != "" && o.Interactive {
+		c := *cfg
+		c.RedirectURL = md.ManualRedirectURI
+		manualCfg = &c
+		manualURL = c.AuthCodeURL(state, authParams...)
+	}
 
 	results := make(chan callbackResult, 1)
 	mux := http.NewServeMux()
@@ -71,35 +88,53 @@ func loopbackFlow(ctx context.Context, o *Options, md *Metadata, cfg *oauth2.Con
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	pr := newProgress(o.Out, o.Interactive)
-	pr.Println("Opening your browser to log in. If it does not open, visit this URL:\n\n  %s\n", authURL)
-	if err := o.OpenBrowser(authURL); err != nil {
-		pr.Println("Could not open a browser; open the URL above manually.")
+	// The loopback URL only works in a browser on this machine, so it is not
+	// shown to the user.
+	log.Debug().Str("url", authURL).Msg("browser login authorize URL")
+	openErr := o.OpenBrowser(authURL)
+	if openErr != nil && manualCfg == nil {
+		// Login switches to the device flow.
+		return nil, &browserNotOpenedError{err: openErr}
 	}
-	stop := pr.Spin("Waiting for authorization in the browser...")
 
-	var res callbackResult
+	pr := newProgress(o.Out, o.Interactive)
 	timer := time.NewTimer(o.LoopbackTimeout)
 	defer timer.Stop()
-	select {
-	case res = <-results:
-	case <-ctx.Done():
-		stop()
-		return nil, ctx.Err()
-	case <-timer.C:
-		stop()
-		return nil, errors.New("timed out waiting for the browser login to complete")
-	}
-	stop()
-	if res.err != nil {
-		return nil, res.err
-	}
 
-	proof, err := NewKeyProof(key, cfg.Endpoint.TokenURL, res.code, time.Now(), 5*time.Minute)
+	var code string
+	exchangeCfg := cfg
+	if manualCfg == nil {
+		pr.Println("Opening your browser to log in…")
+		stop := pr.Spin("Waiting for authorization in the browser...")
+		code, err = waitForCallback(ctx, results, timer.C)
+		stop()
+	} else {
+		if openErr != nil {
+			log.Debug().Err(openErr).Msg("could not open a browser")
+		}
+		var pasted bool
+		code, pasted, err = waitForCallbackOrPaste(ctx, o.In, pr, results, timer.C, manualPrompt{
+			url:    manualURL,
+			opened: openErr == nil,
+			state:  state,
+			issuer: md.Issuer,
+			maxBad: maxBadPastes,
+		})
+		if pasted {
+			// The token request must name the redirect URI of the
+			// authorization request that issued the code.
+			exchangeCfg = manualCfg
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
-	tok, err := cfg.Exchange(ctx, res.code,
+
+	proof, err := NewKeyProof(key, cfg.Endpoint.TokenURL, code, time.Now(), 5*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	tok, err := exchangeCfg.Exchange(ctx, code,
 		oauth2.VerifierOption(verifier),
 		oauth2.SetAuthURLParam("mondoo_key_proof", proof),
 	)
@@ -108,6 +143,151 @@ func loopbackFlow(ctx context.Context, o *Options, md *Metadata, cfg *oauth2.Con
 	}
 	return tok, nil
 }
+
+var errLoopbackTimeout = errors.New("timed out waiting for the browser login to complete")
+
+// waitForCallback waits for the browser to come back to the loopback listener.
+func waitForCallback(ctx context.Context, results <-chan callbackResult, timeout <-chan time.Time) (string, error) {
+	select {
+	case res := <-results:
+		return res.code, res.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case <-timeout:
+		return "", errLoopbackTimeout
+	}
+}
+
+// maxBadPastes is how many pasted codes that do not match the login are
+// rejected before the login fails.
+const maxBadPastes = 4
+
+const (
+	pasteMismatchMsg = "That code doesn't match this login; paste the code shown in the browser"
+	pastePromptAuto  = "Paste the code here if the browser doesn't return automatically: "
+	pastePrompt      = "Paste the code shown in the browser here: "
+)
+
+// manualPrompt describes the manual login shown next to the loopback flow.
+type manualPrompt struct {
+	url    string // the authorize URL with the manual redirect URI
+	opened bool   // whether the browser was opened with the loopback URL
+	state  string
+	issuer string
+	maxBad int
+}
+
+// waitForCallbackOrPaste shows the manual login URL and waits for whichever
+// comes first: the browser returning to the loopback listener, or the user
+// pasting the code the manual redirect page shows. pasted reports which one
+// produced the code.
+//
+// The terminal stays in its normal line mode, so the pasted code is echoed
+// and nothing needs restoring. The line reader is not cancelled when the
+// loopback wins; the process exits right after the login.
+func waitForCallbackOrPaste(ctx context.Context, in io.Reader, pr *progress, results <-chan callbackResult, timeout <-chan time.Time, m manualPrompt) (code string, pasted bool, err error) {
+	prompt := pastePrompt
+	if m.opened {
+		pr.Println("Opening your browser to log in…")
+		pr.Println("If the browser doesn't open or is on another machine, open this URL:")
+		prompt = pastePromptAuto
+	} else {
+		pr.Println("Open this URL in a browser to log in:")
+	}
+	pr.Println("\n  %s\n", m.url)
+	pr.Prompt("%s", prompt)
+
+	lines := make(chan string)
+	done := make(chan struct{})
+	defer close(done)
+	go readLines(in, lines, done)
+
+	bad := 0
+	for {
+		select {
+		case res := <-results:
+			pr.ClearLine()
+			return res.code, false, res.err
+		case line, ok := <-lines:
+			if !ok {
+				// stdin closed: only the browser can complete the login.
+				lines = nil
+				continue
+			}
+			line = strings.TrimSpace(line)
+			if line == "" {
+				pr.Prompt("%s", prompt)
+				continue
+			}
+			res := parsePastedCode(line, m.state, m.issuer)
+			if res.err == nil {
+				return res.code, true, nil
+			}
+			log.Debug().Err(res.err).Msg("rejected the pasted code")
+			bad++
+			if bad >= m.maxBad {
+				return "", false, errors.New("the pasted code does not match this login, please try again")
+			}
+			pr.Println(pasteMismatchMsg)
+			pr.Prompt("%s", prompt)
+		case <-ctx.Done():
+			pr.ClearLine()
+			return "", false, ctx.Err()
+		case <-timeout:
+			pr.ClearLine()
+			return "", false, errLoopbackTimeout
+		}
+	}
+}
+
+// readLines sends each line read from in to lines until done is closed, and
+// closes lines when in is exhausted.
+func readLines(in io.Reader, lines chan<- string, done <-chan struct{}) {
+	sc := bufio.NewScanner(in)
+	for sc.Scan() {
+		select {
+		case lines <- sc.Text():
+		case <-done:
+			return
+		}
+	}
+	if err := sc.Err(); err != nil {
+		log.Debug().Err(err).Msg("stopped reading the pasted code")
+	}
+	select {
+	case <-done:
+	default:
+		close(lines)
+	}
+}
+
+// parsePastedCode reads the code the manual redirect page shows,
+// "<code>#<state>". The full redirect URL ("...?code=...&state=...") is also
+// accepted. The state must be this login's; an iss parameter, when present,
+// must name the issuer.
+func parsePastedCode(s, state, issuer string) callbackResult {
+	if u, err := url.Parse(s); err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.RawQuery != "" {
+		return validateCallback(u.Query(), state, issuer, false)
+	}
+	i := strings.LastIndexByte(s, '#')
+	if i <= 0 || strings.ContainsAny(s, " \t") {
+		return callbackResult{err: errors.New("pasted code is not in the form <code>#<state>")}
+	}
+	code, gotState := s[:i], s[i+1:]
+	return validateCallback(url.Values{"code": {code}, "state": {gotState}}, state, issuer, false)
+}
+
+// browserNotOpenedError reports that the browser for the loopback flow could
+// not be opened. The local listener is shut down by the time it is returned.
+type browserNotOpenedError struct {
+	err error
+}
+
+func (e *browserNotOpenedError) Error() string {
+	return "could not open a browser: " + e.err.Error()
+}
+
+func (e *browserNotOpenedError) Unwrap() error { return e.err }
 
 // validateCallback checks the authorization response: state must match, and
 // the iss parameter (RFC 9207) must name the expected issuer.

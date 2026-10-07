@@ -232,6 +232,68 @@ func TestLoopbackFlow(t *testing.T) {
 	assertResult(t, f, res)
 }
 
+func TestLoopbackFlow_Output(t *testing.T) {
+	f := newFakeAS(t)
+	opts := testOptions(f, ModeBrowser)
+	out := opts.Out.(*bytes.Buffer)
+	opts.OpenBrowser = func(u string) error { return f.authorize(u, nil) }
+
+	_, err := Login(context.Background(), opts)
+	require.NoError(t, err)
+
+	got := out.String()
+	assert.Equal(t, "Opening your browser to log in…\nWaiting for authorization in the browser...\n", got)
+	assert.NotContains(t, got, "/oauth/authorize", "the loopback URL only works on this machine")
+	assert.NotContains(t, got, "127.0.0.1")
+}
+
+// Without a manual redirect URI in the metadata, a browser that cannot be
+// opened switches the login to the device flow.
+func TestLoopbackFlow_BrowserOpenFailsUsesDeviceFlow(t *testing.T) {
+	f := newFakeAS(t)
+	f.devicePollReplies = []string{"authorization_pending"}
+	opts := testOptions(f, ModeBrowser)
+	out := &syncBuffer{}
+	opts.Out = out
+	opts.Interactive = true
+	opts.Getenv = func(k string) string {
+		if k == "DISPLAY" {
+			return ":0"
+		}
+		return ""
+	}
+	var redirectURI string
+	opts.OpenBrowser = func(u string) error {
+		parsed, err := url.Parse(u)
+		if err != nil {
+			return err
+		}
+		redirectURI = parsed.Query().Get("redirect_uri")
+		return errors.New("no opener available")
+	}
+
+	res, err := Login(context.Background(), opts)
+	require.NoError(t, err)
+	assertResult(t, f, res)
+
+	got := out.String()
+	assert.Contains(t, got, "! First copy your one-time code: WDJB-MJHT")
+	assert.Contains(t, got, "Open https://console.example.com/activate in a browser and enter the code.")
+	assert.NotContains(t, got, "Press Enter", "a browser could not be opened, so none is offered")
+	assert.NotContains(t, got, "Opening your browser")
+	assert.NotContains(t, got, "/oauth/authorize")
+	assert.NotContains(t, got, "127.0.0.1")
+	assert.NotEmpty(t, f.authForm.Get("mondoo_public_key"), "the device flow sent the login's key")
+
+	// The loopback listener is shut down.
+	require.NotEmpty(t, redirectURI)
+	resp, err := http.Get(redirectURI)
+	if err == nil {
+		resp.Body.Close()
+	}
+	assert.Error(t, err, "the loopback listener must be closed")
+}
+
 func TestLoopbackFlow_StateMismatch(t *testing.T) {
 	f := newFakeAS(t)
 	opts := testOptions(f, ModeBrowser)
