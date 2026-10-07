@@ -1,7 +1,7 @@
 {
   "provider": "aws",
   "version": "14.4.1",
-  "generated_at": "2026-10-06T19:46:14+03:00",
+  "generated_at": "2026-10-07T14:16:14+03:00",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -526,7 +526,6 @@
     "glue:GetConnections",
     "glue:GetCrawlers",
     "glue:GetDataCatalogEncryptionSettings",
-    "glue:GetDataCatalogExportConfiguration",
     "glue:GetDatabases",
     "glue:GetJobs",
     "glue:GetResourcePolicies",
@@ -4378,12 +4377,6 @@
       "permission": "glue:GetDataCatalogEncryptionSettings",
       "service": "glue",
       "action": "GetDataCatalogEncryptionSettings",
-      "source_file": "aws_glue.go"
-    },
-    {
-      "permission": "glue:GetDataCatalogExportConfiguration",
-      "service": "glue",
-      "action": "GetDataCatalogExportConfiguration",
       "source_file": "aws_glue.go"
     },
     {

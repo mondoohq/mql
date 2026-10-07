@@ -434,13 +434,18 @@ var awsPermissionOverrides = map[string]string{
 
 	// AWS's Service Reference lists these operations but maps them to no
 	// action, and has no action of the obvious name (checked 2026-10-07):
-	// knowledge-base VPC configurations (bedrockagent SDK, 2026-09-25) and
-	// Client VPN Cedar authorization policies (ec2 SDK, 2026-09-28). The
-	// validator's `unpublished` list re-checks them on every run and fails
-	// once AWS publishes an action, which is the signal to emit it here.
+	// knowledge-base VPC configurations (bedrockagent SDK, 2026-09-25),
+	// Client VPN Cedar authorization policies (ec2 SDK, 2026-09-28) and the
+	// Glue Data Catalog export configuration, which the Glue guide names but
+	// IAM Access Analyzer rejects as INVALID_ACTION ("does not exist"). A
+	// policy carrying one of these authorizes nothing, so nothing is emitted
+	// until AWS publishes the action; the permission check (make
+	// providers/permissions/check) asks AWS's list and Access Analyzer on every
+	// manifest change, so a published action shows up as a missing entry.
 	"bedrock:GetVpcConfiguration":                 "",
 	"bedrock:ListVpcConfigurations":               "",
 	"ec2:GetClientVpnEndpointAuthorizationPolicy": "",
+	"glue:GetDataCatalogExportConfiguration":      "",
 }
 
 // awsApplyOverride resolves a generated "service:Action" permission against
