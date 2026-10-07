@@ -27,7 +27,13 @@
       "settings": {
         "displayName": "Business hours",
         "definitionRef": { "id": "5e000000-0000-4000-8000-000000000002", "name": "evaluateBusinessHours", "version": "0.0.1" },
-        "inputs": { "timeZone": "UTC" }
+        "requesterCannotBeApprover": true,
+        "inputs": {
+          "timeZone": "UTC",
+          "function": "https://checks.example.invalid/api/gate?code=fabricated-function-key-0001",
+          "key": "fabricated-function-key-0001",
+          "headers": "{\"x-functions-key\": \"fabricated-function-key-0001\"}"
+        }
       }
     }
   ]

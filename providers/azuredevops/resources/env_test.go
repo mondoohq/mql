@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -71,7 +72,7 @@ func TestEnvironmentApprovalsAndTheirSelfReviewSetting(t *testing.T) {
 	assert.Equal(t, int64(1), approval.MinRequiredApprovers.Data)
 	assert.Contains(t, approval.Settings.Data, "approvers")
 	assert.Equal(t, "Task Check", task.Type.Data)
-	assert.False(t, task.PreventSelfReview.Data)
+	assert.False(t, task.PreventSelfReview.Data, "a check that is not an approval never prevents self-review, even when its settings say requesterCannotBeApprover")
 
 	staging := checksOf(t, envs["staging"])
 	require.Len(t, staging, 1)
@@ -79,6 +80,44 @@ func TestEnvironmentApprovalsAndTheirSelfReviewSetting(t *testing.T) {
 	assert.Equal(t, int64(2), staging[0].MinRequiredApprovers.Data)
 
 	assert.Empty(t, checksOf(t, envs["sandbox"]), "an environment with no checks has an empty list")
+}
+
+// A check type can carry a secret in its settings, such as the key of a function
+// check. The settings dict keeps only the keys that carry none.
+func TestEnvironmentCheckSettingsCarryNoSecret(t *testing.T) {
+	envs := environmentsOf(t, projectNamed(t, newRuntime(t, nil), "legacy-apps"))
+	production := checksOf(t, envs["production"])
+	require.Len(t, production, 2)
+	approval, task := production[0], production[1]
+
+	assert.Contains(t, task.Settings.Data, "displayName")
+	assert.Contains(t, task.Settings.Data, "definitionRef")
+	assert.NotContains(t, task.Settings.Data, "inputs", "the inputs of a check can hold a function key, an address code, headers or a body")
+	assert.Contains(t, approval.Settings.Data, "approvers")
+
+	for _, check := range []*mqlAzuredevopsEnvironmentProtectionRule{approval, task} {
+		raw, err := json.Marshal(check.Settings.Data)
+		require.NoError(t, err)
+		assert.NotContains(t, string(raw), "fabricated-function-key-0001", check.Type.Data)
+	}
+}
+
+func TestCheckSettingsKeepsOnlyTheAllowedKeys(t *testing.T) {
+	in := map[string]any{
+		"instructions": "Check the change record",
+		"inputs":       map[string]any{"key": "fabricated-function-key-0001"},
+		"urlSuffix":    "/gate?code=fabricated-function-key-0001",
+		"unknown":      true,
+	}
+	out := checkSettings(in)
+	assert.Equal(t, map[string]any{"instructions": "Check the change record"}, out)
+	assert.Len(t, in, 4, "the input is not changed")
+
+	for name, raw := range map[string]map[string]any{"nil": nil, "empty": {}} {
+		out := checkSettings(raw)
+		assert.NotNil(t, out, name)
+		assert.Empty(t, out, name)
+	}
 }
 
 func TestEnvironmentsTheCredentialCannotReadAreForbidden(t *testing.T) {

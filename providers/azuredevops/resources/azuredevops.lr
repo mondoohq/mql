@@ -318,8 +318,12 @@ private azuredevops.environmentProtectionRule @defaults("type") {
   typeId string
   // Whether the person who ran the pipeline may not approve the deployment. False for a check that is not an approval
   preventSelfReview bool
-  // Approvals an approval check needs, where zero means every approver must approve
+  // Approvals an approval check needs, where zero means every approver must approve. Zero for a check that is not an approval
   minRequiredApprovers int
-  // Settings of the check type, for example approvers and instructions for an approval
+  // Settings of the check type, limited to keys that carry no secret
+  //
+  // The keys kept are approvers, blockedApprovers, executionOrder,
+  // minRequiredApprovers, requesterCannotBeApprover, instructions,
+  // displayName and definitionRef.
   settings dict
 }

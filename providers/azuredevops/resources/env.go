@@ -11,8 +11,38 @@ import (
 	"go.mondoo.com/mql/providers/azuredevops/connection"
 )
 
+// mqlAzuredevopsEnvironmentInternal keeps the name of the project the
+// environment belongs to, which the check request needs.
 type mqlAzuredevopsEnvironmentInternal struct {
 	projectName string
+}
+
+// checkSettingKeys are the only settings of a check that reach the settings
+// field. Other keys depend on the check type and can carry a secret: an Azure
+// Function check holds a function key and an address with a code, and a REST
+// API check holds headers and a body. A key not listed here is dropped for
+// every check type.
+var checkSettingKeys = map[string]struct{}{
+	"approvers":                 {},
+	"blockedApprovers":          {},
+	"executionOrder":            {},
+	"minRequiredApprovers":      {},
+	"requesterCannotBeApprover": {},
+	"instructions":              {},
+	"displayName":               {},
+	"definitionRef":             {},
+}
+
+// checkSettings returns a copy of the settings of a check that holds only the
+// keys in checkSettingKeys. The result is never nil.
+func checkSettings(raw map[string]any) map[string]any {
+	out := make(map[string]any, len(checkSettingKeys))
+	for key, value := range raw {
+		if _, ok := checkSettingKeys[key]; ok {
+			out[key] = value
+		}
+	}
+	return out
 }
 
 // environments lists the pipeline environments of the project. A project with
@@ -54,10 +84,6 @@ func (e *mqlAzuredevopsEnvironment) protectionRules() ([]any, error) {
 	out := make([]any, 0, len(checks))
 	for _, c := range checks {
 		approval := strings.EqualFold(c.Type.ID, connection.CheckTypeApproval)
-		settings := c.Settings
-		if settings == nil {
-			settings = map[string]any{}
-		}
 		res, err := CreateResource(e.MqlRuntime, "azuredevops.environmentProtectionRule", map[string]*llx.RawData{
 			"__id":                 llx.StringData("azuredevops.environmentProtectionRule/" + e.__id + "/" + strconv.FormatInt(c.ID, 10)),
 			"id":                   llx.IntData(c.ID),
@@ -65,7 +91,7 @@ func (e *mqlAzuredevopsEnvironment) protectionRules() ([]any, error) {
 			"typeId":               llx.StringData(strings.ToLower(c.Type.ID)),
 			"preventSelfReview":    llx.BoolData(approval && c.RequesterCannotBeApprover()),
 			"minRequiredApprovers": llx.IntData(c.MinRequiredApprovers()),
-			"settings":             llx.DictData(settings),
+			"settings":             llx.DictData(checkSettings(c.Settings)),
 		})
 		if err != nil {
 			return nil, err
