@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"encoding/pem"
 	"path"
 	"sort"
 	"strings"
@@ -109,15 +110,17 @@ func (m *mqlKubelet) clientCAs() ([]any, error) {
 }
 
 // kubeletCertificates parses the certificates in a PEM file on the target.
-// Only CERTIFICATE blocks are read; the private key that
-// kubelet-server-current.pem also holds is not.
+// kubelet-server-current.pem holds the serving certificate and its private
+// key in one file, so only the CERTIFICATE blocks are handed on: the PEM
+// becomes an argument of the certificates resource, and arguments are kept
+// with the scan's data.
 func kubeletCertificates(runtime *plugin.Runtime, p string) ([]any, error) {
-	content := readKubeletFile(runtime, p)
-	if content == "" {
+	certs := pemCertificateBlocks(readKubeletFile(runtime, p))
+	if certs == "" {
 		return []any{}, nil
 	}
 	c, err := runtime.CreateSharedResource("certificates", map[string]*llx.RawData{
-		"pem": llx.StringData(content),
+		"pem": llx.StringData(certs),
 	})
 	if err != nil {
 		return nil, err
@@ -278,4 +281,23 @@ func kubeletFeatureGates(v any) map[string]any {
 		res[name] = kubeletBool(enabled)
 	}
 	return res
+}
+
+// pemCertificateBlocks returns only the CERTIFICATE blocks of a PEM file,
+// re-encoded, and drops every other block (private keys) and any text
+// between blocks.
+func pemCertificateBlocks(content string) string {
+	var out strings.Builder
+	rest := []byte(content)
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type == "CERTIFICATE" {
+			_ = pem.Encode(&out, &pem.Block{Type: block.Type, Bytes: block.Bytes})
+		}
+	}
+	return out.String()
 }

@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,4 +50,22 @@ func TestKubeletFeatureGates(t *testing.T) {
 	assert.Equal(t, map[string]any{"KubeletCrashLoopBackOffMax": true, "UserNamespacesSupport": false},
 		kubeletFeatureGates(map[string]any{"KubeletCrashLoopBackOffMax": true, "UserNamespacesSupport": "false"}))
 	assert.Equal(t, map[string]any{}, kubeletFeatureGates(nil))
+}
+
+func TestPemCertificateBlocks(t *testing.T) {
+	cert := "-----BEGIN CERTIFICATE-----\nMIIBAzCBqqADAgECAgEBMAoGCCqGSM49BAMCMAAwHhcNMjYxMDA3MDAwMDAwWhcN\n-----END CERTIFICATE-----\n"
+	// assembled so that the file holds no private key header for scanners
+	keyType := "EC " + "PRIVATE KEY"
+	key := "-----BEGIN " + keyType + "-----\nMHcCAQEEIEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEoAoGCCqGSM49\n-----END " + keyType + "-----\n"
+	// kubelet-server-current.pem: the certificate, then its key
+	out := pemCertificateBlocks(cert + key)
+	assert.Contains(t, out, "BEGIN CERTIFICATE")
+	assert.NotContains(t, out, "PRIVATE KEY", "the key must not be handed on")
+	assert.NotContains(t, out, "EXAMPLE")
+	// key first, and a chain of two
+	out = pemCertificateBlocks(key + cert + cert)
+	assert.Equal(t, 2, strings.Count(out, "BEGIN CERTIFICATE"))
+	assert.NotContains(t, out, "PRIVATE KEY")
+	assert.Empty(t, pemCertificateBlocks(key))
+	assert.Empty(t, pemCertificateBlocks(""))
 }
