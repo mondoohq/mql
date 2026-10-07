@@ -48,8 +48,9 @@ func MarshalConfig(path string, cfg *Config) ([]byte, error) {
 // A configuration that holds a credential is written to a temporary file that
 // is readable by its owner only (mode 0600; on Windows an access control list
 // for the current user, SYSTEM and Administrators) and then renamed over the
-// config file. If owner-only access cannot be set, or the config path is a
-// symbolic link, nothing is written and an error is returned.
+// config file; a symbolic link at the config path is followed and the file it
+// points to is replaced. If owner-only access cannot be set, or the config is
+// not a regular file, nothing is written and an error is returned.
 func StoreConfig() error {
 	path := viper.ConfigFileUsed()
 	log.Info().Str("path", path).Msg("saving config")
@@ -135,16 +136,21 @@ func encodeSettings(path string) ([]byte, error) {
 // over path, so path never holds partial content. An existing file keeps its
 // owner where the platform allows it.
 //
-// It refuses to write when path is a symbolic link or not a regular file, and
-// when owner-only access cannot be set.
+// A symbolic link at path is resolved first: the file it points to is
+// replaced, next to itself, and the link stays a link. Packaged and container
+// layouts commonly link the config to a file elsewhere.
+//
+// It refuses to write when the resolved path is not a regular file (including
+// a link that points nowhere), and when owner-only access cannot be set.
 func WriteOwnerOnlyFile(path string, data []byte) error {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+
 	var existing fs.FileInfo
 	fi, err := os.Lstat(path)
 	switch {
 	case err == nil:
-		if fi.Mode()&fs.ModeSymlink != 0 {
-			return errors.Newf("refusing to write credentials to %s: it is a symbolic link; replace it with a regular file or use --config to point to the file itself", path)
-		}
 		if !fi.Mode().IsRegular() {
 			return errors.Newf("refusing to write credentials to %s: it is not a regular file", path)
 		}
