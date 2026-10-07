@@ -23,7 +23,9 @@ func newBranch(repo *mqlAzuredevopsRepository, ref connection.Ref) (*mqlAzuredev
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlAzuredevopsBranch), nil
+	branch := res.(*mqlAzuredevopsBranch)
+	branch.repo = repo
+	return branch, nil
 }
 
 func (r *mqlAzuredevopsRepository) branches() ([]any, error) {

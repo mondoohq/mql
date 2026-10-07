@@ -128,6 +128,35 @@ private azuredevops.branch @defaults("name") {
   headCommitSha string
   // Whether the branch is the default branch of the repository
   isDefault bool
+  // Whether an enabled, blocking branch policy applies to the branch. Reports a forbidden error when the credential cannot read the policies
+  isProtected() bool
+  // Protection of the branch, from its branch policies. Reports a forbidden error when the credential cannot read the policies
+  protectionRules() azuredevops.branchProtection
+}
+
+// Azure DevOps branch protection
+//
+// Protection of one branch of an Azure DevOps Git repository, summarized from
+// the branch policies that apply to it. Only a policy that is enabled and
+// blocking counts. Provides whether pull requests need approving reviews and
+// how many, whether a required reviewer policy applies, whether comments must
+// be resolved, and whether a build or status must pass. `policies` lists the
+// policies behind the summary.
+private azuredevops.branchProtection @defaults("refName requiredApprovingReviewCount") {
+  // Full ref of the protected branch, for example refs/heads/main
+  refName string
+  // Whether a minimum number of reviewers policy requires at least one approving review
+  requiredPullRequestReviewsEnabled bool
+  // Approving reviews required, the highest count of the minimum number of reviewers policies that apply
+  requiredApprovingReviewCount int
+  // Whether a required reviewers policy applies, the Azure DevOps counterpart of code owner review
+  requireCodeOwnerReviews bool
+  // Whether a comment requirements policy makes every pull request comment resolved before completion
+  requiredConversationResolutionEnabled bool
+  // Whether a build or status policy must pass before completion
+  requiredStatusChecksEnabled bool
+  // Enabled, blocking policies that apply to the branch
+  policies []azuredevops.policy
 }
 
 // Azure DevOps branch policy

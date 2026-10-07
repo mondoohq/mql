@@ -16,12 +16,13 @@ import (
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceAzuredevops             string = "azuredevops"
-	ResourceAzuredevopsOrganization string = "azuredevops.organization"
-	ResourceAzuredevopsProject      string = "azuredevops.project"
-	ResourceAzuredevopsRepository   string = "azuredevops.repository"
-	ResourceAzuredevopsBranch       string = "azuredevops.branch"
-	ResourceAzuredevopsPolicy       string = "azuredevops.policy"
+	ResourceAzuredevops                 string = "azuredevops"
+	ResourceAzuredevopsOrganization     string = "azuredevops.organization"
+	ResourceAzuredevopsProject          string = "azuredevops.project"
+	ResourceAzuredevopsRepository       string = "azuredevops.repository"
+	ResourceAzuredevopsBranch           string = "azuredevops.branch"
+	ResourceAzuredevopsBranchProtection string = "azuredevops.branchProtection"
+	ResourceAzuredevopsPolicy           string = "azuredevops.policy"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -47,6 +48,10 @@ func init() {
 		"azuredevops.branch": {
 			// to override args, implement: initAzuredevopsBranch(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzuredevopsBranch,
+		},
+		"azuredevops.branchProtection": {
+			// to override args, implement: initAzuredevopsBranchProtection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzuredevopsBranchProtection,
 		},
 		"azuredevops.policy": {
 			// to override args, implement: initAzuredevopsPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -227,6 +232,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azuredevops.branch.isDefault": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsBranch).GetIsDefault()).ToDataRes(types.Bool)
+	},
+	"azuredevops.branch.isProtected": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranch).GetIsProtected()).ToDataRes(types.Bool)
+	},
+	"azuredevops.branch.protectionRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranch).GetProtectionRules()).ToDataRes(types.Resource("azuredevops.branchProtection"))
+	},
+	"azuredevops.branchProtection.refName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranchProtection).GetRefName()).ToDataRes(types.String)
+	},
+	"azuredevops.branchProtection.requiredPullRequestReviewsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranchProtection).GetRequiredPullRequestReviewsEnabled()).ToDataRes(types.Bool)
+	},
+	"azuredevops.branchProtection.requiredApprovingReviewCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranchProtection).GetRequiredApprovingReviewCount()).ToDataRes(types.Int)
+	},
+	"azuredevops.branchProtection.requireCodeOwnerReviews": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranchProtection).GetRequireCodeOwnerReviews()).ToDataRes(types.Bool)
+	},
+	"azuredevops.branchProtection.requiredConversationResolutionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranchProtection).GetRequiredConversationResolutionEnabled()).ToDataRes(types.Bool)
+	},
+	"azuredevops.branchProtection.requiredStatusChecksEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranchProtection).GetRequiredStatusChecksEnabled()).ToDataRes(types.Bool)
+	},
+	"azuredevops.branchProtection.policies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranchProtection).GetPolicies()).ToDataRes(types.Array(types.Resource("azuredevops.policy")))
 	},
 	"azuredevops.policy.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsPolicy).GetId()).ToDataRes(types.Int)
@@ -419,6 +451,46 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azuredevops.branch.isDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzuredevopsBranch).IsDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branch.isProtected": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranch).IsProtected, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branch.protectionRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranch).ProtectionRules, ok = plugin.RawToTValue[*mqlAzuredevopsBranchProtection](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branchProtection.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranchProtection).__id, ok = v.Value.(string)
+		return
+	},
+	"azuredevops.branchProtection.refName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranchProtection).RefName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branchProtection.requiredPullRequestReviewsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranchProtection).RequiredPullRequestReviewsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branchProtection.requiredApprovingReviewCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranchProtection).RequiredApprovingReviewCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branchProtection.requireCodeOwnerReviews": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranchProtection).RequireCodeOwnerReviews, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branchProtection.requiredConversationResolutionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranchProtection).RequiredConversationResolutionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branchProtection.requiredStatusChecksEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranchProtection).RequiredStatusChecksEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branchProtection.policies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranchProtection).Policies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azuredevops.policy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -886,11 +958,13 @@ func (c *mqlAzuredevopsRepository) GetPolicies() *plugin.TValue[[]any] {
 type mqlAzuredevopsBranch struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAzuredevopsBranchInternal it will be used here
-	Name          plugin.TValue[string]
-	RefName       plugin.TValue[string]
-	HeadCommitSha plugin.TValue[string]
-	IsDefault     plugin.TValue[bool]
+	mqlAzuredevopsBranchInternal
+	Name            plugin.TValue[string]
+	RefName         plugin.TValue[string]
+	HeadCommitSha   plugin.TValue[string]
+	IsDefault       plugin.TValue[bool]
+	IsProtected     plugin.TValue[bool]
+	ProtectionRules plugin.TValue[*mqlAzuredevopsBranchProtection]
 }
 
 // createAzuredevopsBranch creates a new instance of this resource
@@ -939,6 +1013,102 @@ func (c *mqlAzuredevopsBranch) GetHeadCommitSha() *plugin.TValue[string] {
 
 func (c *mqlAzuredevopsBranch) GetIsDefault() *plugin.TValue[bool] {
 	return &c.IsDefault
+}
+
+func (c *mqlAzuredevopsBranch) GetIsProtected() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsProtected, func() (bool, error) {
+		return c.isProtected()
+	})
+}
+
+func (c *mqlAzuredevopsBranch) GetProtectionRules() *plugin.TValue[*mqlAzuredevopsBranchProtection] {
+	return plugin.GetOrCompute[*mqlAzuredevopsBranchProtection](&c.ProtectionRules, func() (*mqlAzuredevopsBranchProtection, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.branch", c.__id, "protectionRules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzuredevopsBranchProtection), nil
+			}
+		}
+
+		return c.protectionRules()
+	})
+}
+
+// mqlAzuredevopsBranchProtection for the azuredevops.branchProtection resource
+type mqlAzuredevopsBranchProtection struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzuredevopsBranchProtectionInternal it will be used here
+	RefName                               plugin.TValue[string]
+	RequiredPullRequestReviewsEnabled     plugin.TValue[bool]
+	RequiredApprovingReviewCount          plugin.TValue[int64]
+	RequireCodeOwnerReviews               plugin.TValue[bool]
+	RequiredConversationResolutionEnabled plugin.TValue[bool]
+	RequiredStatusChecksEnabled           plugin.TValue[bool]
+	Policies                              plugin.TValue[[]any]
+}
+
+// createAzuredevopsBranchProtection creates a new instance of this resource
+func createAzuredevopsBranchProtection(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzuredevopsBranchProtection{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azuredevops.branchProtection", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzuredevopsBranchProtection) MqlName() string {
+	return "azuredevops.branchProtection"
+}
+
+func (c *mqlAzuredevopsBranchProtection) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzuredevopsBranchProtection) GetRefName() *plugin.TValue[string] {
+	return &c.RefName
+}
+
+func (c *mqlAzuredevopsBranchProtection) GetRequiredPullRequestReviewsEnabled() *plugin.TValue[bool] {
+	return &c.RequiredPullRequestReviewsEnabled
+}
+
+func (c *mqlAzuredevopsBranchProtection) GetRequiredApprovingReviewCount() *plugin.TValue[int64] {
+	return &c.RequiredApprovingReviewCount
+}
+
+func (c *mqlAzuredevopsBranchProtection) GetRequireCodeOwnerReviews() *plugin.TValue[bool] {
+	return &c.RequireCodeOwnerReviews
+}
+
+func (c *mqlAzuredevopsBranchProtection) GetRequiredConversationResolutionEnabled() *plugin.TValue[bool] {
+	return &c.RequiredConversationResolutionEnabled
+}
+
+func (c *mqlAzuredevopsBranchProtection) GetRequiredStatusChecksEnabled() *plugin.TValue[bool] {
+	return &c.RequiredStatusChecksEnabled
+}
+
+func (c *mqlAzuredevopsBranchProtection) GetPolicies() *plugin.TValue[[]any] {
+	return &c.Policies
 }
 
 // mqlAzuredevopsPolicy for the azuredevops.policy resource
