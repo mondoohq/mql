@@ -81,6 +81,13 @@ var repoItems = map[string]string{
 	RepoDocsID:    "items_docs.json",
 }
 
+// repoContents maps a repository id to a fixture that maps a file path to the
+// content an item read with includeContent=true returns. A file of the tree
+// that is missing from it reads as empty.
+var repoContents = map[string]string{
+	RepoAppID: "contents_app.json",
+}
+
 // projectPolicies maps a project to its branch policy fixture. Every other
 // readable project answers an empty list.
 var projectPolicies = map[string]string{
@@ -414,7 +421,7 @@ func (s *Server) handleMain(w http.ResponseWriter, r *http.Request, segs []strin
 	case len(segs) == 5 && segs[1] == "_apis" && segs[2] == "git" && segs[3] == "repositories":
 		s.repository(w, segs[0], segs[4])
 	case len(segs) == 6 && segs[1] == "_apis" && segs[2] == "git" && segs[3] == "repositories" && segs[5] == "items":
-		s.items(w, segs[0], segs[4])
+		s.items(w, r, segs[0], segs[4])
 	case len(segs) == 6 && segs[1] == "_apis" && segs[2] == "git" && segs[3] == "repositories" && segs[5] == "refs":
 		s.refs(w, r, segs[0], segs[4])
 	case len(segs) == 4 && segs[1] == "_apis" && segs[2] == "policy" && segs[3] == "configurations":
@@ -504,7 +511,9 @@ func (s *Server) repository(w http.ResponseWriter, project, repo string) {
 	serveFixture(w, http.StatusNotFound, "error_forbidden.json")
 }
 
-func (s *Server) items(w http.ResponseWriter, project, repoID string) {
+// items serves the tree of a repository's default branch or, with a path
+// query, one entry of it. includeContent=true adds the content of the entry.
+func (s *Server) items(w http.ResponseWriter, r *http.Request, project, repoID string) {
 	if _, ok := projectRepos[project]; !ok {
 		serveFixture(w, http.StatusForbidden, "error_forbidden.json")
 		return
@@ -518,8 +527,42 @@ func (s *Server) items(w http.ResponseWriter, project, repoID string) {
 		serveFixture(w, http.StatusNotFound, "error_empty_repo.json")
 		return
 	}
+	q := r.URL.Query()
+	if p := q.Get("path"); p != "" {
+		s.item(w, repoID, file, p, q.Get("includeContent") == "true")
+		return
+	}
 	w.Header().Set("x-ratelimit-cost", "3")
 	serveFixture(w, http.StatusOK, file)
+}
+
+// item serves one entry of a tree fixture, matching its path the way Azure
+// DevOps does, without regard to case. A path the tree does not have answers
+// 404 TF401174.
+func (s *Server) item(w http.ResponseWriter, repoID, treeFile, itemPath string, withContent bool) {
+	var tree struct {
+		Value []map[string]any `json:"value"`
+	}
+	mustDecode(treeFile, &tree)
+	for _, it := range tree.Value {
+		p, _ := it["path"].(string)
+		if !strings.EqualFold(p, itemPath) {
+			continue
+		}
+		if withContent {
+			contents := map[string]string{}
+			if name, ok := repoContents[repoID]; ok {
+				mustDecode(name, &contents)
+			}
+			it["content"] = contents[p]
+		}
+		writeJSON(w, http.StatusOK, it)
+		return
+	}
+	writeJSON(w, http.StatusNotFound, map[string]any{
+		"message": "TF401174: The item " + itemPath + " could not be found in the repository.",
+		"typeKey": "GitItemNotFoundException",
+	})
 }
 
 // refs serves the branches and tags of a repository, narrowed by the filter

@@ -1,5 +1,5 @@
 {
-  "count": 10,
+  "count": 12,
   "value": [
     {
       "objectId": "3c000000-0000-4000-8000-000000000385",
@@ -75,6 +75,21 @@
       "commitId": "3c000000-0000-4000-8000-000000000321",
       "path": "/secrets/.env",
       "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000001/items?path=%2Fsecrets%2F.env"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-00000000006e",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000321",
+      "path": "/tools",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000001/items?path=%2Ftools"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-00000000006f",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000321",
+      "path": "/tools/dummy.exe",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000001/items?path=%2Ftools%2Fdummy.exe"
     }
   ]
 }

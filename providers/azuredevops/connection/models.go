@@ -86,6 +86,8 @@ type Item struct {
 	Path          string `json:"path"`
 	IsFolder      bool   `json:"isFolder"`
 	URL           string `json:"url"`
+	// Content is sent only when one item is read with includeContent=true.
+	Content string `json:"content"`
 }
 
 // IsBlob reports a file entry.

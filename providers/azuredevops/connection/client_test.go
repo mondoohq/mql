@@ -383,7 +383,7 @@ func TestItemsListTheTree(t *testing.T) {
 			blobs = append(blobs, it.Path)
 		}
 	}
-	assert.ElementsMatch(t, []string{"/README.md", "/main.tf", "/modules/network/main.tf", "/k8s/pod.yaml", "/secrets/.env"}, blobs)
+	assert.ElementsMatch(t, []string{"/README.md", "/main.tf", "/modules/network/main.tf", "/k8s/pod.yaml", "/secrets/.env", "/tools/dummy.exe"}, blobs)
 }
 
 func TestItemsOfAnEmptyRepositoryIsRecognized(t *testing.T) {

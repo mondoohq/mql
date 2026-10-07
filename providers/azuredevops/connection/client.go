@@ -255,6 +255,8 @@ type Client struct {
 	environments memo[[]Environment]
 	// checks caches the checks of each environment.
 	checks memo[[]CheckConfiguration]
+	// trees caches the default branch tree of each repository.
+	trees memo[[]Item]
 }
 
 // NewClient builds a client for one organization.

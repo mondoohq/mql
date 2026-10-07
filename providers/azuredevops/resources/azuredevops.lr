@@ -125,6 +125,30 @@ azuredevops.repository @defaults("fullName") @root {
   // code events of every repository of the project, and has a target address.
   // Reports a forbidden error when the credential cannot read the service hooks.
   webhooks() []azuredevops.webhook
+  // Files and folders at the root of the default branch
+  //
+  // Empty for a repository with no commits. Reports a forbidden error when the
+  // credential cannot read the tree.
+  files() []azuredevops.file
+  // Every file and folder of the default branch, at any depth
+  //
+  // Empty for a repository with no commits. Reports a forbidden error when the
+  // credential cannot read the tree.
+  allFiles() []azuredevops.file
+  // Security policy file of the repository
+  //
+  // SECURITY.md at the root, in docs, or in .github, compared without regard
+  // to letter case, the first found in that order. When the repository has
+  // none, `exists` is false. Reports a forbidden error when the credential
+  // cannot read the tree.
+  securityFile() azuredevops.file
+  // Azure Pipelines definition files of the default branch
+  //
+  // Every azure-pipelines.yml or azure-pipelines.yaml at any depth, and every
+  // YAML file under a .azure-pipelines or .azuredevops folder at the root. A
+  // pipeline whose definition lives elsewhere is not found. Reports a
+  // forbidden error when the credential cannot read the tree.
+  pipelineFiles() []azuredevops.file
 }
 
 // Azure DevOps branch
@@ -326,4 +350,37 @@ private azuredevops.environmentProtectionRule @defaults("type") {
   // minRequiredApprovers, requesterCannotBeApprover, instructions,
   // displayName and definitionRef.
   settings dict
+}
+
+// Azure DevOps repository file
+//
+// File or folder of the default branch of an Azure DevOps Git repository.
+// Provides the `path`, `name`, and `type` of the entry, whether it
+// `isBinary`, and the `content` of a file. A lookup such as `securityFile`
+// that finds nothing gives an entry whose `exists` is false.
+private azuredevops.file @defaults("name type") {
+  // Path from the repository root, for example /docs/SECURITY.md
+  path string
+  // Last segment of the path
+  name string
+  // Kind of entry: file, dir, or submodule. Empty for an entry that does not exist
+  type string
+  // Git object ID of the entry, empty for an entry that does not exist
+  sha string
+  // Whether the file is a binary
+  //
+  // Derived from the file extension, in any letter case, against a known set
+  // of executable and package types (for example exe, dll, so, jar, class,
+  // rpm, deb, msi, whl). Folders and files without a matching extension are
+  // false.
+  isBinary bool
+  // Whether the entry exists in the repository
+  exists bool
+  // Entries directly inside a folder, empty for a file. Reports a forbidden error when the credential cannot read the tree
+  files() []azuredevops.file
+  // Content of a file on the default branch
+  //
+  // Null for a folder or an entry that does not exist. Reports a forbidden
+  // error when the credential cannot read it.
+  content() string
 }

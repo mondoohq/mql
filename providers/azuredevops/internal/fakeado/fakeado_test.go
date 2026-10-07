@@ -410,3 +410,23 @@ func TestEnvironmentsOfAProjectWithNoneAreEmpty(t *testing.T) {
 	_, body = get(t, srv, base+"/legacy-apps/_apis/distributedtask/environments?api-version="+PreviewAPIVersion, basic(PAT))
 	assert.Contains(t, body, `"production"`)
 }
+
+func TestOneItemComesWithItsContentOnlyWhenAsked(t *testing.T) {
+	srv := New(t)
+	items := base + "/scan-test/_apis/git/repositories/" + RepoAppID + "/items?api-version=7.1&$format=json&path="
+
+	res, body := get(t, srv, items+"/Azure-Pipelines.yml&includeContent=true", basic(PAT))
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	var item map[string]any
+	require.NoError(t, json.Unmarshal([]byte(body), &item))
+	assert.Equal(t, "/azure-pipelines.yml", item["path"])
+	assert.Contains(t, item["content"], "AdvancedSecurity-Dependency-Scanning@1")
+
+	res, body = get(t, srv, items+"/azure-pipelines.yml", basic(PAT))
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.NotContains(t, body, `"content"`)
+
+	res, body = get(t, srv, items+"/missing.txt&includeContent=true", basic(PAT))
+	assert.Equal(t, http.StatusNotFound, res.StatusCode)
+	assert.Contains(t, body, "TF401174")
+}

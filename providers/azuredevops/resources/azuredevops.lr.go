@@ -28,6 +28,7 @@ const (
 	ResourceAzuredevopsWebhook                   string = "azuredevops.webhook"
 	ResourceAzuredevopsEnvironment               string = "azuredevops.environment"
 	ResourceAzuredevopsEnvironmentProtectionRule string = "azuredevops.environmentProtectionRule"
+	ResourceAzuredevopsFile                      string = "azuredevops.file"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -81,6 +82,10 @@ func init() {
 		"azuredevops.environmentProtectionRule": {
 			// to override args, implement: initAzuredevopsEnvironmentProtectionRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzuredevopsEnvironmentProtectionRule,
+		},
+		"azuredevops.file": {
+			// to override args, implement: initAzuredevopsFile(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzuredevopsFile,
 		},
 	}
 }
@@ -255,6 +260,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azuredevops.repository.webhooks": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsRepository).GetWebhooks()).ToDataRes(types.Array(types.Resource("azuredevops.webhook")))
 	},
+	"azuredevops.repository.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetFiles()).ToDataRes(types.Array(types.Resource("azuredevops.file")))
+	},
+	"azuredevops.repository.allFiles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetAllFiles()).ToDataRes(types.Array(types.Resource("azuredevops.file")))
+	},
+	"azuredevops.repository.securityFile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetSecurityFile()).ToDataRes(types.Resource("azuredevops.file"))
+	},
+	"azuredevops.repository.pipelineFiles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetPipelineFiles()).ToDataRes(types.Array(types.Resource("azuredevops.file")))
+	},
 	"azuredevops.branch.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsBranch).GetName()).ToDataRes(types.String)
 	},
@@ -407,6 +424,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azuredevops.environmentProtectionRule.settings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsEnvironmentProtectionRule).GetSettings()).ToDataRes(types.Dict)
+	},
+	"azuredevops.file.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsFile).GetPath()).ToDataRes(types.String)
+	},
+	"azuredevops.file.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsFile).GetName()).ToDataRes(types.String)
+	},
+	"azuredevops.file.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsFile).GetType()).ToDataRes(types.String)
+	},
+	"azuredevops.file.sha": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsFile).GetSha()).ToDataRes(types.String)
+	},
+	"azuredevops.file.isBinary": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsFile).GetIsBinary()).ToDataRes(types.Bool)
+	},
+	"azuredevops.file.exists": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsFile).GetExists()).ToDataRes(types.Bool)
+	},
+	"azuredevops.file.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsFile).GetFiles()).ToDataRes(types.Array(types.Resource("azuredevops.file")))
+	},
+	"azuredevops.file.content": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsFile).GetContent()).ToDataRes(types.String)
 	},
 }
 
@@ -570,6 +611,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azuredevops.repository.webhooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzuredevopsRepository).Webhooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.allFiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).AllFiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.securityFile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).SecurityFile, ok = plugin.RawToTValue[*mqlAzuredevopsFile](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.pipelineFiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).PipelineFiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azuredevops.branch.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -806,6 +863,42 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azuredevops.environmentProtectionRule.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzuredevopsEnvironmentProtectionRule).Settings, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.file.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsFile).__id, ok = v.Value.(string)
+		return
+	},
+	"azuredevops.file.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsFile).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.file.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsFile).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.file.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsFile).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.file.sha": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsFile).Sha, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.file.isBinary": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsFile).IsBinary, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.file.exists": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsFile).Exists, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.file.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsFile).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.file.content": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsFile).Content, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 }
@@ -1113,6 +1206,10 @@ type mqlAzuredevopsRepository struct {
 	Policies         plugin.TValue[[]any]
 	AdvancedSecurity plugin.TValue[*mqlAzuredevopsAdvancedSecurity]
 	Webhooks         plugin.TValue[[]any]
+	Files            plugin.TValue[[]any]
+	AllFiles         plugin.TValue[[]any]
+	SecurityFile     plugin.TValue[*mqlAzuredevopsFile]
+	PipelineFiles    plugin.TValue[[]any]
 }
 
 // createAzuredevopsRepository creates a new instance of this resource
@@ -1285,6 +1382,70 @@ func (c *mqlAzuredevopsRepository) GetWebhooks() *plugin.TValue[[]any] {
 		}
 
 		return c.webhooks()
+	})
+}
+
+func (c *mqlAzuredevopsRepository) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.repository", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.files()
+	})
+}
+
+func (c *mqlAzuredevopsRepository) GetAllFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllFiles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.repository", c.__id, "allFiles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.allFiles()
+	})
+}
+
+func (c *mqlAzuredevopsRepository) GetSecurityFile() *plugin.TValue[*mqlAzuredevopsFile] {
+	return plugin.GetOrCompute[*mqlAzuredevopsFile](&c.SecurityFile, func() (*mqlAzuredevopsFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.repository", c.__id, "securityFile")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzuredevopsFile), nil
+			}
+		}
+
+		return c.securityFile()
+	})
+}
+
+func (c *mqlAzuredevopsRepository) GetPipelineFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PipelineFiles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.repository", c.__id, "pipelineFiles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.pipelineFiles()
 	})
 }
 
@@ -1897,4 +2058,97 @@ func (c *mqlAzuredevopsEnvironmentProtectionRule) GetMinRequiredApprovers() *plu
 
 func (c *mqlAzuredevopsEnvironmentProtectionRule) GetSettings() *plugin.TValue[any] {
 	return &c.Settings
+}
+
+// mqlAzuredevopsFile for the azuredevops.file resource
+type mqlAzuredevopsFile struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAzuredevopsFileInternal
+	Path     plugin.TValue[string]
+	Name     plugin.TValue[string]
+	Type     plugin.TValue[string]
+	Sha      plugin.TValue[string]
+	IsBinary plugin.TValue[bool]
+	Exists   plugin.TValue[bool]
+	Files    plugin.TValue[[]any]
+	Content  plugin.TValue[string]
+}
+
+// createAzuredevopsFile creates a new instance of this resource
+func createAzuredevopsFile(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzuredevopsFile{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azuredevops.file", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzuredevopsFile) MqlName() string {
+	return "azuredevops.file"
+}
+
+func (c *mqlAzuredevopsFile) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzuredevopsFile) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlAzuredevopsFile) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzuredevopsFile) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlAzuredevopsFile) GetSha() *plugin.TValue[string] {
+	return &c.Sha
+}
+
+func (c *mqlAzuredevopsFile) GetIsBinary() *plugin.TValue[bool] {
+	return &c.IsBinary
+}
+
+func (c *mqlAzuredevopsFile) GetExists() *plugin.TValue[bool] {
+	return &c.Exists
+}
+
+func (c *mqlAzuredevopsFile) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.file", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.files()
+	})
+}
+
+func (c *mqlAzuredevopsFile) GetContent() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Content, func() (string, error) {
+		return c.content()
+	})
 }
