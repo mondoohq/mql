@@ -251,6 +251,8 @@ type Client struct {
 	enablements memo[*AdvSecEnablement]
 	// subscriptions caches the service hook subscriptions of the organization.
 	subscriptions memo[[]Subscription]
+	// viewSubscriptions caches whether each project's subscriptions are visible.
+	viewSubscriptions memo[bool]
 	// environments caches the pipeline environments of each project.
 	environments memo[[]Environment]
 	// checks caches the checks of each environment.

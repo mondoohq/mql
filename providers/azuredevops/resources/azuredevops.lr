@@ -123,7 +123,8 @@ azuredevops.repository @defaults("fullName") @root {
   //
   // Every service hook of the project that names the repository, or that sends
   // code events of every repository of the project, and has a target address.
-  // Reports a forbidden error when the credential cannot read the service hooks.
+  // Reports a forbidden error when the credential lacks View subscriptions on the
+  // project, which Readers lack by default; Azure DevOps would otherwise answer an empty list.
   webhooks() []azuredevops.webhook
   // Files and folders at the root of the default branch
   //

@@ -77,6 +77,20 @@ func TestServiceHooksTheCredentialCannotReadAreForbidden(t *testing.T) {
 	assert.ErrorIs(t, list.Error, llx.ErrForbidden)
 }
 
+// A Reader is the common case and gets no 403: Azure DevOps answers the
+// subscription list with 200 and nothing. Only the permission check tells that
+// apart from a project with no hooks, so the field must be forbidden, never [].
+func TestServiceHooksAReaderCannotViewAreForbiddenNotEmpty(t *testing.T) {
+	runtime, srv := newDiscoveryRuntime(t, nil, nil)
+	srv.HideServiceHooks()
+	repo := repositoriesOf(t, newOrganization(t, runtime))[fakeado.RepoIacID]
+
+	list := repo.GetWebhooks()
+	require.Error(t, list.Error, "an invisible hook list must not read as no hooks")
+	assert.ErrorIs(t, list.Error, llx.ErrForbidden)
+	assert.Contains(t, list.Error.Error(), "View subscriptions")
+}
+
 func hookIDs(m map[string]*mqlAzuredevopsWebhook) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

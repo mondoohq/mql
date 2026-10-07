@@ -4,13 +4,26 @@
 package resources
 
 import (
+	"fmt"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
 )
 
 func (r *mqlAzuredevopsRepository) webhooks() ([]any, error) {
-	subs, err := connectionOf(r.MqlRuntime).Client().Subscriptions(apiContext())
+	client := connectionOf(r.MqlRuntime).Client()
+	// Without View subscriptions the list below comes back empty with a 200, so
+	// a policy would pass on hooks it cannot see. Ask first and refuse instead.
+	ok, err := client.CanViewSubscriptions(apiContext(), r.ProjectId.Data)
+	if err != nil {
+		return nil, classifyForbidden(err)
+	}
+	if !ok {
+		return nil, llx.Forbidden(fmt.Errorf("azure devops: the credential may not view the service hooks of project %q; "+
+			"grant it View subscriptions under Project settings, Service hooks, Security", r.ProjectName.Data))
+	}
+
+	subs, err := client.Subscriptions(apiContext())
 	if err != nil {
 		return nil, classifyForbidden(err)
 	}

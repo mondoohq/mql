@@ -156,6 +156,30 @@ type Server struct {
 	advsec      map[string]bool
 	advsecOff   []string
 	hiddenItems []string
+	hooksHidden bool
+}
+
+// HideServiceHooks answers the View subscriptions permission check with false,
+// as Azure DevOps does for a Reader. The subscription list itself still answers
+// 200 and an empty list for such a caller, so the check is the only signal.
+func (s *Server) HideServiceHooks() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hooksHidden = true
+}
+
+// permissions answers GET /_apis/permissions/{namespace}/{bits}?tokens=a,b with
+// one verdict per token, true unless HideServiceHooks was called.
+func (s *Server) permissions(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	allow := !s.hooksHidden
+	s.mu.Unlock()
+	tokens := strings.Split(r.URL.Query().Get("tokens"), ",")
+	out := make([]bool, len(tokens))
+	for i := range out {
+		out[i] = allow
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": len(out), "value": out})
 }
 
 type throttle struct {
@@ -466,7 +490,17 @@ func (s *Server) handleMain(w http.ResponseWriter, r *http.Request, segs []strin
 	case len(segs) == 3 && segs[0] == "_apis" && segs[1] == "accesscontrollists":
 		s.accessControlLists(w, r, segs[2])
 	case len(segs) == 3 && segs[0] == "_apis" && segs[1] == "hooks" && segs[2] == "subscriptions":
+		s.mu.Lock()
+		hidden := s.hooksHidden
+		s.mu.Unlock()
+		if hidden {
+			// What a Reader really gets: 200 and nothing.
+			writeJSON(w, http.StatusOK, map[string]any{"count": 0, "value": []any{}})
+			return
+		}
 		serveFixture(w, http.StatusOK, "hooks.json")
+	case len(segs) == 4 && segs[0] == "_apis" && segs[1] == "permissions":
+		s.permissions(w, r)
 	case len(segs) == 4 && segs[1] == "_apis" && segs[2] == "distributedtask" && segs[3] == "environments":
 		s.environments(w, segs[0])
 	case len(segs) == 5 && segs[1] == "_apis" && segs[2] == "pipelines" && segs[3] == "checks" && segs[4] == "configurations":

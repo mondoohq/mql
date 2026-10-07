@@ -58,6 +58,34 @@ func (s Subscription) AppliesToRepository(projectID, repoID string) bool {
 	return strings.HasPrefix(ev, "git.") || strings.HasPrefix(ev, "ms.vss-code.")
 }
 
+// ServiceHooksNamespace is the id of the security namespace that guards service
+// hook subscriptions. Bit 1 is View subscriptions.
+const (
+	ServiceHooksNamespace = "cb594ebe-87dd-4fc9-ac2c-6a10a4c92046"
+	viewSubscriptionsBit  = "1"
+	serviceHooksTokenRoot = "PublisherSecurity"
+)
+
+// CanViewSubscriptions reports whether the credential may view the service
+// hook subscriptions of one project. Without that permission Azure DevOps
+// answers the subscription list with 200 and an empty list, which reads like
+// "no hooks". Readers do not have it by default. Each project is checked once
+// per client.
+func (c *Client) CanViewSubscriptions(ctx context.Context, projectID string) (bool, error) {
+	return c.viewSubscriptions.get(strings.ToLower(projectID), func() (bool, error) {
+		var out struct {
+			Value []bool `json:"value"`
+		}
+		if _, err := c.getJSON(ctx, request{
+			segments: []string{"_apis", "permissions", ServiceHooksNamespace, viewSubscriptionsBit},
+			query:    url.Values{"tokens": {serviceHooksTokenRoot + "/" + strings.ToLower(projectID)}},
+		}, &out); err != nil {
+			return false, err
+		}
+		return len(out.Value) == 1 && out.Value[0], nil
+	})
+}
+
 // Subscriptions lists the service hook subscriptions of the organization.
 // Every repository reads the same list, so it is fetched once per client.
 func (c *Client) Subscriptions(ctx context.Context) ([]Subscription, error) {
