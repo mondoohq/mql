@@ -195,7 +195,7 @@ func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 		} else {
 			osm = ResolveSystemdServiceManager(conn)
 		}
-	case asset.Platform.Name == "suse-microos" || asset.Platform.Name == "opensuse-microos" || asset.Platform.Name == "sl-micro": // suse family but uses a different version scheme
+	case asset.Platform.Name == "suse-microos" || asset.Platform.Name == "opensuse-microos": // suse family but uses a different version scheme
 		osm = ResolveSystemdServiceManager(conn)
 	case asset.Platform.IsFamily("suse"):
 		rv := detector.ParseOsVersion(asset.Platform.Version)

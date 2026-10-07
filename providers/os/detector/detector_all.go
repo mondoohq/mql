@@ -1119,25 +1119,29 @@ var sles = &PlatformResolver{
 }
 
 // suseMicroOs claims the transactional SUSE systems: SUSE Linux Enterprise
-// Micro 5, which sets ID=suse-microos, SUSE Linux Micro 6, reported as
-// sl-micro, and openSUSE MicroOS, which sets ID=opensuse-microos. They share a
-// read-only root, transactional-update and zypper, so every consumer in the
-// provider treats them alike, and the services manager dispatches on all three
-// names.
+// Micro 5 and SUSE Linux Micro 6, both reported as suse-microos, and openSUSE
+// MicroOS, which sets ID=opensuse-microos. They share a read-only root,
+// transactional-update and zypper, so every consumer in the provider treats
+// them alike, and the services manager dispatches on both names.
 //
-// SUSE Linux Micro 6.0 and 6.1 set ID=sl-micro. 6.2 sets ID=sles and
-// VERSION_ID=16.0, the SLES 16 code base it is built from, and names itself
-// only in SUSE_SUPPORT_PRODUCT and SUSE_SUPPORT_PRODUCT_VERSION. Left to the
-// sles resolver it reported as SLES 16.0, so this runs before sles and moves
-// it back to sl-micro with its own version. Harvester nodes run SUSE Linux
-// Micro 6.2 and only replace PRETTY_NAME, so they resolve here too.
+// SUSE renamed the product with 6.0, and its os-release ID moved with it:
+// SUSE Linux Enterprise Micro 5 sets ID=suse-microos, SUSE Linux Micro 6.0 and
+// 6.1 set ID=sl-micro. 6.2 sets ID=sles and VERSION_ID=16.0, the SLES 16 code
+// base it is built from, and names itself only in SUSE_SUPPORT_PRODUCT and
+// SUSE_SUPPORT_PRODUCT_VERSION. Left to the sles resolver it reported as SLES
+// 16.0, so this runs before sles. Every release of the product is reported as
+// suse-microos, so one platform name finds all of them; the version tells 5.x
+// from 6.x. Harvester nodes run SUSE Linux Micro 6.2 and only replace
+// PRETTY_NAME, so they resolve here too.
 var suseMicroOs = &PlatformResolver{
 	Name:     "suse-microos",
 	IsFamily: false,
-	Emits:    []string{"suse-microos", "opensuse-microos", "sl-micro"},
+	Emits:    []string{"suse-microos", "opensuse-microos"},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		switch pf.Name {
-		case "suse-microos", "opensuse-microos", "sl-micro":
+		case "suse-microos", "opensuse-microos":
+		case "sl-micro":
+			pf.Name = "suse-microos"
 		case "sles":
 			osr, err := NewOSReleaseDetector(conn).osrelease()
 			if err != nil || !isSlMicro(osr) {
@@ -1151,7 +1155,7 @@ var suseMicroOs = &PlatformResolver{
 			return false, nil
 		}
 
-		if pf.Name == "sl-micro" {
+		if pf.Name == "suse-microos" {
 			if version := harvesterVersion(conn); version != "" {
 				pf.Metadata[LabelHarvesterVersion] = version
 			}

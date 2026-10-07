@@ -323,7 +323,7 @@ func TestPackageURLString(t *testing.T) {
 	// SUSE Linux Micro packages are SUSE's, like SLES ones.
 	t.Run("SUSE Linux Micro package", func(t *testing.T) {
 		platform := &inventory.Platform{
-			Name:    "sl-micro",
+			Name:    "suse-microos",
 			Arch:    "x86_64",
 			Version: "6.2",
 			Labels:  map[string]string{detector.LabelDistroID: "sl-micro"},

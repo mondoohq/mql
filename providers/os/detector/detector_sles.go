@@ -76,13 +76,13 @@ func isSlMicro(osr map[string]string) bool {
 	return osr["SUSE_SUPPORT_PRODUCT"] == "SUSE Linux Micro"
 }
 
-// renameSlMicro reports a SUSE Linux Micro system that set ID=sles under its
-// own name and version. The distro id becomes sl-micro, the ID that 6.0 and 6.1
-// set, so package URLs carry distro=sl-micro-<version> on every 6.x release.
-// The title is replaced only while it is the SLES one SUSE writes, so a
-// product built on top, such as Harvester, keeps its own.
+// renameSlMicro reports a SUSE Linux Micro system that set ID=sles as
+// suse-microos with its own version. The distro id becomes sl-micro, the ID
+// that 6.0 and 6.1 set, so package URLs carry distro=sl-micro-<version> on
+// every 6.x release. The title is replaced only while it is the SLES one SUSE
+// writes, so a product built on top, such as Harvester, keeps its own.
 func renameSlMicro(pf *inventory.Platform, osr map[string]string) {
-	pf.Name = "sl-micro"
+	pf.Name = "suse-microos"
 	if pf.Labels != nil {
 		pf.Labels[LabelDistroID] = "sl-micro"
 	}

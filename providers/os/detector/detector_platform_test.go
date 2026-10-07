@@ -631,8 +631,9 @@ func TestSuse5MicroDetector(t *testing.T) {
 	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
 }
 
-// SUSE Linux Micro 6.0 and 6.1 set ID=sl-micro, which no resolver claimed, so
-// they carried no suse family.
+// SUSE Linux Micro 6.0 and 6.1 set ID=sl-micro. They are the same product as
+// SUSE Linux Enterprise Micro 5 and report as suse-microos, keeping the
+// os-release ID as the distro id.
 func TestSlMicro6Detector(t *testing.T) {
 	for _, tc := range []struct {
 		fixture string
@@ -646,7 +647,8 @@ func TestSlMicro6Detector(t *testing.T) {
 			di, err := detectPlatformFromMock(tc.fixture)
 			require.NoError(t, err)
 
-			assert.Equal(t, "sl-micro", di.Name)
+			assert.Equal(t, "suse-microos", di.Name)
+			assert.Equal(t, "sl-micro", di.Metadata[LabelDistroID])
 			assert.Equal(t, tc.version, di.Version)
 			assert.Equal(t, tc.title, di.Title)
 			assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
@@ -660,7 +662,7 @@ func TestSlMicro62IsNotSles(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-sl-micro-6.2.toml")
 	require.NoError(t, err)
 
-	assert.Equal(t, "sl-micro", di.Name)
+	assert.Equal(t, "suse-microos", di.Name)
 	assert.Equal(t, "6.2", di.Version, "the SUSE Linux Micro version, not the SLES one")
 	assert.Equal(t, "SUSE Linux Micro 6.2", di.Title, "SUSE's SLES title is replaced")
 	assert.Equal(t, "sl-micro", di.Metadata[LabelDistroID], "the distro id 6.0 and 6.1 set, so package URLs do not read sles-6.2")
@@ -673,7 +675,7 @@ func TestHarvesterNodeDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-harvester-1.8.toml")
 	require.NoError(t, err)
 
-	assert.Equal(t, "sl-micro", di.Name)
+	assert.Equal(t, "suse-microos", di.Name)
 	assert.Equal(t, "6.2", di.Version)
 	assert.Equal(t, "Harvester v1.8.2", di.Title)
 	assert.Equal(t, "v1.8.2", di.Metadata[LabelHarvesterVersion])

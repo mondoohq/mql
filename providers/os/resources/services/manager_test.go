@@ -242,29 +242,6 @@ func TestManagerSuseMicroOs(t *testing.T) {
 	assert.True(t, ok, "SystemDServiceManager used for SUSE MicroOS")
 }
 
-// SUSE Linux Micro is in the suse family with a 6.x version, which the suse
-// family case reads as older than SLES 12 and hands to SysV.
-func TestManagerSlMicro(t *testing.T) {
-	mock, err := mock.New(0, &inventory.Asset{
-		Platform: &inventory.Platform{
-			Name:    "sl-micro",
-			Version: "6.2",
-			Family:  []string{"suse", "linux", "unix", "os"},
-		},
-	}, mock.WithData(&mock.TomlData{
-		Files: map[string]*mock.MockFileData{
-			"/sbin/init": {},
-		},
-	}))
-	require.NoError(t, err)
-
-	mm, err := services.ResolveManager(mock)
-	require.NoError(t, err)
-
-	_, ok := mm.(*services.SystemDServiceManager)
-	assert.True(t, ok, "SystemDServiceManager used for SUSE Linux Micro")
-}
-
 func TestManagerCos(t *testing.T) {
 	mock, err := mock.New(0, &inventory.Asset{
 		Platform: &inventory.Platform{
