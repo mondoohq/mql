@@ -28,6 +28,7 @@ azuredevops.repository.isEmpty 14.0.0
 azuredevops.repository.isFork 14.0.0
 azuredevops.repository.name 14.0.0
 azuredevops.repository.project 14.0.0
+azuredevops.repository.projectId 14.0.0
 azuredevops.repository.projectName 14.0.0
 azuredevops.repository.size 14.0.0
 azuredevops.repository.sshUrl 14.0.0

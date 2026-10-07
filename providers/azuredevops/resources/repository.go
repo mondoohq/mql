@@ -18,6 +18,7 @@ func repositoryArgs(project string, r connection.Repository) map[string]*llx.Raw
 		"id":            llx.StringData(r.ID),
 		"name":          llx.StringData(r.Name),
 		"projectName":   llx.StringData(project),
+		"projectId":     llx.StringData(r.Project.ID),
 		"fullName":      llx.StringData(project + "/" + r.Name),
 		"defaultBranch": llx.StringData(r.DefaultBranch),
 		"size":          llx.IntData(r.Size),

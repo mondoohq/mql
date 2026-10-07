@@ -38,6 +38,12 @@ const (
 	// APIVersion is the only api-version the server answers to on versioned
 	// calls, so a client that forgets it fails a test.
 	APIVersion = "7.1"
+	// AdvSecAPIVersion is the only api-version the Advanced Security routes
+	// answer to.
+	AdvSecAPIVersion = "7.2-preview.1"
+	// PreviewAPIVersion is the only api-version the environment and check
+	// routes answer to.
+	PreviewAPIVersion = "7.1-preview.1"
 )
 
 // Fabricated ids of the fixture repositories.
@@ -48,6 +54,13 @@ const (
 	RepoRetiredID = "2b000000-0000-4000-8000-000000000004"
 	RepoIacSpace  = "2b000000-0000-4000-8000-000000000005"
 	RepoDocsID    = "2b000000-0000-4000-8000-000000000006"
+)
+
+// Fabricated ids of the fixture projects.
+const (
+	ProjectScanTestID      = "1a000000-0000-4000-8000-000000000001"
+	ProjectScanTestSpaceID = "1a000000-0000-4000-8000-000000000002"
+	ProjectLegacyAppsID    = "1a000000-0000-4000-8000-000000000004"
 )
 
 // projectRepos maps a project to its repository list fixture. A project that is
@@ -195,7 +208,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	segs := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	svc, segs := splitService(r.URL.Path)
 	if len(segs) < 2 || segs[0] != Org {
 		serveFixture(w, http.StatusNotFound, "error_forbidden.json")
 		return
@@ -203,15 +216,74 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	segs = segs[1:]
 
 	// connectionData is the one call that takes no api-version.
-	if len(segs) == 2 && segs[0] == "_apis" && segs[1] == "connectionData" {
+	if svc == serviceMain && len(segs) == 2 && segs[0] == "_apis" && segs[1] == "connectionData" {
 		serveFixture(w, http.StatusOK, "connection_data.json")
 		return
 	}
-	if r.URL.Query().Get("api-version") != APIVersion {
+	if r.URL.Query().Get("api-version") != apiVersionFor(svc, segs) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "VS402337: The requested api-version is missing or not supported"})
 		return
 	}
 
+	switch svc {
+	case serviceAdvSec:
+		s.handleAdvSec(w, r, segs)
+	case serviceVSSPS:
+		s.handleVSSPS(w, r, segs)
+	default:
+		s.handleMain(w, r, segs)
+	}
+}
+
+// service is the Azure DevOps host a request was meant for. The client sends
+// the Advanced Security and identity calls of a loopback endpoint under the
+// /advsec and /vssps path prefixes, so this one server answers all three.
+type service int
+
+const (
+	serviceMain service = iota
+	serviceAdvSec
+	serviceVSSPS
+)
+
+func splitService(path string) (service, []string) {
+	segs := strings.Split(strings.Trim(path, "/"), "/")
+	switch segs[0] {
+	case "advsec":
+		return serviceAdvSec, segs[1:]
+	case "vssps":
+		return serviceVSSPS, segs[1:]
+	}
+	return serviceMain, segs
+}
+
+// apiVersionFor is the api-version a route answers to. Advanced Security and
+// the environment and check routes exist only as previews.
+func apiVersionFor(svc service, segs []string) string {
+	if svc == serviceAdvSec {
+		return AdvSecAPIVersion
+	}
+	if svc == serviceMain && len(segs) > 2 && segs[1] == "_apis" && (segs[2] == "distributedtask" || segs[2] == "pipelines") {
+		return PreviewAPIVersion
+	}
+	return APIVersion
+}
+
+func (s *Server) handleAdvSec(w http.ResponseWriter, r *http.Request, segs []string) {
+	switch {
+	default:
+		serveFixture(w, http.StatusNotFound, "error_forbidden.json")
+	}
+}
+
+func (s *Server) handleVSSPS(w http.ResponseWriter, r *http.Request, segs []string) {
+	switch {
+	default:
+		serveFixture(w, http.StatusNotFound, "error_forbidden.json")
+	}
+}
+
+func (s *Server) handleMain(w http.ResponseWriter, r *http.Request, segs []string) {
 	switch {
 	case len(segs) == 2 && segs[0] == "_apis" && segs[1] == "projects":
 		s.projects(w, r)

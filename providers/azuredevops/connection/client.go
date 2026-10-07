@@ -26,8 +26,22 @@ const (
 	// DefaultAPIVersion is the REST api-version sent on every versioned call.
 	DefaultAPIVersion = "7.1"
 
+	// AdvSecAPIVersion is the api-version of the Advanced Security endpoints,
+	// which Azure DevOps publishes only as a preview.
+	AdvSecAPIVersion = "7.2-preview.1"
+
+	// PreviewAPIVersion is the api-version of the environment and check
+	// endpoints, which Azure DevOps publishes only as a preview.
+	PreviewAPIVersion = "7.1-preview.1"
+
 	// DefaultEndpoint is the Azure DevOps Services REST host.
 	DefaultEndpoint = "https://dev.azure.com"
+
+	// DefaultAdvSecEndpoint is the Advanced Security REST host.
+	DefaultAdvSecEndpoint = "https://advsec.dev.azure.com"
+
+	// DefaultVSSPSEndpoint is the identity REST host.
+	DefaultVSSPSEndpoint = "https://vssps.dev.azure.com"
 
 	// RequestTimeout bounds one request of the default http client, from the
 	// dial to the end of the body.
@@ -181,6 +195,17 @@ func IsNotFound(err error) bool { return apiStatus(err) == http.StatusNotFound }
 // IsNoAccess reports that the principal may not read the thing it asked for.
 func IsNoAccess(err error) bool { return IsUnauthorized(err) || IsForbidden(err) }
 
+// IsAdvSecDisabled reports the 400 VS2150009 answer of the Advanced Security
+// alert endpoints for a repository that does not have Advanced Security turned
+// on.
+func IsAdvSecDisabled(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusBadRequest {
+		return false
+	}
+	return strings.Contains(apiErr.Message, "VS2150009") || strings.Contains(apiErr.TypeKey, "VS2150009")
+}
+
 // IsEmptyRepoError reports the 404 VS403403 answer of the Items API for a
 // repository that has no branches.
 func IsEmptyRepoError(err error) bool {
@@ -206,13 +231,15 @@ type ClientOptions struct {
 
 // Client is the REST client of one organization.
 type Client struct {
-	org     string
-	base    string
-	auth    *Authenticator
-	http    *http.Client
-	sleep   func(ctx context.Context, d time.Duration) error
-	costMu  sync.Mutex
-	costSum float64
+	org        string
+	base       string
+	advsecBase string
+	vsspsBase  string
+	auth       *Authenticator
+	http       *http.Client
+	sleep      func(ctx context.Context, d time.Duration) error
+	costMu     sync.Mutex
+	costSum    float64
 }
 
 // NewClient builds a client for one organization.
@@ -244,13 +271,27 @@ func NewClient(org string, auth *Authenticator, opts ClientOptions) (*Client, er
 	if sleep == nil {
 		sleep = sleepContext
 	}
+	advsec, vssps := hostBases(endpoint)
 	return &Client{
-		org:   org,
-		base:  endpoint + "/" + url.PathEscape(org),
-		auth:  auth,
-		http:  hc,
-		sleep: sleep,
+		org:        org,
+		base:       endpoint + "/" + url.PathEscape(org),
+		advsecBase: advsec + "/" + url.PathEscape(org),
+		vsspsBase:  vssps + "/" + url.PathEscape(org),
+		auth:       auth,
+		http:       hc,
+		sleep:      sleep,
 	}, nil
+}
+
+// hostBases is the Advanced Security and identity hosts that go with an
+// endpoint. Azure DevOps Services serves them on hosts of their own. A loopback
+// test endpoint serves them under the /advsec and /vssps path prefixes, so one
+// fake server answers all three.
+func hostBases(endpoint string) (advsec, vssps string) {
+	if endpoint == DefaultEndpoint {
+		return DefaultAdvSecEndpoint, DefaultVSSPSEndpoint
+	}
+	return endpoint + "/advsec", endpoint + "/vssps"
 }
 
 // validateEndpoint accepts the empty default or a loopback address. An address
@@ -314,15 +355,39 @@ func (c *Client) addCost(h http.Header) {
 	c.costMu.Unlock()
 }
 
+// host is the Azure DevOps service a request goes to. Most endpoints live on
+// dev.azure.com; Advanced Security and identities have hosts of their own.
+type host int
+
+const (
+	hostMain host = iota
+	hostAdvSec
+	hostVSSPS
+)
+
 type request struct {
+	host      host
 	segments  []string
 	query     url.Values
 	noVersion bool
+	// apiVersion replaces DefaultAPIVersion, for an endpoint that exists only
+	// as a preview.
+	apiVersion string
+}
+
+func (c *Client) baseFor(h host) string {
+	switch h {
+	case hostAdvSec:
+		return c.advsecBase
+	case hostVSSPS:
+		return c.vsspsBase
+	}
+	return c.base
 }
 
 func (c *Client) urlFor(r request) string {
 	var b strings.Builder
-	b.WriteString(c.base)
+	b.WriteString(c.baseFor(r.host))
 	for _, seg := range r.segments {
 		b.WriteByte('/')
 		b.WriteString(url.PathEscape(seg))
@@ -332,7 +397,11 @@ func (c *Client) urlFor(r request) string {
 		q[k] = v
 	}
 	if !r.noVersion {
-		q.Set("api-version", DefaultAPIVersion)
+		version := r.apiVersion
+		if version == "" {
+			version = DefaultAPIVersion
+		}
+		q.Set("api-version", version)
 	}
 	if len(q) > 0 {
 		b.WriteByte('?')
@@ -543,7 +612,9 @@ func listAll[T any](ctx context.Context, c *Client, r request, pageSize int) ([]
 			q.Set("continuationToken", token)
 		}
 		page := listResponse[T]{}
-		hdr, err := c.getJSON(ctx, request{segments: r.segments, query: q, noVersion: r.noVersion}, &page)
+		pageReq := r
+		pageReq.query = q
+		hdr, err := c.getJSON(ctx, pageReq, &page)
 		if err != nil {
 			return nil, err
 		}

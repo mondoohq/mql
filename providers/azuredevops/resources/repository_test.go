@@ -153,3 +153,11 @@ func TestRepositoryProject(t *testing.T) {
 	require.NoError(t, project.Error)
 	assert.Equal(t, "scan test", project.Data.Name.Data)
 }
+
+func TestRepositoryCarriesTheIDOfItsProject(t *testing.T) {
+	org := newOrganization(t, newRuntime(t, nil))
+	repos := repositoriesOf(t, org)
+
+	assert.Equal(t, fakeado.ProjectScanTestID, repos[fakeado.RepoAppID].ProjectId.Data)
+	assert.Equal(t, fakeado.ProjectScanTestSpaceID, repos[fakeado.RepoIacSpace].ProjectId.Data)
+}

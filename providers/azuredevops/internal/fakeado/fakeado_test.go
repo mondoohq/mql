@@ -225,3 +225,34 @@ func TestEveryFixtureIsValidJSON(t *testing.T) {
 		assert.True(t, json.Valid(data), "%s is not valid JSON", e.Name())
 	}
 }
+
+func TestEachServiceAnswersOnlyItsOwnAPIVersion(t *testing.T) {
+	srv := New(t)
+
+	cases := []struct {
+		path    string
+		version string
+	}{
+		{path: "/advsec" + base + "/_apis/no-such-route", version: AdvSecAPIVersion},
+		{path: "/vssps" + base + "/_apis/no-such-route", version: APIVersion},
+		{path: base + "/scan-test/_apis/distributedtask/no-such-route", version: PreviewAPIVersion},
+		{path: base + "/scan-test/_apis/pipelines/no-such-route", version: PreviewAPIVersion},
+	}
+	for _, tc := range cases {
+		for _, v := range []string{APIVersion, AdvSecAPIVersion, PreviewAPIVersion} {
+			res, _ := get(t, srv, tc.path+"?api-version="+v, basic(PAT))
+			if v == tc.version {
+				assert.Equal(t, http.StatusNotFound, res.StatusCode, "%s with %s reaches the router", tc.path, v)
+			} else {
+				assert.Equal(t, http.StatusBadRequest, res.StatusCode, "%s refuses %s", tc.path, v)
+			}
+		}
+	}
+}
+
+func TestConnectionDataIsServedOnlyByTheMainHost(t *testing.T) {
+	srv := New(t)
+
+	res, _ := get(t, srv, "/vssps"+base+"/_apis/connectionData", basic(PAT))
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode, "an unversioned call to another host is refused")
+}

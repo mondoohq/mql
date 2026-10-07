@@ -80,6 +80,8 @@ azuredevops.repository @defaults("fullName") @root {
   name string
   // Name of the project that holds the repository
   projectName string
+  // ID of the project that holds the repository, a GUID that Azure DevOps assigns
+  projectId string
   // Project and repository name joined by a slash
   fullName string
   // Default branch as a full ref, empty for a repository with no commits

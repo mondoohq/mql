@@ -164,6 +164,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azuredevops.repository.projectName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsRepository).GetProjectName()).ToDataRes(types.String)
 	},
+	"azuredevops.repository.projectId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetProjectId()).ToDataRes(types.String)
+	},
 	"azuredevops.repository.fullName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsRepository).GetFullName()).ToDataRes(types.String)
 	},
@@ -291,6 +294,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azuredevops.repository.projectName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzuredevopsRepository).ProjectName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.projectId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).ProjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azuredevops.repository.fullName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -609,6 +616,7 @@ type mqlAzuredevopsRepository struct {
 	Id            plugin.TValue[string]
 	Name          plugin.TValue[string]
 	ProjectName   plugin.TValue[string]
+	ProjectId     plugin.TValue[string]
 	FullName      plugin.TValue[string]
 	DefaultBranch plugin.TValue[string]
 	Size          plugin.TValue[int64]
@@ -669,6 +677,10 @@ func (c *mqlAzuredevopsRepository) GetName() *plugin.TValue[string] {
 
 func (c *mqlAzuredevopsRepository) GetProjectName() *plugin.TValue[string] {
 	return &c.ProjectName
+}
+
+func (c *mqlAzuredevopsRepository) GetProjectId() *plugin.TValue[string] {
+	return &c.ProjectId
 }
 
 func (c *mqlAzuredevopsRepository) GetFullName() *plugin.TValue[string] {
