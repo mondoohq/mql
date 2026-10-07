@@ -297,7 +297,10 @@ func TestListingFailsWhenNoProjectIsReadable(t *testing.T) {
 	assert.Equal(t, before, len(srv.Requests()))
 }
 
-func TestListingOfAnOrganizationWithoutProjectsIsNotAnError(t *testing.T) {
+// Azure DevOps leaves the projects a credential cannot read out of the list,
+// so a service principal in no project sees an empty organization. That must
+// fail discovery, not report zero repositories.
+func TestListingWithNoVisibleProjectIsAnError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"count":0,"value":[]}`))
@@ -307,10 +310,10 @@ func TestListingOfAnOrganizationWithoutProjectsIsNotAnError(t *testing.T) {
 	conn, err := NewAzuredevopsConnection(1, patAsset(srv.URL, fakeado.PAT, nil))
 	require.NoError(t, err)
 
-	listing, err := conn.Listing(context.Background())
-	require.NoError(t, err, "an organization with no projects is empty, not unreadable")
-	assert.Empty(t, listing.Projects)
-	assert.Empty(t, listing.Repos())
+	_, err = conn.Listing(context.Background())
+	require.Error(t, err, "no visible project must not look like an empty organization")
+	assert.Contains(t, err.Error(), "sees no projects")
+	assert.NotContains(t, err.Error(), fakeado.PAT, "the error never echoes the secret")
 }
 
 func TestGitCredentialForAPAT(t *testing.T) {

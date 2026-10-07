@@ -82,9 +82,11 @@ mql run azuredevops org my-organization --token PAT -c "azuredevops.organization
 Discovery on an organization emits an asset for the organization and one for each repository
 that has commits and is not disabled. Disabled and empty repositories are reported and
 skipped, and only `ready` repositories become assets. A project the credential cannot read is
-reported and skipped. Discovery fails only when the organization has projects and the
-credential can read none of them, which is what a token without the `Code (Read)` scope
-produces. A repository filter (below) leaves the organization asset out.
+reported and skipped. Discovery fails when the credential can read the repositories of no
+project, which is what a token without the `Code (Read)` scope produces. It also fails when
+the credential sees no project at all: Azure DevOps lists only the projects a credential may
+read, so a service principal that is a member of the organization but of none of its projects
+sees an empty organization. A repository filter (below) leaves the organization asset out.
 
 A `repo` connection emits the repository you named, even when it is empty or disabled, but
 gives such a repository no Terraform or Kubernetes child.
@@ -162,13 +164,14 @@ Run this to confirm that the connection and the permissions work:
 mql> azuredevops.organization { name id deploymentType }
 ```
 
-`deploymentType` is `hosted` for Azure DevOps Services. An empty
-`azuredevops.organization.unreadableProjects` means the credential can read every project.
-A name in that list means the credential has no access to that project, and that project's
-repositories are not in the inventory. The connection query above does not read repositories.
-When the organization has projects and the credential can read none of them, a query on
-`projects`, `repositories` or `unreadableProjects` fails with an error instead of returning a
-list.
+`deploymentType` is `hosted` for Azure DevOps Services. A name in
+`azuredevops.organization.unreadableProjects` is a project the credential can see but whose
+repositories it cannot list; those repositories are not in the inventory. An empty list does
+not prove the credential reads every project: Azure DevOps leaves a project the credential has
+no access to out of `projects` entirely, so it appears in neither list. Compare `projects`
+with the projects you expect. The connection query above does not read repositories. When the
+credential sees no project, or can read the repositories of none, a query on `projects`,
+`repositories` or `unreadableProjects` fails with an error instead of returning a list.
 
 ## Troubleshooting
 

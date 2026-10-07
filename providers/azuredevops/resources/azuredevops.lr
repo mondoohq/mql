@@ -33,7 +33,9 @@ azuredevops.organization @defaults("name") @root {
   projects() []azuredevops.project
   // Git repositories of every project the credential can read, of any status. The repository filters do not apply here
   repositories() []azuredevops.repository
-  // Names of the projects whose repositories the credential cannot list
+  // Names of the projects the credential can see but whose repositories it cannot list
+  //
+  // Azure DevOps hides projects the credential has no access to, so they are in neither this list nor projects.
   unreadableProjects() []string
 }
 

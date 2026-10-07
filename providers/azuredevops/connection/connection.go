@@ -222,11 +222,10 @@ func (c *AzuredevopsConnection) ConnectionData(ctx context.Context) (*Connection
 // Listing lists every project and repository once and keeps the result, so the
 // discovery and the resources of one process share a single walk.
 //
-// It fails when the organization has projects and the credential can read the
-// repositories of none of them. Enumerate reports each such project and carries
-// on, so without this check a credential that reads nothing would look like an
-// organization that holds nothing. An organization with no projects at all is
-// empty, not an error.
+// It fails when the credential can read the repositories of no project.
+// Enumerate reports each unreadable project and carries on, so without this
+// check a credential that reads nothing would look like an organization that
+// holds nothing.
 //
 // The result is cached with a sync.Once, a failure included: an error is kept for
 // the life of the connection, so a retry needs a new connection.
@@ -246,12 +245,24 @@ func (c *AzuredevopsConnection) Listing(ctx context.Context) (*Listing, error) {
 	return c.listing, c.listErr
 }
 
-// requireAReadableProject turns a listing in which every project is unreadable
-// into an error. The answer of the first such project is quoted because it says
+// requireAReadableProject turns a listing with no readable project into an
+// error. The answer of the first unreadable project is quoted because it says
 // what Azure DevOps objected to. It holds a status and a path, never a secret.
+//
+// No projects at all is an error too: Azure DevOps lists only the projects the
+// credential may see, so a service principal that is a member of the
+// organization but of none of its projects gets an empty list, exactly like an
+// organization without projects. The two cannot be told apart, and the first is
+// the common setup mistake.
 func (c *AzuredevopsConnection) requireAReadableProject(l *Listing) error {
 	total := len(l.Projects)
-	if total == 0 || len(l.Unreadable()) != total {
+	if total == 0 {
+		return fmt.Errorf("azure devops: the credential sees no projects in organization %q. "+
+			"Azure DevOps lists only the projects a credential may read: add the service principal to the "+
+			"projects to scan (for example to their Readers group), or give the personal access token "+
+			"the Project and Team (Read) scope", c.org)
+	}
+	if len(l.Unreadable()) != total {
 		return nil
 	}
 

@@ -52,7 +52,7 @@ Notes:
 
   Authenticate with a personal access token, passed with --token or set in the AZURE_DEVOPS_TOKEN environment variable, or with a Microsoft Entra service principal. For the service principal, pass --tenant-id and --client-id and give the client secret with --client-secret or the AZURE_CLIENT_SECRET environment variable. Add the service principal to the organization (Organization settings, Users) before scanning.
 
-  A project the credential cannot read is skipped and reported. It does not fail the scan, unless the organization has projects and the credential can read none of them: then discovery fails.
+  A project whose repositories the credential cannot list is skipped and reported. Discovery fails when the credential sees no project or can read none: add the service principal to the projects to scan, not only to the organization. Azure DevOps hides the projects a credential has no access to, so they are not reported.
 
   Repository filters match "<PROJECT>/<REPO>". The star does not cross the slash.
 `,
