@@ -136,11 +136,7 @@ func kubeletCertificates(runtime *plugin.Runtime, p string) ([]any, error) {
 }
 
 func (m *mqlKubelet) webhookAuthenticationEnabled() (bool, error) {
-	v, err := m.configValue("authentication", "webhook", "enabled")
-	if err != nil {
-		return false, err
-	}
-	return kubeletBool(v), nil
+	return m.configBool(&m.WebhookAuthenticationEnabled, "authentication", "webhook", "enabled")
 }
 
 func (m *mqlKubelet) staticPodPath() (string, error) {
@@ -197,11 +193,7 @@ func (m *mqlKubelet) allowedUnsafeSysctls() ([]any, error) {
 }
 
 func (m *mqlKubelet) seccompDefault() (bool, error) {
-	v, err := m.configValue("seccompDefault")
-	if err != nil {
-		return false, err
-	}
-	return kubeletBool(v), nil
+	return m.configBool(&m.SeccompDefault, "seccompDefault")
 }
 
 func (m *mqlKubelet) podPidsLimit() (int64, error) {
@@ -213,35 +205,19 @@ func (m *mqlKubelet) podPidsLimit() (int64, error) {
 }
 
 func (m *mqlKubelet) enableDebuggingHandlers() (bool, error) {
-	v, err := m.configValue("enableDebuggingHandlers")
-	if err != nil {
-		return false, err
-	}
-	return kubeletBool(v), nil
+	return m.configBool(&m.EnableDebuggingHandlers, "enableDebuggingHandlers")
 }
 
 func (m *mqlKubelet) enableSystemLogHandler() (bool, error) {
-	v, err := m.configValue("enableSystemLogHandler")
-	if err != nil {
-		return false, err
-	}
-	return kubeletBool(v), nil
+	return m.configBool(&m.EnableSystemLogHandler, "enableSystemLogHandler")
 }
 
 func (m *mqlKubelet) enableSystemLogQuery() (bool, error) {
-	v, err := m.configValue("enableSystemLogQuery")
-	if err != nil {
-		return false, err
-	}
-	return kubeletBool(v), nil
+	return m.configBool(&m.EnableSystemLogQuery, "enableSystemLogQuery")
 }
 
 func (m *mqlKubelet) enableProfilingHandler() (bool, error) {
-	v, err := m.configValue("enableProfilingHandler")
-	if err != nil {
-		return false, err
-	}
-	return kubeletBool(v), nil
+	return m.configBool(&m.EnableProfilingHandler, "enableProfilingHandler")
 }
 
 func (m *mqlKubelet) imagePullCredentialsVerificationPolicy() (string, error) {
@@ -300,4 +276,21 @@ func pemCertificateBlocks(content string) string {
 		}
 	}
 	return out.String()
+}
+
+// configBool reads a boolean of the kubelet's configuration, which has the
+// kubelet's defaults applied, so a field the configuration file leaves unset
+// reads its default (enableDebuggingHandlers: true). A key the configuration
+// does not hold at all reads null rather than false, so that a missing value
+// is never taken for an explicit false.
+func (m *mqlKubelet) configBool(field *plugin.TValue[bool], keys ...string) (bool, error) {
+	v, err := m.configValue(keys...)
+	if err != nil {
+		return false, err
+	}
+	if v == nil {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return kubeletBool(v), nil
 }

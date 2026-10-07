@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestKubeletServingCertPath(t *testing.T) {
@@ -68,4 +69,21 @@ func TestPemCertificateBlocks(t *testing.T) {
 	assert.NotContains(t, out, "PRIVATE KEY")
 	assert.Empty(t, pemCertificateBlocks(key))
 	assert.Empty(t, pemCertificateBlocks(""))
+}
+
+// The boolean fields read the configuration with the kubelet's defaults
+// applied: a kubelet whose config file sets none of them reports the
+// defaults, not false.
+func TestKubeletBooleanFieldsReadDefaults(t *testing.T) {
+	config, err := createConfiguration(map[string]any{"config": "/var/lib/kubelet/config.yaml"},
+		"apiVersion: kubelet.config.k8s.io/v1beta1\nkind: KubeletConfiguration\n", nil, 37)
+	require.NoError(t, err)
+
+	auth := config["authentication"].(map[string]any)
+	assert.Equal(t, true, auth["webhook"].(map[string]any)["enabled"], "webhookAuthenticationEnabled")
+	assert.Equal(t, true, config["enableDebuggingHandlers"])
+	assert.Equal(t, true, config["enableSystemLogHandler"])
+	assert.Equal(t, true, config["enableProfilingHandler"])
+	assert.Equal(t, false, config["enableSystemLogQuery"])
+	assert.Equal(t, false, config["seccompDefault"])
 }
