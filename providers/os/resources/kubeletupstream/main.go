@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -144,18 +145,22 @@ func run(baselinePath, defaultsPath, reportPath string, update bool, oldest int)
 	return 0, nil
 }
 
-func (u *upstream) get(url string, auth bool) ([]byte, error) {
+// get fetches a URL, retrying server errors and rate limits. GitHub answers a
+// rate limit with 429, or with 403 and Retry-After.
+func (u *upstream) get(url string) ([]byte, error) {
 	var lastErr error
+	wait := time.Duration(0)
 	for attempt := 0; attempt < 4; attempt++ {
 		if attempt > 0 {
-			time.Sleep(time.Duration(attempt*10) * time.Second)
+			time.Sleep(wait)
 		}
+		wait = time.Duration(attempt+1) * 10 * time.Second
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
 			return nil, err
 		}
 		req.Header.Set("User-Agent", "mql-kubeletupstream")
-		if auth && u.token != "" {
+		if u.token != "" {
 			req.Header.Set("Authorization", "Bearer "+u.token)
 		}
 		resp, err := u.client.Do(req)
@@ -165,6 +170,7 @@ func (u *upstream) get(url string, auth bool) ([]byte, error) {
 		}
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		retryAfter := resp.Header.Get("Retry-After")
 		switch {
 		case err != nil:
 			lastErr = err
@@ -172,8 +178,11 @@ func (u *upstream) get(url string, auth bool) ([]byte, error) {
 			return body, nil
 		case resp.StatusCode == http.StatusNotFound:
 			return nil, errNotFound
-		case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
+		case resp.StatusCode == http.StatusTooManyRequests,
+			resp.StatusCode == http.StatusForbidden && retryAfter != "",
+			resp.StatusCode >= 500:
 			lastErr = fmt.Errorf("%s: %s", url, resp.Status)
+			wait = retryDelay(retryAfter, wait)
 		default:
 			return nil, fmt.Errorf("%s: %s", url, resp.Status)
 		}
@@ -181,9 +190,26 @@ func (u *upstream) get(url string, auth bool) ([]byte, error) {
 	return nil, lastErr
 }
 
+// maxRetryDelay caps how long a Retry-After header can make a run wait.
+const maxRetryDelay = 2 * time.Minute
+
+// retryDelay returns the delay a Retry-After header in seconds asks for, at
+// least fallback and at most maxRetryDelay.
+func retryDelay(retryAfter string, fallback time.Duration) time.Duration {
+	secs, err := strconv.Atoi(strings.TrimSpace(retryAfter))
+	if err != nil || secs < 0 {
+		return fallback
+	}
+	d := time.Duration(secs) * time.Second
+	if d < fallback {
+		d = fallback
+	}
+	return min(d, maxRetryDelay)
+}
+
 // releaseRefs returns the release-1.N branches and their commits.
 func (u *upstream) releaseRefs() (map[string]string, error) {
-	raw, err := u.get(refsURL, true)
+	raw, err := u.get(refsURL)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +236,7 @@ func (u *upstream) file(sha, path string) (string, bool, error) {
 	if content, ok := u.files[key]; ok {
 		return content, content != "", nil
 	}
-	raw, err := u.get(fmt.Sprintf(rawURL, sha, path), false)
+	raw, err := u.get(fmt.Sprintf(rawURL, sha, path))
 	if errors.Is(err, errNotFound) {
 		u.files[key] = ""
 		return "", false, nil
