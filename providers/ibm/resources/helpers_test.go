@@ -137,3 +137,11 @@ func TestStringArg(t *testing.T) {
 	assert.Equal(t, "", stringArg(map[string]*llx.RawData{"crn": llx.IntData(1)}, "crn"))
 	assert.Equal(t, "crn:x", stringArg(map[string]*llx.RawData{"crn": llx.StringData("crn:x")}, "crn"))
 }
+
+func TestAdvances(t *testing.T) {
+	a, b := "a", "b"
+	assert.True(t, advances(nil, &a), "the first page's cursor advances")
+	assert.True(t, advances(&a, &b))
+	assert.False(t, advances(&a, &a), "an unchanged cursor would loop forever")
+	assert.False(t, advances(&a, nil), "no cursor is the last page")
+}

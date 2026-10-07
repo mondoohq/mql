@@ -375,6 +375,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.resourceInstance.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmResourceInstance).GetId()).ToDataRes(types.String)
 	},
+	"ibm.resourceInstance.crn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmResourceInstance).GetCrn()).ToDataRes(types.String)
+	},
 	"ibm.resourceInstance.guid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmResourceInstance).GetGuid()).ToDataRes(types.String)
 	},
@@ -1558,6 +1561,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.resourceInstance.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmResourceInstance).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.resourceInstance.crn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmResourceInstance).Crn, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"ibm.resourceInstance.guid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3597,6 +3604,7 @@ type mqlIbmResourceInstance struct {
 	__id       string
 	mqlIbmResourceInstanceInternal
 	Id             plugin.TValue[string]
+	Crn            plugin.TValue[string]
 	Guid           plugin.TValue[string]
 	Name           plugin.TValue[string]
 	Service        plugin.TValue[string]
@@ -3648,6 +3656,10 @@ func (c *mqlIbmResourceInstance) MqlID() string {
 
 func (c *mqlIbmResourceInstance) GetId() *plugin.TValue[string] {
 	return &c.Id
+}
+
+func (c *mqlIbmResourceInstance) GetCrn() *plugin.TValue[string] {
+	return &c.Crn
 }
 
 func (c *mqlIbmResourceInstance) GetGuid() *plugin.TValue[string] {

@@ -98,6 +98,7 @@ func (r *mqlIbm) resourceInstances() ([]any, error) {
 		m, err := CreateResource(r.MqlRuntime, "ibm.resourceInstance", map[string]*llx.RawData{
 			"__id":           llx.StringData("ibm.resourceInstance/" + derefStr(ri.CRN)),
 			"id":             strData(ri.CRN),
+			"crn":            strData(ri.CRN),
 			"guid":           strData(ri.GUID),
 			"name":           strData(ri.Name),
 			"service":        llx.StringData(crnService(derefStr(ri.CRN))),

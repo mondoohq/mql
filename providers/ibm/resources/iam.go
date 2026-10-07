@@ -230,7 +230,7 @@ func (r *mqlIbm) iamServiceIds() ([]any, error) {
 		}
 		all = append(all, res.Serviceids...)
 		next := pageToken(res.Next, "pagetoken")
-		if next == nil || (opts.Pagetoken != nil && *next == *opts.Pagetoken) {
+		if !advances(opts.Pagetoken, next) {
 			break
 		}
 		opts.Pagetoken = next
@@ -298,7 +298,7 @@ func (r *mqlIbm) iamApiKeys() ([]any, error) {
 		}
 		all = append(all, res.Apikeys...)
 		next := pageToken(res.Next, "pagetoken")
-		if next == nil || (opts.Pagetoken != nil && *next == *opts.Pagetoken) {
+		if !advances(opts.Pagetoken, next) {
 			break
 		}
 		opts.Pagetoken = next
@@ -374,7 +374,7 @@ func (r *mqlIbm) iamTrustedProfiles() ([]any, error) {
 		}
 		all = append(all, res.Profiles...)
 		next := pageToken(res.Next, "pagetoken")
-		if next == nil || (opts.Pagetoken != nil && *next == *opts.Pagetoken) {
+		if !advances(opts.Pagetoken, next) {
 			break
 		}
 		opts.Pagetoken = next

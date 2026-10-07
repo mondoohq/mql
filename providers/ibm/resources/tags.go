@@ -150,9 +150,9 @@ func (r *mqlIbmResourceGroup) tags() ([]any, error) { return userTags(r.MqlRunti
 func (r *mqlIbmResourceGroup) accessTags() ([]any, error) {
 	return accessTags(r.MqlRuntime, r.Crn.Data)
 }
-func (r *mqlIbmResourceInstance) tags() ([]any, error) { return userTags(r.MqlRuntime, r.Id.Data) }
+func (r *mqlIbmResourceInstance) tags() ([]any, error) { return userTags(r.MqlRuntime, r.Crn.Data) }
 func (r *mqlIbmResourceInstance) accessTags() ([]any, error) {
-	return accessTags(r.MqlRuntime, r.Id.Data)
+	return accessTags(r.MqlRuntime, r.Crn.Data)
 }
 func (r *mqlIbmVpc) tags() ([]any, error)             { return userTags(r.MqlRuntime, r.Crn.Data) }
 func (r *mqlIbmVpc) accessTags() ([]any, error)       { return accessTags(r.MqlRuntime, r.Crn.Data) }

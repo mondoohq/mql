@@ -176,6 +176,7 @@ ibm.resourceInstance 14.0.0
 ibm.resourceInstance.accessTags 14.0.0
 ibm.resourceInstance.createdAt 14.0.0
 ibm.resourceInstance.createdBy 14.0.0
+ibm.resourceInstance.crn 14.0.0
 ibm.resourceInstance.guid 14.0.0
 ibm.resourceInstance.id 14.0.0
 ibm.resourceInstance.locked 14.0.0

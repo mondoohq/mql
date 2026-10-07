@@ -118,6 +118,10 @@ func TestInstanceArgsWithoutMetadataService(t *testing.T) {
 	assert.Nil(t, args["metadataServiceEnabled"].Value)
 	assert.Nil(t, args["enableSecureBoot"].Value)
 	assert.Nil(t, args["createdAt"].Value)
+	// An absent profile, image, or metadata service is null, not "".
+	assert.Nil(t, args["profile"].Value)
+	assert.Nil(t, args["image"].Value)
+	assert.Nil(t, args["metadataServiceProtocol"].Value)
 }
 
 func TestInstanceInterfaceIDs(t *testing.T) {

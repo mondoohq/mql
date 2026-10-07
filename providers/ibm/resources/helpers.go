@@ -361,6 +361,16 @@ func pageToken(next *string, param string) *string {
 	return tok
 }
 
+// advances reports whether a next-page cursor moves past the current one. An
+// absent cursor ends the walk, and so does one the API hands back unchanged,
+// which would otherwise loop forever.
+func advances(current, next *string) bool {
+	if next == nil {
+		return false
+	}
+	return current == nil || *current != *next
+}
+
 func resourceGroupID(ref *vpcv1.ResourceGroupReference) string {
 	if ref == nil {
 		return ""

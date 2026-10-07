@@ -130,8 +130,10 @@ private ibm.resourceGroup @defaults("name") {
 // Storage instance, a Key Protect instance, or a Power Virtual Server
 // workspace, with the service it belongs to, its location, and its state.
 private ibm.resourceInstance @defaults("name service region state") {
-  // Resource instance CRN
+  // Resource instance ID, which IBM Cloud sets to its CRN
   id string
+  // Resource instance CRN
+  crn string
   // Resource instance GUID
   guid string
   // Resource instance name
