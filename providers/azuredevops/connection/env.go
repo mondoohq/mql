@@ -42,11 +42,19 @@ func (c CheckConfiguration) RequesterCannotBeApprover() bool {
 	return v
 }
 
-// MinRequiredApprovers is the number of approvals an approval check needs. Zero
-// means every approver must approve; a check of another type reports zero too.
+// MinRequiredApprovers is the number of approvals an approval check needs.
+// Azure DevOps stores zero for "every approver must approve"; that is reported
+// as the number of approvers, so a policy can compare it with a minimum. A check
+// of another type has no approvers and reports zero.
 func (c CheckConfiguration) MinRequiredApprovers() int64 {
 	v, _ := c.Settings["minRequiredApprovers"].(float64)
-	return int64(v)
+	if v > 0 {
+		return int64(v)
+	}
+	// Azure DevOps stores 0 for "all approvers must approve", the default.
+	// Each listed approver, user or group, gives one approval.
+	approvers, _ := c.Settings["approvers"].([]any)
+	return int64(len(approvers))
 }
 
 // Environments lists the pipeline environments of a project. The read happens

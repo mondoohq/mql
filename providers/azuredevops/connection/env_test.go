@@ -66,3 +66,14 @@ func TestCheckSettingsOfAnotherType(t *testing.T) {
 	assert.Zero(t, c.MinRequiredApprovers())
 	assert.False(t, CheckConfiguration{}.RequesterCannotBeApprover(), "no settings at all")
 }
+
+// Azure DevOps stores minRequiredApprovers 0 for "every approver must approve",
+// the default. Reporting 0 would fail a policy that asks for one approval.
+func TestMinRequiredApproversZeroMeansEveryApprover(t *testing.T) {
+	two := []any{map[string]any{"id": "a"}, map[string]any{"id": "b"}}
+	all := CheckConfiguration{Settings: map[string]any{"minRequiredApprovers": float64(0), "approvers": two}}
+	assert.Equal(t, int64(2), all.MinRequiredApprovers())
+
+	some := CheckConfiguration{Settings: map[string]any{"minRequiredApprovers": float64(1), "approvers": two}}
+	assert.Equal(t, int64(1), some.MinRequiredApprovers())
+}

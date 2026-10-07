@@ -338,7 +338,8 @@ private azuredevops.environment @defaults("name") {
 // counterpart of an environment protection rule. The `type` names the check,
 // for example Approval or Task Check. For an approval, `preventSelfReview`
 // tells whether the person who ran the pipeline is kept from approving it, and
-// `minRequiredApprovers` how many approvers must sign off.
+// `minRequiredApprovers` how many approvers must sign off. When the check asks
+// for every approver, that is the number of approvers.
 private azuredevops.environmentProtectionRule @defaults("type") {
   // Check configuration ID
   id int
