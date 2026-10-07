@@ -630,7 +630,13 @@ func (m *mqlKubelet) kubeletBinaryProbe(proc *mqlProcess) kubeletBinaryProbe {
 // runQuiet runs a command on the target and returns its output when it
 // succeeds.
 func (m *mqlKubelet) runQuiet(command string) (string, bool) {
-	o, err := CreateResource(m.MqlRuntime, "command", map[string]*llx.RawData{
+	return runCommandQuiet(m.MqlRuntime, command)
+}
+
+// runCommandQuiet runs a command on the target and returns its output when it
+// succeeds.
+func runCommandQuiet(runtime *plugin.Runtime, command string) (string, bool) {
+	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(command),
 	})
 	if err != nil {
@@ -696,28 +702,52 @@ func getKubeletProcess(runtime *plugin.Runtime) (*mqlProcess, error) {
 	if data.Error != nil {
 		return nil, data.Error
 	}
-	for _, process := range data.Data {
-		mqlProcess := process.(*mqlProcess)
-		exec := mqlProcess.Executable
-		if exec.Error != nil {
-			continue
-		}
-		if strings.HasSuffix(exec.Data, "kubelet") {
-			return mqlProcess, nil
-		}
-	}
-	// K3s and MicroK8s run the kubelet inside their own process.
-	for _, process := range data.Data {
-		mqlProcess := process.(*mqlProcess)
-		exec := mqlProcess.Executable
-		if exec.Error != nil {
-			continue
-		}
-		if processKubeletHost(mqlProcess) != kubeletStandalone {
-			return mqlProcess, nil
+	// A kubelet process of its own first; K3s and MicroK8s run the kubelet
+	// inside their own process.
+	for _, embedded := range []bool{false, true} {
+		for _, process := range data.Data {
+			mqlProcess := process.(*mqlProcess)
+			exec := mqlProcess.Executable
+			if exec.Error != nil {
+				continue
+			}
+			match := strings.HasSuffix(exec.Data, "kubelet")
+			if embedded {
+				match = processKubeletHost(mqlProcess) != kubeletStandalone
+			}
+			if match && kubeletProcessAllowed(runtime, mqlProcess) {
+				return mqlProcess, nil
+			}
 		}
 	}
 	return nil, errors.New("no kubelet process found")
+}
+
+// kubeletProcessAllowed reports whether the files a process's command line
+// names (--config, --kubelet-args-file, K3s's --data-dir) may be read for it.
+// Processes are matched by name, and any user can start one named kubelet,
+// kubelite or "k3s server" with paths of their choosing, which a root or sudo
+// scan would then read with root's rights. See kubeletProcessAllowedBySnapshot.
+func kubeletProcessAllowed(runtime *plugin.Runtime, proc *mqlProcess) bool {
+	pid := proc.GetPid()
+	if pid.Error != nil {
+		return false
+	}
+	out, ok := runCommandQuiet(runtime, kubeletProcSnapshotCommand(pid.Data))
+	return kubeletProcessAllowedBySnapshot(out, ok)
+}
+
+// kubeletProcessAllowedBySnapshot decides kubeletProcessAllowed from the
+// output of kubeletProcSnapshotCommand. A snapshot the scan can read (a root
+// or sudo scan) admits only a process root runs in init's mount namespace. A
+// snapshot it cannot read (a non-root scan, which cannot read another user's
+// /proc/<pid>/exe) admits the process: every read then runs as that same
+// user, with no more rights than the scan already has.
+func kubeletProcessAllowedBySnapshot(out string, readable bool) bool {
+	if !readable {
+		return true
+	}
+	return parseKubeletProcSnapshot(out) != ""
 }
 
 // kubeletFlags returns the kubelet's flags. A kubelet process of its own has

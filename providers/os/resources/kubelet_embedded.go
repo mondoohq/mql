@@ -201,10 +201,14 @@ func (m *mqlKubelet) microk8sVersion(proc *mqlProcess) (string, error) {
 		return "", command.Error
 	}
 	fields := strings.Fields(command.Data)
-	if len(fields) == 0 || !strings.HasPrefix(fields[0], "/snap/microk8s/") {
+	if len(fields) == 0 {
 		return "", nil
 	}
-	snapYAML := path.Join(path.Dir(fields[0]), "meta", "snap.yaml")
+	kubelite := path.Clean(fields[0])
+	if !strings.HasPrefix(kubelite, "/snap/microk8s/") {
+		return "", nil
+	}
+	snapYAML := path.Join(path.Dir(kubelite), "meta", "snap.yaml")
 	return microk8sSnapVersion(readKubeletFile(m.MqlRuntime, snapYAML)), nil
 }
 
