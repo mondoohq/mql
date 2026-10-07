@@ -4,6 +4,7 @@
 package oauthlogin
 
 import (
+	"cmp"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
@@ -38,6 +39,8 @@ type fakeAS struct {
 	tokenIssuer       string // overrides iss in the token response
 	devicePollReplies []string
 	manualRedirectURI string // advertised as mondoo_manual_redirect_uri when set
+	verificationURI   string // overrides verification_uri in the device authorization response
+	apiEndpoint       string // overrides api_endpoint in the token response
 
 	mu             sync.Mutex
 	pubKey         *ecdsa.PublicKey
@@ -140,7 +143,7 @@ func (f *fakeAS) deviceAuthorization(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"device_code":      f.deviceCode,
 		"user_code":        "WDJB-MJHT",
-		"verification_uri": "https://console.example.com/activate",
+		"verification_uri": cmp.Or(f.verificationURI, "https://console.example.com/activate"),
 		"expires_in":       600,
 		"interval":         1,
 	})
@@ -267,7 +270,7 @@ func (f *fakeAS) writeTokenResponse(w http.ResponseWriter) {
 		"space_mrn":    "//captain.api.mondoo.app/spaces/test-space",
 		"scope_mrn":    "//captain.api.mondoo.app/spaces/test-space",
 		"certificate":  issueCert(f.t, f.pubKey, validUntil),
-		"api_endpoint": f.issuer(),
+		"api_endpoint": cmp.Or(f.apiEndpoint, f.issuer()),
 		"valid_until":  validUntil.UTC().Format(time.RFC3339),
 	}
 	raw, _ := json.Marshal(sa)

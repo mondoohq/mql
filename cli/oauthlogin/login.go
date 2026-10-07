@@ -241,7 +241,7 @@ func Login(ctx context.Context, o Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseToken(tok, md.Issuer, key)
+	return parseToken(tok, md.Issuer, key, o.Insecure)
 }
 
 // sanitizeParam strips control characters and caps the length.
@@ -283,15 +283,17 @@ func tokenError(err error) error {
 	case "expired_token":
 		return errors.New("the login request expired before it was approved, please try again")
 	case "":
-		return err
+		// The message includes the response body.
+		return errors.New(DisplayText(err.Error()))
 	}
-	if re.ErrorDescription != "" {
-		return fmt.Errorf("login failed: %s: %s", re.ErrorCode, re.ErrorDescription)
+	code := DisplayText(re.ErrorCode)
+	if desc := DisplayText(re.ErrorDescription); desc != "" {
+		return fmt.Errorf("login failed: %s: %s", code, desc)
 	}
-	return fmt.Errorf("login failed: %s", re.ErrorCode)
+	return fmt.Errorf("login failed: %s", code)
 }
 
-func parseToken(tok *oauth2.Token, issuer string, key *ecdsa.PrivateKey) (*Result, error) {
+func parseToken(tok *oauth2.Token, issuer string, key *ecdsa.PrivateKey, insecure bool) (*Result, error) {
 	iss, _ := tok.Extra("iss").(string)
 	if iss == "" {
 		return nil, errors.New("token response is missing the issuer")
@@ -310,6 +312,13 @@ func parseToken(tok *oauth2.Token, issuer string, key *ecdsa.PrivateKey) (*Resul
 	}
 	if sa.ScopeMrn == "" {
 		sa.ScopeMrn = sa.SpaceMrn
+	}
+	// The CLI sends the credential to api_endpoint from now on, so it gets
+	// the same transport rules as the server endpoint.
+	if sa.ApiEndpoint != "" {
+		if err := CheckServerURL(sa.ApiEndpoint, insecure); err != nil {
+			return nil, fmt.Errorf("token response has an unusable api_endpoint: %w", err)
+		}
 	}
 	_ = decodeExtra(tok, "mondoo_user", &res.User)
 	_ = decodeExtra(tok, "mondoo_space", &res.Space)
