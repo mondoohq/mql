@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"path"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -36,15 +37,14 @@ func initKubelet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 	}
 	args["process"] = llx.ResourceData(p, "process")
 
-	kubeletFlagsData := p.GetFlags()
-	if kubeletFlagsData.Error != nil {
-		return nil, nil, kubeletFlagsData.Error
+	flags, err := kubeletFlags(runtime, p)
+	if err != nil {
+		return nil, nil, err
 	}
-	kubeletFlags := kubeletFlagsData.Data
 
 	// Check kubelet for "--config" flag and set path to config file accordingly
 	configFilePath := defaultKubeletConfig
-	if kubeletConfigFilePath, ok := kubeletFlags["config"]; ok {
+	if kubeletConfigFilePath, ok := flags["config"]; ok {
 		path, ok := kubeletConfigFilePath.(string)
 		if !ok {
 			return nil, nil, errors.New("wrong type for value of '--config' flag, it must be a string")
@@ -72,9 +72,9 @@ func (m *mqlKubelet) configuration() (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	kubeletFlags := map[string]any{}
-	if m.Process.Data.GetFlags() != nil {
-		kubeletFlags = m.Process.Data.GetFlags().Data
+	flags, err := kubeletFlags(m.MqlRuntime, m.Process.Data)
+	if err != nil {
+		return nil, err
 	}
 	// The defaults depend on the kubelet's version. Without one (the version
 	// cannot be read), the oldest supported release's defaults apply.
@@ -83,7 +83,7 @@ func (m *mqlKubelet) configuration() (map[string]any, error) {
 		minor = kubeletMinorVersion(version.Data)
 	}
 	// I cannot re-use "mqlFile" here, as it is not read at this point in time
-	configuration, err := createConfiguration(kubeletFlags, configFileData, minor)
+	configuration, err := createConfiguration(flags, configFileData, m.kubeletDropIns(flags), minor)
 	if err != nil {
 		return nil, err
 	}
@@ -145,14 +145,34 @@ func kubeletConfigContent(content *plugin.TValue[string]) (string, error) {
 // its defaults (4h and 1m). Decoding the file over the defaults reported
 // those zeros instead. A map the file sets, such as evictionHard, likewise
 // replaces the default map rather than being merged into it.
-func createConfiguration(kubeletFlags map[string]any, configFileContent string, minor int) (map[string]any, error) {
+func createConfiguration(kubeletFlags map[string]any, configFileContent string, dropIns []string, minor int) (map[string]any, error) {
 	kubeletConfig := kubeletconfigv1beta1.KubeletConfiguration{}
+
+	// A kubelet started without --config begins from its legacy flag defaults,
+	// not the config file's: anonymous requests allowed, no token webhook,
+	// AlwaysAllow authorization and the read-only port open (upstream
+	// applyLegacyDefaults). Drop-ins and flags then override them. MicroK8s
+	// sets the others by flag but not --authorization-mode, so its kubelet
+	// authorizes every authenticated request.
+	if _, ok := kubeletFlags["config"]; !ok && configFileContent == "" {
+		applyLegacyKubeletDefaults(&kubeletConfig)
+	}
 
 	// AKS has no kubelet config file
 	if configFileContent != "" {
 		err := yaml.Unmarshal([]byte(configFileContent), &kubeletConfig)
 		if err != nil {
 			return nil, fmt.Errorf("error when converting file content into KubeletConfiguration: %v", err)
+		}
+	}
+	// --config-dir drop-ins override the config file, each the ones before it
+	// (K3s writes most of the kubelet's configuration to one)
+	for _, dropIn := range dropIns {
+		if dropIn == "" {
+			continue
+		}
+		if err := yaml.Unmarshal([]byte(dropIn), &kubeletConfig); err != nil {
+			return nil, fmt.Errorf("error when converting kubelet drop-in config into KubeletConfiguration: %v", err)
 		}
 	}
 	SetDefaults_KubeletConfiguration(&kubeletConfig, minor)
@@ -420,10 +440,16 @@ func (m *mqlKubelet) tlsCipherSuites() ([]any, error) {
 // parseKubeletVersion extracts the version from "kubelet --version" output,
 // which has the form "Kubernetes v1.34.0".
 func parseKubeletVersion(out string) string {
+	// k3s prints "k3s version v1.36.5+k3s1 (3dd98cc5)" and a go version line
+	if v := kubeletVersionPattern.FindString(out); v != "" {
+		return v
+	}
 	out = strings.TrimSpace(out)
 	out = strings.TrimPrefix(out, "Kubernetes ")
 	return strings.TrimSpace(out)
 }
+
+var kubeletVersionPattern = regexp.MustCompile(`\bv\d+\.\d+\.\d+\S*`)
 
 func (m *mqlKubelet) version() (string, error) {
 	proc := m.GetProcess()
@@ -439,6 +465,9 @@ func (m *mqlKubelet) version() (string, error) {
 	}
 	if exe.Data == "" {
 		return "", nil
+	}
+	if processKubeletHost(proc.Data) == kubeletInKubelite {
+		return m.microk8sVersion(proc.Data)
 	}
 	exePath := resolveKubeletExecutable(exe.Data, m.kubeletBinaryProbe(proc.Data))
 
@@ -677,5 +706,69 @@ func getKubeletProcess(runtime *plugin.Runtime) (*mqlProcess, error) {
 			return mqlProcess, nil
 		}
 	}
+	// K3s and MicroK8s run the kubelet inside their own process.
+	for _, process := range data.Data {
+		mqlProcess := process.(*mqlProcess)
+		exec := mqlProcess.Executable
+		if exec.Error != nil {
+			continue
+		}
+		if processKubeletHost(mqlProcess) != kubeletStandalone {
+			return mqlProcess, nil
+		}
+	}
 	return nil, errors.New("no kubelet process found")
+}
+
+// kubeletFlags returns the kubelet's flags. A kubelet process of its own has
+// them on its command line. K3s and MicroK8s pass them from elsewhere: K3s
+// from --kubelet-arg (see k3sKubeletFlags), MicroK8s from the file kubelite's
+// --kubelet-args-file names.
+func kubeletFlags(runtime *plugin.Runtime, proc *mqlProcess) (map[string]any, error) {
+	exe := proc.GetExecutable()
+	if exe.Error != nil {
+		return nil, exe.Error
+	}
+	switch processKubeletHost(proc) {
+	case kubeletInK3s:
+		command := proc.GetCommand()
+		if command.Error != nil {
+			return nil, command.Error
+		}
+		return k3sKubeletFlags(command.Data, readKubeletFile(runtime, k3sConfigFile)), nil
+	case kubeletInKubelite:
+		flags := proc.GetFlags()
+		if flags.Error != nil {
+			return nil, flags.Error
+		}
+		argsFile, _ := flags.Data["kubelet-args-file"].(string)
+		if argsFile == "" {
+			return map[string]any{}, nil
+		}
+		return microk8sKubeletFlags(readKubeletFile(runtime, argsFile), argsFile), nil
+	default:
+		flags := proc.GetFlags()
+		if flags.Error != nil {
+			return nil, flags.Error
+		}
+		return flags.Data, nil
+	}
+}
+
+// kubeletDropIns returns the content of the --config-dir drop-ins, in the
+// order the kubelet applies them.
+func (m *mqlKubelet) kubeletDropIns(flags map[string]any) []string {
+	dir, _ := flags["config-dir"].(string)
+	if !path.IsAbs(dir) {
+		return nil
+	}
+	out, ok := m.runQuiet("ls -1A -- " + shellQuote(dir))
+	if !ok {
+		return nil
+	}
+	contents := []string{}
+	for _, name := range kubeletDropInFiles(strings.Split(strings.TrimSpace(out), "\n")) {
+		contents = append(contents, readKubeletFile(m.MqlRuntime, path.Join(dir, name)))
+	}
+	return contents
 }

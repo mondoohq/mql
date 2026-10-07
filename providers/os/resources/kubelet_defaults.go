@@ -110,6 +110,16 @@ func featureGateEnabled(obj *kubeletconfigv1beta1.KubeletConfiguration, name str
 	return minor >= defaultOnSince
 }
 
+// applyLegacyKubeletDefaults sets what the kubelet's flag defaults differ in
+// from the config file's, which apply when it runs without --config.
+// https://github.com/kubernetes/kubernetes/blob/release-1.37/cmd/kubelet/app/options/options.go
+func applyLegacyKubeletDefaults(obj *kubeletconfigv1beta1.KubeletConfiguration) {
+	obj.Authentication.Anonymous.Enabled = ptr.To(true)
+	obj.Authentication.Webhook.Enabled = ptr.To(false)
+	obj.Authorization.Mode = kubeletconfigv1beta1.KubeletAuthorizationModeAlwaysAllow
+	obj.ReadOnlyPort = KubeletReadOnlyPort
+}
+
 // SetDefaults_KubeletConfiguration fills the fields the kubelet leaves at
 // their zero value with the defaults of a kubelet of the given minor version
 // (36 for 1.36). An unknown version (0) gets the release-1.34 defaults.

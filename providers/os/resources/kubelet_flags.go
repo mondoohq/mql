@@ -378,7 +378,7 @@ func mergeDeprecatedFlagsIntoConfig(kubeletConfig map[string]any, flags map[stri
 		kubeletConfig["podPidsLimit"] = flags["pod-max-pids"]
 	}
 	if _, ok := flags["resolv-conf"]; ok {
-		kubeletConfig["resolverConfig"] = flags["resolv-conf"]
+		kubeletConfig["resolvConf"] = flags["resolv-conf"]
 	}
 	if _, ok := flags["runonce"]; ok {
 		kubeletConfig["runOnce"] = flags["runonce"]

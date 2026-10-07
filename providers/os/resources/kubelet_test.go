@@ -35,17 +35,24 @@ func TestCreateConfigurationMatchesConfigz(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		node    string
+		host    kubeletHost
 		minor   int
 		derived map[string]string
 	}{
-		{"flatcar", 37, selfSignedServingCert},  // Flatcar 4757.2.1 with kubeadm 1.37.1
-		{"minikube", 37, selfSignedServingCert}, // minikube 1.39 node, Kubernetes 1.37.0
-		{"k0s", 36, nil},                        // k0s 1.36.4
-		{"nixos", 36, nil},                      // NixOS 26.05 services.kubernetes, 1.36.3
+		{"flatcar", kubeletStandalone, 37, selfSignedServingCert},  // Flatcar 4757.2.1 with kubeadm 1.37.1
+		{"minikube", kubeletStandalone, 37, selfSignedServingCert}, // minikube 1.39 node, Kubernetes 1.37.0
+		{"k0s", kubeletStandalone, 36, nil},                        // k0s 1.36.4
+		{"nixos", kubeletStandalone, 36, nil},                      // NixOS 26.05 services.kubernetes, 1.36.3
 		// Canonical Kubernetes 1.32.13, configured by flags alone. Its own
 		// kubelet build picks the systemd-resolved file; upstream defaults to
 		// /etc/resolv.conf and no flag sets it.
-		{"canonical", 32, map[string]string{"resolvConf": "chosen by Canonical's kubelet build"}},
+		{"canonical", kubeletStandalone, 32, map[string]string{"resolvConf": "chosen by Canonical's kubelet build"}},
+		// K3s 1.36.5: the kubelet runs in k3s-server, configured by the
+		// drop-in K3s writes (dropins/) and arguments K3s passes internally
+		{"k3s", kubeletInK3s, 36, nil},
+		// MicroK8s 1.35.6: the kubelet runs in kubelite, configured by
+		// args/kubelet
+		{"microk8s", kubeletInKubelite, 35, selfSignedServingCert},
 	} {
 		t.Run(tc.node, func(t *testing.T) {
 			dir := filepath.Join("testdata", "kubelet", tc.node)
@@ -60,14 +67,39 @@ func TestCreateConfigurationMatchesConfigz(t *testing.T) {
 			configzRaw, err := os.ReadFile(filepath.Join(dir, "configz.json"))
 			require.NoError(t, err)
 
-			flagSet := processes.FlagSet{}
-			require.NoError(t, flagSet.ParseCommand(strings.Join(strings.Fields(string(argv)), " ")))
-			flags := map[string]any{}
-			for k, v := range flagSet.Map() {
-				flags[k] = v
+			command := strings.Join(strings.Fields(string(argv)), " ")
+			var flags map[string]any
+			switch tc.host {
+			case kubeletInK3s:
+				flags = k3sKubeletFlags(command, "")
+				assert.Equal(t, "/var/lib/rancher/k3s/agent/etc/kubelet.conf.d", flags["config-dir"])
+			case kubeletInKubelite:
+				args, err := os.ReadFile(filepath.Join(dir, "args-kubelet"))
+				require.NoError(t, err)
+				flags = microk8sKubeletFlags(string(args), "/var/snap/microk8s/9072/args/kubelet")
+			default:
+				flagSet := processes.FlagSet{}
+				require.NoError(t, flagSet.ParseCommand(command))
+				flags = map[string]any{}
+				for k, v := range flagSet.Map() {
+					flags[k] = v
+				}
 			}
 
-			config, err := createConfiguration(flags, string(configFile), tc.minor)
+			var dropIns []string
+			if entries, err := os.ReadDir(filepath.Join(dir, "dropins")); err == nil {
+				names := []string{}
+				for _, e := range entries {
+					names = append(names, e.Name())
+				}
+				for _, name := range kubeletDropInFiles(names) {
+					b, err := os.ReadFile(filepath.Join(dir, "dropins", name))
+					require.NoError(t, err)
+					dropIns = append(dropIns, string(b))
+				}
+			}
+
+			config, err := createConfiguration(flags, string(configFile), dropIns, tc.minor)
 			require.NoError(t, err)
 
 			var configz map[string]any
@@ -334,7 +366,8 @@ func TestKubeletValueCoercion(t *testing.T) {
 // the values from the release-1.34 defaults (the oldest supported Kubernetes
 // release) so an accidental regression in kubelet_defaults.go is caught.
 func TestCreateConfiguration_Defaults_1_34(t *testing.T) {
-	config, err := createConfiguration(map[string]any{}, "", 0)
+	// a kubelet started with --config whose file sets nothing
+	config, err := createConfiguration(map[string]any{"config": "/var/lib/kubelet/config.yaml"}, "", nil, 0)
 	require.NoError(t, err)
 
 	// values bumped in newer releases (were 5 / 10 in 1.25)
@@ -424,13 +457,13 @@ func ptrBool(b bool) *bool { return &b }
 // kubeadm writes explicit zero durations into config.yaml, which the kubelet
 // replaces with its defaults.
 func TestCreateConfiguration_ZeroValuesTakeDefaults(t *testing.T) {
-	config, err := createConfiguration(map[string]any{}, "apiVersion: kubelet.config.k8s.io/v1beta1\nkind: KubeletConfiguration\nstreamingConnectionIdleTimeout: 0s\nsyncFrequency: 0s\n", 37)
+	config, err := createConfiguration(map[string]any{}, "apiVersion: kubelet.config.k8s.io/v1beta1\nkind: KubeletConfiguration\nstreamingConnectionIdleTimeout: 0s\nsyncFrequency: 0s\n", nil, 37)
 	require.NoError(t, err)
 	assert.Equal(t, "4h0m0s", config["streamingConnectionIdleTimeout"])
 	assert.Equal(t, "1m0s", config["syncFrequency"])
 
 	// an evictionHard the file sets replaces the default map
-	config, err = createConfiguration(map[string]any{}, "evictionHard:\n  nodefs.available: \"0%\"\n", 37)
+	config, err = createConfiguration(map[string]any{}, "evictionHard:\n  nodefs.available: \"0%\"\n", nil, 37)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{"nodefs.available": "0%"}, config["evictionHard"])
 }
@@ -497,4 +530,34 @@ func TestKubeletConfigContent(t *testing.T) {
 		_, err := kubeletConfigContent(&plugin.TValue[string]{Error: errors.New("read: input/output error"), State: plugin.StateIsSet | plugin.StateIsNull})
 		assert.Error(t, err)
 	})
+}
+
+// Without --config the kubelet starts from its legacy flag defaults, which
+// drop-ins and flags then override.
+func TestCreateConfiguration_LegacyFlagDefaults(t *testing.T) {
+	config, err := createConfiguration(map[string]any{}, "", nil, 37)
+	require.NoError(t, err)
+	auth := config["authentication"].(map[string]any)
+	assert.Equal(t, true, auth["anonymous"].(map[string]any)["enabled"])
+	assert.Equal(t, false, auth["webhook"].(map[string]any)["enabled"])
+	assert.Equal(t, "AlwaysAllow", config["authorization"].(map[string]any)["mode"])
+	assert.Equal(t, 10255.0, config["readOnlyPort"])
+
+	// MicroK8s's flags set three of the four, but not --authorization-mode
+	config, err = createConfiguration(map[string]any{
+		"anonymous-auth":               "false",
+		"authentication-token-webhook": "true",
+		"read-only-port":               "0",
+	}, "", nil, 35)
+	require.NoError(t, err)
+	assert.Equal(t, false, config["authentication"].(map[string]any)["anonymous"].(map[string]any)["enabled"])
+	assert.Equal(t, "AlwaysAllow", config["authorization"].(map[string]any)["mode"])
+	assert.Equal(t, 0.0, config["readOnlyPort"])
+
+	// a drop-in overrides the legacy defaults (K3s)
+	config, err = createConfiguration(map[string]any{"config-dir": "/var/lib/rancher/k3s/agent/etc/kubelet.conf.d"}, "",
+		[]string{"authorization:\n  mode: Webhook\nreadOnlyPort: 0\n"}, 36)
+	require.NoError(t, err)
+	assert.Equal(t, "Webhook", config["authorization"].(map[string]any)["mode"])
+	assert.Equal(t, 0.0, config["readOnlyPort"])
 }
