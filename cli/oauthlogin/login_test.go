@@ -294,16 +294,58 @@ func TestLoopbackFlow_BrowserOpenFailsUsesDeviceFlow(t *testing.T) {
 	assert.Error(t, err, "the loopback listener must be closed")
 }
 
-func TestLoopbackFlow_StateMismatch(t *testing.T) {
+// A callback with another state, or a request to another path, gets an error
+// response but does not end the login: it keeps waiting for the callback that
+// belongs to it.
+func TestLoopbackFlow_StateMismatchKeepsWaiting(t *testing.T) {
 	f := newFakeAS(t)
 	opts := testOptions(f, ModeBrowser)
+	var otherState, otherPath int
 	opts.OpenBrowser = func(u string) error {
-		return f.authorize(u, func(q url.Values) { q.Set("state", "forged") })
+		parsed, err := url.Parse(u)
+		if err != nil {
+			return err
+		}
+		redirectURI := parsed.Query().Get("redirect_uri")
+		state := parsed.Query().Get("state")
+
+		resp, err := http.Get(redirectURI + "?" + url.Values{"code": {"other-code"}, "state": {"other"}, "iss": {f.issuer()}}.Encode())
+		if err != nil {
+			return err
+		}
+		resp.Body.Close()
+		otherState = resp.StatusCode
+
+		base := strings.TrimSuffix(redirectURI, callbackPath)
+		resp, err = http.Get(base + "/other?" + url.Values{"code": {"other-code"}, "state": {state}, "iss": {f.issuer()}}.Encode())
+		if err != nil {
+			return err
+		}
+		resp.Body.Close()
+		otherPath = resp.StatusCode
+
+		return f.authorize(u, nil)
+	}
+	res, err := Login(context.Background(), opts)
+	require.NoError(t, err)
+	assertResult(t, f, res)
+	assert.Equal(t, http.StatusBadRequest, otherState)
+	assert.Equal(t, http.StatusNotFound, otherPath)
+	assert.Equal(t, 1, f.tokenCalls, "only the matching callback's code is redeemed")
+}
+
+// A callback with another state alone does not complete the login, which
+// ends when it times out.
+func TestLoopbackFlow_StateMismatchTimesOut(t *testing.T) {
+	f := newFakeAS(t)
+	opts := testOptions(f, ModeBrowser)
+	opts.LoopbackTimeout = 500 * time.Millisecond
+	opts.OpenBrowser = func(u string) error {
+		return f.authorize(u, func(q url.Values) { q.Set("state", "other") })
 	}
 	_, err := Login(context.Background(), opts)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "state")
-	assert.Equal(t, 0, f.tokenCalls, "a forged response must not be redeemed")
+	require.ErrorIs(t, err, errLoopbackTimeout)
+	assert.Equal(t, 0, f.tokenCalls)
 }
 
 func TestLoopbackFlow_IssuerMismatch(t *testing.T) {
