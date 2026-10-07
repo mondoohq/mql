@@ -1912,17 +1912,25 @@ func azureOperationFromPath(urlPath, httpMethod string) (string, string) {
 func azureCalls(root string) []azureCall {
 	var calls []azureCall
 	for _, filePath := range listGoFiles(root) {
-		fileName := filepath.Base(filePath)
 		fset := token.NewFileSet()
 		f, err := parser.ParseFile(fset, filePath, nil, 0)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to parse %s: %v\n", filePath, err)
 			continue
 		}
-		imports := extractAzureImports(f) // alias -> import path
-		if len(imports) == 0 {
-			continue
-		}
+		calls = append(calls, azureCallsInFile(f, filepath.Base(filePath))...)
+	}
+	return calls
+}
+
+// azureCallsInFile finds the read calls in one parsed provider file.
+func azureCallsInFile(f *ast.File, fileName string) []azureCall {
+	imports := extractAzureImports(f) // alias -> import path
+	if len(imports) == 0 {
+		return nil
+	}
+	var calls []azureCall
+	{
 		ast.Inspect(f, func(n ast.Node) bool {
 			fn, ok := n.(*ast.FuncDecl)
 			if !ok || fn.Body == nil {
@@ -2074,6 +2082,7 @@ func isAzureReadMethod(name string) bool {
 type azureSDKIndex struct {
 	versions map[string]string // module path -> version
 	cache    string            // GOMODCACHE
+	read     func(string) ([]byte, error)
 }
 
 // loadAzureSDKIndex reads <providerRoot>/go.mod and finds the module cache
@@ -2095,7 +2104,7 @@ func loadAzureSDKIndex(providerRoot string) (*azureSDKIndex, error) {
 		}
 		cache = strings.TrimSpace(string(out))
 	}
-	return &azureSDKIndex{versions: versions, cache: cache}, nil
+	return &azureSDKIndex{versions: versions, cache: cache, read: os.ReadFile}, nil
 }
 
 // parseAzureSDKVersions returns the Azure SDK modules a go.mod pins, module
@@ -2150,7 +2159,7 @@ func (x *azureSDKIndex) request(call azureCall) (urlPath, httpMethod string, err
 	if call.client != "Client" {
 		file = filepath.Join(dir, strings.ToLower(strings.TrimSuffix(call.client, "Client"))+"_client.go")
 	}
-	src, err := os.ReadFile(file)
+	src, err := x.read(file)
 	if err != nil {
 		return "", "", fmt.Errorf("%w (is the module cache populated? `go mod download` in the provider)", err)
 	}
