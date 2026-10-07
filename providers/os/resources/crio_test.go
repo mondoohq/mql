@@ -133,6 +133,27 @@ func TestParseCrioInspect(t *testing.T) {
 	assert.Equal(t, "kube-system", inspect.Labels["io.kubernetes.pod.namespace"])
 }
 
+func TestCrioEndpoint(t *testing.T) {
+	assert.True(t, crioEndpoint.MatchString("/config"))
+	assert.True(t, crioEndpoint.MatchString("/containers/f152ede83035f01992ea87ef4e60d980f033f34489afb47bc58435c64977c348"))
+	assert.False(t, crioEndpoint.MatchString("/config; id"))
+	assert.False(t, crioEndpoint.MatchString("/config$(id)"))
+	assert.False(t, crioEndpoint.MatchString("/../config"))
+	assert.False(t, crioEndpoint.MatchString("config"))
+	assert.False(t, crioEndpoint.MatchString(""))
+}
+
+// One entry with unreadable metadata is skipped, not the whole list.
+func TestParseCrioStorageContainersSkipsBadMetadata(t *testing.T) {
+	content := `[{"id":"a","names":["k8s_POD_x"],"metadata":"{not json"},` +
+		`{"id":"b","names":["k8s_c"],"metadata":"{\"pod-id\":\"p\",\"metadata-name\":\"c\",\"pod-name\":\"k8s_web_default_uid_0\"}"}]`
+	containers, err := parseCrioStorageContainers(content)
+	require.NoError(t, err)
+	require.Len(t, containers, 1)
+	assert.Equal(t, "c", containers[0].Name)
+	assert.Equal(t, "web", containers[0].PodName)
+}
+
 func TestCrioContainerID(t *testing.T) {
 	assert.True(t, crioContainerID.MatchString("f152ede83035f01992ea87ef4e60d980f033f34489afb47bc58435c64977c348"))
 	assert.False(t, crioContainerID.MatchString("f152ede83035; rm -rf /"))

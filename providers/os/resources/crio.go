@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
@@ -35,9 +36,17 @@ const (
 
 var crioContainerID = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
+// crioEndpoint is the shape of a CRI-O API path: slash-separated words of
+// letters, digits, dashes and underscores. Nothing else may reach the shell.
+var crioEndpoint = regexp.MustCompile(`^(/[A-Za-z0-9_-]+)+$`)
+
 // crioAPI asks the running CRI-O over its socket's HTTP API. It needs root,
-// and returns false when CRI-O is not running or cannot be reached.
+// and returns false when CRI-O is not running or cannot be reached, or when
+// the endpoint is not a plain API path.
 func crioAPI(runtime *plugin.Runtime, endpoint string) (string, bool) {
+	if !crioEndpoint.MatchString(endpoint) {
+		return "", false
+	}
 	return runCommandQuiet(runtime, "curl -s --fail --unix-socket "+crioSocket+" http://localhost"+endpoint)
 }
 
@@ -314,6 +323,7 @@ func parseCrioStorageContainers(content string) ([]crioContainer, error) {
 		var md crioStorageMetadata
 		if e.Metadata != "" {
 			if err := json.Unmarshal([]byte(e.Metadata), &md); err != nil {
+				log.Warn().Err(err).Str("container", e.ID).Msg("crio> skipping a container whose storage metadata cannot be read")
 				continue
 			}
 		}
