@@ -14,6 +14,14 @@ azuredevops.organization.name 14.0.0
 azuredevops.organization.projects 14.0.0
 azuredevops.organization.repositories 14.0.0
 azuredevops.organization.unreadableProjects 14.0.0
+azuredevops.policy 14.0.0
+azuredevops.policy.blocking 14.0.0
+azuredevops.policy.enabled 14.0.0
+azuredevops.policy.id 14.0.0
+azuredevops.policy.scope 14.0.0
+azuredevops.policy.settings 14.0.0
+azuredevops.policy.type 14.0.0
+azuredevops.policy.typeName 14.0.0
 azuredevops.project 14.0.0
 azuredevops.project.description 14.0.0
 azuredevops.project.id 14.0.0
@@ -33,6 +41,7 @@ azuredevops.repository.isDisabled 14.0.0
 azuredevops.repository.isEmpty 14.0.0
 azuredevops.repository.isFork 14.0.0
 azuredevops.repository.name 14.0.0
+azuredevops.repository.policies 14.0.0
 azuredevops.repository.project 14.0.0
 azuredevops.repository.projectId 14.0.0
 azuredevops.repository.projectName 14.0.0

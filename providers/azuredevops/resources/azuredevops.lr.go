@@ -21,6 +21,7 @@ const (
 	ResourceAzuredevopsProject      string = "azuredevops.project"
 	ResourceAzuredevopsRepository   string = "azuredevops.repository"
 	ResourceAzuredevopsBranch       string = "azuredevops.branch"
+	ResourceAzuredevopsPolicy       string = "azuredevops.policy"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -46,6 +47,10 @@ func init() {
 		"azuredevops.branch": {
 			// to override args, implement: initAzuredevopsBranch(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzuredevopsBranch,
+		},
+		"azuredevops.policy": {
+			// to override args, implement: initAzuredevopsPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzuredevopsPolicy,
 		},
 	}
 }
@@ -208,6 +213,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azuredevops.repository.branches": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsRepository).GetBranches()).ToDataRes(types.Array(types.Resource("azuredevops.branch")))
 	},
+	"azuredevops.repository.policies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetPolicies()).ToDataRes(types.Array(types.Resource("azuredevops.policy")))
+	},
 	"azuredevops.branch.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsBranch).GetName()).ToDataRes(types.String)
 	},
@@ -219,6 +227,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azuredevops.branch.isDefault": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsBranch).GetIsDefault()).ToDataRes(types.Bool)
+	},
+	"azuredevops.policy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsPolicy).GetId()).ToDataRes(types.Int)
+	},
+	"azuredevops.policy.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsPolicy).GetType()).ToDataRes(types.String)
+	},
+	"azuredevops.policy.typeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsPolicy).GetTypeName()).ToDataRes(types.String)
+	},
+	"azuredevops.policy.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsPolicy).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"azuredevops.policy.blocking": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsPolicy).GetBlocking()).ToDataRes(types.Bool)
+	},
+	"azuredevops.policy.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsPolicy).GetScope()).ToDataRes(types.Array(types.Dict))
+	},
+	"azuredevops.policy.settings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsPolicy).GetSettings()).ToDataRes(types.Dict)
 	},
 }
 
@@ -368,6 +397,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzuredevopsRepository).Branches, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azuredevops.repository.policies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).Policies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azuredevops.branch.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzuredevopsBranch).__id, ok = v.Value.(string)
 		return
@@ -386,6 +419,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azuredevops.branch.isDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzuredevopsBranch).IsDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.policy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"azuredevops.policy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsPolicy).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azuredevops.policy.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsPolicy).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.policy.typeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsPolicy).TypeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.policy.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsPolicy).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.policy.blocking": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsPolicy).Blocking, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azuredevops.policy.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsPolicy).Scope, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.policy.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsPolicy).Settings, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
 }
@@ -673,6 +738,7 @@ type mqlAzuredevopsRepository struct {
 	CloneUrl      plugin.TValue[string]
 	Project       plugin.TValue[*mqlAzuredevopsProject]
 	Branches      plugin.TValue[[]any]
+	Policies      plugin.TValue[[]any]
 }
 
 // createAzuredevopsRepository creates a new instance of this resource
@@ -800,6 +866,22 @@ func (c *mqlAzuredevopsRepository) GetBranches() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlAzuredevopsRepository) GetPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Policies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.repository", c.__id, "policies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.policies()
+	})
+}
+
 // mqlAzuredevopsBranch for the azuredevops.branch resource
 type mqlAzuredevopsBranch struct {
 	MqlRuntime *plugin.Runtime
@@ -857,4 +939,78 @@ func (c *mqlAzuredevopsBranch) GetHeadCommitSha() *plugin.TValue[string] {
 
 func (c *mqlAzuredevopsBranch) GetIsDefault() *plugin.TValue[bool] {
 	return &c.IsDefault
+}
+
+// mqlAzuredevopsPolicy for the azuredevops.policy resource
+type mqlAzuredevopsPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzuredevopsPolicyInternal it will be used here
+	Id       plugin.TValue[int64]
+	Type     plugin.TValue[string]
+	TypeName plugin.TValue[string]
+	Enabled  plugin.TValue[bool]
+	Blocking plugin.TValue[bool]
+	Scope    plugin.TValue[[]any]
+	Settings plugin.TValue[any]
+}
+
+// createAzuredevopsPolicy creates a new instance of this resource
+func createAzuredevopsPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzuredevopsPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azuredevops.policy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzuredevopsPolicy) MqlName() string {
+	return "azuredevops.policy"
+}
+
+func (c *mqlAzuredevopsPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzuredevopsPolicy) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlAzuredevopsPolicy) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlAzuredevopsPolicy) GetTypeName() *plugin.TValue[string] {
+	return &c.TypeName
+}
+
+func (c *mqlAzuredevopsPolicy) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlAzuredevopsPolicy) GetBlocking() *plugin.TValue[bool] {
+	return &c.Blocking
+}
+
+func (c *mqlAzuredevopsPolicy) GetScope() *plugin.TValue[[]any] {
+	return &c.Scope
+}
+
+func (c *mqlAzuredevopsPolicy) GetSettings() *plugin.TValue[any] {
+	return &c.Settings
 }

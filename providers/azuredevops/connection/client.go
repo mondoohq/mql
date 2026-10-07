@@ -240,6 +240,9 @@ type Client struct {
 	sleep      func(ctx context.Context, d time.Duration) error
 	costMu     sync.Mutex
 	costSum    float64
+
+	// policies caches the branch policies of each project.
+	policies memo[[]PolicyConfiguration]
 }
 
 // NewClient builds a client for one organization.

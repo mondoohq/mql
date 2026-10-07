@@ -81,6 +81,12 @@ var repoItems = map[string]string{
 	RepoDocsID:    "items_docs.json",
 }
 
+// projectPolicies maps a project to its branch policy fixture. Every other
+// readable project answers an empty list.
+var projectPolicies = map[string]string{
+	"scan-test": "policies_scan-test.json",
+}
+
 // repoRefs maps a repository id to its ref list fixture. Every other readable
 // repository answers an empty list.
 var repoRefs = map[string]string{
@@ -329,6 +335,8 @@ func (s *Server) handleMain(w http.ResponseWriter, r *http.Request, segs []strin
 		s.items(w, segs[0], segs[4])
 	case len(segs) == 6 && segs[1] == "_apis" && segs[2] == "git" && segs[3] == "repositories" && segs[5] == "refs":
 		s.refs(w, r, segs[0], segs[4])
+	case len(segs) == 4 && segs[1] == "_apis" && segs[2] == "policy" && segs[3] == "configurations":
+		s.policies(w, segs[0])
 	default:
 		serveFixture(w, http.StatusNotFound, "error_forbidden.json")
 	}
@@ -450,6 +458,19 @@ func (s *Server) refs(w http.ResponseWriter, r *http.Request, project, repoID st
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"count": len(kept), "value": kept})
+}
+
+func (s *Server) policies(w http.ResponseWriter, project string) {
+	if _, ok := projectRepos[project]; !ok {
+		serveFixture(w, http.StatusForbidden, "error_forbidden.json")
+		return
+	}
+	file, ok := projectPolicies[project]
+	if !ok {
+		writeJSON(w, http.StatusOK, map[string]any{"count": 0, "value": []any{}})
+		return
+	}
+	serveFixture(w, http.StatusOK, file)
 }
 
 func serveFixture(w http.ResponseWriter, status int, name string) {

@@ -106,6 +106,12 @@ azuredevops.repository @defaults("fullName") @root {
   project() azuredevops.project
   // Branches of the repository. Reports a forbidden error when the credential cannot read the refs of the repository
   branches() []azuredevops.branch
+  // Branch policies of the project that apply to the repository
+  //
+  // Every policy whose scope names the repository or every repository of the
+  // project, deleted ones left out. Reports a forbidden error when the
+  // credential cannot read the policies of the project.
+  policies() []azuredevops.policy
 }
 
 // Azure DevOps branch
@@ -122,4 +128,31 @@ private azuredevops.branch @defaults("name") {
   headCommitSha string
   // Whether the branch is the default branch of the repository
   isDefault bool
+}
+
+// Azure DevOps branch policy
+//
+// Branch policy of an Azure DevOps project, such as a minimum number of
+// reviewers, comment resolution, or a build or status that must pass before a
+// pull request completes. A policy protects a branch only when it is `enabled`
+// and `blocking`. The `scope` lists the repositories and branches the policy
+// covers, and `settings` holds the settings of its `type`.
+private azuredevops.policy @defaults("typeName enabled blocking") {
+  // Policy configuration ID, unique within the project
+  id int
+  // Policy type ID, a GUID that is the same in every organization
+  type string
+  // Display name of the policy type, for example Minimum number of reviewers
+  typeName string
+  // Whether the policy is turned on
+  enabled bool
+  // Whether a failing policy stops the pull request from completing, rather than only warning
+  blocking bool
+  // Repositories and branches the policy applies to
+  //
+  // Each entry has `repositoryId` (empty for every repository of the project),
+  // `refName`, and `matchKind`: Exact, Prefix, or DefaultBranch.
+  scope []dict
+  // Settings of the policy type, without the scope, for example minimumApproverCount for the minimum reviewers policy
+  settings dict
 }
