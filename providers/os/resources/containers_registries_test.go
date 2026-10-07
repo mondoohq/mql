@@ -127,3 +127,12 @@ func TestIsRegistriesConfDFileName(t *testing.T) {
 		{"00-vendor.conf", "000-shortnames.conf", "crio.conf"},
 	}, isRegistriesConfDFileName), "an /etc drop-in hides the vendor file of the same name")
 }
+
+// The drop-in the CRI-O package installs on Ubuntu sets only the search list
+func TestRegistriesConfCrio(t *testing.T) {
+	conf := readRegistriesFixture(t, "crio.conf")
+	require.NotNil(t, conf.UnqualifiedSearchRegistries)
+	assert.Equal(t, []string{"docker.io"}, *conf.UnqualifiedSearchRegistries)
+	assert.Equal(t, "", conf.ShortNameMode)
+	assert.Empty(t, conf.Registries)
+}
