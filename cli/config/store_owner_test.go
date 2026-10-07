@@ -71,7 +71,48 @@ func TestStoreConfig_CredentialsNewFileAndJSON(t *testing.T) {
 	}
 }
 
-func TestStoreConfig_CredentialsRefuseSymlink(t *testing.T) {
+// A config path that is a symbolic link stays a link; the file it points to
+// is replaced with the new, owner-only content.
+func TestStoreConfig_CredentialsThroughSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("creating symlinks needs extra privileges on Windows")
+	}
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	linkDir, targetDir := t.TempDir(), t.TempDir()
+	target := filepath.Join(targetDir, "elsewhere.yml")
+	require.NoError(t, os.WriteFile(target, []byte("api_endpoint: https://us.api.mondoo.com\n"), 0o644))
+	path := filepath.Join(linkDir, "mondoo.yml")
+	require.NoError(t, os.Symlink(target, path))
+	viper.SetConfigFile(path)
+	require.NoError(t, viper.ReadInConfig())
+	viper.Set("private_key", "secret-key")
+
+	require.NoError(t, subject.StoreConfig())
+
+	fi, err := os.Lstat(path)
+	require.NoError(t, err)
+	assert.NotZero(t, fi.Mode()&os.ModeSymlink, "the config path is still a link")
+	dest, err := os.Readlink(path)
+	require.NoError(t, err)
+	assert.Equal(t, target, dest)
+
+	data, err := os.ReadFile(target)
+	require.NoError(t, err)
+	var stored map[string]any
+	require.NoError(t, sigsyaml.Unmarshal(data, &stored))
+	assert.Equal(t, "secret-key", stored["private_key"])
+	assert.Equal(t, "https://us.api.mondoo.com", stored["api_endpoint"])
+	tfi, err := os.Stat(target)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), tfi.Mode().Perm())
+	assertNoTempFiles(t, linkDir)
+	assertNoTempFiles(t, targetDir)
+}
+
+// A link that points nowhere is not replaced by a regular file.
+func TestStoreConfig_CredentialsDanglingSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("creating symlinks needs extra privileges on Windows")
 	}
@@ -79,20 +120,17 @@ func TestStoreConfig_CredentialsRefuseSymlink(t *testing.T) {
 	t.Cleanup(viper.Reset)
 
 	dir := t.TempDir()
-	target := filepath.Join(dir, "elsewhere.yml")
-	require.NoError(t, os.WriteFile(target, []byte("api_endpoint: https://us.api.mondoo.com\n"), 0o644))
 	path := filepath.Join(dir, "mondoo.yml")
-	require.NoError(t, os.Symlink(target, path))
+	require.NoError(t, os.Symlink(filepath.Join(dir, "missing", "mondoo.yml"), path))
 	viper.SetConfigFile(path)
 	viper.Set("private_key", "secret-key")
 
 	err := subject.StoreConfig()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "symbolic link")
-
-	data, err := os.ReadFile(target)
+	assert.Contains(t, err.Error(), "not a regular file")
+	fi, err := os.Lstat(path)
 	require.NoError(t, err)
-	assert.NotContains(t, string(data), "secret-key", "nothing is written through the link")
+	assert.NotZero(t, fi.Mode()&os.ModeSymlink)
 	assertNoTempFiles(t, dir)
 }
 
