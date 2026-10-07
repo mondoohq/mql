@@ -8076,13 +8076,13 @@ crio {
   //
   // From `crio.image.signature_policy`, by default /etc/containers/policy.json.
   // Null when the policy file cannot be read.
-  signaturePolicy() crio.imagePolicy
+  signaturePolicy() containers.policy
   // Signature policies for the pods of single Kubernetes namespaces
   //
   // The `<namespace>.json` files in `crio.image.signature_policy_dir`. A pod in
   // a namespace with its own policy is verified against that policy instead of
   // `signaturePolicy`.
-  namespaceSignaturePolicies() []crio.imagePolicy
+  namespaceSignaturePolicies() []crio.namespaceSignaturePolicy
   // Runtime handlers CRI-O can run containers with
   runtimes() []crio.runtime
   // Listen address of the streaming server for exec, attach and port forwarding
@@ -8096,59 +8096,12 @@ crio {
   streamTlsEnabled() bool
 }
 
-// CRI-O image signature policy
-//
-// A containers-policy.json(5) file: the requirements images must meet to be
-// pulled, by default (`defaultRequirements`) and per registry or repository
-// (`scopes`). A requirement of type insecureAcceptAnything pulls images
-// without verifying any signature.
-crio.imagePolicy @defaults("path namespace") {
-  // Path of the policy file
-  path string
-  // Kubernetes namespace the policy applies to; empty for the node-wide policy
+// Signature policy CRI-O applies to the pods of one Kubernetes namespace
+crio.namespaceSignaturePolicy @defaults("namespace") {
+  // Kubernetes namespace
   namespace string
-  // Policy file
-  file() file
-  // Requirements for images no scope matches
-  defaultRequirements() []crio.imagePolicy.requirement
-  // Registries and repositories with requirements of their own
-  scopes() []crio.imagePolicy.scope
-}
-
-// Registry or repository of a CRI-O image signature policy with requirements of its own
-crio.imagePolicy.scope @defaults("transport scope") {
-  // Transport the scope belongs to (for example "docker")
-  transport string
-  // Registry, repository or image the requirements apply to; empty for the transport's default
-  scope string
-  // Requirements images in the scope must meet
-  requirements() []crio.imagePolicy.requirement
-}
-
-// Requirement of a CRI-O image signature policy
-crio.imagePolicy.requirement @defaults("type") {
-  // Requirement type
-  //
-  // One of insecureAcceptAnything, reject, signedBy (GPG), or sigstoreSigned.
-  type string
-  // Kind of key a signedBy requirement verifies with (for example "GPGKeys")
-  keyType string
-  // Files holding the public keys signatures are verified with
-  keyPaths []string
-  // Whether the public key is given inline in the policy file
-  inlineKey bool
-  // Certificate authority that issues Fulcio certificates for keyless sigstore signatures
-  fulcioCAPath string
-  // OIDC issuer a keyless sigstore signature's certificate must name
-  fulcioOIDCIssuer string
-  // Email a keyless sigstore signature's certificate must name
-  fulcioSubjectEmail string
-  // Files holding the Rekor public keys transparency log entries are verified with
-  rekorPublicKeyPaths []string
-  // How the signed image identity must match the pulled image
-  //
-  // Holds the type (for example "matchRepoDigestOrExact") and its settings.
-  signedIdentity dict
+  // Policy the namespace's pods are verified against
+  policy containers.policy
 }
 
 // CRI-O runtime handler
@@ -8282,6 +8235,62 @@ containers.registry.mirror @defaults("location insecure") {
   insecure bool
   // Which pulls use the mirror: "all", "digest-only" or "tag-only"
   pullFromMirror string
+}
+
+// Container image signature policy
+//
+// A containers-policy.json(5) file, by default /etc/containers/policy.json:
+// the requirements images must meet before Podman, Buildah, Skopeo or CRI-O
+// pull them, by default (`defaultRequirements`) and per registry or repository
+// (`scopes`). A requirement of type insecureAcceptAnything pulls images
+// without verifying any signature. The `path` field selects another policy
+// file, for example `containers.policy(path: "/etc/crio/policies/payments.json")`.
+containers.policy @defaults("path") {
+  init(path? string)
+  // Path of the policy file
+  path string
+  // Policy file
+  file() file
+  // Requirements for images no scope matches
+  defaultRequirements() []containers.policy.requirement
+  // Registries and repositories with requirements of their own
+  scopes() []containers.policy.scope
+}
+
+// Registry or repository of a container image signature policy with requirements of its own
+containers.policy.scope @defaults("transport scope") {
+  // Transport the scope belongs to (for example "docker")
+  transport string
+  // Registry, repository or image the requirements apply to; empty for the transport's default
+  scope string
+  // Requirements images in the scope must meet
+  requirements() []containers.policy.requirement
+}
+
+// Requirement of a container image signature policy
+containers.policy.requirement @defaults("type") {
+  // Requirement type
+  //
+  // One of insecureAcceptAnything, reject, signedBy (GPG), or sigstoreSigned.
+  type string
+  // Kind of key a signedBy requirement verifies with (for example "GPGKeys")
+  keyType string
+  // Files holding the public keys signatures are verified with
+  keyPaths []string
+  // Whether the public key is given inline in the policy file
+  inlineKey bool
+  // Certificate authority that issues Fulcio certificates for keyless sigstore signatures
+  fulcioCAPath string
+  // OIDC issuer a keyless sigstore signature's certificate must name
+  fulcioOIDCIssuer string
+  // Email a keyless sigstore signature's certificate must name
+  fulcioSubjectEmail string
+  // Files holding the Rekor public keys transparency log entries are verified with
+  rekorPublicKeyPaths []string
+  // How the signed image identity must match the pulled image
+  //
+  // Holds the type (for example "matchRepoDigestOrExact") and its settings.
+  signedIdentity dict
 }
 
 // Podman container engine
