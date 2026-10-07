@@ -92,3 +92,11 @@ type Item struct {
 func (i Item) IsBlob() bool {
 	return !i.IsFolder && strings.EqualFold(i.GitObjectType, "blob")
 }
+
+// Ref is one entry of GET /{project}/_apis/git/repositories/{id}/refs.
+type Ref struct {
+	// Name is the full ref, for example refs/heads/main.
+	Name string `json:"name"`
+	// ObjectID is the commit the ref points at.
+	ObjectID string `json:"objectId"`
+}

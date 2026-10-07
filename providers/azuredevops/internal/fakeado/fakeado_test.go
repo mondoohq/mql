@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -255,4 +256,39 @@ func TestConnectionDataIsServedOnlyByTheMainHost(t *testing.T) {
 
 	res, _ := get(t, srv, "/vssps"+base+"/_apis/connectionData", basic(PAT))
 	assert.Equal(t, http.StatusBadRequest, res.StatusCode, "an unversioned call to another host is refused")
+}
+
+func TestRefsKeepOnlyTheFilteredKind(t *testing.T) {
+	srv := New(t)
+	refs := base + "/scan-test/_apis/git/repositories/" + RepoIacID + "/refs"
+
+	type list struct {
+		Value []struct {
+			Name string `json:"name"`
+		} `json:"value"`
+	}
+	res, body := get(t, srv, refs+"?filter=heads/&api-version="+APIVersion, basic(PAT))
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	var heads list
+	require.NoError(t, json.Unmarshal([]byte(body), &heads))
+	require.Len(t, heads.Value, 2)
+	for _, r := range heads.Value {
+		assert.True(t, strings.HasPrefix(r.Name, "refs/heads/"), r.Name)
+	}
+
+	_, body = get(t, srv, refs+"?api-version="+APIVersion, basic(PAT))
+	var all list
+	require.NoError(t, json.Unmarshal([]byte(body), &all))
+	assert.Len(t, all.Value, 3, "without a filter the tag is listed too")
+}
+
+func TestDenyAnswersForbiddenOnlyForTheMatchingPath(t *testing.T) {
+	srv := New(t)
+	srv.Deny("/refs")
+	repo := base + "/scan-test/_apis/git/repositories/" + RepoIacID
+
+	res, _ := get(t, srv, repo+"/refs?api-version="+APIVersion, basic(PAT))
+	assert.Equal(t, http.StatusForbidden, res.StatusCode)
+	res, _ = get(t, srv, repo+"/items?api-version="+APIVersion, basic(PAT))
+	assert.Equal(t, http.StatusOK, res.StatusCode)
 }

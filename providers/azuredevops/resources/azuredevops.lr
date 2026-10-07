@@ -104,4 +104,22 @@ azuredevops.repository @defaults("fullName") @root {
   cloneUrl string
   // Project that holds the repository
   project() azuredevops.project
+  // Branches of the repository. Reports a forbidden error when the credential cannot read the refs of the repository
+  branches() []azuredevops.branch
+}
+
+// Azure DevOps branch
+//
+// Branch of an Azure DevOps Git repository. Provides the branch `name`, its
+// full `refName`, the commit it points at, and whether it `isDefault`, the
+// default branch of the repository.
+private azuredevops.branch @defaults("name") {
+  // Branch name without the refs/heads/ prefix, for example release/1.0
+  name string
+  // Full ref of the branch, for example refs/heads/release/1.0
+  refName string
+  // Commit the branch points at
+  headCommitSha string
+  // Whether the branch is the default branch of the repository
+  isDefault bool
 }

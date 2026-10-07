@@ -81,6 +81,13 @@ var repoItems = map[string]string{
 	RepoDocsID:    "items_docs.json",
 }
 
+// repoRefs maps a repository id to its ref list fixture. Every other readable
+// repository answers an empty list.
+var repoRefs = map[string]string{
+	RepoIacID: "refs_iac.json",
+	RepoAppID: "refs_app.json",
+}
+
 const signInPage = "<html><head><title>Sign In</title></head><body>Sign in to continue</body></html>"
 
 // Server is a running fake.
@@ -92,6 +99,7 @@ type Server struct {
 	throttles   []*throttle
 	deniedItems map[string]bool
 	hiddenRepos map[string]bool
+	denied      []string
 }
 
 type throttle struct {
@@ -135,6 +143,26 @@ func (s *Server) DenyItems(repoID string) {
 		s.deniedItems = map[string]bool{}
 	}
 	s.deniedItems[repoID] = true
+}
+
+// Deny answers HTTP 403 to every request whose decoded path ends in suffix, as
+// Azure DevOps does for a principal that lacks the permission one endpoint
+// needs. The query string is ignored.
+func (s *Server) Deny(suffix string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.denied = append(s.denied, suffix)
+}
+
+func (s *Server) pathDenied(path string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, suffix := range s.denied {
+		if strings.HasSuffix(path, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) itemsDenied(repoID string) bool {
@@ -205,6 +233,10 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.throttled(w, r) {
+		return
+	}
+	if s.pathDenied(r.URL.Path) {
+		serveFixture(w, http.StatusForbidden, "error_forbidden.json")
 		return
 	}
 
@@ -295,6 +327,8 @@ func (s *Server) handleMain(w http.ResponseWriter, r *http.Request, segs []strin
 		s.repository(w, segs[0], segs[4])
 	case len(segs) == 6 && segs[1] == "_apis" && segs[2] == "git" && segs[3] == "repositories" && segs[5] == "items":
 		s.items(w, segs[0], segs[4])
+	case len(segs) == 6 && segs[1] == "_apis" && segs[2] == "git" && segs[3] == "repositories" && segs[5] == "refs":
+		s.refs(w, r, segs[0], segs[4])
 	default:
 		serveFixture(w, http.StatusNotFound, "error_forbidden.json")
 	}
@@ -388,6 +422,34 @@ func (s *Server) items(w http.ResponseWriter, project, repoID string) {
 	}
 	w.Header().Set("x-ratelimit-cost", "3")
 	serveFixture(w, http.StatusOK, file)
+}
+
+// refs serves the branches and tags of a repository, narrowed by the filter
+// query the way the real service narrows them: filter=heads/ keeps the
+// refs/heads/ entries.
+func (s *Server) refs(w http.ResponseWriter, r *http.Request, project, repoID string) {
+	if _, ok := projectRepos[project]; !ok {
+		serveFixture(w, http.StatusForbidden, "error_forbidden.json")
+		return
+	}
+	type ref struct {
+		Name     string `json:"name"`
+		ObjectID string `json:"objectId"`
+	}
+	var list struct {
+		Value []ref `json:"value"`
+	}
+	if file, ok := repoRefs[repoID]; ok {
+		mustDecode(file, &list)
+	}
+	filter := r.URL.Query().Get("filter")
+	kept := []ref{}
+	for _, ref := range list.Value {
+		if strings.HasPrefix(ref.Name, "refs/"+filter) {
+			kept = append(kept, ref)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": len(kept), "value": kept})
 }
 
 func serveFixture(w http.ResponseWriter, status int, name string) {

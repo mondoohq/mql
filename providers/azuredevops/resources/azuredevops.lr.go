@@ -20,6 +20,7 @@ const (
 	ResourceAzuredevopsOrganization string = "azuredevops.organization"
 	ResourceAzuredevopsProject      string = "azuredevops.project"
 	ResourceAzuredevopsRepository   string = "azuredevops.repository"
+	ResourceAzuredevopsBranch       string = "azuredevops.branch"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -41,6 +42,10 @@ func init() {
 		"azuredevops.repository": {
 			Init:   initAzuredevopsRepository,
 			Create: createAzuredevopsRepository,
+		},
+		"azuredevops.branch": {
+			// to override args, implement: initAzuredevopsBranch(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzuredevopsBranch,
 		},
 	}
 }
@@ -200,6 +205,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azuredevops.repository.project": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzuredevopsRepository).GetProject()).ToDataRes(types.Resource("azuredevops.project"))
 	},
+	"azuredevops.repository.branches": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsRepository).GetBranches()).ToDataRes(types.Array(types.Resource("azuredevops.branch")))
+	},
+	"azuredevops.branch.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranch).GetName()).ToDataRes(types.String)
+	},
+	"azuredevops.branch.refName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranch).GetRefName()).ToDataRes(types.String)
+	},
+	"azuredevops.branch.headCommitSha": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranch).GetHeadCommitSha()).ToDataRes(types.String)
+	},
+	"azuredevops.branch.isDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzuredevopsBranch).GetIsDefault()).ToDataRes(types.Bool)
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -342,6 +362,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azuredevops.repository.project": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzuredevopsRepository).Project, ok = plugin.RawToTValue[*mqlAzuredevopsProject](v.Value, v.Error)
+		return
+	},
+	"azuredevops.repository.branches": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsRepository).Branches, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branch.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranch).__id, ok = v.Value.(string)
+		return
+	},
+	"azuredevops.branch.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranch).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branch.refName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranch).RefName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branch.headCommitSha": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranch).HeadCommitSha, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azuredevops.branch.isDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzuredevopsBranch).IsDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 }
@@ -628,6 +672,7 @@ type mqlAzuredevopsRepository struct {
 	SshUrl        plugin.TValue[string]
 	CloneUrl      plugin.TValue[string]
 	Project       plugin.TValue[*mqlAzuredevopsProject]
+	Branches      plugin.TValue[[]any]
 }
 
 // createAzuredevopsRepository creates a new instance of this resource
@@ -737,4 +782,79 @@ func (c *mqlAzuredevopsRepository) GetProject() *plugin.TValue[*mqlAzuredevopsPr
 
 		return c.project()
 	})
+}
+
+func (c *mqlAzuredevopsRepository) GetBranches() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Branches, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azuredevops.repository", c.__id, "branches")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.branches()
+	})
+}
+
+// mqlAzuredevopsBranch for the azuredevops.branch resource
+type mqlAzuredevopsBranch struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzuredevopsBranchInternal it will be used here
+	Name          plugin.TValue[string]
+	RefName       plugin.TValue[string]
+	HeadCommitSha plugin.TValue[string]
+	IsDefault     plugin.TValue[bool]
+}
+
+// createAzuredevopsBranch creates a new instance of this resource
+func createAzuredevopsBranch(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzuredevopsBranch{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azuredevops.branch", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzuredevopsBranch) MqlName() string {
+	return "azuredevops.branch"
+}
+
+func (c *mqlAzuredevopsBranch) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzuredevopsBranch) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzuredevopsBranch) GetRefName() *plugin.TValue[string] {
+	return &c.RefName
+}
+
+func (c *mqlAzuredevopsBranch) GetHeadCommitSha() *plugin.TValue[string] {
+	return &c.HeadCommitSha
+}
+
+func (c *mqlAzuredevopsBranch) GetIsDefault() *plugin.TValue[bool] {
+	return &c.IsDefault
 }
