@@ -32,12 +32,37 @@ func TestAzureOperationFromPath(t *testing.T) {
 	}
 }
 
+// azureTestIndex points the SDK lookup at the trimmed module cache under
+// testdata, pinned the way a provider's go.mod would pin the real modules.
 func azureTestIndex(t *testing.T) *azureSDKIndex {
 	t.Helper()
-	t.Setenv("GOMODCACHE", filepath.Join("testdata", "azure-modcache"))
-	idx, err := loadAzureSDKIndex(filepath.Join("testdata", "azure-provider"))
-	require.NoError(t, err)
-	return idx
+	return &azureSDKIndex{
+		cache: filepath.Join("testdata", "azure-modcache"),
+		versions: map[string]string{
+			"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2":         "v2.4.0",
+			"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources/v4": "v4.0.0",
+			"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity":      "v0.15.0",
+		},
+	}
+}
+
+func TestParseAzureSDKVersions(t *testing.T) {
+	gomod := []byte(`module example.com/azure
+
+go 1.26
+
+require (
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.20.0
+	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2 v2.4.0
+	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity v0.15.0 // indirect
+	github.com/stretchr/testify v1.11.1
+)
+`)
+	assert.Equal(t, map[string]string{
+		"github.com/Azure/azure-sdk-for-go/sdk/azcore":                               "v1.20.0",
+		"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2":    "v2.4.0",
+		"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity": "v0.15.0",
+	}, parseAzureSDKVersions(gomod))
 }
 
 func TestAzureSDKIndexRequest(t *testing.T) {
@@ -67,8 +92,7 @@ func TestAzureSDKIndexRequest(t *testing.T) {
 }
 
 func TestExtractAzurePermissions(t *testing.T) {
-	t.Setenv("GOMODCACHE", filepath.Join("testdata", "azure-modcache"))
-	details, err := extractAzurePermissions(filepath.Join("testdata", "azure-provider"))
+	details, err := extractAzurePermissionsWith(azureTestIndex(t), filepath.Join("testdata", "azure-provider"))
 	require.NoError(t, err)
 
 	got := map[string]PermissionDetail{}

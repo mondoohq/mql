@@ -1820,6 +1820,12 @@ func extractAzurePermissions(root string) ([]PermissionDetail, error) {
 	if err != nil {
 		return nil, err
 	}
+	return extractAzurePermissionsWith(sdk, root)
+}
+
+// extractAzurePermissionsWith derives the permissions for every read call under
+// root, resolving the calls' SDK sources through sdk.
+func extractAzurePermissionsWith(sdk *azureSDKIndex, root string) ([]PermissionDetail, error) {
 	var details []PermissionDetail
 	for _, call := range azureCalls(root) {
 		d, emit, err := azureDetail(sdk, call)
@@ -2077,24 +2083,32 @@ func loadAzureSDKIndex(providerRoot string) (*azureSDKIndex, error) {
 	if err != nil {
 		return nil, err
 	}
-	idx := &azureSDKIndex{versions: map[string]string{}, cache: os.Getenv("GOMODCACHE")}
-	if idx.cache == "" {
+	versions := parseAzureSDKVersions(data)
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("%s/go.mod pins no Azure SDK modules", providerRoot)
+	}
+	cache := os.Getenv("GOMODCACHE")
+	if cache == "" {
 		out, err := exec.Command("go", "env", "GOMODCACHE").Output()
 		if err != nil {
 			return nil, fmt.Errorf("GOMODCACHE is not set and `go env GOMODCACHE` failed: %w", err)
 		}
-		idx.cache = strings.TrimSpace(string(out))
+		cache = strings.TrimSpace(string(out))
 	}
+	return &azureSDKIndex{versions: versions, cache: cache}, nil
+}
+
+// parseAzureSDKVersions returns the Azure SDK modules a go.mod pins, module
+// path to version.
+func parseAzureSDKVersions(gomod []byte) map[string]string {
+	versions := map[string]string{}
 	re := regexp.MustCompile(`^\s*(github\.com/Azure/azure-sdk-for-go/\S+)\s+(v\S+)`)
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range strings.Split(string(gomod), "\n") {
 		if m := re.FindStringSubmatch(line); m != nil {
-			idx.versions[m[1]] = m[2]
+			versions[m[1]] = m[2]
 		}
 	}
-	if len(idx.versions) == 0 {
-		return nil, fmt.Errorf("%s/go.mod pins no Azure SDK modules", providerRoot)
-	}
-	return idx, nil
+	return versions
 }
 
 // dir returns the unpacked directory of the package at importPath: the longest
