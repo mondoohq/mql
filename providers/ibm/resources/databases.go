@@ -53,6 +53,13 @@ func (r *mqlIbm) databases() ([]any, error) {
 	return out, nil
 }
 
+// permission is the IAM action reading the deployment needs; it is named
+// after the deployment's own service, such as
+// databases-for-mysql.deployment.read.
+func (r *mqlIbmDatabase) permission() string {
+	return r.Service.Data + ".deployment.read"
+}
+
 func (r *mqlIbmDatabase) client() (*clouddatabasesv5.CloudDatabasesV5, error) {
 	return conn(r.MqlRuntime).Databases(r.Region.Data)
 }
@@ -65,7 +72,7 @@ func (r *mqlIbmDatabase) deployment() (*clouddatabasesv5.Deployment, error) {
 		}
 		res, _, err := svc.GetDeploymentInfo(&clouddatabasesv5.GetDeploymentInfoOptions{ID: &r.Id.Data})
 		if err != nil {
-			return nil, classifyError(err, "databases-for-postgresql.deployment.read")
+			return nil, classifyError(err, r.permission())
 		}
 		if res == nil || res.Deployment == nil {
 			return &clouddatabasesv5.Deployment{}, nil
@@ -117,7 +124,7 @@ func (r *mqlIbmDatabase) allowlist() ([]any, error) {
 	}
 	res, _, err := svc.GetAllowlist(&clouddatabasesv5.GetAllowlistOptions{ID: &r.Id.Data})
 	if err != nil {
-		return nil, classifyError(err, "databases-for-postgresql.deployment.read")
+		return nil, classifyError(err, r.permission())
 	}
 	out := []any{}
 	if res == nil {
@@ -138,7 +145,7 @@ func (r *mqlIbmDatabase) memberCount() (int64, error) {
 	}
 	res, _, err := svc.ListDeploymentScalingGroups(&clouddatabasesv5.ListDeploymentScalingGroupsOptions{ID: &r.Id.Data})
 	if err != nil {
-		return 0, classifyError(err, "databases-for-postgresql.deployment.read")
+		return 0, classifyError(err, r.permission())
 	}
 	if res != nil {
 		for _, g := range res.Groups {
