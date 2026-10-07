@@ -99,19 +99,27 @@ func TestParseKubeletVersion(t *testing.T) {
 }
 
 func TestResolveKubeletExecutable(t *testing.T) {
-	rke2 := func() (string, error) { return "/var/lib/rancher/rke2/bin/kubelet", nil }
-	failed := func() (string, error) { return "", errors.New("readlink failed") }
-	notCalled := func() (string, error) {
-		t.Fatal("an absolute executable must not be resolved")
-		return "", nil
+	installed := func(paths ...string) func(string) bool {
+		return func(p string) bool {
+			for _, have := range paths {
+				if p == have {
+					return true
+				}
+			}
+			return false
+		}
 	}
 
 	// RKE2 starts kubelet by bare name from a directory off PATH
-	assert.Equal(t, "/var/lib/rancher/rke2/bin/kubelet", resolveKubeletExecutable("kubelet", rke2))
-	assert.Equal(t, "/usr/bin/kubelet", resolveKubeletExecutable("/usr/bin/kubelet", notCalled))
-	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet", failed), "an unreadable link keeps the reported name")
-	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet", func() (string, error) { return "", nil }),
-		"an empty link keeps the reported name")
+	assert.Equal(t, "/var/lib/rancher/rke2/bin/kubelet",
+		resolveKubeletExecutable("kubelet", installed("/var/lib/rancher/rke2/bin/kubelet")))
+	// kubelet on PATH, no RKE2: the bare name runs as before
+	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet", installed("/usr/bin/kubelet")))
+	assert.Equal(t, "/usr/bin/kubelet",
+		resolveKubeletExecutable("/usr/bin/kubelet", installed("/var/lib/rancher/rke2/bin/kubelet")),
+		"an absolute executable is kept")
+	// a user's own binary named kubelet is never what runs
+	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet", installed("/home/user/kubelet", "/tmp/kubelet")))
 }
 
 func TestKubeletValueCoercion(t *testing.T) {

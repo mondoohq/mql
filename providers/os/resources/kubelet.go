@@ -19,6 +19,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 const defaultKubeletConfig = "/var/lib/kubelet/config.yaml"
@@ -343,8 +344,10 @@ func (m *mqlKubelet) version() (string, error) {
 	if exe.Data == "" {
 		return "", nil
 	}
-	exePath := resolveKubeletExecutable(exe.Data, func() (string, error) {
-		return m.readProcExe(proc.Data)
+	conn := m.MqlRuntime.Connection.(shared.Connection)
+	exePath := resolveKubeletExecutable(exe.Data, func(p string) bool {
+		_, err := conn.FileSystem().Stat(p)
+		return err == nil
 	})
 
 	// Single-quote the executable path so paths with spaces or shell
@@ -366,43 +369,28 @@ func (m *mqlKubelet) version() (string, error) {
 	return parseKubeletVersion(cmd.GetStdout().Data), nil
 }
 
+// kubeletInstallPaths are kubelet binaries that are off PATH, in directories
+// only root can write. RKE2 keeps kubelet in /var/lib/rancher/rke2/bin.
+var kubeletInstallPaths = []string{"/var/lib/rancher/rke2/bin/kubelet"}
+
 // resolveKubeletExecutable returns the path to run for kubelet --version. On
 // Linux the process list reports the bare name from /proc/<pid>/status, which
-// only runs when kubelet is on PATH. RKE2 keeps kubelet in
-// /var/lib/rancher/rke2/bin, off PATH, so a bare name is resolved through
-// /proc/<pid>/exe, and kept when that cannot be read.
-func resolveKubeletExecutable(exe string, readProcExe func() (string, error)) string {
+// only runs when kubelet is on PATH, so a bare name is looked up in
+// kubeletInstallPaths and kept when none exists.
+//
+// The process's own binary (/proc/<pid>/exe) is deliberately not used: the
+// kubelet process is matched by name, any user can start a process named
+// kubelet, and its binary would then run with sudo.
+func resolveKubeletExecutable(exe string, exists func(path string) bool) string {
 	if path.IsAbs(exe) {
 		return exe
 	}
-	resolved, err := readProcExe()
-	if err != nil || !path.IsAbs(resolved) {
-		return exe
+	for _, p := range kubeletInstallPaths {
+		if exists(p) {
+			return p
+		}
 	}
-	return resolved
-}
-
-// readProcExe reads the /proc/<pid>/exe link of a process. It runs as a
-// command of its own so that it gets sudo: the link of a root process is not
-// readable by another user.
-func (m *mqlKubelet) readProcExe(proc *mqlProcess) (string, error) {
-	pid := proc.GetPid()
-	if pid.Error != nil {
-		return "", pid.Error
-	}
-	o, err := CreateResource(m.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("readlink /proc/" + strconv.FormatInt(pid.Data, 10) + "/exe"),
-	})
-	if err != nil {
-		return "", err
-	}
-	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Error != nil {
-		return "", exit.Error
-	} else if exit.Data != 0 {
-		return "", errors.New("readlink failed: " + cmd.GetStderr().Data)
-	}
-	return strings.TrimSpace(cmd.GetStdout().Data), nil
+	return exe
 }
 
 func getKubeletProcess(runtime *plugin.Runtime) (*mqlProcess, error) {
