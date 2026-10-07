@@ -7,15 +7,16 @@ package oauthlogin
 
 import "golang.org/x/sys/windows"
 
-// disableEcho turns off echo on the console input handle fd, keeping line
-// input, and returns a func that restores the previous mode.
-func disableEcho(fd int) (func(), error) {
+// keyInput switches the console input handle fd to unechoed, key-by-key
+// input; Ctrl-C keeps working. The returned func restores the previous mode.
+func keyInput(fd int) (func(), error) {
 	h := windows.Handle(fd)
 	var mode uint32
 	if err := windows.GetConsoleMode(h, &mode); err != nil {
 		return nil, err
 	}
-	if err := windows.SetConsoleMode(h, mode&^windows.ENABLE_ECHO_INPUT); err != nil {
+	keys := mode&^(windows.ENABLE_ECHO_INPUT|windows.ENABLE_LINE_INPUT) | windows.ENABLE_PROCESSED_INPUT
+	if err := windows.SetConsoleMode(h, keys); err != nil {
 		return nil, err
 	}
 	return func() { _ = windows.SetConsoleMode(h, mode) }, nil

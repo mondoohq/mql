@@ -7,6 +7,6 @@ package oauthlogin
 
 import "errors"
 
-func disableEcho(int) (func(), error) {
-	return nil, errors.New("terminal echo cannot be changed on this platform")
+func keyInput(int) (func(), error) {
+	return nil, errors.New("terminal input mode cannot be changed on this platform")
 }
