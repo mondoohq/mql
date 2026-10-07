@@ -12,6 +12,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 const (
@@ -179,44 +180,95 @@ func (r *mqlContainersRegistries) load() ([]string, registriesConf, error) {
 	}
 	r.loaded = true
 
-	exists := pathExistsFunc(r.MqlRuntime)
+	paths, conf, err := r.read()
+	if err != nil {
+		r.err = err
+		return nil, registriesConf{}, err
+	}
+	r.paths, r.conf = paths, conf
+	return paths, conf, nil
+}
+
+// read finds and merges the configuration files. A file that exists but
+// cannot be checked or read is an error, never an empty configuration, so
+// that settings the tools apply are not silently left out.
+func (r *mqlContainersRegistries) read() ([]string, registriesConf, error) {
 	main := containersRegistriesConf
-	if !exists(main) {
+	ok, err := registriesFileExists(r.MqlRuntime, main)
+	if err != nil {
+		return nil, registriesConf{}, err
+	}
+	if !ok {
 		main = containersRegistriesConfVendor
+		if ok, err = registriesFileExists(r.MqlRuntime, main); err != nil {
+			return nil, registriesConf{}, err
+		}
 	}
 	paths := []string{}
-	if exists(main) {
+	if ok {
 		paths = append(paths, main)
 	}
 	dropIns, err := listConfDFilesWith(r.MqlRuntime, containersRegistriesDropInDirs, isRegistriesConfDFileName)
 	if err != nil {
-		r.err = err
 		return nil, registriesConf{}, err
 	}
 	paths = append(paths, dropIns...)
 
 	conf := registriesConf{}
 	for _, p := range paths {
-		c, err := parseRegistriesConf(readKubeletFile(r.MqlRuntime, p))
+		c, err := readRegistriesConf(r.MqlRuntime, p)
 		if err != nil {
-			r.err = fmt.Errorf("cannot parse %s: %w", p, err)
-			return nil, registriesConf{}, r.err
+			return nil, registriesConf{}, err
 		}
 		mergeRegistriesConf(&conf, c)
 	}
 
-	if exists(containersShortNameAliasesCache) {
-		c, err := parseRegistriesConf(readKubeletFile(r.MqlRuntime, containersShortNameAliasesCache))
+	ok, err = registriesFileExists(r.MqlRuntime, containersShortNameAliasesCache)
+	if err != nil {
+		return nil, registriesConf{}, err
+	}
+	if ok {
+		c, err := readRegistriesConf(r.MqlRuntime, containersShortNameAliasesCache)
 		if err != nil {
-			r.err = fmt.Errorf("cannot parse %s: %w", containersShortNameAliasesCache, err)
-			return nil, registriesConf{}, r.err
+			return nil, registriesConf{}, err
 		}
 		mergeRegistryAliases(&conf, c.Aliases)
 		paths = append(paths, containersShortNameAliasesCache)
 	}
-
-	r.paths, r.conf = paths, conf
 	return paths, conf, nil
+}
+
+func registriesFile(runtime *plugin.Runtime, p string) (*mqlFile, error) {
+	f, err := CreateResource(runtime, "file", map[string]*llx.RawData{"path": llx.StringData(p)})
+	if err != nil {
+		return nil, err
+	}
+	return f.(*mqlFile), nil
+}
+
+func registriesFileExists(runtime *plugin.Runtime, p string) (bool, error) {
+	f, err := registriesFile(runtime, p)
+	if err != nil {
+		return false, err
+	}
+	exists := f.GetExists()
+	return exists.Data, exists.Error
+}
+
+func readRegistriesConf(runtime *plugin.Runtime, p string) (registriesConf, error) {
+	f, err := registriesFile(runtime, p)
+	if err != nil {
+		return registriesConf{}, err
+	}
+	content := f.GetContent()
+	if content.Error != nil {
+		return registriesConf{}, content.Error
+	}
+	c, err := parseRegistriesConf(content.Data)
+	if err != nil {
+		return registriesConf{}, fmt.Errorf("cannot parse %s: %w", p, err)
+	}
+	return c, nil
 }
 
 func (r *mqlContainersRegistries) files() ([]any, error) {
