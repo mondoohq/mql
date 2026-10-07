@@ -1,7 +1,7 @@
 {
   "provider": "azure",
-  "version": "14.3.0",
-  "generated_at": "2026-10-05T21:00:19+02:00",
+  "version": "14.3.2",
+  "generated_at": "2026-10-07T11:36:33+03:00",
   "permissions": [
     "Microsoft.Advisor/recommendations/read",
     "Microsoft.ApiManagement/service/apis/policies/read",
@@ -52,19 +52,20 @@
     "Microsoft.Cdn/profiles/origingroups/read",
     "Microsoft.Cdn/profiles/read",
     "Microsoft.Cdn/profiles/securitypolicies/read",
+    "Microsoft.CognitiveServices/accounts/capabilityHosts/read",
     "Microsoft.CognitiveServices/accounts/connections/read",
     "Microsoft.CognitiveServices/accounts/defenderForAISettings/read",
     "Microsoft.CognitiveServices/accounts/deployments/read",
+    "Microsoft.CognitiveServices/accounts/encryptionScopes/read",
+    "Microsoft.CognitiveServices/accounts/models/read",
+    "Microsoft.CognitiveServices/accounts/projects/capabilityHosts/read",
     "Microsoft.CognitiveServices/accounts/projects/connections/read",
     "Microsoft.CognitiveServices/accounts/projects/read",
+    "Microsoft.CognitiveServices/accounts/raiBlocklists/raiBlocklistItems/read",
+    "Microsoft.CognitiveServices/accounts/raiBlocklists/read",
     "Microsoft.CognitiveServices/accounts/raiPolicies/read",
     "Microsoft.CognitiveServices/accounts/raiTopics/read",
-    "Microsoft.Cognitiveservices/accountCapabilityHosts/read",
     "Microsoft.Cognitiveservices/accounts/read",
-    "Microsoft.Cognitiveservices/encryptionScopes/read",
-    "Microsoft.Cognitiveservices/projectCapabilityHosts/read",
-    "Microsoft.Cognitiveservices/raiBlocklistItems/read",
-    "Microsoft.Cognitiveservices/raiBlocklists/read",
     "Microsoft.Compute/diskAccesses/read",
     "Microsoft.Compute/diskEncryptionSets/read",
     "Microsoft.Compute/disks/read",
@@ -90,13 +91,17 @@
     "Microsoft.ContainerRegistry/registries/scopeMaps/read",
     "Microsoft.ContainerRegistry/registries/tokens/read",
     "Microsoft.ContainerRegistry/registries/webhooks/read",
-    "Microsoft.ContainerService/identityBindings/read",
     "Microsoft.ContainerService/managedClusters/agentPools/read",
+    "Microsoft.ContainerService/managedClusters/identityBindings/read",
     "Microsoft.ContainerService/managedClusters/read",
-    "Microsoft.ContainerService/trustedAccessRoleBindings/read",
-    "Microsoft.DBforMySQL/advancedThreatProtectionSettings/read",
-    "Microsoft.DBforMySQL/azureADAdministrators/read",
-    "Microsoft.DBforMySQL/privateEndpointConnections/read",
+    "Microsoft.ContainerService/managedClusters/trustedAccessRoleBindings/read",
+    "Microsoft.DBforMySQL/flexibleServers/administrators/read",
+    "Microsoft.DBforMySQL/flexibleServers/advancedThreatProtectionSettings/read",
+    "Microsoft.DBforMySQL/flexibleServers/configurations/read",
+    "Microsoft.DBforMySQL/flexibleServers/databases/read",
+    "Microsoft.DBforMySQL/flexibleServers/firewallRules/read",
+    "Microsoft.DBforMySQL/flexibleServers/privateEndpointConnections/read",
+    "Microsoft.DBforMySQL/flexibleServers/read",
     "Microsoft.DBforMySQL/servers/configurations/read",
     "Microsoft.DBforMySQL/servers/databases/read",
     "Microsoft.DBforMySQL/servers/firewallRules/read",
@@ -108,6 +113,10 @@
     "Microsoft.DBforPostgreSQL/flexibleServers/privateEndpointConnections/read",
     "Microsoft.DBforPostgreSQL/flexibleServers/read",
     "Microsoft.DBforPostgreSQL/serverGroupsv2/read",
+    "Microsoft.DBforPostgreSQL/servers/configurations/read",
+    "Microsoft.DBforPostgreSQL/servers/databases/read",
+    "Microsoft.DBforPostgreSQL/servers/firewallRules/read",
+    "Microsoft.DBforPostgreSQL/servers/read",
     "Microsoft.DataBox/jobs/read",
     "Microsoft.DataFactory/factories/integrationruntimes/read",
     "Microsoft.DataFactory/factories/linkedservices/read",
@@ -118,10 +127,10 @@
     "Microsoft.DataProtection/backupVaults/backupPolicies/read",
     "Microsoft.DataProtection/backupVaults/backupResourceGuardProxies/read",
     "Microsoft.DataProtection/backupVaults/read",
-    "Microsoft.DataProtection/resourceGuards/read",
+    "Microsoft.DataProtection/subscriptions/resourceGroups/providers/resourceGuards/read",
     "Microsoft.Databricks/workspaces/read",
     "Microsoft.DesktopVirtualization/hostPools/read",
-    "Microsoft.Devices/resource/read",
+    "Microsoft.Devices/iotHubs/Read",
     "Microsoft.DocumentDB/databaseAccounts/cassandraRoleAssignments/read",
     "Microsoft.DocumentDB/databaseAccounts/cassandraRoleDefinitions/read",
     "Microsoft.DocumentDB/databaseAccounts/gremlinRoleAssignments/read",
@@ -131,6 +140,7 @@
     "Microsoft.DocumentDB/databaseAccounts/privateEndpointConnections/read",
     "Microsoft.DocumentDB/databaseAccounts/read",
     "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/read",
+    "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/read",
     "Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments/read",
     "Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions/read",
     "Microsoft.DocumentDB/databaseAccounts/tableRoleAssignments/read",
@@ -145,59 +155,59 @@
     "Microsoft.EventGrid/systemTopics/read",
     "Microsoft.EventGrid/topics/eventSubscriptions/read",
     "Microsoft.EventGrid/topics/read",
+    "Microsoft.EventHub/namespaces/authorizationRules/read",
+    "Microsoft.EventHub/namespaces/eventhubs/authorizationRules/read",
     "Microsoft.EventHub/namespaces/eventhubs/consumergroups/read",
     "Microsoft.EventHub/namespaces/eventhubs/read",
     "Microsoft.EventHub/namespaces/read",
+    "Microsoft.FileShares/fileShares/fileShareSnapshots/read",
     "Microsoft.FileShares/fileShares/read",
-    "Microsoft.FileShares/fileShares/snapshots/read",
     "Microsoft.HybridCompute/machines/extensions/read",
     "Microsoft.HybridCompute/machines/read",
+    "Microsoft.Insights/DiagnosticSettingsCategories/Read",
     "Microsoft.Insights/actionGroups/read",
     "Microsoft.Insights/activityLogAlerts/read",
-    "Microsoft.Insights/activityLogs/read",
     "Microsoft.Insights/components/read",
     "Microsoft.Insights/diagnosticSettings/read",
-    "Microsoft.Insights/diagnosticSettingsCategory/read",
+    "Microsoft.Insights/eventtypes/values/Read",
     "Microsoft.Insights/logProfiles/read",
     "Microsoft.Insights/metricAlerts/read",
     "Microsoft.Insights/scheduledQueryRules/read",
     "Microsoft.KeyVault/managedHsms/read",
     "Microsoft.KeyVault/vaults/read",
-    "Microsoft.Kusto/clusterPrincipalAssignments/read",
+    "Microsoft.Kusto/Clusters/Databases/DataConnections/read",
+    "Microsoft.Kusto/Clusters/Databases/PrincipalAssignments/read",
+    "Microsoft.Kusto/Clusters/Databases/read",
+    "Microsoft.Kusto/Clusters/ManagedPrivateEndpoints/read",
+    "Microsoft.Kusto/Clusters/PrincipalAssignments/read",
+    "Microsoft.Kusto/Clusters/PrivateEndpointConnections/read",
+    "Microsoft.Kusto/clusters/listCalloutPolicies/action",
     "Microsoft.Kusto/clusters/read",
-    "Microsoft.Kusto/dataConnections/read",
-    "Microsoft.Kusto/databasePrincipalAssignments/read",
-    "Microsoft.Kusto/databases/read",
-    "Microsoft.Kusto/managedPrivateEndpoints/read",
-    "Microsoft.Kusto/privateEndpointConnections/read",
     "Microsoft.Logic/workflows/read",
-    "Microsoft.MachineLearningServices/batchDeployments/read",
-    "Microsoft.MachineLearningServices/batchEndpoints/read",
-    "Microsoft.MachineLearningServices/datastores/read",
-    "Microsoft.MachineLearningServices/workspaceConnections/read",
+    "Microsoft.MachineLearningServices/workspaces/batchEndpoints/deployments/read",
+    "Microsoft.MachineLearningServices/workspaces/batchEndpoints/read",
     "Microsoft.MachineLearningServices/workspaces/computes/read",
+    "Microsoft.MachineLearningServices/workspaces/connections/read",
+    "Microsoft.MachineLearningServices/workspaces/datastores/read",
     "Microsoft.MachineLearningServices/workspaces/models/read",
     "Microsoft.MachineLearningServices/workspaces/onlineEndpoints/deployments/read",
     "Microsoft.MachineLearningServices/workspaces/onlineEndpoints/read",
     "Microsoft.MachineLearningServices/workspaces/read",
     "Microsoft.MachineLearningServices/workspaces/serverlessEndpoints/read",
-    "Microsoft.ManagedIdentity/federatedIdentityCredentials/read",
+    "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/read",
     "Microsoft.ManagedIdentity/userAssignedIdentities/read",
     "Microsoft.Managedservices/registrationAssignments/read",
     "Microsoft.Managedservices/registrationDefinitions/read",
-    "Microsoft.Management/managementGroups/read",
+    "Microsoft.Management/getEntities/action",
     "Microsoft.NetApp/netAppAccounts/capacityPools/read",
     "Microsoft.NetApp/netAppAccounts/capacityPools/volumes/read",
     "Microsoft.NetApp/netAppAccounts/read",
     "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/read",
-    "Microsoft.Network/adminRuleCollections/read",
-    "Microsoft.Network/adminRules/read",
     "Microsoft.Network/applicationGateways/read",
     "Microsoft.Network/applicationSecurityGroups/read",
     "Microsoft.Network/azureFirewalls/read",
     "Microsoft.Network/bastionHosts/read",
     "Microsoft.Network/connections/read",
-    "Microsoft.Network/connectivityConfigurations/read",
     "Microsoft.Network/customIPPrefixes/read",
     "Microsoft.Network/ddosProtectionPlans/read",
     "Microsoft.Network/dnszones/read",
@@ -208,17 +218,27 @@
     "Microsoft.Network/expressRouteGateways/read",
     "Microsoft.Network/expressRoutePorts/read",
     "Microsoft.Network/firewallPolicies/read",
-    "Microsoft.Network/firewallPolicyRuleCollectionGroups/read",
+    "Microsoft.Network/firewallPolicies/ruleCollectionGroups/read",
     "Microsoft.Network/frontdoorWebApplicationFirewallPolicies/read",
-    "Microsoft.Network/groups/read",
     "Microsoft.Network/iPAllocations/read",
     "Microsoft.Network/iPGroups/read",
     "Microsoft.Network/loadBalancers/read",
     "Microsoft.Network/localNetworkGateways/read",
-    "Microsoft.Network/managers/read",
     "Microsoft.Network/natGateways/read",
     "Microsoft.Network/networkInterfaces/read",
+    "Microsoft.Network/networkManagers/connectivityConfigurations/read",
+    "Microsoft.Network/networkManagers/networkGroups/read",
+    "Microsoft.Network/networkManagers/networkGroups/staticMembers/read",
+    "Microsoft.Network/networkManagers/read",
+    "Microsoft.Network/networkManagers/securityAdminConfigurations/read",
+    "Microsoft.Network/networkManagers/securityAdminConfigurations/ruleCollections/read",
+    "Microsoft.Network/networkManagers/securityAdminConfigurations/ruleCollections/rules/read",
     "Microsoft.Network/networkSecurityGroups/read",
+    "Microsoft.Network/networkSecurityPerimeters/profiles/accessRules/read",
+    "Microsoft.Network/networkSecurityPerimeters/profiles/read",
+    "Microsoft.Network/networkSecurityPerimeters/read",
+    "Microsoft.Network/networkSecurityPerimeters/resourceAssociations/read",
+    "Microsoft.Network/networkVirtualAppliances/read",
     "Microsoft.Network/networkWatchers/connectionMonitors/read",
     "Microsoft.Network/networkWatchers/flowLogs/read",
     "Microsoft.Network/networkWatchers/packetCaptures/read",
@@ -227,23 +247,17 @@
     "Microsoft.Network/privateDnsZones/virtualNetworkLinks/read",
     "Microsoft.Network/privateEndpoints/privateDnsZoneGroups/read",
     "Microsoft.Network/privateEndpoints/read",
+    "Microsoft.Network/privateLinkServices/privateEndpointConnections/read",
     "Microsoft.Network/privateLinkServices/read",
     "Microsoft.Network/publicIPAddresses/read",
     "Microsoft.Network/publicIPPrefixes/read",
     "Microsoft.Network/routeFilters/read",
     "Microsoft.Network/routeTables/read",
-    "Microsoft.Network/securityAdminConfigurations/read",
-    "Microsoft.Network/securityPerimeterAccessRules/read",
-    "Microsoft.Network/securityPerimeterAssociations/read",
-    "Microsoft.Network/securityPerimeterProfiles/read",
-    "Microsoft.Network/securityPerimeters/read",
     "Microsoft.Network/serviceEndpointPolicies/read",
-    "Microsoft.Network/staticMembers/read",
     "Microsoft.Network/trafficManagerProfiles/read",
     "Microsoft.Network/vPNGateways/read",
     "Microsoft.Network/vPNServerConfigurations/read",
     "Microsoft.Network/vPNSites/read",
-    "Microsoft.Network/virtualAppliances/read",
     "Microsoft.Network/virtualHubs/hubRouteTables/read",
     "Microsoft.Network/virtualHubs/hubVirtualNetworkConnections/read",
     "Microsoft.Network/virtualHubs/read",
@@ -254,52 +268,58 @@
     "Microsoft.Network/virtualNetworks/virtualNetworkPeerings/read",
     "Microsoft.Network/virtualRouters/read",
     "Microsoft.Network/virtualWans/read",
+    "Microsoft.OperationalInsights/queryPacks/queries/read",
     "Microsoft.OperationalInsights/querypacks/read",
     "Microsoft.OperationalInsights/workspaces/dataexports/read",
     "Microsoft.OperationalInsights/workspaces/linkedservices/read",
+    "Microsoft.OperationalInsights/workspaces/networkSecurityPerimeterConfigurations/read",
     "Microsoft.OperationalInsights/workspaces/read",
-    "Microsoft.OperationalInsights/workspaces/savedSearches/read",
     "Microsoft.OperationalInsights/workspaces/tables/read",
-    "Microsoft.Policyinsights/policyStates/read",
+    "Microsoft.PolicyInsights/policyStates/queryResults/action",
     "Microsoft.Purview/accounts/read",
     "Microsoft.RecoveryServices/Vaults/backupPolicies/read",
     "Microsoft.RecoveryServices/Vaults/backupProtectedItems/read",
     "Microsoft.RecoveryServices/Vaults/backupconfig/read",
-    "Microsoft.RecoveryServices/deletedVaults/read",
+    "Microsoft.RecoveryServices/locations/deletedVaults/read",
     "Microsoft.RecoveryServices/vaults/read",
     "Microsoft.Resources/deployments/read",
-    "Microsoft.Resources/resources/read",
+    "Microsoft.Resources/subscriptions/locations/read",
     "Microsoft.Resources/subscriptions/read",
     "Microsoft.Resources/subscriptions/resourceGroups/read",
+    "Microsoft.Resources/subscriptions/resources/read",
     "Microsoft.Search/searchServices/read",
     "Microsoft.Security/alerts/read",
     "Microsoft.Security/alertsSuppressionRules/read",
     "Microsoft.Security/apiCollections/read",
     "Microsoft.Security/assessments/read",
+    "Microsoft.Security/assessments/subAssessments/read",
     "Microsoft.Security/autoProvisioningSettings/read",
     "Microsoft.Security/automations/read",
-    "Microsoft.Security/contacts/read",
     "Microsoft.Security/defenderForStorageSettings/read",
     "Microsoft.Security/jitNetworkAccessPolicies/read",
     "Microsoft.Security/pricings/read",
-    "Microsoft.Security/regulatoryComplianceControls/read",
     "Microsoft.Security/regulatoryComplianceStandards/read",
+    "Microsoft.Security/regulatoryComplianceStandards/regulatoryComplianceControls/read",
     "Microsoft.Security/secureScoreControls/read",
     "Microsoft.Security/secureScores/read",
+    "Microsoft.Security/securityContacts/read",
     "Microsoft.Security/settings/read",
-    "Microsoft.Security/subAssessments/read",
     "Microsoft.Security/workspaceSettings/read",
     "Microsoft.Securityinsights/alertRules/read",
     "Microsoft.Securityinsights/automationRules/read",
     "Microsoft.Securityinsights/dataConnectors/read",
     "Microsoft.Securityinsights/incidents/read",
     "Microsoft.Securityinsights/watchlists/read",
+    "Microsoft.ServiceBus/namespaces/authorizationRules/read",
+    "Microsoft.ServiceBus/namespaces/queues/authorizationRules/read",
     "Microsoft.ServiceBus/namespaces/queues/read",
     "Microsoft.ServiceBus/namespaces/read",
+    "Microsoft.ServiceBus/namespaces/topics/authorizationRules/read",
     "Microsoft.ServiceBus/namespaces/topics/read",
     "Microsoft.ServiceBus/namespaces/topics/subscriptions/read",
     "Microsoft.ServiceFabric/clusters/read",
-    "Microsoft.Signalr/signalr/read",
+    "Microsoft.SignalRService/SignalR/read",
+    "Microsoft.SignalRService/WebPubSub/read",
     "Microsoft.Sql/managedInstances/databases/read",
     "Microsoft.Sql/managedInstances/read",
     "Microsoft.Sql/managedInstances/securityAlertPolicies/read",
@@ -357,2218 +377,3071 @@
     "Microsoft.Web/certificates/read",
     "Microsoft.Web/hostingEnvironments/read",
     "Microsoft.Web/serverfarms/read",
+    "Microsoft.Web/sites/functions/read",
+    "Microsoft.Web/sites/hostNameBindings/read",
     "Microsoft.Web/sites/read",
-    "Microsoft.Web/staticSites/read",
-    "Microsoft.Webpubsub/webpubsub/read"
+    "Microsoft.Web/sites/slots/read",
+    "Microsoft.Web/staticSites/read"
   ],
   "details": [
     {
       "permission": "Microsoft.Advisor/recommendations/read",
       "service": "Microsoft.Advisor",
       "action": "NewListPager",
-      "source_file": "advisor.go"
+      "source_file": "advisor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/advisor/armadvisor RecommendationsClient.NewListPager"
     },
     {
       "permission": "Microsoft.ApiManagement/service/apis/policies/read",
       "service": "Microsoft.ApiManagement",
       "action": "Get",
-      "source_file": "apimanagement_depth.go"
+      "source_file": "apimanagement_depth.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/apimanagement/armapimanagement/v3 APIPolicyClient.Get"
     },
     {
       "permission": "Microsoft.ApiManagement/service/apis/read",
       "service": "Microsoft.ApiManagement",
       "action": "NewListByServicePager",
-      "source_file": "apimanagement_depth.go"
+      "source_file": "apimanagement_depth.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/apimanagement/armapimanagement/v3 APIClient.NewListByServicePager"
     },
     {
       "permission": "Microsoft.ApiManagement/service/backends/read",
       "service": "Microsoft.ApiManagement",
       "action": "NewListByServicePager",
-      "source_file": "apimanagement_backends.go"
+      "source_file": "apimanagement_backends.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/apimanagement/armapimanagement/v3 BackendClient.NewListByServicePager"
     },
     {
       "permission": "Microsoft.ApiManagement/service/namedValues/read",
       "service": "Microsoft.ApiManagement",
       "action": "NewListByServicePager",
-      "source_file": "apimanagement_depth.go"
+      "source_file": "apimanagement_depth.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/apimanagement/armapimanagement/v3 NamedValueClient.NewListByServicePager"
     },
     {
       "permission": "Microsoft.ApiManagement/service/policies/read",
       "service": "Microsoft.ApiManagement",
       "action": "Get",
-      "source_file": "apimanagement_depth.go"
+      "source_file": "apimanagement_depth.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/apimanagement/armapimanagement/v3 PolicyClient.Get"
     },
     {
       "permission": "Microsoft.ApiManagement/service/products/policies/read",
       "service": "Microsoft.ApiManagement",
       "action": "Get",
-      "source_file": "apimanagement_depth.go"
+      "source_file": "apimanagement_depth.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/apimanagement/armapimanagement/v3 ProductPolicyClient.Get"
     },
     {
       "permission": "Microsoft.ApiManagement/service/products/read",
       "service": "Microsoft.ApiManagement",
       "action": "NewListByServicePager",
-      "source_file": "apimanagement_depth.go"
+      "source_file": "apimanagement_depth.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/apimanagement/armapimanagement/v3 ProductClient.NewListByServicePager"
     },
     {
       "permission": "Microsoft.ApiManagement/service/read",
       "service": "Microsoft.ApiManagement",
       "action": "NewListPager",
-      "source_file": "apimanagement.go"
+      "source_file": "apimanagement.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/apimanagement/armapimanagement/v3 ServiceClient.NewListPager"
     },
     {
       "permission": "Microsoft.ApiManagement/service/subscriptions/read",
       "service": "Microsoft.ApiManagement",
       "action": "NewListPager",
-      "source_file": "apimanagement_depth.go"
+      "source_file": "apimanagement_depth.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/apimanagement/armapimanagement/v3 SubscriptionClient.NewListPager"
     },
     {
       "permission": "Microsoft.App/containerApps/authConfigs/read",
       "service": "Microsoft.App",
       "action": "NewListByContainerAppPager",
-      "source_file": "appcontainers.go"
+      "source_file": "appcontainers.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5 ContainerAppsAuthConfigsClient.NewListByContainerAppPager"
     },
     {
       "permission": "Microsoft.App/containerApps/read",
       "service": "Microsoft.App",
       "action": "NewListBySubscriptionPager",
-      "source_file": "appcontainers.go"
+      "source_file": "appcontainers.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5 ContainerAppsClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.App/containerApps/revisions/read",
       "service": "Microsoft.App",
       "action": "NewListRevisionsPager",
-      "source_file": "appcontainers.go"
+      "source_file": "appcontainers.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5 ContainerAppsRevisionsClient.NewListRevisionsPager"
     },
     {
       "permission": "Microsoft.App/jobs/read",
       "service": "Microsoft.App",
       "action": "NewListBySubscriptionPager",
-      "source_file": "appcontainers.go"
+      "source_file": "appcontainers.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5 JobsClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.App/managedEnvironments/certificates/read",
       "service": "Microsoft.App",
       "action": "NewListPager",
-      "source_file": "appcontainers.go"
+      "source_file": "appcontainers.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5 CertificatesClient.NewListPager"
     },
     {
       "permission": "Microsoft.App/managedEnvironments/daprComponents/read",
       "service": "Microsoft.App",
       "action": "NewListPager",
-      "source_file": "appcontainers.go"
+      "source_file": "appcontainers.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5 DaprComponentsClient.NewListPager"
     },
     {
       "permission": "Microsoft.App/managedEnvironments/httpRouteConfigs/read",
       "service": "Microsoft.App",
       "action": "NewListPager",
-      "source_file": "appcontainers.go"
+      "source_file": "appcontainers.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5 HTTPRouteConfigClient.NewListPager"
     },
     {
       "permission": "Microsoft.App/managedEnvironments/maintenanceConfigurations/read",
       "service": "Microsoft.App",
       "action": "NewListPager",
-      "source_file": "appcontainers.go"
+      "source_file": "appcontainers.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5 MaintenanceConfigurationsClient.NewListPager"
     },
     {
       "permission": "Microsoft.App/managedEnvironments/privateEndpointConnections/read",
       "service": "Microsoft.App",
       "action": "NewListPager",
-      "source_file": "appcontainers.go"
+      "source_file": "appcontainers.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5 ManagedEnvironmentPrivateEndpointConnectionsClient.NewListPager"
     },
     {
       "permission": "Microsoft.App/managedEnvironments/read",
       "service": "Microsoft.App",
       "action": "Get",
-      "source_file": "appcontainers.go"
+      "source_file": "appcontainers.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5 ManagedEnvironmentsClient.Get"
+    },
+    {
+      "permission": "Microsoft.App/managedEnvironments/read",
+      "service": "Microsoft.App",
+      "action": "NewListBySubscriptionPager",
+      "source_file": "appcontainers.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5 ManagedEnvironmentsClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.App/sandboxGroups/read",
       "service": "Microsoft.App",
       "action": "NewListBySubscriptionPager",
-      "source_file": "appcontainers_sandboxgroups.go"
+      "source_file": "appcontainers_sandboxgroups.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5 SandboxGroupsClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.App/sandboxGroups/vnetConnections/read",
       "service": "Microsoft.App",
       "action": "NewListBySandboxGroupPager",
-      "source_file": "appcontainers_sandboxgroups.go"
+      "source_file": "appcontainers_sandboxgroups.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5 VnetConnectionsClient.NewListBySandboxGroupPager"
     },
     {
       "permission": "Microsoft.Appconfiguration/configurationStores/read",
       "service": "Microsoft.Appconfiguration",
       "action": "NewListPager",
-      "source_file": "appconfiguration.go"
+      "source_file": "appconfiguration.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appconfiguration/armappconfiguration/v3 ConfigurationStoresClient.NewListPager"
     },
     {
       "permission": "Microsoft.Authorization/classicAdministrators/read",
       "service": "Microsoft.Authorization",
       "action": "NewListPager",
-      "source_file": "iam.go"
+      "source_file": "iam.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 ClassicAdministratorsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Authorization/denyAssignments/read",
       "service": "Microsoft.Authorization",
       "action": "NewListPager",
-      "source_file": "iam.go"
+      "source_file": "iam.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 DenyAssignmentsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Authorization/locks/read",
       "service": "Microsoft.Resources",
       "action": "NewListAtSubscriptionLevelPager",
-      "source_file": "locks.go"
+      "source_file": "locks.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armlocks ManagementLocksClient.NewListAtSubscriptionLevelPager"
     },
     {
       "permission": "Microsoft.Authorization/roleAssignmentSchedules/read",
       "service": "Microsoft.Authorization",
       "action": "NewListForScopePager",
-      "source_file": "iam_pim.go"
+      "source_file": "iam_pim.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 RoleAssignmentSchedulesClient.NewListForScopePager"
     },
     {
       "permission": "Microsoft.Authorization/roleAssignments/read",
       "service": "Microsoft.Authorization",
       "action": "NewListForScopePager",
-      "source_file": "iam.go"
+      "source_file": "iam.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 RoleAssignmentsClient.NewListForScopePager"
+    },
+    {
+      "permission": "Microsoft.Authorization/roleAssignments/read",
+      "service": "Microsoft.Authorization",
+      "action": "NewListForSubscriptionPager",
+      "source_file": "iam.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 RoleAssignmentsClient.NewListForSubscriptionPager"
     },
     {
       "permission": "Microsoft.Authorization/roleAssignments/read",
       "service": "Microsoft.Authorization",
       "action": "NewListForScopePager",
-      "source_file": "managementgroups.go"
+      "source_file": "managementgroups.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 RoleAssignmentsClient.NewListForScopePager"
     },
     {
       "permission": "Microsoft.Authorization/roleDefinitions/read",
       "service": "Microsoft.Authorization",
       "action": "NewListPager",
-      "source_file": "iam.go"
+      "source_file": "iam.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 RoleDefinitionsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Authorization/roleEligibilitySchedules/read",
       "service": "Microsoft.Authorization",
       "action": "NewListForScopePager",
-      "source_file": "iam_pim.go"
+      "source_file": "iam_pim.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 RoleEligibilitySchedulesClient.NewListForScopePager"
     },
     {
       "permission": "Microsoft.Authorization/roleManagementPolicies/read",
       "service": "Microsoft.Authorization",
       "action": "NewListForScopePager",
-      "source_file": "iam_pim.go"
+      "source_file": "iam_pim.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 RoleManagementPoliciesClient.NewListForScopePager"
     },
     {
       "permission": "Microsoft.Automation/automationAccounts/certificates/read",
       "service": "Microsoft.Automation",
       "action": "NewListByAutomationAccountPager",
-      "source_file": "automation.go"
+      "source_file": "automation.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/automation/armautomation CertificateClient.NewListByAutomationAccountPager"
     },
     {
       "permission": "Microsoft.Automation/automationAccounts/credentials/read",
       "service": "Microsoft.Automation",
       "action": "NewListByAutomationAccountPager",
-      "source_file": "automation.go"
+      "source_file": "automation.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/automation/armautomation CredentialClient.NewListByAutomationAccountPager"
     },
     {
       "permission": "Microsoft.Automation/automationAccounts/hybridRunbookWorkerGroups/read",
       "service": "Microsoft.Automation",
       "action": "NewListByAutomationAccountPager",
-      "source_file": "automation_runbooks.go"
+      "source_file": "automation_runbooks.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/automation/armautomation HybridRunbookWorkerGroupClient.NewListByAutomationAccountPager"
     },
     {
       "permission": "Microsoft.Automation/automationAccounts/read",
       "service": "Microsoft.Automation",
       "action": "NewListPager",
-      "source_file": "automation.go"
+      "source_file": "automation.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/automation/armautomation AccountClient.NewListPager"
     },
     {
       "permission": "Microsoft.Automation/automationAccounts/runbooks/read",
       "service": "Microsoft.Automation",
       "action": "Get",
-      "source_file": "automation_runbooks.go"
+      "source_file": "automation_runbooks.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/automation/armautomation RunbookClient.Get"
+    },
+    {
+      "permission": "Microsoft.Automation/automationAccounts/runbooks/read",
+      "service": "Microsoft.Automation",
+      "action": "NewListByAutomationAccountPager",
+      "source_file": "automation_runbooks.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/automation/armautomation RunbookClient.NewListByAutomationAccountPager"
     },
     {
       "permission": "Microsoft.Automation/automationAccounts/variables/read",
       "service": "Microsoft.Automation",
       "action": "NewListByAutomationAccountPager",
-      "source_file": "automation.go"
+      "source_file": "automation.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/automation/armautomation VariableClient.NewListByAutomationAccountPager"
     },
     {
       "permission": "Microsoft.Automation/automationAccounts/webhooks/read",
       "service": "Microsoft.Automation",
       "action": "NewListByAutomationAccountPager",
-      "source_file": "automation_runbooks.go"
+      "source_file": "automation_runbooks.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/automation/armautomation WebhookClient.NewListByAutomationAccountPager"
     },
     {
       "permission": "Microsoft.Batch/batchAccounts/pools/read",
       "service": "Microsoft.Batch",
       "action": "NewListByBatchAccountPager",
-      "source_file": "batch.go"
+      "source_file": "batch.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/batch/armbatch/v4 PoolClient.NewListByBatchAccountPager"
     },
     {
       "permission": "Microsoft.Batch/batchAccounts/read",
       "service": "Microsoft.Batch",
       "action": "NewListPager",
-      "source_file": "batch.go"
+      "source_file": "batch.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/batch/armbatch/v4 AccountClient.NewListPager"
     },
     {
       "permission": "Microsoft.Cache/redis/firewallRules/read",
       "service": "Microsoft.Cache",
       "action": "NewListPager",
-      "source_file": "redis.go"
+      "source_file": "redis.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/redis/armredis/v4 FirewallRulesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Cache/redis/patchSchedules/read",
       "service": "Microsoft.Cache",
       "action": "NewListByRedisResourcePager",
-      "source_file": "redis.go"
+      "source_file": "redis.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/redis/armredis/v4 PatchSchedulesClient.NewListByRedisResourcePager"
     },
     {
       "permission": "Microsoft.Cdn/profiles/afdendpoints/read",
       "service": "Microsoft.Cdn",
       "action": "NewListByProfilePager",
-      "source_file": "frontdoor.go"
+      "source_file": "frontdoor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v3 AFDEndpointsClient.NewListByProfilePager"
     },
     {
       "permission": "Microsoft.Cdn/profiles/afdendpoints/routes/read",
       "service": "Microsoft.Cdn",
       "action": "NewListByEndpointPager",
-      "source_file": "frontdoor.go"
+      "source_file": "frontdoor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v3 RoutesClient.NewListByEndpointPager"
     },
     {
       "permission": "Microsoft.Cdn/profiles/customdomains/read",
       "service": "Microsoft.Cdn",
       "action": "NewListByProfilePager",
-      "source_file": "frontdoor.go"
+      "source_file": "frontdoor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v3 AFDCustomDomainsClient.NewListByProfilePager"
     },
     {
       "permission": "Microsoft.Cdn/profiles/origingroups/origins/read",
       "service": "Microsoft.Cdn",
       "action": "NewListByOriginGroupPager",
-      "source_file": "frontdoor.go"
+      "source_file": "frontdoor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v3 AFDOriginsClient.NewListByOriginGroupPager"
     },
     {
       "permission": "Microsoft.Cdn/profiles/origingroups/read",
       "service": "Microsoft.Cdn",
       "action": "NewListByProfilePager",
-      "source_file": "frontdoor.go"
+      "source_file": "frontdoor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v3 AFDOriginGroupsClient.NewListByProfilePager"
     },
     {
       "permission": "Microsoft.Cdn/profiles/read",
       "service": "Microsoft.Cdn",
       "action": "NewListPager",
-      "source_file": "frontdoor.go"
+      "source_file": "frontdoor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v3 ProfilesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Cdn/profiles/securitypolicies/read",
       "service": "Microsoft.Cdn",
       "action": "NewListByProfilePager",
-      "source_file": "frontdoor.go"
+      "source_file": "frontdoor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v3 SecurityPoliciesClient.NewListByProfilePager"
+    },
+    {
+      "permission": "Microsoft.CognitiveServices/accounts/capabilityHosts/read",
+      "service": "Microsoft.Cognitiveservices",
+      "action": "NewListPager",
+      "source_file": "cognitiveservices_catalog.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 AccountCapabilityHostsClient.NewListPager"
     },
     {
       "permission": "Microsoft.CognitiveServices/accounts/connections/read",
       "service": "Microsoft.Cognitiveservices",
       "action": "NewListPager",
-      "source_file": "cognitiveservices.go"
+      "source_file": "cognitiveservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 AccountConnectionsClient.NewListPager"
     },
     {
       "permission": "Microsoft.CognitiveServices/accounts/defenderForAISettings/read",
       "service": "Microsoft.Cognitiveservices",
       "action": "NewListPager",
-      "source_file": "cognitiveservices.go"
+      "source_file": "cognitiveservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 DefenderForAISettingsClient.NewListPager"
     },
     {
       "permission": "Microsoft.CognitiveServices/accounts/deployments/read",
       "service": "Microsoft.Cognitiveservices",
       "action": "NewListPager",
-      "source_file": "cognitiveservices.go"
+      "source_file": "cognitiveservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 DeploymentsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.CognitiveServices/accounts/encryptionScopes/read",
+      "service": "Microsoft.Cognitiveservices",
+      "action": "NewListPager",
+      "source_file": "cognitiveservices_catalog.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 EncryptionScopesClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.CognitiveServices/accounts/models/read",
+      "service": "Microsoft.Cognitiveservices",
+      "action": "NewListModelsPager",
+      "source_file": "cognitiveservices_catalog.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 AccountsClient.NewListModelsPager"
+    },
+    {
+      "permission": "Microsoft.CognitiveServices/accounts/projects/capabilityHosts/read",
+      "service": "Microsoft.Cognitiveservices",
+      "action": "NewListPager",
+      "source_file": "cognitiveservices_catalog.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 ProjectCapabilityHostsClient.NewListPager"
     },
     {
       "permission": "Microsoft.CognitiveServices/accounts/projects/connections/read",
       "service": "Microsoft.Cognitiveservices",
       "action": "NewListPager",
-      "source_file": "cognitiveservices.go"
+      "source_file": "cognitiveservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 ProjectConnectionsClient.NewListPager"
     },
     {
       "permission": "Microsoft.CognitiveServices/accounts/projects/read",
       "service": "Microsoft.Cognitiveservices",
       "action": "NewListPager",
-      "source_file": "cognitiveservices.go"
+      "source_file": "cognitiveservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 ProjectsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.CognitiveServices/accounts/raiBlocklists/raiBlocklistItems/read",
+      "service": "Microsoft.Cognitiveservices",
+      "action": "NewListPager",
+      "source_file": "cognitiveservices_catalog.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 RaiBlocklistItemsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.CognitiveServices/accounts/raiBlocklists/read",
+      "service": "Microsoft.Cognitiveservices",
+      "action": "NewListPager",
+      "source_file": "cognitiveservices_catalog.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 RaiBlocklistsClient.NewListPager"
     },
     {
       "permission": "Microsoft.CognitiveServices/accounts/raiPolicies/read",
       "service": "Microsoft.Cognitiveservices",
       "action": "NewListPager",
-      "source_file": "cognitiveservices.go"
+      "source_file": "cognitiveservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 RaiPoliciesClient.NewListPager"
     },
     {
       "permission": "Microsoft.CognitiveServices/accounts/raiTopics/read",
       "service": "Microsoft.Cognitiveservices",
       "action": "Get",
-      "source_file": "cognitiveservices.go"
+      "source_file": "cognitiveservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 RaiTopicsClient.Get"
     },
     {
-      "permission": "Microsoft.Cognitiveservices/accountCapabilityHosts/read",
+      "permission": "Microsoft.CognitiveServices/accounts/raiTopics/read",
       "service": "Microsoft.Cognitiveservices",
       "action": "NewListPager",
-      "source_file": "cognitiveservices_catalog.go"
+      "source_file": "cognitiveservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 RaiTopicsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Cognitiveservices/accounts/read",
       "service": "Microsoft.Cognitiveservices",
       "action": "NewListPager",
-      "source_file": "cognitiveservices.go"
-    },
-    {
-      "permission": "Microsoft.Cognitiveservices/accounts/read",
-      "service": "Microsoft.Cognitiveservices",
-      "action": "NewListModelsPager",
-      "source_file": "cognitiveservices_catalog.go"
-    },
-    {
-      "permission": "Microsoft.Cognitiveservices/encryptionScopes/read",
-      "service": "Microsoft.Cognitiveservices",
-      "action": "NewListPager",
-      "source_file": "cognitiveservices_catalog.go"
-    },
-    {
-      "permission": "Microsoft.Cognitiveservices/projectCapabilityHosts/read",
-      "service": "Microsoft.Cognitiveservices",
-      "action": "NewListPager",
-      "source_file": "cognitiveservices_catalog.go"
-    },
-    {
-      "permission": "Microsoft.Cognitiveservices/raiBlocklistItems/read",
-      "service": "Microsoft.Cognitiveservices",
-      "action": "NewListPager",
-      "source_file": "cognitiveservices_catalog.go"
-    },
-    {
-      "permission": "Microsoft.Cognitiveservices/raiBlocklists/read",
-      "service": "Microsoft.Cognitiveservices",
-      "action": "NewListPager",
-      "source_file": "cognitiveservices_catalog.go"
+      "source_file": "cognitiveservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cognitiveservices/armcognitiveservices/v3 AccountsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Compute/diskAccesses/read",
       "service": "Microsoft.Compute",
       "action": "NewListPager",
-      "source_file": "compute.go"
+      "source_file": "compute.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 DiskAccessesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Compute/diskEncryptionSets/read",
       "service": "Microsoft.Compute",
       "action": "Get",
-      "source_file": "compute.go"
+      "source_file": "compute.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 DiskEncryptionSetsClient.Get"
+    },
+    {
+      "permission": "Microsoft.Compute/diskEncryptionSets/read",
+      "service": "Microsoft.Compute",
+      "action": "NewListPager",
+      "source_file": "compute.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 DiskEncryptionSetsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Compute/disks/read",
       "service": "Microsoft.Compute",
       "action": "Get",
-      "source_file": "compute.go"
+      "source_file": "compute.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 DisksClient.Get"
+    },
+    {
+      "permission": "Microsoft.Compute/disks/read",
+      "service": "Microsoft.Compute",
+      "action": "NewListPager",
+      "source_file": "compute.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 DisksClient.NewListPager"
     },
     {
       "permission": "Microsoft.Compute/galleries/images/read",
       "service": "Microsoft.Compute",
       "action": "NewListByGalleryPager",
-      "source_file": "compute_extras.go"
+      "source_file": "compute_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 GalleryImagesClient.NewListByGalleryPager"
     },
     {
       "permission": "Microsoft.Compute/galleries/images/versions/read",
       "service": "Microsoft.Compute",
       "action": "NewListByGalleryImagePager",
-      "source_file": "compute_extras.go"
+      "source_file": "compute_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 GalleryImageVersionsClient.NewListByGalleryImagePager"
     },
     {
       "permission": "Microsoft.Compute/galleries/read",
       "service": "Microsoft.Compute",
       "action": "NewListPager",
-      "source_file": "compute_extras.go"
+      "source_file": "compute_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 GalleriesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Compute/hostGroups/hosts/read",
       "service": "Microsoft.Compute",
       "action": "NewListByHostGroupPager",
-      "source_file": "compute_extras.go"
+      "source_file": "compute_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 DedicatedHostsClient.NewListByHostGroupPager"
     },
     {
       "permission": "Microsoft.Compute/hostGroups/read",
       "service": "Microsoft.Compute",
       "action": "NewListBySubscriptionPager",
-      "source_file": "compute_extras.go"
+      "source_file": "compute_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 DedicatedHostGroupsClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.Compute/images/read",
       "service": "Microsoft.Compute",
       "action": "NewListPager",
-      "source_file": "compute_extras.go"
+      "source_file": "compute_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 ImagesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Compute/proximityPlacementGroups/read",
       "service": "Microsoft.Compute",
       "action": "NewListBySubscriptionPager",
-      "source_file": "compute_extras.go"
+      "source_file": "compute_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 ProximityPlacementGroupsClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.Compute/snapshots/read",
       "service": "Microsoft.Compute",
       "action": "NewListPager",
-      "source_file": "compute.go"
+      "source_file": "compute.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 SnapshotsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Compute/virtualMachineScaleSets/extensions/read",
       "service": "Microsoft.Compute",
       "action": "NewListPager",
-      "source_file": "compute_vmss.go"
+      "source_file": "compute_vmss.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 VirtualMachineScaleSetExtensionsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Compute/virtualMachineScaleSets/read",
       "service": "Microsoft.Compute",
       "action": "NewListAllPager",
-      "source_file": "compute_vmss.go"
+      "source_file": "compute_vmss.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 VirtualMachineScaleSetsClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read",
       "service": "Microsoft.Compute",
       "action": "NewListPager",
-      "source_file": "compute_vmss.go"
+      "source_file": "compute_vmss.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 VirtualMachineScaleSetVMsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Compute/virtualMachines/read",
       "service": "Microsoft.Compute",
       "action": "Get",
-      "source_file": "compute.go"
+      "source_file": "compute.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 VirtualMachinesClient.Get"
+    },
+    {
+      "permission": "Microsoft.Compute/virtualMachines/read",
+      "service": "Microsoft.Compute",
+      "action": "NewListAllPager",
+      "source_file": "compute.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 VirtualMachinesClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Compute/virtualMachines/runCommands/read",
       "service": "Microsoft.Compute",
       "action": "NewListByVirtualMachinePager",
-      "source_file": "compute_runcommands.go"
+      "source_file": "compute_runcommands.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8 VirtualMachineRunCommandsClient.NewListByVirtualMachinePager"
     },
     {
       "permission": "Microsoft.ContainerInstance/containerGroups/read",
       "service": "Microsoft.ContainerInstance",
       "action": "NewListPager",
-      "source_file": "containerinstance.go"
+      "source_file": "containerinstance.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerinstance/armcontainerinstance/v2 ContainerGroupsClient.NewListPager"
     },
     {
       "permission": "Microsoft.ContainerRegistry/registries/cacheRules/read",
       "service": "Microsoft.ContainerRegistry",
       "action": "NewListPager",
-      "source_file": "containerregistry.go"
+      "source_file": "containerregistry.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry/v3 CacheRulesClient.NewListPager"
     },
     {
       "permission": "Microsoft.ContainerRegistry/registries/connectedRegistries/read",
       "service": "Microsoft.ContainerRegistry",
       "action": "NewListPager",
-      "source_file": "containerregistry.go"
+      "source_file": "containerregistry.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry/v3 ConnectedRegistriesClient.NewListPager"
     },
     {
       "permission": "Microsoft.ContainerRegistry/registries/credentialSets/read",
       "service": "Microsoft.ContainerRegistry",
       "action": "Get",
-      "source_file": "containerregistry.go"
+      "source_file": "containerregistry.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry/v3 CredentialSetsClient.Get"
+    },
+    {
+      "permission": "Microsoft.ContainerRegistry/registries/credentialSets/read",
+      "service": "Microsoft.ContainerRegistry",
+      "action": "NewListPager",
+      "source_file": "containerregistry.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry/v3 CredentialSetsClient.NewListPager"
     },
     {
       "permission": "Microsoft.ContainerRegistry/registries/read",
       "service": "Microsoft.ContainerRegistry",
       "action": "NewListPager",
-      "source_file": "containerregistry.go"
+      "source_file": "containerregistry.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry/v3 RegistriesClient.NewListPager"
     },
     {
       "permission": "Microsoft.ContainerRegistry/registries/replications/read",
       "service": "Microsoft.ContainerRegistry",
       "action": "NewListPager",
-      "source_file": "containerregistry.go"
+      "source_file": "containerregistry.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry/v3 ReplicationsClient.NewListPager"
     },
     {
       "permission": "Microsoft.ContainerRegistry/registries/scopeMaps/read",
       "service": "Microsoft.ContainerRegistry",
       "action": "Get",
-      "source_file": "containerregistry.go"
+      "source_file": "containerregistry.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry/v3 ScopeMapsClient.Get"
+    },
+    {
+      "permission": "Microsoft.ContainerRegistry/registries/scopeMaps/read",
+      "service": "Microsoft.ContainerRegistry",
+      "action": "NewListPager",
+      "source_file": "containerregistry.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry/v3 ScopeMapsClient.NewListPager"
     },
     {
       "permission": "Microsoft.ContainerRegistry/registries/tokens/read",
       "service": "Microsoft.ContainerRegistry",
       "action": "NewListPager",
-      "source_file": "containerregistry.go"
+      "source_file": "containerregistry.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry/v3 TokensClient.NewListPager"
     },
     {
       "permission": "Microsoft.ContainerRegistry/registries/webhooks/read",
       "service": "Microsoft.ContainerRegistry",
       "action": "NewListPager",
-      "source_file": "containerregistry.go"
-    },
-    {
-      "permission": "Microsoft.ContainerService/identityBindings/read",
-      "service": "Microsoft.ContainerService",
-      "action": "NewListByManagedClusterPager",
-      "source_file": "aks.go"
+      "source_file": "containerregistry.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry/v3 WebhooksClient.NewListPager"
     },
     {
       "permission": "Microsoft.ContainerService/managedClusters/agentPools/read",
       "service": "Microsoft.ContainerService",
       "action": "NewListPager",
-      "source_file": "aks.go"
+      "source_file": "aks.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v9 AgentPoolsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.ContainerService/managedClusters/identityBindings/read",
+      "service": "Microsoft.ContainerService",
+      "action": "NewListByManagedClusterPager",
+      "source_file": "aks.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v9 IdentityBindingsClient.NewListByManagedClusterPager"
     },
     {
       "permission": "Microsoft.ContainerService/managedClusters/read",
       "service": "Microsoft.ContainerService",
       "action": "NewListPager",
-      "source_file": "aks.go"
+      "source_file": "aks.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v9 ManagedClustersClient.NewListPager"
     },
     {
-      "permission": "Microsoft.ContainerService/trustedAccessRoleBindings/read",
+      "permission": "Microsoft.ContainerService/managedClusters/trustedAccessRoleBindings/read",
       "service": "Microsoft.ContainerService",
       "action": "NewListPager",
-      "source_file": "aks_access.go"
+      "source_file": "aks_access.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v9 TrustedAccessRoleBindingsClient.NewListPager"
     },
     {
-      "permission": "Microsoft.DBforMySQL/advancedThreatProtectionSettings/read",
-      "service": "Microsoft.DBforMySQL",
-      "action": "Get",
-      "source_file": "mysql.go"
-    },
-    {
-      "permission": "Microsoft.DBforMySQL/azureADAdministrators/read",
+      "permission": "Microsoft.DBforMySQL/flexibleServers/administrators/read",
       "service": "Microsoft.DBforMySQL",
       "action": "NewListByServerPager",
-      "source_file": "mysql.go"
+      "source_file": "mysql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2 AzureADAdministratorsClient.NewListByServerPager"
     },
     {
-      "permission": "Microsoft.DBforMySQL/privateEndpointConnections/read",
+      "permission": "Microsoft.DBforMySQL/flexibleServers/advancedThreatProtectionSettings/read",
+      "service": "Microsoft.DBforMySQL",
+      "action": "Get",
+      "source_file": "mysql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2 AdvancedThreatProtectionSettingsClient.Get"
+    },
+    {
+      "permission": "Microsoft.DBforMySQL/flexibleServers/configurations/read",
+      "service": "Microsoft.DBforMySQL",
+      "action": "Get",
+      "source_file": "mysql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2 ConfigurationsClient.Get"
+    },
+    {
+      "permission": "Microsoft.DBforMySQL/flexibleServers/configurations/read",
+      "service": "Microsoft.DBforMySQL",
+      "action": "NewListByServerPager",
+      "source_file": "mysql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2 ConfigurationsClient.NewListByServerPager"
+    },
+    {
+      "permission": "Microsoft.DBforMySQL/flexibleServers/databases/read",
+      "service": "Microsoft.DBforMySQL",
+      "action": "NewListByServerPager",
+      "source_file": "mysql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2 DatabasesClient.NewListByServerPager"
+    },
+    {
+      "permission": "Microsoft.DBforMySQL/flexibleServers/firewallRules/read",
+      "service": "Microsoft.DBforMySQL",
+      "action": "NewListByServerPager",
+      "source_file": "mysql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2 FirewallRulesClient.NewListByServerPager"
+    },
+    {
+      "permission": "Microsoft.DBforMySQL/flexibleServers/privateEndpointConnections/read",
       "service": "Microsoft.DBforMySQL",
       "action": "ListByServer",
-      "source_file": "mysql.go"
+      "source_file": "mysql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2 PrivateEndpointConnectionsClient.ListByServer"
+    },
+    {
+      "permission": "Microsoft.DBforMySQL/flexibleServers/read",
+      "service": "Microsoft.DBforMySQL",
+      "action": "NewListPager",
+      "source_file": "mysql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysqlflexibleservers/v2 ServersClient.NewListPager"
     },
     {
       "permission": "Microsoft.DBforMySQL/servers/configurations/read",
       "service": "Microsoft.DBforMySQL",
-      "action": "Get",
-      "source_file": "mysql.go"
+      "action": "NewListByServerPager",
+      "source_file": "mysql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysql ConfigurationsClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.DBforMySQL/servers/databases/read",
       "service": "Microsoft.DBforMySQL",
       "action": "NewListByServerPager",
-      "source_file": "mysql.go"
+      "source_file": "mysql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysql DatabasesClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.DBforMySQL/servers/firewallRules/read",
       "service": "Microsoft.DBforMySQL",
       "action": "NewListByServerPager",
-      "source_file": "mysql.go"
+      "source_file": "mysql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysql FirewallRulesClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.DBforMySQL/servers/read",
       "service": "Microsoft.DBforMySQL",
       "action": "NewListPager",
-      "source_file": "mysql.go"
+      "source_file": "mysql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mysql/armmysql ServersClient.NewListPager"
     },
     {
       "permission": "Microsoft.DBforPostgreSQL/flexibleServers/advancedThreatProtectionSettings/read",
       "service": "Microsoft.DBforPostgreSQL",
       "action": "Get",
-      "source_file": "postgresql.go"
+      "source_file": "postgresql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v5 AdvancedThreatProtectionSettingsClient.Get"
     },
     {
       "permission": "Microsoft.DBforPostgreSQL/flexibleServers/configurations/read",
       "service": "Microsoft.DBforPostgreSQL",
       "action": "NewListByServerPager",
-      "source_file": "postgresql.go"
+      "source_file": "postgresql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v5 ConfigurationsClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.DBforPostgreSQL/flexibleServers/databases/read",
       "service": "Microsoft.DBforPostgreSQL",
       "action": "NewListByServerPager",
-      "source_file": "postgresql.go"
+      "source_file": "postgresql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v5 DatabasesClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.DBforPostgreSQL/flexibleServers/firewallRules/read",
       "service": "Microsoft.DBforPostgreSQL",
       "action": "NewListByServerPager",
-      "source_file": "postgresql.go"
+      "source_file": "postgresql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v5 FirewallRulesClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.DBforPostgreSQL/flexibleServers/privateEndpointConnections/read",
       "service": "Microsoft.DBforPostgreSQL",
       "action": "NewListByServerPager",
-      "source_file": "postgresql.go"
+      "source_file": "postgresql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v5 PrivateEndpointConnectionsClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.DBforPostgreSQL/flexibleServers/read",
       "service": "Microsoft.DBforPostgreSQL",
       "action": "NewListBySubscriptionPager",
-      "source_file": "postgresql.go"
+      "source_file": "postgresql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresqlflexibleservers/v5 ServersClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.DBforPostgreSQL/serverGroupsv2/read",
       "service": "Microsoft.DBforPostgreSQL",
       "action": "NewListPager",
-      "source_file": "cosmosdb.go"
+      "source_file": "cosmosdb.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmosforpostgresql/armcosmosforpostgresql ClustersClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.DBforPostgreSQL/servers/configurations/read",
+      "service": "Microsoft.DBforPostgreSQL",
+      "action": "NewListByServerPager",
+      "source_file": "postgresql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresql ConfigurationsClient.NewListByServerPager"
+    },
+    {
+      "permission": "Microsoft.DBforPostgreSQL/servers/databases/read",
+      "service": "Microsoft.DBforPostgreSQL",
+      "action": "NewListByServerPager",
+      "source_file": "postgresql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresql DatabasesClient.NewListByServerPager"
+    },
+    {
+      "permission": "Microsoft.DBforPostgreSQL/servers/firewallRules/read",
+      "service": "Microsoft.DBforPostgreSQL",
+      "action": "NewListByServerPager",
+      "source_file": "postgresql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresql FirewallRulesClient.NewListByServerPager"
+    },
+    {
+      "permission": "Microsoft.DBforPostgreSQL/servers/read",
+      "service": "Microsoft.DBforPostgreSQL",
+      "action": "NewListPager",
+      "source_file": "postgresql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/postgresql/armpostgresql ServersClient.NewListPager"
     },
     {
       "permission": "Microsoft.DataBox/jobs/read",
       "service": "Microsoft.DataBox",
       "action": "Get",
-      "source_file": "databox.go"
+      "source_file": "databox.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/databox/armdatabox/v3 JobsClient.Get"
+    },
+    {
+      "permission": "Microsoft.DataBox/jobs/read",
+      "service": "Microsoft.DataBox",
+      "action": "NewListPager",
+      "source_file": "databox.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/databox/armdatabox/v3 JobsClient.NewListPager"
     },
     {
       "permission": "Microsoft.DataFactory/factories/integrationruntimes/read",
       "service": "Microsoft.DataFactory",
       "action": "NewListByFactoryPager",
-      "source_file": "datafactory_extras.go"
+      "source_file": "datafactory_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/datafactory/armdatafactory/v11 IntegrationRuntimesClient.NewListByFactoryPager"
     },
     {
       "permission": "Microsoft.DataFactory/factories/linkedservices/read",
       "service": "Microsoft.DataFactory",
       "action": "NewListByFactoryPager",
-      "source_file": "datafactory_extras.go"
+      "source_file": "datafactory_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/datafactory/armdatafactory/v11 LinkedServicesClient.NewListByFactoryPager"
     },
     {
       "permission": "Microsoft.DataFactory/factories/managedvirtualnetworks/managedprivateendpoints/read",
       "service": "Microsoft.DataFactory",
       "action": "NewListByFactoryPager",
-      "source_file": "datafactory_extras.go"
+      "source_file": "datafactory_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/datafactory/armdatafactory/v11 ManagedPrivateEndpointsClient.NewListByFactoryPager"
     },
     {
       "permission": "Microsoft.DataFactory/factories/managedvirtualnetworks/read",
       "service": "Microsoft.DataFactory",
       "action": "NewListByFactoryPager",
-      "source_file": "datafactory_extras.go"
+      "source_file": "datafactory_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/datafactory/armdatafactory/v11 ManagedVirtualNetworksClient.NewListByFactoryPager"
     },
     {
       "permission": "Microsoft.DataFactory/factories/read",
       "service": "Microsoft.DataFactory",
       "action": "NewListPager",
-      "source_file": "datafactory.go"
+      "source_file": "datafactory.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/datafactory/armdatafactory/v11 FactoriesClient.NewListPager"
     },
     {
       "permission": "Microsoft.DataProtection/backupVaults/backupInstances/read",
       "service": "Microsoft.DataProtection",
       "action": "NewListPager",
-      "source_file": "dataprotection_instances.go"
+      "source_file": "dataprotection_instances.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dataprotection/armdataprotection/v4 BackupInstancesClient.NewListPager"
     },
     {
       "permission": "Microsoft.DataProtection/backupVaults/backupPolicies/read",
       "service": "Microsoft.DataProtection",
       "action": "NewListPager",
-      "source_file": "dataprotection_instances.go"
+      "source_file": "dataprotection_instances.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dataprotection/armdataprotection/v4 BackupPoliciesClient.NewListPager"
     },
     {
       "permission": "Microsoft.DataProtection/backupVaults/backupResourceGuardProxies/read",
       "service": "Microsoft.DataProtection",
       "action": "NewListPager",
-      "source_file": "dataprotection_instances.go"
+      "source_file": "dataprotection_instances.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dataprotection/armdataprotection/v4 DppResourceGuardProxyClient.NewListPager"
     },
     {
       "permission": "Microsoft.DataProtection/backupVaults/read",
       "service": "Microsoft.DataProtection",
       "action": "NewGetInSubscriptionPager",
-      "source_file": "dataprotection.go"
+      "source_file": "dataprotection.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dataprotection/armdataprotection/v4 BackupVaultsClient.NewGetInSubscriptionPager"
     },
     {
-      "permission": "Microsoft.DataProtection/resourceGuards/read",
+      "permission": "Microsoft.DataProtection/subscriptions/resourceGroups/providers/resourceGuards/read",
       "service": "Microsoft.DataProtection",
       "action": "Get",
-      "source_file": "dataprotection_instances.go"
+      "source_file": "dataprotection_instances.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dataprotection/armdataprotection/v4 ResourceGuardsClient.Get"
     },
     {
       "permission": "Microsoft.Databricks/workspaces/read",
       "service": "Microsoft.Databricks",
       "action": "NewListBySubscriptionPager",
-      "source_file": "databricks.go"
+      "source_file": "databricks.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/databricks/armdatabricks/v2 WorkspacesClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.DesktopVirtualization/hostPools/read",
       "service": "Microsoft.DesktopVirtualization",
       "action": "NewListPager",
-      "source_file": "desktopvirtualization.go"
+      "source_file": "desktopvirtualization.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/desktopvirtualization/armdesktopvirtualization/v2 HostPoolsClient.NewListPager"
     },
     {
-      "permission": "Microsoft.Devices/resource/read",
+      "permission": "Microsoft.Devices/iotHubs/Read",
       "service": "Microsoft.Devices",
       "action": "NewListBySubscriptionPager",
-      "source_file": "iot.go"
+      "source_file": "iot.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/iothub/armiothub ResourceClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.DocumentDB/databaseAccounts/cassandraRoleAssignments/read",
       "service": "Microsoft.DocumentDB",
       "action": "NewListCassandraRoleAssignmentsPager",
-      "source_file": "cosmosdb_rbac.go"
+      "source_file": "cosmosdb_rbac.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 CassandraResourcesClient.NewListCassandraRoleAssignmentsPager"
     },
     {
       "permission": "Microsoft.DocumentDB/databaseAccounts/cassandraRoleDefinitions/read",
       "service": "Microsoft.DocumentDB",
       "action": "NewListCassandraRoleDefinitionsPager",
-      "source_file": "cosmosdb_rbac.go"
+      "source_file": "cosmosdb_rbac.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 CassandraResourcesClient.NewListCassandraRoleDefinitionsPager"
     },
     {
       "permission": "Microsoft.DocumentDB/databaseAccounts/gremlinRoleAssignments/read",
       "service": "Microsoft.DocumentDB",
       "action": "NewListGremlinRoleAssignmentsPager",
-      "source_file": "cosmosdb_rbac.go"
+      "source_file": "cosmosdb_rbac.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 GremlinResourcesClient.NewListGremlinRoleAssignmentsPager"
     },
     {
       "permission": "Microsoft.DocumentDB/databaseAccounts/gremlinRoleDefinitions/read",
       "service": "Microsoft.DocumentDB",
       "action": "NewListGremlinRoleDefinitionsPager",
-      "source_file": "cosmosdb_rbac.go"
+      "source_file": "cosmosdb_rbac.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 GremlinResourcesClient.NewListGremlinRoleDefinitionsPager"
     },
     {
       "permission": "Microsoft.DocumentDB/databaseAccounts/mongoMIRoleAssignments/read",
       "service": "Microsoft.DocumentDB",
       "action": "NewListMongoMIRoleAssignmentsPager",
-      "source_file": "cosmosdb_rbac.go"
+      "source_file": "cosmosdb_rbac.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 MongoMIResourcesClient.NewListMongoMIRoleAssignmentsPager"
     },
     {
       "permission": "Microsoft.DocumentDB/databaseAccounts/mongoMIRoleDefinitions/read",
       "service": "Microsoft.DocumentDB",
       "action": "NewListMongoMIRoleDefinitionsPager",
-      "source_file": "cosmosdb_rbac.go"
+      "source_file": "cosmosdb_rbac.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 MongoMIResourcesClient.NewListMongoMIRoleDefinitionsPager"
     },
     {
       "permission": "Microsoft.DocumentDB/databaseAccounts/privateEndpointConnections/read",
       "service": "Microsoft.DocumentDB",
       "action": "NewListByDatabaseAccountPager",
-      "source_file": "cosmosdb.go"
+      "source_file": "cosmosdb.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 PrivateEndpointConnectionsClient.NewListByDatabaseAccountPager"
     },
     {
       "permission": "Microsoft.DocumentDB/databaseAccounts/read",
       "service": "Microsoft.DocumentDB",
       "action": "NewListPager",
-      "source_file": "cosmosdb.go"
+      "source_file": "cosmosdb.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 DatabaseAccountsClient.NewListPager"
     },
     {
       "permission": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/read",
       "service": "Microsoft.DocumentDB",
       "action": "NewListSQLContainersPager",
-      "source_file": "cosmosdb_extras.go"
+      "source_file": "cosmosdb_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 SQLResourcesClient.NewListSQLContainersPager"
+    },
+    {
+      "permission": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/read",
+      "service": "Microsoft.DocumentDB",
+      "action": "NewListSQLDatabasesPager",
+      "source_file": "cosmosdb_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 SQLResourcesClient.NewListSQLDatabasesPager"
     },
     {
       "permission": "Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments/read",
       "service": "Microsoft.DocumentDB",
       "action": "NewListSQLRoleAssignmentsPager",
-      "source_file": "cosmosdb.go"
+      "source_file": "cosmosdb.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 SQLResourcesClient.NewListSQLRoleAssignmentsPager"
     },
     {
       "permission": "Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions/read",
       "service": "Microsoft.DocumentDB",
       "action": "NewListSQLRoleDefinitionsPager",
-      "source_file": "cosmosdb.go"
+      "source_file": "cosmosdb.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 SQLResourcesClient.NewListSQLRoleDefinitionsPager"
     },
     {
       "permission": "Microsoft.DocumentDB/databaseAccounts/tableRoleAssignments/read",
       "service": "Microsoft.DocumentDB",
       "action": "NewListTableRoleAssignmentsPager",
-      "source_file": "cosmosdb_rbac.go"
+      "source_file": "cosmosdb_rbac.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 TableResourcesClient.NewListTableRoleAssignmentsPager"
     },
     {
       "permission": "Microsoft.DocumentDB/databaseAccounts/tableRoleDefinitions/read",
       "service": "Microsoft.DocumentDB",
       "action": "NewListTableRoleDefinitionsPager",
-      "source_file": "cosmosdb_rbac.go"
+      "source_file": "cosmosdb_rbac.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4 TableResourcesClient.NewListTableRoleDefinitionsPager"
     },
     {
       "permission": "Microsoft.DocumentDB/mongoClusters/read",
       "service": "Microsoft.Mongocluster",
       "action": "NewListPager",
-      "source_file": "cosmosdb.go"
+      "source_file": "cosmosdb.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mongocluster/armmongocluster MongoClustersClient.NewListPager"
     },
     {
       "permission": "Microsoft.ElasticSan/elasticSans/read",
       "service": "Microsoft.ElasticSan",
       "action": "NewListBySubscriptionPager",
-      "source_file": "elasticsan.go"
+      "source_file": "elasticsan.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/elasticsan/armelasticsan ElasticSansClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.ElasticSan/elasticSans/volumeGroups/read",
       "service": "Microsoft.ElasticSan",
       "action": "NewListByElasticSanPager",
-      "source_file": "elasticsan.go"
+      "source_file": "elasticsan.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/elasticsan/armelasticsan VolumeGroupsClient.NewListByElasticSanPager"
     },
     {
       "permission": "Microsoft.EventGrid/domains/eventSubscriptions/read",
       "service": "Microsoft.EventGrid",
       "action": "NewListPager",
-      "source_file": "eventgrid_subscriptions.go"
+      "source_file": "eventgrid_subscriptions.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventgrid/armeventgrid/v2 DomainEventSubscriptionsClient.NewListPager"
     },
     {
       "permission": "Microsoft.EventGrid/domains/read",
       "service": "Microsoft.EventGrid",
       "action": "NewListBySubscriptionPager",
-      "source_file": "eventgrid.go"
+      "source_file": "eventgrid.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventgrid/armeventgrid/v2 DomainsClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.EventGrid/namespaces/read",
       "service": "Microsoft.EventGrid",
       "action": "NewListBySubscriptionPager",
-      "source_file": "eventgrid_subscriptions.go"
+      "source_file": "eventgrid_subscriptions.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventgrid/armeventgrid/v2 NamespacesClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.EventGrid/systemTopics/eventSubscriptions/read",
       "service": "Microsoft.EventGrid",
       "action": "NewListBySystemTopicPager",
-      "source_file": "eventgrid_subscriptions.go"
+      "source_file": "eventgrid_subscriptions.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventgrid/armeventgrid/v2 SystemTopicEventSubscriptionsClient.NewListBySystemTopicPager"
     },
     {
       "permission": "Microsoft.EventGrid/systemTopics/read",
       "service": "Microsoft.EventGrid",
       "action": "NewListBySubscriptionPager",
-      "source_file": "eventgrid.go"
+      "source_file": "eventgrid.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventgrid/armeventgrid/v2 SystemTopicsClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.EventGrid/topics/eventSubscriptions/read",
       "service": "Microsoft.EventGrid",
       "action": "NewListPager",
-      "source_file": "eventgrid_subscriptions.go"
+      "source_file": "eventgrid_subscriptions.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventgrid/armeventgrid/v2 TopicEventSubscriptionsClient.NewListPager"
     },
     {
       "permission": "Microsoft.EventGrid/topics/read",
       "service": "Microsoft.EventGrid",
       "action": "NewListBySubscriptionPager",
-      "source_file": "eventgrid.go"
+      "source_file": "eventgrid.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventgrid/armeventgrid/v2 TopicsClient.NewListBySubscriptionPager"
+    },
+    {
+      "permission": "Microsoft.EventHub/namespaces/authorizationRules/read",
+      "service": "Microsoft.EventHub",
+      "action": "NewListAuthorizationRulesPager",
+      "source_file": "eventhub.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventhub/armeventhub NamespacesClient.NewListAuthorizationRulesPager"
+    },
+    {
+      "permission": "Microsoft.EventHub/namespaces/eventhubs/authorizationRules/read",
+      "service": "Microsoft.EventHub",
+      "action": "NewListAuthorizationRulesPager",
+      "source_file": "eventhub.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventhub/armeventhub EventHubsClient.NewListAuthorizationRulesPager"
     },
     {
       "permission": "Microsoft.EventHub/namespaces/eventhubs/consumergroups/read",
       "service": "Microsoft.EventHub",
       "action": "NewListByEventHubPager",
-      "source_file": "eventhub.go"
+      "source_file": "eventhub.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventhub/armeventhub ConsumerGroupsClient.NewListByEventHubPager"
     },
     {
       "permission": "Microsoft.EventHub/namespaces/eventhubs/read",
       "service": "Microsoft.EventHub",
-      "action": "NewListAuthorizationRulesPager",
-      "source_file": "eventhub.go"
+      "action": "NewListByNamespacePager",
+      "source_file": "eventhub.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventhub/armeventhub EventHubsClient.NewListByNamespacePager"
     },
     {
       "permission": "Microsoft.EventHub/namespaces/read",
       "service": "Microsoft.EventHub",
-      "action": "NewListAuthorizationRulesPager",
-      "source_file": "eventhub.go"
+      "action": "NewListPager",
+      "source_file": "eventhub.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/eventhub/armeventhub NamespacesClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.FileShares/fileShares/fileShareSnapshots/read",
+      "service": "Microsoft.FileShares",
+      "action": "NewListByFileSharePager",
+      "source_file": "fileshares.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/fileshares/armfileshares FileShareSnapshotsClient.NewListByFileSharePager"
     },
     {
       "permission": "Microsoft.FileShares/fileShares/read",
       "service": "Microsoft.FileShares",
       "action": "NewListBySubscriptionPager",
-      "source_file": "fileshares.go"
-    },
-    {
-      "permission": "Microsoft.FileShares/fileShares/snapshots/read",
-      "service": "Microsoft.FileShares",
-      "action": "NewListByFileSharePager",
-      "source_file": "fileshares.go"
+      "source_file": "fileshares.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/fileshares/armfileshares Client.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.HybridCompute/machines/extensions/read",
       "service": "Microsoft.HybridCompute",
       "action": "NewListPager",
-      "source_file": "hybridcompute.go"
+      "source_file": "hybridcompute.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/hybridcompute/armhybridcompute/v3 MachineExtensionsClient.NewListPager"
     },
     {
       "permission": "Microsoft.HybridCompute/machines/read",
       "service": "Microsoft.HybridCompute",
       "action": "NewListBySubscriptionPager",
-      "source_file": "hybridcompute.go"
+      "source_file": "hybridcompute.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/hybridcompute/armhybridcompute/v3 MachinesClient.NewListBySubscriptionPager"
+    },
+    {
+      "permission": "Microsoft.Insights/DiagnosticSettingsCategories/Read",
+      "service": "Microsoft.Insights",
+      "action": "NewListPager",
+      "source_file": "monitor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor DiagnosticSettingsCategoryClient.NewListPager"
     },
     {
       "permission": "Microsoft.Insights/actionGroups/read",
       "service": "Microsoft.Insights",
       "action": "NewListBySubscriptionIDPager",
-      "source_file": "monitor.go"
+      "source_file": "monitor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor ActionGroupsClient.NewListBySubscriptionIDPager"
     },
     {
       "permission": "Microsoft.Insights/activityLogAlerts/read",
       "service": "Microsoft.Insights",
       "action": "NewListBySubscriptionIDPager",
-      "source_file": "monitor.go"
-    },
-    {
-      "permission": "Microsoft.Insights/activityLogs/read",
-      "service": "Microsoft.Insights",
-      "action": "NewListPager",
-      "source_file": "monitor.go"
+      "source_file": "monitor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor ActivityLogAlertsClient.NewListBySubscriptionIDPager"
     },
     {
       "permission": "Microsoft.Insights/components/read",
       "service": "Microsoft.Insights",
       "action": "Get",
-      "source_file": "monitor.go"
+      "source_file": "monitor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/applicationinsights/armapplicationinsights ComponentsClient.Get"
+    },
+    {
+      "permission": "Microsoft.Insights/components/read",
+      "service": "Microsoft.Insights",
+      "action": "NewListPager",
+      "source_file": "monitor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/applicationinsights/armapplicationinsights ComponentsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Insights/diagnosticSettings/read",
       "service": "Microsoft.Insights",
       "action": "NewListPager",
-      "source_file": "monitor.go"
+      "source_file": "monitor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor DiagnosticSettingsClient.NewListPager"
     },
     {
-      "permission": "Microsoft.Insights/diagnosticSettingsCategory/read",
+      "permission": "Microsoft.Insights/eventtypes/values/Read",
       "service": "Microsoft.Insights",
       "action": "NewListPager",
-      "source_file": "monitor.go"
+      "source_file": "monitor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor ActivityLogsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Insights/logProfiles/read",
       "service": "Microsoft.Insights",
       "action": "NewListPager",
-      "source_file": "monitor.go"
+      "source_file": "monitor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor LogProfilesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Insights/metricAlerts/read",
       "service": "Microsoft.Insights",
       "action": "NewListBySubscriptionPager",
-      "source_file": "monitor.go"
+      "source_file": "monitor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor MetricAlertsClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.Insights/scheduledQueryRules/read",
       "service": "Microsoft.Insights",
       "action": "NewListBySubscriptionPager",
-      "source_file": "monitor.go"
+      "source_file": "monitor.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor ScheduledQueryRulesClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.KeyVault/managedHsms/read",
       "service": "Microsoft.KeyVault",
       "action": "NewListBySubscriptionPager",
-      "source_file": "keyvault.go"
+      "source_file": "keyvault.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault/v2 ManagedHsmsClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.KeyVault/vaults/read",
       "service": "Microsoft.KeyVault",
       "action": "Get",
-      "source_file": "keyvault.go"
+      "source_file": "keyvault.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault/v2 VaultsClient.Get"
     },
     {
-      "permission": "Microsoft.Kusto/clusterPrincipalAssignments/read",
+      "permission": "Microsoft.KeyVault/vaults/read",
+      "service": "Microsoft.KeyVault",
+      "action": "NewListBySubscriptionPager",
+      "source_file": "keyvault.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault/v2 VaultsClient.NewListBySubscriptionPager"
+    },
+    {
+      "permission": "Microsoft.Kusto/Clusters/Databases/DataConnections/read",
+      "service": "Microsoft.Kusto",
+      "action": "NewListByDatabasePager",
+      "source_file": "kusto.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2 DataConnectionsClient.NewListByDatabasePager"
+    },
+    {
+      "permission": "Microsoft.Kusto/Clusters/Databases/PrincipalAssignments/read",
       "service": "Microsoft.Kusto",
       "action": "NewListPager",
-      "source_file": "kusto.go"
+      "source_file": "kusto.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2 DatabasePrincipalAssignmentsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Kusto/Clusters/Databases/read",
+      "service": "Microsoft.Kusto",
+      "action": "NewListByClusterPager",
+      "source_file": "kusto.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2 DatabasesClient.NewListByClusterPager"
+    },
+    {
+      "permission": "Microsoft.Kusto/Clusters/ManagedPrivateEndpoints/read",
+      "service": "Microsoft.Kusto",
+      "action": "NewListPager",
+      "source_file": "kusto.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2 ManagedPrivateEndpointsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Kusto/Clusters/PrincipalAssignments/read",
+      "service": "Microsoft.Kusto",
+      "action": "NewListPager",
+      "source_file": "kusto.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2 ClusterPrincipalAssignmentsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Kusto/Clusters/PrivateEndpointConnections/read",
+      "service": "Microsoft.Kusto",
+      "action": "NewListPager",
+      "source_file": "kusto.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2 PrivateEndpointConnectionsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Kusto/clusters/listCalloutPolicies/action",
+      "service": "Microsoft.Kusto",
+      "action": "NewListCalloutPoliciesPager",
+      "source_file": "kusto.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2 ClustersClient.NewListCalloutPoliciesPager"
     },
     {
       "permission": "Microsoft.Kusto/clusters/read",
       "service": "Microsoft.Kusto",
       "action": "Get",
-      "source_file": "kusto.go"
+      "source_file": "kusto.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2 ClustersClient.Get"
     },
     {
-      "permission": "Microsoft.Kusto/dataConnections/read",
-      "service": "Microsoft.Kusto",
-      "action": "NewListByDatabasePager",
-      "source_file": "kusto.go"
-    },
-    {
-      "permission": "Microsoft.Kusto/databasePrincipalAssignments/read",
+      "permission": "Microsoft.Kusto/clusters/read",
       "service": "Microsoft.Kusto",
       "action": "NewListPager",
-      "source_file": "kusto.go"
-    },
-    {
-      "permission": "Microsoft.Kusto/databases/read",
-      "service": "Microsoft.Kusto",
-      "action": "NewListByClusterPager",
-      "source_file": "kusto.go"
-    },
-    {
-      "permission": "Microsoft.Kusto/managedPrivateEndpoints/read",
-      "service": "Microsoft.Kusto",
-      "action": "NewListPager",
-      "source_file": "kusto.go"
-    },
-    {
-      "permission": "Microsoft.Kusto/privateEndpointConnections/read",
-      "service": "Microsoft.Kusto",
-      "action": "NewListPager",
-      "source_file": "kusto.go"
+      "source_file": "kusto.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2 ClustersClient.NewListPager"
     },
     {
       "permission": "Microsoft.Logic/workflows/read",
       "service": "Microsoft.Logic",
       "action": "NewListBySubscriptionPager",
-      "source_file": "logic.go"
+      "source_file": "logic.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/logic/armlogic WorkflowsClient.NewListBySubscriptionPager"
     },
     {
-      "permission": "Microsoft.MachineLearningServices/batchDeployments/read",
+      "permission": "Microsoft.MachineLearningServices/workspaces/batchEndpoints/deployments/read",
       "service": "Microsoft.MachineLearningServices",
       "action": "NewListPager",
-      "source_file": "machinelearning_data.go"
+      "source_file": "machinelearning_data.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v4 BatchDeploymentsClient.NewListPager"
     },
     {
-      "permission": "Microsoft.MachineLearningServices/batchEndpoints/read",
+      "permission": "Microsoft.MachineLearningServices/workspaces/batchEndpoints/read",
       "service": "Microsoft.MachineLearningServices",
       "action": "NewListPager",
-      "source_file": "machinelearning_data.go"
-    },
-    {
-      "permission": "Microsoft.MachineLearningServices/datastores/read",
-      "service": "Microsoft.MachineLearningServices",
-      "action": "NewListPager",
-      "source_file": "machinelearning_data.go"
-    },
-    {
-      "permission": "Microsoft.MachineLearningServices/workspaceConnections/read",
-      "service": "Microsoft.MachineLearningServices",
-      "action": "NewListPager",
-      "source_file": "machinelearning_data.go"
+      "source_file": "machinelearning_data.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v4 BatchEndpointsClient.NewListPager"
     },
     {
       "permission": "Microsoft.MachineLearningServices/workspaces/computes/read",
       "service": "Microsoft.MachineLearningServices",
       "action": "NewListPager",
-      "source_file": "machinelearning.go"
+      "source_file": "machinelearning.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v4 ComputeClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.MachineLearningServices/workspaces/connections/read",
+      "service": "Microsoft.MachineLearningServices",
+      "action": "NewListPager",
+      "source_file": "machinelearning_data.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v4 WorkspaceConnectionsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.MachineLearningServices/workspaces/datastores/read",
+      "service": "Microsoft.MachineLearningServices",
+      "action": "NewListPager",
+      "source_file": "machinelearning_data.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v4 DatastoresClient.NewListPager"
     },
     {
       "permission": "Microsoft.MachineLearningServices/workspaces/models/read",
       "service": "Microsoft.MachineLearningServices",
       "action": "NewListPager",
-      "source_file": "machinelearning.go"
+      "source_file": "machinelearning.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v4 ModelContainersClient.NewListPager"
     },
     {
       "permission": "Microsoft.MachineLearningServices/workspaces/onlineEndpoints/deployments/read",
       "service": "Microsoft.MachineLearningServices",
       "action": "NewListPager",
-      "source_file": "machinelearning.go"
+      "source_file": "machinelearning.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v4 OnlineDeploymentsClient.NewListPager"
     },
     {
       "permission": "Microsoft.MachineLearningServices/workspaces/onlineEndpoints/read",
       "service": "Microsoft.MachineLearningServices",
       "action": "NewListPager",
-      "source_file": "machinelearning.go"
+      "source_file": "machinelearning.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v4 OnlineEndpointsClient.NewListPager"
     },
     {
       "permission": "Microsoft.MachineLearningServices/workspaces/read",
       "service": "Microsoft.MachineLearningServices",
       "action": "NewListBySubscriptionPager",
-      "source_file": "machinelearning.go"
+      "source_file": "machinelearning.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v4 WorkspacesClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.MachineLearningServices/workspaces/serverlessEndpoints/read",
       "service": "Microsoft.MachineLearningServices",
       "action": "NewListPager",
-      "source_file": "machinelearning.go"
+      "source_file": "machinelearning.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v4 ServerlessEndpointsClient.NewListPager"
     },
     {
-      "permission": "Microsoft.ManagedIdentity/federatedIdentityCredentials/read",
+      "permission": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/read",
       "service": "Microsoft.ManagedIdentity",
       "action": "NewListPager",
-      "source_file": "iam.go"
+      "source_file": "iam.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi FederatedIdentityCredentialsClient.NewListPager"
     },
     {
       "permission": "Microsoft.ManagedIdentity/userAssignedIdentities/read",
       "service": "Microsoft.ManagedIdentity",
       "action": "Get",
-      "source_file": "iam.go"
+      "source_file": "iam.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi UserAssignedIdentitiesClient.Get"
+    },
+    {
+      "permission": "Microsoft.ManagedIdentity/userAssignedIdentities/read",
+      "service": "Microsoft.ManagedIdentity",
+      "action": "NewListBySubscriptionPager",
+      "source_file": "iam.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi UserAssignedIdentitiesClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.Managedservices/registrationAssignments/read",
       "service": "Microsoft.Managedservices",
       "action": "NewListPager",
-      "source_file": "lighthouse.go"
+      "source_file": "lighthouse.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/managedservices/armmanagedservices RegistrationAssignmentsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Managedservices/registrationDefinitions/read",
       "service": "Microsoft.Managedservices",
       "action": "NewListPager",
-      "source_file": "lighthouse.go"
+      "source_file": "lighthouse.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/managedservices/armmanagedservices RegistrationDefinitionsClient.NewListPager"
     },
     {
-      "permission": "Microsoft.Management/managementGroups/read",
+      "permission": "Microsoft.Management/getEntities/action",
       "service": "Microsoft.Management",
       "action": "NewListPager",
-      "source_file": "managementgroups.go"
+      "source_file": "managementgroups.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/managementgroups/armmanagementgroups/v2 EntitiesClient.NewListPager"
     },
     {
       "permission": "Microsoft.NetApp/netAppAccounts/capacityPools/read",
       "service": "Microsoft.NetApp",
       "action": "NewListPager",
-      "source_file": "netapp.go"
+      "source_file": "netapp.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/netapp/armnetapp/v10 PoolsClient.NewListPager"
     },
     {
       "permission": "Microsoft.NetApp/netAppAccounts/capacityPools/volumes/read",
       "service": "Microsoft.NetApp",
       "action": "NewListPager",
-      "source_file": "netapp.go"
+      "source_file": "netapp.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/netapp/armnetapp/v10 VolumesClient.NewListPager"
     },
     {
       "permission": "Microsoft.NetApp/netAppAccounts/read",
       "service": "Microsoft.NetApp",
       "action": "NewListBySubscriptionPager",
-      "source_file": "netapp.go"
+      "source_file": "netapp.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/netapp/armnetapp/v10 AccountsClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 WebApplicationFirewallPoliciesClient.Get"
     },
     {
-      "permission": "Microsoft.Network/adminRuleCollections/read",
+      "permission": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/read",
       "service": "Microsoft.Network",
-      "action": "NewListPager",
-      "source_file": "network_avnm.go"
-    },
-    {
-      "permission": "Microsoft.Network/adminRules/read",
-      "service": "Microsoft.Network",
-      "action": "NewListPager",
-      "source_file": "network_avnm.go"
+      "action": "NewListAllPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 WebApplicationFirewallPoliciesClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/applicationGateways/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ApplicationGatewaysClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/applicationGateways/read",
+      "service": "Microsoft.Network",
+      "action": "NewListAllPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ApplicationGatewaysClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/applicationSecurityGroups/read",
       "service": "Microsoft.Network",
       "action": "NewListAllPager",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ApplicationSecurityGroupsClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/applicationSecurityGroups/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network_nic_ipconfig.go"
+      "source_file": "network_nic_ipconfig.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ApplicationSecurityGroupsClient.Get"
     },
     {
       "permission": "Microsoft.Network/azureFirewalls/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 AzureFirewallsClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/azureFirewalls/read",
+      "service": "Microsoft.Network",
+      "action": "NewListAllPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 AzureFirewallsClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/bastionHosts/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 BastionHostsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/connections/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualNetworkGatewayConnectionsClient.Get"
     },
     {
-      "permission": "Microsoft.Network/connectivityConfigurations/read",
+      "permission": "Microsoft.Network/connections/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network_avnm.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualNetworkGatewayConnectionsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/customIPPrefixes/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network_ip_prefixes.go"
+      "source_file": "network_ip_prefixes.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 CustomIPPrefixesClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/customIPPrefixes/read",
+      "service": "Microsoft.Network",
+      "action": "NewListAllPager",
+      "source_file": "network_ip_prefixes.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 CustomIPPrefixesClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/ddosProtectionPlans/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 DdosProtectionPlansClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/ddosProtectionPlans/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 DdosProtectionPlansClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/dnszones/read",
       "service": "Microsoft.Dns",
       "action": "NewListPager",
-      "source_file": "dns.go"
+      "source_file": "dns.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns ZonesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/dnszones/recordsets/read",
       "service": "Microsoft.Dns",
       "action": "NewListByDNSZonePager",
-      "source_file": "dns.go"
+      "source_file": "dns.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns RecordSetsClient.NewListByDNSZonePager"
     },
     {
       "permission": "Microsoft.Network/expressRouteCircuits/authorizations/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network_expansion.go"
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ExpressRouteCircuitAuthorizationsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/expressRouteCircuits/peerings/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network_expansion.go"
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ExpressRouteCircuitPeeringsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/expressRouteCircuits/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network_expansion.go"
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ExpressRouteCircuitsClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/expressRouteCircuits/read",
+      "service": "Microsoft.Network",
+      "action": "NewListAllPager",
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ExpressRouteCircuitsClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/expressRouteGateways/read",
       "service": "Microsoft.Network",
       "action": "ListBySubscription",
-      "source_file": "network_connectivity.go"
+      "source_file": "network_connectivity.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ExpressRouteGatewaysClient.ListBySubscription"
     },
     {
       "permission": "Microsoft.Network/expressRoutePorts/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network_connectivity.go"
+      "source_file": "network_connectivity.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ExpressRoutePortsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/firewallPolicies/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 FirewallPoliciesClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/firewallPolicies/read",
+      "service": "Microsoft.Network",
+      "action": "NewListAllPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 FirewallPoliciesClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/firewallPolicies/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network_expansion.go"
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 FirewallPoliciesClient.Get"
     },
     {
-      "permission": "Microsoft.Network/firewallPolicyRuleCollectionGroups/read",
+      "permission": "Microsoft.Network/firewallPolicies/ruleCollectionGroups/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 FirewallPolicyRuleCollectionGroupsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/frontdoorWebApplicationFirewallPolicies/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "frontdoor_waf.go"
+      "source_file": "frontdoor_waf.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/frontdoor/armfrontdoor/v2 PoliciesClient.Get"
     },
     {
-      "permission": "Microsoft.Network/groups/read",
+      "permission": "Microsoft.Network/frontdoorWebApplicationFirewallPolicies/read",
       "service": "Microsoft.Network",
-      "action": "Get",
-      "source_file": "network_avnm.go"
+      "action": "NewListBySubscriptionPager",
+      "source_file": "frontdoor_waf.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/frontdoor/armfrontdoor/v2 PoliciesClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.Network/iPAllocations/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network_ip_prefixes.go"
+      "source_file": "network_ip_prefixes.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 IPAllocationsClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/iPAllocations/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_ip_prefixes.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 IPAllocationsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/iPGroups/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network_ipgroup.go"
+      "source_file": "network_ipgroup.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 IPGroupsClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/iPGroups/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_ipgroup.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 IPGroupsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/loadBalancers/read",
       "service": "Microsoft.Network",
       "action": "NewListAllPager",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 LoadBalancersClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/localNetworkGateways/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 LocalNetworkGatewaysClient.Get"
     },
     {
-      "permission": "Microsoft.Network/managers/read",
+      "permission": "Microsoft.Network/localNetworkGateways/read",
       "service": "Microsoft.Network",
-      "action": "NewListBySubscriptionPager",
-      "source_file": "network_avnm.go"
+      "action": "NewListPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 LocalNetworkGatewaysClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/natGateways/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 NatGatewaysClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/natGateways/read",
+      "service": "Microsoft.Network",
+      "action": "NewListAllPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 NatGatewaysClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/networkInterfaces/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "compute.go"
+      "source_file": "compute.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 InterfacesClient.Get"
     },
     {
       "permission": "Microsoft.Network/networkInterfaces/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 InterfacesClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/networkInterfaces/read",
+      "service": "Microsoft.Network",
+      "action": "NewListAllPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 InterfacesClient.NewListAllPager"
+    },
+    {
+      "permission": "Microsoft.Network/networkManagers/connectivityConfigurations/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_avnm.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ConnectivityConfigurationsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Network/networkManagers/networkGroups/read",
+      "service": "Microsoft.Network",
+      "action": "Get",
+      "source_file": "network_avnm.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 GroupsClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/networkManagers/networkGroups/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_avnm.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 GroupsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Network/networkManagers/networkGroups/staticMembers/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_avnm.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 StaticMembersClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Network/networkManagers/read",
+      "service": "Microsoft.Network",
+      "action": "NewListBySubscriptionPager",
+      "source_file": "network_avnm.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ManagersClient.NewListBySubscriptionPager"
+    },
+    {
+      "permission": "Microsoft.Network/networkManagers/securityAdminConfigurations/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_avnm.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 SecurityAdminConfigurationsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Network/networkManagers/securityAdminConfigurations/ruleCollections/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_avnm.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 AdminRuleCollectionsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Network/networkManagers/securityAdminConfigurations/ruleCollections/rules/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_avnm.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 AdminRulesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/networkSecurityGroups/read",
       "service": "Microsoft.Network",
       "action": "NewListAllPager",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 SecurityGroupsClient.NewListAllPager"
+    },
+    {
+      "permission": "Microsoft.Network/networkSecurityPerimeters/profiles/accessRules/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_perimeter.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 SecurityPerimeterAccessRulesClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Network/networkSecurityPerimeters/profiles/read",
+      "service": "Microsoft.Network",
+      "action": "Get",
+      "source_file": "network_perimeter.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 SecurityPerimeterProfilesClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/networkSecurityPerimeters/profiles/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_perimeter.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 SecurityPerimeterProfilesClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Network/networkSecurityPerimeters/read",
+      "service": "Microsoft.Network",
+      "action": "NewListBySubscriptionPager",
+      "source_file": "network_perimeter.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 SecurityPerimetersClient.NewListBySubscriptionPager"
+    },
+    {
+      "permission": "Microsoft.Network/networkSecurityPerimeters/resourceAssociations/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_perimeter.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 SecurityPerimeterAssociationsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Network/networkVirtualAppliances/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_virtual_appliances.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualAppliancesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/networkWatchers/connectionMonitors/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network_expansion.go"
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ConnectionMonitorsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/networkWatchers/flowLogs/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 FlowLogsClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/networkWatchers/flowLogs/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 FlowLogsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/networkWatchers/packetCaptures/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network_expansion.go"
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PacketCapturesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/networkWatchers/read",
       "service": "Microsoft.Network",
       "action": "NewListAllPager",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 WatchersClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/privateDnsZones/read",
       "service": "Microsoft.Privatedns",
       "action": "Get",
-      "source_file": "dns.go"
+      "source_file": "dns.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/privatedns/armprivatedns/v2 PrivateZonesClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/privateDnsZones/read",
+      "service": "Microsoft.Privatedns",
+      "action": "NewListPager",
+      "source_file": "dns.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/privatedns/armprivatedns/v2 PrivateZonesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/privateDnsZones/virtualNetworkLinks/read",
       "service": "Microsoft.Privatedns",
       "action": "NewListPager",
-      "source_file": "dns.go"
+      "source_file": "dns.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/privatedns/armprivatedns/v2 VirtualNetworkLinksClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PrivateDNSZoneGroupsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/privateEndpoints/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PrivateEndpointsClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/privateEndpoints/read",
+      "service": "Microsoft.Network",
+      "action": "NewListBySubscriptionPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PrivateEndpointsClient.NewListBySubscriptionPager"
+    },
+    {
+      "permission": "Microsoft.Network/privateLinkServices/privateEndpointConnections/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPrivateEndpointConnectionsPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PrivateLinkServicesClient.NewListPrivateEndpointConnectionsPager"
     },
     {
       "permission": "Microsoft.Network/privateLinkServices/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PrivateLinkServicesClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/privateLinkServices/read",
+      "service": "Microsoft.Network",
+      "action": "NewListBySubscriptionPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PrivateLinkServicesClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.Network/publicIPAddresses/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "compute.go"
+      "source_file": "compute.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PublicIPAddressesClient.Get"
     },
     {
       "permission": "Microsoft.Network/publicIPAddresses/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PublicIPAddressesClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/publicIPAddresses/read",
+      "service": "Microsoft.Network",
+      "action": "NewListAllPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PublicIPAddressesClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/publicIPAddresses/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network_nic_ipconfig.go"
+      "source_file": "network_nic_ipconfig.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PublicIPAddressesClient.Get"
     },
     {
       "permission": "Microsoft.Network/publicIPPrefixes/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network_ip_prefixes.go"
+      "source_file": "network_ip_prefixes.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PublicIPPrefixesClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/publicIPPrefixes/read",
+      "service": "Microsoft.Network",
+      "action": "NewListAllPager",
+      "source_file": "network_ip_prefixes.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 PublicIPPrefixesClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/routeFilters/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network_connectivity.go"
+      "source_file": "network_connectivity.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 RouteFiltersClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/routeTables/read",
       "service": "Microsoft.Network",
       "action": "NewListAllPager",
-      "source_file": "network.go"
-    },
-    {
-      "permission": "Microsoft.Network/securityAdminConfigurations/read",
-      "service": "Microsoft.Network",
-      "action": "NewListPager",
-      "source_file": "network_avnm.go"
-    },
-    {
-      "permission": "Microsoft.Network/securityPerimeterAccessRules/read",
-      "service": "Microsoft.Network",
-      "action": "NewListPager",
-      "source_file": "network_perimeter.go"
-    },
-    {
-      "permission": "Microsoft.Network/securityPerimeterAssociations/read",
-      "service": "Microsoft.Network",
-      "action": "NewListPager",
-      "source_file": "network_perimeter.go"
-    },
-    {
-      "permission": "Microsoft.Network/securityPerimeterProfiles/read",
-      "service": "Microsoft.Network",
-      "action": "Get",
-      "source_file": "network_perimeter.go"
-    },
-    {
-      "permission": "Microsoft.Network/securityPerimeters/read",
-      "service": "Microsoft.Network",
-      "action": "NewListBySubscriptionPager",
-      "source_file": "network_perimeter.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 RouteTablesClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/serviceEndpointPolicies/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network.go"
-    },
-    {
-      "permission": "Microsoft.Network/staticMembers/read",
-      "service": "Microsoft.Network",
-      "action": "NewListPager",
-      "source_file": "network_avnm.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 ServiceEndpointPoliciesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/trafficManagerProfiles/read",
       "service": "Microsoft.Trafficmanager",
       "action": "NewListBySubscriptionPager",
-      "source_file": "network_expansion.go"
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager ProfilesClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.Network/vPNGateways/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network_connectivity.go"
+      "source_file": "network_connectivity.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VPNGatewaysClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/vPNServerConfigurations/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network_connectivity.go"
+      "source_file": "network_connectivity.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VPNServerConfigurationsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/vPNSites/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network_expansion.go"
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VPNSitesClient.Get"
     },
     {
-      "permission": "Microsoft.Network/virtualAppliances/read",
+      "permission": "Microsoft.Network/vPNSites/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network_virtual_appliances.go"
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VPNSitesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/virtualHubs/hubRouteTables/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network_expansion.go"
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 HubRouteTablesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/virtualHubs/hubVirtualNetworkConnections/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network_expansion.go"
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 HubVirtualNetworkConnectionsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/virtualHubs/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network_expansion.go"
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualHubsClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/virtualHubs/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualHubsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/virtualNetworkGateways/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualNetworkGatewaysClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/virtualNetworkTaps/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network_virtual_appliances.go"
+      "source_file": "network_virtual_appliances.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualNetworkTapsClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/virtualNetworkTaps/read",
+      "service": "Microsoft.Network",
+      "action": "NewListAllPager",
+      "source_file": "network_virtual_appliances.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualNetworkTapsClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/virtualNetworks/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualNetworksClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/virtualNetworks/read",
+      "service": "Microsoft.Network",
+      "action": "NewListAllPager",
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualNetworksClient.NewListAllPager"
     },
     {
       "permission": "Microsoft.Network/virtualNetworks/subnets/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 SubnetsClient.Get"
     },
     {
       "permission": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network.go"
+      "source_file": "network.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualNetworkPeeringsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/virtualRouters/read",
       "service": "Microsoft.Network",
       "action": "NewListPager",
-      "source_file": "network_virtual_appliances.go"
+      "source_file": "network_virtual_appliances.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualRoutersClient.NewListPager"
     },
     {
       "permission": "Microsoft.Network/virtualWans/read",
       "service": "Microsoft.Network",
       "action": "Get",
-      "source_file": "network_expansion.go"
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualWansClient.Get"
+    },
+    {
+      "permission": "Microsoft.Network/virtualWans/read",
+      "service": "Microsoft.Network",
+      "action": "NewListPager",
+      "source_file": "network_expansion.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12 VirtualWansClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.OperationalInsights/queryPacks/queries/read",
+      "service": "Microsoft.OperationalInsights",
+      "action": "NewListPager",
+      "source_file": "loganalytics.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/operationalinsights/armoperationalinsights/v3 QueriesClient.NewListPager"
     },
     {
       "permission": "Microsoft.OperationalInsights/querypacks/read",
       "service": "Microsoft.OperationalInsights",
       "action": "NewListPager",
-      "source_file": "loganalytics.go"
+      "source_file": "loganalytics.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/operationalinsights/armoperationalinsights/v3 QueryPacksClient.NewListPager"
     },
     {
       "permission": "Microsoft.OperationalInsights/workspaces/dataexports/read",
       "service": "Microsoft.OperationalInsights",
       "action": "NewListByWorkspacePager",
-      "source_file": "loganalytics.go"
+      "source_file": "loganalytics.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/operationalinsights/armoperationalinsights/v3 DataExportsClient.NewListByWorkspacePager"
     },
     {
       "permission": "Microsoft.OperationalInsights/workspaces/linkedservices/read",
       "service": "Microsoft.OperationalInsights",
       "action": "NewListByWorkspacePager",
-      "source_file": "loganalytics.go"
+      "source_file": "loganalytics.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/operationalinsights/armoperationalinsights/v3 LinkedServicesClient.NewListByWorkspacePager"
+    },
+    {
+      "permission": "Microsoft.OperationalInsights/workspaces/networkSecurityPerimeterConfigurations/read",
+      "service": "Microsoft.OperationalInsights",
+      "action": "NewListNSPPager",
+      "source_file": "loganalytics.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/operationalinsights/armoperationalinsights/v3 WorkspacesClient.NewListNSPPager"
     },
     {
       "permission": "Microsoft.OperationalInsights/workspaces/read",
       "service": "Microsoft.OperationalInsights",
       "action": "Get",
-      "source_file": "loganalytics.go"
+      "source_file": "loganalytics.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/operationalinsights/armoperationalinsights/v3 WorkspacesClient.Get"
     },
     {
       "permission": "Microsoft.OperationalInsights/workspaces/read",
       "service": "Microsoft.OperationalInsights",
       "action": "NewListPager",
-      "source_file": "sentinel.go"
+      "source_file": "loganalytics.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/operationalinsights/armoperationalinsights/v3 WorkspacesClient.NewListPager"
     },
     {
-      "permission": "Microsoft.OperationalInsights/workspaces/savedSearches/read",
+      "permission": "Microsoft.OperationalInsights/workspaces/read",
       "service": "Microsoft.OperationalInsights",
       "action": "NewListPager",
-      "source_file": "loganalytics.go"
+      "source_file": "sentinel.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/operationalinsights/armoperationalinsights/v3 WorkspacesClient.NewListPager"
     },
     {
       "permission": "Microsoft.OperationalInsights/workspaces/tables/read",
       "service": "Microsoft.OperationalInsights",
       "action": "NewListByWorkspacePager",
-      "source_file": "loganalytics.go"
+      "source_file": "loganalytics.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/operationalinsights/armoperationalinsights/v3 TablesClient.NewListByWorkspacePager"
     },
     {
-      "permission": "Microsoft.Policyinsights/policyStates/read",
+      "permission": "Microsoft.PolicyInsights/policyStates/queryResults/action",
       "service": "Microsoft.Policyinsights",
       "action": "NewListQueryResultsForSubscriptionPager",
-      "source_file": "policy.go"
+      "source_file": "policy.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/policyinsights/armpolicyinsights PolicyStatesClient.NewListQueryResultsForSubscriptionPager"
     },
     {
       "permission": "Microsoft.Purview/accounts/read",
       "service": "Microsoft.Purview",
       "action": "NewListBySubscriptionPager",
-      "source_file": "purview.go"
+      "source_file": "purview.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/purview/armpurview AccountsClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.RecoveryServices/Vaults/backupPolicies/read",
       "service": "Microsoft.RecoveryServices",
       "action": "NewListPager",
-      "source_file": "recoveryservices.go"
+      "source_file": "recoveryservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/recoveryservices/armrecoveryservicesbackup/v5 BackupPoliciesClient.NewListPager"
     },
     {
       "permission": "Microsoft.RecoveryServices/Vaults/backupProtectedItems/read",
       "service": "Microsoft.RecoveryServices",
       "action": "NewListPager",
-      "source_file": "recoveryservices.go"
+      "source_file": "recoveryservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/recoveryservices/armrecoveryservicesbackup/v5 BackupProtectedItemsClient.NewListPager"
     },
     {
       "permission": "Microsoft.RecoveryServices/Vaults/backupconfig/read",
       "service": "Microsoft.RecoveryServices",
       "action": "Get",
-      "source_file": "recoveryservices.go"
+      "source_file": "recoveryservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/recoveryservices/armrecoveryservicesbackup/v5 BackupResourceVaultConfigsClient.Get"
     },
     {
-      "permission": "Microsoft.RecoveryServices/deletedVaults/read",
+      "permission": "Microsoft.RecoveryServices/locations/deletedVaults/read",
       "service": "Microsoft.RecoveryServices",
       "action": "NewListBySubscriptionIDPager",
-      "source_file": "recoveryservices.go"
+      "source_file": "recoveryservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/recoveryservices/armrecoveryservices/v3 DeletedVaultsClient.NewListBySubscriptionIDPager"
     },
     {
       "permission": "Microsoft.RecoveryServices/vaults/read",
       "service": "Microsoft.RecoveryServices",
       "action": "Get",
-      "source_file": "recoveryservices.go"
+      "source_file": "recoveryservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/recoveryservices/armrecoveryservices/v3 VaultsClient.Get"
+    },
+    {
+      "permission": "Microsoft.RecoveryServices/vaults/read",
+      "service": "Microsoft.RecoveryServices",
+      "action": "NewListBySubscriptionIDPager",
+      "source_file": "recoveryservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/recoveryservices/armrecoveryservices/v3 VaultsClient.NewListBySubscriptionIDPager"
     },
     {
       "permission": "Microsoft.Resources/deployments/read",
       "service": "Microsoft.Resources",
       "action": "NewListAtSubscriptionScopePager",
-      "source_file": "deployments.go"
+      "source_file": "deployments.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armdeployments/v3 DeploymentsClient.NewListAtSubscriptionScopePager"
     },
     {
-      "permission": "Microsoft.Resources/resources/read",
+      "permission": "Microsoft.Resources/deployments/read",
       "service": "Microsoft.Resources",
-      "action": "NewListPager",
-      "source_file": "discovery.go"
+      "action": "NewListByResourceGroupPager",
+      "source_file": "deployments.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armdeployments/v3 DeploymentsClient.NewListByResourceGroupPager"
     },
     {
-      "permission": "Microsoft.Resources/resources/read",
+      "permission": "Microsoft.Resources/subscriptions/locations/read",
       "service": "Microsoft.Resources",
-      "action": "NewListPager",
-      "source_file": "resources.go"
+      "action": "NewListLocationsPager",
+      "source_file": "recoveryservices.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions/v2 Client.NewListLocationsPager"
     },
     {
       "permission": "Microsoft.Resources/subscriptions/read",
       "service": "Microsoft.Resources",
       "action": "Get",
-      "source_file": "client_subscriptions.go"
+      "source_file": "client_subscriptions.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions/v2 Client.Get"
     },
     {
       "permission": "Microsoft.Resources/subscriptions/read",
       "service": "Microsoft.Resources",
-      "action": "NewListLocationsPager",
-      "source_file": "recoveryservices.go"
+      "action": "NewListPager",
+      "source_file": "client_subscriptions.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions/v2 Client.NewListPager"
     },
     {
       "permission": "Microsoft.Resources/subscriptions/resourceGroups/read",
       "service": "Microsoft.Resources",
       "action": "NewListPager",
-      "source_file": "resource_groups.go"
+      "source_file": "resource_groups.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources/v4 ResourceGroupsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Resources/subscriptions/resources/read",
+      "service": "Microsoft.Resources",
+      "action": "NewListPager",
+      "source_file": "discovery.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources/v4 Client.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Resources/subscriptions/resources/read",
+      "service": "Microsoft.Resources",
+      "action": "NewListPager",
+      "source_file": "resources.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources/v4 Client.NewListPager"
     },
     {
       "permission": "Microsoft.Search/searchServices/read",
       "service": "Microsoft.Search",
       "action": "NewListBySubscriptionPager",
-      "source_file": "search.go"
+      "source_file": "search.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/search/armsearch ServicesClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.Security/alerts/read",
       "service": "Microsoft.Security",
       "action": "NewListPager",
-      "source_file": "cloud_defender.go"
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity AlertsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Security/alertsSuppressionRules/read",
       "service": "Microsoft.Security",
       "action": "NewListPager",
-      "source_file": "cloud_defender.go"
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity AlertsSuppressionRulesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Security/apiCollections/read",
       "service": "Microsoft.Security",
       "action": "NewListBySubscriptionPager",
-      "source_file": "cloud_defender.go"
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity APICollectionsClient.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.Security/assessments/read",
       "service": "Microsoft.Security",
       "action": "NewListPager",
-      "source_file": "cloud_defender.go"
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity AssessmentsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Security/assessments/subAssessments/read",
+      "service": "Microsoft.Security",
+      "action": "NewListPager",
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity SubAssessmentsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Security/autoProvisioningSettings/read",
       "service": "Microsoft.Security",
       "action": "Get",
-      "source_file": "cloud_defender.go"
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity AutoProvisioningSettingsClient.Get"
     },
     {
       "permission": "Microsoft.Security/automations/read",
       "service": "Microsoft.Security",
       "action": "NewListPager",
-      "source_file": "cloud_defender.go"
-    },
-    {
-      "permission": "Microsoft.Security/contacts/read",
-      "service": "Microsoft.Security",
-      "action": "NewListPager",
-      "source_file": "cloud_defender.go"
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity AutomationsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Security/defenderForStorageSettings/read",
       "service": "Microsoft.Security",
       "action": "Get",
-      "source_file": "storage_extras.go"
+      "source_file": "storage_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity DefenderForStorageClient.Get"
     },
     {
       "permission": "Microsoft.Security/jitNetworkAccessPolicies/read",
       "service": "Microsoft.Security",
       "action": "NewListPager",
-      "source_file": "cloud_defender.go"
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity JitNetworkAccessPoliciesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Security/pricings/read",
       "service": "Microsoft.Security",
       "action": "Get",
-      "source_file": "cloud_defender.go"
-    },
-    {
-      "permission": "Microsoft.Security/regulatoryComplianceControls/read",
-      "service": "Microsoft.Security",
-      "action": "NewListPager",
-      "source_file": "cloud_defender.go"
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity PricingsClient.Get"
     },
     {
       "permission": "Microsoft.Security/regulatoryComplianceStandards/read",
       "service": "Microsoft.Security",
       "action": "NewListPager",
-      "source_file": "cloud_defender.go"
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity RegulatoryComplianceStandardsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Security/regulatoryComplianceStandards/regulatoryComplianceControls/read",
+      "service": "Microsoft.Security",
+      "action": "NewListPager",
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity RegulatoryComplianceControlsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Security/secureScoreControls/read",
       "service": "Microsoft.Security",
       "action": "NewListPager",
-      "source_file": "cloud_defender.go"
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity SecureScoreControlsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Security/secureScores/read",
       "service": "Microsoft.Security",
       "action": "NewListPager",
-      "source_file": "cloud_defender.go"
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity SecureScoresClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Security/securityContacts/read",
+      "service": "Microsoft.Security",
+      "action": "NewListPager",
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity ContactsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Security/settings/read",
       "service": "Microsoft.Security",
       "action": "Get",
-      "source_file": "cloud_defender.go"
-    },
-    {
-      "permission": "Microsoft.Security/subAssessments/read",
-      "service": "Microsoft.Security",
-      "action": "NewListPager",
-      "source_file": "cloud_defender.go"
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity SettingsClient.Get"
     },
     {
       "permission": "Microsoft.Security/workspaceSettings/read",
       "service": "Microsoft.Security",
       "action": "NewListPager",
-      "source_file": "cloud_defender.go"
+      "source_file": "cloud_defender.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity WorkspaceSettingsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Securityinsights/alertRules/read",
       "service": "Microsoft.Securityinsights",
       "action": "NewListPager",
-      "source_file": "sentinel.go"
+      "source_file": "sentinel.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/securityinsights/armsecurityinsights AlertRulesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Securityinsights/automationRules/read",
       "service": "Microsoft.Securityinsights",
       "action": "NewListPager",
-      "source_file": "sentinel.go"
+      "source_file": "sentinel.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/securityinsights/armsecurityinsights AutomationRulesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Securityinsights/dataConnectors/read",
       "service": "Microsoft.Securityinsights",
       "action": "NewListPager",
-      "source_file": "sentinel.go"
+      "source_file": "sentinel.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/securityinsights/armsecurityinsights DataConnectorsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Securityinsights/incidents/read",
       "service": "Microsoft.Securityinsights",
       "action": "NewListPager",
-      "source_file": "sentinel.go"
+      "source_file": "sentinel.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/securityinsights/armsecurityinsights IncidentsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Securityinsights/watchlists/read",
       "service": "Microsoft.Securityinsights",
       "action": "NewListPager",
-      "source_file": "sentinel.go"
+      "source_file": "sentinel.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/securityinsights/armsecurityinsights WatchlistsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.ServiceBus/namespaces/authorizationRules/read",
+      "service": "Microsoft.ServiceBus",
+      "action": "NewListAuthorizationRulesPager",
+      "source_file": "servicebus.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicebus/armservicebus NamespacesClient.NewListAuthorizationRulesPager"
+    },
+    {
+      "permission": "Microsoft.ServiceBus/namespaces/queues/authorizationRules/read",
+      "service": "Microsoft.ServiceBus",
+      "action": "NewListAuthorizationRulesPager",
+      "source_file": "servicebus.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicebus/armservicebus QueuesClient.NewListAuthorizationRulesPager"
     },
     {
       "permission": "Microsoft.ServiceBus/namespaces/queues/read",
       "service": "Microsoft.ServiceBus",
-      "action": "NewListAuthorizationRulesPager",
-      "source_file": "servicebus.go"
+      "action": "NewListByNamespacePager",
+      "source_file": "servicebus.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicebus/armservicebus QueuesClient.NewListByNamespacePager"
     },
     {
       "permission": "Microsoft.ServiceBus/namespaces/read",
       "service": "Microsoft.ServiceBus",
+      "action": "NewListPager",
+      "source_file": "servicebus.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicebus/armservicebus NamespacesClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.ServiceBus/namespaces/topics/authorizationRules/read",
+      "service": "Microsoft.ServiceBus",
       "action": "NewListAuthorizationRulesPager",
-      "source_file": "servicebus.go"
+      "source_file": "servicebus.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicebus/armservicebus TopicsClient.NewListAuthorizationRulesPager"
     },
     {
       "permission": "Microsoft.ServiceBus/namespaces/topics/read",
       "service": "Microsoft.ServiceBus",
-      "action": "NewListAuthorizationRulesPager",
-      "source_file": "servicebus.go"
+      "action": "NewListByNamespacePager",
+      "source_file": "servicebus.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicebus/armservicebus TopicsClient.NewListByNamespacePager"
     },
     {
       "permission": "Microsoft.ServiceBus/namespaces/topics/subscriptions/read",
       "service": "Microsoft.ServiceBus",
       "action": "NewListByTopicPager",
-      "source_file": "servicebus.go"
+      "source_file": "servicebus.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicebus/armservicebus SubscriptionsClient.NewListByTopicPager"
     },
     {
       "permission": "Microsoft.ServiceFabric/clusters/read",
       "service": "Microsoft.ServiceFabric",
       "action": "NewListPager",
-      "source_file": "servicefabric.go"
+      "source_file": "servicefabric.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicefabric/armservicefabric/v2 ClustersClient.NewListPager"
     },
     {
-      "permission": "Microsoft.Signalr/signalr/read",
-      "service": "Microsoft.Signalr",
+      "permission": "Microsoft.SignalRService/SignalR/read",
+      "service": "Microsoft.SignalRService",
       "action": "NewListBySubscriptionPager",
-      "source_file": "signalr.go"
+      "source_file": "signalr.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/signalr/armsignalr Client.NewListBySubscriptionPager"
+    },
+    {
+      "permission": "Microsoft.SignalRService/WebPubSub/read",
+      "service": "Microsoft.SignalRService",
+      "action": "NewListBySubscriptionPager",
+      "source_file": "signalr.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/webpubsub/armwebpubsub Client.NewListBySubscriptionPager"
     },
     {
       "permission": "Microsoft.Sql/managedInstances/databases/read",
       "service": "Microsoft.Sql",
       "action": "NewListByInstancePager",
-      "source_file": "sql_managedinstance.go"
+      "source_file": "sql_managedinstance.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ManagedDatabasesClient.NewListByInstancePager"
     },
     {
       "permission": "Microsoft.Sql/managedInstances/read",
       "service": "Microsoft.Sql",
       "action": "NewListPager",
-      "source_file": "sql_managedinstance.go"
+      "source_file": "sql_managedinstance.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ManagedInstancesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Sql/managedInstances/securityAlertPolicies/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql_managedinstance.go"
+      "source_file": "sql_managedinstance.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ManagedServerSecurityAlertPoliciesClient.Get"
     },
     {
       "permission": "Microsoft.Sql/managedInstances/vulnerabilityAssessments/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql_managedinstance.go"
+      "source_file": "sql_managedinstance.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ManagedInstanceVulnerabilityAssessmentsClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/administrators/read",
       "service": "Microsoft.Sql",
       "action": "NewListByServerPager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ServerAzureADAdministratorsClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.Sql/servers/advancedThreatProtectionSettings/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ServerAdvancedThreatProtectionSettingsClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/auditingSettings/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ServerBlobAuditingPoliciesClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/azureADOnlyAuthentications/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ServerAzureADOnlyAuthenticationsClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/connectionPolicies/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ServerConnectionPoliciesClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/advancedThreatProtectionSettings/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql DatabaseAdvancedThreatProtectionSettingsClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/auditingSettings/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql DatabaseBlobAuditingPoliciesClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/backupLongTermRetentionPolicies/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql LongTermRetentionPoliciesClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/backupShortTermRetentionPolicies/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql BackupShortTermRetentionPoliciesClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/dataMaskingPolicies/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql DataMaskingPoliciesClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/dataMaskingPolicies/rules/read",
       "service": "Microsoft.Sql",
       "action": "NewListByDatabasePager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql DataMaskingRulesClient.NewListByDatabasePager"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/geoBackupPolicies/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql GeoBackupPoliciesClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/ledgerDigestUploads/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql LedgerDigestUploadsClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/read",
       "service": "Microsoft.Sql",
       "action": "NewListByServerPager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql DatabasesClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/securityAlertPolicies/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql DatabaseSecurityAlertPoliciesClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/transparentDataEncryption/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql TransparentDataEncryptionsClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/usages/read",
       "service": "Microsoft.Sql",
       "action": "NewListByDatabasePager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql DatabaseUsagesClient.NewListByDatabasePager"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/vulnerabilityAssessments/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql DatabaseVulnerabilityAssessmentsClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/databases/vulnerabilityAssessments/scans/read",
       "service": "Microsoft.Sql",
       "action": "NewListByDatabasePager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql DatabaseVulnerabilityAssessmentScansClient.NewListByDatabasePager"
     },
     {
       "permission": "Microsoft.Sql/servers/devOpsAuditingSettings/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ServerDevOpsAuditSettingsClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/encryptionProtector/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql EncryptionProtectorsClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/failoverGroups/read",
       "service": "Microsoft.Sql",
       "action": "NewListByServerPager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql FailoverGroupsClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.Sql/servers/firewallRules/read",
       "service": "Microsoft.Sql",
       "action": "NewListByServerPager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql FirewallRulesClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.Sql/servers/ipv6FirewallRules/read",
       "service": "Microsoft.Sql",
       "action": "NewListByServerPager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql IPv6FirewallRulesClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.Sql/servers/keys/read",
       "service": "Microsoft.Sql",
       "action": "NewListByServerPager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ServerKeysClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.Sql/servers/outboundFirewallRules/read",
       "service": "Microsoft.Sql",
       "action": "NewListByServerPager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql OutboundFirewallRulesClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.Sql/servers/privateEndpointConnections/read",
       "service": "Microsoft.Sql",
       "action": "NewListByServerPager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql PrivateEndpointConnectionsClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.Sql/servers/read",
       "service": "Microsoft.Sql",
       "action": "NewListPager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ServersClient.NewListPager"
     },
     {
       "permission": "Microsoft.Sql/servers/replicationLinks/read",
       "service": "Microsoft.Sql",
       "action": "NewListByServerPager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ReplicationLinksClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.Sql/servers/securityAlertPolicies/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ServerSecurityAlertPoliciesClient.Get"
     },
     {
       "permission": "Microsoft.Sql/servers/virtualNetworkRules/read",
       "service": "Microsoft.Sql",
       "action": "NewListByServerPager",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql VirtualNetworkRulesClient.NewListByServerPager"
     },
     {
       "permission": "Microsoft.Sql/servers/vulnerabilityAssessments/read",
       "service": "Microsoft.Sql",
       "action": "Get",
-      "source_file": "sql.go"
+      "source_file": "sql.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql ServerVulnerabilityAssessmentsClient.Get"
     },
     {
       "permission": "Microsoft.Storage/storageAccounts/blobServices/containers/read",
       "service": "Microsoft.Storage",
       "action": "Get",
-      "source_file": "storage.go"
+      "source_file": "storage.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 BlobContainersClient.Get"
+    },
+    {
+      "permission": "Microsoft.Storage/storageAccounts/blobServices/containers/read",
+      "service": "Microsoft.Storage",
+      "action": "NewListPager",
+      "source_file": "storage.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 BlobContainersClient.NewListPager"
     },
     {
       "permission": "Microsoft.Storage/storageAccounts/encryptionScopes/read",
       "service": "Microsoft.Storage",
       "action": "NewListPager",
-      "source_file": "storage.go"
+      "source_file": "storage.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 EncryptionScopesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Storage/storageAccounts/fileServices/shares/read",
       "service": "Microsoft.Storage",
       "action": "NewListPager",
-      "source_file": "storage_extras.go"
+      "source_file": "storage_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 FileSharesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Storage/storageAccounts/inventoryPolicies/read",
       "service": "Microsoft.Storage",
       "action": "Get",
-      "source_file": "storage_extras.go"
+      "source_file": "storage_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 BlobInventoryPoliciesClient.Get"
     },
     {
       "permission": "Microsoft.Storage/storageAccounts/localUsers/read",
       "service": "Microsoft.Storage",
       "action": "NewListPager",
-      "source_file": "storage.go"
+      "source_file": "storage.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 LocalUsersClient.NewListPager"
     },
     {
       "permission": "Microsoft.Storage/storageAccounts/managementPolicies/read",
       "service": "Microsoft.Storage",
       "action": "Get",
-      "source_file": "storage.go"
+      "source_file": "storage.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 ManagementPoliciesClient.Get"
     },
     {
       "permission": "Microsoft.Storage/storageAccounts/networkSecurityPerimeterConfigurations/read",
       "service": "Microsoft.Storage",
       "action": "NewListPager",
-      "source_file": "storage_extras.go"
+      "source_file": "storage_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 NetworkSecurityPerimeterConfigurationsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Storage/storageAccounts/objectReplicationPolicies/read",
       "service": "Microsoft.Storage",
       "action": "NewListPager",
-      "source_file": "storage_extras.go"
+      "source_file": "storage_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 ObjectReplicationPoliciesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Storage/storageAccounts/privateEndpointConnections/read",
       "service": "Microsoft.Storage",
       "action": "NewListPager",
-      "source_file": "storage_extras.go"
+      "source_file": "storage_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 PrivateEndpointConnectionsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Storage/storageAccounts/queueServices/queues/read",
       "service": "Microsoft.Storage",
       "action": "Get",
-      "source_file": "storage_extras.go"
+      "source_file": "storage_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 QueueClient.Get"
+    },
+    {
+      "permission": "Microsoft.Storage/storageAccounts/queueServices/queues/read",
+      "service": "Microsoft.Storage",
+      "action": "NewListPager",
+      "source_file": "storage_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 QueueClient.NewListPager"
     },
     {
       "permission": "Microsoft.Storage/storageAccounts/read",
       "service": "Microsoft.Storage",
       "action": "NewListPager",
-      "source_file": "storage.go"
+      "source_file": "storage.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 AccountsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Storage/storageAccounts/tableServices/tables/read",
       "service": "Microsoft.Storage",
       "action": "NewListPager",
-      "source_file": "storage_extras.go"
+      "source_file": "storage_extras.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4 TableClient.NewListPager"
     },
     {
       "permission": "Microsoft.StorageCache/amlFilesystems/read",
       "service": "Microsoft.StorageCache",
       "action": "NewListPager",
-      "source_file": "storagecache.go"
+      "source_file": "storagecache.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storagecache/armstoragecache/v4 AmlFilesystemsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Synapse/workspaces/firewallRules/read",
       "service": "Microsoft.Synapse",
       "action": "NewListByWorkspacePager",
-      "source_file": "synapse_security.go"
+      "source_file": "synapse_security.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/synapse/armsynapse IPFirewallRulesClient.NewListByWorkspacePager"
     },
     {
       "permission": "Microsoft.Synapse/workspaces/read",
       "service": "Microsoft.Synapse",
       "action": "NewListPager",
-      "source_file": "synapse.go"
+      "source_file": "synapse.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/synapse/armsynapse WorkspacesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Synapse/workspaces/sqlPools/auditingSettings/read",
       "service": "Microsoft.Synapse",
       "action": "Get",
-      "source_file": "synapse_security.go"
+      "source_file": "synapse_security.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/synapse/armsynapse SQLPoolBlobAuditingPoliciesClient.Get"
     },
     {
       "permission": "Microsoft.Synapse/workspaces/sqlPools/read",
       "service": "Microsoft.Synapse",
       "action": "NewListByWorkspacePager",
-      "source_file": "synapse_security.go"
+      "source_file": "synapse_security.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/synapse/armsynapse SQLPoolsClient.NewListByWorkspacePager"
     },
     {
       "permission": "Microsoft.Synapse/workspaces/sqlPools/transparentDataEncryption/read",
       "service": "Microsoft.Synapse",
       "action": "Get",
-      "source_file": "synapse_security.go"
+      "source_file": "synapse_security.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/synapse/armsynapse SQLPoolTransparentDataEncryptionsClient.Get"
     },
     {
       "permission": "Microsoft.Web/certificates/read",
       "service": "Microsoft.Web",
       "action": "NewListPager",
-      "source_file": "web.go"
+      "source_file": "web.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6 CertificatesClient.NewListPager"
     },
     {
       "permission": "Microsoft.Web/hostingEnvironments/read",
       "service": "Microsoft.Web",
       "action": "NewListPager",
-      "source_file": "web.go"
+      "source_file": "web.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6 EnvironmentsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Web/serverfarms/read",
       "service": "Microsoft.Web",
       "action": "NewListPager",
-      "source_file": "web.go"
+      "source_file": "web.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6 PlansClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Web/sites/functions/read",
+      "service": "Microsoft.Web",
+      "action": "NewListFunctionsPager",
+      "source_file": "functions.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6 WebAppsClient.NewListFunctionsPager"
+    },
+    {
+      "permission": "Microsoft.Web/sites/functions/read",
+      "service": "Microsoft.Web",
+      "action": "NewListFunctionsPager",
+      "source_file": "web.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6 WebAppsClient.NewListFunctionsPager"
+    },
+    {
+      "permission": "Microsoft.Web/sites/hostNameBindings/read",
+      "service": "Microsoft.Web",
+      "action": "NewListHostNameBindingsPager",
+      "source_file": "web.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6 WebAppsClient.NewListHostNameBindingsPager"
     },
     {
       "permission": "Microsoft.Web/sites/read",
       "service": "Microsoft.Web",
-      "action": "NewListFunctionsPager",
-      "source_file": "functions.go"
+      "action": "NewListPager",
+      "source_file": "functions.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6 WebAppsClient.NewListPager"
     },
     {
       "permission": "Microsoft.Web/sites/read",
       "service": "Microsoft.Web",
-      "action": "NewListFunctionsPager",
-      "source_file": "web.go"
+      "action": "NewListPager",
+      "source_file": "web.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6 WebAppsClient.NewListPager"
+    },
+    {
+      "permission": "Microsoft.Web/sites/slots/read",
+      "service": "Microsoft.Web",
+      "action": "NewListSlotsPager",
+      "source_file": "web.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6 WebAppsClient.NewListSlotsPager"
     },
     {
       "permission": "Microsoft.Web/staticSites/read",
       "service": "Microsoft.Web",
       "action": "NewListPager",
-      "source_file": "web_staticsites.go"
-    },
-    {
-      "permission": "Microsoft.Webpubsub/webpubsub/read",
-      "service": "Microsoft.Webpubsub",
-      "action": "NewListBySubscriptionPager",
-      "source_file": "signalr.go"
+      "source_file": "web_staticsites.go",
+      "sdk": "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6 StaticSitesClient.NewListPager"
     }
   ]
 }

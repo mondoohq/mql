@@ -19,15 +19,18 @@ import (
 // IMPORTANT: Do NOT edit this list just to make the test pass after a provider
 // code change. Every entry here has been validated as a REAL GCP IAM permission
 // against the live IAM API (`gcloud iam list-testable-permissions` on a project
-// and an organization, cross-checked against predefined roles). The permission
-// scanner derives permission strings heuristically from SDK method names and
-// regularly emits names that are NOT real permissions (wrong casing, singular
-// vs. plural, abbreviated resource segments such as certificatemanager.certs,
-// or an entirely different resource). When the scanner produces a new
-// permission, first confirm the real permission name, add a
-// gcpPermissionOverrides entry in
+// and an organization, cross-checked against predefined roles) or against the
+// predefined-role catalog that `go run ./providers-sdk/v1/util/permissions/validate`
+// checks the manifest with. The permission scanner derives permission strings
+// heuristically from SDK method names and regularly emits names that are NOT
+// real permissions (wrong casing, singular vs. plural, abbreviated resource
+// segments such as certificatemanager.certs, or an entirely different
+// resource). When the scanner produces a new permission, run the validator,
+// confirm the real permission name, add a gcpPermissionOverrides entry in
 // providers-sdk/v1/util/permissions/permissions.go if the derived name is
 // wrong, regenerate the manifest, and only then add the validated name here.
+// This list has been wrong before (five entries, caught by the validator in
+// 2026-10), so "it is in the list" is not evidence on its own.
 //
 // Note: when verifying against list-testable-permissions, remember that the API
 // omits permissions whose customRolesSupportLevel is NOT_SUPPORTED, so absence
@@ -55,7 +58,6 @@ var validatedGCPPermissions = []string{
 	"aiplatform.metadataStores.list",
 	"aiplatform.modelDeploymentMonitoringJobs.list",
 	"aiplatform.models.get",
-	"aiplatform.models.getIamPolicy",
 	"aiplatform.models.list",
 	"aiplatform.notebookExecutionJobs.list",
 	"aiplatform.notebookRuntimeTemplates.get",
@@ -110,7 +112,6 @@ var validatedGCPPermissions = []string{
 	"clouddeploy.targets.list",
 	"cloudfunctions.functions.getIamPolicy",
 	"cloudfunctions.functions.list",
-	"cloudidentity.groups.getsecuritysettings",
 	"cloudkms.cryptoKeyVersions.list",
 	"cloudkms.cryptoKeys.get",
 	"cloudkms.cryptoKeys.getIamPolicy",
@@ -199,7 +200,9 @@ var validatedGCPPermissions = []string{
 	"dataproc.jobs.list",
 	"datastore.backupSchedules.list",
 	"datastore.databases.list",
-	"datastore.indexes.list",
+	// Renamed from datastore.indexes.list; only the schemas spelling is in a
+	// predefined role or in the Firestore IAM documentation now.
+	"datastore.schemas.list",
 	"datastream.connectionProfiles.get",
 	"datastream.connectionProfiles.list",
 	"datastream.privateConnections.get",
@@ -248,16 +251,15 @@ var validatedGCPPermissions = []string{
 	"gkebackup.backupPlans.list",
 	"gkebackup.restorePlans.list",
 	"iam.denypolicies.list",
-	"iam.policyBindings.list",
-	"iam.principalAccessBoundaryPolicies.list",
+	"iam.policybindings.list",
+	"iam.principalaccessboundarypolicies.list",
 	"iam.roles.list",
 	"iam.serviceAccountKeys.list",
 	"iam.serviceAccounts.getIamPolicy",
 	"iam.serviceAccounts.list",
-	"iam.workforcePoolProviders.list",
-	"iam.workforcePools.list",
-	"iam.workloadIdentityPoolProviders.list",
-	"iam.workloadIdentityPools.list",
+	// Google's primary names; the dotted spellings are aliases.
+	"iam.googleapis.com/workloadIdentityPoolProviders.list",
+	"iam.googleapis.com/workloadIdentityPools.list",
 	"iap.projects.getSettings",
 	"iap.tunnelDestGroups.list",
 	"iap.web.getIamPolicy",
@@ -288,7 +290,7 @@ var validatedGCPPermissions = []string{
 	"monitoring.uptimeCheckConfigs.list",
 	"networkconnectivity.hubs.list",
 	"networkconnectivity.spokes.list",
-	"networkmanagement.connectivityTests.list",
+	"networkmanagement.connectivitytests.list",
 	"networksecurity.addressGroups.list",
 	"networksecurity.authorizationPolicies.list",
 	"networksecurity.clientTlsPolicies.list",
@@ -326,7 +328,7 @@ var validatedGCPPermissions = []string{
 	"redis.instances.list",
 	"resourcemanager.projects.get",
 	"resourcemanager.projects.getIamPolicy",
-	"resourcemanager.resourceTagBindings.list",
+	"resourcemanager.hierarchyNodes.listTagBindings",
 	"run.jobs.getIamPolicy",
 	"run.jobs.list",
 	"run.operations.list",

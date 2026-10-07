@@ -1,9 +1,9 @@
 {
   "provider": "aws",
-  "version": "14.3.2",
-  "generated_at": "2026-10-05T18:49:34-07:00",
+  "version": "14.4.1",
+  "generated_at": "2026-10-06T19:46:14+03:00",
   "permissions": [
-    "access-analyzer:GetFindingV2",
+    "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
     "access-analyzer:ListArchiveRules",
     "access-analyzer:ListFindings",
@@ -144,7 +144,6 @@
     "bedrock:GetModelImportJob",
     "bedrock:GetModelInvocationLoggingConfiguration",
     "bedrock:GetResourcePolicy",
-    "bedrock:GetVpcConfiguration",
     "bedrock:ListAgentActionGroups",
     "bedrock:ListAgentAliases",
     "bedrock:ListAgentCollaborators",
@@ -168,7 +167,6 @@
     "bedrock:ListPrompts",
     "bedrock:ListProvisionedModelThroughputs",
     "bedrock:ListTagsForResource",
-    "bedrock:ListVpcConfigurations",
     "budgets:ListTagsForResource",
     "budgets:ViewBudget",
     "cassandra:Select",
@@ -179,6 +177,7 @@
     "cloudformation:DescribeStacks",
     "cloudformation:ListStackResources",
     "cloudformation:ListStackSets",
+    "cloudfront:DescribeKeyValueStore",
     "cloudfront:GetAnycastIpList",
     "cloudfront:GetDistribution",
     "cloudfront:GetTrustStore",
@@ -371,7 +370,6 @@
     "ec2:DescribeVpnConnections",
     "ec2:DescribeVpnGateways",
     "ec2:GetAllowedImagesSettings",
-    "ec2:GetClientVpnEndpointAuthorizationPolicy",
     "ec2:GetEbsDefaultKmsKeyId",
     "ec2:GetEbsEncryptionByDefault",
     "ec2:GetImageBlockPublicAccessState",
@@ -703,7 +701,7 @@
     "macie2:ListFindingsFilters",
     "macie2:ListInvitations",
     "macie2:ListMembers",
-    "memorydb:DescribeACLs",
+    "memorydb:DescribeAcls",
     "memorydb:DescribeClusters",
     "memorydb:DescribeSnapshots",
     "memorydb:DescribeSubnetGroups",
@@ -839,7 +837,7 @@
     "s3:GetAccessPointPolicy",
     "s3:GetAnalyticsConfiguration",
     "s3:GetBucketAcl",
-    "s3:GetBucketCors",
+    "s3:GetBucketCORS",
     "s3:GetBucketLocation",
     "s3:GetBucketLogging",
     "s3:GetBucketNotification",
@@ -1049,6 +1047,7 @@
     "storagegateway:ListGateways",
     "storagegateway:ListTagsForResource",
     "storagegateway:ListVolumes",
+    "sts:GetCallerIdentity",
     "timestream-influxdb:GetDbCluster",
     "timestream-influxdb:GetDbInstance",
     "timestream-influxdb:ListDbBackups",
@@ -1062,15 +1061,15 @@
     "transfer:ListServers",
     "transfer:ListWebApps",
     "transfer:ListWorkflows",
-    "vpclattice:GetAuthPolicy",
-    "vpclattice:GetService",
-    "vpclattice:GetServiceNetwork",
-    "vpclattice:ListListeners",
-    "vpclattice:ListServiceNetworkVpcAssociations",
-    "vpclattice:ListServiceNetworks",
-    "vpclattice:ListServices",
-    "vpclattice:ListTagsForResource",
-    "vpclattice:ListTargetGroups",
+    "vpc-lattice:GetAuthPolicy",
+    "vpc-lattice:GetService",
+    "vpc-lattice:GetServiceNetwork",
+    "vpc-lattice:ListListeners",
+    "vpc-lattice:ListServiceNetworkVpcAssociations",
+    "vpc-lattice:ListServiceNetworks",
+    "vpc-lattice:ListServices",
+    "vpc-lattice:ListTagsForResource",
+    "vpc-lattice:ListTargetGroups",
     "wafv2:GetIPSet",
     "wafv2:GetLoggingConfiguration",
     "wafv2:GetRegexPatternSet",
@@ -1106,7 +1105,7 @@
   ],
   "details": [
     {
-      "permission": "access-analyzer:GetFindingV2",
+      "permission": "access-analyzer:GetFinding",
       "service": "access-analyzer",
       "action": "GetFindingV2",
       "source_file": "aws_iam_accessanalyzer.go"
@@ -1152,6 +1151,12 @@
       "service": "account",
       "action": "ListRegions",
       "source_file": "aws_account.go"
+    },
+    {
+      "permission": "account:ListRegions",
+      "service": "account",
+      "action": "ListRegions",
+      "source_file": "connection.go"
     },
     {
       "permission": "acm-pca:ListCertificateAuthorities",
@@ -1982,12 +1987,6 @@
       "source_file": "aws_bedrock.go"
     },
     {
-      "permission": "bedrock:GetVpcConfiguration",
-      "service": "bedrock",
-      "action": "GetVpcConfiguration",
-      "source_file": "aws_bedrock_knowledgebase_vpc.go"
-    },
-    {
       "permission": "bedrock:ListAgentActionGroups",
       "service": "bedrock",
       "action": "ListAgentActionGroups",
@@ -2144,12 +2143,6 @@
       "source_file": "aws_bedrock.go"
     },
     {
-      "permission": "bedrock:ListVpcConfigurations",
-      "service": "bedrock",
-      "action": "ListVpcConfigurations",
-      "source_file": "aws_bedrock_knowledgebase_vpc.go"
-    },
-    {
       "permission": "budgets:ListTagsForResource",
       "service": "budgets",
       "action": "ListTagsForResource",
@@ -2208,6 +2201,12 @@
       "service": "cloudformation",
       "action": "ListStackSets",
       "source_file": "aws_cloudformation.go"
+    },
+    {
+      "permission": "cloudfront:DescribeKeyValueStore",
+      "service": "cloudfront",
+      "action": "DescribeKeyValueStore",
+      "source_file": "aws_cloudfront_keys.go"
     },
     {
       "permission": "cloudfront:GetAnycastIpList",
@@ -3426,12 +3425,6 @@
       "service": "ec2",
       "action": "GetAllowedImagesSettings",
       "source_file": "aws_ec2_account_settings.go"
-    },
-    {
-      "permission": "ec2:GetClientVpnEndpointAuthorizationPolicy",
-      "service": "ec2",
-      "action": "GetClientVpnEndpointAuthorizationPolicy",
-      "source_file": "aws_ec2_clientvpn.go"
     },
     {
       "permission": "ec2:GetEbsDefaultKmsKeyId",
@@ -5462,7 +5455,7 @@
       "source_file": "aws_macie.go"
     },
     {
-      "permission": "memorydb:DescribeACLs",
+      "permission": "memorydb:DescribeAcls",
       "service": "memorydb",
       "action": "DescribeACLs",
       "source_file": "aws_memorydb.go"
@@ -6374,7 +6367,7 @@
       "source_file": "aws_s3.go"
     },
     {
-      "permission": "s3:GetBucketCors",
+      "permission": "s3:GetBucketCORS",
       "service": "s3",
       "action": "GetBucketCors",
       "source_file": "aws_s3.go"
@@ -7682,6 +7675,12 @@
       "source_file": "aws_storagegateway.go"
     },
     {
+      "permission": "sts:GetCallerIdentity",
+      "service": "sts",
+      "action": "GetCallerIdentity",
+      "source_file": "connection.go"
+    },
+    {
       "permission": "timestream-influxdb:GetDbCluster",
       "service": "timestream-influxdb",
       "action": "GetDbCluster",
@@ -7760,56 +7759,56 @@
       "source_file": "aws_transfer.go"
     },
     {
-      "permission": "vpclattice:GetAuthPolicy",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:GetAuthPolicy",
+      "service": "vpc-lattice",
       "action": "GetAuthPolicy",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:GetService",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:GetService",
+      "service": "vpc-lattice",
       "action": "GetService",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:GetServiceNetwork",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:GetServiceNetwork",
+      "service": "vpc-lattice",
       "action": "GetServiceNetwork",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:ListListeners",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:ListListeners",
+      "service": "vpc-lattice",
       "action": "ListListeners",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:ListServiceNetworkVpcAssociations",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:ListServiceNetworkVpcAssociations",
+      "service": "vpc-lattice",
       "action": "ListServiceNetworkVpcAssociations",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:ListServiceNetworks",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:ListServiceNetworks",
+      "service": "vpc-lattice",
       "action": "ListServiceNetworks",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:ListServices",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:ListServices",
+      "service": "vpc-lattice",
       "action": "ListServices",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:ListTagsForResource",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:ListTagsForResource",
+      "service": "vpc-lattice",
       "action": "ListTagsForResource",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:ListTargetGroups",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:ListTargetGroups",
+      "service": "vpc-lattice",
       "action": "ListTargetGroups",
       "source_file": "aws_vpclattice.go"
     },
