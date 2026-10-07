@@ -371,13 +371,14 @@ var kubeletInstallPaths = []string{"/var/lib/rancher/rke2/bin/kubelet"}
 // kubeletBinaryProbe answers what resolveKubeletExecutable needs to know about
 // the kubelet process and the files on the target.
 type kubeletBinaryProbe struct {
-	// startedByRoot reports whether the process's real user is root.
-	startedByRoot func() bool
+	// rootExe is the binary /proc/<pid>/exe links to, and is "" unless one
+	// snapshot of the process shows root running it in the mount namespace of
+	// the system's init (see parseKubeletProcSnapshot).
+	rootExe func() string
 	// argv0 is the first word of the process's command line.
 	argv0 func() string
-	// procExe is the binary /proc/<pid>/exe links to.
-	procExe func() string
-	// resolve returns the file a path names, with every link followed.
+	// resolve returns the file a path names, with every link followed, or ""
+	// when it cannot.
 	resolve func(path string) string
 	// trustedBinary reports whether path is a file owned by root that neither
 	// its group nor others may write.
@@ -391,24 +392,22 @@ type kubeletBinaryProbe struct {
 // RKE2 and NixOS (/nix/store) all keep kubelet elsewhere.
 //
 // The kubelet process is matched by name, and any user can start a process
-// named kubelet, so a path from the process is used only when root started it
-// and the path is the very file /proc/<pid>/exe says root is running: running
-// that file with --version gives no one anything root does not already run.
-// A binary replaced on disk since it started no longer matches its link.
-// argv[0] goes first because Canonical Kubernetes's kubelet is a link to a
-// multi-call binary that acts as kubelet only when invoked as kubelet.
-// Otherwise kubeletInstallPaths, root's alone to change, are tried, and the
-// bare name is kept.
+// named kubelet, so a path from the process is used only when root runs it in
+// the system's own mount namespace and the path is the very file
+// /proc/<pid>/exe says root is running: running that file with --version gives
+// no one anything root does not already run. argv[0] goes first because
+// Canonical Kubernetes's kubelet is a link to a multi-call binary that acts as
+// kubelet only when invoked as kubelet. A path resolve cannot follow comes back
+// "" and so never matches. Otherwise kubeletInstallPaths, root's alone to
+// change, are tried, and the bare name is kept.
 func resolveKubeletExecutable(exe string, probe kubeletBinaryProbe) string {
 	if path.IsAbs(exe) {
 		return exe
 	}
-	if probe.startedByRoot() {
-		if running := probe.procExe(); path.IsAbs(running) && !strings.HasSuffix(running, " (deleted)") {
-			for _, p := range []string{probe.argv0(), running} {
-				if path.IsAbs(p) && probe.resolve(p) == running {
-					return p
-				}
+	if running := probe.rootExe(); running != "" {
+		for _, p := range []string{probe.argv0(), running} {
+			if path.IsAbs(p) && probe.resolve(p) == running {
+				return p
 			}
 		}
 	}
@@ -420,26 +419,61 @@ func resolveKubeletExecutable(exe string, probe kubeletBinaryProbe) string {
 	return exe
 }
 
+// kubeletProcSnapshotCommand reads, in one go, what parseKubeletProcSnapshot
+// needs about a process: its Uid line, its binary, its mount namespace, the
+// mount namespace of the system's init, and its Uid line again.
+func kubeletProcSnapshotCommand(pid int64) string {
+	p := "/proc/" + strconv.FormatInt(pid, 10)
+	return "grep '^Uid:' " + p + "/status && readlink " + p + "/exe && readlink " + p +
+		"/ns/mnt && readlink /proc/1/ns/mnt && grep '^Uid:' " + p + "/status"
+}
+
+// parseKubeletProcSnapshot returns the binary of the process that
+// kubeletProcSnapshotCommand read, or "" when it is not one to run:
+//
+//   - root is not the real user, on either read. A process another user
+//     started is refused, and so is a pid that a non-root process took over
+//     between the reads.
+//   - it runs in another mount namespace than the system's init, such as a
+//     container. Its link names a file in that namespace, and the same path
+//     on the system can be a different, user-writable file.
+//   - the binary was deleted or replaced on disk since it started.
+func parseKubeletProcSnapshot(out string) string {
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) != 5 {
+		return ""
+	}
+	for _, uidLine := range []string{lines[0], lines[4]} {
+		uid, ok := parseProcStatusRealUID(uidLine)
+		if !ok || uid != 0 {
+			return ""
+		}
+	}
+	exe, mountNS, initMountNS := lines[1], lines[2], lines[3]
+	if mountNS == "" || mountNS != initMountNS {
+		return ""
+	}
+	if !path.IsAbs(exe) || strings.HasSuffix(exe, " (deleted)") {
+		return ""
+	}
+	return exe
+}
+
 // kubeletBinaryProbe reads the facts resolveKubeletExecutable needs from the
-// target. Each read is a command of its own, so it runs with sudo where the
-// scan does: /proc/<pid>/exe of a root process is not readable by others.
+// target. Each read is a command, so it runs with sudo where the scan does:
+// /proc/<pid>/exe of a root process is not readable by others.
 func (m *mqlKubelet) kubeletBinaryProbe(proc *mqlProcess) kubeletBinaryProbe {
 	pid := proc.GetPid()
-	procPath := ""
-	if pid.Error == nil {
-		procPath = "/proc/" + strconv.FormatInt(pid.Data, 10)
-	}
 	return kubeletBinaryProbe{
-		startedByRoot: func() bool {
-			if procPath == "" {
-				return false
+		rootExe: func() string {
+			if pid.Error != nil {
+				return ""
 			}
-			out, ok := m.runQuiet("cat " + procPath + "/status")
+			out, ok := m.runQuiet(kubeletProcSnapshotCommand(pid.Data))
 			if !ok {
-				return false
+				return ""
 			}
-			uid, ok := parseProcStatusRealUID(out)
-			return ok && uid == 0
+			return parseKubeletProcSnapshot(out)
 		},
 		argv0: func() string {
 			command := proc.GetCommand()
@@ -451,13 +485,6 @@ func (m *mqlKubelet) kubeletBinaryProbe(proc *mqlProcess) kubeletBinaryProbe {
 				return ""
 			}
 			return fields[0]
-		},
-		procExe: func() string {
-			if procPath == "" {
-				return ""
-			}
-			out, _ := m.runQuiet("readlink " + procPath + "/exe")
-			return strings.TrimSpace(out)
 		},
 		resolve: func(p string) string {
 			out, _ := m.runQuiet("readlink -f -- " + shellQuote(p))

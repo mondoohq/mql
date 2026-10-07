@@ -101,11 +101,11 @@ func TestParseKubeletVersion(t *testing.T) {
 func TestResolveKubeletExecutable(t *testing.T) {
 	// links maps a path to the file it resolves to; a path not in it resolves
 	// to itself
-	probe := func(root bool, argv0, procExe string, links map[string]string, trusted ...string) kubeletBinaryProbe {
+	// rootExe is what a trusted process snapshot returned, "" for an untrusted one
+	probe := func(rootExe, argv0 string, links map[string]string, trusted ...string) kubeletBinaryProbe {
 		return kubeletBinaryProbe{
-			startedByRoot: func() bool { return root },
-			argv0:         func() string { return argv0 },
-			procExe:       func() string { return procExe },
+			rootExe: func() string { return rootExe },
+			argv0:   func() string { return argv0 },
 			resolve: func(p string) string {
 				if target, ok := links[p]; ok {
 					return target
@@ -124,38 +124,65 @@ func TestResolveKubeletExecutable(t *testing.T) {
 	}
 
 	// the command lines and /proc/<pid>/exe links seen on live nodes
-	assert.Equal(t, "/var/lib/k0s/bin/kubelet", resolveKubeletExecutable("kubelet",
-		probe(true, "/var/lib/k0s/bin/kubelet", "/var/lib/k0s/bin/kubelet", nil)), "k0s")
+	k0s := "/var/lib/k0s/bin/kubelet"
+	assert.Equal(t, k0s, resolveKubeletExecutable("kubelet", probe(k0s, k0s, nil)), "k0s")
 	// minikube copies its binaries in as uid 1001: root runs that file anyway
 	mk := "/var/lib/minikube/binaries/v1.37.0/kubelet"
-	assert.Equal(t, mk, resolveKubeletExecutable("kubelet", probe(true, mk, mk, nil)), "minikube")
+	assert.Equal(t, mk, resolveKubeletExecutable("kubelet", probe(mk, mk, nil)), "minikube")
 	nix := "/nix/store/b5gip1vkhws3gnhr0hmn1z83xzb1hjjv-kubernetes-1.36.3/bin/kubelet"
-	assert.Equal(t, nix, resolveKubeletExecutable("kubelet", probe(true, nix, nix, nil)), "NixOS")
+	assert.Equal(t, nix, resolveKubeletExecutable("kubelet", probe(nix, nix, nil)), "NixOS")
 	// Canonical Kubernetes's kubelet is a link to a multi-call binary that
 	// acts as kubelet only under that name
 	assert.Equal(t, "/snap/k8s/5562/bin/kubelet", resolveKubeletExecutable("kubelet",
-		probe(true, "/snap/k8s/5562/bin/kubelet", "/snap/k8s/5562/bin/kubernetes",
+		probe("/snap/k8s/5562/bin/kubernetes", "/snap/k8s/5562/bin/kubelet",
 			map[string]string{"/snap/k8s/5562/bin/kubelet": "/snap/k8s/5562/bin/kubernetes"})), "Canonical Kubernetes")
 	// RKE2 starts kubelet by bare name, so only the link names the binary
 	rke2 := "/var/lib/rancher/rke2/data/v1.35.7-rke2r1-1234/bin/kubelet"
-	assert.Equal(t, rke2, resolveKubeletExecutable("kubelet", probe(true, "kubelet", rke2, nil)), "RKE2")
-	// the link unreadable (a non-root scan): RKE2's fixed path, root's alone
+	assert.Equal(t, rke2, resolveKubeletExecutable("kubelet", probe(rke2, "kubelet", nil)), "RKE2")
+	// no trusted snapshot (a non-root scan): RKE2's fixed path, root's alone
 	assert.Equal(t, "/var/lib/rancher/rke2/bin/kubelet", resolveKubeletExecutable("kubelet",
-		probe(true, "kubelet", "", nil, "/var/lib/rancher/rke2/bin/kubelet")))
+		probe("", "kubelet", nil, "/var/lib/rancher/rke2/bin/kubelet")))
 	// kubelet on PATH and nothing else known: the bare name runs as before
-	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet", probe(true, "kubelet", "", nil)))
-	assert.Equal(t, "/usr/bin/kubelet", resolveKubeletExecutable("/usr/bin/kubelet", probe(false, "", "", nil)),
+	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet", probe("", "kubelet", nil)))
+	assert.Equal(t, "/usr/bin/kubelet", resolveKubeletExecutable("/usr/bin/kubelet", probe("", "", nil)),
 		"an absolute executable is kept")
 
-	// a user's own process named kubelet: its binary never runs
-	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet",
-		probe(false, "/home/user/kubelet", "/home/user/kubelet", nil)))
+	// an untrusted process (another user's, or in a container): its paths never run
+	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet", probe("", "/home/user/kubelet", nil)))
 	// root's kubelet whose argv[0] names some other file than the one it runs
+	assert.Equal(t, "/usr/bin/kubelet", resolveKubeletExecutable("kubelet", probe("/usr/bin/kubelet", "/tmp/kubelet", nil)))
+	// argv[0] that cannot be resolved
 	assert.Equal(t, "/usr/bin/kubelet", resolveKubeletExecutable("kubelet",
-		probe(true, "/tmp/kubelet", "/usr/bin/kubelet", nil)))
-	// the binary was replaced on disk after root started it
-	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet",
-		probe(true, "/usr/bin/kubelet", "/usr/bin/kubelet (deleted)", nil)))
+		probe("/usr/bin/kubelet", "/opt/gone/kubelet", map[string]string{"/opt/gone/kubelet": ""})))
+}
+
+func TestParseKubeletProcSnapshot(t *testing.T) {
+	snapshot := func(uid1, exe, mountNS, initMountNS, uid2 string) string {
+		return "Uid:\t" + uid1 + "\t" + uid1 + "\t" + uid1 + "\t" + uid1 + "\n" + exe + "\n" +
+			mountNS + "\n" + initMountNS + "\n" + "Uid:\t" + uid2 + "\t" + uid2 + "\t" + uid2 + "\t" + uid2 + "\n"
+	}
+
+	// captured with kubeletProcSnapshotCommand on live nodes
+	assert.Equal(t, "/var/lib/k0s/bin/kubelet",
+		parseKubeletProcSnapshot(snapshot("0", "/var/lib/k0s/bin/kubelet", "mnt:[4026531832]", "mnt:[4026531832]", "0")), "k0s")
+	assert.Equal(t, "/snap/k8s/5562/bin/kubernetes",
+		parseKubeletProcSnapshot(snapshot("0", "/snap/k8s/5562/bin/kubernetes", "mnt:[4026531832]", "mnt:[4026531832]", "0")),
+		"Canonical Kubernetes, a classic snap, shares init's mount namespace")
+	assert.Equal(t, "/var/lib/minikube/binaries/v1.37.0/kubelet",
+		parseKubeletProcSnapshot(snapshot("0", "/var/lib/minikube/binaries/v1.37.0/kubelet", "mnt:[4026532241]", "mnt:[4026532241]", "0")),
+		"minikube, scanned inside its node container")
+	assert.Equal(t, "",
+		parseKubeletProcSnapshot(snapshot("0", "/var/lib/minikube/binaries/v1.37.0/kubelet", "mnt:[4026532241]", "mnt:[4026531832]", "0")),
+		"minikube's kubelet seen from its host: a container's path names another file on the host")
+
+	assert.Equal(t, "", parseKubeletProcSnapshot(snapshot("1000", "/home/user/kubelet", "mnt:[4026531832]", "mnt:[4026531832]", "1000")),
+		"another user's process")
+	assert.Equal(t, "", parseKubeletProcSnapshot(snapshot("0", "/tmp/kubelet", "mnt:[4026531832]", "mnt:[4026531832]", "1000")),
+		"the pid was taken over by a user's process between the reads")
+	assert.Equal(t, "", parseKubeletProcSnapshot(snapshot("0", "/usr/bin/kubelet (deleted)", "mnt:[4026531832]", "mnt:[4026531832]", "0")),
+		"the binary was replaced on disk since it started")
+	assert.Equal(t, "", parseKubeletProcSnapshot("Uid:\t0\t0\t0\t0\n"), "a read failed")
+	assert.Equal(t, "", parseKubeletProcSnapshot(""))
 }
 
 func TestParseProcStatusRealUID(t *testing.T) {
