@@ -581,7 +581,8 @@ func (c *mqlCrio) streamPort() (int64, error) {
 }
 
 // crioPort reads a port CRI-O's configuration holds as a string ("10010"),
-// or as a number when a drop-in writes it unquoted.
+// or as a number when a drop-in writes it unquoted (int64 from TOML, float64
+// once the configuration has passed through JSON).
 func crioPort(v any) (int64, bool) {
 	switch p := v.(type) {
 	case string:
@@ -589,6 +590,8 @@ func crioPort(v any) (int64, bool) {
 		return n, err == nil
 	case int64:
 		return p, true
+	case float64:
+		return int64(p), p == float64(int64(p))
 	default:
 		return 0, false
 	}

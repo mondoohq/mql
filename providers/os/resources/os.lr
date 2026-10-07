@@ -8085,7 +8085,7 @@ crio {
   namespaceSignaturePolicies() []crio.imagePolicy
   // Runtime handlers CRI-O can run containers with
   runtimes() []crio.runtime
-  // Address the streaming server for exec, attach and port forwarding listens on
+  // Listen address of the streaming server for exec, attach and port forwarding
   //
   // CRI-O defaults to "127.0.0.1", so that only the kubelet on the node can reach
   // it. Any other address exposes the server to the network.
