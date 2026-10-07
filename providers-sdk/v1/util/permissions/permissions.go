@@ -2111,7 +2111,9 @@ func loadAzureSDKIndex(providerRoot string) (*azureSDKIndex, error) {
 // path to version.
 func parseAzureSDKVersions(gomod []byte) map[string]string {
 	versions := map[string]string{}
-	re := regexp.MustCompile(`^\s*(github\.com/Azure/azure-sdk-for-go/\S+)\s+(v\S+)`)
+	// A require line: module path, version, optionally a trailing comment such
+	// as "// indirect". Anchored at both ends so nothing else on a line counts.
+	re := regexp.MustCompile(`^\s*(github\.com/Azure/azure-sdk-for-go/\S+)\s+(v\S+)\s*(?://.*)?$`)
 	for _, line := range strings.Split(string(gomod), "\n") {
 		if m := re.FindStringSubmatch(line); m != nil {
 			versions[m[1]] = m[2]
