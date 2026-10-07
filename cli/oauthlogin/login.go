@@ -31,6 +31,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
 )
 
@@ -91,7 +92,9 @@ type Options struct {
 	In io.Reader
 	// Interactive reports whether In and Out are terminals.
 	Interactive bool
-	// OpenBrowser opens a URL. Defaults to the system browser.
+	// OpenBrowser opens a URL. Defaults to the system browser. When it fails
+	// in the browser flow, the login continues by pasting a code if the
+	// server supports it, and with the device flow otherwise.
 	OpenBrowser func(url string) error
 	// Getenv and GOOS feed mode detection. Default to the process values.
 	Getenv func(string) string
@@ -222,9 +225,18 @@ func Login(ctx context.Context, o Options) (*Result, error) {
 
 	var tok *oauth2.Token
 	if mode == ModeDevice {
-		tok, err = deviceFlow(ctx, &o, cfg, key, params)
+		tok, err = deviceFlow(ctx, &o, cfg, key, params, BrowserPlausible(o.Getenv, o.GOOS))
 	} else {
 		tok, err = loopbackFlow(ctx, &o, md, cfg, key, params)
+		var notOpened *browserNotOpenedError
+		if errors.As(err, &notOpened) && md.DeviceAuthorizationEndpoint != "" {
+			// No browser could be opened on this machine: log in with a
+			// one-time code instead, with the same key. The device flow does
+			// not offer to open a browser either.
+			log.Debug().Err(notOpened.err).Msg("could not open a browser, using device login")
+			cfg.RedirectURL = ""
+			tok, err = deviceFlow(ctx, &o, cfg, key, params, false)
+		}
 	}
 	if err != nil {
 		return nil, err

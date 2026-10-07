@@ -20,8 +20,9 @@ import (
 // last request is not rejected for an expired proof.
 const proofSafetyMargin = 10 * time.Second
 
-// deviceFlow runs the RFC 8628 device authorization grant.
-func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, key *ecdsa.PrivateKey, params []oauth2.AuthCodeOption) (*oauth2.Token, error) {
+// deviceFlow runs the RFC 8628 device authorization grant. offerBrowser shows
+// the "press Enter to open the browser" prompt on an interactive terminal.
+func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, key *ecdsa.PrivateKey, params []oauth2.AuthCodeOption, offerBrowser bool) (*oauth2.Token, error) {
 	da, err := cfg.DeviceAuth(ctx, params...)
 	if err != nil {
 		return nil, tokenError(err)
@@ -32,7 +33,7 @@ func deviceFlow(ctx context.Context, o *Options, cfg *oauth2.Config, key *ecdsa.
 
 	pr := newProgress(o.Out, o.Interactive)
 	pr.Println("! First copy your one-time code: %s", da.UserCode)
-	promptEnter := o.Interactive && BrowserPlausible(o.Getenv, o.GOOS)
+	promptEnter := o.Interactive && offerBrowser
 	if promptEnter {
 		pr.Println("Press Enter to open %s in your browser...", da.VerificationURI)
 	} else {

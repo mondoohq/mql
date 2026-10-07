@@ -37,6 +37,7 @@ type fakeAS struct {
 	tokenEndpoint     string // overrides the advertised token endpoint
 	tokenIssuer       string // overrides iss in the token response
 	devicePollReplies []string
+	manualRedirectURI string // advertised as mondoo_manual_redirect_uri when set
 
 	mu             sync.Mutex
 	pubKey         *ecdsa.PublicKey
@@ -80,7 +81,7 @@ func (f *fakeAS) metadata(w http.ResponseWriter, r *http.Request) {
 	if f.metadataIssuer != "" {
 		iss = f.metadataIssuer
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	md := map[string]any{
 		"issuer":                                         iss,
 		"authorization_endpoint":                         f.issuer() + "/oauth/authorize",
 		"token_endpoint":                                 f.tokenURL(),
@@ -92,7 +93,33 @@ func (f *fakeAS) metadata(w http.ResponseWriter, r *http.Request) {
 		"token_endpoint_auth_methods_supported":          []string{"none"},
 		"scopes_supported":                               []string{Scope},
 		"authorization_response_iss_parameter_supported": true,
-	})
+	}
+	if f.manualRedirectURI != "" {
+		md["mondoo_manual_redirect_uri"] = f.manualRedirectURI
+	}
+	writeJSON(w, http.StatusOK, md)
+}
+
+// consoleAuthorize plays a browser on another machine using the manual
+// authorize URL: it validates the request and returns what the manual
+// redirect page shows, "<code>#<state>".
+func (f *fakeAS) consoleAuthorize(authURL string) (string, error) {
+	u, err := url.Parse(authURL)
+	if err != nil {
+		return "", err
+	}
+	q := u.Query()
+	if q.Get("code_challenge_method") != "S256" || q.Get("client_id") != ClientID || q.Get("response_type") != "code" {
+		return "", fmt.Errorf("bad authorize request: %v", q)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.authForm = q
+	f.setPublicKey(q.Get("mondoo_public_key"))
+	f.codeChallenge = q.Get("code_challenge")
+	f.redirectURI = q.Get("redirect_uri")
+	f.issuedCode = "code-" + randomString(16)
+	return f.issuedCode + "#" + q.Get("state"), nil
 }
 
 func (f *fakeAS) setPublicKey(enc string) {

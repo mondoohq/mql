@@ -62,6 +62,26 @@ func (p *progress) printlnLocked(format string, args ...any) {
 	}
 }
 
+// Prompt writes text without a newline, leaving the cursor after it for the
+// user's input. It is not used while the spinner runs.
+func (p *progress) Prompt(format string, args ...any) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	fmt.Fprintf(p.out, format, args...)
+}
+
+// ClearLine erases a prompt left on the current line. Off a terminal it ends
+// the line instead.
+func (p *progress) ClearLine() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.interactive {
+		fmt.Fprint(p.out, "\r"+clearLine)
+	} else {
+		fmt.Fprint(p.out, "\n")
+	}
+}
+
 // AfterEnter writes a line in response to the user pressing Enter. The device
 // flow turns terminal echo off while it waits, so the cursor is still on the
 // spinner line, which the text replaces. It does nothing once the spinner has
