@@ -19,7 +19,6 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 const defaultKubeletConfig = "/var/lib/kubelet/config.yaml"
@@ -344,11 +343,7 @@ func (m *mqlKubelet) version() (string, error) {
 	if exe.Data == "" {
 		return "", nil
 	}
-	conn := m.MqlRuntime.Connection.(shared.Connection)
-	exePath := resolveKubeletExecutable(exe.Data, func(p string) bool {
-		_, err := conn.FileSystem().Stat(p)
-		return err == nil
-	})
+	exePath := resolveKubeletExecutable(exe.Data, m.kubeletBinaryProbe(proc.Data))
 
 	// Single-quote the executable path so paths with spaces or shell
 	// metacharacters are passed through unchanged; embedded single quotes
@@ -373,24 +368,168 @@ func (m *mqlKubelet) version() (string, error) {
 // only root can write. RKE2 keeps kubelet in /var/lib/rancher/rke2/bin.
 var kubeletInstallPaths = []string{"/var/lib/rancher/rke2/bin/kubelet"}
 
+// kubeletBinaryProbe answers what resolveKubeletExecutable needs to know about
+// the kubelet process and the files on the target.
+type kubeletBinaryProbe struct {
+	// startedByRoot reports whether the process's real user is root.
+	startedByRoot func() bool
+	// argv0 is the first word of the process's command line.
+	argv0 func() string
+	// procExe is the binary /proc/<pid>/exe links to.
+	procExe func() string
+	// resolve returns the file a path names, with every link followed.
+	resolve func(path string) string
+	// trustedBinary reports whether path is a file owned by root that neither
+	// its group nor others may write.
+	trustedBinary func(path string) bool
+}
+
 // resolveKubeletExecutable returns the path to run for kubelet --version. On
 // Linux the process list reports the bare name from /proc/<pid>/status, which
-// only runs when kubelet is on PATH, so a bare name is looked up in
-// kubeletInstallPaths and kept when none exists.
+// only runs when kubelet is on PATH. k0s (/var/lib/k0s/bin), minikube
+// (/var/lib/minikube/binaries/<version>), Canonical Kubernetes (its snap),
+// RKE2 and NixOS (/nix/store) all keep kubelet elsewhere.
 //
-// The process's own binary (/proc/<pid>/exe) is deliberately not used: the
-// kubelet process is matched by name, any user can start a process named
-// kubelet, and its binary would then run with sudo.
-func resolveKubeletExecutable(exe string, exists func(path string) bool) string {
+// The kubelet process is matched by name, and any user can start a process
+// named kubelet, so a path from the process is used only when root started it
+// and the path is the very file /proc/<pid>/exe says root is running: running
+// that file with --version gives no one anything root does not already run.
+// A binary replaced on disk since it started no longer matches its link.
+// argv[0] goes first because Canonical Kubernetes's kubelet is a link to a
+// multi-call binary that acts as kubelet only when invoked as kubelet.
+// Otherwise kubeletInstallPaths, root's alone to change, are tried, and the
+// bare name is kept.
+func resolveKubeletExecutable(exe string, probe kubeletBinaryProbe) string {
 	if path.IsAbs(exe) {
 		return exe
 	}
+	if probe.startedByRoot() {
+		if running := probe.procExe(); path.IsAbs(running) && !strings.HasSuffix(running, " (deleted)") {
+			for _, p := range []string{probe.argv0(), running} {
+				if path.IsAbs(p) && probe.resolve(p) == running {
+					return p
+				}
+			}
+		}
+	}
 	for _, p := range kubeletInstallPaths {
-		if exists(p) {
+		if probe.trustedBinary(p) {
 			return p
 		}
 	}
 	return exe
+}
+
+// kubeletBinaryProbe reads the facts resolveKubeletExecutable needs from the
+// target. Each read is a command of its own, so it runs with sudo where the
+// scan does: /proc/<pid>/exe of a root process is not readable by others.
+func (m *mqlKubelet) kubeletBinaryProbe(proc *mqlProcess) kubeletBinaryProbe {
+	pid := proc.GetPid()
+	procPath := ""
+	if pid.Error == nil {
+		procPath = "/proc/" + strconv.FormatInt(pid.Data, 10)
+	}
+	return kubeletBinaryProbe{
+		startedByRoot: func() bool {
+			if procPath == "" {
+				return false
+			}
+			out, ok := m.runQuiet("cat " + procPath + "/status")
+			if !ok {
+				return false
+			}
+			uid, ok := parseProcStatusRealUID(out)
+			return ok && uid == 0
+		},
+		argv0: func() string {
+			command := proc.GetCommand()
+			if command.Error != nil {
+				return ""
+			}
+			fields := strings.Fields(command.Data)
+			if len(fields) == 0 {
+				return ""
+			}
+			return fields[0]
+		},
+		procExe: func() string {
+			if procPath == "" {
+				return ""
+			}
+			out, _ := m.runQuiet("readlink " + procPath + "/exe")
+			return strings.TrimSpace(out)
+		},
+		resolve: func(p string) string {
+			out, _ := m.runQuiet("readlink -f -- " + shellQuote(p))
+			return strings.TrimSpace(out)
+		},
+		trustedBinary: func(p string) bool {
+			out, ok := m.runQuiet("stat -L -c '%u %a' -- " + shellQuote(p))
+			if !ok {
+				return false
+			}
+			uid, mode, ok := parseStatOwnerMode(out)
+			return ok && isRootOnlyWritable(uid, mode)
+		},
+	}
+}
+
+// runQuiet runs a command on the target and returns its output when it
+// succeeds.
+func (m *mqlKubelet) runQuiet(command string) (string, bool) {
+	o, err := CreateResource(m.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData(command),
+	})
+	if err != nil {
+		return "", false
+	}
+	cmd := o.(*mqlCommand)
+	if exit := cmd.GetExitcode(); exit.Error != nil || exit.Data != 0 {
+		return "", false
+	}
+	return cmd.GetStdout().Data, true
+}
+
+// parseProcStatusRealUID returns the real user id from /proc/<pid>/status,
+// the first of the four ids on its Uid line.
+func parseProcStatusRealUID(status string) (int64, bool) {
+	for _, line := range strings.Split(status, "\n") {
+		rest, ok := strings.CutPrefix(line, "Uid:")
+		if !ok {
+			continue
+		}
+		fields := strings.Fields(rest)
+		if len(fields) == 0 {
+			return 0, false
+		}
+		uid, err := strconv.ParseInt(fields[0], 10, 64)
+		return uid, err == nil
+	}
+	return 0, false
+}
+
+// parseStatOwnerMode parses the output of stat -c '%u %a': the owner's user id
+// and the octal permission bits.
+func parseStatOwnerMode(out string) (int64, uint32, bool) {
+	fields := strings.Fields(out)
+	if len(fields) != 2 {
+		return 0, 0, false
+	}
+	uid, err := strconv.ParseInt(fields[0], 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	mode, err := strconv.ParseUint(fields[1], 8, 32)
+	if err != nil {
+		return 0, 0, false
+	}
+	return uid, uint32(mode), true
+}
+
+// isRootOnlyWritable reports whether a file owned by uid with these permission
+// bits can be changed by root alone.
+func isRootOnlyWritable(uid int64, mode uint32) bool {
+	return uid == 0 && mode&0o022 == 0
 }
 
 func getKubeletProcess(runtime *plugin.Runtime) (*mqlProcess, error) {

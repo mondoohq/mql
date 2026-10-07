@@ -99,27 +99,93 @@ func TestParseKubeletVersion(t *testing.T) {
 }
 
 func TestResolveKubeletExecutable(t *testing.T) {
-	installed := func(paths ...string) func(string) bool {
-		return func(p string) bool {
-			for _, have := range paths {
-				if p == have {
-					return true
+	// links maps a path to the file it resolves to; a path not in it resolves
+	// to itself
+	probe := func(root bool, argv0, procExe string, links map[string]string, trusted ...string) kubeletBinaryProbe {
+		return kubeletBinaryProbe{
+			startedByRoot: func() bool { return root },
+			argv0:         func() string { return argv0 },
+			procExe:       func() string { return procExe },
+			resolve: func(p string) string {
+				if target, ok := links[p]; ok {
+					return target
 				}
-			}
-			return false
+				return p
+			},
+			trustedBinary: func(p string) bool {
+				for _, have := range trusted {
+					if p == have {
+						return true
+					}
+				}
+				return false
+			},
 		}
 	}
 
-	// RKE2 starts kubelet by bare name from a directory off PATH
-	assert.Equal(t, "/var/lib/rancher/rke2/bin/kubelet",
-		resolveKubeletExecutable("kubelet", installed("/var/lib/rancher/rke2/bin/kubelet")))
-	// kubelet on PATH, no RKE2: the bare name runs as before
-	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet", installed("/usr/bin/kubelet")))
-	assert.Equal(t, "/usr/bin/kubelet",
-		resolveKubeletExecutable("/usr/bin/kubelet", installed("/var/lib/rancher/rke2/bin/kubelet")),
+	// the command lines and /proc/<pid>/exe links seen on live nodes
+	assert.Equal(t, "/var/lib/k0s/bin/kubelet", resolveKubeletExecutable("kubelet",
+		probe(true, "/var/lib/k0s/bin/kubelet", "/var/lib/k0s/bin/kubelet", nil)), "k0s")
+	// minikube copies its binaries in as uid 1001: root runs that file anyway
+	mk := "/var/lib/minikube/binaries/v1.37.0/kubelet"
+	assert.Equal(t, mk, resolveKubeletExecutable("kubelet", probe(true, mk, mk, nil)), "minikube")
+	nix := "/nix/store/b5gip1vkhws3gnhr0hmn1z83xzb1hjjv-kubernetes-1.36.3/bin/kubelet"
+	assert.Equal(t, nix, resolveKubeletExecutable("kubelet", probe(true, nix, nix, nil)), "NixOS")
+	// Canonical Kubernetes's kubelet is a link to a multi-call binary that
+	// acts as kubelet only under that name
+	assert.Equal(t, "/snap/k8s/5562/bin/kubelet", resolveKubeletExecutable("kubelet",
+		probe(true, "/snap/k8s/5562/bin/kubelet", "/snap/k8s/5562/bin/kubernetes",
+			map[string]string{"/snap/k8s/5562/bin/kubelet": "/snap/k8s/5562/bin/kubernetes"})), "Canonical Kubernetes")
+	// RKE2 starts kubelet by bare name, so only the link names the binary
+	rke2 := "/var/lib/rancher/rke2/data/v1.35.7-rke2r1-1234/bin/kubelet"
+	assert.Equal(t, rke2, resolveKubeletExecutable("kubelet", probe(true, "kubelet", rke2, nil)), "RKE2")
+	// the link unreadable (a non-root scan): RKE2's fixed path, root's alone
+	assert.Equal(t, "/var/lib/rancher/rke2/bin/kubelet", resolveKubeletExecutable("kubelet",
+		probe(true, "kubelet", "", nil, "/var/lib/rancher/rke2/bin/kubelet")))
+	// kubelet on PATH and nothing else known: the bare name runs as before
+	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet", probe(true, "kubelet", "", nil)))
+	assert.Equal(t, "/usr/bin/kubelet", resolveKubeletExecutable("/usr/bin/kubelet", probe(false, "", "", nil)),
 		"an absolute executable is kept")
-	// a user's own binary named kubelet is never what runs
-	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet", installed("/home/user/kubelet", "/tmp/kubelet")))
+
+	// a user's own process named kubelet: its binary never runs
+	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet",
+		probe(false, "/home/user/kubelet", "/home/user/kubelet", nil)))
+	// root's kubelet whose argv[0] names some other file than the one it runs
+	assert.Equal(t, "/usr/bin/kubelet", resolveKubeletExecutable("kubelet",
+		probe(true, "/tmp/kubelet", "/usr/bin/kubelet", nil)))
+	// the binary was replaced on disk after root started it
+	assert.Equal(t, "kubelet", resolveKubeletExecutable("kubelet",
+		probe(true, "/usr/bin/kubelet", "/usr/bin/kubelet (deleted)", nil)))
+}
+
+func TestParseProcStatusRealUID(t *testing.T) {
+	// /proc/<pid>/status of the kubelet on a k0s node
+	uid, ok := parseProcStatusRealUID("Name:\tkubelet\nUmask:\t0022\nState:\tS (sleeping)\nUid:\t0\t0\t0\t0\nGid:\t0\t0\t0\t0\n")
+	assert.True(t, ok)
+	assert.Equal(t, int64(0), uid)
+	// a setuid-root binary started by a user: the real uid is the user's
+	uid, ok = parseProcStatusRealUID("Name:\tkubelet\nUid:\t1000\t0\t0\t0\n")
+	assert.True(t, ok)
+	assert.Equal(t, int64(1000), uid)
+	_, ok = parseProcStatusRealUID("Name:\tkubelet\n")
+	assert.False(t, ok)
+}
+
+func TestParseStatOwnerMode(t *testing.T) {
+	// stat -L -c '%u %a' on /var/lib/k0s/bin/kubelet (0750)
+	uid, mode, ok := parseStatOwnerMode("0 750\n")
+	assert.True(t, ok)
+	assert.Equal(t, int64(0), uid)
+	assert.Equal(t, uint32(0o750), mode)
+	assert.True(t, isRootOnlyWritable(uid, mode))
+
+	assert.False(t, isRootOnlyWritable(0, 0o775), "group-writable")
+	assert.False(t, isRootOnlyWritable(0, 0o757), "world-writable")
+	assert.False(t, isRootOnlyWritable(1000, 0o755), "owned by a user")
+	assert.True(t, isRootOnlyWritable(0, 0o555), "the read-only /nix/store")
+
+	_, _, ok = parseStatOwnerMode("stat: cannot statx '/x': No such file or directory")
+	assert.False(t, ok)
 }
 
 func TestKubeletValueCoercion(t *testing.T) {
