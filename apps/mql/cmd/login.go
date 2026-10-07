@@ -61,6 +61,7 @@ func init() {
 	LoginCmd.Flags().Bool("no-browser", false, "Do not open a browser on this machine; log in with a one-time code instead")
 	LoginCmd.Flags().String("space", "", "Preselect this space MRN on the approval page")
 	LoginCmd.Flags().Bool("insecure", false, "Allow browser login over unencrypted http to a non-loopback server")
+	LoginCmd.Flags().Bool("force", false, "Log in again even if a valid login session exists")
 }
 
 // oauthLoginFlags are the options of the interactive (browser or device) login.
@@ -68,6 +69,7 @@ type oauthLoginFlags struct {
 	noBrowser  bool
 	spaceMrn   string
 	insecure   bool
+	force      bool // log in again even if the config holds a valid session
 	binaryName string
 	// interactive reports whether stdin and stderr are terminals, so the
 	// login can ask the user.
@@ -83,7 +85,8 @@ Log in to Mondoo Platform.
 
 Without arguments, login opens your browser and asks you to approve the login
 and pick a space. The result is a short-lived credential for this machine; run
-login again when it expires. On a machine without a browser (for example over
+login again when it expires. While the credential is valid, login only
+confirms it; use '--force' to log in again. On a machine without a browser (for example over
 SSH), or with '--no-browser', login prints a one-time code to enter at a URL on
 any device instead. This interactive login needs a terminal.
 
@@ -113,6 +116,7 @@ until you explicitly log out using the 'logout' subcommand.
 		oauthFlags.noBrowser, _ = cmd.Flags().GetBool("no-browser")
 		oauthFlags.spaceMrn, _ = cmd.Flags().GetString("space")
 		oauthFlags.insecure, _ = cmd.Flags().GetBool("insecure")
+		oauthFlags.force, _ = cmd.Flags().GetBool("force")
 		oauthFlags.binaryName = cmd.Root().Name()
 		oauthFlags.interactive = term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd()))
 		err := register(token, annotations, updatesURL, timer, splay, apiEndpointOverride, oauthFlags)
@@ -166,11 +170,13 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 	var err error
 	var credential *upstream.ServiceAccountCredentials
 	var session *oauthlogin.Result
+	var replaced *replacedSession
 
 	// Without a token or usable credentials, login has to ask the user; fail
-	// before any other work when it cannot.
+	// before any other work when it cannot. An existing login session is
+	// checked later: when it is still valid, login does not ask.
 	if token == "" {
-		if opts, optsErr := config.Read(); optsErr == nil && (opts.IsOAuthSession() || !opts.HasCredentials()) {
+		if opts, optsErr := config.Read(); optsErr == nil && !opts.HasCredentials() {
 			if err := checkCanLogInInteractively(oauthFlags); err != nil {
 				return err
 			}
@@ -300,6 +306,19 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 		}
 
 		if opts.IsOAuthSession() || !opts.HasCredentials() {
+			now := time.Now()
+			keep, err := existingSession(context.Background(), opts, apiEndpointOverride, oauthFlags.force, now, httpClient, pingSession)
+			if err != nil {
+				return cli_errors.NewCommandError(err, 1)
+			}
+			if keep {
+				fmt.Fprintln(os.Stderr, alreadyLoggedInMessage(opts, oauthFlags.binaryName, now))
+				return nil
+			}
+			if err := checkCanLogInInteractively(oauthFlags); err != nil {
+				return err
+			}
+			replaced = sessionToReplace(opts, now)
 			if apiEndpoint == "" {
 				apiEndpoint = opts.UpstreamApiEndpoint()
 			}
@@ -393,6 +412,9 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 
 	if session != nil {
 		fmt.Fprintln(os.Stderr, session.Summary(time.Now()))
+		// The new credential is saved; the replaced session is no longer
+		// needed and should not stay valid on the server.
+		revokeReplaced(context.Background(), replaced, session.AccessToken, httpClient, revokeSession)
 		return nil
 	}
 

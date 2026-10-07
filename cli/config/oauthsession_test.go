@@ -122,3 +122,17 @@ func TestHasCredentials(t *testing.T) {
 	_, ok := (&subject.CommonOpts{ServiceAccountMrn: "x"}).SessionExpiry()
 	assert.False(t, ok)
 }
+
+func TestOAuthSessionConfig_StoresNames(t *testing.T) {
+	res := sessionResult(t, time.Now().Add(time.Hour))
+	res.User = oauthlogin.User{Mrn: "//captain.api.mondoo.app/users/jane", Email: "jane@example.com", Name: "Jane"}
+	res.Space = oauthlogin.Space{Name: "prod", OrgName: "acme"}
+	cfg := writeAndLoad(t, res)
+
+	require.NotNil(t, cfg.Authentication)
+	assert.Equal(t, "jane@example.com", cfg.Authentication.UserEmail)
+	assert.Equal(t, "Jane", cfg.Authentication.UserName)
+	assert.Equal(t, "//captain.api.mondoo.app/users/jane", cfg.Authentication.UserMrn)
+	assert.Equal(t, "prod", cfg.Authentication.SpaceName)
+	assert.Equal(t, "acme", cfg.Authentication.OrgName)
+}
