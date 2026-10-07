@@ -30,6 +30,7 @@ alias os.base.cline = cline
 alias os.base.cloud = cloud
 alias os.base.containerd = containerd
 alias os.base.continuedev = continuedev
+alias os.base.crio = crio
 alias os.base.cursor = cursor
 alias os.base.docker = docker
 alias os.base.edr = edr
@@ -8030,6 +8031,77 @@ containerd.container @defaults("id status") {
   runtime string
   // Container snapshotter
   snapshotter string
+}
+
+// CRI-O container runtime
+//
+// The CRI-O container runtime of a Kubernetes node (OpenShift, MicroShift,
+// and Kubernetes set up with CRI-O): its version, its effective configuration
+// with the security defaults it applies to every container, and the
+// containers it runs. `configuration` is what the running CRI-O reports;
+// without a running CRI-O it is merged from `configFiles`.
+crio {
+  // CRI-O version (for example "1.37.2")
+  version() string
+  // Configuration files, in the order CRI-O applies them
+  //
+  // /etc/crio/crio.conf when present, then every file in /etc/crio/crio.conf.d
+  // in name order, each overriding the ones before.
+  configFiles() []file
+  // Effective CRI-O configuration
+  //
+  // The configuration the running CRI-O reports, with its defaults filled in.
+  // Without a running CRI-O, merged from `configFiles`, which holds only what
+  // they set.
+  configuration() dict
+  // Runtime handler containers use unless they ask for another (for example "crun" or "runc")
+  defaultRuntime() string
+  // Seccomp profile applied to containers that set none; empty is CRI-O's built-in default profile
+  seccompProfile() string
+  // AppArmor profile applied to containers that set none (for example "crio-default")
+  apparmorProfile() string
+  // Whether CRI-O runs containers with SELinux labeling
+  selinux() bool
+  // Capabilities every container gets by default
+  defaultCapabilities() []string
+  // Sysctls set in every pod (for example "net.ipv4.ip_unprivileged_port_start=0")
+  defaultSysctls() []string
+  // Whether containers run with a read-only root filesystem by default
+  readOnly() bool
+  // Host devices containers may request
+  allowedDevices() []string
+  // Containers CRI-O runs, without the pod sandboxes that hold them
+  containers() []crio.container
+}
+
+// CRI-O container
+crio.container @defaults("name podName podNamespace") {
+  // Container ID
+  id string
+  // Container name within its pod (for example "kube-proxy")
+  name string
+  // Name of the Kubernetes pod the container belongs to
+  podName string
+  // Namespace of the Kubernetes pod the container belongs to
+  podNamespace string
+  // ID of the pod sandbox the container runs in
+  sandboxId string
+  // Image the container runs (for example "registry.k8s.io/kube-proxy:v1.37.1")
+  image string
+  // Image digest reference the container runs
+  imageRef string
+  // Process ID of the container, 0 when it is not running or CRI-O cannot be asked
+  pid int
+  // Whether the container runs privileged
+  privileged bool
+  // Whether the container uses the node's network namespace
+  hostNetwork bool
+  // Seccomp profile the container runs with (for example "Unconfined", "RuntimeDefault", or a profile path)
+  seccompProfile string
+  // Container labels
+  labels map[string]string
+  // When the container was created
+  created time
 }
 
 // Podman container engine

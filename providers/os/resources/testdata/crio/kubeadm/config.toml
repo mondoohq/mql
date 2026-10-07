@@ -1,0 +1,148 @@
+[crio]
+  root = "/var/lib/containers/storage"
+  runroot = "/run/containers/storage"
+  imagestore = ""
+  storage_driver = "overlay"
+  log_dir = "/var/log/crio/pods"
+  version_file = "/var/run/crio/version"
+  version_file_persist = ""
+  clean_shutdown_file = "/var/lib/crio/clean.shutdown"
+  internal_wipe = true
+  internal_repair = true
+  [crio.api]
+    grpc_max_send_msg_size = 16777216
+    grpc_max_recv_msg_size = 16777216
+    listen = "/var/run/crio/crio.sock"
+    stream_address = "127.0.0.1"
+    stream_port = "0"
+    stream_enable_tls = false
+    stream_tls_cert = ""
+    stream_tls_key = ""
+    stream_tls_ca = ""
+    stream_idle_timeout = ""
+    tls_min_version = "VersionTLS12"
+  [crio.runtime]
+    no_pivot = false
+    selinux = false
+    log_to_journald = false
+    drop_infra_ctr = true
+    read_only = false
+    hooks_dir = ["/usr/share/containers/oci/hooks.d"]
+    default_capabilities = ["CHOWN", "DAC_OVERRIDE", "FSETID", "FOWNER", "SETGID", "SETUID", "SETPCAP", "NET_BIND_SERVICE", "KILL"]
+    add_inheritable_capabilities = false
+    min_injected_gomaxprocs = 0
+    allowed_devices = ["/dev/fuse", "/dev/net/tun"]
+    cdi_spec_dirs = ["/etc/cdi", "/var/run/cdi"]
+    device_ownership_from_security_context = false
+    default_runtime = "crun"
+    decryption_keys_path = "/etc/crio/keys/"
+    conmon = ""
+    conmon_cgroup = ""
+    seccomp_profile = ""
+    privileged_seccomp_profile = ""
+    apparmor_profile = "crio-default"
+    blockio_config_file = ""
+    blockio_reload = false
+    irqbalance_config_file = "/etc/sysconfig/irqbalance"
+    rdt_config_file = ""
+    cgroup_manager = "systemd"
+    default_mounts_file = ""
+    container_exits_dir = "/var/run/crio/exits"
+    container_attach_socket_dir = "/var/run/crio"
+    bind_mount_prefix = ""
+    uid_mappings = ""
+    minimum_mappable_uid = -1
+    gid_mappings = ""
+    minimum_mappable_gid = -1
+    log_level = "info"
+    log_filter = ""
+    namespaces_dir = "/var/run"
+    pinns_path = "/usr/bin/pinns"
+    enable_criu_support = true
+    pids_limit = -1
+    log_size_max = -1
+    ctr_stop_timeout = 30
+    separate_pull_cgroup = ""
+    infra_ctr_cpuset = ""
+    shared_cpuset = ""
+    enable_pod_events = false
+    irqbalance_config_restore_file = "/etc/sysconfig/orig_irq_banned_cpus"
+    hostnetwork_disable_selinux = true
+    disable_hostport_mapping = false
+    timezone = ""
+    [crio.runtime.runtimes]
+      [crio.runtime.runtimes.crun]
+        runtime_config_path = ""
+        runtime_path = "/usr/libexec/crio/crun"
+        runtime_type = ""
+        runtime_root = "/run/crun"
+        allowed_annotations = ["io.containers.trace-syscall"]
+        monitor_path = "/usr/libexec/crio/conmon"
+        monitor_cgroup = "system.slice"
+        container_min_memory = "12MiB"
+        no_sync_log = false
+        container_create_timeout = 240
+      [crio.runtime.runtimes.runc]
+        runtime_config_path = ""
+        runtime_path = "/usr/libexec/crio/runc"
+        runtime_type = ""
+        runtime_root = "/run/runc"
+        monitor_path = "/usr/libexec/crio/conmon"
+        monitor_cgroup = "system.slice"
+        container_min_memory = "12MiB"
+        no_sync_log = false
+        container_create_timeout = 240
+  [crio.checkpoint_restore]
+    container_level_enabled = "none"
+  [crio.image]
+    default_transport = "docker://"
+    global_auth_file = ""
+    namespaced_auth_dir = "/etc/crio/auth"
+    pause_image = "registry.k8s.io/pause:3.10.2"
+    pause_image_auth_file = ""
+    pause_command = "/pause"
+    pinned_images = ["registry.k8s.io/pause:3.10.2"]
+    signature_policy = "/etc/crio/policy.json"
+    signature_policy_dir = "/etc/crio/policies"
+    image_volumes = "mkdir"
+    big_files_temporary_dir = ""
+    auto_reload_registries = false
+    pull_progress_timeout = "0s"
+    oci_artifact_mount_support = true
+    short_name_mode = "enforcing"
+  [crio.network]
+    cni_default_network = ""
+    network_dir = "/etc/cni/net.d/"
+    plugin_dirs = ["/opt/cni/bin/"]
+    cni_status_grace_period = "0s"
+  [crio.metrics]
+    enable_metrics = false
+    metrics_collectors = ["image_pulls_layer_size", "containers_events_dropped_total", "containers_oom_total", "processes_defunct", "operations_total", "operations_latency_seconds", "operations_latency_seconds_total", "operations_errors_total", "image_pulls_bytes_total", "image_pulls_skipped_bytes_total", "image_pulls_failure_total", "image_pulls_success_total", "image_layer_reuse_total", "containers_oom_count_total", "containers_seccomp_notifier_count_total", "resources_stalled_at_stage", "containers_stopped_monitor_count", "default_runtime"]
+    metrics_host = "127.0.0.1"
+    metrics_port = 9090
+    metrics_socket = ""
+    metrics_cert = ""
+    metrics_key = ""
+  [crio.tracing]
+    enable_tracing = false
+    tracing_endpoint = "127.0.0.1:4317"
+    tracing_sampling_rate_per_million = 0
+  [crio.stats]
+    stats_collection_period = 0
+    collection_period = 0
+  [crio.nri]
+    enable_nri = true
+    nri_listen = "/var/run/nri/nri.sock"
+    nri_plugin_dir = "/opt/nri/plugins"
+    nri_plugin_config_dir = "/etc/nri/conf.d"
+    nri_plugin_registration_timeout = "5s"
+    nri_plugin_request_timeout = "2s"
+    nri_disable_connections = false
+    [crio.nri.default_validator]
+      nri_enable_default_validator = false
+      nri_validator_reject_oci_hook_adjustment = false
+      nri_validator_reject_runtime_default_seccomp_adjustment = false
+      nri_validator_reject_unconfined_seccomp_adjustment = false
+      nri_validator_reject_custom_seccomp_adjustment = false
+      nri_validator_reject_namespace_adjustment = false
+      nri_validator_tolerate_missing_plugins_annotation = ""
