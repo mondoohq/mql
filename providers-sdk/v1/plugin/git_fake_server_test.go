@@ -258,7 +258,7 @@ func (f *fakeGitServer) serveUploadPack(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	req := packp.NewUploadPackRequest()
-	if err := req.UploadRequest.Decode(bytes.NewReader(body)); err != nil {
+	if err := req.Decode(bytes.NewReader(body)); err != nil {
 		http.Error(w, "unparseable upload-pack request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
