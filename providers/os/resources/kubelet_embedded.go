@@ -73,7 +73,7 @@ const k3sConfigFile = "/etc/rancher/k3s/config.yaml"
 // k3sKubeletFlags returns the kubelet flags K3s passes that a scan can read:
 // --kubelet-arg from its command line and from its config file, and
 // --config-dir, which K3s points at the drop-in directory it writes most of
-// the kubelet's configuration to. A command-line value overrides the config
+// the kubelet's configuration to, and the --kubeconfig it writes for it. A command-line value overrides the config
 // file's, as in K3s.
 func k3sKubeletFlags(command string, configFile string) map[string]any {
 	// K3s passes --read-only-port=0 itself; a --kubelet-arg can override it.
@@ -114,6 +114,10 @@ func k3sKubeletFlags(command string, configFile string) map[string]any {
 
 	if _, ok := flags["config-dir"]; !ok {
 		flags["config-dir"] = path.Join(dataDir, "agent", "etc", "kubelet.conf.d")
+	}
+	// the kubeconfig K3s writes for its kubelet
+	if _, ok := flags["kubeconfig"]; !ok {
+		flags["kubeconfig"] = path.Join(dataDir, "agent", "kubelet.kubeconfig")
 	}
 	return flags
 }

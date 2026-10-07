@@ -27,6 +27,7 @@ func TestK3sKubeletFlags(t *testing.T) {
 	assert.Equal(t, map[string]any{
 		"read-only-port": "0",
 		"config-dir":     "/var/lib/rancher/k3s/agent/etc/kubelet.conf.d",
+		"kubeconfig":     "/var/lib/rancher/k3s/agent/kubelet.kubeconfig",
 	}, flags)
 
 	// --kubelet-arg in both forms, and a data dir that moves the drop-ins
@@ -34,6 +35,7 @@ func TestK3sKubeletFlags(t *testing.T) {
 	assert.Equal(t, "250", flags["max-pods"])
 	assert.Equal(t, "10255", flags["read-only-port"], "a --kubelet-arg overrides K3s's own")
 	assert.Equal(t, "/opt/k3s/agent/etc/kubelet.conf.d", flags["config-dir"])
+	assert.Equal(t, "/opt/k3s/agent/kubelet.kubeconfig", flags["kubeconfig"])
 
 	// the config file holds the same options; the command line wins
 	configYAML := "data-dir: /srv/k3s\nkubelet-arg:\n  - \"anonymous-auth=false\"\n  - \"max-pods=110\"\n"

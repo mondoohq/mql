@@ -11470,6 +11470,57 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"kubelet.tlsMinVersion": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKubelet).GetTlsMinVersion()).ToDataRes(types.String)
 	},
+	"kubelet.configDir": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetConfigDir()).ToDataRes(types.String)
+	},
+	"kubelet.configDropIns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetConfigDropIns()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"kubelet.kubeconfig": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetKubeconfig()).ToDataRes(types.Resource("file"))
+	},
+	"kubelet.servingCertificates": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetServingCertificates()).ToDataRes(types.Array(types.Resource("certificate")))
+	},
+	"kubelet.clientCAs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetClientCAs()).ToDataRes(types.Array(types.Resource("certificate")))
+	},
+	"kubelet.webhookAuthenticationEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetWebhookAuthenticationEnabled()).ToDataRes(types.Bool)
+	},
+	"kubelet.staticPodPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetStaticPodPath()).ToDataRes(types.String)
+	},
+	"kubelet.staticPodManifests": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetStaticPodManifests()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"kubelet.allowedUnsafeSysctls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetAllowedUnsafeSysctls()).ToDataRes(types.Array(types.String))
+	},
+	"kubelet.seccompDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetSeccompDefault()).ToDataRes(types.Bool)
+	},
+	"kubelet.podPidsLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetPodPidsLimit()).ToDataRes(types.Int)
+	},
+	"kubelet.enableDebuggingHandlers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetEnableDebuggingHandlers()).ToDataRes(types.Bool)
+	},
+	"kubelet.enableSystemLogHandler": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetEnableSystemLogHandler()).ToDataRes(types.Bool)
+	},
+	"kubelet.enableSystemLogQuery": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetEnableSystemLogQuery()).ToDataRes(types.Bool)
+	},
+	"kubelet.enableProfilingHandler": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetEnableProfilingHandler()).ToDataRes(types.Bool)
+	},
+	"kubelet.imagePullCredentialsVerificationPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetImagePullCredentialsVerificationPolicy()).ToDataRes(types.String)
+	},
+	"kubelet.featureGates": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetFeatureGates()).ToDataRes(types.Map(types.String, types.Bool))
+	},
 	"python.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPython).GetPath()).ToDataRes(types.String)
 	},
@@ -30550,6 +30601,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"kubelet.tlsMinVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlKubelet).TlsMinVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kubelet.configDir": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).ConfigDir, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kubelet.configDropIns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).ConfigDropIns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kubelet.kubeconfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).Kubeconfig, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"kubelet.servingCertificates": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).ServingCertificates, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kubelet.clientCAs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).ClientCAs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kubelet.webhookAuthenticationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).WebhookAuthenticationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kubelet.staticPodPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).StaticPodPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kubelet.staticPodManifests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).StaticPodManifests, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kubelet.allowedUnsafeSysctls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).AllowedUnsafeSysctls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kubelet.seccompDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).SeccompDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kubelet.podPidsLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).PodPidsLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"kubelet.enableDebuggingHandlers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).EnableDebuggingHandlers, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kubelet.enableSystemLogHandler": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).EnableSystemLogHandler, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kubelet.enableSystemLogQuery": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).EnableSystemLogQuery, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kubelet.enableProfilingHandler": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).EnableProfilingHandler, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kubelet.imagePullCredentialsVerificationPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).ImagePullCredentialsVerificationPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kubelet.featureGates": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).FeatureGates, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"python.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -76693,24 +76812,41 @@ type mqlKubelet struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlKubeletInternal it will be used here
-	ConfigFile                     plugin.TValue[*mqlFile]
-	Process                        plugin.TValue[*mqlProcess]
-	Configuration                  plugin.TValue[any]
-	Version                        plugin.TValue[string]
-	AnonymousAuthEnabled           plugin.TValue[bool]
-	AuthorizationMode              plugin.TValue[string]
-	ClientCAFile                   plugin.TValue[string]
-	ReadOnlyPort                   plugin.TValue[int64]
-	StreamingConnectionIdleTimeout plugin.TValue[string]
-	ProtectKernelDefaults          plugin.TValue[bool]
-	MakeIPTablesUtilChains         plugin.TValue[bool]
-	EventRecordQPS                 plugin.TValue[int64]
-	TlsCertFile                    plugin.TValue[string]
-	TlsPrivateKeyFile              plugin.TValue[string]
-	RotateCertificates             plugin.TValue[bool]
-	ServerTLSBootstrap             plugin.TValue[bool]
-	TlsCipherSuites                plugin.TValue[[]any]
-	TlsMinVersion                  plugin.TValue[string]
+	ConfigFile                             plugin.TValue[*mqlFile]
+	Process                                plugin.TValue[*mqlProcess]
+	Configuration                          plugin.TValue[any]
+	Version                                plugin.TValue[string]
+	AnonymousAuthEnabled                   plugin.TValue[bool]
+	AuthorizationMode                      plugin.TValue[string]
+	ClientCAFile                           plugin.TValue[string]
+	ReadOnlyPort                           plugin.TValue[int64]
+	StreamingConnectionIdleTimeout         plugin.TValue[string]
+	ProtectKernelDefaults                  plugin.TValue[bool]
+	MakeIPTablesUtilChains                 plugin.TValue[bool]
+	EventRecordQPS                         plugin.TValue[int64]
+	TlsCertFile                            plugin.TValue[string]
+	TlsPrivateKeyFile                      plugin.TValue[string]
+	RotateCertificates                     plugin.TValue[bool]
+	ServerTLSBootstrap                     plugin.TValue[bool]
+	TlsCipherSuites                        plugin.TValue[[]any]
+	TlsMinVersion                          plugin.TValue[string]
+	ConfigDir                              plugin.TValue[string]
+	ConfigDropIns                          plugin.TValue[[]any]
+	Kubeconfig                             plugin.TValue[*mqlFile]
+	ServingCertificates                    plugin.TValue[[]any]
+	ClientCAs                              plugin.TValue[[]any]
+	WebhookAuthenticationEnabled           plugin.TValue[bool]
+	StaticPodPath                          plugin.TValue[string]
+	StaticPodManifests                     plugin.TValue[[]any]
+	AllowedUnsafeSysctls                   plugin.TValue[[]any]
+	SeccompDefault                         plugin.TValue[bool]
+	PodPidsLimit                           plugin.TValue[int64]
+	EnableDebuggingHandlers                plugin.TValue[bool]
+	EnableSystemLogHandler                 plugin.TValue[bool]
+	EnableSystemLogQuery                   plugin.TValue[bool]
+	EnableProfilingHandler                 plugin.TValue[bool]
+	ImagePullCredentialsVerificationPolicy plugin.TValue[string]
+	FeatureGates                           plugin.TValue[map[string]any]
 }
 
 // createKubelet creates a new instance of this resource
@@ -76846,6 +76982,158 @@ func (c *mqlKubelet) GetTlsCipherSuites() *plugin.TValue[[]any] {
 func (c *mqlKubelet) GetTlsMinVersion() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.TlsMinVersion, func() (string, error) {
 		return c.tlsMinVersion()
+	})
+}
+
+func (c *mqlKubelet) GetConfigDir() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ConfigDir, func() (string, error) {
+		return c.configDir()
+	})
+}
+
+func (c *mqlKubelet) GetConfigDropIns() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ConfigDropIns, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("kubelet", c.__id, "configDropIns")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.configDropIns()
+	})
+}
+
+func (c *mqlKubelet) GetKubeconfig() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.Kubeconfig, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("kubelet", c.__id, "kubeconfig")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.kubeconfig()
+	})
+}
+
+func (c *mqlKubelet) GetServingCertificates() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ServingCertificates, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("kubelet", c.__id, "servingCertificates")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.servingCertificates()
+	})
+}
+
+func (c *mqlKubelet) GetClientCAs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ClientCAs, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("kubelet", c.__id, "clientCAs")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.clientCAs()
+	})
+}
+
+func (c *mqlKubelet) GetWebhookAuthenticationEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.WebhookAuthenticationEnabled, func() (bool, error) {
+		return c.webhookAuthenticationEnabled()
+	})
+}
+
+func (c *mqlKubelet) GetStaticPodPath() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.StaticPodPath, func() (string, error) {
+		return c.staticPodPath()
+	})
+}
+
+func (c *mqlKubelet) GetStaticPodManifests() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.StaticPodManifests, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("kubelet", c.__id, "staticPodManifests")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.staticPodManifests()
+	})
+}
+
+func (c *mqlKubelet) GetAllowedUnsafeSysctls() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedUnsafeSysctls, func() ([]any, error) {
+		return c.allowedUnsafeSysctls()
+	})
+}
+
+func (c *mqlKubelet) GetSeccompDefault() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SeccompDefault, func() (bool, error) {
+		return c.seccompDefault()
+	})
+}
+
+func (c *mqlKubelet) GetPodPidsLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PodPidsLimit, func() (int64, error) {
+		return c.podPidsLimit()
+	})
+}
+
+func (c *mqlKubelet) GetEnableDebuggingHandlers() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableDebuggingHandlers, func() (bool, error) {
+		return c.enableDebuggingHandlers()
+	})
+}
+
+func (c *mqlKubelet) GetEnableSystemLogHandler() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableSystemLogHandler, func() (bool, error) {
+		return c.enableSystemLogHandler()
+	})
+}
+
+func (c *mqlKubelet) GetEnableSystemLogQuery() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableSystemLogQuery, func() (bool, error) {
+		return c.enableSystemLogQuery()
+	})
+}
+
+func (c *mqlKubelet) GetEnableProfilingHandler() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableProfilingHandler, func() (bool, error) {
+		return c.enableProfilingHandler()
+	})
+}
+
+func (c *mqlKubelet) GetImagePullCredentialsVerificationPolicy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ImagePullCredentialsVerificationPolicy, func() (string, error) {
+		return c.imagePullCredentialsVerificationPolicy()
+	})
+}
+
+func (c *mqlKubelet) GetFeatureGates() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.FeatureGates, func() (map[string]any, error) {
+		return c.featureGates()
 	})
 }
 

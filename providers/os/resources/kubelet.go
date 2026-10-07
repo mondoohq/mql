@@ -872,6 +872,16 @@ func kubeletFlags(runtime *plugin.Runtime, proc *mqlProcess) (map[string]any, er
 // kubeletDropIns returns the content of the --config-dir drop-ins, in the
 // order the kubelet applies them.
 func (m *mqlKubelet) kubeletDropIns(flags map[string]any) []string {
+	contents := []string{}
+	for _, p := range m.kubeletDropInPaths(flags) {
+		contents = append(contents, readKubeletFile(m.MqlRuntime, p))
+	}
+	return contents
+}
+
+// kubeletDropInPaths returns the paths of the --config-dir drop-ins, in the
+// order the kubelet applies them.
+func (m *mqlKubelet) kubeletDropInPaths(flags map[string]any) []string {
 	dir, _ := flags["config-dir"].(string)
 	if !path.IsAbs(dir) {
 		return nil
@@ -880,9 +890,9 @@ func (m *mqlKubelet) kubeletDropIns(flags map[string]any) []string {
 	if !ok {
 		return nil
 	}
-	contents := []string{}
+	paths := []string{}
 	for _, name := range kubeletDropInFiles(strings.Split(strings.TrimSpace(out), "\n")) {
-		contents = append(contents, readKubeletFile(m.MqlRuntime, path.Join(dir, name)))
+		paths = append(paths, path.Join(dir, name))
 	}
-	return contents
+	return paths
 }

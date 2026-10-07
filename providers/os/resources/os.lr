@@ -11343,6 +11343,59 @@ kubelet {
   tlsCipherSuites() []string
   // Minimum TLS version the kubelet server accepts (for example "VersionTLS12")
   tlsMinVersion() string
+  // Directory of kubelet drop-in configuration files
+  //
+  // The `--config-dir` directory, whose `*.conf` files override the config file
+  // in name order. K3s and RKE2 write most of the kubelet's configuration here.
+  // Empty when the kubelet uses no drop-in directory.
+  configDir() string
+  // Drop-in configuration files the kubelet applies, in the order it applies them
+  configDropIns() []file
+  // Kubeconfig file the kubelet authenticates to the API server with
+  kubeconfig() file
+  // Certificates the kubelet server presents on its HTTPS port
+  //
+  // Read from `tlsCertFile`. When none is configured, from the certificate the
+  // kubelet keeps in its certificate directory: the one the API server issued
+  // (`kubelet-server-current.pem`) with `serverTLSBootstrap`, otherwise the
+  // self-signed `kubelet.crt` it generates at startup.
+  servingCertificates() []network.certificate
+  // Certificate authorities the kubelet server trusts for client certificates, from `clientCAFile`
+  clientCAs() []network.certificate
+  // Whether the kubelet server authenticates bearer tokens through the API server's TokenReview
+  webhookAuthenticationEnabled() bool
+  // Path the kubelet reads static pod manifests from
+  //
+  // Static pods are started by the kubelet itself, without going through the API
+  // server's admission control. Empty when the kubelet runs no static pods from a path.
+  staticPodPath() string
+  // Static pod manifests in `staticPodPath`
+  staticPodManifests() []file
+  // Unsafe sysctls pods on this node may set (for example "net.ipv4.ip_forward")
+  allowedUnsafeSysctls() []string
+  // Whether containers without a seccomp profile get the container runtime's default profile instead of none
+  seccompDefault() bool
+  // Maximum number of processes per pod; -1 means unlimited
+  podPidsLimit() int
+  // Whether the kubelet server serves exec, attach, port-forward, logs and the other debugging handlers
+  enableDebuggingHandlers() bool
+  // Whether the kubelet server exposes the node's log directory at /logs
+  enableSystemLogHandler() bool
+  // Whether the kubelet server answers node log queries on /logs/query
+  enableSystemLogQuery() bool
+  // Whether the kubelet server serves profiling data at /debug/pprof
+  enableProfilingHandler() bool
+  // Whether a pod may use an image another pod pulled with credentials it does not hold
+  //
+  // One of NeverVerify, NeverVerifyPreloadedImages, NeverVerifyAllowlistedImages,
+  // or AlwaysVerify. Set from Kubernetes 1.35, where the
+  // KubeletEnsureSecretPulledImages feature gate is on by default.
+  imagePullCredentialsVerificationPolicy() string
+  // Feature gates set in the kubelet's configuration or flags
+  //
+  // Only gates set explicitly. A gate absent here runs with its default for the
+  // kubelet's version.
+  featureGates() map[string]bool
 }
 
 // Python package inventory
