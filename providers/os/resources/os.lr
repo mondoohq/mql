@@ -8085,6 +8085,15 @@ crio {
   namespaceSignaturePolicies() []crio.imagePolicy
   // Runtime handlers CRI-O can run containers with
   runtimes() []crio.runtime
+  // Address the streaming server for exec, attach and port forwarding listens on
+  //
+  // CRI-O defaults to "127.0.0.1", so that only the kubelet on the node can reach
+  // it. Any other address exposes the server to the network.
+  streamAddress() string
+  // Port the streaming server listens on; 0 picks a free port
+  streamPort() int
+  // Whether the streaming server serves TLS
+  streamTlsEnabled() bool
 }
 
 // CRI-O image signature policy
@@ -8196,6 +8205,28 @@ crio.container @defaults("name podName podNamespace") {
   labels map[string]string
   // When the container was created
   created time
+  // Volumes mounted into the container
+  //
+  // Every Kubernetes volume, including hostPath volumes, and the files CRI-O
+  // adds, such as /etc/hosts. Null when CRI-O's record of the container cannot
+  // be read.
+  mounts() []crio.container.mount
+}
+
+// Volume mounted into a CRI-O container
+crio.container.mount @defaults("containerPath hostPath readOnly") {
+  // Path inside the container
+  containerPath string
+  // Path on the node that is mounted
+  hostPath string
+  // Whether the mount is read-only
+  readOnly bool
+  // Whether the mounts below it are read-only too
+  recursiveReadOnly bool
+  // Mount propagation: "None", "HostToContainer" or "Bidirectional"
+  propagation string
+  // Whether CRI-O relabels the host path for SELinux
+  selinuxRelabel bool
 }
 
 // Container image registries configuration

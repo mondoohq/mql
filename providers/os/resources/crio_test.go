@@ -251,3 +251,68 @@ func TestCrioRuntimeHandlers(t *testing.T) {
 	require.Len(t, handlers, 1)
 	assert.Equal(t, "crun", handlers[0].Name)
 }
+
+// The Volumes annotation of kube-proxy, from CRI-O's inspect output on the
+// kubeadm node
+func TestParseCrioMounts(t *testing.T) {
+	inspect, err := parseCrioInspect(readCrioFixture(t, "kubeadm/inspect-kube-proxy.json"))
+	require.NoError(t, err)
+	mounts, err := parseCrioMounts(inspect.Annotations[crioVolumesAnnotation])
+	require.NoError(t, err)
+	require.Len(t, mounts, 6)
+
+	assert.Equal(t, "/run/xtables.lock", mounts[0].ContainerPath)
+	assert.Equal(t, "/run/xtables.lock", mounts[0].HostPath)
+	assert.False(t, mounts[0].Readonly)
+	assert.Equal(t, "/lib/modules", mounts[1].ContainerPath)
+	assert.True(t, mounts[1].Readonly)
+	assert.Equal(t, "/var/run/secrets/kubernetes.io/serviceaccount", mounts[5].ContainerPath)
+	assert.True(t, mounts[5].Readonly)
+
+	none, err := parseCrioMounts("[]")
+	require.NoError(t, err)
+	assert.Empty(t, none)
+	_, err = parseCrioMounts("{not json")
+	assert.Error(t, err)
+}
+
+// Without a running CRI-O, the annotation is read from the container's OCI
+// config.json: etcd's on the kubeadm node.
+func TestCrioVolumesFromOCIConfig(t *testing.T) {
+	volumes, ok := crioVolumesFromOCIConfig(readCrioFixture(t, "kubeadm/config-etcd.json"))
+	require.True(t, ok)
+	mounts, err := parseCrioMounts(volumes)
+	require.NoError(t, err)
+	require.Len(t, mounts, 4)
+	assert.Equal(t, "/var/lib/etcd", mounts[2].HostPath)
+	assert.Equal(t, "/etc/kubernetes/pki/etcd", mounts[3].ContainerPath)
+
+	_, ok = crioVolumesFromOCIConfig(`{"annotations":{"io.kubernetes.cri-o.ContainerType":"sandbox"}}`)
+	assert.False(t, ok, "a pod sandbox records no volumes")
+	_, ok = crioVolumesFromOCIConfig("")
+	assert.False(t, ok)
+}
+
+func TestCrioPropagation(t *testing.T) {
+	assert.Equal(t, "None", crioPropagation(0))
+	assert.Equal(t, "HostToContainer", crioPropagation(1))
+	assert.Equal(t, "Bidirectional", crioPropagation(2))
+	assert.Equal(t, "7", crioPropagation(7))
+}
+
+func TestCrioPort(t *testing.T) {
+	cfg, err := parseCrioConfig(readCrioFixture(t, "kubeadm/config.toml"))
+	require.NoError(t, err)
+	port, ok := crioPort(crioConfigValue(cfg, "api", "stream_port"))
+	assert.True(t, ok)
+	assert.Equal(t, int64(0), port)
+	assert.Equal(t, "127.0.0.1", crioConfigValue(cfg, "api", "stream_address"))
+
+	port, ok = crioPort(int64(10010))
+	assert.True(t, ok)
+	assert.Equal(t, int64(10010), port)
+	_, ok = crioPort("ten")
+	assert.False(t, ok)
+	_, ok = crioPort(nil)
+	assert.False(t, ok)
+}

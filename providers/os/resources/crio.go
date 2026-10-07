@@ -8,6 +8,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -400,7 +401,7 @@ func (c *mqlCrio) containers() ([]any, error) {
 			return nil, err
 		}
 		for _, ctr := range containers {
-			r, err := c.newCrioContainer(ctr)
+			r, err := c.newCrioContainer(ctr, dir)
 			if err != nil {
 				return nil, err
 			}
@@ -410,7 +411,7 @@ func (c *mqlCrio) containers() ([]any, error) {
 	return res, nil
 }
 
-func (c *mqlCrio) newCrioContainer(ctr crioContainer) (plugin.Resource, error) {
+func (c *mqlCrio) newCrioContainer(ctr crioContainer, dir string) (plugin.Resource, error) {
 	var inspect crioInspect
 	if crioContainerID.MatchString(ctr.ID) {
 		if out, ok := crioAPI(c.MqlRuntime, "/containers/"+ctr.ID); ok {
@@ -437,7 +438,7 @@ func (c *mqlCrio) newCrioContainer(ctr crioContainer) (plugin.Resource, error) {
 	}
 	created := ctr.Created
 
-	return CreateResource(c.MqlRuntime, "crio.container", map[string]*llx.RawData{
+	r, err := CreateResource(c.MqlRuntime, "crio.container", map[string]*llx.RawData{
 		"__id":           llx.StringData("crio.container/" + ctr.ID),
 		"id":             llx.StringData(ctr.ID),
 		"name":           llx.StringData(ctr.Name),
@@ -453,4 +454,155 @@ func (c *mqlCrio) newCrioContainer(ctr crioContainer) (plugin.Resource, error) {
 		"labels":         llx.MapData(labels, "string"),
 		"created":        llx.TimeData(created),
 	})
+	if err != nil {
+		return nil, err
+	}
+	ctrRes := r.(*mqlCrioContainer)
+	ctrRes.volumes, ctrRes.hasVolumes = inspect.Annotations[crioVolumesAnnotation]
+	if crioContainerID.MatchString(ctr.ID) {
+		ctrRes.configPath = path.Join(dir, ctr.ID, "userdata", "config.json")
+	}
+	return ctrRes, nil
+}
+
+// crioVolumesAnnotation is where CRI-O records the volumes it mounted into a
+// container, in its inspect output and the container's OCI config.json.
+const crioVolumesAnnotation = "io.kubernetes.cri-o.Volumes"
+
+type mqlCrioContainerInternal struct {
+	// volumes is the Volumes annotation CRI-O reported for the container
+	volumes    string
+	hasVolumes bool
+	// configPath is the container's OCI config.json in containers/storage
+	configPath string
+}
+
+// crioMount is one entry of the Volumes annotation.
+type crioMount struct {
+	ContainerPath     string `json:"container_path"`
+	HostPath          string `json:"host_path"`
+	Readonly          bool   `json:"readonly"`
+	RecursiveReadOnly bool   `json:"recursive_read_only"`
+	Propagation       int    `json:"propagation"`
+	SelinuxRelabel    bool   `json:"selinux_relabel"`
+}
+
+func parseCrioMounts(content string) ([]crioMount, error) {
+	var mounts []crioMount
+	if err := json.Unmarshal([]byte(content), &mounts); err != nil {
+		return nil, err
+	}
+	return mounts, nil
+}
+
+// crioVolumesFromOCIConfig returns the Volumes annotation of an OCI
+// config.json, and whether it holds one.
+func crioVolumesFromOCIConfig(content string) (string, bool) {
+	var cfg struct {
+		Annotations map[string]string `json:"annotations"`
+	}
+	if json.Unmarshal([]byte(content), &cfg) != nil {
+		return "", false
+	}
+	v, ok := cfg.Annotations[crioVolumesAnnotation]
+	return v, ok
+}
+
+// crioPropagation names a CRI mount propagation the way a pod spec does.
+func crioPropagation(p int) string {
+	switch p {
+	case 0:
+		return "None"
+	case 1:
+		return "HostToContainer"
+	case 2:
+		return "Bidirectional"
+	default:
+		return strconv.Itoa(p)
+	}
+}
+
+func (c *mqlCrioContainer) mounts() ([]any, error) {
+	volumes, ok := c.volumes, c.hasVolumes
+	if !ok && c.configPath != "" {
+		volumes, ok = crioVolumesFromOCIConfig(readKubeletFile(c.MqlRuntime, c.configPath))
+	}
+	if !ok {
+		c.Mounts.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	mounts, err := parseCrioMounts(volumes)
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for i, m := range mounts {
+		r, err := CreateResource(c.MqlRuntime, "crio.container.mount", map[string]*llx.RawData{
+			"__id":              llx.StringData("crio.container.mount/" + c.Id.Data + "/" + strconv.Itoa(i)),
+			"containerPath":     llx.StringData(m.ContainerPath),
+			"hostPath":          llx.StringData(m.HostPath),
+			"readOnly":          llx.BoolData(m.Readonly),
+			"recursiveReadOnly": llx.BoolData(m.RecursiveReadOnly),
+			"propagation":       llx.StringData(crioPropagation(m.Propagation)),
+			"selinuxRelabel":    llx.BoolData(m.SelinuxRelabel),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+func (c *mqlCrio) streamAddress() (string, error) {
+	v, err := c.crioValue("api", "stream_address")
+	if err != nil {
+		return "", err
+	}
+	s, ok := v.(string)
+	if !ok {
+		c.StreamAddress.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return s, nil
+}
+
+func (c *mqlCrio) streamPort() (int64, error) {
+	v, err := c.crioValue("api", "stream_port")
+	if err != nil {
+		return 0, err
+	}
+	port, ok := crioPort(v)
+	if !ok {
+		c.StreamPort.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return port, nil
+}
+
+// crioPort reads a port CRI-O's configuration holds as a string ("10010"),
+// or as a number when a drop-in writes it unquoted.
+func crioPort(v any) (int64, bool) {
+	switch p := v.(type) {
+	case string:
+		n, err := strconv.ParseInt(p, 10, 64)
+		return n, err == nil
+	case int64:
+		return p, true
+	default:
+		return 0, false
+	}
+}
+
+func (c *mqlCrio) streamTlsEnabled() (bool, error) {
+	v, err := c.crioValue("api", "stream_enable_tls")
+	if err != nil {
+		return false, err
+	}
+	b, ok := v.(bool)
+	if !ok {
+		c.StreamTlsEnabled.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return b, nil
 }

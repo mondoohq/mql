@@ -258,6 +258,7 @@ const (
 	ResourceCrioImagePolicyRequirement                    string = "crio.imagePolicy.requirement"
 	ResourceCrioRuntime                                   string = "crio.runtime"
 	ResourceCrioContainer                                 string = "crio.container"
+	ResourceCrioContainerMount                            string = "crio.container.mount"
 	ResourceContainersRegistries                          string = "containers.registries"
 	ResourceContainersRegistry                            string = "containers.registry"
 	ResourceContainersRegistryMirror                      string = "containers.registry.mirror"
@@ -1657,6 +1658,10 @@ func init() {
 		"crio.container": {
 			// to override args, implement: initCrioContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createCrioContainer,
+		},
+		"crio.container.mount": {
+			// to override args, implement: initCrioContainerMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCrioContainerMount,
 		},
 		"containers.registries": {
 			// to override args, implement: initContainersRegistries(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -9346,6 +9351,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"crio.runtimes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrio).GetRuntimes()).ToDataRes(types.Array(types.Resource("crio.runtime")))
 	},
+	"crio.streamAddress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetStreamAddress()).ToDataRes(types.String)
+	},
+	"crio.streamPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetStreamPort()).ToDataRes(types.Int)
+	},
+	"crio.streamTlsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetStreamTlsEnabled()).ToDataRes(types.Bool)
+	},
 	"crio.imagePolicy.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrioImagePolicy).GetPath()).ToDataRes(types.String)
 	},
@@ -9459,6 +9473,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"crio.container.created": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrioContainer).GetCreated()).ToDataRes(types.Time)
+	},
+	"crio.container.mounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetMounts()).ToDataRes(types.Array(types.Resource("crio.container.mount")))
+	},
+	"crio.container.mount.containerPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainerMount).GetContainerPath()).ToDataRes(types.String)
+	},
+	"crio.container.mount.hostPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainerMount).GetHostPath()).ToDataRes(types.String)
+	},
+	"crio.container.mount.readOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainerMount).GetReadOnly()).ToDataRes(types.Bool)
+	},
+	"crio.container.mount.recursiveReadOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainerMount).GetRecursiveReadOnly()).ToDataRes(types.Bool)
+	},
+	"crio.container.mount.propagation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainerMount).GetPropagation()).ToDataRes(types.String)
+	},
+	"crio.container.mount.selinuxRelabel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainerMount).GetSelinuxRelabel()).ToDataRes(types.Bool)
 	},
 	"containers.registries.files": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainersRegistries).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
@@ -27529,6 +27564,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCrio).Runtimes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"crio.streamAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).StreamAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.streamPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).StreamPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.streamTlsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).StreamTlsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"crio.imagePolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCrioImagePolicy).__id, ok = v.Value.(string)
 		return
@@ -27699,6 +27746,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"crio.container.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCrioContainer).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"crio.container.mounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Mounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.container.mount.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).__id, ok = v.Value.(string)
+		return
+	},
+	"crio.container.mount.containerPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).ContainerPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.mount.hostPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).HostPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.mount.readOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).ReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.mount.recursiveReadOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).RecursiveReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.mount.propagation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).Propagation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.mount.selinuxRelabel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).SelinuxRelabel, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"containers.registries.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -67138,6 +67217,9 @@ type mqlCrio struct {
 	SignaturePolicy            plugin.TValue[*mqlCrioImagePolicy]
 	NamespaceSignaturePolicies plugin.TValue[[]any]
 	Runtimes                   plugin.TValue[[]any]
+	StreamAddress              plugin.TValue[string]
+	StreamPort                 plugin.TValue[int64]
+	StreamTlsEnabled           plugin.TValue[bool]
 }
 
 // createCrio creates a new instance of this resource
@@ -67309,6 +67391,24 @@ func (c *mqlCrio) GetRuntimes() *plugin.TValue[[]any] {
 		}
 
 		return c.runtimes()
+	})
+}
+
+func (c *mqlCrio) GetStreamAddress() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.StreamAddress, func() (string, error) {
+		return c.streamAddress()
+	})
+}
+
+func (c *mqlCrio) GetStreamPort() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.StreamPort, func() (int64, error) {
+		return c.streamPort()
+	})
+}
+
+func (c *mqlCrio) GetStreamTlsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.StreamTlsEnabled, func() (bool, error) {
+		return c.streamTlsEnabled()
 	})
 }
 
@@ -67645,7 +67745,7 @@ func (c *mqlCrioRuntime) GetIsDefault() *plugin.TValue[bool] {
 type mqlCrioContainer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlCrioContainerInternal it will be used here
+	mqlCrioContainerInternal
 	Id             plugin.TValue[string]
 	Name           plugin.TValue[string]
 	PodName        plugin.TValue[string]
@@ -67659,6 +67759,7 @@ type mqlCrioContainer struct {
 	SeccompProfile plugin.TValue[string]
 	Labels         plugin.TValue[map[string]any]
 	Created        plugin.TValue[*time.Time]
+	Mounts         plugin.TValue[[]any]
 }
 
 // createCrioContainer creates a new instance of this resource
@@ -67743,6 +67844,91 @@ func (c *mqlCrioContainer) GetLabels() *plugin.TValue[map[string]any] {
 
 func (c *mqlCrioContainer) GetCreated() *plugin.TValue[*time.Time] {
 	return &c.Created
+}
+
+func (c *mqlCrioContainer) GetMounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Mounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio.container", c.__id, "mounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mounts()
+	})
+}
+
+// mqlCrioContainerMount for the crio.container.mount resource
+type mqlCrioContainerMount struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCrioContainerMountInternal it will be used here
+	ContainerPath     plugin.TValue[string]
+	HostPath          plugin.TValue[string]
+	ReadOnly          plugin.TValue[bool]
+	RecursiveReadOnly plugin.TValue[bool]
+	Propagation       plugin.TValue[string]
+	SelinuxRelabel    plugin.TValue[bool]
+}
+
+// createCrioContainerMount creates a new instance of this resource
+func createCrioContainerMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCrioContainerMount{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("crio.container.mount", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCrioContainerMount) MqlName() string {
+	return "crio.container.mount"
+}
+
+func (c *mqlCrioContainerMount) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCrioContainerMount) GetContainerPath() *plugin.TValue[string] {
+	return &c.ContainerPath
+}
+
+func (c *mqlCrioContainerMount) GetHostPath() *plugin.TValue[string] {
+	return &c.HostPath
+}
+
+func (c *mqlCrioContainerMount) GetReadOnly() *plugin.TValue[bool] {
+	return &c.ReadOnly
+}
+
+func (c *mqlCrioContainerMount) GetRecursiveReadOnly() *plugin.TValue[bool] {
+	return &c.RecursiveReadOnly
+}
+
+func (c *mqlCrioContainerMount) GetPropagation() *plugin.TValue[string] {
+	return &c.Propagation
+}
+
+func (c *mqlCrioContainerMount) GetSelinuxRelabel() *plugin.TValue[bool] {
+	return &c.SelinuxRelabel
 }
 
 // mqlContainersRegistries for the containers.registries resource

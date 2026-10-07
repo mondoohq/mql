@@ -689,6 +689,14 @@ crio.container.id 14.17.1
 crio.container.image 14.17.1
 crio.container.imageRef 14.17.1
 crio.container.labels 14.17.1
+crio.container.mount 14.17.1
+crio.container.mount.containerPath 14.17.1
+crio.container.mount.hostPath 14.17.1
+crio.container.mount.propagation 14.17.1
+crio.container.mount.readOnly 14.17.1
+crio.container.mount.recursiveReadOnly 14.17.1
+crio.container.mount.selinuxRelabel 14.17.1
+crio.container.mounts 14.17.1
 crio.container.name 14.17.1
 crio.container.pid 14.17.1
 crio.container.podName 14.17.1
@@ -735,6 +743,9 @@ crio.runtimes 14.17.1
 crio.seccompProfile 14.17.1
 crio.selinux 14.17.1
 crio.signaturePolicy 14.17.1
+crio.streamAddress 14.17.1
+crio.streamPort 14.17.1
+crio.streamTlsEnabled 14.17.1
 crio.version 14.17.1
 crontab 11.4.84
 crontab.entries 11.4.84
