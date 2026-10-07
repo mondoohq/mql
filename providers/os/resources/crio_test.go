@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -268,4 +269,25 @@ func TestCrioPort(t *testing.T) {
 	assert.False(t, ok)
 	_, ok = crioPort(nil)
 	assert.False(t, ok)
+}
+
+// CRI-O opens <signature_policy_dir>/<namespace>.json by path, so a symlinked
+// policy counts, and a directory or a dangling link holds no policy.
+func TestCrioNamespacePolicyListing(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "etc", "crio", "policies")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "etc", "crio", "shared"), 0o755))
+	policy := []byte(`{"default":[{"type":"reject"}]}`)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "payments.json"), policy, 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "etc", "crio", "shared", "policy.json"), policy, 0o644))
+	require.NoError(t, os.Symlink("../shared/policy.json", filepath.Join(dir, "linked.json")))
+	require.NoError(t, os.Symlink("../shared/missing.json", filepath.Join(dir, "dangling.json")))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "dir.json"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".hidden.json"), policy, 0o644))
+
+	rt := memFSRuntime(t, afero.NewBasePathFs(afero.NewOsFs(), root))
+	files, err := listConfDFilesWith(rt, []string{"/etc/crio/policies"}, isCrioNamespacePolicyFile)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/etc/crio/policies/linked.json", "/etc/crio/policies/payments.json"}, files)
 }
