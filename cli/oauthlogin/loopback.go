@@ -62,6 +62,8 @@ func loopbackFlow(ctx context.Context, o *Options, md *Metadata, cfg *oauth2.Con
 	}
 
 	results := make(chan callbackResult, 1)
+	// The mux answers every path but callbackPath with 404; only callbackPath
+	// takes part in the login.
 	mux := http.NewServeMux()
 	mux.HandleFunc(callbackPath, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -70,6 +72,13 @@ func loopbackFlow(ctx context.Context, o *Options, md *Metadata, cfg *oauth2.Con
 			return
 		}
 		res := validateCallback(r.URL.Query(), state, md.Issuer, md.AuthorizationResponseIssParameterSupported)
+		if errors.Is(res.err, errUnexpectedState) {
+			// Not a response to this login: show the error page, but keep
+			// waiting for the response that belongs to this login.
+			log.Debug().Msg("ignoring a login callback with an unexpected state")
+			writeResultPage(w, http.StatusBadRequest, false, res.err.Error())
+			return
+		}
 		if res.err != nil {
 			writeResultPage(w, http.StatusBadRequest, false, res.err.Error())
 		} else {
@@ -289,11 +298,15 @@ func (e *browserNotOpenedError) Error() string {
 
 func (e *browserNotOpenedError) Unwrap() error { return e.err }
 
+// errUnexpectedState is returned for an authorization response whose state is
+// not this login's. Such a response does not end the login.
+var errUnexpectedState = errors.New("login response has an unexpected state, ignoring it")
+
 // validateCallback checks the authorization response: state must match, and
 // the iss parameter (RFC 9207) must name the expected issuer.
 func validateCallback(q url.Values, state, issuer string, issRequired bool) callbackResult {
 	if subtle.ConstantTimeCompare([]byte(q.Get("state")), []byte(state)) != 1 {
-		return callbackResult{err: errors.New("login response has an unexpected state, ignoring it")}
+		return callbackResult{err: errUnexpectedState}
 	}
 	if iss := q.Get("iss"); iss != "" {
 		if !sameIssuer(iss, issuer) {
@@ -306,7 +319,8 @@ func validateCallback(q url.Values, state, issuer string, issRequired bool) call
 		if e == "access_denied" {
 			return callbackResult{err: errors.New("the login request was denied")}
 		}
-		if d := q.Get("error_description"); d != "" {
+		e = DisplayText(e)
+		if d := DisplayText(q.Get("error_description")); d != "" {
 			return callbackResult{err: fmt.Errorf("login failed: %s: %s", e, d)}
 		}
 		return callbackResult{err: fmt.Errorf("login failed: %s", e)}
