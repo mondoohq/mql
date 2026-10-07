@@ -4,13 +4,18 @@
 package ssh
 
 import (
+	"io"
 	"net"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"golang.org/x/crypto/ssh"
 )
 
 func TestSSHDefaultSettings(t *testing.T) {
@@ -118,4 +123,52 @@ func TestServerSupportsHybridKEX(t *testing.T) {
 func TestServerSupportsHybridKEX_ServerUnreachable(t *testing.T) {
 	_, err := serverSupportsHybridKEX("127.0.0.1:9")
 	require.NotNil(t, err)
+}
+
+type countingCloser struct{ closed int }
+
+func (c *countingCloser) Close() error {
+	c.closed++
+	return nil
+}
+
+// What the connection set up besides the SSH client, such as an SSM session,
+// ends with the connection, once.
+func TestCloseClosesWhatTheConnectionSetUp(t *testing.T) {
+	closer := &countingCloser{}
+	conn := &Connection{closers: []io.Closer{closer}}
+	conn.Close()
+	assert.Equal(t, 1, closer.closed)
+	conn.Close()
+	assert.Equal(t, 1, closer.closed)
+}
+
+// Commands that see the same client fail reconnect once; the others use the
+// new client. Every reconnect over an SSM session starts a session of its own.
+func TestReconnectAfterOncePerFailedClient(t *testing.T) {
+	failed := &ssh.Client{}
+	conn := &Connection{SSHClient: failed}
+	var reconnects atomic.Int32
+	conn.reconnectHook = func() error {
+		reconnects.Add(1)
+		time.Sleep(50 * time.Millisecond)
+		conn.SSHClient = &ssh.Client{}
+		return nil
+	}
+
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			assert.NoError(t, conn.reconnectAfter(failed))
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, int32(1), reconnects.Load())
+	assert.NotSame(t, failed, conn.currentClient())
+
+	// the new client failing reconnects again
+	assert.NoError(t, conn.reconnectAfter(conn.currentClient()))
+	assert.Equal(t, int32(2), reconnects.Load())
 }
