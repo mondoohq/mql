@@ -61,50 +61,13 @@ func initAzureSubscriptionAksService(runtime *plugin.Runtime, args map[string]*l
 }
 
 func initAzureSubscriptionAksServiceCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	if len(args) > 1 {
-		return args, nil, nil
-	}
-
-	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil && ids.id != "" {
-			args["id"] = llx.StringData(ids.id)
-		}
-	}
-
-	if args["id"] == nil {
-		return nil, nil, errors.New("id required to fetch azure aks cluster")
-	}
-	conn, ok := runtime.Connection.(*connection.AzureConnection)
-	if !ok {
-		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
-	}
-	res, err := NewResource(runtime, "azure.subscription.aksService", map[string]*llx.RawData{
-		"subscriptionId": llx.StringData(conn.SubId()),
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	aksSvc := res.(*mqlAzureSubscriptionAksService)
-	clusterList := aksSvc.GetClusters()
-	if clusterList.Error != nil {
-		return nil, nil, clusterList.Error
-	}
-	id, ok := args["id"].Value.(string)
-	if !ok {
-		return nil, nil, errors.New("id must be a non-nil string value")
-	}
-	for _, entry := range clusterList.Data {
-		cluster := entry.(*mqlAzureSubscriptionAksServiceCluster)
-		if cluster.Id.Data == id {
-			return args, cluster, nil
-		}
-	}
-
-	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionAksServiceCluster, id); filtered != nil {
-		return args, filtered, nil
-	}
-
-	return nil, nil, errors.New("azure aks cluster does not exist")
+	// From the service's list, matched case-insensitively: the AKS API spells
+	// a cluster's id ".../resourcegroups/...", while the ARM listing that
+	// discovery builds the asset from spells it ".../resourceGroups/...".
+	return initFromServiceList(runtime, args,
+		ResourceAzureSubscriptionAksService,
+		func(s *mqlAzureSubscriptionAksService) *plugin.TValue[[]any] { return s.GetClusters() },
+		ResourceAzureSubscriptionAksServiceCluster)
 }
 
 func (a *mqlAzureSubscriptionAksServiceCluster) id() (string, error) {

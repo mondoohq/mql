@@ -58,6 +58,7 @@ func TestInitsReportAMissingID(t *testing.T) {
 		{"azure.subscription.cosmosDbService.account", initAzureSubscriptionCosmosDbServiceAccount},
 		{"azure.subscription.cacheService.redisInstance", initAzureSubscriptionCacheServiceRedisInstance},
 		{"azure.subscription.cognitiveServicesService.account", initAzureSubscriptionCognitiveServicesServiceAccount},
+		{"azure.subscription.aksService.cluster", initAzureSubscriptionAksServiceCluster},
 	}
 
 	subscriptionAsset := []string{"//platformid.api.mondoo.app/runtime/azure/subscriptions/sub-1"}

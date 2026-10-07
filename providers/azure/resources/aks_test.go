@@ -10,6 +10,8 @@ import (
 	clusters "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerservice/armcontainerservice/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestAksDiskCsiDriverEnabled(t *testing.T) {
@@ -51,4 +53,28 @@ func TestAksKubernetesResourceObjectEncryption(t *testing.T) {
 		require.NotNil(t, got)
 		assert.Equal(t, "Enabled", *got)
 	})
+}
+
+// A discovered AKS cluster asset carries the id from the ARM resource listing
+// (".../resourceGroups/..."), while the AKS API that lists the clusters spells
+// it ".../resourcegroups/...". The cluster must still resolve on its own asset.
+func TestInitAksClusterMatchesIDCaseInsensitively(t *testing.T) {
+	const assetID = "/subscriptions/sub-1/resourceGroups/rg/providers/Microsoft.ContainerService/managedClusters/c-1"
+	const listedID = "/subscriptions/sub-1/resourcegroups/rg/providers/Microsoft.ContainerService/managedClusters/c-1"
+
+	runtime := runtimeForAsset(t, []string{assetID})
+	svcRes, err := NewResource(runtime, ResourceAzureSubscriptionAksService, map[string]*llx.RawData{
+		"subscriptionId": llx.StringData("sub-1"),
+	})
+	require.NoError(t, err)
+	cluster, err := CreateResource(runtime, ResourceAzureSubscriptionAksServiceCluster, map[string]*llx.RawData{
+		"id": llx.StringData(listedID),
+	})
+	require.NoError(t, err)
+	svc := svcRes.(*mqlAzureSubscriptionAksService)
+	svc.Clusters = plugin.TValue[[]any]{Data: []any{cluster}, State: plugin.StateIsSet}
+
+	_, res, err := initAzureSubscriptionAksServiceCluster(runtime, map[string]*llx.RawData{})
+	require.NoError(t, err)
+	assert.Same(t, cluster, res)
 }
