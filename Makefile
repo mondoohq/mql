@@ -238,6 +238,7 @@ PROVIDERS := \
 	helm \
 	hetzner \
 	huggingface \
+	ibm \
 	ipinfo \
 	ipmi \
 	iru \

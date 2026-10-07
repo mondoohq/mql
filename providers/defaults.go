@@ -646,6 +646,22 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"ibm": {
+		Provider: &plugin.Provider{
+			Name:            "ibm",
+			ID:              "go.mondoo.com/mql/providers/ibm",
+			ConnectionTypes: []string{"ibm"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "ibm",
+					Use:   "ibm",
+					Short: "an IBM Cloud account",
+				},
+			},
+		},
+	},
+
 	"ipinfo": {
 		Provider: &plugin.Provider{
 			Name:            "ipinfo",
