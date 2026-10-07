@@ -192,9 +192,24 @@ func InitViperConfig() {
 }
 
 func DisplayUsedConfig() {
+	displayUsedConfig(false)
+}
+
+// DisplayUsedConfigForLogin is DisplayUsedConfig for commands that create the
+// configuration file, such as login. A --config file that does not exist yet is
+// the normal case there, so it is only logged at debug level.
+func DisplayUsedConfigForLogin() {
+	displayUsedConfig(true)
+}
+
+func displayUsedConfig(missingFileOK bool) {
 	// print config file
 	if !LoadedConfig && len(UserProvidedPath) > 0 {
-		log.Warn().Msg("could not load configuration file " + UserProvidedPath)
+		if missingFileOK {
+			log.Debug().Msg("configuration file " + UserProvidedPath + " does not exist yet, it will be created")
+		} else {
+			log.Warn().Msg("could not load configuration file " + UserProvidedPath)
+		}
 	} else if LoadedConfig {
 		log.Info().Msg("loaded configuration from " + viper.ConfigFileUsed() + " using source " + Source)
 	} else if Source == configSourceBase64 {
