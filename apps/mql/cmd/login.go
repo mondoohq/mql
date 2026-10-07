@@ -41,16 +41,23 @@ var (
 	tokenExpiredErr    = errors.New("The token is expired")
 )
 
+// registrationTokenEnv supplies the registration token when --token is not set.
+const registrationTokenEnv = "MONDOO_REGISTRATION_TOKEN"
+
+// errNoCredentials is returned when login has neither a registration token
+// nor usable credentials and cannot ask the user, because it does not run in
+// a terminal.
+var errNoCredentials = errors.New("no credentials")
+
 func init() {
 	rootCmd.AddCommand(LoginCmd)
-	LoginCmd.Flags().StringP("token", "t", "", "Set a client registration token")
+	LoginCmd.Flags().StringP("token", "t", "", "Set a client registration token (default $"+registrationTokenEnv+")")
 	LoginCmd.Flags().StringToString("annotation", nil, "Set the client annotations")
 	LoginCmd.Flags().String("updates-url", "", "Set the updates URL for mql and provider updates")
 	LoginCmd.Flags().String("name", "", "Set asset name")
 	LoginCmd.Flags().String("api-endpoint", "", "Set the Mondoo API endpoint")
 	LoginCmd.Flags().Int("timer", 0, "Set the scan interval in minutes")
 	LoginCmd.Flags().Int("splay", 0, "Randomize the timer by up to this many minutes")
-	LoginCmd.Flags().Bool("device", false, "Log in with a one-time code entered in a browser on any device")
 	LoginCmd.Flags().Bool("no-browser", false, "Do not open a browser on this machine; log in with a one-time code instead")
 	LoginCmd.Flags().String("space", "", "Preselect this space MRN on the approval page")
 	LoginCmd.Flags().Bool("insecure", false, "Allow browser login over unencrypted http to a non-loopback server")
@@ -58,11 +65,13 @@ func init() {
 
 // oauthLoginFlags are the options of the interactive (browser or device) login.
 type oauthLoginFlags struct {
-	device     bool
 	noBrowser  bool
 	spaceMrn   string
 	insecure   bool
 	binaryName string
+	// interactive reports whether stdin and stderr are terminals, so the
+	// login can ask the user.
+	interactive bool
 }
 
 var LoginCmd = &cobra.Command{
@@ -75,11 +84,12 @@ Log in to Mondoo Platform.
 Without arguments, login opens your browser and asks you to approve the login
 and pick a space. The result is a short-lived credential for this machine; run
 login again when it expires. On a machine without a browser (for example over
-SSH), or with '--device' or '--no-browser', login prints a one-time code to
-enter at a URL on any device instead.
+SSH), or with '--no-browser', login prints a one-time code to enter at a URL on
+any device instead. This interactive login needs a terminal.
 
 To register this machine permanently, use a registration token instead and pass
-it with '--token'. You can generate a registration token in the Mondoo Console:
+it with '--token' or the MONDOO_REGISTRATION_TOKEN environment variable; '--token'
+takes precedence. You can generate a registration token in the Mondoo Console:
 Space -> Settings -> Registration Token. A registered client remains logged in
 until you explicitly log out using the 'logout' subcommand.
 	`,
@@ -89,18 +99,22 @@ until you explicitly log out using the 'logout' subcommand.
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		defer providers.Coordinator.Shutdown()
-		token, _ := cmd.Flags().GetString("token")
+		flagToken, _ := cmd.Flags().GetString("token")
+		token, tokenSource := registrationToken(flagToken, os.Getenv)
+		if tokenSource != "" {
+			log.Debug().Str("source", tokenSource).Msg("using a registration token")
+		}
 		annotations, _ := cmd.Flags().GetStringToString("annotation")
 		updatesURL, _ := cmd.Flags().GetString("updates-url")
 		timer, _ := cmd.Flags().GetInt("timer")
 		splay, _ := cmd.Flags().GetInt("splay")
 		apiEndpointOverride, _ := cmd.Flags().GetString("api-endpoint")
 		var oauthFlags oauthLoginFlags
-		oauthFlags.device, _ = cmd.Flags().GetBool("device")
 		oauthFlags.noBrowser, _ = cmd.Flags().GetBool("no-browser")
 		oauthFlags.spaceMrn, _ = cmd.Flags().GetString("space")
 		oauthFlags.insecure, _ = cmd.Flags().GetBool("insecure")
 		oauthFlags.binaryName = cmd.Root().Name()
+		oauthFlags.interactive = term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd()))
 		err := register(token, annotations, updatesURL, timer, splay, apiEndpointOverride, oauthFlags)
 		if err != nil {
 			// A login failure is not a usage error: don't print the help text,
@@ -111,6 +125,9 @@ until you explicitly log out using the 'logout' subcommand.
 			if err == tokenValidationErr {
 				log.Error().Msg(err.Error())
 				return cli_errors.ExitCode1WithoutError
+			}
+			if errors.Is(err, errNoCredentials) {
+				return cli_errors.NewCommandError(err, 1)
 			}
 			defer func() {
 				opts, optsErr := config.Read()
@@ -149,6 +166,16 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 	var err error
 	var credential *upstream.ServiceAccountCredentials
 	var session *oauthlogin.Result
+
+	// Without a token or usable credentials, login has to ask the user; fail
+	// before any other work when it cannot.
+	if token == "" {
+		if opts, optsErr := config.Read(); optsErr == nil && (opts.IsOAuthSession() || !opts.HasCredentials()) {
+			if err := checkCanLogInInteractively(oauthFlags); err != nil {
+				return err
+			}
+		}
+	}
 
 	// determine information about the client
 	sysInfo, err := sysinfo.Get()
@@ -373,10 +400,37 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 	return nil
 }
 
+// registrationToken returns the registration token to log in with and where it
+// came from: the --token flag, else the registrationTokenEnv environment
+// variable. Both empty returns "", "".
+func registrationToken(flagToken string, getenv func(string) string) (string, string) {
+	if token := strings.TrimSpace(flagToken); token != "" {
+		return token, "--token"
+	}
+	if token := strings.TrimSpace(getenv(registrationTokenEnv)); token != "" {
+		return token, registrationTokenEnv
+	}
+	return "", ""
+}
+
+// checkCanLogInInteractively fails right away when login would have to ask
+// the user but does not run in a terminal (CI, scripts, piped input), instead
+// of waiting for an approval nobody can give.
+func checkCanLogInInteractively(flags oauthLoginFlags) error {
+	if flags.interactive {
+		return nil
+	}
+	binaryName := flags.binaryName
+	if binaryName == "" {
+		binaryName = "mql"
+	}
+	return fmt.Errorf("%w: run `%s login` in a terminal, or pass a registration token with --token or %s", errNoCredentials, binaryName, registrationTokenEnv)
+}
+
 // oauthLogin runs the interactive login against the server at apiEndpoint.
 func oauthLogin(apiEndpoint string, httpClient *http.Client, sysInfo *sysinfo.SystemInfo, flags oauthLoginFlags) (*oauthlogin.Result, error) {
 	mode := oauthlogin.ModeAuto
-	if flags.device || flags.noBrowser {
+	if flags.noBrowser {
 		mode = oauthlogin.ModeDevice
 	}
 	version := config.RunningVersion()
@@ -404,7 +458,7 @@ func oauthLogin(apiEndpoint string, httpClient *http.Client, sysInfo *sysinfo.Sy
 		DeviceName:  deviceName,
 		DeviceInfo:  fmt.Sprintf("%s %s %s/%s", binaryName, version, runtime.GOOS, runtime.GOARCH),
 		HTTPClient:  httpClient,
-		Interactive: term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stderr.Fd())),
+		Interactive: flags.interactive,
 	})
 	if err != nil && ctx.Err() != nil {
 		return nil, errors.New("login canceled")
