@@ -1201,8 +1201,13 @@ user @defaults("name uid gid") {
   // uid is below minuid, or above maxuid and at most 65535, which covers root,
   // the service accounts and `nobody` (65534). minuid and maxuid come from
   // /etc/pw.conf, defaulting to 1000 and 32000 like pw(8) when the file is
-  // absent or a value is unset or unparsable. Null on Windows and on other
-  // Unix platforms, which have no common convention. Combine with
+  // absent or a value is unset or unparsable. On Windows, false for local and
+  // Active Directory accounts (`S-1-5-21-...` SIDs) and Entra ID accounts
+  // (`S-1-12-1-...` SIDs), except the built-in krbtgt, DefaultAccount and
+  // WDAGUtilityAccount; true for every other SID, such as LocalSystem,
+  // LocalService, NetworkService and service identities. Administrator and
+  // Guest count as users. Null on other Unix platforms, which have no common
+  // convention. Combine with
   // hasLoginShell to find service accounts that can log in, for example
   // `users.where(system && name != "root").none(hasLoginShell)`.
   system() bool

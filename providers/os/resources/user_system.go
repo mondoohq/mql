@@ -57,12 +57,13 @@ const (
 	systemAccountRuleLinux
 	systemAccountRuleDarwin
 	systemAccountRuleFreeBSD
+	systemAccountRuleWindows
 )
 
 // systemAccountRuleFor picks how system accounts are told apart on a platform.
-// Linux (shadow-utils login.defs), FreeBSD (pw.conf) and macOS have a rule;
-// everything else, including Windows, the other BSDs and Solaris, reports null
-// rather than a guess.
+// Linux (shadow-utils login.defs), FreeBSD (pw.conf), macOS and Windows (SID
+// shape) have a rule; everything else, including the other BSDs and Solaris,
+// reports null rather than a guess.
 func systemAccountRuleFor(pf *inventory.Platform) systemAccountRule {
 	switch {
 	case pf == nil:
@@ -73,6 +74,8 @@ func systemAccountRuleFor(pf *inventory.Platform) systemAccountRule {
 		return systemAccountRuleFreeBSD
 	case pf.IsFamily("linux"):
 		return systemAccountRuleLinux
+	case pf.IsFamily("windows"):
+		return systemAccountRuleWindows
 	default:
 		return systemAccountRuleUnknown
 	}
@@ -190,6 +193,49 @@ func isFreeBSDSystemUID(uid int64, r uidRange) bool {
 		return true
 	}
 	return uid > r.max && uid <= maxUID16
+}
+
+// windowsSystemRIDs are the built-in accounts in a machine or domain SID
+// space that Windows runs itself rather than a person signing in: krbtgt (502,
+// the domain's Kerberos service account), DefaultAccount (503) and
+// WDAGUtilityAccount (504). Administrator (500) and Guest (501) are accounts
+// people sign in with and count as users.
+var windowsSystemRIDs = map[uint64]struct{}{
+	502: {},
+	503: {},
+	504: {},
+}
+
+// isWindowsSystemSID reports whether a user SID belongs to a system account.
+// Accounts people sign in with have one of two shapes: S-1-5-21-a-b-c-RID, a
+// local or Active Directory account (three sub-authorities identify the
+// machine or domain, the RID the account), and S-1-12-1-a-b-c-d, an Entra ID
+// account (the object GUID split into four 32-bit values). Every other SID is a
+// built-in or service identity, such as LocalSystem (S-1-5-18), LocalService
+// (S-1-5-19), NetworkService (S-1-5-20), service SIDs (S-1-5-80-...) and IIS
+// app pool identities (S-1-5-82-...). ok is false when sid is not a SID.
+func isWindowsSystemSID(sid string) (system bool, ok bool) {
+	parts := strings.Split(sid, "-")
+	if len(parts) < 3 || !strings.EqualFold(parts[0], "S") || parts[1] != "1" {
+		return false, false
+	}
+	nums := make([]uint64, 0, len(parts)-2)
+	for _, p := range parts[2:] {
+		v, err := strconv.ParseUint(p, 10, 64)
+		if err != nil {
+			return false, false
+		}
+		nums = append(nums, v)
+	}
+	switch {
+	case len(nums) == 6 && nums[0] == 5 && nums[1] == 21:
+		_, builtin := windowsSystemRIDs[nums[5]]
+		return builtin, true
+	case len(nums) == 6 && nums[0] == 12 && nums[1] == 1:
+		return false, true
+	default:
+		return true, true
+	}
 }
 
 // nonLoginShellDirs are the directories a nologin or false binary is accepted
@@ -313,6 +359,16 @@ func (u *mqlUser) system() (bool, error) {
 	}
 	rule := systemAccountRuleFor(u.assetPlatform())
 	switch rule {
+	case systemAccountRuleWindows:
+		if u.Sid.Error != nil {
+			return false, u.Sid.Error
+		}
+		system, ok := isWindowsSystemSID(u.Sid.Data)
+		if !ok {
+			u.System.State = plugin.StateIsSet | plugin.StateIsNull
+			return false, nil
+		}
+		return system, nil
 	case systemAccountRuleDarwin:
 		return isDarwinSystemUID(u.Uid.Data), nil
 	case systemAccountRuleLinux, systemAccountRuleFreeBSD:

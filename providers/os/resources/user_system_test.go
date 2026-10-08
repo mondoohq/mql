@@ -145,6 +145,47 @@ func TestIsDarwinSystemUID(t *testing.T) {
 	assert.False(t, isDarwinSystemUID(501), "first user")
 }
 
+func TestIsWindowsSystemSID(t *testing.T) {
+	users := map[string]string{
+		"S-1-5-21-3623811015-3361044348-30300820-500":          "Administrator",
+		"S-1-5-21-3623811015-3361044348-30300820-501":          "Guest",
+		"S-1-5-21-3623811015-3361044348-30300820-1001":         "local or domain user",
+		"S-1-12-1-1530987534-1288187437-4004063895-2401714744": "Entra ID user",
+		"s-1-5-21-3623811015-3361044348-30300820-1001":         "lowercase prefix",
+	}
+	for sid, desc := range users {
+		system, ok := isWindowsSystemSID(sid)
+		assert.True(t, ok, desc)
+		assert.False(t, system, desc)
+	}
+
+	system := map[string]string{
+		"S-1-5-18": "LocalSystem",
+		"S-1-5-19": "LocalService",
+		"S-1-5-20": "NetworkService",
+		"S-1-5-21-3623811015-3361044348-30300820-502":                    "krbtgt",
+		"S-1-5-21-3623811015-3361044348-30300820-503":                    "DefaultAccount",
+		"S-1-5-21-3623811015-3361044348-30300820-504":                    "WDAGUtilityAccount",
+		"S-1-5-21-3623811015-3361044348-30300820":                        "domain SID without RID",
+		"S-1-5-21-3623811015-3361044348-30300820-1001-7":                 "extra sub-authority",
+		"S-1-12-1-1530987534-1288187437-4004063895":                      "Entra SID missing a sub-authority",
+		"S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464": "service SID",
+		"S-1-5-82-3006700770-424185619-1745488364-794895919-4004696415":  "IIS app pool identity",
+		"S-1-5-90-0-1": "window manager",
+		"S-1-5-96-0-1": "font driver host",
+	}
+	for sid, desc := range system {
+		got, ok := isWindowsSystemSID(sid)
+		assert.True(t, ok, desc)
+		assert.True(t, got, desc)
+	}
+
+	for _, sid := range []string{"", "Administrator", "S-1", "S-2-5-18", "S-1-5-21-abc-1-2-1001", "S-1-5--18"} {
+		_, ok := isWindowsSystemSID(sid)
+		assert.False(t, ok, sid)
+	}
+}
+
 func TestIsLoginShell(t *testing.T) {
 	notLogin := []string{
 		"/sbin/nologin",
@@ -183,7 +224,7 @@ func TestIsLoginShell(t *testing.T) {
 func TestSystemAccountRuleFor(t *testing.T) {
 	assert.Equal(t, systemAccountRuleLinux, systemAccountRuleFor(&inventory.Platform{Family: []string{"debian", "linux", "unix", "os"}}))
 	assert.Equal(t, systemAccountRuleDarwin, systemAccountRuleFor(&inventory.Platform{Family: []string{"darwin", "bsd", "unix", "os"}}))
-	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(&inventory.Platform{Family: []string{"windows", "os"}}))
+	assert.Equal(t, systemAccountRuleWindows, systemAccountRuleFor(&inventory.Platform{Family: []string{"windows", "os"}}))
 	assert.Equal(t, systemAccountRuleFreeBSD, systemAccountRuleFor(&inventory.Platform{Name: "freebsd", Family: []string{"bsd", "unix", "os"}}))
 	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(&inventory.Platform{Name: "openbsd", Family: []string{"bsd", "unix", "os"}}))
 	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(&inventory.Platform{Name: "netbsd", Family: []string{"bsd", "unix", "os"}}))
