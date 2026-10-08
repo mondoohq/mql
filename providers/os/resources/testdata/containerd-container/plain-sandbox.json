@@ -14,7 +14,6 @@
             "value": "SAE="
         }
     },
-    "SnapshotKey": "52e13ae4e17348be849542ae0b8925aaae34b44da9805b92efa7724e91a37abd",
     "Snapshotter": "overlayfs",
     "CreatedAt": "2026-10-08T00:33:12.284070625Z",
     "UpdatedAt": "2026-10-08T00:33:12.284070625Z",
