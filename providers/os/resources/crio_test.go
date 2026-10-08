@@ -120,6 +120,7 @@ func TestParseCrioStorageContainers(t *testing.T) {
 	assert.Equal(t, "kube-system", proxy.PodNamespace)
 	assert.Equal(t, "4fd48ba53f1e63f3e17bbc7aa04a0434ab9fa4326696fffc17e89762a380baf7", proxy.SandboxID)
 	assert.True(t, proxy.Privileged, "kube-proxy runs privileged")
+	assert.Equal(t, "728902c90c8b555afa3fdb372f31c83f932a8c6369d37b44dea9e8ddc835d42e", proxy.ImageID)
 	assert.False(t, proxy.Created.IsZero())
 
 	assert.False(t, byName["etcd"].Privileged)

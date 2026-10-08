@@ -330,11 +330,11 @@ func ociArch(machine string) (string, string) {
 	return "", ""
 }
 
-// containerdImageField reads one configuration field, or marks it null when the
-// image's content is not stored.
-func containerdImageField[T any](p *mqlContainerdImage, field *plugin.TValue[T], get func(*ociImageContent) T) (T, error) {
+// ociImageField reads one field of an image's configuration, or marks it
+// null when the image's content is not stored.
+func ociImageField[T any](load func() (*ociImageContent, error), field *plugin.TValue[T], get func(*ociImageContent) T) (T, error) {
 	var zero T
-	c, err := p.load()
+	c, err := load()
 	if err != nil {
 		return zero, err
 	}
@@ -346,15 +346,15 @@ func containerdImageField[T any](p *mqlContainerdImage, field *plugin.TValue[T],
 }
 
 func (p *mqlContainerdImage) configDigest() (string, error) {
-	return containerdImageField(p, &p.ConfigDigest, func(c *ociImageContent) string { return c.configDigest })
+	return ociImageField(p.load, &p.ConfigDigest, func(c *ociImageContent) string { return c.configDigest })
 }
 
 func (p *mqlContainerdImage) size() (int64, error) {
-	return containerdImageField(p, &p.Size, func(c *ociImageContent) int64 { return c.size })
+	return ociImageField(p.load, &p.Size, func(c *ociImageContent) int64 { return c.size })
 }
 
 func (p *mqlContainerdImage) createdAt() (*time.Time, error) {
-	t, err := containerdImageField(p, &p.CreatedAt, func(c *ociImageContent) *time.Time { return c.config.Created })
+	t, err := ociImageField(p.load, &p.CreatedAt, func(c *ociImageContent) *time.Time { return c.config.Created })
 	if err == nil && t == nil {
 		p.CreatedAt.State = plugin.StateIsSet | plugin.StateIsNull
 	}
@@ -362,49 +362,49 @@ func (p *mqlContainerdImage) createdAt() (*time.Time, error) {
 }
 
 func (p *mqlContainerdImage) os() (string, error) {
-	return containerdImageField(p, &p.Os, func(c *ociImageContent) string { return c.config.OS })
+	return ociImageField(p.load, &p.Os, func(c *ociImageContent) string { return c.config.OS })
 }
 
 func (p *mqlContainerdImage) architecture() (string, error) {
-	return containerdImageField(p, &p.Architecture, func(c *ociImageContent) string { return c.config.Architecture })
+	return ociImageField(p.load, &p.Architecture, func(c *ociImageContent) string { return c.config.Architecture })
 }
 
 func (p *mqlContainerdImage) variant() (string, error) {
-	return containerdImageField(p, &p.Variant, func(c *ociImageContent) string { return c.config.Variant })
+	return ociImageField(p.load, &p.Variant, func(c *ociImageContent) string { return c.config.Variant })
 }
 
 func (p *mqlContainerdImage) user() (string, error) {
-	return containerdImageField(p, &p.User, func(c *ociImageContent) string { return c.config.Config.User })
+	return ociImageField(p.load, &p.User, func(c *ociImageContent) string { return c.config.Config.User })
 }
 
 func (p *mqlContainerdImage) runsAsRoot() (bool, error) {
-	return containerdImageField(p, &p.RunsAsRoot, func(c *ociImageContent) bool { return imageUserIsRoot(c.config.Config.User) })
+	return ociImageField(p.load, &p.RunsAsRoot, func(c *ociImageContent) bool { return imageUserIsRoot(c.config.Config.User) })
 }
 
 func (p *mqlContainerdImage) entrypoint() ([]any, error) {
-	return containerdImageField(p, &p.Entrypoint, func(c *ociImageContent) []any {
+	return ociImageField(p.load, &p.Entrypoint, func(c *ociImageContent) []any {
 		return convert.SliceAnyToInterface(c.config.Config.Entrypoint)
 	})
 }
 
 func (p *mqlContainerdImage) cmd() ([]any, error) {
-	return containerdImageField(p, &p.Cmd, func(c *ociImageContent) []any {
+	return ociImageField(p.load, &p.Cmd, func(c *ociImageContent) []any {
 		return convert.SliceAnyToInterface(c.config.Config.Cmd)
 	})
 }
 
 func (p *mqlContainerdImage) workingDir() (string, error) {
-	return containerdImageField(p, &p.WorkingDir, func(c *ociImageContent) string { return c.config.Config.WorkingDir })
+	return ociImageField(p.load, &p.WorkingDir, func(c *ociImageContent) string { return c.config.Config.WorkingDir })
 }
 
 func (p *mqlContainerdImage) exposedPorts() ([]any, error) {
-	return containerdImageField(p, &p.ExposedPorts, func(c *ociImageContent) []any {
+	return ociImageField(p.load, &p.ExposedPorts, func(c *ociImageContent) []any {
 		return sortedPorts(c.config.Config.ExposedPorts)
 	})
 }
 
 func (p *mqlContainerdImage) layers() ([]any, error) {
-	return containerdImageField(p, &p.Layers, func(c *ociImageContent) []any {
+	return ociImageField(p.load, &p.Layers, func(c *ociImageContent) []any {
 		layers := make([]any, 0, len(c.config.RootFS.DiffIDs))
 		for _, d := range c.config.RootFS.DiffIDs {
 			layers = append(layers, d.String())

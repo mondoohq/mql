@@ -266,6 +266,7 @@ const (
 	ResourceCrioNamespaceSignaturePolicy                  string = "crio.namespaceSignaturePolicy"
 	ResourceCrioRuntime                                   string = "crio.runtime"
 	ResourceCrioContainer                                 string = "crio.container"
+	ResourceCrioImage                                     string = "crio.image"
 	ResourceCrioContainerMount                            string = "crio.container.mount"
 	ResourceContainersRegistries                          string = "containers.registries"
 	ResourceContainersRegistry                            string = "containers.registry"
@@ -1704,6 +1705,10 @@ func init() {
 		"crio.container": {
 			// to override args, implement: initCrioContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createCrioContainer,
+		},
+		"crio.image": {
+			// to override args, implement: initCrioImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCrioImage,
 		},
 		"crio.container.mount": {
 			// to override args, implement: initCrioContainerMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -10009,6 +10014,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"crio.containers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrio).GetContainers()).ToDataRes(types.Array(types.Resource("crio.container")))
 	},
+	"crio.images": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetImages()).ToDataRes(types.Array(types.Resource("crio.image")))
+	},
 	"crio.signaturePolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrio).GetSignaturePolicy()).ToDataRes(types.Resource("containers.policy"))
 	},
@@ -10146,6 +10154,63 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"crio.container.pidsLimit": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrioContainer).GetPidsLimit()).ToDataRes(types.Int)
+	},
+	"crio.container.sourceImage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetSourceImage()).ToDataRes(types.Resource("crio.image"))
+	},
+	"crio.image.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetId()).ToDataRes(types.String)
+	},
+	"crio.image.names": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetNames()).ToDataRes(types.Array(types.String))
+	},
+	"crio.image.repoDigests": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetRepoDigests()).ToDataRes(types.Array(types.String))
+	},
+	"crio.image.digest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetDigest()).ToDataRes(types.String)
+	},
+	"crio.image.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetSize()).ToDataRes(types.Int)
+	},
+	"crio.image.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"crio.image.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"crio.image.os": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetOs()).ToDataRes(types.String)
+	},
+	"crio.image.architecture": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetArchitecture()).ToDataRes(types.String)
+	},
+	"crio.image.variant": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetVariant()).ToDataRes(types.String)
+	},
+	"crio.image.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetUser()).ToDataRes(types.String)
+	},
+	"crio.image.runsAsRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetRunsAsRoot()).ToDataRes(types.Bool)
+	},
+	"crio.image.entrypoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetEntrypoint()).ToDataRes(types.Array(types.String))
+	},
+	"crio.image.cmd": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetCmd()).ToDataRes(types.Array(types.String))
+	},
+	"crio.image.workingDir": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetWorkingDir()).ToDataRes(types.String)
+	},
+	"crio.image.exposedPorts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetExposedPorts()).ToDataRes(types.Array(types.String))
+	},
+	"crio.image.layers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetLayers()).ToDataRes(types.Array(types.String))
+	},
+	"crio.image.containers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetContainers()).ToDataRes(types.Array(types.Resource("crio.container")))
 	},
 	"crio.container.mount.containerPath": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrioContainerMount).GetContainerPath()).ToDataRes(types.String)
@@ -29199,6 +29264,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCrio).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"crio.images": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).Images, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"crio.signaturePolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCrio).SignaturePolicy, ok = plugin.RawToTValue[*mqlContainersPolicy](v.Value, v.Error)
 		return
@@ -29393,6 +29462,86 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"crio.container.pidsLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCrioContainer).PidsLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.container.sourceImage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).SourceImage, ok = plugin.RawToTValue[*mqlCrioImage](v.Value, v.Error)
+		return
+	},
+	"crio.image.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).__id, ok = v.Value.(string)
+		return
+	},
+	"crio.image.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.names": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Names, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.repoDigests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).RepoDigests, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.digest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Digest, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.image.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"crio.image.os": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Os, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.architecture": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Architecture, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.variant": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Variant, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).User, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.runsAsRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).RunsAsRoot, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.image.entrypoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Entrypoint, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.cmd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Cmd, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.workingDir": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).WorkingDir, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.exposedPorts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).ExposedPorts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.layers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Layers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"crio.container.mount.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -70968,6 +71117,7 @@ type mqlCrio struct {
 	ReadOnly                   plugin.TValue[bool]
 	AllowedDevices             plugin.TValue[[]any]
 	Containers                 plugin.TValue[[]any]
+	Images                     plugin.TValue[[]any]
 	SignaturePolicy            plugin.TValue[*mqlContainersPolicy]
 	NamespaceSignaturePolicies plugin.TValue[[]any]
 	Runtimes                   plugin.TValue[[]any]
@@ -71097,6 +71247,22 @@ func (c *mqlCrio) GetContainers() *plugin.TValue[[]any] {
 		}
 
 		return c.containers()
+	})
+}
+
+func (c *mqlCrio) GetImages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Images, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio", c.__id, "images")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.images()
 	})
 }
 
@@ -71329,6 +71495,7 @@ type mqlCrioContainer struct {
 	NanoCpus             plugin.TValue[int64]
 	CpuShares            plugin.TValue[int64]
 	PidsLimit            plugin.TValue[int64]
+	SourceImage          plugin.TValue[*mqlCrioImage]
 }
 
 // createCrioContainer creates a new instance of this resource
@@ -71526,6 +71693,192 @@ func (c *mqlCrioContainer) GetCpuShares() *plugin.TValue[int64] {
 func (c *mqlCrioContainer) GetPidsLimit() *plugin.TValue[int64] {
 	return plugin.GetOrCompute[int64](&c.PidsLimit, func() (int64, error) {
 		return c.pidsLimit()
+	})
+}
+
+func (c *mqlCrioContainer) GetSourceImage() *plugin.TValue[*mqlCrioImage] {
+	return plugin.GetOrCompute[*mqlCrioImage](&c.SourceImage, func() (*mqlCrioImage, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio.container", c.__id, "sourceImage")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlCrioImage), nil
+			}
+		}
+
+		return c.sourceImage()
+	})
+}
+
+// mqlCrioImage for the crio.image resource
+type mqlCrioImage struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCrioImageInternal
+	Id           plugin.TValue[string]
+	Names        plugin.TValue[[]any]
+	RepoDigests  plugin.TValue[[]any]
+	Digest       plugin.TValue[string]
+	Size         plugin.TValue[int64]
+	Labels       plugin.TValue[map[string]any]
+	CreatedAt    plugin.TValue[*time.Time]
+	Os           plugin.TValue[string]
+	Architecture plugin.TValue[string]
+	Variant      plugin.TValue[string]
+	User         plugin.TValue[string]
+	RunsAsRoot   plugin.TValue[bool]
+	Entrypoint   plugin.TValue[[]any]
+	Cmd          plugin.TValue[[]any]
+	WorkingDir   plugin.TValue[string]
+	ExposedPorts plugin.TValue[[]any]
+	Layers       plugin.TValue[[]any]
+	Containers   plugin.TValue[[]any]
+}
+
+// createCrioImage creates a new instance of this resource
+func createCrioImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCrioImage{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("crio.image", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCrioImage) MqlName() string {
+	return "crio.image"
+}
+
+func (c *mqlCrioImage) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCrioImage) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCrioImage) GetNames() *plugin.TValue[[]any] {
+	return &c.Names
+}
+
+func (c *mqlCrioImage) GetRepoDigests() *plugin.TValue[[]any] {
+	return &c.RepoDigests
+}
+
+func (c *mqlCrioImage) GetDigest() *plugin.TValue[string] {
+	return &c.Digest
+}
+
+func (c *mqlCrioImage) GetSize() *plugin.TValue[int64] {
+	return &c.Size
+}
+
+func (c *mqlCrioImage) GetLabels() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Labels, func() (map[string]any, error) {
+		return c.labels()
+	})
+}
+
+func (c *mqlCrioImage) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
+}
+
+func (c *mqlCrioImage) GetOs() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Os, func() (string, error) {
+		return c.os()
+	})
+}
+
+func (c *mqlCrioImage) GetArchitecture() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Architecture, func() (string, error) {
+		return c.architecture()
+	})
+}
+
+func (c *mqlCrioImage) GetVariant() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Variant, func() (string, error) {
+		return c.variant()
+	})
+}
+
+func (c *mqlCrioImage) GetUser() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.User, func() (string, error) {
+		return c.user()
+	})
+}
+
+func (c *mqlCrioImage) GetRunsAsRoot() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RunsAsRoot, func() (bool, error) {
+		return c.runsAsRoot()
+	})
+}
+
+func (c *mqlCrioImage) GetEntrypoint() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Entrypoint, func() ([]any, error) {
+		return c.entrypoint()
+	})
+}
+
+func (c *mqlCrioImage) GetCmd() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Cmd, func() ([]any, error) {
+		return c.cmd()
+	})
+}
+
+func (c *mqlCrioImage) GetWorkingDir() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.WorkingDir, func() (string, error) {
+		return c.workingDir()
+	})
+}
+
+func (c *mqlCrioImage) GetExposedPorts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExposedPorts, func() ([]any, error) {
+		return c.exposedPorts()
+	})
+}
+
+func (c *mqlCrioImage) GetLayers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Layers, func() ([]any, error) {
+		return c.layers()
+	})
+}
+
+func (c *mqlCrioImage) GetContainers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Containers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio.image", c.__id, "containers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.containers()
 	})
 }
 

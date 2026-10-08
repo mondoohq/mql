@@ -313,8 +313,10 @@ type crioContainer struct {
 	PodNamespace string
 	SandboxID    string
 	Image        string
-	Privileged   bool
-	Created      time.Time
+	// ImageID is the containers/storage ID of the container's image
+	ImageID    string
+	Privileged bool
+	Created    time.Time
 }
 
 // parseCrioStorageContainers returns the containers of a containers/storage
@@ -348,6 +350,7 @@ func parseCrioStorageContainers(content string) ([]crioContainer, error) {
 			PodNamespace: namespace,
 			SandboxID:    md.PodID,
 			Image:        md.ImageName,
+			ImageID:      e.Image,
 			Privileged:   md.Privileged,
 			Created:      e.Created,
 		})
@@ -387,19 +390,9 @@ func parseCrioInspect(content string) (crioInspect, error) {
 }
 
 func (c *mqlCrio) containers() ([]any, error) {
-	cfg := c.GetConfiguration()
-	if cfg.Error != nil {
-		return nil, cfg.Error
-	}
-	data, _ := cfg.Data.(map[string]any)
-	crioTable, _ := data["crio"].(map[string]any)
-	root, _ := crioTable["root"].(string)
-	if root == "" {
-		root = crioDefaultStorageRoot
-	}
-	driver, _ := crioTable["storage_driver"].(string)
-	if driver == "" {
-		driver = "overlay"
+	root, driver, err := c.crioStorage()
+	if err != nil {
+		return nil, err
 	}
 
 	dir := path.Join(root, driver+"-containers")
@@ -434,7 +427,7 @@ func (c *mqlCrio) newCrioContainer(ctr crioContainer, dir string, sandboxes *cri
 		}
 	}
 
-	internal := mqlCrioContainerInternal{sandboxes: sandboxes}
+	internal := mqlCrioContainerInternal{sandboxes: sandboxes, imageID: ctr.ImageID}
 	if validID {
 		internal.configPath = path.Join(dir, ctr.ID, "userdata", "config.json")
 	}
@@ -490,6 +483,7 @@ func (c *mqlCrio) newCrioContainer(ctr crioContainer, dir string, sandboxes *cri
 	ctrRes.configPath = internal.configPath
 	ctrRes.sandboxConfigPath = internal.sandboxConfigPath
 	ctrRes.sandboxes = sandboxes
+	ctrRes.imageID = internal.imageID
 	ctrRes.inspectHostNetwork = internal.inspectHostNetwork
 	if internal.specLoaded {
 		ctrRes.spec, ctrRes.specLoaded = internal.spec, true
@@ -502,6 +496,8 @@ func (c *mqlCrio) newCrioContainer(ctr crioContainer, dir string, sandboxes *cri
 const crioVolumesAnnotation = "io.kubernetes.cri-o.Volumes"
 
 type mqlCrioContainerInternal struct {
+	// imageID is the containers/storage ID of the container's image
+	imageID string
 	// volumes is the Volumes annotation CRI-O reported for the container
 	volumes    string
 	hasVolumes bool

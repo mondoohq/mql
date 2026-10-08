@@ -8748,6 +8748,12 @@ crio {
   allowedDevices() []string
   // Containers CRI-O runs, without the pod sandboxes that hold them
   containers() []crio.container
+  // Images CRI-O stores
+  //
+  // Read from containers/storage under `crio.root` (by default
+  // /var/lib/containers/storage), for example
+  // `crio.images.where(runsAsRoot) { names }`.
+  images() []crio.image
   // Image signature policy CRI-O verifies pulled images against
   //
   // From `crio.image.signature_policy`, by default /etc/containers/policy.json.
@@ -8887,6 +8893,72 @@ crio.container @defaults("name podName podNamespace") {
   cpuShares() int
   // Maximum number of processes in the container, null when unlimited
   pidsLimit() int
+  // Image the container was created from
+  //
+  // Null when the image is no longer stored.
+  sourceImage() crio.image
+}
+
+// Image stored by CRI-O
+//
+// An image in CRI-O's containers/storage, selected by its `id`, with the
+// `names` and `repoDigests` it is known by and its `size`. The configuration
+// fields describe what a container started from it runs: `user` and
+// `runsAsRoot`, `entrypoint` and `cmd`, `exposedPorts`, its `labels`, and
+// the platform (`os`, `architecture`, `variant`) and build time
+// (`createdAt`). They are null when the image's configuration is not stored.
+// `containers` lists the containers created from it, for example
+// `crio.images.where(runsAsRoot && containers.length > 0) { names }`.
+crio.image @defaults("names id") {
+  // Image ID, the digest of the image configuration without its algorithm prefix
+  id string
+  // References the image is tagged with (for example "registry.k8s.io/pause:3.10.2")
+  names []string
+  // Content-addressed references the image can be pulled by
+  repoDigests []string
+  // Manifest digest of the image
+  digest string
+  // Size of the image in bytes, as crictl and Kubernetes report it
+  //
+  // The uncompressed size of its layers and the size of its stored metadata.
+  size int
+  // Image labels, as key-value pairs
+  labels() map[string]string
+  // Time the image was built, null when the image does not record it
+  createdAt() time
+  // Operating system the image targets (for example "linux")
+  os() string
+  // Processor architecture the image targets (for example "amd64", "arm64")
+  architecture() string
+  // Processor architecture variant (for example "v7", "v8"); empty when the image sets none
+  variant() string
+  // Account a container started from the image runs as, empty when it runs as root
+  //
+  // The image's `USER`, for example `65535:65535` or `nonroot`. Kubernetes
+  // overrides it with the pod's `runAsUser`, which `crio.container.uid`
+  // reports.
+  user() string
+  // Whether a container started from the image runs as root
+  //
+  // True when `user` is empty, or its user part is `root` or a number equal to
+  // 0 (such as `0` or `00`). A name other than `root` counts as not root, even
+  // when the image's /etc/passwd gives it UID 0.
+  runsAsRoot() bool
+  // Command the image runs, prefixed to `cmd`
+  entrypoint() []string
+  // Default arguments to `entrypoint`, or the command when there is no entrypoint
+  cmd() []string
+  // Working directory of the image's command, empty when the image sets none
+  workingDir() string
+  // Ports the image declares with `EXPOSE`, as `port/protocol` (for example "53/udp")
+  exposedPorts() []string
+  // Digests of the image's filesystem layers, base layer first
+  //
+  // The digests of the uncompressed layer contents (diff IDs), the same
+  // whichever registry or compression the image came from.
+  layers() []string
+  // Containers created from the image
+  containers() []crio.container
 }
 
 // Volume mounted into a CRI-O container
