@@ -7,7 +7,8 @@ import (
 	"encoding/json"
 	"path"
 	"regexp"
-	"sort"
+	"sync"
+
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 )
 
 const (
@@ -100,38 +102,41 @@ func parseCrioVersion(content string) string {
 
 // crioConfigFilePaths returns the configuration files in the order CRI-O
 // applies them: crio.conf when present, then every file in crio.conf.d in
-// name order.
-func (c *mqlCrio) crioConfigFilePaths() []string {
+// name order. Both are read through the connection's filesystem, so image
+// and filesystem scans find them too.
+func (c *mqlCrio) crioConfigFilePaths() ([]string, error) {
 	paths := []string{}
-	if _, ok := runCommandQuiet(c.MqlRuntime, "test -f "+crioConfigFile); ok {
+	f, err := CreateResource(c.MqlRuntime, "file", map[string]*llx.RawData{"path": llx.StringData(crioConfigFile)})
+	if err != nil {
+		return nil, err
+	}
+	exists := f.(*mqlFile).GetExists()
+	if exists.Error != nil {
+		return nil, exists.Error
+	}
+	if exists.Data {
 		paths = append(paths, crioConfigFile)
 	}
-	out, ok := runCommandQuiet(c.MqlRuntime, "ls -1A -- "+crioConfigDir)
-	if !ok {
-		return paths
+	dropIns, err := listConfDFilesWith(c.MqlRuntime, []string{crioConfigDir}, isCrioDropInFile)
+	if err != nil {
+		return nil, err
 	}
-	for _, name := range crioDropInFiles(strings.Split(strings.TrimSpace(out), "\n")) {
-		paths = append(paths, path.Join(crioConfigDir, name))
-	}
-	return paths
+	return append(paths, dropIns...), nil
 }
 
-// crioDropInFiles orders the files of crio.conf.d as CRI-O reads them: by
-// name, hidden files left out.
-func crioDropInFiles(names []string) []string {
-	res := []string{}
-	for _, name := range names {
-		if name != "" && !strings.HasPrefix(name, ".") {
-			res = append(res, name)
-		}
-	}
-	sort.Strings(res)
-	return res
+// isCrioDropInFile reports whether CRI-O reads a file of crio.conf.d: any
+// file but a hidden one.
+func isCrioDropInFile(name string) bool {
+	return name != "" && !strings.HasPrefix(name, ".")
 }
 
 func (c *mqlCrio) configFiles() ([]any, error) {
+	paths, err := c.crioConfigFilePaths()
+	if err != nil {
+		return nil, err
+	}
 	files := []any{}
-	for _, p := range c.crioConfigFilePaths() {
+	for _, p := range paths {
 		f, err := CreateResource(c.MqlRuntime, "file", map[string]*llx.RawData{"path": llx.StringData(p)})
 		if err != nil {
 			return nil, err
@@ -146,8 +151,12 @@ func (c *mqlCrio) configuration() (map[string]any, error) {
 	if out, ok := crioAPI(c.MqlRuntime, "/config"); ok && strings.TrimSpace(out) != "" {
 		return parseCrioConfig(out)
 	}
+	paths, err := c.crioConfigFilePaths()
+	if err != nil {
+		return nil, err
+	}
 	merged := map[string]any{}
-	for _, p := range c.crioConfigFilePaths() {
+	for _, p := range paths {
 		cfg, err := parseCrioConfig(readKubeletFile(c.MqlRuntime, p))
 		if err != nil {
 			return nil, err
@@ -394,6 +403,7 @@ func (c *mqlCrio) containers() ([]any, error) {
 	}
 
 	dir := path.Join(root, driver+"-containers")
+	sandboxes := &crioSpecCache{runtime: c.MqlRuntime, specs: map[string]*ociSpec{}}
 	res := []any{}
 	for _, list := range []string{"volatile-containers.json", "containers.json"} {
 		containers, err := parseCrioStorageContainers(readKubeletFile(c.MqlRuntime, path.Join(dir, list)))
@@ -401,7 +411,7 @@ func (c *mqlCrio) containers() ([]any, error) {
 			return nil, err
 		}
 		for _, ctr := range containers {
-			r, err := c.newCrioContainer(ctr, dir)
+			r, err := c.newCrioContainer(ctr, dir, sandboxes)
 			if err != nil {
 				return nil, err
 			}
@@ -411,14 +421,33 @@ func (c *mqlCrio) containers() ([]any, error) {
 	return res, nil
 }
 
-func (c *mqlCrio) newCrioContainer(ctr crioContainer, dir string) (plugin.Resource, error) {
+func (c *mqlCrio) newCrioContainer(ctr crioContainer, dir string, sandboxes *crioSpecCache) (plugin.Resource, error) {
 	var inspect crioInspect
-	if crioContainerID.MatchString(ctr.ID) {
+	inspected := false
+	validID := crioContainerID.MatchString(ctr.ID)
+	if validID {
 		if out, ok := crioAPI(c.MqlRuntime, "/containers/"+ctr.ID); ok {
 			if parsed, err := parseCrioInspect(out); err == nil {
 				inspect = parsed
+				inspected = true
 			}
 		}
+	}
+
+	internal := mqlCrioContainerInternal{sandboxes: sandboxes}
+	if validID {
+		internal.configPath = path.Join(dir, ctr.ID, "userdata", "config.json")
+	}
+	if crioContainerID.MatchString(ctr.SandboxID) {
+		internal.sandboxConfigPath = path.Join(dir, ctr.SandboxID, "userdata", "config.json")
+	}
+	if inspected {
+		hostNetwork := inspect.HostNetwork
+		internal.inspectHostNetwork = &hostNetwork
+	} else if spec := internal.loadSpec(c.MqlRuntime); spec != nil {
+		// without a running CRI-O, what it recorded in the spec
+		inspect.Annotations = spec.Annotations
+		inspect.Labels = crioSpecLabels(spec)
 	}
 
 	image := ctr.Image
@@ -449,9 +478,8 @@ func (c *mqlCrio) newCrioContainer(ctr crioContainer, dir string) (plugin.Resour
 		"imageRef":       llx.StringData(inspect.ImageRef),
 		"pid":            llx.IntData(inspect.Pid),
 		"privileged":     llx.BoolData(ctr.Privileged),
-		"hostNetwork":    llx.BoolData(inspect.HostNetwork),
 		"seccompProfile": llx.StringData(inspect.Annotations[crioSeccompAnnotation]),
-		"labels":         llx.MapData(labels, "string"),
+		"labels":         llx.MapData(labels, types.String),
 		"created":        llx.TimeData(created),
 	})
 	if err != nil {
@@ -459,8 +487,12 @@ func (c *mqlCrio) newCrioContainer(ctr crioContainer, dir string) (plugin.Resour
 	}
 	ctrRes := r.(*mqlCrioContainer)
 	ctrRes.volumes, ctrRes.hasVolumes = inspect.Annotations[crioVolumesAnnotation]
-	if crioContainerID.MatchString(ctr.ID) {
-		ctrRes.configPath = path.Join(dir, ctr.ID, "userdata", "config.json")
+	ctrRes.configPath = internal.configPath
+	ctrRes.sandboxConfigPath = internal.sandboxConfigPath
+	ctrRes.sandboxes = sandboxes
+	ctrRes.inspectHostNetwork = internal.inspectHostNetwork
+	if internal.specLoaded {
+		ctrRes.spec, ctrRes.specLoaded = internal.spec, true
 	}
 	return ctrRes, nil
 }
@@ -475,6 +507,17 @@ type mqlCrioContainerInternal struct {
 	hasVolumes bool
 	// configPath is the container's OCI config.json in containers/storage
 	configPath string
+	// sandboxConfigPath is the OCI config.json of the container's pod sandbox
+	sandboxConfigPath string
+	// sandboxes reads each pod sandbox's spec once for all its containers
+	sandboxes *crioSpecCache
+	// inspectHostNetwork is what the running CRI-O reported, nil without it
+	inspectHostNetwork *bool
+
+	specMu     sync.Mutex
+	specLoaded bool
+	// spec is the container's OCI runtime spec, nil when it cannot be read
+	spec *ociSpec
 }
 
 // crioMount is one entry of the Volumes annotation.
@@ -495,16 +538,13 @@ func parseCrioMounts(content string) ([]crioMount, error) {
 	return mounts, nil
 }
 
-// crioVolumesFromOCIConfig returns the Volumes annotation of an OCI
-// config.json, and whether it holds one.
-func crioVolumesFromOCIConfig(content string) (string, bool) {
-	var cfg struct {
-		Annotations map[string]string `json:"annotations"`
-	}
-	if json.Unmarshal([]byte(content), &cfg) != nil {
+// crioSpecVolumes returns the Volumes annotation of a container's OCI spec,
+// and whether it holds one.
+func crioSpecVolumes(spec *ociSpec) (string, bool) {
+	if spec == nil {
 		return "", false
 	}
-	v, ok := cfg.Annotations[crioVolumesAnnotation]
+	v, ok := spec.Annotations[crioVolumesAnnotation]
 	return v, ok
 }
 
@@ -522,10 +562,204 @@ func crioPropagation(p int) string {
 	}
 }
 
+// loadSpec reads the container's OCI runtime spec once. It is nil when the
+// spec cannot be read or parsed.
+func (c *mqlCrioContainerInternal) loadSpec(runtime *plugin.Runtime) *ociSpec {
+	c.specMu.Lock()
+	defer c.specMu.Unlock()
+	if c.specLoaded {
+		return c.spec
+	}
+	c.specLoaded = true
+	c.spec = readCrioSpec(runtime, c.configPath)
+	return c.spec
+}
+
+// readCrioSpec reads and parses an OCI config.json in containers/storage,
+// nil when it is missing or does not parse.
+func readCrioSpec(runtime *plugin.Runtime, p string) *ociSpec {
+	if p == "" {
+		return nil
+	}
+	spec, err := parseOCISpec([]byte(readKubeletFile(runtime, p)))
+	if err != nil {
+		log.Debug().Err(err).Str("path", p).Msg("crio> cannot parse a container's config.json")
+		return nil
+	}
+	return spec
+}
+
+// crioSpecCache holds the specs of pod sandboxes, which every container of
+// a pod reads.
+type crioSpecCache struct {
+	runtime *plugin.Runtime
+	mu      sync.Mutex
+	specs   map[string]*ociSpec
+}
+
+func (c *crioSpecCache) get(p string) *ociSpec {
+	if c == nil || p == "" {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if spec, ok := c.specs[p]; ok {
+		return spec
+	}
+	spec := readCrioSpec(c.runtime, p)
+	c.specs[p] = spec
+	return spec
+}
+
+// crioSpecLabels returns the container labels CRI-O records in a spec.
+func crioSpecLabels(spec *ociSpec) map[string]string {
+	labels := map[string]string{}
+	if v := spec.Annotations[crioLabelsAnnotation]; v != "" {
+		if err := json.Unmarshal([]byte(v), &labels); err != nil {
+			return map[string]string{}
+		}
+	}
+	return labels
+}
+
+// The annotations CRI-O records in the specs it creates.
+const (
+	crioLabelsAnnotation = "io.kubernetes.cri-o.Labels"
+	// crioNamespaceOptionsAnnotation holds a pod's CRI namespace options, on
+	// the spec of its sandbox
+	crioNamespaceOptionsAnnotation = "io.kubernetes.cri-o.NamespaceOptions"
+	// crioHostNetworkAnnotation is "true" on the sandbox of a hostNetwork pod
+	crioHostNetworkAnnotation = "io.kubernetes.cri-o.HostNetwork"
+)
+
+// criNamespaceModeNode is the CRI NamespaceMode of a namespace shared with
+// the node. POD (0) is left out of the JSON, CONTAINER is 1, TARGET 3.
+const criNamespaceModeNode = 2
+
+// crioNamespaceOptions is the CRI NamespaceOption CRI-O records on a pod
+// sandbox.
+type crioNamespaceOptions struct {
+	Network int `json:"network"`
+	Pid     int `json:"pid"`
+	Ipc     int `json:"ipc"`
+}
+
+// crioSandboxNamespaces returns the namespace options of a pod sandbox's
+// spec, and whether it records them. A pod's containers join namespaces
+// CRI-O pinned for the sandbox by path, also those of the node (hostIPC), so
+// their own specs cannot tell.
+func crioSandboxNamespaces(sandbox *ociSpec) (crioNamespaceOptions, bool) {
+	var opts crioNamespaceOptions
+	if sandbox == nil {
+		return opts, false
+	}
+	v, ok := sandbox.Annotations[crioNamespaceOptionsAnnotation]
+	if !ok || json.Unmarshal([]byte(v), &opts) != nil {
+		return opts, false
+	}
+	return opts, true
+}
+
+func (c *mqlCrioContainer) containerSpec() *ociSpec {
+	return c.loadSpec(c.MqlRuntime)
+}
+
+func (c *mqlCrioContainer) capabilities() ([]any, error) {
+	return withSpec(c.containerSpec(), &c.Capabilities, (*ociSpec).effectiveCapabilities)
+}
+
+func (c *mqlCrioContainer) boundingCapabilities() ([]any, error) {
+	return withSpec(c.containerSpec(), &c.BoundingCapabilities, (*ociSpec).boundingCapabilities)
+}
+
+func (c *mqlCrioContainer) seccompUnconfined() (bool, error) {
+	return withSpec(c.containerSpec(), &c.SeccompUnconfined, (*ociSpec).seccompUnconfined)
+}
+
+func (c *mqlCrioContainer) seccompDefaultAction() (string, error) {
+	return withSpec(c.containerSpec(), &c.SeccompDefaultAction, (*ociSpec).seccompDefaultAction)
+}
+
+func (c *mqlCrioContainer) apparmorProfile() (string, error) {
+	return withSpec(c.containerSpec(), &c.ApparmorProfile, (*ociSpec).apparmorProfile)
+}
+
+func (c *mqlCrioContainer) selinuxLabel() (string, error) {
+	return withSpec(c.containerSpec(), &c.SelinuxLabel, (*ociSpec).selinuxLabel)
+}
+
+func (c *mqlCrioContainer) noNewPrivileges() (bool, error) {
+	return withSpec(c.containerSpec(), &c.NoNewPrivileges, (*ociSpec).noNewPrivileges)
+}
+
+func (c *mqlCrioContainer) readOnlyRootfs() (bool, error) {
+	return withSpec(c.containerSpec(), &c.ReadOnlyRootfs, (*ociSpec).readOnlyRootfs)
+}
+
+func (c *mqlCrioContainer) uid() (int64, error) {
+	return withSpec(c.containerSpec(), &c.Uid, (*ociSpec).uid)
+}
+
+func (c *mqlCrioContainer) gid() (int64, error) {
+	return withSpec(c.containerSpec(), &c.Gid, (*ociSpec).gid)
+}
+
+func (c *mqlCrioContainer) memoryLimit() (int64, error) {
+	return specLimit(c.containerSpec(), &c.MemoryLimit, func(l ociLimits) *int64 { return l.memory })
+}
+
+func (c *mqlCrioContainer) nanoCpus() (int64, error) {
+	return specLimit(c.containerSpec(), &c.NanoCpus, func(l ociLimits) *int64 { return l.nanoCpus })
+}
+
+func (c *mqlCrioContainer) cpuShares() (int64, error) {
+	return specLimit(c.containerSpec(), &c.CpuShares, func(l ociLimits) *int64 { return l.cpuShares })
+}
+
+func (c *mqlCrioContainer) pidsLimit() (int64, error) {
+	return specLimit(c.containerSpec(), &c.PidsLimit, func(l ociLimits) *int64 { return l.pids })
+}
+
+// hostNamespace reports whether the container's pod shares a namespace of
+// the node, from the namespace options on its sandbox's spec.
+func (c *mqlCrioContainer) hostNamespace(field *plugin.TValue[bool], mode func(crioNamespaceOptions) int) (bool, error) {
+	opts, ok := crioSandboxNamespaces(c.sandboxes.get(c.sandboxConfigPath))
+	if !ok {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return mode(opts) == criNamespaceModeNode, nil
+}
+
+func (c *mqlCrioContainer) hostNetwork() (bool, error) {
+	sandbox := c.sandboxes.get(c.sandboxConfigPath)
+	if opts, ok := crioSandboxNamespaces(sandbox); ok {
+		return opts.Network == criNamespaceModeNode, nil
+	}
+	if sandbox != nil {
+		if v, ok := sandbox.Annotations[crioHostNetworkAnnotation]; ok {
+			return v == "true", nil
+		}
+	}
+	if c.inspectHostNetwork != nil {
+		return *c.inspectHostNetwork, nil
+	}
+	c.HostNetwork.State = plugin.StateIsSet | plugin.StateIsNull
+	return false, nil
+}
+
+func (c *mqlCrioContainer) hostPID() (bool, error) {
+	return c.hostNamespace(&c.HostPID, func(o crioNamespaceOptions) int { return o.Pid })
+}
+
+func (c *mqlCrioContainer) hostIPC() (bool, error) {
+	return c.hostNamespace(&c.HostIPC, func(o crioNamespaceOptions) int { return o.Ipc })
+}
+
 func (c *mqlCrioContainer) mounts() ([]any, error) {
 	volumes, ok := c.volumes, c.hasVolumes
-	if !ok && c.configPath != "" {
-		volumes, ok = crioVolumesFromOCIConfig(readKubeletFile(c.MqlRuntime, c.configPath))
+	if !ok {
+		volumes, ok = crioSpecVolumes(c.containerSpec())
 	}
 	if !ok {
 		c.Mounts.State = plugin.StateIsSet | plugin.StateIsNull

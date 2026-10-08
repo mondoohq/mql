@@ -10,6 +10,7 @@ import (
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // crioDefaultSignaturePolicyDir holds the per-namespace policies unless
@@ -132,7 +133,7 @@ func (c *mqlCrio) runtimes() ([]any, error) {
 			"type":                         llx.StringData(h.Type),
 			"root":                         llx.StringData(h.Root),
 			"monitorPath":                  llx.StringData(h.MonitorPath),
-			"allowedAnnotations":           llx.ArrayData(h.AllowedAnnotations, "string"),
+			"allowedAnnotations":           llx.ArrayData(h.AllowedAnnotations, types.String),
 			"privilegedWithoutHostDevices": llx.BoolData(h.PrivilegedWithoutHostDevices),
 			"isDefault":                    llx.BoolData(h.Name == defaultRuntime),
 		})

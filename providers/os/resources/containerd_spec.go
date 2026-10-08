@@ -99,7 +99,7 @@ func (s *ociSpec) seccompUnconfined() bool {
 	if s.Linux == nil || len(s.Linux.Seccomp) == 0 || string(s.Linux.Seccomp) == "null" {
 		return true
 	}
-	return dockerSeccompAllowsAll(string(s.Linux.Seccomp))
+	return seccompAllowsAll(string(s.Linux.Seccomp))
 }
 
 func (s *ociSpec) seccompDefaultAction() string {
@@ -154,9 +154,9 @@ func sharesHostNamespace(spec, sandbox *ociSpec, nsType string) (bool, bool) {
 	return !spec.hasNamespace(nsType), true
 }
 
-// parseContainerdSpec decodes the Spec of `ctr containers info`. It is nil
-// when there is none.
-func parseContainerdSpec(raw json.RawMessage) (*ociSpec, error) {
+// parseOCISpec decodes an OCI runtime spec: the Spec of `ctr containers
+// info`, or a container's config.json. It is nil when there is none.
+func parseOCISpec(raw []byte) (*ociSpec, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil, nil
 	}
@@ -235,93 +235,109 @@ func (c *mqlContainerdContainer) sandboxId() (string, error) {
 	return c.infoSandboxID, nil
 }
 
-// withSpec returns a value read from the spec, or sets the field null when
-// containerd reports no spec.
-func withSpec[T any](c *mqlContainerdContainer, field *plugin.TValue[T], read func(*ociSpec) T) (T, error) {
-	if c.spec == nil {
+// withSpec returns a value read from a spec, or sets the field null when
+// there is no spec.
+func withSpec[T any](spec *ociSpec, field *plugin.TValue[T], read func(*ociSpec) T) (T, error) {
+	if spec == nil {
 		field.State = plugin.StateIsSet | plugin.StateIsNull
 		var zero T
 		return zero, nil
 	}
-	return read(c.spec), nil
+	return read(spec), nil
+}
+
+func (s *ociSpec) effectiveCapabilities() []any {
+	if s.Process == nil || s.Process.Capabilities == nil {
+		return []any{}
+	}
+	return stringsToAny(s.Process.Capabilities.Effective)
+}
+
+func (s *ociSpec) boundingCapabilities() []any {
+	if s.Process == nil || s.Process.Capabilities == nil {
+		return []any{}
+	}
+	return stringsToAny(s.Process.Capabilities.Bounding)
+}
+
+func (s *ociSpec) apparmorProfile() string {
+	if s.Process == nil {
+		return ""
+	}
+	return s.Process.ApparmorProfile
+}
+
+func (s *ociSpec) selinuxLabel() string {
+	if s.Process == nil {
+		return ""
+	}
+	return s.Process.SelinuxLabel
+}
+
+func (s *ociSpec) noNewPrivileges() bool {
+	return s.Process != nil && s.Process.NoNewPrivileges
+}
+
+func (s *ociSpec) readOnlyRootfs() bool {
+	return s.Root != nil && s.Root.Readonly
+}
+
+func (s *ociSpec) uid() int64 {
+	if s.Process == nil {
+		return 0
+	}
+	return int64(s.Process.User.UID)
+}
+
+func (s *ociSpec) gid() int64 {
+	if s.Process == nil {
+		return 0
+	}
+	return int64(s.Process.User.GID)
 }
 
 func (c *mqlContainerdContainer) privileged() (bool, error) {
-	return withSpec(c, &c.Privileged, (*ociSpec).isPrivileged)
+	return withSpec(c.spec, &c.Privileged, (*ociSpec).isPrivileged)
 }
 
 func (c *mqlContainerdContainer) capabilities() ([]any, error) {
-	return withSpec(c, &c.Capabilities, func(s *ociSpec) []any {
-		if s.Process == nil || s.Process.Capabilities == nil {
-			return []any{}
-		}
-		return stringsToAny(s.Process.Capabilities.Effective)
-	})
+	return withSpec(c.spec, &c.Capabilities, (*ociSpec).effectiveCapabilities)
 }
 
 func (c *mqlContainerdContainer) boundingCapabilities() ([]any, error) {
-	return withSpec(c, &c.BoundingCapabilities, func(s *ociSpec) []any {
-		if s.Process == nil || s.Process.Capabilities == nil {
-			return []any{}
-		}
-		return stringsToAny(s.Process.Capabilities.Bounding)
-	})
+	return withSpec(c.spec, &c.BoundingCapabilities, (*ociSpec).boundingCapabilities)
 }
 
 func (c *mqlContainerdContainer) seccompUnconfined() (bool, error) {
-	return withSpec(c, &c.SeccompUnconfined, (*ociSpec).seccompUnconfined)
+	return withSpec(c.spec, &c.SeccompUnconfined, (*ociSpec).seccompUnconfined)
 }
 
 func (c *mqlContainerdContainer) seccompDefaultAction() (string, error) {
-	return withSpec(c, &c.SeccompDefaultAction, (*ociSpec).seccompDefaultAction)
+	return withSpec(c.spec, &c.SeccompDefaultAction, (*ociSpec).seccompDefaultAction)
 }
 
 func (c *mqlContainerdContainer) apparmorProfile() (string, error) {
-	return withSpec(c, &c.ApparmorProfile, func(s *ociSpec) string {
-		if s.Process == nil {
-			return ""
-		}
-		return s.Process.ApparmorProfile
-	})
+	return withSpec(c.spec, &c.ApparmorProfile, (*ociSpec).apparmorProfile)
 }
 
 func (c *mqlContainerdContainer) selinuxLabel() (string, error) {
-	return withSpec(c, &c.SelinuxLabel, func(s *ociSpec) string {
-		if s.Process == nil {
-			return ""
-		}
-		return s.Process.SelinuxLabel
-	})
+	return withSpec(c.spec, &c.SelinuxLabel, (*ociSpec).selinuxLabel)
 }
 
 func (c *mqlContainerdContainer) noNewPrivileges() (bool, error) {
-	return withSpec(c, &c.NoNewPrivileges, func(s *ociSpec) bool {
-		return s.Process != nil && s.Process.NoNewPrivileges
-	})
+	return withSpec(c.spec, &c.NoNewPrivileges, (*ociSpec).noNewPrivileges)
 }
 
 func (c *mqlContainerdContainer) readOnlyRootfs() (bool, error) {
-	return withSpec(c, &c.ReadOnlyRootfs, func(s *ociSpec) bool {
-		return s.Root != nil && s.Root.Readonly
-	})
+	return withSpec(c.spec, &c.ReadOnlyRootfs, (*ociSpec).readOnlyRootfs)
 }
 
 func (c *mqlContainerdContainer) uid() (int64, error) {
-	return withSpec(c, &c.Uid, func(s *ociSpec) int64 {
-		if s.Process == nil {
-			return 0
-		}
-		return int64(s.Process.User.UID)
-	})
+	return withSpec(c.spec, &c.Uid, (*ociSpec).uid)
 }
 
 func (c *mqlContainerdContainer) gid() (int64, error) {
-	return withSpec(c, &c.Gid, func(s *ociSpec) int64 {
-		if s.Process == nil {
-			return 0
-		}
-		return int64(s.Process.User.GID)
-	})
+	return withSpec(c.spec, &c.Gid, (*ociSpec).gid)
 }
 
 func (c *mqlContainerdContainer) hostNamespace(field *plugin.TValue[bool], nsType string) (bool, error) {
@@ -408,12 +424,14 @@ func (s *ociSpec) limits() ociLimits {
 	return res
 }
 
-func (c *mqlContainerdContainer) limit(field *plugin.TValue[int64], pick func(ociLimits) *int64) (int64, error) {
-	if c.spec == nil {
+// specLimit returns a resource limit of a spec, or sets the field null when
+// there is no spec or the spec sets no such limit.
+func specLimit(spec *ociSpec, field *plugin.TValue[int64], pick func(ociLimits) *int64) (int64, error) {
+	if spec == nil {
 		field.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
-	v := pick(c.spec.limits())
+	v := pick(spec.limits())
 	if v == nil {
 		field.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
@@ -422,17 +440,17 @@ func (c *mqlContainerdContainer) limit(field *plugin.TValue[int64], pick func(oc
 }
 
 func (c *mqlContainerdContainer) memoryLimit() (int64, error) {
-	return c.limit(&c.MemoryLimit, func(l ociLimits) *int64 { return l.memory })
+	return specLimit(c.spec, &c.MemoryLimit, func(l ociLimits) *int64 { return l.memory })
 }
 
 func (c *mqlContainerdContainer) nanoCpus() (int64, error) {
-	return c.limit(&c.NanoCpus, func(l ociLimits) *int64 { return l.nanoCpus })
+	return specLimit(c.spec, &c.NanoCpus, func(l ociLimits) *int64 { return l.nanoCpus })
 }
 
 func (c *mqlContainerdContainer) cpuShares() (int64, error) {
-	return c.limit(&c.CpuShares, func(l ociLimits) *int64 { return l.cpuShares })
+	return specLimit(c.spec, &c.CpuShares, func(l ociLimits) *int64 { return l.cpuShares })
 }
 
 func (c *mqlContainerdContainer) pidsLimit() (int64, error) {
-	return c.limit(&c.PidsLimit, func(l ociLimits) *int64 { return l.pids })
+	return specLimit(c.spec, &c.PidsLimit, func(l ociLimits) *int64 { return l.pids })
 }

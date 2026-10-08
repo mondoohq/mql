@@ -13,6 +13,7 @@ import (
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // containersDefaultPolicy is the policy Podman, Buildah, Skopeo and CRI-O
@@ -195,7 +196,7 @@ func (p *mqlContainersPolicy) scopes() ([]any, error) {
 			"__id":         llx.StringData("containers.policy.scope/" + id),
 			"transport":    llx.StringData(scope.Transport),
 			"scope":        llx.StringData(scope.Scope),
-			"requirements": llx.ArrayData(reqs, "containers.policy.requirement"),
+			"requirements": llx.ArrayData(reqs, types.Resource("containers.policy.requirement")),
 		})
 		if err != nil {
 			return nil, err
@@ -225,12 +226,12 @@ func newContainersPolicyRequirements(runtime *plugin.Runtime, parentID string, r
 			"__id":                llx.StringData("containers.policy.requirement/" + parentID + "/" + strconv.Itoa(i)),
 			"type":                llx.StringData(req.Type),
 			"keyType":             llx.StringData(req.KeyType),
-			"keyPaths":            llx.ArrayData(stringsToAny(req.keyPaths()), "string"),
+			"keyPaths":            llx.ArrayData(stringsToAny(req.keyPaths()), types.String),
 			"inlineKey":           llx.BoolData(req.KeyData != "" || len(req.KeyDatas) > 0),
 			"fulcioCAPath":        llx.StringData(fulcio.CAPath),
 			"fulcioOIDCIssuer":    llx.StringData(fulcio.OIDCIssuer),
 			"fulcioSubjectEmail":  llx.StringData(fulcio.SubjectEmail),
-			"rekorPublicKeyPaths": llx.ArrayData(stringsToAny(req.rekorKeyPaths()), "string"),
+			"rekorPublicKeyPaths": llx.ArrayData(stringsToAny(req.rekorKeyPaths()), types.String),
 			"signedIdentity":      llx.DictData(identity),
 		})
 		if err != nil {

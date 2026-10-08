@@ -301,7 +301,7 @@ func (p *mqlContainerd) containers() ([]any, error) {
 				log.Debug().Str("namespace", ns).Str("container", containerID).Err(err).Msg("skipping container, failed to parse info")
 				continue
 			}
-			spec, err := parseContainerdSpec(info.Spec)
+			spec, err := parseOCISpec(info.Spec)
 			if err != nil {
 				// the container is still listed, without the fields its spec gives
 				log.Debug().Str("namespace", ns).Str("container", containerID).Err(err).Msg("cannot parse the container's spec")

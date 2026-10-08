@@ -156,12 +156,12 @@ func TestDockerSeccompProfile(t *testing.T) {
 }
 
 func TestDockerSeccompAllowsAll(t *testing.T) {
-	assert.True(t, dockerSeccompAllowsAll(`{"defaultAction":"SCMP_ACT_ALLOW"}`))
-	assert.True(t, dockerSeccompAllowsAll(`{"defaultAction":"SCMP_ACT_LOG","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_ALLOW"}]}`))
-	assert.False(t, dockerSeccompAllowsAll(`{"defaultAction":"SCMP_ACT_ALLOW","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_ERRNO"}]}`),
+	assert.True(t, seccompAllowsAll(`{"defaultAction":"SCMP_ACT_ALLOW"}`))
+	assert.True(t, seccompAllowsAll(`{"defaultAction":"SCMP_ACT_LOG","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_ALLOW"}]}`))
+	assert.False(t, seccompAllowsAll(`{"defaultAction":"SCMP_ACT_ALLOW","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_ERRNO"}]}`),
 		"an allow-by-default profile that denies one call still filters")
-	assert.False(t, dockerSeccompAllowsAll(`{"defaultAction":"SCMP_ACT_ERRNO"}`))
-	assert.False(t, dockerSeccompAllowsAll(`not json`))
+	assert.False(t, seccompAllowsAll(`{"defaultAction":"SCMP_ACT_ERRNO"}`))
+	assert.False(t, seccompAllowsAll(`not json`))
 }
 
 func TestDockerNoNewPrivileges(t *testing.T) {

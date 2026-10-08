@@ -9950,9 +9950,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"crio.container.privileged": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrioContainer).GetPrivileged()).ToDataRes(types.Bool)
 	},
-	"crio.container.hostNetwork": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlCrioContainer).GetHostNetwork()).ToDataRes(types.Bool)
-	},
 	"crio.container.seccompProfile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrioContainer).GetSeccompProfile()).ToDataRes(types.String)
 	},
@@ -9964,6 +9961,57 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"crio.container.mounts": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrioContainer).GetMounts()).ToDataRes(types.Array(types.Resource("crio.container.mount")))
+	},
+	"crio.container.capabilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetCapabilities()).ToDataRes(types.Array(types.String))
+	},
+	"crio.container.boundingCapabilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetBoundingCapabilities()).ToDataRes(types.Array(types.String))
+	},
+	"crio.container.seccompUnconfined": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetSeccompUnconfined()).ToDataRes(types.Bool)
+	},
+	"crio.container.seccompDefaultAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetSeccompDefaultAction()).ToDataRes(types.String)
+	},
+	"crio.container.apparmorProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetApparmorProfile()).ToDataRes(types.String)
+	},
+	"crio.container.selinuxLabel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetSelinuxLabel()).ToDataRes(types.String)
+	},
+	"crio.container.noNewPrivileges": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetNoNewPrivileges()).ToDataRes(types.Bool)
+	},
+	"crio.container.readOnlyRootfs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetReadOnlyRootfs()).ToDataRes(types.Bool)
+	},
+	"crio.container.uid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetUid()).ToDataRes(types.Int)
+	},
+	"crio.container.gid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetGid()).ToDataRes(types.Int)
+	},
+	"crio.container.hostNetwork": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetHostNetwork()).ToDataRes(types.Bool)
+	},
+	"crio.container.hostPID": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetHostPID()).ToDataRes(types.Bool)
+	},
+	"crio.container.hostIPC": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetHostIPC()).ToDataRes(types.Bool)
+	},
+	"crio.container.memoryLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetMemoryLimit()).ToDataRes(types.Int)
+	},
+	"crio.container.nanoCpus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetNanoCpus()).ToDataRes(types.Int)
+	},
+	"crio.container.cpuShares": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetCpuShares()).ToDataRes(types.Int)
+	},
+	"crio.container.pidsLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetPidsLimit()).ToDataRes(types.Int)
 	},
 	"crio.container.mount.containerPath": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrioContainerMount).GetContainerPath()).ToDataRes(types.String)
@@ -28880,10 +28928,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCrioContainer).Privileged, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"crio.container.hostNetwork": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlCrioContainer).HostNetwork, ok = plugin.RawToTValue[bool](v.Value, v.Error)
-		return
-	},
 	"crio.container.seccompProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCrioContainer).SeccompProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -28898,6 +28942,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"crio.container.mounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCrioContainer).Mounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.container.capabilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Capabilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.container.boundingCapabilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).BoundingCapabilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.container.seccompUnconfined": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).SeccompUnconfined, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.seccompDefaultAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).SeccompDefaultAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.apparmorProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).ApparmorProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.selinuxLabel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).SelinuxLabel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.noNewPrivileges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).NoNewPrivileges, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.readOnlyRootfs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).ReadOnlyRootfs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.uid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Uid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.container.gid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Gid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.container.hostNetwork": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).HostNetwork, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.hostPID": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).HostPID, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.hostIPC": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).HostIPC, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.memoryLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).MemoryLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.container.nanoCpus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).NanoCpus, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.container.cpuShares": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).CpuShares, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.container.pidsLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).PidsLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"crio.container.mount.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -70335,20 +70447,36 @@ type mqlCrioContainer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlCrioContainerInternal
-	Id             plugin.TValue[string]
-	Name           plugin.TValue[string]
-	PodName        plugin.TValue[string]
-	PodNamespace   plugin.TValue[string]
-	SandboxId      plugin.TValue[string]
-	Image          plugin.TValue[string]
-	ImageRef       plugin.TValue[string]
-	Pid            plugin.TValue[int64]
-	Privileged     plugin.TValue[bool]
-	HostNetwork    plugin.TValue[bool]
-	SeccompProfile plugin.TValue[string]
-	Labels         plugin.TValue[map[string]any]
-	Created        plugin.TValue[*time.Time]
-	Mounts         plugin.TValue[[]any]
+	Id                   plugin.TValue[string]
+	Name                 plugin.TValue[string]
+	PodName              plugin.TValue[string]
+	PodNamespace         plugin.TValue[string]
+	SandboxId            plugin.TValue[string]
+	Image                plugin.TValue[string]
+	ImageRef             plugin.TValue[string]
+	Pid                  plugin.TValue[int64]
+	Privileged           plugin.TValue[bool]
+	SeccompProfile       plugin.TValue[string]
+	Labels               plugin.TValue[map[string]any]
+	Created              plugin.TValue[*time.Time]
+	Mounts               plugin.TValue[[]any]
+	Capabilities         plugin.TValue[[]any]
+	BoundingCapabilities plugin.TValue[[]any]
+	SeccompUnconfined    plugin.TValue[bool]
+	SeccompDefaultAction plugin.TValue[string]
+	ApparmorProfile      plugin.TValue[string]
+	SelinuxLabel         plugin.TValue[string]
+	NoNewPrivileges      plugin.TValue[bool]
+	ReadOnlyRootfs       plugin.TValue[bool]
+	Uid                  plugin.TValue[int64]
+	Gid                  plugin.TValue[int64]
+	HostNetwork          plugin.TValue[bool]
+	HostPID              plugin.TValue[bool]
+	HostIPC              plugin.TValue[bool]
+	MemoryLimit          plugin.TValue[int64]
+	NanoCpus             plugin.TValue[int64]
+	CpuShares            plugin.TValue[int64]
+	PidsLimit            plugin.TValue[int64]
 }
 
 // createCrioContainer creates a new instance of this resource
@@ -70419,10 +70547,6 @@ func (c *mqlCrioContainer) GetPrivileged() *plugin.TValue[bool] {
 	return &c.Privileged
 }
 
-func (c *mqlCrioContainer) GetHostNetwork() *plugin.TValue[bool] {
-	return &c.HostNetwork
-}
-
 func (c *mqlCrioContainer) GetSeccompProfile() *plugin.TValue[string] {
 	return &c.SeccompProfile
 }
@@ -70448,6 +70572,108 @@ func (c *mqlCrioContainer) GetMounts() *plugin.TValue[[]any] {
 		}
 
 		return c.mounts()
+	})
+}
+
+func (c *mqlCrioContainer) GetCapabilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Capabilities, func() ([]any, error) {
+		return c.capabilities()
+	})
+}
+
+func (c *mqlCrioContainer) GetBoundingCapabilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BoundingCapabilities, func() ([]any, error) {
+		return c.boundingCapabilities()
+	})
+}
+
+func (c *mqlCrioContainer) GetSeccompUnconfined() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SeccompUnconfined, func() (bool, error) {
+		return c.seccompUnconfined()
+	})
+}
+
+func (c *mqlCrioContainer) GetSeccompDefaultAction() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SeccompDefaultAction, func() (string, error) {
+		return c.seccompDefaultAction()
+	})
+}
+
+func (c *mqlCrioContainer) GetApparmorProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ApparmorProfile, func() (string, error) {
+		return c.apparmorProfile()
+	})
+}
+
+func (c *mqlCrioContainer) GetSelinuxLabel() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SelinuxLabel, func() (string, error) {
+		return c.selinuxLabel()
+	})
+}
+
+func (c *mqlCrioContainer) GetNoNewPrivileges() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.NoNewPrivileges, func() (bool, error) {
+		return c.noNewPrivileges()
+	})
+}
+
+func (c *mqlCrioContainer) GetReadOnlyRootfs() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ReadOnlyRootfs, func() (bool, error) {
+		return c.readOnlyRootfs()
+	})
+}
+
+func (c *mqlCrioContainer) GetUid() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Uid, func() (int64, error) {
+		return c.uid()
+	})
+}
+
+func (c *mqlCrioContainer) GetGid() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Gid, func() (int64, error) {
+		return c.gid()
+	})
+}
+
+func (c *mqlCrioContainer) GetHostNetwork() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HostNetwork, func() (bool, error) {
+		return c.hostNetwork()
+	})
+}
+
+func (c *mqlCrioContainer) GetHostPID() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HostPID, func() (bool, error) {
+		return c.hostPID()
+	})
+}
+
+func (c *mqlCrioContainer) GetHostIPC() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HostIPC, func() (bool, error) {
+		return c.hostIPC()
+	})
+}
+
+func (c *mqlCrioContainer) GetMemoryLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MemoryLimit, func() (int64, error) {
+		return c.memoryLimit()
+	})
+}
+
+func (c *mqlCrioContainer) GetNanoCpus() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.NanoCpus, func() (int64, error) {
+		return c.nanoCpus()
+	})
+}
+
+func (c *mqlCrioContainer) GetCpuShares() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.CpuShares, func() (int64, error) {
+		return c.cpuShares()
+	})
+}
+
+func (c *mqlCrioContainer) GetPidsLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PidsLimit, func() (int64, error) {
+		return c.pidsLimit()
 	})
 }
 

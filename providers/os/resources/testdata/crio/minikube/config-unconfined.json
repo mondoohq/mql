@@ -1,0 +1,345 @@
+{
+	"ociVersion": "1.3.0",
+	"process": {
+		"user": {
+			"uid": 0,
+			"gid": 0,
+			"additionalGids": [
+				0,
+				10
+			]
+		},
+		"args": [
+			"sleep",
+			"infinity"
+		],
+		"env": [
+			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+			"TERM=xterm",
+			"HOSTNAME=unconfined",
+			"KUBERNETES_SERVICE_PORT_HTTPS=443",
+			"KUBERNETES_PORT=tcp://10.96.0.1:443",
+			"KUBERNETES_PORT_443_TCP=tcp://10.96.0.1:443",
+			"KUBERNETES_PORT_443_TCP_PROTO=tcp",
+			"KUBERNETES_PORT_443_TCP_PORT=443",
+			"KUBERNETES_PORT_443_TCP_ADDR=10.96.0.1",
+			"KUBERNETES_SERVICE_HOST=10.96.0.1",
+			"KUBERNETES_SERVICE_PORT=443",
+			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+		],
+		"cwd": "/",
+		"capabilities": {
+			"bounding": [
+				"CAP_SYS_ADMIN",
+				"CAP_NET_ADMIN",
+				"CAP_CHOWN",
+				"CAP_DAC_OVERRIDE",
+				"CAP_FSETID",
+				"CAP_FOWNER",
+				"CAP_SETGID",
+				"CAP_SETUID",
+				"CAP_SETPCAP",
+				"CAP_NET_BIND_SERVICE",
+				"CAP_KILL"
+			],
+			"effective": [
+				"CAP_SYS_ADMIN",
+				"CAP_NET_ADMIN",
+				"CAP_CHOWN",
+				"CAP_DAC_OVERRIDE",
+				"CAP_FSETID",
+				"CAP_FOWNER",
+				"CAP_SETGID",
+				"CAP_SETUID",
+				"CAP_SETPCAP",
+				"CAP_NET_BIND_SERVICE",
+				"CAP_KILL"
+			],
+			"permitted": [
+				"CAP_SYS_ADMIN",
+				"CAP_NET_ADMIN",
+				"CAP_CHOWN",
+				"CAP_DAC_OVERRIDE",
+				"CAP_FSETID",
+				"CAP_FOWNER",
+				"CAP_SETGID",
+				"CAP_SETUID",
+				"CAP_SETPCAP",
+				"CAP_NET_BIND_SERVICE",
+				"CAP_KILL"
+			]
+		},
+		"oomScoreAdj": 1000
+	},
+	"root": {
+		"path": "/var/lib/containers/storage/overlay/86604032c204f55c86640197b49c9833ad1ed442ac2d2a55848c763a5d1a5ef8/merged"
+	},
+	"hostname": "unconfined",
+	"mounts": [
+		{
+			"destination": "/proc",
+			"type": "proc",
+			"source": "proc",
+			"options": [
+				"nosuid",
+				"noexec",
+				"nodev"
+			]
+		},
+		{
+			"destination": "/dev",
+			"type": "tmpfs",
+			"source": "tmpfs",
+			"options": [
+				"nosuid",
+				"strictatime",
+				"mode=755",
+				"size=65536k"
+			]
+		},
+		{
+			"destination": "/dev/pts",
+			"type": "devpts",
+			"source": "devpts",
+			"options": [
+				"nosuid",
+				"noexec",
+				"newinstance",
+				"ptmxmode=0666",
+				"mode=0620",
+				"gid=5"
+			]
+		},
+		{
+			"destination": "/dev/mqueue",
+			"type": "mqueue",
+			"source": "mqueue",
+			"options": [
+				"nosuid",
+				"noexec",
+				"nodev"
+			]
+		},
+		{
+			"destination": "/sys",
+			"type": "sysfs",
+			"source": "sysfs",
+			"options": [
+				"nosuid",
+				"noexec",
+				"nodev",
+				"ro"
+			]
+		},
+		{
+			"destination": "/sys/fs/cgroup",
+			"type": "cgroup",
+			"source": "cgroup",
+			"options": [
+				"nosuid",
+				"noexec",
+				"nodev",
+				"relatime",
+				"ro"
+			]
+		},
+		{
+			"destination": "/dev/shm",
+			"type": "bind",
+			"source": "/run/containers/storage/overlay-containers/0da767fb43239bdf70463ed0865b3d677a4d5e403011e1623a857229c283aeb2/userdata/shm",
+			"options": [
+				"rw",
+				"bind"
+			]
+		},
+		{
+			"destination": "/etc/resolv.conf",
+			"type": "bind",
+			"source": "/run/containers/storage/overlay-containers/0da767fb43239bdf70463ed0865b3d677a4d5e403011e1623a857229c283aeb2/userdata/resolv.conf",
+			"options": [
+				"rw",
+				"bind",
+				"nodev",
+				"nosuid",
+				"noexec"
+			]
+		},
+		{
+			"destination": "/etc/hostname",
+			"type": "bind",
+			"source": "/run/containers/storage/overlay-containers/0da767fb43239bdf70463ed0865b3d677a4d5e403011e1623a857229c283aeb2/userdata/hostname",
+			"options": [
+				"rw",
+				"bind"
+			]
+		},
+		{
+			"destination": "/run/.containerenv",
+			"type": "bind",
+			"source": "/run/containers/storage/overlay-containers/0da767fb43239bdf70463ed0865b3d677a4d5e403011e1623a857229c283aeb2/userdata/.containerenv",
+			"options": [
+				"rw",
+				"bind"
+			]
+		},
+		{
+			"destination": "/etc/hosts",
+			"type": "bind",
+			"source": "/var/lib/kubelet/pods/02dc6be5-4a12-4d45-a717-e2ddb98d7022/etc-hosts",
+			"options": [
+				"rbind",
+				"rprivate",
+				"rw",
+				"bind"
+			]
+		},
+		{
+			"destination": "/dev/termination-log",
+			"type": "bind",
+			"source": "/var/lib/kubelet/pods/02dc6be5-4a12-4d45-a717-e2ddb98d7022/containers/unconfined/adae59c8",
+			"options": [
+				"rbind",
+				"rprivate",
+				"rw",
+				"bind"
+			]
+		},
+		{
+			"destination": "/var/run/secrets/kubernetes.io/serviceaccount",
+			"type": "bind",
+			"source": "/var/lib/kubelet/pods/02dc6be5-4a12-4d45-a717-e2ddb98d7022/volumes/kubernetes.io~projected/kube-api-access-5p7kt",
+			"options": [
+				"rbind",
+				"rprivate",
+				"ro",
+				"bind"
+			]
+		}
+	],
+	"annotations": {
+		"io.container.manager": "cri-o",
+		"io.kubernetes.container.hash": "f1e57db8",
+		"io.kubernetes.container.name": "unconfined",
+		"io.kubernetes.container.restartCount": "0",
+		"io.kubernetes.container.terminationMessagePath": "/dev/termination-log",
+		"io.kubernetes.container.terminationMessagePolicy": "File",
+		"io.kubernetes.cri-o.Annotations": "{\"io.kubernetes.container.hash\":\"f1e57db8\",\"io.kubernetes.container.restartCount\":\"0\",\"io.kubernetes.container.terminationMessagePath\":\"/dev/termination-log\",\"io.kubernetes.container.terminationMessagePolicy\":\"File\",\"io.kubernetes.pod.terminationGracePeriod\":\"30\"}",
+		"io.kubernetes.cri-o.ContainerID": "a0123d372f54b484ee748b0c85de60815c0c735f8cf6430b668f0ce44097ccba",
+		"io.kubernetes.cri-o.ContainerType": "container",
+		"io.kubernetes.cri-o.Created": "2026-10-08T01:06:03.307772051Z",
+		"io.kubernetes.cri-o.IP.0": "10.244.0.3",
+		"io.kubernetes.cri-o.Image": "ad4f11f7c85f87c0a6d6c0fe492ad53f9cdcff6e8c88b881360c70eff701c67b",
+		"io.kubernetes.cri-o.ImageName": "docker.io/library/busybox:1.37",
+		"io.kubernetes.cri-o.ImageRef": "ad4f11f7c85f87c0a6d6c0fe492ad53f9cdcff6e8c88b881360c70eff701c67b",
+		"io.kubernetes.cri-o.ImageRepoDigests": "docker.io/library/busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e,docker.io/library/busybox@sha256:d82c2ab94640ded77cf76514ce6a84870761105058a4a9e51b05a8a79be97a6c",
+		"io.kubernetes.cri-o.Labels": "{\"io.kubernetes.container.name\":\"unconfined\",\"io.kubernetes.pod.name\":\"unconfined\",\"io.kubernetes.pod.namespace\":\"default\",\"io.kubernetes.pod.uid\":\"02dc6be5-4a12-4d45-a717-e2ddb98d7022\"}",
+		"io.kubernetes.cri-o.LogPath": "/var/log/pods/default_unconfined_02dc6be5-4a12-4d45-a717-e2ddb98d7022/unconfined/0.log",
+		"io.kubernetes.cri-o.Metadata": "{\"name\":\"unconfined\"}",
+		"io.kubernetes.cri-o.MountPoint": "/var/lib/containers/storage/overlay/86604032c204f55c86640197b49c9833ad1ed442ac2d2a55848c763a5d1a5ef8/merged",
+		"io.kubernetes.cri-o.Name": "k8s_unconfined_unconfined_default_02dc6be5-4a12-4d45-a717-e2ddb98d7022_0",
+		"io.kubernetes.cri-o.ResolvPath": "/run/containers/storage/overlay-containers/0da767fb43239bdf70463ed0865b3d677a4d5e403011e1623a857229c283aeb2/userdata/resolv.conf",
+		"io.kubernetes.cri-o.SandboxID": "0da767fb43239bdf70463ed0865b3d677a4d5e403011e1623a857229c283aeb2",
+		"io.kubernetes.cri-o.SandboxName": "k8s_unconfined_default_02dc6be5-4a12-4d45-a717-e2ddb98d7022_0",
+		"io.kubernetes.cri-o.SeccompProfilePath": "Unconfined",
+		"io.kubernetes.cri-o.Stdin": "false",
+		"io.kubernetes.cri-o.StdinOnce": "false",
+		"io.kubernetes.cri-o.TTY": "false",
+		"io.kubernetes.cri-o.Volumes": "[{\"container_path\":\"/etc/hosts\",\"host_path\":\"/var/lib/kubelet/pods/02dc6be5-4a12-4d45-a717-e2ddb98d7022/etc-hosts\",\"readonly\":false,\"recursive_read_only\":false,\"propagation\":0,\"selinux_relabel\":false},{\"container_path\":\"/dev/termination-log\",\"host_path\":\"/var/lib/kubelet/pods/02dc6be5-4a12-4d45-a717-e2ddb98d7022/containers/unconfined/adae59c8\",\"readonly\":false,\"recursive_read_only\":false,\"propagation\":0,\"selinux_relabel\":false},{\"container_path\":\"/var/run/secrets/kubernetes.io/serviceaccount\",\"host_path\":\"/var/lib/kubelet/pods/02dc6be5-4a12-4d45-a717-e2ddb98d7022/volumes/kubernetes.io~projected/kube-api-access-5p7kt\",\"readonly\":true,\"recursive_read_only\":false,\"propagation\":0,\"selinux_relabel\":false}]",
+		"io.kubernetes.pod.name": "unconfined",
+		"io.kubernetes.pod.namespace": "default",
+		"io.kubernetes.pod.terminationGracePeriod": "30",
+		"io.kubernetes.pod.uid": "02dc6be5-4a12-4d45-a717-e2ddb98d7022",
+		"kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"Pod\",\"metadata\":{\"annotations\":{},\"name\":\"unconfined\",\"namespace\":\"default\"},\"spec\":{\"containers\":[{\"command\":[\"sleep\",\"infinity\"],\"image\":\"busybox:1.37\",\"name\":\"unconfined\",\"securityContext\":{\"capabilities\":{\"add\":[\"SYS_ADMIN\",\"NET_ADMIN\"]},\"seccompProfile\":{\"type\":\"Unconfined\"}}}]}}\n",
+		"kubernetes.io/config.seen": "2026-10-08T01:05:59.750687466Z",
+		"kubernetes.io/config.source": "api",
+		"platform-runtime-path.crio.io": ""
+	},
+	"linux": {
+		"resources": {
+			"devices": [
+				{
+					"allow": false,
+					"access": "rwm"
+				}
+			],
+			"cpu": {
+				"shares": 2,
+				"quota": 0,
+				"period": 100000
+			},
+			"pids": {
+				"limit": -1
+			},
+			"hugepageLimits": [
+				{
+					"pageSize": "2MB",
+					"limit": 0
+				},
+				{
+					"pageSize": "32MB",
+					"limit": 0
+				},
+				{
+					"pageSize": "64KB",
+					"limit": 0
+				},
+				{
+					"pageSize": "1GB",
+					"limit": 0
+				}
+			],
+			"unified": {
+				"memory.low": "0",
+				"memory.min": "0",
+				"memory.oom.group": "1",
+				"memory.swap.max": "0"
+			}
+		},
+		"cgroupsPath": "/crio/crio-a0123d372f54b484ee748b0c85de60815c0c735f8cf6430b668f0ce44097ccba",
+		"namespaces": [
+			{
+				"type": "pid"
+			},
+			{
+				"type": "network",
+				"path": "/var/run/netns/3c6735cf-0709-4440-a2ae-f21637c94985"
+			},
+			{
+				"type": "ipc",
+				"path": "/var/run/ipcns/3c6735cf-0709-4440-a2ae-f21637c94985"
+			},
+			{
+				"type": "uts",
+				"path": "/var/run/utsns/3c6735cf-0709-4440-a2ae-f21637c94985"
+			},
+			{
+				"type": "mount"
+			},
+			{
+				"type": "cgroup"
+			}
+		],
+		"maskedPaths": [
+			"/proc/acpi",
+			"/proc/asound",
+			"/proc/interrupts",
+			"/proc/kcore",
+			"/proc/keys",
+			"/proc/latency_stats",
+			"/proc/sched_debug",
+			"/proc/scsi",
+			"/proc/timer_list",
+			"/proc/timer_stats",
+			"/sys/devices/virtual/powercap",
+			"/sys/firmware",
+			"/sys/fs/selinux"
+		],
+		"readonlyPaths": [
+			"/proc/bus",
+			"/proc/fs",
+			"/proc/irq",
+			"/proc/sys",
+			"/proc/sysrq-trigger"
+		]
+	}
+}

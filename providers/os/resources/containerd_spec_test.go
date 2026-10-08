@@ -20,7 +20,7 @@ func containerdSpecFixture(t *testing.T, name string) (*containerInfo, *ociSpec)
 	require.NoError(t, err)
 	info, err := parseContainerInfo(data)
 	require.NoError(t, err)
-	spec, err := parseContainerdSpec(info.Spec)
+	spec, err := parseOCISpec(info.Spec)
 	require.NoError(t, err)
 	require.NotNil(t, spec)
 	return info, spec
@@ -146,19 +146,19 @@ func TestContainerdSpecMounts(t *testing.T) {
 }
 
 func TestContainerdSpecSeccompAllowsAll(t *testing.T) {
-	spec, err := parseContainerdSpec([]byte(`{"linux":{"seccomp":{"defaultAction":"SCMP_ACT_ALLOW","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_LOG"}]}}}`))
+	spec, err := parseOCISpec([]byte(`{"linux":{"seccomp":{"defaultAction":"SCMP_ACT_ALLOW","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_LOG"}]}}}`))
 	require.NoError(t, err)
 	assert.True(t, spec.seccompUnconfined())
 	assert.Equal(t, "SCMP_ACT_ALLOW", spec.seccompDefaultAction())
 
-	spec, err = parseContainerdSpec([]byte(`{"linux":{"seccomp":{"defaultAction":"SCMP_ACT_ALLOW","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_ERRNO"}]}}}`))
+	spec, err = parseOCISpec([]byte(`{"linux":{"seccomp":{"defaultAction":"SCMP_ACT_ALLOW","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_ERRNO"}]}}}`))
 	require.NoError(t, err)
 	assert.False(t, spec.seccompUnconfined())
 
-	spec, err = parseContainerdSpec(nil)
+	spec, err = parseOCISpec(nil)
 	require.NoError(t, err)
 	assert.Nil(t, spec)
-	_, err = parseContainerdSpec([]byte(`{"linux": 5}`))
+	_, err = parseOCISpec([]byte(`{"linux": 5}`))
 	assert.Error(t, err)
 }
 

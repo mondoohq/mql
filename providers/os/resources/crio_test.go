@@ -78,8 +78,26 @@ func TestMergeCrioConfig(t *testing.T) {
 	assert.Equal(t, "systemd", crioConfigValue(merged, "runtime", "cgroup_manager"), "the rest of the table stays")
 }
 
-func TestCrioDropInFiles(t *testing.T) {
-	assert.Equal(t, []string{"02-crio.conf", "10-crio.conf"}, crioDropInFiles([]string{"10-crio.conf", ".swp", "02-crio.conf", ""}))
+// crio.conf and the drop-ins are read through the connection's filesystem,
+// so a filesystem or image scan finds them, in the order CRI-O applies them.
+func TestCrioConfigFilePaths(t *testing.T) {
+	mockFS := afero.NewMemMapFs()
+	writeMemFSFile(t, mockFS, "/etc/crio/crio.conf", []byte(readCrioFixture(t, "minikube/02-crio.conf")))
+	writeMemFSFile(t, mockFS, "/etc/crio/crio.conf.d/10-crio.conf", []byte(readCrioFixture(t, "minikube/10-crio.conf")))
+	writeMemFSFile(t, mockFS, "/etc/crio/crio.conf.d/02-crio.conf", []byte(readCrioFixture(t, "minikube/02-crio.conf")))
+	writeMemFSFile(t, mockFS, "/etc/crio/crio.conf.d/.10-crio.conf.swp", []byte("x"))
+	require.NoError(t, mockFS.MkdirAll("/etc/crio/crio.conf.d/subdir", 0o755))
+
+	c := &mqlCrio{MqlRuntime: memFSRuntime(t, mockFS)}
+	paths, err := c.crioConfigFilePaths()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/etc/crio/crio.conf", "/etc/crio/crio.conf.d/02-crio.conf", "/etc/crio/crio.conf.d/10-crio.conf"}, paths)
+
+	// neither present
+	c = &mqlCrio{MqlRuntime: memFSRuntime(t, afero.NewMemMapFs())}
+	paths, err = c.crioConfigFilePaths()
+	require.NoError(t, err)
+	assert.Empty(t, paths)
 }
 
 // containers/storage's container list on the kubeadm node: five pod
@@ -227,8 +245,8 @@ func TestParseCrioMounts(t *testing.T) {
 
 // Without a running CRI-O, the annotation is read from the container's OCI
 // config.json: etcd's on the kubeadm node.
-func TestCrioVolumesFromOCIConfig(t *testing.T) {
-	volumes, ok := crioVolumesFromOCIConfig(readCrioFixture(t, "kubeadm/config-etcd.json"))
+func TestCrioSpecVolumes(t *testing.T) {
+	volumes, ok := crioSpecVolumes(readCrioSpecFixture(t, "kubeadm/config-etcd.json"))
 	require.True(t, ok)
 	mounts, err := parseCrioMounts(volumes)
 	require.NoError(t, err)
@@ -236,9 +254,9 @@ func TestCrioVolumesFromOCIConfig(t *testing.T) {
 	assert.Equal(t, "/var/lib/etcd", mounts[2].HostPath)
 	assert.Equal(t, "/etc/kubernetes/pki/etcd", mounts[3].ContainerPath)
 
-	_, ok = crioVolumesFromOCIConfig(`{"annotations":{"io.kubernetes.cri-o.ContainerType":"sandbox"}}`)
+	_, ok = crioSpecVolumes(readCrioSpecFixture(t, "minikube/config-sandbox-plain.json"))
 	assert.False(t, ok, "a pod sandbox records no volumes")
-	_, ok = crioVolumesFromOCIConfig("")
+	_, ok = crioSpecVolumes(nil)
 	assert.False(t, ok)
 }
 
@@ -290,4 +308,135 @@ func TestCrioNamespacePolicyListing(t *testing.T) {
 	files, err := listConfDFilesWith(rt, []string{"/etc/crio/policies"}, isCrioNamespacePolicyFile)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/etc/crio/policies/linked.json", "/etc/crio/policies/payments.json"}, files)
+}
+
+func readCrioSpecFixture(t *testing.T, name string) *ociSpec {
+	t.Helper()
+	spec, err := parseOCISpec([]byte(readCrioFixture(t, name)))
+	require.NoError(t, err)
+	require.NotNil(t, spec)
+	return spec
+}
+
+// crioStorageFS lays out containers/storage as CRI-O 1.35.7 left it on a
+// minikube node: the container list and the config.json of five test pods'
+// containers and two of their sandboxes. The other containers have no
+// config.json, as when it cannot be read.
+func crioStorageFS(t *testing.T) afero.Fs {
+	t.Helper()
+	mockFS := afero.NewMemMapFs()
+	dir := "/var/lib/containers/storage/overlay-containers"
+	writeMemFSFile(t, mockFS, dir+"/volatile-containers.json", []byte(readCrioFixture(t, "minikube/volatile-containers.json")))
+	for id, fixture := range map[string]string{
+		"d8275b00bdbbcd45a07e862639f20f92f538661714b0faf4f7dc412199ed5648": "config-priv.json",
+		"d63d698ce83b6dffcbe53ecc0d8558a6be7301d5182d89d6f3ff8ca6b7069871": "config-hostns.json",
+		"97f10b8f12804fe6271d24d5239dd3f235a907cc38b42b468b760930240a1644": "config-hardened.json",
+		"a0123d372f54b484ee748b0c85de60815c0c735f8cf6430b668f0ce44097ccba": "config-unconfined.json",
+		"9341e1667aec5d6066ea7d2c37fe98dac6073fb0ae91c993a7029496df93fa4b": "config-plain.json",
+		"194c3651d680c6b3aca850c2cace68277d8f9864dc26394e911ab2ee20cb509c": "config-sandbox-hostns.json",
+		"ab6baaa75b5f09d672c05fb57aa3871bae1014e7ab1db864ed956cb1e2cc5ecb": "config-sandbox-plain.json",
+	} {
+		writeMemFSFile(t, mockFS, dir+"/"+id+"/userdata/config.json", []byte(readCrioFixture(t, "minikube/"+fixture)))
+	}
+	return mockFS
+}
+
+// Without a running CRI-O, a container's confinement is read from the
+// config.json CRI-O created it with, and its host namespaces from its pod
+// sandbox's.
+func TestCrioContainerSpecFields(t *testing.T) {
+	c := &mqlCrio{MqlRuntime: memFSRuntime(t, crioStorageFS(t))}
+	list, err := c.containers()
+	require.NoError(t, err)
+	require.Len(t, list, 13, "the 13 containers of the list, without the sandboxes")
+
+	byName := map[string]*mqlCrioContainer{}
+	for _, r := range list {
+		ctr := r.(*mqlCrioContainer)
+		if ctr.PodNamespace.Data == "default" {
+			byName[ctr.Name.Data] = ctr
+		}
+	}
+	require.Len(t, byName, 5)
+
+	priv := byName["priv"]
+	assert.True(t, priv.Privileged.Data)
+	assert.Len(t, priv.GetCapabilities().Data, 41)
+	assert.True(t, priv.GetSeccompUnconfined().Data)
+	assert.Equal(t, "Unconfined", priv.SeccompProfile.Data, "from the spec's annotation")
+	assert.True(t, priv.GetHostPID().IsNull(), "its sandbox's config.json is missing")
+	assert.True(t, priv.GetHostNetwork().IsNull())
+
+	hostns := byName["hostns"]
+	assert.False(t, hostns.Privileged.Data)
+	assert.True(t, hostns.GetHostNetwork().Data)
+	assert.True(t, hostns.GetHostPID().Data)
+	assert.True(t, hostns.GetHostIPC().Data, "the container joins the node's IPC namespace by path, so only the sandbox tells")
+	hostPaths := []string{}
+	for _, m := range hostns.GetMounts().Data {
+		hostPaths = append(hostPaths, m.(*mqlCrioContainerMount).HostPath.Data)
+	}
+	assert.Contains(t, hostPaths, "/var/run/crio/crio.sock")
+	assert.Contains(t, hostPaths, "/etc")
+
+	plain := byName["plain"]
+	assert.False(t, plain.GetHostNetwork().Data)
+	assert.False(t, plain.GetHostPID().Data)
+	assert.False(t, plain.GetHostIPC().Data)
+	assert.False(t, plain.GetHostNetwork().IsNull())
+	assert.Equal(t, "plain", plain.Labels.Data["io.kubernetes.container.name"], "labels from the spec's annotation")
+	assert.Len(t, plain.GetCapabilities().Data, 9)
+	assert.False(t, plain.GetNoNewPrivileges().Data)
+	assert.False(t, plain.GetReadOnlyRootfs().Data)
+	assert.True(t, plain.GetMemoryLimit().IsNull())
+	assert.True(t, plain.GetNanoCpus().IsNull())
+	assert.True(t, plain.GetPidsLimit().IsNull(), "a limit of -1 is unlimited")
+	assert.Equal(t, int64(2), plain.GetCpuShares().Data)
+
+	hardened := byName["hardened"]
+	assert.Equal(t, []any{"CAP_NET_BIND_SERVICE"}, hardened.GetCapabilities().Data)
+	assert.Equal(t, []any{"CAP_NET_BIND_SERVICE"}, hardened.GetBoundingCapabilities().Data)
+	assert.False(t, hardened.GetSeccompUnconfined().Data)
+	assert.Equal(t, "SCMP_ACT_ERRNO", hardened.GetSeccompDefaultAction().Data)
+	assert.Equal(t, "RuntimeDefault", hardened.SeccompProfile.Data)
+	assert.True(t, hardened.GetNoNewPrivileges().Data)
+	assert.True(t, hardened.GetReadOnlyRootfs().Data)
+	assert.Equal(t, int64(1000), hardened.GetUid().Data)
+	assert.Equal(t, int64(3000), hardened.GetGid().Data)
+	assert.Equal(t, int64(67108864), hardened.GetMemoryLimit().Data)
+	assert.Equal(t, int64(250000000), hardened.GetNanoCpus().Data)
+	assert.Equal(t, int64(256), hardened.GetCpuShares().Data)
+
+	unconfined := byName["unconfined"]
+	assert.Contains(t, unconfined.GetCapabilities().Data, "CAP_SYS_ADMIN")
+	assert.True(t, unconfined.GetSeccompUnconfined().Data)
+	assert.Equal(t, "", unconfined.GetSeccompDefaultAction().Data)
+	assert.False(t, unconfined.Privileged.Data)
+
+	// a container whose config.json cannot be read
+	for _, r := range list {
+		ctr := r.(*mqlCrioContainer)
+		if ctr.Name.Data == "etcd" {
+			assert.True(t, ctr.GetCapabilities().IsNull())
+			assert.True(t, ctr.GetUid().IsNull())
+			assert.True(t, ctr.GetMounts().IsNull())
+		}
+	}
+}
+
+func TestCrioSandboxNamespaces(t *testing.T) {
+	opts, ok := crioSandboxNamespaces(readCrioSpecFixture(t, "minikube/config-sandbox-hostns.json"))
+	require.True(t, ok)
+	assert.Equal(t, crioNamespaceOptions{Network: criNamespaceModeNode, Pid: criNamespaceModeNode, Ipc: criNamespaceModeNode}, opts)
+
+	// a pod's own namespaces: POD is left out, its PID namespace is the container's
+	opts, ok = crioSandboxNamespaces(readCrioSpecFixture(t, "minikube/config-sandbox-plain.json"))
+	require.True(t, ok)
+	assert.Equal(t, crioNamespaceOptions{Pid: 1}, opts)
+
+	// a container's spec records none
+	_, ok = crioSandboxNamespaces(readCrioSpecFixture(t, "minikube/config-plain.json"))
+	assert.False(t, ok)
+	_, ok = crioSandboxNamespaces(nil)
+	assert.False(t, ok)
 }

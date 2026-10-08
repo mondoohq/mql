@@ -8672,6 +8672,15 @@ crio.runtime @defaults("name path") {
 }
 
 // CRI-O container
+//
+// A container CRI-O runs for a Kubernetes pod, with its pod (`podName`,
+// `podNamespace`, `sandboxId`), its image, and how it is confined: read from
+// the OCI runtime spec CRI-O created it with (its capabilities, seccomp,
+// AppArmor and SELinux settings, user, and resource limits) and from its pod
+// sandbox (the host namespaces it shares). The spec is stored on the node, so
+// these fields also work when CRI-O is stopped and on a scanned image or
+// filesystem. For example
+// `crio.containers.where(privileged || hostPID) { podNamespace podName name }`.
 crio.container @defaults("name podName podNamespace") {
   // Container ID
   id string
@@ -8690,9 +8699,10 @@ crio.container @defaults("name podName podNamespace") {
   // Process ID of the container, 0 when it is not running or CRI-O cannot be asked
   pid int
   // Whether the container runs privileged
+  //
+  // A privileged container keeps every capability, runs without seccomp and
+  // AppArmor, and can reach the host's devices.
   privileged bool
-  // Whether the container uses the node's network namespace
-  hostNetwork bool
   // Seccomp profile the container runs with (for example "Unconfined", "RuntimeDefault", or a profile path)
   seccompProfile string
   // Container labels
@@ -8705,6 +8715,43 @@ crio.container @defaults("name podName podNamespace") {
   // adds, such as /etc/hosts. Null when CRI-O's record of the container cannot
   // be read.
   mounts() []crio.container.mount
+  // Effective capabilities of the container's process (for example "CAP_NET_BIND_SERVICE")
+  capabilities() []string
+  // Bounding set of capabilities, the most the container's processes can gain
+  boundingCapabilities() []string
+  // Whether no system call is filtered
+  //
+  // True when the spec sets no seccomp profile, which is what the Unconfined
+  // profile and privileged mode do, or one that lets every system call run.
+  seccompUnconfined() bool
+  // Action the seccomp profile takes on system calls it does not list (for example "SCMP_ACT_ERRNO"); empty without a profile
+  seccompDefaultAction() string
+  // AppArmor profile the container runs with (for example "crio-default"); empty when none is applied
+  apparmorProfile() string
+  // SELinux label of the container's process; empty when none is applied
+  selinuxLabel() string
+  // Whether the container's processes are prevented from gaining privileges (allowPrivilegeEscalation false)
+  noNewPrivileges() bool
+  // Whether the container's root filesystem is read-only
+  readOnlyRootfs() bool
+  // User ID the container's process runs as, 0 for root
+  uid() int
+  // Group ID the container's process runs as
+  gid() int
+  // Whether the container uses the node's network namespace (hostNetwork)
+  hostNetwork() bool
+  // Whether the container shares the node's process namespace (hostPID)
+  hostPID() bool
+  // Whether the container shares the node's IPC namespace (hostIPC)
+  hostIPC() bool
+  // Memory limit in bytes, null when the container's memory is unlimited
+  memoryLimit() int
+  // CPU quota in billionths of a CPU (for example 250000000 for 250m), null when unlimited
+  nanoCpus() int
+  // Relative CPU weight (cgroup cpu shares), null when not set
+  cpuShares() int
+  // Maximum number of processes in the container, null when unlimited
+  pidsLimit() int
 }
 
 // Volume mounted into a CRI-O container

@@ -542,7 +542,7 @@ func dockerSeccompProfile(hc *container.HostConfig, daemon dockerDaemonSeccomp) 
 		case "":
 			// an empty value names no profile, so the daemon's applies
 		default:
-			if dockerSeccompAllowsAll(value) {
+			if seccompAllowsAll(value) {
 				profile = "unconfined"
 			} else {
 				profile = "custom"
@@ -552,17 +552,17 @@ func dockerSeccompProfile(hc *container.HostConfig, daemon dockerDaemonSeccomp) 
 	return profile
 }
 
-// dockerSeccompPermissiveActions are the seccomp actions that let a system
+// seccompPermissiveActions are the seccomp actions that let a system
 // call run.
-var dockerSeccompPermissiveActions = map[string]struct{}{
+var seccompPermissiveActions = map[string]struct{}{
 	"SCMP_ACT_ALLOW": {},
 	"SCMP_ACT_LOG":   {},
 }
 
-// dockerSeccompAllowsAll reports whether a seccomp profile lets every system
+// seccompAllowsAll reports whether a seccomp profile lets every system
 // call run: its default action and every rule's action allow or only log the
 // call. A profile that cannot be parsed is not assumed to allow everything.
-func dockerSeccompAllowsAll(profileJSON string) bool {
+func seccompAllowsAll(profileJSON string) bool {
 	var profile struct {
 		DefaultAction string `json:"defaultAction"`
 		Syscalls      []struct {
@@ -572,11 +572,11 @@ func dockerSeccompAllowsAll(profileJSON string) bool {
 	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
 		return false
 	}
-	if _, ok := dockerSeccompPermissiveActions[profile.DefaultAction]; !ok {
+	if _, ok := seccompPermissiveActions[profile.DefaultAction]; !ok {
 		return false
 	}
 	for _, sc := range profile.Syscalls {
-		if _, ok := dockerSeccompPermissiveActions[sc.Action]; !ok {
+		if _, ok := seccompPermissiveActions[sc.Action]; !ok {
 			return false
 		}
 	}

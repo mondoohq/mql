@@ -13,6 +13,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 const (
@@ -352,7 +353,7 @@ func (r *mqlContainersRegistries) list() ([]any, error) {
 			"insecure":           llx.BoolData(reg.Insecure),
 			"blocked":            llx.BoolData(reg.Blocked),
 			"mirrorByDigestOnly": llx.BoolData(reg.MirrorByDigestOnly),
-			"mirrors":            llx.ArrayData(mirrors, "containers.registry.mirror"),
+			"mirrors":            llx.ArrayData(mirrors, types.Resource("containers.registry.mirror")),
 		})
 		if err != nil {
 			return nil, err
