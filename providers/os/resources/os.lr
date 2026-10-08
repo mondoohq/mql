@@ -7936,10 +7936,15 @@ private docker.file.onbuild @defaults("expression") @context("file.context") {
 // Single Docker image on the host
 //
 // An image stored on the Docker host, with its content-addressable `id`, the
-// `tags` and `repoDigests` it is known by, its `size`, and its `labels`. Use
-// it to inventory images and check provenance, for example
+// `tags` and `repoDigests` it is known by, its `size`, and its `labels`. The
+// image configuration reports what a container started from it runs: `user`
+// and `runsAsRoot`, `entrypoint` and `cmd`, `exposedPorts`, the health check,
+// and the platform (`os`, `architecture`, `variant`) and build time
+// (`createdAt`). `containers` lists the containers created from it. Use it to
+// inventory images and check provenance, for example
 // `docker.images.where(tags.none(_ == /latest/))` to find images not pinned to
-// a floating tag.
+// a floating tag, or `docker.images.where(runsAsRoot)` to find images whose
+// containers run as root unless told otherwise.
 docker.image {
   // Image ID, the content-addressable digest of the image config
   id string
@@ -7951,6 +7956,60 @@ docker.image {
   tags []string
   // Image labels, as key/value pairs
   labels map[string]string
+  // Time the image was built, null when the image does not record it
+  createdAt() time
+  // Author recorded in the image, for example by `MAINTAINER`
+  author() string
+  // Operating system the image targets (e.g., linux, windows)
+  os() string
+  // Processor architecture the image targets (e.g., amd64, arm64)
+  architecture() string
+  // Processor architecture variant (e.g., v7, v8), empty when the image sets none
+  variant() string
+  // Account a container started from the image runs as, empty when it runs as root
+  //
+  // The image's `USER`, for example `1000:1000` or `nginx`. A container can
+  // override it, which `docker.container.user` reports.
+  user() string
+  // Whether a container started from the image runs as root
+  //
+  // True when `user` is empty or its user part is `0` or `root`. A named user
+  // other than `root` counts as not root, because the image's account database
+  // is not read.
+  runsAsRoot() bool
+  // Command the image runs, prefixed to `cmd` (e.g., ["/docker-entrypoint.sh"])
+  entrypoint() []string
+  // Default arguments to `entrypoint`, or the command when there is no entrypoint
+  cmd() []string
+  // Working directory of the image's command, empty when the image sets none
+  workingDir() string
+  // Ports the image declares with `EXPOSE`, as `port/protocol` (e.g., 80/tcp)
+  //
+  // Exposing a port documents it, it does not publish it on the host; see
+  // `docker.container.ports` for what is published.
+  exposedPorts() []string
+  // Whether the image defines a health check
+  //
+  // False when it defines none, or when it disables the one of its base image
+  // with `HEALTHCHECK NONE`.
+  hasHealthcheck() bool
+  // Health check command, for example ["CMD-SHELL", "curl -f http://localhost/"]
+  //
+  // The first entry is `CMD` or `CMD-SHELL`, or `NONE` when the image disables
+  // its base image's health check. Empty when there is none.
+  healthcheckTest() []string
+  // Seconds between health checks, null when the image has no health check
+  //
+  // Reports the engine default of 30 when the health check does not set one.
+  healthcheckInterval() int
+  // Digests of the image's filesystem layers, base layer first
+  //
+  // The digests of the uncompressed layer contents (diff IDs), which stay the
+  // same whichever registry or compression the image came from, so a layer of
+  // a known base image can be found in images built from it.
+  layers() []string
+  // Containers created from the image, running or stopped
+  containers() []docker.container
 }
 
 // Single Docker container on the host

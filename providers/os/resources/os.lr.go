@@ -9317,6 +9317,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"docker.image.labels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerImage).GetLabels()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"docker.image.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"docker.image.author": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetAuthor()).ToDataRes(types.String)
+	},
+	"docker.image.os": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetOs()).ToDataRes(types.String)
+	},
+	"docker.image.architecture": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetArchitecture()).ToDataRes(types.String)
+	},
+	"docker.image.variant": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetVariant()).ToDataRes(types.String)
+	},
+	"docker.image.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetUser()).ToDataRes(types.String)
+	},
+	"docker.image.runsAsRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetRunsAsRoot()).ToDataRes(types.Bool)
+	},
+	"docker.image.entrypoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetEntrypoint()).ToDataRes(types.Array(types.String))
+	},
+	"docker.image.cmd": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetCmd()).ToDataRes(types.Array(types.String))
+	},
+	"docker.image.workingDir": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetWorkingDir()).ToDataRes(types.String)
+	},
+	"docker.image.exposedPorts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetExposedPorts()).ToDataRes(types.Array(types.String))
+	},
+	"docker.image.hasHealthcheck": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetHasHealthcheck()).ToDataRes(types.Bool)
+	},
+	"docker.image.healthcheckTest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetHealthcheckTest()).ToDataRes(types.Array(types.String))
+	},
+	"docker.image.healthcheckInterval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetHealthcheckInterval()).ToDataRes(types.Int)
+	},
+	"docker.image.layers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetLayers()).ToDataRes(types.Array(types.String))
+	},
+	"docker.image.containers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetContainers()).ToDataRes(types.Array(types.Resource("docker.container")))
+	},
 	"docker.container.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerContainer).GetRunning()).ToDataRes(types.Asset("os.any"))
 	},
@@ -28106,6 +28154,70 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"docker.image.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDockerImage).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.image.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"docker.image.author": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Author, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.image.os": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Os, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.image.architecture": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Architecture, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.image.variant": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Variant, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.image.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).User, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.image.runsAsRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).RunsAsRoot, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.image.entrypoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Entrypoint, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.image.cmd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Cmd, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.image.workingDir": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).WorkingDir, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.image.exposedPorts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).ExposedPorts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.image.hasHealthcheck": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).HasHealthcheck, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.image.healthcheckTest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).HealthcheckTest, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.image.healthcheckInterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).HealthcheckInterval, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.image.layers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Layers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.image.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"docker.container.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -68491,12 +68603,28 @@ func (c *mqlDockerFileOnbuild) GetContext() *plugin.TValue[*mqlFileContext] {
 type mqlDockerImage struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDockerImageInternal it will be used here
-	Id          plugin.TValue[string]
-	Size        plugin.TValue[int64]
-	RepoDigests plugin.TValue[[]any]
-	Tags        plugin.TValue[[]any]
-	Labels      plugin.TValue[map[string]any]
+	mqlDockerImageInternal
+	Id                  plugin.TValue[string]
+	Size                plugin.TValue[int64]
+	RepoDigests         plugin.TValue[[]any]
+	Tags                plugin.TValue[[]any]
+	Labels              plugin.TValue[map[string]any]
+	CreatedAt           plugin.TValue[*time.Time]
+	Author              plugin.TValue[string]
+	Os                  plugin.TValue[string]
+	Architecture        plugin.TValue[string]
+	Variant             plugin.TValue[string]
+	User                plugin.TValue[string]
+	RunsAsRoot          plugin.TValue[bool]
+	Entrypoint          plugin.TValue[[]any]
+	Cmd                 plugin.TValue[[]any]
+	WorkingDir          plugin.TValue[string]
+	ExposedPorts        plugin.TValue[[]any]
+	HasHealthcheck      plugin.TValue[bool]
+	HealthcheckTest     plugin.TValue[[]any]
+	HealthcheckInterval plugin.TValue[int64]
+	Layers              plugin.TValue[[]any]
+	Containers          plugin.TValue[[]any]
 }
 
 // createDockerImage creates a new instance of this resource
@@ -68554,6 +68682,112 @@ func (c *mqlDockerImage) GetTags() *plugin.TValue[[]any] {
 
 func (c *mqlDockerImage) GetLabels() *plugin.TValue[map[string]any] {
 	return &c.Labels
+}
+
+func (c *mqlDockerImage) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
+}
+
+func (c *mqlDockerImage) GetAuthor() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Author, func() (string, error) {
+		return c.author()
+	})
+}
+
+func (c *mqlDockerImage) GetOs() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Os, func() (string, error) {
+		return c.os()
+	})
+}
+
+func (c *mqlDockerImage) GetArchitecture() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Architecture, func() (string, error) {
+		return c.architecture()
+	})
+}
+
+func (c *mqlDockerImage) GetVariant() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Variant, func() (string, error) {
+		return c.variant()
+	})
+}
+
+func (c *mqlDockerImage) GetUser() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.User, func() (string, error) {
+		return c.user()
+	})
+}
+
+func (c *mqlDockerImage) GetRunsAsRoot() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RunsAsRoot, func() (bool, error) {
+		return c.runsAsRoot()
+	})
+}
+
+func (c *mqlDockerImage) GetEntrypoint() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Entrypoint, func() ([]any, error) {
+		return c.entrypoint()
+	})
+}
+
+func (c *mqlDockerImage) GetCmd() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Cmd, func() ([]any, error) {
+		return c.cmd()
+	})
+}
+
+func (c *mqlDockerImage) GetWorkingDir() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.WorkingDir, func() (string, error) {
+		return c.workingDir()
+	})
+}
+
+func (c *mqlDockerImage) GetExposedPorts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExposedPorts, func() ([]any, error) {
+		return c.exposedPorts()
+	})
+}
+
+func (c *mqlDockerImage) GetHasHealthcheck() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HasHealthcheck, func() (bool, error) {
+		return c.hasHealthcheck()
+	})
+}
+
+func (c *mqlDockerImage) GetHealthcheckTest() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.HealthcheckTest, func() ([]any, error) {
+		return c.healthcheckTest()
+	})
+}
+
+func (c *mqlDockerImage) GetHealthcheckInterval() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.HealthcheckInterval, func() (int64, error) {
+		return c.healthcheckInterval()
+	})
+}
+
+func (c *mqlDockerImage) GetLayers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Layers, func() ([]any, error) {
+		return c.layers()
+	})
+}
+
+func (c *mqlDockerImage) GetContainers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Containers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.image", c.__id, "containers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.containers()
+	})
 }
 
 // mqlDockerContainer for the docker.container resource
