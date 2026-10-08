@@ -156,73 +156,73 @@ func TestDockerSeccompProfile(t *testing.T) {
 }
 
 func TestDockerSeccompAllowsAll(t *testing.T) {
-	assert.True(t, dockerSeccompAllowsAll(`{"defaultAction":"SCMP_ACT_ALLOW"}`))
-	assert.True(t, dockerSeccompAllowsAll(`{"defaultAction":"SCMP_ACT_LOG","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_ALLOW"}]}`))
-	assert.False(t, dockerSeccompAllowsAll(`{"defaultAction":"SCMP_ACT_ALLOW","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_ERRNO"}]}`),
+	assert.True(t, seccompAllowsAll(`{"defaultAction":"SCMP_ACT_ALLOW"}`))
+	assert.True(t, seccompAllowsAll(`{"defaultAction":"SCMP_ACT_LOG","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_ALLOW"}]}`))
+	assert.False(t, seccompAllowsAll(`{"defaultAction":"SCMP_ACT_ALLOW","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_ERRNO"}]}`),
 		"an allow-by-default profile that denies one call still filters")
-	assert.False(t, dockerSeccompAllowsAll(`{"defaultAction":"SCMP_ACT_ERRNO"}`))
-	assert.False(t, dockerSeccompAllowsAll(`not json`))
+	assert.False(t, seccompAllowsAll(`{"defaultAction":"SCMP_ACT_ERRNO"}`))
+	assert.False(t, seccompAllowsAll(`not json`))
 }
 
 func TestDockerNoNewPrivileges(t *testing.T) {
-	assert.False(t, dockerNoNewPrivileges(loadDockerInspect(t, "default").HostConfig.SecurityOpt))
-	assert.True(t, dockerNoNewPrivileges(loadDockerInspect(t, "hardened").HostConfig.SecurityOpt))
-	assert.False(t, dockerNoNewPrivileges(loadDockerInspect(t, "loose").HostConfig.SecurityOpt),
+	assert.False(t, securityOptNoNewPrivileges(loadDockerInspect(t, "default").HostConfig.SecurityOpt))
+	assert.True(t, securityOptNoNewPrivileges(loadDockerInspect(t, "hardened").HostConfig.SecurityOpt))
+	assert.False(t, securityOptNoNewPrivileges(loadDockerInspect(t, "loose").HostConfig.SecurityOpt),
 		"no-new-privileges:false must not count as enabled")
 
-	assert.True(t, dockerNoNewPrivileges([]string{"no-new-privileges:true"}))
-	assert.True(t, dockerNoNewPrivileges([]string{"no-new-privileges=true"}))
-	assert.False(t, dockerNoNewPrivileges([]string{"no-new-privileges=bogus"}))
-	assert.False(t, dockerNoNewPrivileges([]string{"label=disable"}))
+	assert.True(t, securityOptNoNewPrivileges([]string{"no-new-privileges:true"}))
+	assert.True(t, securityOptNoNewPrivileges([]string{"no-new-privileges=true"}))
+	assert.False(t, securityOptNoNewPrivileges([]string{"no-new-privileges=bogus"}))
+	assert.False(t, securityOptNoNewPrivileges([]string{"label=disable"}))
 }
 
 func TestDockerPositiveLimit(t *testing.T) {
 	hard := loadDockerInspect(t, "hardened").HostConfig
-	v, ok := dockerPositiveLimit(&hard.Memory)
+	v, ok := positiveLimit(&hard.Memory)
 	assert.True(t, ok)
 	assert.Equal(t, int64(134217728), v)
-	v, ok = dockerPositiveLimit(hard.PidsLimit)
+	v, ok = positiveLimit(hard.PidsLimit)
 	assert.True(t, ok)
 	assert.Equal(t, int64(100), v)
-	v, ok = dockerPositiveLimit(&hard.CPUShares)
+	v, ok = positiveLimit(&hard.CPUShares)
 	assert.True(t, ok)
 	assert.Equal(t, int64(512), v)
-	v, ok = dockerPositiveLimit(&hard.NanoCPUs)
+	v, ok = positiveLimit(&hard.NanoCPUs)
 	assert.True(t, ok)
 	assert.Equal(t, int64(500000000), v)
 
 	def := loadDockerInspect(t, "default").HostConfig
-	_, ok = dockerPositiveLimit(&def.Memory)
+	_, ok = positiveLimit(&def.Memory)
 	assert.False(t, ok, "memory 0 is unlimited")
-	_, ok = dockerPositiveLimit(def.PidsLimit)
+	_, ok = positiveLimit(def.PidsLimit)
 	assert.False(t, ok, "absent pids limit is unlimited")
 	// --pids-limit -1 is stored as no limit at all
-	_, ok = dockerPositiveLimit(loadDockerInspect(t, "loose").HostConfig.PidsLimit)
+	_, ok = positiveLimit(loadDockerInspect(t, "loose").HostConfig.PidsLimit)
 	assert.False(t, ok)
 
 	minusOne, zero := int64(-1), int64(0)
-	_, ok = dockerPositiveLimit(&minusOne)
+	_, ok = positiveLimit(&minusOne)
 	assert.False(t, ok)
-	_, ok = dockerPositiveLimit(&zero)
+	_, ok = positiveLimit(&zero)
 	assert.False(t, ok)
 }
 
 func TestDockerHealthcheck(t *testing.T) {
 	hard := loadDockerInspect(t, "hardened").Config.Healthcheck
-	assert.True(t, dockerHasHealthcheck(hard))
-	secs, ok := dockerHealthcheckInterval(hard)
+	assert.True(t, healthcheckDefined(hard))
+	secs, ok := healthcheckIntervalSeconds(hard)
 	assert.True(t, ok)
 	assert.Equal(t, int64(30), secs)
 
-	assert.False(t, dockerHasHealthcheck(loadDockerInspect(t, "default").Config.Healthcheck))
+	assert.False(t, healthcheckDefined(loadDockerInspect(t, "default").Config.Healthcheck))
 	stopped := loadDockerInspect(t, "stopped").Config.Healthcheck
 	require.NotNil(t, stopped)
 	assert.Equal(t, []string{"NONE"}, stopped.Test)
-	assert.False(t, dockerHasHealthcheck(stopped), "--no-healthcheck disables the check")
-	_, ok = dockerHealthcheckInterval(stopped)
+	assert.False(t, healthcheckDefined(stopped), "--no-healthcheck disables the check")
+	_, ok = healthcheckIntervalSeconds(stopped)
 	assert.False(t, ok)
 
-	secs, ok = dockerHealthcheckInterval(&container.HealthConfig{Test: []string{"CMD", "true"}})
+	secs, ok = healthcheckIntervalSeconds(&container.HealthConfig{Test: []string{"CMD", "true"}})
 	assert.True(t, ok)
 	assert.Equal(t, int64(30), secs, "an unset interval is the engine default")
 }

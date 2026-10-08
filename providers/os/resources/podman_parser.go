@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/moby/moby/api/types/container"
 )
 
 // podmanPsEntry is one record of "podman ps --format json".
@@ -88,27 +90,132 @@ func firstNonNil[T any](values ...*T) *T {
 }
 
 // podmanInspectEntry is one record of "podman inspect --format json", limited to
-// the fields describing what the container may reach.
+// the fields describing what the container may reach. The mount, device and
+// health check records have the shape Docker's have, so they decode into the
+// Docker API types.
 type podmanInspectEntry struct {
-	ID            string   `json:"Id"`
-	EffectiveCaps []string `json:"EffectiveCaps"`
-	BoundingCaps  []string `json:"BoundingCaps"`
-	Config        struct {
-		User string `json:"User"`
+	ID              string                 `json:"Id"`
+	EffectiveCaps   []string               `json:"EffectiveCaps"`
+	BoundingCaps    []string               `json:"BoundingCaps"`
+	AppArmorProfile string                 `json:"AppArmorProfile"`
+	OCIConfigPath   string                 `json:"OCIConfigPath"`
+	Mounts          []container.MountPoint `json:"Mounts"`
+	State           struct {
+		Status string        `json:"Status"`
+		Health *podmanHealth `json:"Health"`
+		// Healthcheck is the name podman 4.3 and older use for Health
+		Healthcheck *podmanHealth `json:"Healthcheck"`
+	} `json:"State"`
+	Config struct {
+		User        string                  `json:"User"`
+		Healthcheck *container.HealthConfig `json:"Healthcheck"`
 	} `json:"Config"`
 	HostConfig struct {
-		Privileged     bool     `json:"Privileged"`
-		CapAdd         []string `json:"CapAdd"`
-		CapDrop        []string `json:"CapDrop"`
-		SecurityOpt    []string `json:"SecurityOpt"`
-		ReadonlyRootfs bool     `json:"ReadonlyRootfs"`
-		NetworkMode    string   `json:"NetworkMode"`
-		PidMode        string   `json:"PidMode"`
-		UsernsMode     string   `json:"UsernsMode"`
+		Privileged     bool                      `json:"Privileged"`
+		CapAdd         []string                  `json:"CapAdd"`
+		CapDrop        []string                  `json:"CapDrop"`
+		SecurityOpt    []string                  `json:"SecurityOpt"`
+		ReadonlyRootfs bool                      `json:"ReadonlyRootfs"`
+		NetworkMode    string                    `json:"NetworkMode"`
+		PidMode        string                    `json:"PidMode"`
+		IpcMode        string                    `json:"IpcMode"`
+		UTSMode        string                    `json:"UTSMode"`
+		UsernsMode     string                    `json:"UsernsMode"`
+		CgroupMode     string                    `json:"CgroupMode"`
+		Memory         int64                     `json:"Memory"`
+		NanoCpus       int64                     `json:"NanoCpus"`
+		CPUShares      int64                     `json:"CpuShares"`
+		PidsLimit      int64                     `json:"PidsLimit"`
+		Ulimits        []podmanUlimit            `json:"Ulimits"`
+		Devices        []container.DeviceMapping `json:"Devices"`
+		Tmpfs          map[string]string         `json:"Tmpfs"`
 		RestartPolicy  struct {
 			Name string `json:"Name"`
 		} `json:"RestartPolicy"`
 	} `json:"HostConfig"`
+}
+
+type podmanHealth struct {
+	Status string `json:"Status"`
+}
+
+// healthStatus returns the status of the container's health check, empty
+// when it has none or the container is not running. Podman keeps the last
+// status of a stopped container.
+func (e *podmanInspectEntry) healthStatus() string {
+	if e.State.Status != "running" || !healthcheckDefined(e.Config.Healthcheck) {
+		return ""
+	}
+	if h := e.State.Health; h != nil && h.Status != "" {
+		return h.Status
+	}
+	if h := e.State.Healthcheck; h != nil {
+		return h.Status
+	}
+	return ""
+}
+
+// podmanUlimit is a resource limit as podman inspect lists it, named by its
+// rlimit constant (RLIMIT_NOFILE).
+type podmanUlimit struct {
+	Name string `json:"Name"`
+	Soft int64  `json:"Soft"`
+	Hard int64  `json:"Hard"`
+}
+
+// podmanUlimitName returns the name Docker and the --ulimit flag use for a
+// limit (nofile for RLIMIT_NOFILE).
+func podmanUlimitName(name string) string {
+	return strings.ToLower(strings.TrimPrefix(name, "RLIMIT_"))
+}
+
+// podmanDefaultSeccompProfiles are where the packages install the seccomp
+// profile Podman applies by default.
+var podmanDefaultSeccompProfiles = map[string]struct{}{
+	"/usr/share/containers/seccomp.json": {},
+	"/etc/containers/seccomp.json":       {},
+}
+
+// podmanSeccompProfile reports the seccomp profile a container effectively
+// runs with: default, unconfined or custom. A privileged container is not
+// filtered. The container's OCI spec, when it can be read, holds the profile
+// it was created with, so it decides whether any system call is filtered.
+// Without it, the profile is the one the container names, by path, which
+// readProfile reads, or else the engine's, from `podman info`, which is the
+// one a container created now gets. A profile that allows every system call
+// is reported as unconfined.
+func podmanSeccompProfile(privileged bool, securityOpt []string, spec *ociSpec, engine *podmanInfoSecurity, readProfile func(string) string) string {
+	if privileged {
+		return "unconfined"
+	}
+	if spec != nil && spec.seccompUnconfined() {
+		return "unconfined"
+	}
+	if spec == nil && engine != nil && !engine.SeccompEnabled {
+		return "unconfined"
+	}
+	profile := ""
+	for _, opt := range securityOpt {
+		key, value, ok := splitSecurityOpt(opt)
+		if ok && key == "seccomp" && value != "" {
+			profile = value
+		}
+	}
+	if profile == "" && engine != nil {
+		profile = engine.SeccompProfilePath
+	}
+	if _, ok := podmanDefaultSeccompProfiles[profile]; ok || profile == "" || profile == "default" {
+		return "default"
+	}
+	if profile == "unconfined" || seccompAllowsAll(readProfile(profile)) {
+		if spec != nil {
+			// the spec is filtered, so the profile changed after the
+			// container was created, which had the engine's default then
+			return "default"
+		}
+		return "unconfined"
+	}
+	return "custom"
 }
 
 // podmanImageEntry is one record of "podman images --format json".
@@ -445,6 +552,7 @@ func podmanPortDicts(ports []podmanPort) []any {
 			"containerPort": port.ContainerPort,
 			"protocol":      port.Protocol,
 			"range":         port.Range,
+			"allInterfaces": hostIP == podmanAllInterfaces || hostIP == "::",
 		})
 	}
 	return res

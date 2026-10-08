@@ -99,7 +99,7 @@ func (s *ociSpec) seccompUnconfined() bool {
 	if s.Linux == nil || len(s.Linux.Seccomp) == 0 || string(s.Linux.Seccomp) == "null" {
 		return true
 	}
-	return dockerSeccompAllowsAll(string(s.Linux.Seccomp))
+	return seccompAllowsAll(string(s.Linux.Seccomp))
 }
 
 func (s *ociSpec) seccompDefaultAction() string {
@@ -154,9 +154,9 @@ func sharesHostNamespace(spec, sandbox *ociSpec, nsType string) (bool, bool) {
 	return !spec.hasNamespace(nsType), true
 }
 
-// parseContainerdSpec decodes the Spec of `ctr containers info`. It is nil
-// when there is none.
-func parseContainerdSpec(raw json.RawMessage) (*ociSpec, error) {
+// parseOCISpec decodes an OCI runtime spec: the Spec of `ctr containers
+// info`, or a container's config.json. It is nil when there is none.
+func parseOCISpec(raw []byte) (*ociSpec, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil, nil
 	}

@@ -211,7 +211,7 @@ func (p *mqlDockerContainer) noNewPrivileges() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return dockerNoNewPrivileges(inspect.HostConfig.SecurityOpt), nil
+	return securityOptNoNewPrivileges(inspect.HostConfig.SecurityOpt), nil
 }
 
 func (p *mqlDockerContainer) readOnlyRootfs() (bool, error) {
@@ -294,9 +294,9 @@ func (p *mqlDockerContainer) restartMaxRetries() (int64, error) {
 	return int64(inspect.HostConfig.RestartPolicy.MaximumRetryCount), nil
 }
 
-// dockerPositiveLimit reports a resource limit, or false when the engine
+// positiveLimit reports a resource limit, or false when the engine
 // treats the value as unlimited or unset (0, a negative value, or none).
-func dockerPositiveLimit(v *int64) (int64, bool) {
+func positiveLimit(v *int64) (int64, bool) {
 	if v == nil || *v <= 0 {
 		return 0, false
 	}
@@ -308,7 +308,7 @@ func (p *mqlDockerContainer) limitField(field *plugin.TValue[int64], get func(*c
 	if err != nil {
 		return 0, err
 	}
-	v, ok := dockerPositiveLimit(get(inspect.HostConfig))
+	v, ok := positiveLimit(get(inspect.HostConfig))
 	if !ok {
 		field.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
@@ -361,7 +361,7 @@ func (p *mqlDockerContainer) hasHealthcheck() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return dockerHasHealthcheck(inspect.Config.Healthcheck), nil
+	return healthcheckDefined(inspect.Config.Healthcheck), nil
 }
 
 func (p *mqlDockerContainer) healthcheckTest() ([]any, error) {
@@ -380,7 +380,7 @@ func (p *mqlDockerContainer) healthcheckInterval() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	secs, ok := dockerHealthcheckInterval(inspect.Config.Healthcheck)
+	secs, ok := healthcheckIntervalSeconds(inspect.Config.Healthcheck)
 	if !ok {
 		p.HealthcheckInterval.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
@@ -530,7 +530,7 @@ func dockerSeccompProfile(hc *container.HostConfig, daemon dockerDaemonSeccomp) 
 		return profile
 	}
 	for _, opt := range hc.SecurityOpt {
-		key, value, ok := splitDockerSecurityOpt(opt)
+		key, value, ok := splitSecurityOpt(opt)
 		if !ok || key != "seccomp" {
 			continue
 		}
@@ -542,7 +542,7 @@ func dockerSeccompProfile(hc *container.HostConfig, daemon dockerDaemonSeccomp) 
 		case "":
 			// an empty value names no profile, so the daemon's applies
 		default:
-			if dockerSeccompAllowsAll(value) {
+			if seccompAllowsAll(value) {
 				profile = "unconfined"
 			} else {
 				profile = "custom"
@@ -552,17 +552,17 @@ func dockerSeccompProfile(hc *container.HostConfig, daemon dockerDaemonSeccomp) 
 	return profile
 }
 
-// dockerSeccompPermissiveActions are the seccomp actions that let a system
+// seccompPermissiveActions are the seccomp actions that let a system
 // call run.
-var dockerSeccompPermissiveActions = map[string]struct{}{
+var seccompPermissiveActions = map[string]struct{}{
 	"SCMP_ACT_ALLOW": {},
 	"SCMP_ACT_LOG":   {},
 }
 
-// dockerSeccompAllowsAll reports whether a seccomp profile lets every system
+// seccompAllowsAll reports whether a seccomp profile lets every system
 // call run: its default action and every rule's action allow or only log the
 // call. A profile that cannot be parsed is not assumed to allow everything.
-func dockerSeccompAllowsAll(profileJSON string) bool {
+func seccompAllowsAll(profileJSON string) bool {
 	var profile struct {
 		DefaultAction string `json:"defaultAction"`
 		Syscalls      []struct {
@@ -572,23 +572,23 @@ func dockerSeccompAllowsAll(profileJSON string) bool {
 	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
 		return false
 	}
-	if _, ok := dockerSeccompPermissiveActions[profile.DefaultAction]; !ok {
+	if _, ok := seccompPermissiveActions[profile.DefaultAction]; !ok {
 		return false
 	}
 	for _, sc := range profile.Syscalls {
-		if _, ok := dockerSeccompPermissiveActions[sc.Action]; !ok {
+		if _, ok := seccompPermissiveActions[sc.Action]; !ok {
 			return false
 		}
 	}
 	return true
 }
 
-// dockerNoNewPrivileges reports whether the no-new-privileges security option
+// securityOptNoNewPrivileges reports whether the no-new-privileges security option
 // is on. The daemon accepts it bare, or with a boolean value after `:` or `=`.
-func dockerNoNewPrivileges(opts []string) bool {
+func securityOptNoNewPrivileges(opts []string) bool {
 	enabled := false
 	for _, opt := range opts {
-		key, value, ok := splitDockerSecurityOpt(opt)
+		key, value, ok := splitSecurityOpt(opt)
 		if key != "no-new-privileges" {
 			continue
 		}
@@ -602,30 +602,30 @@ func dockerNoNewPrivileges(opts []string) bool {
 	return enabled
 }
 
-// splitDockerSecurityOpt splits a security option into its key and value. The
+// splitSecurityOpt splits a security option into its key and value. The
 // daemon accepts both `key=value` and the older `key:value`.
-func splitDockerSecurityOpt(opt string) (string, string, bool) {
+func splitSecurityOpt(opt string) (string, string, bool) {
 	if k, v, ok := strings.Cut(opt, "="); ok {
 		return k, v, true
 	}
 	return strings.Cut(opt, ":")
 }
 
-func dockerHasHealthcheck(hc *container.HealthConfig) bool {
+func healthcheckDefined(hc *container.HealthConfig) bool {
 	return hc != nil && len(hc.Test) > 0 && hc.Test[0] != "NONE"
 }
 
-// dockerDefaultHealthcheckInterval is the interval the engine uses when a
+// defaultHealthcheckInterval is the interval the engine uses when a
 // health check does not set one.
-const dockerDefaultHealthcheckInterval = 30 * time.Second
+const defaultHealthcheckInterval = 30 * time.Second
 
-func dockerHealthcheckInterval(hc *container.HealthConfig) (int64, bool) {
-	if !dockerHasHealthcheck(hc) {
+func healthcheckIntervalSeconds(hc *container.HealthConfig) (int64, bool) {
+	if !healthcheckDefined(hc) {
 		return 0, false
 	}
 	interval := hc.Interval
 	if interval <= 0 {
-		interval = dockerDefaultHealthcheckInterval
+		interval = defaultHealthcheckInterval
 	}
 	return int64(interval / time.Second), true
 }
@@ -679,28 +679,34 @@ func dockerPortBindings(hc *container.HostConfig) []dockerPortBinding {
 	return res
 }
 
-// dockerMounts lists the container's mounts. A tmpfs mount requested with
-// `--tmpfs` is recorded only in HostConfig.Tmpfs, not in Mounts, so it is added
-// here, read-only when its options say `ro`.
+// dockerMounts lists the container's mounts.
 func dockerMounts(inspect *container.InspectResponse) []container.MountPoint {
+	var tmpfs map[string]string
+	if inspect.HostConfig != nil {
+		tmpfs = inspect.HostConfig.Tmpfs
+	}
+	return containerMounts(inspect.Mounts, tmpfs)
+}
+
+// containerMounts lists the mounts Docker or Podman report for a container. A
+// tmpfs mount requested with `--tmpfs` is recorded only in HostConfig.Tmpfs,
+// not in Mounts, so it is added here, read-only when its options say `ro`.
+func containerMounts(mounts []container.MountPoint, tmpfsMounts map[string]string) []container.MountPoint {
 	res := []container.MountPoint{}
 	seen := map[string]struct{}{}
-	for _, m := range inspect.Mounts {
+	for _, m := range mounts {
 		res = append(res, m)
 		seen[m.Destination] = struct{}{}
 	}
-	if inspect.HostConfig == nil {
-		return res
-	}
-	tmpfs := make([]string, 0, len(inspect.HostConfig.Tmpfs))
-	for dest := range inspect.HostConfig.Tmpfs {
+	tmpfs := make([]string, 0, len(tmpfsMounts))
+	for dest := range tmpfsMounts {
 		if _, ok := seen[dest]; !ok {
 			tmpfs = append(tmpfs, dest)
 		}
 	}
 	sort.Strings(tmpfs)
 	for _, dest := range tmpfs {
-		opts := inspect.HostConfig.Tmpfs[dest]
+		opts := tmpfsMounts[dest]
 		readOnly := false
 		for _, o := range strings.Split(opts, ",") {
 			if o == "ro" {

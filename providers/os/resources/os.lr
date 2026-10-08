@@ -8894,7 +8894,14 @@ podman @defaults("installed version rootless") {
 // `effectiveCapabilities` and `boundingCapabilities` over `capAdd` and
 // `capDrop` for an audit: the engine folds a dropped capability into the
 // resulting set rather than echoing it back, so a dropped capability leaves
-// `capDrop` empty while the effective set shrinks.
+// `capDrop` empty while the effective set shrinks. `seccompProfile`,
+// `apparmorProfile`, and `noNewPrivileges` report the process restrictions,
+// the namespace modes (`networkMode`, `pidMode`, `ipcMode`, `utsMode`,
+// `usernsMode`, `cgroupnsMode`) report which host namespaces it shares, and
+// `mounts`, `devices`, and `ports` list what of the host is exposed inside it,
+// for example
+// `podman.containers.none(mounts.any(hostPath == /podman\.sock$/))` finds
+// containers that control the Podman service.
 podman.container @defaults("name state imageName") {
   init(id string)
   // Container ID
@@ -8929,11 +8936,14 @@ podman.container @defaults("name state imageName") {
   networks []string
   // Published port mappings
   //
-  // One entry per mapping, each carrying `hostIp` and `protocol` as strings and
+  // One entry per mapping, each carrying `hostIp` and `protocol` as strings,
   // `hostPort`, `containerPort`, and `range` as integers, so they compare
-  // numerically (e.g., `ports.where(containerPort == 5432)`). A `hostIp` of
-  // `0.0.0.0` publishes the port on every host interface, and `range` counts
-  // how many consecutive ports the mapping covers, `1` for a single port.
+  // numerically (e.g., `ports.where(containerPort == 5432)`), and
+  // `allInterfaces` as a boolean. A `hostIp` of `0.0.0.0` publishes the port on
+  // every host interface, which `allInterfaces` reports, so
+  // `ports.where(allInterfaces == true)` lists the ports reachable on every
+  // host interface rather than on one address such as 127.0.0.1. `range` counts how
+  // many consecutive ports the mapping covers, `1` for a single port.
   ports []dict
 
   // Whether the container runs privileged
@@ -8972,6 +8982,113 @@ podman.container @defaults("name state imageName") {
   usernsMode() string
   // Restart policy name (e.g., no, always, on-failure, unless-stopped)
   restartPolicy() string
+  // IPC namespace mode (e.g., private, shareable, host, container:<id>)
+  ipcMode() string
+  // UTS namespace mode, `host` when it shares the host's hostname (e.g., private, host)
+  utsMode() string
+  // Cgroup namespace mode (e.g., private, host)
+  cgroupnsMode() string
+  // Seccomp profile the container runs with
+  //
+  // One of `default` (the profile Podman ships), `unconfined` (no system call
+  // is filtered), or `custom` (another profile). A container that names no
+  // profile runs with the engine's, set by `seccomp_profile` in
+  // containers.conf when the container was created. A privileged container,
+  // one on a host without seccomp, and one whose profile allows every system
+  // call report `unconfined`.
+  seccompProfile() string
+  // AppArmor profile the container runs with
+  //
+  // For example `containers-default-0.50.0` or `unconfined`. Empty when the host
+  // does not use AppArmor.
+  apparmorProfile() string
+  // Whether the container's processes are prevented from gaining privileges
+  //
+  // True when the container runs with the `no-new-privileges` security option,
+  // which stops setuid binaries and file capabilities from raising the
+  // privileges of a process.
+  noNewPrivileges() bool
+  // Memory limit in bytes, null when the container's memory is unlimited
+  memoryLimit() int
+  // CPU shares relative to other containers, null when left at the engine default (1024)
+  cpuShares() int
+  // CPU quota in billionths of a CPU (e.g., 500000000 for half a CPU), null when unlimited
+  nanoCpus() int
+  // Maximum number of processes in the container, null when unlimited
+  //
+  // Podman applies a limit of 2048 unless the container or containers.conf
+  // sets another.
+  pidsLimit() int
+  // Resource limits set for the container's processes
+  //
+  // Includes the ones Podman applies by default (nofile and nproc), not only
+  // those set on the container.
+  ulimits() []podman.container.ulimit
+  // Whether the container has a health check
+  //
+  // False when neither the container nor its image defines one, or when it was
+  // disabled with `--no-healthcheck`.
+  hasHealthcheck() bool
+  // Health check command, for example ["CMD-SHELL", "curl -f http://localhost/"]
+  //
+  // The first entry is `CMD` or `CMD-SHELL`, or `NONE` when the image's health
+  // check is disabled. Empty when there is none.
+  healthcheckTest() []string
+  // Seconds between health checks, null when the container has no health check
+  //
+  // Reports the engine default of 30 when the health check does not set one.
+  healthcheckInterval() int
+  // Health status (e.g., starting, healthy, unhealthy), null when the container has no health check or is not running
+  healthStatus() string
+  // Host devices exposed inside the container
+  devices() []podman.container.device
+  // Volumes, bind mounts, and tmpfs mounts in the container
+  mounts() []podman.container.mount
+}
+
+// Resource limit set for a Podman container
+private podman.container.ulimit @defaults("name soft hard") {
+  // Limit name (e.g., nofile, nproc, core)
+  name string
+  // Soft limit, -1 when unlimited
+  soft int
+  // Hard limit, -1 when unlimited
+  hard int
+}
+
+// Host device exposed inside a Podman container
+private podman.container.device @defaults("hostPath containerPath") {
+  // Device path on the host
+  hostPath string
+  // Device path inside the container
+  containerPath string
+  // Device cgroup permissions, a combination of r (read), w (write), and m (mknod)
+  permissions string
+}
+
+// Mount in a Podman container
+//
+// One volume, bind mount, or tmpfs mount. `hostPath` is the host side of a bind
+// mount or the storage location of a volume, so
+// `mounts.where(type == "bind" && hostPath == "/run/podman/podman.sock")` finds
+// a container that can control the Podman service.
+private podman.container.mount @defaults("type containerPath hostPath readOnly") {
+  // Mount type: bind, volume, tmpfs, or image
+  type string
+  // Volume name, empty for other mount types
+  name string
+  // Path on the host that is mounted, empty for a tmpfs mount
+  hostPath string
+  // Path inside the container
+  containerPath string
+  // Whether the mount is read-only
+  readOnly bool
+  // Mode options supplied with the mount (e.g., z, Z), or a tmpfs mount's options
+  mode string
+  // Mount propagation (e.g., rprivate, rshared, rslave), empty when not applicable
+  propagation string
+  // Volume driver (e.g., local), empty for other mount types
+  driver string
 }
 
 // Podman image
