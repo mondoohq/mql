@@ -8328,7 +8328,7 @@ containerd {
   // merges them. Holds only what the files set, no defaults. Registry
   // credentials (`auth`, `auths`) and registry headers are left out.
   configuration() dict
-  // Configuration format version: 1, 2 (containerd 1.x and 2.x), or 3 (containerd 2.x)
+  // Configuration format version: 1, 2 (containerd 1.x and 2.x), 3 (containerd 2.x), or 4 (containerd 2.3 and later)
   //
   // From the files, otherwise the version of containerd's built-in defaults.
   // Null when no file sets it and the containerd version is unknown.

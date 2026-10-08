@@ -121,7 +121,14 @@ func assertContainerdMatchesDump(t *testing.T, cfg *containerdConfig, version st
 
 	paths, ok := cfg.registryConfigPaths(major)
 	require.True(t, ok)
-	assert.Equal(t, splitContainerdConfigPath(dumpValue(t, dump, at(imagesPrefix, "registry", "config_path")...).(string)), paths)
+	wantPaths := splitContainerdConfigPath(dumpValue(t, dump, at(imagesPrefix, "registry", "config_path")...).(string))
+	mirrors, _ := containerdLookup(dump, at(imagesPrefix, "registry", "mirrors"), false)
+	if m, _ := mirrors.(map[string]any); major == 2 && len(wantPaths) == 0 && len(m) == 0 {
+		// from 2.2.2 the dump leaves config_path empty, and the images
+		// plugin fills in its directories when it starts
+		wantPaths = []string{"/etc/containerd/certs.d", "/etc/docker/certs.d"}
+	}
+	assert.Equal(t, wantPaths, paths)
 
 	want := dumpValue(t, dump, at(runtimesKeys, "runtimes")...).(map[string]any)
 	got := containerdRuntimesFrom(effectiveContainerdRuntimes(cfg.merged, cfg.version, effectiveContainerdMajor(major, cfg.version)), major == 2)
@@ -447,4 +454,90 @@ func TestContainerdVersionBinaries(t *testing.T) {
 	// install paths only when root alone can change them
 	assert.Equal(t, []string{"containerd", "/var/lib/rancher/rke2/bin/containerd"},
 		containerdVersionBinaries(false, probe("", "", "/var/lib/rancher/rke2/bin/containerd")))
+}
+
+// assertContainerdServerMatchesDump checks the API server settings against a
+// dump of containerd 2.3 or later, which keeps them in server plugins.
+func assertContainerdServerMatchesDump(t *testing.T, cfg *containerdConfig, dump map[string]any) {
+	t.Helper()
+	grpc := at([]string{"plugins", containerdGRPCPlugin})
+	for _, key := range []string{"address", "uid", "gid"} {
+		want := dumpValue(t, dump, at(grpc, key)...)
+		got := cfg.serverSetting(containerdGRPCPlugin, key, []string{"grpc", key}, true)
+		if got == nil {
+			// unset in the files: containerd's default socket, owned by root
+			got = map[string]any{"address": containerdSocket, "uid": int64(0), "gid": int64(0)}[key]
+		}
+		assert.Equal(t, want, got, key)
+	}
+	want := dumpValue(t, dump, "plugins", containerdGRPCTCPPlugin, "address")
+	got, _ := cfg.serverSetting(containerdGRPCTCPPlugin, "address", []string{"grpc", "tcp_address"}, true).(string)
+	assert.Equal(t, want, got, "tcp address")
+}
+
+func TestLoadContainerdConfigDistributions(t *testing.T) {
+	// the configuration files the distributions' packages ship, and what
+	// their containerd reports running with (`containerd config dump` on
+	// Fedora 44, RHEL 9 with Docker's containerd.io, and Debian 12)
+	for _, tc := range []struct{ dir, version string }{
+		{"fedora44", "2.3.5"},
+		{"debian12", "1.6.20~ds1"},
+	} {
+		t.Run(tc.dir, func(t *testing.T) {
+			fsys := containerdTestFS(t, nil, tc.dir, "/etc/containerd")
+			cfg, err := loadContainerdConfig(fsys, containerdConfigFile, containerdMajor(tc.version))
+			require.NoError(t, err)
+			dumpName := strings.SplitN(tc.version, "~", 2)[0]
+			assertContainerdMatchesDump(t, cfg, tc.version, containerdDump(t, tc.dir+"/dump-v"+dumpName+".toml"))
+		})
+	}
+
+	// Docker's containerd.io ships `disabled_plugins = ["cri"]`, a version 1
+	// name that containerd migrates to the plugin's id
+	fsys := containerdTestFS(t, nil, "dockerce", "/etc/containerd")
+	cfg, err := loadContainerdConfig(fsys, containerdConfigFile, 2)
+	require.NoError(t, err)
+	dump := containerdDump(t, "dockerce/dump-v2.3.6.toml")
+	assert.Equal(t, dumpValue(t, dump, "disabled_plugins"), cfg.merged["disabled_plugins"])
+	assertContainerdServerMatchesDump(t, cfg, dump)
+}
+
+func TestLoadContainerdConfigServerPlugins(t *testing.T) {
+	// containerd 2.3 reads the API server settings from their plugins, and a
+	// version 3 [grpc] table only when the plugin has no section
+	fsys := containerdTestFS(t, nil, "v4server", "/etc/containerd")
+	for _, name := range []string{"config", "legacy"} {
+		t.Run(name, func(t *testing.T) {
+			cfg, err := loadContainerdConfig(fsys, "/etc/containerd/"+name+".toml", 2)
+			require.NoError(t, err)
+			assertContainerdServerMatchesDump(t, cfg, containerdDump(t, "v4server/"+name+"-dump-v2.3.5.toml"))
+		})
+	}
+}
+
+func TestContainerdVersionParts(t *testing.T) {
+	assert.Equal(t, int64(4), containerdDefaultConfigVersion("2.3.6"))
+	assert.Equal(t, int64(3), containerdDefaultConfigVersion("2.2.1"))
+	assert.Equal(t, int64(2), containerdDefaultConfigVersion("1.6.20~ds1"))
+	assert.Equal(t, int64(0), containerdDefaultConfigVersion(""))
+	assert.Equal(t, 20, containerdPatchNumber("1.6.20~ds1"))
+	assert.Equal(t, 4, containerdPatchNumber("2.1.4-k3s2"))
+	assert.Equal(t, -1, containerdPatchNumber("2.1"))
+
+	// 1.6.9 moved the sandbox image to registry.k8s.io
+	empty := &containerdConfig{merged: map[string]any{}}
+	img, ok := empty.sandboxImage("1.6.8")
+	require.True(t, ok)
+	assert.Equal(t, "k8s.gcr.io/pause:3.6", img)
+	img, ok = empty.sandboxImage("1.6.20~ds1")
+	require.True(t, ok)
+	assert.Equal(t, "registry.k8s.io/pause:3.6", img)
+}
+
+func TestContainerdV1PluginID(t *testing.T) {
+	assert.Equal(t, "io.containerd.grpc.v1.cri", containerdV1PluginID("cri"))
+	assert.Equal(t, "io.containerd.service.v1.tasks-service", containerdV1PluginID("tasks-service"))
+	assert.Equal(t, "io.containerd.grpc.v1.introspection", containerdV1PluginID("introspection"))
+	assert.Equal(t, "io.containerd.snapshotter.v1.windows", containerdV1PluginID("windows"))
+	assert.Equal(t, "io.containerd.grpc.v1.cri", containerdV1PluginID("io.containerd.grpc.v1.cri"))
 }

@@ -84,6 +84,26 @@ var containerdV1PluginNames = map[string]string{
 	"zfs":       "io.containerd.snapshotter.v1.zfs",
 }
 
+// containerdV1PluginID returns the id containerd migrates a plugin name of
+// configuration version 1 to, as its v1MigratePluginName does: a name with a
+// dot is an id already.
+func containerdV1PluginID(name string) string {
+	if strings.Contains(name, ".") {
+		return name
+	}
+	if id, ok := containerdV1PluginNames[name]; ok {
+		return id
+	}
+	switch {
+	case strings.HasSuffix(name, "-service"):
+		return "io.containerd.service.v1." + name
+	case name == "windows" || name == "windows-lcow":
+		return "io.containerd.snapshotter.v1." + name
+	default:
+		return "io.containerd.grpc.v1." + name
+	}
+}
+
 type mqlContainerdInternal struct {
 	lock   sync.Mutex
 	loaded bool
@@ -403,8 +423,8 @@ func loadContainerdConfig(fs afero.Fs, main string, major int) (*containerdConfi
 }
 
 // parseContainerdConfig decodes a containerd configuration file. A file of
-// version 1 (or none) has its plugins renamed to the ids of version 2, as
-// containerd migrates it.
+// version 1 (or none) has its plugins, and the plugins it disables or
+// requires, renamed to the ids of version 2, as containerd migrates it.
 func parseContainerdConfig(content string) (map[string]any, error) {
 	cfg := map[string]any{}
 	if _, err := toml.Decode(content, &cfg); err != nil {
@@ -414,12 +434,23 @@ func parseContainerdConfig(content string) (map[string]any, error) {
 		if plugins, ok := cfg["plugins"].(map[string]any); ok {
 			renamed := make(map[string]any, len(plugins))
 			for name, v := range plugins {
-				if id, ok := containerdV1PluginNames[name]; ok {
-					name = id
-				}
-				renamed[name] = v
+				renamed[containerdV1PluginID(name)] = v
 			}
 			cfg["plugins"] = renamed
+		}
+		for _, key := range []string{"disabled_plugins", "required_plugins"} {
+			list, ok := cfg[key].([]any)
+			if !ok {
+				continue
+			}
+			renamed := make([]any, len(list))
+			for i, item := range list {
+				if name, ok := item.(string); ok {
+					item = containerdV1PluginID(name)
+				}
+				renamed[i] = item
+			}
+			cfg[key] = renamed
 		}
 	}
 	return cfg, nil
@@ -888,14 +919,62 @@ func (c *mqlContainerd) configVersion() (int64, error) {
 	if len(cfg.files) > 0 {
 		return 1, nil
 	}
-	switch c.major {
-	case 1:
-		return 2, nil
-	case 2:
-		return 3, nil
+	if v := containerdDefaultConfigVersion(c.ver); v != 0 {
+		return v, nil
 	}
 	c.ConfigVersion.State = plugin.StateIsSet | plugin.StateIsNull
 	return 0, nil
+}
+
+// containerdDefaultConfigVersion returns the configuration version of a
+// containerd release's built-in defaults, 0 when the release is unknown:
+// 2 on 1.x, 3 on 2.0 to 2.2, and 4 from 2.3, which moved the API server
+// settings into plugins.
+func containerdDefaultConfigVersion(version string) int64 {
+	switch major, minor := containerdMajor(version), containerdMinorNumber(version); {
+	case major == 1:
+		return 2
+	case major == 2 && minor >= 3:
+		return 4
+	case major == 2:
+		return 3
+	case major > 2:
+		return 4
+	default:
+		return 0
+	}
+}
+
+// containerdMinorNumber returns the minor version of a containerd version, 0
+// when it has none.
+func containerdMinorNumber(version string) int {
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 2 {
+		return 0
+	}
+	n, _ := strconv.Atoi(parts[1])
+	return n
+}
+
+// containerdPatchNumber returns the patch version of a containerd version,
+// without a distribution suffix ("1.6.20~ds1" is 20), -1 when it has none.
+func containerdPatchNumber(version string) int {
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 3 {
+		return -1
+	}
+	digits := parts[2]
+	for i, r := range digits {
+		if r < '0' || r > '9' {
+			digits = digits[:i]
+			break
+		}
+	}
+	n, err := strconv.Atoi(digits)
+	if err != nil {
+		return -1
+	}
+	return n
 }
 
 // topLevel returns a setting outside the plugins, the value of a command-line
@@ -923,15 +1002,6 @@ func (c *mqlContainerd) topLevelString(flag string, keys []string, def string) (
 	return def, nil
 }
 
-func (c *mqlContainerd) topLevelInt(keys []string) (int64, error) {
-	v, err := c.topLevel("", keys)
-	if err != nil {
-		return 0, err
-	}
-	n, _ := v.(int64)
-	return n, nil
-}
-
 func (c *mqlContainerd) root() (string, error) {
 	c.load()
 	return c.topLevelString(c.flags.root, []string{"root"}, "/var/lib/containerd")
@@ -942,21 +1012,65 @@ func (c *mqlContainerd) state() (string, error) {
 	return c.topLevelString(c.flags.state, []string{"state"}, "/run/containerd")
 }
 
+// The plugins that hold the API server settings from configuration version 4
+// (containerd 2.3) on, which earlier versions keep in the [grpc] table.
+const (
+	containerdGRPCPlugin    = "io.containerd.server.v1.grpc"
+	containerdGRPCTCPPlugin = "io.containerd.server.v1.grpc-tcp"
+)
+
+// serverSetting returns an API server setting: from its plugin's section when
+// the files have one, as containerd 2.3 only migrates the [grpc] table to a
+// plugin that has none, else from the [grpc] table.
+func (cfg *containerdConfig) serverSetting(plugin, key string, legacy []string, fold bool) any {
+	plugins, _ := cfg.merged["plugins"].(map[string]any)
+	if section, ok := plugins[plugin].(map[string]any); ok {
+		v, _ := containerdGet(section, key, fold)
+		return v
+	}
+	v, _ := containerdLookup(cfg.merged, legacy, fold)
+	return v
+}
+
+func (c *mqlContainerd) server(plugin, key string, legacy []string) (any, error) {
+	cfg, err := c.loadConfig()
+	if err != nil {
+		return nil, err
+	}
+	return cfg.serverSetting(plugin, key, legacy, effectiveContainerdMajor(c.major, cfg.version) == 2), nil
+}
+
 func (c *mqlContainerd) grpcAddress() (string, error) {
 	c.load()
-	return c.topLevelString(c.flags.address, []string{"grpc", "address"}, containerdSocket)
+	if c.flags.address != "" {
+		return c.flags.address, nil
+	}
+	v, err := c.server(containerdGRPCPlugin, "address", []string{"grpc", "address"})
+	if err != nil {
+		return "", err
+	}
+	if s, ok := v.(string); ok && s != "" {
+		return s, nil
+	}
+	return containerdSocket, nil
 }
 
 func (c *mqlContainerd) grpcUid() (int64, error) {
-	return c.topLevelInt([]string{"grpc", "uid"})
+	v, err := c.server(containerdGRPCPlugin, "uid", []string{"grpc", "uid"})
+	n, _ := v.(int64)
+	return n, err
 }
 
 func (c *mqlContainerd) grpcGid() (int64, error) {
-	return c.topLevelInt([]string{"grpc", "gid"})
+	v, err := c.server(containerdGRPCPlugin, "gid", []string{"grpc", "gid"})
+	n, _ := v.(int64)
+	return n, err
 }
 
 func (c *mqlContainerd) grpcTcpAddress() (string, error) {
-	return c.topLevelString("", []string{"grpc", "tcp_address"}, "")
+	v, err := c.server(containerdGRPCTCPPlugin, "address", []string{"grpc", "tcp_address"})
+	s, _ := v.(string)
+	return s, err
 }
 
 func (c *mqlContainerd) disabledPlugins() ([]any, error) {
@@ -990,6 +1104,15 @@ func (cfg *containerdConfig) sandboxImage(version string) (string, bool) {
 	v, ok := cfg.effective(containerdMajor(version), containerdSandboxImage)
 	if s, isString := v.(string); ok && isString {
 		return s, true
+	}
+	if containerdMinor(version) == "1.6" {
+		// 1.6.9 moved the image to registry.k8s.io
+		switch patch := containerdPatchNumber(version); {
+		case patch >= 9:
+			return "registry.k8s.io/pause:3.6", true
+		case patch >= 0:
+			return "k8s.gcr.io/pause:3.6", true
+		}
 	}
 	img, ok := containerdSandboxImages[containerdMinor(version)]
 	return img, ok

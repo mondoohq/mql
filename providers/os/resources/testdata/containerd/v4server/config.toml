@@ -1,0 +1,12 @@
+version = 4
+
+[grpc]
+  address = "/run/ignored.sock"
+
+[plugins."io.containerd.server.v1.grpc"]
+  address = "/run/containerd/custom.sock"
+  uid = 1000
+  gid = 1000
+
+[plugins."io.containerd.server.v1.grpc-tcp"]
+  address = "0.0.0.0:2376"
