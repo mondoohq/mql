@@ -6,6 +6,7 @@ package resources
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -176,46 +177,84 @@ var podmanDefaultSeccompProfiles = map[string]struct{}{
 	"/etc/containers/seccomp.json":       {},
 }
 
+// isPodmanDefaultSeccompProfile reports whether a profile setting names the
+// profile Podman ships.
+func isPodmanDefaultSeccompProfile(profile string) bool {
+	_, ok := podmanDefaultSeccompProfiles[profile]
+	return ok || profile == "" || profile == "default"
+}
+
 // podmanSeccompProfile reports the seccomp profile a container effectively
 // runs with: default, unconfined or custom. A privileged container is not
-// filtered. The container's OCI spec, when it can be read, holds the profile
-// it was created with, so it decides whether any system call is filtered.
-// Without it, the profile is the one the container names, by path, which
-// readProfile reads, or else the engine's, from `podman info`, which is the
-// one a container created now gets. A profile that allows every system call
-// is reported as unconfined.
+// filtered.
+//
+// The container's OCI spec, when it can be read, embeds the filter it was
+// created with, so it alone decides whether any system call is filtered, and
+// no profile file is read: a filtered container is custom when it, or the
+// engine, names a profile other than the packaged one.
+//
+// Without the spec, the profile is the one the container names, by path, or
+// else the engine's from `podman info`, which is the one a container created
+// now gets. readProfile reads a named profile, so one that allows every
+// system call is reported as unconfined.
 func podmanSeccompProfile(privileged bool, securityOpt []string, spec *ociSpec, engine *podmanInfoSecurity, readProfile func(string) string) string {
 	if privileged {
 		return "unconfined"
 	}
-	if spec != nil && spec.seccompUnconfined() {
-		return "unconfined"
-	}
-	if spec == nil && engine != nil && !engine.SeccompEnabled {
-		return "unconfined"
-	}
-	profile := ""
+	named := ""
 	for _, opt := range securityOpt {
 		key, value, ok := splitSecurityOpt(opt)
 		if ok && key == "seccomp" && value != "" {
-			profile = value
+			named = value
 		}
 	}
+
+	if spec != nil {
+		if spec.seccompUnconfined() {
+			return "unconfined"
+		}
+		if named != "" && named != "unconfined" && !isPodmanDefaultSeccompProfile(named) {
+			return "custom"
+		}
+		if named == "" && engine != nil && engine.SeccompProfilePath != "unconfined" && !isPodmanDefaultSeccompProfile(engine.SeccompProfilePath) {
+			return "custom"
+		}
+		return "default"
+	}
+
+	if engine != nil && !engine.SeccompEnabled {
+		return "unconfined"
+	}
+	profile := named
 	if profile == "" && engine != nil {
 		profile = engine.SeccompProfilePath
 	}
-	if _, ok := podmanDefaultSeccompProfiles[profile]; ok || profile == "" || profile == "default" {
+	if isPodmanDefaultSeccompProfile(profile) {
 		return "default"
 	}
 	if profile == "unconfined" || seccompAllowsAll(readProfile(profile)) {
-		if spec != nil {
-			// the spec is filtered, so the profile changed after the
-			// container was created, which had the engine's default then
-			return "default"
-		}
 		return "unconfined"
 	}
 	return "custom"
+}
+
+// podmanStoragePath reports whether a path lies under one of podman's storage
+// roots (store.graphRoot, store.runRoot), where podman writes a container's
+// config.json.
+func podmanStoragePath(p string, roots ...string) bool {
+	if !path.IsAbs(p) {
+		return false
+	}
+	p = path.Clean(p)
+	for _, root := range roots {
+		if root == "" || !path.IsAbs(root) {
+			continue
+		}
+		if strings.HasPrefix(p, path.Clean(root)+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // podmanImageEntry is one record of "podman images --format json".
@@ -305,6 +344,8 @@ type podmanInfo struct {
 	} `json:"host"`
 	Store struct {
 		GraphDriverName string `json:"graphDriverName"`
+		GraphRoot       string `json:"graphRoot"`
+		RunRoot         string `json:"runRoot"`
 	} `json:"store"`
 	Version struct {
 		Version string `json:"Version"`

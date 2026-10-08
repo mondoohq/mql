@@ -8991,11 +8991,11 @@ podman.container @defaults("name state imageName") {
   // Seccomp profile the container runs with
   //
   // One of `default` (the profile Podman ships), `unconfined` (no system call
-  // is filtered), or `custom` (another profile). A container that names no
-  // profile runs with the engine's, set by `seccomp_profile` in
-  // containers.conf when the container was created. A privileged container,
-  // one on a host without seccomp, and one whose profile allows every system
-  // call report `unconfined`.
+  // is filtered), or `custom` (another profile). A privileged container, one
+  // on a host without seccomp, and one whose profile allows every system call
+  // report `unconfined`, read from the filter the container was created with.
+  // A filtered container that names no profile is `default` or `custom` by
+  // the engine's profile, `seccomp_profile` in containers.conf.
   seccompProfile() string
   // AppArmor profile the container runs with
   //

@@ -686,9 +686,14 @@ func (c *mqlPodmanContainer) seccompProfile() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	readProfile := func(path string) string { return readKubeletFile(c.MqlRuntime, path) }
+	// both paths come from the container's or the engine's settings, so they
+	// are read only as small regular files
+	readProfile := func(p string) string {
+		content, _ := readSmallRegularFile(c.MqlRuntime, p, maxSmallFileSize)
+		return content
+	}
 	var spec *ociSpec
-	if inspect.OCIConfigPath != "" {
+	if podmanStoragePath(inspect.OCIConfigPath, info.Store.GraphRoot, info.Store.RunRoot) {
 		if content := readProfile(inspect.OCIConfigPath); content != "" {
 			if parsed, err := parseOCISpec([]byte(content)); err == nil {
 				spec = parsed

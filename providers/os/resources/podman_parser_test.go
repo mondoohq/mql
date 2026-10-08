@@ -892,20 +892,45 @@ func TestPodmanSeccompProfile(t *testing.T) {
 	// a host without seccomp
 	assert.Equal(t, "unconfined", podmanSeccompProfile(false, nil, nil, &podmanInfoSecurity{SeccompEnabled: false}, read))
 
-	// The spec holds the profile the container was created with: plain was
-	// created with the default profile, so it stays filtered after the
-	// engine's profile changes to one that allows everything, or to unconfined.
+	// The spec embeds the filter the container was created with, so with a
+	// spec no profile file is read at all: plain was created with the default
+	// profile and stays filtered after the engine's profile changes.
+	noRead := func(p string) string {
+		t.Errorf("a profile file was read although the spec was available: %s", p)
+		return ""
+	}
 	plainSpec, err := parseOCISpec([]byte(readPodmanFixture(t, "config-plain.json")))
 	require.NoError(t, err)
-	assert.Equal(t, "default", podmanSeccompProfile(false, nil, plainSpec, engine, read))
-	assert.Equal(t, "default", podmanSeccompProfile(false, nil, plainSpec, allowEngine, read))
-	assert.Equal(t, "custom", podmanSeccompProfile(false, []string{"seccomp=/etc/custom.json"}, plainSpec, engine, read))
-	assert.Equal(t, "default", podmanSeccompProfile(false, nil, plainSpec, unconfinedEngine, read))
+	assert.Equal(t, "default", podmanSeccompProfile(false, nil, plainSpec, engine, noRead))
+	assert.Equal(t, "default", podmanSeccompProfile(false, nil, plainSpec, unconfinedEngine, noRead))
+	assert.Equal(t, "custom", podmanSeccompProfile(false, nil, plainSpec, allowEngine, noRead),
+		"filtered, and the engine names a profile other than the packaged one")
+	assert.Equal(t, "custom", podmanSeccompProfile(false, []string{"seccomp=/etc/custom.json"}, plainSpec, engine, noRead))
+	// a container naming a profile that allows everything: the spec says so
+	assert.Equal(t, "unconfined", podmanSeccompProfile(false, []string{"seccomp=/tmp/allow.json"}, &ociSpec{}, engine, noRead))
 	unconfinedSpec, err := parseOCISpec([]byte(readPodmanFixture(t, "config-unconfined.json")))
 	require.NoError(t, err)
 	e := c["unconfined"]
-	assert.Equal(t, "unconfined", podmanSeccompProfile(false, e.HostConfig.SecurityOpt, unconfinedSpec, engine, read))
-	assert.Equal(t, "unconfined", podmanSeccompProfile(false, nil, unconfinedSpec, engine, read), "the spec has no profile")
+	assert.Equal(t, "unconfined", podmanSeccompProfile(false, e.HostConfig.SecurityOpt, unconfinedSpec, engine, noRead))
+	assert.Equal(t, "unconfined", podmanSeccompProfile(false, nil, unconfinedSpec, engine, noRead), "the spec has no profile")
+}
+
+func TestPodmanStoragePath(t *testing.T) {
+	info, err := parsePodmanInfo(readPodmanFixture(t, "info.json"))
+	require.NoError(t, err)
+	roots := []string{info.Store.GraphRoot, info.Store.RunRoot}
+	assert.Equal(t, "/var/lib/containers/storage", info.Store.GraphRoot)
+
+	for _, e := range podmanInspectFixture(t) {
+		assert.True(t, podmanStoragePath(e.OCIConfigPath, roots...), e.OCIConfigPath)
+	}
+	assert.True(t, podmanStoragePath("/run/containers/storage/overlay-containers/x/userdata/config.json", roots...))
+	assert.False(t, podmanStoragePath("/dev/zero", roots...))
+	assert.False(t, podmanStoragePath("/var/lib/containers/storage/../../../dev/zero", roots...))
+	assert.False(t, podmanStoragePath("/var/lib/containers/storage-other/config.json", roots...))
+	assert.False(t, podmanStoragePath("var/lib/containers/storage/x/config.json", roots...), "relative")
+	assert.False(t, podmanStoragePath("", roots...))
+	assert.False(t, podmanStoragePath("/var/lib/containers/storage/x", "", "relative/root"))
 }
 
 func TestPodmanUlimitName(t *testing.T) {
