@@ -198,11 +198,39 @@ func DisplayUsedConfig() {
 	}
 }
 
-// GetAutoUpdate returns the auto_update setting from viper config.
-// Returns true (enabled) by default if not explicitly set.
+const (
+	// KeyAutoUpdate is the setting that turns automatic updates on or off: the
+	// engine's own binary and its providers alike. MONDOO_AUTO_UPDATE and the
+	// --auto-update flag bind to it.
+	KeyAutoUpdate = "auto_update"
+	// keyAutoUpdateHyphen is the same setting spelled the way the cnspec
+	// documentation showed it in mondoo.yml. Viper's key delimiter is disabled
+	// (see InitViperConfig) and nothing normalizes hyphens to underscores for
+	// keys read from a file, so this is a different key. Before it was read
+	// here, a config file following that documentation turned off neither the
+	// engine self-update nor provider updates.
+	keyAutoUpdateHyphen = "auto-update"
+)
+
+// GetAutoUpdate reports whether automatic updates are on. It governs both the
+// engine self-update and provider installation and updates; callers that need
+// to tell the two apart layer their own engine-only switches on top (see
+// selfupdate.EnvAutoUpdateEngine).
+//
+// Precedence, highest first:
+//  1. the --auto-update flag, when given
+//  2. the MONDOO_AUTO_UPDATE environment variable
+//  3. auto_update in the config file
+//  4. auto-update in the config file
+//  5. on
+//
+// Viper resolves 1 to 3 under one key. A value that does not parse as a
+// boolean counts as off.
 func GetAutoUpdate() bool {
-	if viper.IsSet("auto_update") {
-		return viper.GetBool("auto_update")
+	for _, key := range []string{KeyAutoUpdate, keyAutoUpdateHyphen} {
+		if viper.IsSet(key) {
+			return viper.GetBool(key)
+		}
 	}
 	return true
 }

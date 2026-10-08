@@ -116,8 +116,6 @@ func RegistryURL() string {
 }
 
 func detectConnectorName(args []string, rootCmd *cobra.Command, commands []*Command, existing providers.Providers) cliPreflight {
-	autoUpdate := true
-
 	config.InitViperConfig()
 
 	// Determine the providers URL:
@@ -128,9 +126,7 @@ func detectConnectorName(args []string, rootCmd *cobra.Command, commands []*Comm
 		providers.SetProviderRegistry(providers.NewMondooProviderRegistry(providers.WithBaseURL(registryURL)))
 	}
 
-	if viper.IsSet("auto_update") {
-		autoUpdate = viper.GetBool("auto_update")
-	}
+	autoUpdate := config.GetAutoUpdate()
 
 	flags := pflag.NewFlagSet("set", pflag.ContinueOnError)
 	flags.ParseErrorsAllowlist.UnknownFlags = true
@@ -619,10 +615,7 @@ func setConnector(provider *plugin.Provider, connector *plugin.Connector, run fu
 			log.Error().Msg(err.Error())
 		}
 
-		autoUpdate := true
-		if viper.IsSet("auto_update") {
-			autoUpdate = viper.GetBool("auto_update")
-		}
+		autoUpdate := config.GetAutoUpdate()
 
 		runtime.AutoUpdate = providers.UpdateProvidersConfig{
 			Enabled:         autoUpdate,

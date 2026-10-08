@@ -35,9 +35,13 @@ const (
 	DefaultRefreshInterval = 3600
 	// EnvAutoUpdate can be set to "false" or "0" to disable all auto-updates
 	// (both engine binary and providers). When off, EnvAutoUpdateEngine is also off.
+	// It is the environment spelling of the auto_update setting, which
+	// config.GetAutoUpdate resolves for providers and the engine alike.
 	EnvAutoUpdate = "MONDOO_AUTO_UPDATE"
 	// EnvAutoUpdateEngine can be set to "false" or "0" to disable engine binary
-	// auto-update specifically. It is also set to "false" after a binary self-update
+	// auto-update specifically. It can only narrow EnvAutoUpdate, never widen it:
+	// setting it to "true" does not turn the engine update back on when
+	// auto_update is off. It is also set to "false" after a binary self-update
 	// to prevent infinite update loops. Provider auto-update (which reads
 	// MONDOO_AUTO_UPDATE via viper) is not affected by this variable.
 	EnvAutoUpdateEngine = "MONDOO_AUTO_UPDATE_ENGINE"

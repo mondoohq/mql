@@ -11,6 +11,7 @@ import (
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/afero"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -461,4 +462,87 @@ func TestGetUpdateChannel(t *testing.T) {
 		viper.Set(KeyUpdateChannel, value)
 		assert.Equal(t, want, GetUpdateChannel(), "value: %q", value)
 	}
+}
+
+// autoUpdateViper sets viper up the way InitViperConfig and the root commands
+// do: no key delimiter, MONDOO_ env prefix with "-" mapped to "_", and the
+// given config file content.
+func autoUpdateViper(t *testing.T, configYAML string) {
+	t.Helper()
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.SetOptions(viper.KeyDelimiter("\\"))
+	viper.SetEnvPrefix("mondoo")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+	viper.AutomaticEnv()
+	viper.SetConfigType("yaml")
+	require.NoError(t, viper.ReadConfig(strings.NewReader(configYAML)))
+}
+
+func TestGetAutoUpdate(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string
+		env    *string
+		want   bool
+	}{
+		{name: "default is on", config: "", want: true},
+		{name: "auto_update false in config", config: "auto_update: false\n", want: false},
+		{name: "auto_update true in config", config: "auto_update: true\n", want: true},
+		// The spelling the cnspec docs showed. It used to be ignored.
+		{name: "auto-update false in config", config: "auto-update: false\n", want: false},
+		{name: "auto-update true in config", config: "auto-update: true\n", want: true},
+		{name: "canonical spelling wins over the hyphenated one", config: "auto_update: true\nauto-update: false\n", want: true},
+		{name: "env false", config: "", env: new("false"), want: false},
+		{name: "env 0", config: "", env: new("0"), want: false},
+		{name: "env False", config: "", env: new("False"), want: false},
+		{name: "env not a boolean counts as off", config: "", env: new("no"), want: false},
+		{name: "env false beats config true", config: "auto_update: true\n", env: new("false"), want: false},
+		{name: "env false beats hyphenated config true", config: "auto-update: true\n", env: new("false"), want: false},
+		{name: "env true beats config false", config: "auto_update: false\n", env: new("true"), want: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.env != nil {
+				t.Setenv("MONDOO_AUTO_UPDATE", *tc.env)
+			}
+			autoUpdateViper(t, tc.config)
+			assert.Equal(t, tc.want, GetAutoUpdate())
+		})
+	}
+}
+
+func TestGetAutoUpdateFlagWins(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		config string
+		env    string
+		flag   string
+		want   bool
+	}{
+		{name: "flag false beats config true", config: "auto_update: true\n", flag: "false", want: false},
+		{name: "flag false beats env true", env: "true", flag: "false", want: false},
+		{name: "flag true beats hyphenated config false", config: "auto-update: false\n", flag: "true", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.env != "" {
+				t.Setenv("MONDOO_AUTO_UPDATE", tc.env)
+			}
+			autoUpdateViper(t, tc.config)
+			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+			flags.Bool("auto-update", true, "")
+			require.NoError(t, viper.BindPFlag(KeyAutoUpdate, flags.Lookup("auto-update")))
+			require.NoError(t, flags.Parse([]string{"--auto-update=" + tc.flag}))
+			assert.Equal(t, tc.want, GetAutoUpdate())
+		})
+	}
+
+	t.Run("unchanged flag default does not override config", func(t *testing.T) {
+		autoUpdateViper(t, "auto-update: false\n")
+		flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+		flags.Bool("auto-update", true, "")
+		require.NoError(t, viper.BindPFlag(KeyAutoUpdate, flags.Lookup("auto-update")))
+		require.NoError(t, flags.Parse(nil))
+		assert.False(t, GetAutoUpdate())
+	})
 }

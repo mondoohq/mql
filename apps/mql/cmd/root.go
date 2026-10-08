@@ -100,7 +100,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "Enable verbose output")
 	rootCmd.PersistentFlags().String("log-level", "info", "Set the log level: error, warn, info, debug, trace")
 	rootCmd.PersistentFlags().String("api-proxy", "", "Set the proxy for communications with Mondoo Platform API")
-	rootCmd.PersistentFlags().Bool("auto-update", true, "Enable automatic provider installation and update")
+	rootCmd.PersistentFlags().Bool("auto-update", true, "Enable automatic updates of mql and its providers; overrides auto_update in the config file")
 	rootCmd.PersistentFlags().Bool("strict", false, "Require every link in an MQL chain to resolve; mark optional links with a question mark")
 	// Set NoOptDefVal to allow space-separated bool values (--auto-update false)
 	// Without this, "false" would be treated as a positional argument instead of the flag value
