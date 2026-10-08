@@ -491,7 +491,15 @@ func (c *mqlContainersConf) privileged() (bool, error) {
 }
 
 func (c *mqlContainersConf) defaultCapabilities() ([]any, error) {
-	return c.stringsOr("containers", "default_capabilities", containersDefaultCapabilities)
+	t, err := c.table("containers")
+	if err != nil {
+		return nil, err
+	}
+	caps, ok := containersStrings(t, "default_capabilities")
+	if !ok {
+		caps = containersDefaultCapabilities
+	}
+	return convert.SliceAnyToInterface(normalizeCapabilityNames(caps)), nil
 }
 
 func (c *mqlContainersConf) defaultSysctls() ([]any, error) {

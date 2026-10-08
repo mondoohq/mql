@@ -8079,8 +8079,12 @@ docker.container @defaults("names.first status"){
   // running as root on the host.
   privileged() bool
   // Capabilities requested in addition to the engine default (e.g., CAP_NET_ADMIN)
+  //
+  // In upper case with the CAP_ prefix, however the request spelled them.
   capAdd() []string
   // Capabilities requested to be removed from the engine default (e.g., ALL)
+  //
+  // In upper case with the CAP_ prefix, however the request spelled them.
   capDrop() []string
   // Security options applied to the container
   //
@@ -8855,7 +8859,9 @@ crio {
   apparmorProfile() string
   // Whether CRI-O runs containers with SELinux labeling
   selinux() bool
-  // Capabilities every container gets by default
+  // Capabilities every container gets by default (for example "CAP_CHOWN")
+  //
+  // In upper case with the CAP_ prefix, however the configuration spells them.
   defaultCapabilities() []string
   // Sysctls set in every pod (for example "net.ipv4.ip_unprivileged_port_start=0")
   defaultSysctls() []string
@@ -9236,7 +9242,8 @@ containers.conf {
   //
   // When unset, the engine's default: CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_FOWNER,
   // CAP_FSETID, CAP_KILL, CAP_NET_BIND_SERVICE, CAP_SETFCAP, CAP_SETGID,
-  // CAP_SETPCAP, CAP_SETUID, and CAP_SYS_CHROOT.
+  // CAP_SETPCAP, CAP_SETUID, and CAP_SYS_CHROOT. In upper case with the CAP_
+  // prefix, the form the engine applies, however the files spell them.
   defaultCapabilities() []string
   // Sysctls set in every container, as name=value (e.g., net.ipv4.ping_group_range=0 0)
   defaultSysctls() []string

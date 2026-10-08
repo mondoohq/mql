@@ -344,3 +344,21 @@ func TestClassifyDockerErrorSocketPermission(t *testing.T) {
 	require.Error(t, err)
 	assert.False(t, errors.Is(classifyDockerError(err), llx.ErrForbidden), "%v", err)
 }
+
+// Docker 20.10 (Debian 12) and 25 (Amazon Linux 2023) record --cap-add as
+// given: `--cap-add NET_BIND_SERVICE --cap-drop ALL` inspects as
+// CapAdd ["NET_BIND_SERVICE"], while Docker 29 records CAP_NET_BIND_SERVICE.
+// CRI-O's config lists its default_capabilities without the prefix too.
+func TestNormalizeCapabilityNames(t *testing.T) {
+	assert.Equal(t, []string{"CAP_NET_BIND_SERVICE"}, normalizeCapabilityNames([]string{"NET_BIND_SERVICE"}))
+	assert.Equal(t, []string{"CAP_NET_BIND_SERVICE"}, normalizeCapabilityNames([]string{"CAP_NET_BIND_SERVICE"}))
+	assert.Equal(t, []string{"ALL"}, normalizeCapabilityNames([]string{"ALL"}))
+	assert.Equal(t, []string{"ALL", "CAP_CHOWN", "CAP_SYS_ADMIN"}, normalizeCapabilityNames([]string{"all", "chown", " cap_sys_admin "}))
+	assert.Equal(t, []string{}, normalizeCapabilityNames(nil))
+	assert.Equal(t, []string{}, normalizeCapabilityNames([]string{""}))
+
+	inspect := loadDockerInspect(t, "hardened-docker20")
+	assert.Equal(t, []string{"NET_BIND_SERVICE"}, inspect.HostConfig.CapAdd, "as Docker 20.10 records it")
+	assert.Equal(t, []string{"CAP_NET_BIND_SERVICE"}, normalizeCapabilityNames(inspect.HostConfig.CapAdd))
+	assert.Equal(t, []string{"ALL"}, normalizeCapabilityNames(inspect.HostConfig.CapDrop))
+}

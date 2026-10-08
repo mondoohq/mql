@@ -271,7 +271,17 @@ func (c *mqlCrio) readOnly() (bool, error) {
 }
 
 func (c *mqlCrio) defaultCapabilities() ([]any, error) {
-	return c.runtimeList("default_capabilities")
+	list, err := c.runtimeList("default_capabilities")
+	if err != nil || list == nil {
+		return list, err
+	}
+	names := make([]string, 0, len(list))
+	for _, v := range list {
+		if s, ok := v.(string); ok {
+			names = append(names, s)
+		}
+	}
+	return convert.SliceAnyToInterface(normalizeCapabilityNames(names)), nil
 }
 
 func (c *mqlCrio) defaultSysctls() ([]any, error) {

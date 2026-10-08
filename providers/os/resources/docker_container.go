@@ -168,7 +168,7 @@ func (p *mqlDockerContainer) capAdd() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return convert.SliceAnyToInterface(inspect.HostConfig.CapAdd), nil
+	return convert.SliceAnyToInterface(normalizeCapabilityNames(inspect.HostConfig.CapAdd)), nil
 }
 
 func (p *mqlDockerContainer) capDrop() ([]any, error) {
@@ -176,7 +176,27 @@ func (p *mqlDockerContainer) capDrop() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return convert.SliceAnyToInterface(inspect.HostConfig.CapDrop), nil
+	return convert.SliceAnyToInterface(normalizeCapabilityNames(inspect.HostConfig.CapDrop)), nil
+}
+
+// normalizeCapabilityNames writes Linux capability names the way the engines
+// apply them: upper case with the CAP_ prefix, and ALL as it is. Docker
+// Engine before 23, and the containers.conf and crio.conf files, keep a name
+// as it was given (`net_admin`, `NET_ADMIN`), so without this the same
+// capability reads differently from host to host.
+func normalizeCapabilityNames(caps []string) []string {
+	res := make([]string, 0, len(caps))
+	for _, c := range caps {
+		c = strings.ToUpper(strings.TrimSpace(c))
+		if c == "" {
+			continue
+		}
+		if c != "ALL" && !strings.HasPrefix(c, "CAP_") {
+			c = "CAP_" + c
+		}
+		res = append(res, c)
+	}
+	return res
 }
 
 func (p *mqlDockerContainer) securityOptions() ([]any, error) {

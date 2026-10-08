@@ -227,6 +227,26 @@ func TestContainersConfDefaults(t *testing.T) {
 	assert.Equal(t, "private", cgroupns)
 }
 
+// Debian 12's Podman 4.3.1 ships default_capabilities without the CAP_
+// prefix, and a drop-in may spell them in any case. Podman normalizes them:
+// `podman info` reports CAP_CHOWN,CAP_DAC_OVERRIDE,... for the Debian file and
+// CAP_CHOWN,CAP_NET_RAW,CAP_SYS_ADMIN with the mixed-case drop-in (Podman
+// 5.8.2 on RHEL 9).
+func TestContainersConfCapabilityNames(t *testing.T) {
+	c := confResource(mergeContainersFixtures(t, "containers-conf", "debian12-podman4-usr-share.conf"), false)
+	caps, err := c.defaultCapabilities()
+	require.NoError(t, err)
+	assert.Equal(t, []any{
+		"CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_FOWNER", "CAP_FSETID", "CAP_KILL", "CAP_NET_BIND_SERVICE",
+		"CAP_SETFCAP", "CAP_SETGID", "CAP_SETPCAP", "CAP_SETUID", "CAP_SYS_CHROOT",
+	}, caps)
+
+	c = confResource(mergeContainersFixtures(t, "containers-conf", "fedora-usr-share.conf", "mixed-case-caps.conf"), false)
+	caps, err = c.defaultCapabilities()
+	require.NoError(t, err)
+	assert.Equal(t, []any{"CAP_CHOWN", "CAP_NET_RAW", "CAP_SYS_ADMIN"}, caps)
+}
+
 // A list with {append = true} adds to the earlier one, and the attribute
 // sticks: a later list without it appends too. Podman 5.8.7 gives a container
 // created with these drop-ins exactly this capability set.
