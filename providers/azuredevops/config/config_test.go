@@ -82,7 +82,7 @@ func TestAssetUrlValidatorRejectsAPercentEscapedSegment(t *testing.T) {
 func TestConfigShape(t *testing.T) {
 	assert.Equal(t, "azuredevops", Config.Root, "option root in the .lr must equal this")
 	assert.Equal(t, "go.mondoo.com/mql/providers/azuredevops", Config.ID)
-	assert.Contains(t, Config.Version, "-", "a pre-release goes to the preview channel")
+	assert.Regexp(t, `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`, Config.Version, "semver, set by the release workflow")
 	require.Len(t, Config.Requires, 1)
 	assert.Equal(t, "go.mondoo.com/mql/providers/core", Config.Requires[0].ID)
 	assert.Equal(t, 4, int(Config.DefaultParallelism))
