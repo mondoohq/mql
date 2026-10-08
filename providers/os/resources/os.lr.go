@@ -260,6 +260,7 @@ const (
 	ResourceContainerdRuntime                             string = "containerd.runtime"
 	ResourceContainerdRegistryHost                        string = "containerd.registryHost"
 	ResourceContainerdContainer                           string = "containerd.container"
+	ResourceContainerdImage                               string = "containerd.image"
 	ResourceContainerdContainerMount                      string = "containerd.container.mount"
 	ResourceCrio                                          string = "crio"
 	ResourceCrioNamespaceSignaturePolicy                  string = "crio.namespaceSignaturePolicy"
@@ -1679,6 +1680,10 @@ func init() {
 		"containerd.container": {
 			// to override args, implement: initContainerdContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createContainerdContainer,
+		},
+		"containerd.image": {
+			// to override args, implement: initContainerdImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainerdImage,
 		},
 		"containerd.container.mount": {
 			// to override args, implement: initContainerdContainerMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -9650,6 +9655,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"containerd.containers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainerd).GetContainers()).ToDataRes(types.Array(types.Resource("containerd.container")))
 	},
+	"containerd.images": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetImages()).ToDataRes(types.Array(types.Resource("containerd.image")))
+	},
 	"containerd.version": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainerd).GetVersion()).ToDataRes(types.String)
 	},
@@ -9883,6 +9891,69 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"containerd.container.pidsLimit": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainerdContainer).GetPidsLimit()).ToDataRes(types.Int)
+	},
+	"containerd.container.sourceImage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetSourceImage()).ToDataRes(types.Resource("containerd.image"))
+	},
+	"containerd.image.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetName()).ToDataRes(types.String)
+	},
+	"containerd.image.namespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetNamespace()).ToDataRes(types.String)
+	},
+	"containerd.image.digest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetDigest()).ToDataRes(types.String)
+	},
+	"containerd.image.mediaType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetMediaType()).ToDataRes(types.String)
+	},
+	"containerd.image.platforms": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetPlatforms()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.image.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"containerd.image.configDigest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetConfigDigest()).ToDataRes(types.String)
+	},
+	"containerd.image.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetSize()).ToDataRes(types.Int)
+	},
+	"containerd.image.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"containerd.image.os": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetOs()).ToDataRes(types.String)
+	},
+	"containerd.image.architecture": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetArchitecture()).ToDataRes(types.String)
+	},
+	"containerd.image.variant": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetVariant()).ToDataRes(types.String)
+	},
+	"containerd.image.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetUser()).ToDataRes(types.String)
+	},
+	"containerd.image.runsAsRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetRunsAsRoot()).ToDataRes(types.Bool)
+	},
+	"containerd.image.entrypoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetEntrypoint()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.image.cmd": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetCmd()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.image.workingDir": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetWorkingDir()).ToDataRes(types.String)
+	},
+	"containerd.image.exposedPorts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetExposedPorts()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.image.layers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetLayers()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.image.containers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetContainers()).ToDataRes(types.Array(types.Resource("containerd.container")))
 	},
 	"containerd.container.mount.type": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainerdContainerMount).GetType()).ToDataRes(types.String)
@@ -28632,6 +28703,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlContainerd).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"containerd.images": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).Images, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"containerd.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlContainerd).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -28954,6 +29029,94 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"containerd.container.pidsLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlContainerdContainer).PidsLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containerd.container.sourceImage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).SourceImage, ok = plugin.RawToTValue[*mqlContainerdImage](v.Value, v.Error)
+		return
+	},
+	"containerd.image.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).__id, ok = v.Value.(string)
+		return
+	},
+	"containerd.image.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.namespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Namespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.digest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Digest, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.mediaType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).MediaType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.platforms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Platforms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.image.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"containerd.image.configDigest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).ConfigDigest, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containerd.image.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"containerd.image.os": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Os, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.architecture": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Architecture, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.variant": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Variant, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).User, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.runsAsRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).RunsAsRoot, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.image.entrypoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Entrypoint, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.image.cmd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Cmd, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.image.workingDir": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).WorkingDir, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.exposedPorts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).ExposedPorts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.image.layers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Layers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.image.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"containerd.container.mount.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -69782,6 +69945,7 @@ type mqlContainerd struct {
 	__id       string
 	mqlContainerdInternal
 	Containers                         plugin.TValue[[]any]
+	Images                             plugin.TValue[[]any]
 	Version                            plugin.TValue[string]
 	Process                            plugin.TValue[*mqlProcess]
 	ConfigFile                         plugin.TValue[*mqlFile]
@@ -69858,6 +70022,22 @@ func (c *mqlContainerd) GetContainers() *plugin.TValue[[]any] {
 		}
 
 		return c.containers()
+	})
+}
+
+func (c *mqlContainerd) GetImages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Images, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd", c.__id, "images")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.images()
 	})
 }
 
@@ -70289,6 +70469,7 @@ type mqlContainerdContainer struct {
 	NanoCpus             plugin.TValue[int64]
 	CpuShares            plugin.TValue[int64]
 	PidsLimit            plugin.TValue[int64]
+	SourceImage          plugin.TValue[*mqlContainerdImage]
 }
 
 // createContainerdContainer creates a new instance of this resource
@@ -70505,6 +70686,199 @@ func (c *mqlContainerdContainer) GetCpuShares() *plugin.TValue[int64] {
 func (c *mqlContainerdContainer) GetPidsLimit() *plugin.TValue[int64] {
 	return plugin.GetOrCompute[int64](&c.PidsLimit, func() (int64, error) {
 		return c.pidsLimit()
+	})
+}
+
+func (c *mqlContainerdContainer) GetSourceImage() *plugin.TValue[*mqlContainerdImage] {
+	return plugin.GetOrCompute[*mqlContainerdImage](&c.SourceImage, func() (*mqlContainerdImage, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd.container", c.__id, "sourceImage")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlContainerdImage), nil
+			}
+		}
+
+		return c.sourceImage()
+	})
+}
+
+// mqlContainerdImage for the containerd.image resource
+type mqlContainerdImage struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlContainerdImageInternal
+	Name         plugin.TValue[string]
+	Namespace    plugin.TValue[string]
+	Digest       plugin.TValue[string]
+	MediaType    plugin.TValue[string]
+	Platforms    plugin.TValue[[]any]
+	Labels       plugin.TValue[map[string]any]
+	ConfigDigest plugin.TValue[string]
+	Size         plugin.TValue[int64]
+	CreatedAt    plugin.TValue[*time.Time]
+	Os           plugin.TValue[string]
+	Architecture plugin.TValue[string]
+	Variant      plugin.TValue[string]
+	User         plugin.TValue[string]
+	RunsAsRoot   plugin.TValue[bool]
+	Entrypoint   plugin.TValue[[]any]
+	Cmd          plugin.TValue[[]any]
+	WorkingDir   plugin.TValue[string]
+	ExposedPorts plugin.TValue[[]any]
+	Layers       plugin.TValue[[]any]
+	Containers   plugin.TValue[[]any]
+}
+
+// createContainerdImage creates a new instance of this resource
+func createContainerdImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainerdImage{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containerd.image", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainerdImage) MqlName() string {
+	return "containerd.image"
+}
+
+func (c *mqlContainerdImage) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainerdImage) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlContainerdImage) GetNamespace() *plugin.TValue[string] {
+	return &c.Namespace
+}
+
+func (c *mqlContainerdImage) GetDigest() *plugin.TValue[string] {
+	return &c.Digest
+}
+
+func (c *mqlContainerdImage) GetMediaType() *plugin.TValue[string] {
+	return &c.MediaType
+}
+
+func (c *mqlContainerdImage) GetPlatforms() *plugin.TValue[[]any] {
+	return &c.Platforms
+}
+
+func (c *mqlContainerdImage) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlContainerdImage) GetConfigDigest() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ConfigDigest, func() (string, error) {
+		return c.configDigest()
+	})
+}
+
+func (c *mqlContainerdImage) GetSize() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Size, func() (int64, error) {
+		return c.size()
+	})
+}
+
+func (c *mqlContainerdImage) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
+}
+
+func (c *mqlContainerdImage) GetOs() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Os, func() (string, error) {
+		return c.os()
+	})
+}
+
+func (c *mqlContainerdImage) GetArchitecture() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Architecture, func() (string, error) {
+		return c.architecture()
+	})
+}
+
+func (c *mqlContainerdImage) GetVariant() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Variant, func() (string, error) {
+		return c.variant()
+	})
+}
+
+func (c *mqlContainerdImage) GetUser() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.User, func() (string, error) {
+		return c.user()
+	})
+}
+
+func (c *mqlContainerdImage) GetRunsAsRoot() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RunsAsRoot, func() (bool, error) {
+		return c.runsAsRoot()
+	})
+}
+
+func (c *mqlContainerdImage) GetEntrypoint() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Entrypoint, func() ([]any, error) {
+		return c.entrypoint()
+	})
+}
+
+func (c *mqlContainerdImage) GetCmd() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Cmd, func() ([]any, error) {
+		return c.cmd()
+	})
+}
+
+func (c *mqlContainerdImage) GetWorkingDir() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.WorkingDir, func() (string, error) {
+		return c.workingDir()
+	})
+}
+
+func (c *mqlContainerdImage) GetExposedPorts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExposedPorts, func() ([]any, error) {
+		return c.exposedPorts()
+	})
+}
+
+func (c *mqlContainerdImage) GetLayers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Layers, func() ([]any, error) {
+		return c.layers()
+	})
+}
+
+func (c *mqlContainerdImage) GetContainers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Containers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd.image", c.__id, "containers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.containers()
 	})
 }
 
