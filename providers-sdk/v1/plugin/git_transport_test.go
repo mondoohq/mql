@@ -21,19 +21,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWithGitServer(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func TestGitServerAuthFor(t *testing.T) {
+	require.Nil(t, gitServerAuthFor(""), "no option: a nil Auth, go-git's default")
 
-	require.Equal(t, "", gitServerFrom(ctx))
-	require.Same(t, ctx, withGitServer(ctx, ""), "an empty server leaves the context as it is")
-	require.Equal(t, GitServerAzureDevOps, gitServerFrom(withGitServer(ctx, GitServerAzureDevOps)))
-}
-
-// ctxFor is the context gitClone gives a clone with the given GitServerOptionKey
-// value.
-func ctxFor(server string) context.Context {
-	return withGitServer(context.Background(), server)
+	auth := gitServerAuthFor(GitServerAzureDevOps)
+	require.Equal(t, &gitServerAuth{server: GitServerAzureDevOps}, auth)
+	require.Equal(t, "git-server", auth.Name())
+	require.Equal(t, "git-server azure-devops", auth.String())
 }
 
 func newCaps(t *testing.T, caps ...capability.Capability) *capability.List {
@@ -120,7 +114,7 @@ func (s *captureSession) UploadPack(_ context.Context, req *packp.UploadPackRequ
 }
 
 // fakeBase is a transport.Transport that records what it is asked for and
-// returns canned sessions. For every upload-pack call it keeps the endpoint
+// returns canned sessions. For every session call it keeps the endpoint
 // pointer it was handed, a copy of that endpoint taken at the moment of the
 // call, and the auth method, so a test can tell whether the wrapper passed the
 // caller's own objects through untouched.
@@ -132,6 +126,7 @@ type fakeBase struct {
 	uploadEndpoint     []*transport.Endpoint
 	uploadEndpointCopy []transport.Endpoint
 	uploadAuth         []transport.AuthMethod
+	receiveAuth        []transport.AuthMethod
 }
 
 // copyEndpoint is a value copy of ep that shares no byte slice with it.
@@ -150,7 +145,8 @@ func (b *fakeBase) NewUploadPackSession(ep *transport.Endpoint, auth transport.A
 	return b.upload, b.uploadErr
 }
 
-func (b *fakeBase) NewReceivePackSession(*transport.Endpoint, transport.AuthMethod) (transport.ReceivePackSession, error) {
+func (b *fakeBase) NewReceivePackSession(_ *transport.Endpoint, auth transport.AuthMethod) (transport.ReceivePackSession, error) {
+	b.receiveAuth = append(b.receiveAuth, auth)
 	return b.receive, nil
 }
 
@@ -185,7 +181,10 @@ var (
 	}
 )
 
-func TestGitServerTransport_PassesTheEndpointAndAuthThroughUntouched(t *testing.T) {
+// Without a gitServerAuth there is no wrapper at all: the session is the base
+// transport's very own, asked for with the caller's endpoint and auth,
+// whatever host the clone is for.
+func TestGitServerTransport_OtherAuthGetsTheBaseSessionUntouched(t *testing.T) {
 	// Each call builds a fresh auth, so the one handed to the wrapper can be
 	// compared with an independent, pristine copy of itself afterwards.
 	auths := []struct {
@@ -208,11 +207,9 @@ func TestGitServerTransport_PassesTheEndpointAndAuthThroughUntouched(t *testing.
 				got, err := wrapper.NewUploadPackSession(ep, auth)
 
 				require.NoError(t, err)
-				// Every session is wrapped the same way, around the very
-				// session the base transport produced.
-				wrapped, ok := got.(*gitServerUploadPackSession)
-				require.True(t, ok)
-				require.Same(t, session, wrapped.UploadPackSession)
+				// The very object the base transport produced: no wrapper, so the
+				// request it later sends is whatever go-git built.
+				require.Same(t, session, got)
 
 				// The base transport was asked once, with the caller's own
 				// endpoint and auth. Nothing in them was edited before the
@@ -233,55 +230,37 @@ func TestGitServerTransport_PassesTheEndpointAndAuthThroughUntouched(t *testing.
 	}
 }
 
-// Without the server option the request reaches the base session as go-git
-// built it: the same object, with no capability added, dropped or changed,
-// whatever host the clone is for.
-func TestGitServerSession_WithoutTheOptionTheRequestIsUntouched(t *testing.T) {
-	requests := map[string][]capability.Capability{
-		"go-git's default request":          {capability.Sideband64k, capability.OFSDelta},
-		"multi_ack and thin-pack, as given": {capability.MultiACK, capability.ThinPack, capability.Sideband64k},
-	}
-	for _, raw := range slices.Concat(otherHostURLs, azureDevOpsURLs) {
-		for name, caps := range requests {
-			t.Run(raw+"/"+name, func(t *testing.T) {
-				session := &captureSession{}
-				wrapper := &gitServerTransport{base: &fakeBase{upload: session}}
-				got, err := wrapper.NewUploadPackSession(mustEndpoint(t, raw), nil)
-				require.NoError(t, err)
-
-				req := packp.NewUploadPackRequest()
-				req.Capabilities = newCaps(t, caps...)
-				want := capSet(req.Capabilities)
-				_, err = got.UploadPack(context.Background(), req)
-
-				require.ErrorIs(t, err, errCaptured, "the underlying session's answer is passed through")
-				require.Equal(t, 1, session.calls)
-				require.Same(t, req, session.got, "the request is the caller's own object")
-				require.Equal(t, want, capSet(session.got.Capabilities))
-			})
-		}
-	}
-}
-
-// With the option naming Azure DevOps the request gains multi_ack_detailed and
-// loses thin-pack, edited in place so that go-git decodes the response against
-// what was sent. The host plays no part: a loopback or self-hosted address gets
-// the same request as dev.azure.com.
-func TestGitServerSession_AzureDevOpsRequestIsAdjusted(t *testing.T) {
+// A gitServerAuth naming Azure DevOps is taken off before the base transport
+// sees it, so the URL's credentials are used as for every other clone, and the
+// session is wrapped so that its request carries what Azure DevOps requires.
+// The host plays no part: a loopback or self-hosted address is treated like
+// dev.azure.com.
+func TestGitServerTransport_AzureDevOpsAuthGetsTheAdjustedSession(t *testing.T) {
 	for _, raw := range slices.Concat(azureDevOpsURLs, []string{
 		"http://ci:token@127.0.0.1:8080/fabrikam-fixture-org/scan-test/_git/ado-scan-test-iac",
 		"https://tfs.corp.example/collection/project/_git/repo",
 	}) {
 		t.Run(raw, func(t *testing.T) {
 			session := &captureSession{}
-			wrapper := &gitServerTransport{base: &fakeBase{upload: session}}
-			got, err := wrapper.NewUploadPackSession(mustEndpoint(t, raw), nil)
+			base := &fakeBase{upload: session}
+			wrapper := &gitServerTransport{base: base}
+			ep, wantEP := mustEndpoint(t, raw), mustEndpoint(t, raw)
+
+			got, err := wrapper.NewUploadPackSession(ep, gitServerAuthFor(GitServerAzureDevOps))
+
 			require.NoError(t, err)
+			wrapped, ok := got.(*azureDevOpsUploadPackSession)
+			require.True(t, ok)
+			require.Same(t, session, wrapped.UploadPackSession, "wrapped around the very session the base produced")
+			require.Len(t, base.uploadAuth, 1)
+			require.Nil(t, base.uploadAuth[0], "the marker never reaches the base transport")
+			require.Same(t, ep, base.uploadEndpoint[0])
+			require.Equal(t, *wantEP, copyEndpoint(ep), "the endpoint, credentials included, is unchanged")
 
 			// go-git's default request: neither multi_ack nor thin-pack.
 			req := packp.NewUploadPackRequest()
 			require.NoError(t, req.Capabilities.Set(capability.Sideband64k))
-			_, err = got.UploadPack(ctxFor(GitServerAzureDevOps), req)
+			_, err = got.UploadPack(context.Background(), req)
 
 			require.ErrorIs(t, err, errCaptured, "the underlying session's answer is passed through")
 			require.Equal(t, 1, session.calls)
@@ -291,29 +270,33 @@ func TestGitServerSession_AzureDevOpsRequestIsAdjusted(t *testing.T) {
 	}
 }
 
-// Only the one value this package knows adjusts a request. An unknown value is
-// caught by NewGitClone, not here, so the transport leaves it alone.
-func TestGitServerSession_OtherValuesLeaveTheRequestUntouched(t *testing.T) {
+// A gitServerAuth with a value this transport does not know is still taken
+// off, and the session is the base transport's own. NewGitClone refuses such a
+// value before a clone starts; this pins what the transport does on its own.
+func TestGitServerTransport_UnknownServerGetsTheBaseSession(t *testing.T) {
 	session := &captureSession{}
-	wrapped := &gitServerUploadPackSession{UploadPackSession: session}
-	req := packp.NewUploadPackRequest()
-	require.NoError(t, req.Capabilities.Set(capability.Sideband64k))
+	base := &fakeBase{upload: session}
+	wrapper := &gitServerTransport{base: base}
 
-	_, err := wrapped.UploadPack(ctxFor("gitea"), req)
+	got, err := wrapper.NewUploadPackSession(mustEndpoint(t, otherHostURLs[0]), &gitServerAuth{server: "gitea"})
 
-	require.ErrorIs(t, err, errCaptured)
-	require.Same(t, req, session.got)
-	require.Equal(t, []string{"side-band-64k"}, capSet(session.got.Capabilities))
+	require.NoError(t, err)
+	require.Same(t, session, got)
+	require.Len(t, base.uploadAuth, 1)
+	require.Nil(t, base.uploadAuth[0])
 }
 
 func TestGitServerTransport_BaseErrorsPassThroughUnchanged(t *testing.T) {
 	boom := errors.New("boom")
-	for _, raw := range []string{otherHostURLs[0], azureDevOpsURLs[0]} {
-		t.Run(raw, func(t *testing.T) {
+	for name, auth := range map[string]transport.AuthMethod{
+		"no auth":           nil,
+		"azure devops auth": gitServerAuthFor(GitServerAzureDevOps),
+	} {
+		t.Run(name, func(t *testing.T) {
 			session := &captureSession{}
 			wrapper := &gitServerTransport{base: &fakeBase{upload: session, uploadErr: boom}}
 
-			got, err := wrapper.NewUploadPackSession(mustEndpoint(t, raw), nil)
+			got, err := wrapper.NewUploadPackSession(mustEndpoint(t, azureDevOpsURLs[0]), auth)
 
 			require.Same(t, boom, err)
 			require.Same(t, session, got)
@@ -323,19 +306,37 @@ func TestGitServerTransport_BaseErrorsPassThroughUnchanged(t *testing.T) {
 
 func TestGitServerTransport_ReceivePackIsNeverWrapped(t *testing.T) {
 	receive := &fakeReceiveSession{}
-	wrapper := &gitServerTransport{base: &fakeBase{receive: receive}}
+	basic := &githttp.BasicAuth{Username: "ci", Password: fixtureToken}
+	tests := map[string]struct {
+		auth     transport.AuthMethod
+		wantBase transport.AuthMethod // what the base transport is handed
+	}{
+		"no auth":           {nil, nil},
+		"basic auth":        {basic, basic},
+		"azure devops auth": {gitServerAuthFor(GitServerAzureDevOps), nil},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			base := &fakeBase{receive: receive}
+			wrapper := &gitServerTransport{base: base}
 
-	for _, raw := range []string{otherHostURLs[0], azureDevOpsURLs[0]} {
-		got, err := wrapper.NewReceivePackSession(mustEndpoint(t, raw), nil)
-		require.NoError(t, err)
-		require.Same(t, receive, got)
+			got, err := wrapper.NewReceivePackSession(mustEndpoint(t, azureDevOpsURLs[0]), tc.auth)
+
+			require.NoError(t, err)
+			require.Same(t, receive, got)
+			require.Len(t, base.receiveAuth, 1)
+			if tc.wantBase == nil {
+				require.Nil(t, base.receiveAuth[0])
+			} else {
+				require.Same(t, tc.wantBase, base.receiveAuth[0])
+			}
+		})
 	}
 }
 
-func TestGitServerSession_NilRequestsReachTheUnderlyingSession(t *testing.T) {
+func TestAzureDevOpsSession_NilRequestsReachTheUnderlyingSession(t *testing.T) {
 	// go-git validates the request itself and reports ErrEmptyUploadPackRequest;
-	// the wrapper must not turn that into a nil-pointer panic, even when the
-	// context asks for the Azure DevOps request.
+	// the wrapper must not turn that into a nil-pointer panic.
 	nilCaps := &packp.UploadPackRequest{}
 	for name, req := range map[string]*packp.UploadPackRequest{
 		"nil request":      nil,
@@ -343,10 +344,10 @@ func TestGitServerSession_NilRequestsReachTheUnderlyingSession(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			session := &captureSession{}
-			wrapped := &gitServerUploadPackSession{UploadPackSession: session}
+			wrapped := &azureDevOpsUploadPackSession{UploadPackSession: session}
 
 			var err error
-			require.NotPanics(t, func() { _, err = wrapped.UploadPack(ctxFor(GitServerAzureDevOps), req) })
+			require.NotPanics(t, func() { _, err = wrapped.UploadPack(context.Background(), req) })
 
 			require.ErrorIs(t, err, errCaptured)
 			require.Equal(t, 1, session.calls)
@@ -429,13 +430,13 @@ func TestInstallGitTransport_WrapsOnceHoweverOftenItIsCalled(t *testing.T) {
 
 // The tests below clone from the in-process fake git server of
 // git_fake_server_test.go over real HTTP. Both fakes listen on loopback, so
-// which request a clone sends is decided by the server option alone.
+// which request a clone sends is decided by the clone option alone.
 
 func TestClone_AzureDevOpsSucceedsWithTheServerOption(t *testing.T) {
 	resetGitTransport(t)
 	srv := newFakeGitServer(t, fakeAzureDevOps, fixtureToken)
 
-	dir, closer, err := gitClone(srv.repoURL("127.0.0.1", "ci:"+fixtureToken), GitServerAzureDevOps)
+	dir, closer, err := gitClone(srv.repoURL("127.0.0.1", "ci:"+fixtureToken), withGitServer(GitServerAzureDevOps))
 	require.NoError(t, err)
 	defer closer()
 
@@ -446,6 +447,9 @@ func TestClone_AzureDevOpsSucceedsWithTheServerOption(t *testing.T) {
 	reqs := srv.uploadPackRequests()
 	require.Len(t, reqs, 1)
 	require.Equal(t, []string{"agent", "multi_ack_detailed", "shallow", "side-band-64k"}, capSet(reqs[0].Caps))
+	// The credential in the URL was used, as for every other clone: the
+	// fake would have answered 401 otherwise.
+	require.NotEmpty(t, reqs[0].Header.Get("Authorization"))
 }
 
 // Without the option an Azure DevOps server still gets go-git's default request
@@ -454,7 +458,7 @@ func TestClone_AzureDevOpsFailsWithoutTheServerOption(t *testing.T) {
 	resetGitTransport(t)
 	srv := newFakeGitServer(t, fakeAzureDevOps, fixtureToken)
 
-	dir, closer, err := gitClone(srv.repoURL("127.0.0.1", "ci:"+fixtureToken), "")
+	dir, closer, err := gitClone(srv.repoURL("127.0.0.1", "ci:"+fixtureToken))
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, "status code: 400")
@@ -473,14 +477,18 @@ func TestClone_WithoutTheOptionKeepsGoGitsDefaultRequest(t *testing.T) {
 	// Control: go-git's own transport, no wrapper anywhere.
 	_, err := cloneWithStockTransport(t, srv.repoURL("localhost", userinfo))
 	require.NoError(t, err)
-	// The same clone through gitClone, which installs the wrapper.
-	dir, closer, err := gitClone(srv.repoURL("localhost", userinfo), "")
-	require.NoError(t, err)
-	defer closer()
-	require.FileExists(t, filepath.Join(dir, "main.tf"))
+	// The same clone through gitClone, which installs the wrapper: once with
+	// no option at all, once with the empty server that NewGitClone passes
+	// for a connection without GitServerOptionKey.
+	for _, opts := range [][]gitCloneOption{nil, {withGitServer("")}} {
+		dir, closer, err := gitClone(srv.repoURL("localhost", userinfo), opts...)
+		require.NoError(t, err)
+		defer closer()
+		require.FileExists(t, filepath.Join(dir, "main.tf"))
+	}
 
 	reqs := srv.uploadPackRequests()
-	require.Len(t, reqs, 2)
+	require.Len(t, reqs, 3)
 
 	// The exact capability list go-git sends today: no multi_ack, no
 	// multi_ack_detailed, no thin-pack. "shallow" is there because gitClone
@@ -488,19 +496,20 @@ func TestClone_WithoutTheOptionKeepsGoGitsDefaultRequest(t *testing.T) {
 	for i, r := range reqs {
 		require.Equal(t, []string{"agent", "ofs-delta", "shallow", "side-band-64k"}, capSet(r.Caps), "request %d", i)
 		require.Equal(t, []string{capability.DefaultAgent()}, r.Caps.Get(capability.Agent), "request %d", i)
+		// And the request bytes and headers are identical to the control's,
+		// credentials included: the wrapper adds, drops and alters none. The
+		// Authorization check keeps the comparison from passing vacuously on
+		// empty header sets.
+		require.Equal(t, string(reqs[0].Body), string(r.Body), "request %d", i)
+		require.NotEmpty(t, r.Header.Get("Authorization"), "request %d", i)
+		require.Equal(t, reqs[0].Header, r.Header, "request %d", i)
 	}
-	// And the request bytes are identical to the control's.
-	require.Equal(t, string(reqs[0].Body), string(reqs[1].Body))
-
-	// So are the headers of both requests of a clone, credentials included:
-	// the wrapper adds, drops and alters none. The Authorization check keeps
-	// the comparison from passing vacuously on two empty header sets.
-	require.NotEmpty(t, reqs[0].Header.Get("Authorization"))
-	require.Equal(t, reqs[0].Header, reqs[1].Header)
 	adverts := srv.advertisementHeaders()
-	require.Len(t, adverts, 2)
-	require.NotEmpty(t, adverts[0].Get("Authorization"))
-	require.Equal(t, adverts[0], adverts[1])
+	require.Len(t, adverts, 3)
+	for i, h := range adverts {
+		require.NotEmpty(t, h.Get("Authorization"), "advertisement %d", i)
+		require.Equal(t, adverts[0], h, "advertisement %d", i)
+	}
 }
 
 func TestClone_ConcurrentClonesWithAndWithoutTheOptionDoNotInterfere(t *testing.T) {
@@ -515,9 +524,9 @@ func TestClone_ConcurrentClonesWithAndWithoutTheOptionDoNotInterfere(t *testing.
 	const perServer = 6
 	var wg sync.WaitGroup
 	errs := make(chan error, 2*perServer)
-	cloneOnce := func(url, server string) {
+	cloneOnce := func(url string, opts ...gitCloneOption) {
 		defer wg.Done()
-		dir, closer, err := gitClone(url, server)
+		dir, closer, err := gitClone(url, opts...)
 		if err != nil {
 			errs <- err
 			return
@@ -528,8 +537,8 @@ func TestClone_ConcurrentClonesWithAndWithoutTheOptionDoNotInterfere(t *testing.
 	}
 	for i := 0; i < perServer; i++ {
 		wg.Add(2)
-		go cloneOnce(adoURL, GitServerAzureDevOps)
-		go cloneOnce(otherURL, "")
+		go cloneOnce(adoURL, withGitServer(GitServerAzureDevOps))
+		go cloneOnce(otherURL)
 	}
 	wg.Wait()
 	close(errs)
@@ -560,11 +569,14 @@ func TestClone_DoesNotTouchGoGitsGlobalCapabilityFilter(t *testing.T) {
 	filterBefore := slices.Clone(transport.UnsupportedCapabilities)
 	require.Equal(t, goGitDefault, filterBefore, "precondition: the filter starts as go-git ships it")
 
-	for url, server := range map[string]string{
-		ado.repoURL("127.0.0.1", userinfo):   GitServerAzureDevOps,
-		other.repoURL("localhost", userinfo): "",
+	for _, clone := range []struct {
+		url  string
+		opts []gitCloneOption
+	}{
+		{ado.repoURL("127.0.0.1", userinfo), []gitCloneOption{withGitServer(GitServerAzureDevOps)}},
+		{other.repoURL("localhost", userinfo), nil},
 	} {
-		_, closer, err := gitClone(url, server)
+		_, closer, err := gitClone(clone.url, clone.opts...)
 		require.NoError(t, err)
 		closer()
 	}

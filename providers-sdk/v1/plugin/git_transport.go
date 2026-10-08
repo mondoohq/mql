@@ -23,61 +23,78 @@ import (
 //
 // go-git has no per-clone transport either: it takes one from its
 // process-global protocol table by URL scheme. So the http(s) transports are
-// wrapped once, and the wrapper adjusts a request only when the clone's
-// context names Azure DevOps as the server. gitClone puts that in the context
+// wrapped once, and the wrapper adjusts a request only for a clone whose
+// CloneOptions.Auth is a gitServerAuth naming Azure DevOps. gitClone sets that
 // from the connection's GitServerOptionKey, which the provider that discovered
 // the repository set because it knows what it talked to; nothing here guesses
-// from a host name. A clone without the option sends exactly what go-git built.
+// from a host name. Every other clone gets the base transport's own session.
 
-// gitServerKey is the context key under which gitClone records the
-// GitServerOptionKey value for the transport.
-type gitServerKey struct{}
+// gitServerAuth is the transport.AuthMethod gitClone sets on a clone whose
+// connection names its git server. Auth is the one per-clone value go-git
+// hands the transport, for the clone and again for each submodule, which is
+// why the marker rides on it. It carries no credential: those stay in the URL,
+// as for every other clone, and gitServerTransport hands the base transport a
+// nil auth in its place so that the URL's userinfo is used as before.
+type gitServerAuth struct {
+	// server is the GitServerOptionKey value.
+	server string
+}
 
-// withGitServer records server, a GitServerOptionKey value, in ctx. An empty
-// server returns ctx as it is.
-func withGitServer(ctx context.Context, server string) context.Context {
+func (a *gitServerAuth) Name() string   { return "git-server" }
+func (a *gitServerAuth) String() string { return "git-server " + a.server }
+
+// gitServerAuthFor is the Auth for a clone of the named server: nil for "",
+// which is go-git's default request.
+func gitServerAuthFor(server string) transport.AuthMethod {
 	if server == "" {
-		return ctx
+		return nil
 	}
-	return context.WithValue(ctx, gitServerKey{}, server)
+	return &gitServerAuth{server: server}
 }
 
-// gitServerFrom returns the server withGitServer recorded in ctx, or "".
-func gitServerFrom(ctx context.Context) string {
-	server, _ := ctx.Value(gitServerKey{}).(string)
-	return server
-}
-
-// gitServerTransport is a transport.Transport that delegates to base and wraps
-// each upload-pack session so that its request can be adjusted for the server
-// the clone's context names. The endpoint and auth reach base as the caller
-// built them.
+// gitServerTransport is a transport.Transport that delegates to base. A
+// session asked for with a gitServerAuth is wrapped for the server it names;
+// every other session is the base transport's own, asked for with the
+// caller's endpoint and auth as they are.
 type gitServerTransport struct {
 	base transport.Transport
 }
 
 func (t *gitServerTransport) NewUploadPackSession(ep *transport.Endpoint, auth transport.AuthMethod) (transport.UploadPackSession, error) {
-	session, err := t.base.NewUploadPackSession(ep, auth)
+	marker, ok := auth.(*gitServerAuth)
+	if !ok {
+		// Not one of ours: hand back exactly what the base transport produces.
+		return t.base.NewUploadPackSession(ep, auth)
+	}
+	session, err := t.base.NewUploadPackSession(ep, nil)
 	if err != nil {
 		return session, err
 	}
-	return &gitServerUploadPackSession{UploadPackSession: session}, nil
+	switch marker.server {
+	case GitServerAzureDevOps:
+		return &azureDevOpsUploadPackSession{UploadPackSession: session}, nil
+	default:
+		// NewGitClone refuses a value this transport does not know before a
+		// clone starts. On its own the transport sends go-git's default.
+		return session, nil
+	}
 }
 
 func (t *gitServerTransport) NewReceivePackSession(ep *transport.Endpoint, auth transport.AuthMethod) (transport.ReceivePackSession, error) {
+	if _, ok := auth.(*gitServerAuth); ok {
+		auth = nil
+	}
 	return t.base.NewReceivePackSession(ep, auth)
 }
 
-// gitServerUploadPackSession adjusts the upload-pack request before it is sent
-// when the context names Azure DevOps, and otherwise hands the request to the
-// embedded session untouched. The advertisement path is the embedded
-// session's, unchanged.
-type gitServerUploadPackSession struct {
+// azureDevOpsUploadPackSession adjusts the upload-pack request before it is
+// sent. The advertisement path is the embedded session's, unchanged.
+type azureDevOpsUploadPackSession struct {
 	transport.UploadPackSession
 }
 
-func (s *gitServerUploadPackSession) UploadPack(ctx context.Context, req *packp.UploadPackRequest) (*packp.UploadPackResponse, error) {
-	if gitServerFrom(ctx) == GitServerAzureDevOps && req != nil && req.Capabilities != nil {
+func (s *azureDevOpsUploadPackSession) UploadPack(ctx context.Context, req *packp.UploadPackRequest) (*packp.UploadPackResponse, error) {
+	if req != nil && req.Capabilities != nil {
 		if err := adjustAzureDevOpsCapabilities(req.Capabilities); err != nil {
 			return nil, err
 		}

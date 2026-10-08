@@ -5,7 +5,6 @@ package plugin
 
 import (
 	"cmp"
-	"context"
 	"net/url"
 	"os"
 	"slices"
@@ -81,7 +80,7 @@ func NewGitClone(asset *inventory.Asset) (string, func(), error) {
 		return "", nil, errors.New("missing url for git repo " + asset.Name)
 	}
 
-	path, closer, err := gitClone(gitUrl, server)
+	path, closer, err := gitClone(gitUrl, withGitServer(server))
 	if err != nil {
 		return "", nil, err
 	}
@@ -100,11 +99,28 @@ func gitServerOption(opts map[string]string) (string, error) {
 	}
 }
 
-// gitClone clones gitUrl shallowly into a fresh temporary directory. server is
-// the GitServerOptionKey value, "" for go-git's default request; the transport
-// reads it from the clone's context.
-func gitClone(gitUrl, server string) (string, func(), error) {
+// gitCloneOption adjusts one clone. Without options a clone does exactly what
+// it did before options existed.
+type gitCloneOption func(*gitCloneConfig)
+
+type gitCloneConfig struct {
+	// server is the GitServerOptionKey value; "" sends go-git's default request.
+	server string
+}
+
+// withGitServer names the git server behind the URL, a GitServerOptionKey
+// value, so that the transport can adjust the request to it. "" is the default.
+func withGitServer(server string) gitCloneOption {
+	return func(c *gitCloneConfig) { c.server = server }
+}
+
+// gitClone clones gitUrl shallowly into a fresh temporary directory.
+func gitClone(gitUrl string, opts ...gitCloneOption) (string, func(), error) {
 	installGitTransport()
+	var cfg gitCloneConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 
 	cloneDir, err := os.MkdirTemp(os.TempDir(), "mql-git-clone")
 	if err != nil {
@@ -129,8 +145,9 @@ func gitClone(gitUrl, server string) (string, func(), error) {
 	secrets, userinfoNames := urlSecrets(gitUrl)
 
 	log.Info().Str("url", infoUrl).Str("path", cloneDir).Msg("git clone")
-	repo, err := git.PlainCloneContext(withGitServer(context.Background(), server), cloneDir, false, &git.CloneOptions{
+	repo, err := git.PlainClone(cloneDir, false, &git.CloneOptions{
 		URL:               gitUrl,
+		Auth:              gitServerAuthFor(cfg.server),
 		Progress:          os.Stderr,
 		Depth:             1,
 		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,

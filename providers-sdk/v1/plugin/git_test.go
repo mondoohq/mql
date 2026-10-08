@@ -48,7 +48,7 @@ func TestGitClone_ReturnsTheRepositoryAndACloserThatRemovesIt(t *testing.T) {
 	tmp := isolateTempDir(t)
 	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
 
-	dir, closer, err := gitClone(srv.repoURL("localhost", "ci:"+fixtureToken), "")
+	dir, closer, err := gitClone(srv.repoURL("localhost", "ci:"+fixtureToken))
 	require.NoError(t, err)
 	require.NotNil(t, closer)
 
@@ -69,7 +69,7 @@ func TestGitClone_AuthenticationFailureIsReturnedAsAnError(t *testing.T) {
 	tmp := isolateTempDir(t)
 	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
 
-	dir, closer, err := gitClone(srv.repoURL("localhost", "ci:not-the-token"), "")
+	dir, closer, err := gitClone(srv.repoURL("localhost", "ci:not-the-token"))
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, "failed to clone git repo")
@@ -84,7 +84,7 @@ func TestGitClone_EmptyRepositoryIsReturnedAsAnError(t *testing.T) {
 	tmp := isolateTempDir(t)
 	srv := newEmptyFakeGitServer(t, fakeStandard, fixtureToken)
 
-	dir, closer, err := gitClone(srv.repoURL("localhost", "ci:"+fixtureToken), "")
+	dir, closer, err := gitClone(srv.repoURL("localhost", "ci:"+fixtureToken))
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, "remote repository is empty")
@@ -186,7 +186,7 @@ func TestGitClone_ErrorsNeverContainTheCredential(t *testing.T) {
 			require.NoError(t, err)
 			parsed.User = tt.userinfo(tt.token)
 
-			_, _, err = gitClone(parsed.String(), "")
+			_, _, err = gitClone(parsed.String())
 
 			require.Error(t, err)
 			require.ErrorContains(t, err, "status code: 400", "the failure must be the server's 400, not an auth error")
@@ -279,7 +279,7 @@ func TestGitClone_InstallsTheWrapperOnFirstUse(t *testing.T) {
 	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
 	require.Same(t, stockHTTP, client.Protocols["http"], "precondition: nothing is wrapped yet")
 
-	_, closer, err := gitClone(srv.repoURL("localhost", "ci:"+fixtureToken), "")
+	_, closer, err := gitClone(srv.repoURL("localhost", "ci:"+fixtureToken))
 	require.NoError(t, err)
 	closer()
 
