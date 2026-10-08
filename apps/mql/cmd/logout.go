@@ -101,22 +101,22 @@ ensure the credentials cannot be used in the future.
 
 		// delete config if it exists
 		path := viper.ConfigFileUsed()
-		fi, err := os.Stat(path)
+		_, err = os.Stat(path)
 		if err == nil {
 			log.Debug().Str("path", path).Msg("remove client information from config")
 
 			opts.AgentMrn = ""
 
-			// Preserve the on-disk serialization format and file mode: a config
-			// loaded from JSON must be written back as JSON, not silently
-			// converted to YAML, and a credentials file's permissions must not be
-			// widened.
+			// Preserve the on-disk serialization format: a config loaded from
+			// JSON must be written back as JSON, not silently converted to YAML.
+			// The file holds credentials, so it is written with group and other
+			// permissions removed and is never widened.
 			data, marshalErr := config.MarshalConfig(path, opts)
 			if marshalErr != nil {
 				// Don't write on a marshal failure; a nil payload would truncate
 				// the existing config file.
 				log.Error().Err(marshalErr).Msg("could not update Mondoo config")
-			} else if writeErr := os.WriteFile(path, data, fi.Mode()); writeErr != nil {
+			} else if writeErr := config.WritePrivateFile(path, data); writeErr != nil {
 				log.Error().Err(writeErr).Msg("could not update Mondoo config")
 			}
 		}

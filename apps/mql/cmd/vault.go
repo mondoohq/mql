@@ -6,12 +6,12 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"go.mondoo.com/mql/cli/config"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
@@ -98,7 +98,8 @@ mql vault configure mondoo-client-vault --type linux-kernel-keyring
 			if err != nil {
 				log.Fatal().Err(err).Msg("could not marshal inventory")
 			}
-			err = os.WriteFile(viper.GetString("inventory-file"), data, 0o644)
+			// inventories can hold credentials (vault options, passwords)
+			err = config.WritePrivateFile(viper.GetString("inventory-file"), data)
 			if err != nil {
 				log.Fatal().Err(err).Msg("could not write inventory file")
 			}

@@ -11,9 +11,16 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/afero"
 	"github.com/spf13/viper"
 	"sigs.k8s.io/yaml"
+)
+
+const (
+	// PrivateFileMode is the mode for files that may hold credentials, such as
+	// the Mondoo config, which carries the service account's private key.
+	PrivateFileMode os.FileMode = 0o600
+	// PrivateDirMode is the mode for a directory mql creates to hold such files.
+	PrivateDirMode os.FileMode = 0o700
 )
 
 // list of field keys to avoid writing to disk
@@ -36,27 +43,89 @@ func MarshalConfig(path string, cfg *Config) ([]byte, error) {
 	return yaml.Marshal(cfg)
 }
 
+// privateMode returns the mode a rewritten credentials file should carry: the
+// existing mode with every group and other bit cleared. A stricter mode (for
+// example 0400) is kept as is; the mode is never widened.
+func privateMode(mode os.FileMode) os.FileMode {
+	return mode.Perm() & PrivateFileMode
+}
+
+// TightenFileMode removes group and other permissions from an existing file at
+// path, so a credentials file is no longer readable by other users. Stricter
+// modes are preserved. A missing file is not an error.
+//
+// On Windows, os.Chmod only toggles the read-only attribute and access is
+// governed by ACLs, so this is effectively a no-op there.
+func TightenFileMode(path string) error {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if mode := privateMode(info.Mode()); mode != info.Mode().Perm() {
+		return os.Chmod(path, mode)
+	}
+	return nil
+}
+
+// WritePrivateFile writes data to path for a file that may hold credentials. A
+// new file is created with PrivateFileMode. An existing file is tightened to
+// PrivateFileMode (keeping stricter modes) before any data is written, so the
+// new content is never readable by other users.
+func WritePrivateFile(path string, data []byte) error {
+	if err := TightenFileMode(path); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, PrivateFileMode)
+}
+
+// ensureConfigDir creates dir if it does not exist. The directory that holds
+// the config itself is created with PrivateDirMode; any missing parents get the
+// conventional 0755 so mql does not lock down shared locations such as
+// /etc/opt or ~/.config.
+func ensureConfigDir(dir string) error {
+	if _, err := os.Stat(dir); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		return err
+	}
+	if err := os.Mkdir(dir, PrivateDirMode); err != nil && !os.IsExist(err) {
+		return err
+	}
+	return nil
+}
+
 func StoreConfig() error {
 	path := viper.ConfigFileUsed()
 	log.Info().Str("path", path).Msg("saving config")
 
 	// create new file if it does not exist
-	osFs := afero.NewOsFs()
-	if _, err := osFs.Stat(path); os.IsNotExist(err) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
 		log.Info().Str("path", path).Msg("config file does not exist, create a new one")
 		// create the directory if it does not exist
-		err = osFs.MkdirAll(filepath.Dir(path), 0o755)
-		if err != nil {
+		if err := ensureConfigDir(filepath.Dir(path)); err != nil {
 			return errors.Wrap(err, "failed to save mondoo config")
 		}
 
-		// write file
-		err = os.WriteFile(path, []byte{}, 0o644)
-		if err != nil {
+		// write file; the config holds the service account's private key, so
+		// it must not be readable by other users
+		if err := os.WriteFile(path, []byte{}, PrivateFileMode); err != nil {
 			return errors.Wrap(err, "failed to save mondoo config")
 		}
 	} else if err != nil {
 		return errors.Wrap(err, "failed to check stats for mondoo config")
+	}
+
+	// An existing config may have been written world-readable by an older
+	// version. Tighten it before viper writes the credentials into it: viper
+	// rewrites the file in place (O_TRUNC) and keeps the existing mode.
+	if err := TightenFileMode(path); err != nil {
+		return errors.Wrap(err, "failed to restrict permissions of mondoo config")
 	}
 
 	// omit fields before storing the configuration
@@ -64,5 +133,7 @@ func StoreConfig() error {
 		viper.Set(field, nil)
 	}
 
+	// Should viper create the file itself, it must use the private mode too.
+	viper.SetConfigPermissions(PrivateFileMode)
 	return viper.WriteConfig()
 }

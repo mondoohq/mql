@@ -166,11 +166,15 @@ func appendConfigKey(path string, key string, value string) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmp.Name(), info.Mode().Perm()); err != nil {
+	// os.CreateTemp creates the file with 0600, so the content is never readable
+	// by other users while it is written. The replacement keeps the original's
+	// mode with group and other bits cleared: the config can hold a private key,
+	// and a world-readable mode from an older version must not survive.
+	if err := os.Chmod(tmp.Name(), privateMode(info.Mode())); err != nil {
 		return err
 	}
 	// The rename replaces the file, so the replacement has to carry the original's
-	// mode and owner rather than the writing process's.
+	// owner rather than the writing process's.
 	preserveOwner(tmp.Name(), info)
 
 	return os.Rename(tmp.Name(), path)
