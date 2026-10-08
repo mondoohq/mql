@@ -214,7 +214,7 @@ func TestIacChildrenCloneWithTheTokenAndNoUserInformation(t *testing.T) {
 		assert.Equal(t, wantURL[cfg.Type+"|"+a.Name], cfg.Options["http-url"], "%s %s", cfg.Type, a.Name)
 		assert.NotContains(t, cfg.Options["http-url"], "@", "the URL carries no user information")
 		assert.NotEmpty(t, cfg.Options["ssh-url"], "the terraform detector reads ssh-url")
-		assert.Equal(t, "azure-devops", cfg.Options["git-server"], "the clone adapts its upload-pack request to Azure DevOps")
+		assert.Equal(t, plugin.GitServerAzureDevOps, cfg.Options[plugin.GitServerOptionKey], "the clone adapts its upload-pack request to Azure DevOps")
 
 		require.Len(t, cfg.Credentials, 1)
 		assert.Equal(t, connection.GitCredentialUser, cfg.Credentials[0].User, "Azure DevOps rejects an empty user")

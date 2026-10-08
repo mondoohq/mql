@@ -254,11 +254,11 @@ func repositoryAsset(conf *inventory.Config, conn *connection.AzuredevopsConnect
 
 // gitChild is a child asset that clones the repository and scans it with the
 // given connection type. Both URLs are set because the clone reads http-url
-// and the Terraform platform detector reads ssh-url. git-server names the
-// server behind the URL: Azure DevOps rejects go-git's default upload-pack
-// request, and the SDK clone adjusts it only for a connection that carries
-// this option (plugin.GitServerOptionKey). The user is non-empty because
-// Azure DevOps rejects a Basic credential with an empty one.
+// and the Terraform platform detector reads ssh-url. The git server option
+// names Azure DevOps, which rejects go-git's default upload-pack request; the
+// SDK clone adjusts the request only for a connection that carries it. The
+// user is non-empty because Azure DevOps rejects a Basic credential with an
+// empty one.
 func gitChild(connType string, r connection.ListedRepo, cred *vault.Credential) *inventory.Asset {
 	return &inventory.Asset{
 		// The name is preset because the ssh url of every Azure DevOps remote
@@ -267,9 +267,9 @@ func gitChild(connType string, r connection.ListedRepo, cred *vault.Credential) 
 		Connections: []*inventory.Config{{
 			Type: connType,
 			Options: map[string]string{
-				"ssh-url":    r.Repo.SSHURL,
-				"http-url":   r.Repo.HTTPURL(),
-				"git-server": "azure-devops",
+				"ssh-url":                 r.Repo.SSHURL,
+				"http-url":                r.Repo.HTTPURL(),
+				plugin.GitServerOptionKey: plugin.GitServerAzureDevOps,
 			},
 			Credentials: []*vault.Credential{cred.CloneVT()},
 		}},
