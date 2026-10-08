@@ -8839,7 +8839,8 @@ crio {
   // Configuration files, in the order CRI-O applies them
   //
   // /etc/crio/crio.conf when present, then every file in /etc/crio/crio.conf.d
-  // in name order, each overriding the ones before.
+  // and its subdirectories in name order, hidden files included, each
+  // overriding the ones before.
   configFiles() []file
   // Effective CRI-O configuration
   //

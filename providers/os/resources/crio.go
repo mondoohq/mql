@@ -5,6 +5,8 @@ package resources
 
 import (
 	"encoding/json"
+	"errors"
+	"os"
 	"path"
 	"regexp"
 	"sync"
@@ -15,9 +17,11 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/types"
 )
 
@@ -114,17 +118,50 @@ func (c *mqlCrio) crioConfigFilePaths() ([]string, error) {
 	if exists.Data {
 		paths = append(paths, crioConfigFile)
 	}
-	dropIns, err := listConfDFilesWith(c.MqlRuntime, []string{crioConfigDir}, isCrioDropInFile)
+	conn, ok := c.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return paths, nil
+	}
+	dropIns, err := crioDropInPaths(conn.FileSystem(), crioConfigDir)
 	if err != nil {
 		return nil, err
 	}
 	return append(paths, dropIns...), nil
 }
 
-// isCrioDropInFile reports whether CRI-O reads a file of crio.conf.d: any
-// file but a hidden one.
-func isCrioDropInFile(name string) bool {
-	return name != "" && !strings.HasPrefix(name, ".")
+// crioDropInPaths lists the files CRI-O applies from its drop-in directory.
+// CRI-O walks the directory with filepath.Walk and applies every file it
+// finds: files in subdirectories too, hidden files too, in the walk's
+// lexical order. A symbolic link to a file is read through; one to a
+// directory, or a dangling one, has nothing to read.
+func crioDropInPaths(fs afero.Fs, dir string) ([]string, error) {
+	if _, err := fs.Stat(dir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	paths := []string{}
+	err := afero.Walk(fs, dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := fs.Stat(p)
+			if err != nil || target.IsDir() {
+				return nil
+			}
+		}
+		paths = append(paths, p)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return paths, nil
 }
 
 func (c *mqlCrio) configFiles() ([]any, error) {
@@ -316,9 +353,10 @@ type crioContainer struct {
 	Created    time.Time
 }
 
-// parseCrioStorageContainers returns the containers of a containers/storage
-// container list, leaving out the pod sandboxes (infra containers), which
-// CRI-O marks as pods whose pod id is their own.
+// parseCrioStorageContainers returns the containers CRI-O created in a
+// containers/storage container list, leaving out the pod sandboxes (infra
+// containers), which CRI-O marks as pods whose pod id is their own, and the
+// containers of other engines sharing the storage, such as Podman's.
 func parseCrioStorageContainers(content string) ([]crioContainer, error) {
 	if strings.TrimSpace(content) == "" {
 		return nil, nil
@@ -336,7 +374,9 @@ func parseCrioStorageContainers(content string) ([]crioContainer, error) {
 				continue
 			}
 		}
-		if md.Pod || md.PodID == e.ID {
+		// Podman stores its containers in the same containers/storage and
+		// records no pod id for them; CRI-O records one for every container.
+		if md.PodID == "" || md.Pod || md.PodID == e.ID {
 			continue
 		}
 		pod, namespace := crioPodFromSandboxName(md.PodName)
@@ -379,6 +419,26 @@ type crioInspect struct {
 // crioSeccompAnnotation is where CRI-O records the seccomp profile a
 // container runs with.
 const crioSeccompAnnotation = "io.kubernetes.cri-o.SeccompProfilePath"
+
+// crioContainerState is the OCI state CRI-O persists for a container in
+// userdata/state.json, which it restores its view of the container from.
+type crioContainerState struct {
+	Status string `json:"status"`
+	Pid    int64  `json:"pid"`
+}
+
+// parseCrioContainerState reads a container's persisted state. It reports
+// false when there is none or it does not parse.
+func parseCrioContainerState(content string) (crioContainerState, bool) {
+	var state crioContainerState
+	if strings.TrimSpace(content) == "" {
+		return state, false
+	}
+	if err := json.Unmarshal([]byte(content), &state); err != nil || state.Status == "" {
+		return state, false
+	}
+	return state, true
+}
 
 func parseCrioInspect(content string) (crioInspect, error) {
 	var inspect crioInspect
@@ -457,6 +517,15 @@ func (c *mqlCrio) newCrioContainer(ctr crioContainer, dir string, sandboxes *cri
 	}
 	created := ctr.Created
 
+	// CRI-O keeps reporting the process ID of a container that has exited,
+	// so the state it persists for the container decides whether it runs.
+	pid := inspect.Pid
+	if validID && pid != 0 {
+		if state, ok := parseCrioContainerState(readKubeletFile(c.MqlRuntime, path.Join(dir, ctr.ID, "userdata", "state.json"))); ok && state.Status != "running" {
+			pid = 0
+		}
+	}
+
 	r, err := CreateResource(c.MqlRuntime, "crio.container", map[string]*llx.RawData{
 		"__id":           llx.StringData("crio.container/" + ctr.ID),
 		"id":             llx.StringData(ctr.ID),
@@ -466,7 +535,7 @@ func (c *mqlCrio) newCrioContainer(ctr crioContainer, dir string, sandboxes *cri
 		"sandboxId":      llx.StringData(ctr.SandboxID),
 		"image":          llx.StringData(image),
 		"imageRef":       llx.StringData(inspect.ImageRef),
-		"pid":            llx.IntData(inspect.Pid),
+		"pid":            llx.IntData(pid),
 		"privileged":     llx.BoolData(ctr.Privileged),
 		"seccompProfile": llx.StringData(inspect.Annotations[crioSeccompAnnotation]),
 		"labels":         llx.MapData(labels, types.String),

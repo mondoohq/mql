@@ -85,8 +85,7 @@ func TestCrioConfigFilePaths(t *testing.T) {
 	writeMemFSFile(t, mockFS, "/etc/crio/crio.conf", []byte(readCrioFixture(t, "minikube/02-crio.conf")))
 	writeMemFSFile(t, mockFS, "/etc/crio/crio.conf.d/10-crio.conf", []byte(readCrioFixture(t, "minikube/10-crio.conf")))
 	writeMemFSFile(t, mockFS, "/etc/crio/crio.conf.d/02-crio.conf", []byte(readCrioFixture(t, "minikube/02-crio.conf")))
-	writeMemFSFile(t, mockFS, "/etc/crio/crio.conf.d/.10-crio.conf.swp", []byte("x"))
-	require.NoError(t, mockFS.MkdirAll("/etc/crio/crio.conf.d/subdir", 0o755))
+	require.NoError(t, mockFS.MkdirAll("/etc/crio/crio.conf.d/empty", 0o755))
 
 	c := &mqlCrio{MqlRuntime: memFSRuntime(t, mockFS)}
 	paths, err := c.crioConfigFilePaths()
@@ -98,6 +97,78 @@ func TestCrioConfigFilePaths(t *testing.T) {
 	paths, err = c.crioConfigFilePaths()
 	require.NoError(t, err)
 	assert.Empty(t, paths)
+}
+
+// CRI-O walks crio.conf.d with filepath.Walk and applies every file it
+// finds. Verified with CRI-O 1.37.2 on Ubuntu 24.04: a stream_port set in
+// crio.conf.d/sub/50-sub.conf and a default_ulimits set in
+// crio.conf.d/.hidden.conf both showed up in `crio status config`, and the
+// subdirectory file, walked after 99-sweep.conf, won over its stream_port.
+func TestCrioDropInPaths(t *testing.T) {
+	mockFS := afero.NewMemMapFs()
+	for _, p := range []string{
+		"/etc/crio/crio.conf.d/10-crio.conf",
+		"/etc/crio/crio.conf.d/98-notes.txt",
+		"/etc/crio/crio.conf.d/99-sweep.conf",
+		"/etc/crio/crio.conf.d/.hidden.conf",
+		"/etc/crio/crio.conf.d/sub/50-sub.conf",
+	} {
+		writeMemFSFile(t, mockFS, p, []byte("[crio]\n"))
+	}
+	require.NoError(t, mockFS.MkdirAll("/etc/crio/crio.conf.d/empty", 0o755))
+
+	paths, err := crioDropInPaths(mockFS, "/etc/crio/crio.conf.d")
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"/etc/crio/crio.conf.d/.hidden.conf",
+		"/etc/crio/crio.conf.d/10-crio.conf",
+		"/etc/crio/crio.conf.d/98-notes.txt",
+		"/etc/crio/crio.conf.d/99-sweep.conf",
+		"/etc/crio/crio.conf.d/sub/50-sub.conf",
+	}, paths)
+
+	paths, err = crioDropInPaths(afero.NewMemMapFs(), "/etc/crio/crio.conf.d")
+	require.NoError(t, err)
+	assert.Empty(t, paths)
+}
+
+// containers/storage on a Debian 12 host running CRI-O and Podman side by
+// side: Podman's containers are in containers.json, CRI-O's pods and
+// containers in volatile-containers.json.
+func TestParseCrioStorageContainersSharedWithPodman(t *testing.T) {
+	podman, err := parseCrioStorageContainers(readCrioFixture(t, "debian12/containers.json"))
+	require.NoError(t, err)
+	assert.Empty(t, podman, "Podman's 15 containers are not CRI-O's")
+
+	crio, err := parseCrioStorageContainers(readCrioFixture(t, "debian12/volatile-containers.json"))
+	require.NoError(t, err)
+	names := []string{}
+	for _, c := range crio {
+		names = append(names, c.Name)
+	}
+	assert.ElementsMatch(t, []string{"nginx", "agent", "app", "shell", "bb", "stopped", "s2app"}, names)
+}
+
+// The state CRI-O persists in userdata/state.json for a container whose
+// process exited and for one still running, on Debian 12 with CRI-O 1.37.2.
+// CRI-O's own API reports the exited container's last pid (11985).
+func TestParseCrioContainerState(t *testing.T) {
+	state, ok := parseCrioContainerState(readCrioFixture(t, "debian12/state-stopped.json"))
+	require.True(t, ok)
+	assert.Equal(t, "stopped", state.Status)
+	assert.Equal(t, int64(0), state.Pid)
+
+	state, ok = parseCrioContainerState(readCrioFixture(t, "debian12/state-running.json"))
+	require.True(t, ok)
+	assert.Equal(t, "running", state.Status)
+	assert.Equal(t, int64(11889), state.Pid)
+
+	_, ok = parseCrioContainerState("")
+	assert.False(t, ok)
+	_, ok = parseCrioContainerState("{not json")
+	assert.False(t, ok)
+	_, ok = parseCrioContainerState("{}")
+	assert.False(t, ok, "a state without a status says nothing")
 }
 
 // containers/storage's container list on the kubeadm node: five pod
