@@ -224,6 +224,17 @@ func TestMergeDockerDaemonConfig(t *testing.T) {
 	assert.False(t, dockerBool(cfg, "icc", true))
 	assert.True(t, dockerBool(cfg, "live-restore", false))
 
+	// SUSE's docker.service adds the oci runtime on the command line. With a
+	// runtime in daemon.json as well, dockerd 29.4 on SLES 15 SP7 started and
+	// `docker info` listed both, crun and oci, besides the built-in runc.
+	file, err = parseDockerDaemonJSON(readDockerDaemonFixture(t, "sles15-hardened.json"))
+	require.NoError(t, err)
+	flags = parseDockerdCommandLine(strings.TrimSpace(readDockerDaemonFixture(t, "sles15.cmdline"))).settings
+	cfg = mergeDockerDaemonConfig(file, flags)
+	assert.Equal(t, map[string]any{"crun": "/usr/libexec/crio/crun", "oci": "/usr/sbin/runc"}, dockerRuntimes(cfg))
+	cfg = mergeDockerDaemonConfig(map[string]any{}, flags)
+	assert.Equal(t, map[string]any{"oci": "/usr/sbin/runc"}, dockerRuntimes(cfg), "the flag's runtime alone")
+
 	// dockerd refuses to start with a setting in both; should one still
 	// appear in both, the file's value is the one reported
 	cfg = mergeDockerDaemonConfig(map[string]any{"icc": true}, map[string]any{"icc": false, "debug": true})

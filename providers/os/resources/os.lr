@@ -8376,7 +8376,8 @@ docker.daemon @defaults("configFile.path hosts") {
   // Keyed by the configuration file's keys. Flags appear under the key their
   // setting has in the file (`--host` as `hosts`, `--log-opt` as `log-opts`).
   // dockerd refuses to start when a setting is in both, so a flag only fills
-  // in what the file leaves out. Holds only what is set, no defaults.
+  // in what the file leaves out, except for `runtimes`, which dockerd takes
+  // from both. Holds only what is set, no defaults.
   configuration() dict
   // Whether containers on the default bridge network can talk to each other; dockerd's default is true
   icc() bool
@@ -8450,7 +8451,8 @@ docker.daemon @defaults("configFile.path hosts") {
   // Runtimes registered besides the built-in ones
   //
   // The runtime's name mapped to its binary (`path`) or, for a runtime with
-  // its own containerd shim, its `runtimeType`.
+  // its own containerd shim, its `runtimeType`, from daemon.json and the
+  // --add-runtime flags together.
   runtimes() map[string]string
   // Daemon features turned on (true) or off (false), for example "containerd-snapshotter"
   features() map[string]bool

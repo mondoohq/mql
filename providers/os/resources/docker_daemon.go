@@ -155,7 +155,10 @@ func parseDockerDaemonJSON(content string) (map[string]any, error) {
 
 // mergeDockerDaemonConfig fills in what the configuration file leaves out
 // with what the command line sets. dockerd refuses to start when both set the
-// same setting, so the two never disagree on a running daemon.
+// same setting, so the two never disagree on a running daemon. The one
+// exception is `runtimes`: dockerd registers the runtimes of both, which is
+// how a distribution's unit adds one with --add-runtime (SUSE adds `oci`)
+// next to those an administrator configures in daemon.json.
 func mergeDockerDaemonConfig(file map[string]any, flags map[string]any) map[string]any {
 	res := make(map[string]any, len(file)+len(flags))
 	for k, v := range flags {
@@ -163,6 +166,18 @@ func mergeDockerDaemonConfig(file map[string]any, flags map[string]any) map[stri
 	}
 	for k, v := range file {
 		res[k] = v
+	}
+	flagRuntimes, _ := flags["runtimes"].(map[string]any)
+	fileRuntimes, _ := file["runtimes"].(map[string]any)
+	if len(flagRuntimes) > 0 && len(fileRuntimes) > 0 {
+		runtimes := make(map[string]any, len(flagRuntimes)+len(fileRuntimes))
+		for k, v := range flagRuntimes {
+			runtimes[k] = v
+		}
+		for k, v := range fileRuntimes {
+			runtimes[k] = v
+		}
+		res["runtimes"] = runtimes
 	}
 	return res
 }
