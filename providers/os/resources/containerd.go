@@ -27,6 +27,8 @@ type containerInfo struct {
 	} `json:"Runtime"`
 	Snapshotter string            `json:"Snapshotter"`
 	Labels      map[string]string `json:"Labels"`
+	SandboxID   string            `json:"SandboxID"`
+	Spec        json.RawMessage   `json:"Spec"`
 }
 
 // taskData holds information about a containerd task
@@ -267,6 +269,13 @@ func (p *mqlContainerd) containers() ([]any, error) {
 			}
 		}
 
+		type listed struct {
+			id   string
+			info *containerInfo
+			spec *ociSpec
+		}
+		var infos []listed
+		specs := map[string]*ociSpec{}
 		for _, containerID := range containerIDs {
 			if containerID == "" {
 				continue
@@ -292,6 +301,18 @@ func (p *mqlContainerd) containers() ([]any, error) {
 				log.Debug().Str("namespace", ns).Str("container", containerID).Err(err).Msg("skipping container, failed to parse info")
 				continue
 			}
+			spec, err := parseContainerdSpec(info.Spec)
+			if err != nil {
+				// the container is still listed, without the fields its spec gives
+				log.Debug().Str("namespace", ns).Str("container", containerID).Err(err).Msg("cannot parse the container's spec")
+			}
+			specs[containerID] = spec
+			infos = append(infos, listed{id: containerID, info: info, spec: spec})
+		}
+
+		for _, l := range infos {
+			info := l.info
+			containerID := l.id
 
 			// Convert labels to map[string]any
 			labels := make(map[string]any)
@@ -320,7 +341,17 @@ func (p *mqlContainerd) containers() ([]any, error) {
 				return nil, err
 			}
 
-			containers = append(containers, containerRes.(*mqlContainerdContainer))
+			c := containerRes.(*mqlContainerdContainer)
+			c.spec = l.spec
+			c.infoSandboxID = info.SandboxID
+			if l.spec != nil {
+				sandboxID := l.spec.Annotations[criSandboxIDAnnotation]
+				if sandboxID == "" {
+					sandboxID = info.SandboxID
+				}
+				c.sandbox = specs[sandboxID]
+			}
+			containers = append(containers, c)
 		}
 	}
 

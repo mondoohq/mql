@@ -8470,7 +8470,12 @@ containerd.registryHost @defaults("namespace url") {
 // A container managed by containerd, identified by `id` within its
 // `namespace`, with its `image` reference, lifecycle `status`, process `pid`,
 // `labels`, the `runtime` handling it (e.g. `io.containerd.runc.v2`), and the
-// `snapshotter` providing its filesystem.
+// `snapshotter` providing its filesystem. The confinement fields are read
+// from the OCI runtime spec the container was created with: capabilities,
+// seccomp, AppArmor, the host namespaces it shares, its mounts and resource
+// limits. For a Kubernetes container they also name its pod, for example
+// `containerd.containers.where(privileged) { podNamespace podName name }`.
+// The pod sandbox (pause) containers are listed too.
 containerd.container @defaults("id status") {
   // Container ID
   id string
@@ -8488,6 +8493,85 @@ containerd.container @defaults("id status") {
   runtime string
   // Container snapshotter
   snapshotter string
+  // Container name within its Kubernetes pod (for example "kube-proxy"); empty for a container Kubernetes did not create
+  name() string
+  // Name of the Kubernetes pod the container belongs to
+  podName() string
+  // Namespace of the Kubernetes pod the container belongs to
+  podNamespace() string
+  // ID of the pod sandbox the container runs in; empty for a container Kubernetes did not create
+  sandboxId() string
+  // Whether the container runs privileged
+  //
+  // True when its spec has what privileged mode sets: /sys mounted writable
+  // and no paths of /proc masked. A privileged container keeps every
+  // capability, runs without seccomp and AppArmor, and can reach the host's
+  // devices. Null when containerd reports no spec for the container.
+  privileged() bool
+  // Effective capabilities of the container's process (for example "CAP_NET_BIND_SERVICE")
+  capabilities() []string
+  // Bounding set of capabilities, the most the container's processes can gain
+  boundingCapabilities() []string
+  // Whether no system call is filtered
+  //
+  // True when the spec sets no seccomp profile, which is what Kubernetes's
+  // Unconfined profile and privileged mode do, or one that lets every system
+  // call run.
+  seccompUnconfined() bool
+  // Action the seccomp profile takes on system calls it does not list (for example "SCMP_ACT_ERRNO"); empty without a profile
+  seccompDefaultAction() string
+  // AppArmor profile the container runs with (for example "cri-containerd.apparmor.d"); empty when none is applied
+  apparmorProfile() string
+  // SELinux label of the container's process; empty when none is applied
+  selinuxLabel() string
+  // Whether the container's processes are prevented from gaining privileges (allowPrivilegeEscalation false)
+  noNewPrivileges() bool
+  // Whether the container's root filesystem is read-only
+  readOnlyRootfs() bool
+  // User ID the container's process runs as, 0 for root
+  uid() int
+  // Group ID the container's process runs as
+  gid() int
+  // Whether the container uses the host's network namespace
+  //
+  // For a Kubernetes container, whether its pod sandbox does (hostNetwork).
+  hostNetwork() bool
+  // Whether the container shares the host's process namespace (hostPID)
+  hostPID() bool
+  // Whether the container shares the host's IPC namespace (hostIPC)
+  hostIPC() bool
+  // Mounts of the container
+  //
+  // Every mount of its spec: the kernel filesystems (/proc, /sys, /dev),
+  // the files containerd and the kubelet add (/etc/hosts, the service account
+  // token), and the pod's volumes, including hostPath volumes.
+  // `mounts.where(hostPath == /containerd\.sock$/)` finds a container that
+  // controls containerd.
+  mounts() []containerd.container.mount
+  // Memory limit in bytes, null when the container's memory is unlimited
+  memoryLimit() int
+  // CPU quota in billionths of a CPU (for example 250000000 for 250m), null when unlimited
+  nanoCpus() int
+  // Relative CPU weight (cgroup cpu shares), null when not set
+  cpuShares() int
+  // Maximum number of processes in the container, null when unlimited
+  pidsLimit() int
+}
+
+// Mount of a containerd container
+private containerd.container.mount @defaults("containerPath hostPath readOnly") {
+  // Mount type (for example "bind", "proc", "tmpfs")
+  type string
+  // Path inside the container
+  containerPath string
+  // Path on the host that is mounted; empty for a mount that is not a bind mount
+  hostPath string
+  // Whether the mount is read-only
+  readOnly bool
+  // Mount propagation (for example "rprivate", "rslave", "rshared"); empty when not set
+  propagation string
+  // Mount options (for example "rbind", "nosuid")
+  options []string
 }
 
 // CRI-O container runtime
