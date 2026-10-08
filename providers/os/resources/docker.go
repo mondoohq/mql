@@ -147,7 +147,10 @@ func (p *mqlDocker) containers() ([]any, error) {
 			return nil, err
 		}
 
-		containers[i] = o.(*mqlDockerContainer)
+		c := o.(*mqlDockerContainer)
+		c.endpoints = dockerContainerEndpoints(dContainer)
+		c.volumeNames = dockerContainerVolumeNames(dContainer)
+		containers[i] = c
 	}
 
 	return containers, nil

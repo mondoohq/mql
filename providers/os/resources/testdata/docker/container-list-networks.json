@@ -1,0 +1,242 @@
+[
+  {
+    "Id": "fe94f6115eb19ac0521377775ad88f5b842fa95efc76a4ce84a4a4e252d9df73",
+    "Names": [
+      "/mqltest-c3"
+    ],
+    "Image": "alpine:3.20",
+    "ImageID": "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+    "ImageManifestDescriptor": {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:45e09956dc667c5eff3583c9d94830261fb1ca0be10a0a7db36266edf5de9e1d",
+      "size": 1026,
+      "annotations": {
+        "com.docker.official-images.bashbrew.arch": "arm64v8",
+        "org.opencontainers.image.base.name": "scratch",
+        "org.opencontainers.image.created": "2026-04-16T23:53:21Z",
+        "org.opencontainers.image.revision": "0db70ae354ee747109ce0b9a0cfbcd3c907bc822",
+        "org.opencontainers.image.source": "https://github.com/alpinelinux/docker-alpine.git#0db70ae354ee747109ce0b9a0cfbcd3c907bc822:aarch64",
+        "org.opencontainers.image.url": "https://hub.docker.com/_/alpine",
+        "org.opencontainers.image.version": "3.20.10"
+      },
+      "platform": {
+        "architecture": "arm64",
+        "os": "linux",
+        "variant": "v8"
+      }
+    },
+    "Command": "true",
+    "Created": 1791430750,
+    "Ports": [],
+    "Labels": {
+      "desktop.docker.io/ports.scheme": "v2"
+    },
+    "State": "created",
+    "Status": "Created",
+    "HostConfig": {
+      "NetworkMode": "mqltest-attach"
+    },
+    "NetworkSettings": {
+      "Networks": {
+        "mqltest-attach": {
+          "IPAMConfig": null,
+          "Links": null,
+          "Aliases": null,
+          "DriverOpts": null,
+          "GwPriority": 0,
+          "NetworkID": "",
+          "EndpointID": "",
+          "Gateway": "",
+          "IPAddress": "",
+          "MacAddress": "",
+          "IPPrefixLen": 0,
+          "IPv6Gateway": "",
+          "GlobalIPv6Address": "",
+          "GlobalIPv6PrefixLen": 0,
+          "DNSNames": null
+        }
+      }
+    },
+    "Mounts": [
+      {
+        "Type": "volume",
+        "Name": "mqltest-opts",
+        "Source": "/var/lib/docker/volumes/mqltest-opts/_data",
+        "Destination": "/o",
+        "Driver": "local",
+        "Mode": "z",
+        "RW": true,
+        "Propagation": ""
+      }
+    ]
+  },
+  {
+    "Id": "f5a0e0a40ee71a815d6d3f872b736f58fc4e095fd486f75d258813a5b3a85939",
+    "Names": [
+      "/mqltest-c2"
+    ],
+    "Image": "alpine:3.20",
+    "ImageID": "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+    "ImageManifestDescriptor": {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:45e09956dc667c5eff3583c9d94830261fb1ca0be10a0a7db36266edf5de9e1d",
+      "size": 1026,
+      "annotations": {
+        "com.docker.official-images.bashbrew.arch": "arm64v8",
+        "org.opencontainers.image.base.name": "scratch",
+        "org.opencontainers.image.created": "2026-04-16T23:53:21Z",
+        "org.opencontainers.image.revision": "0db70ae354ee747109ce0b9a0cfbcd3c907bc822",
+        "org.opencontainers.image.source": "https://github.com/alpinelinux/docker-alpine.git#0db70ae354ee747109ce0b9a0cfbcd3c907bc822:aarch64",
+        "org.opencontainers.image.url": "https://hub.docker.com/_/alpine",
+        "org.opencontainers.image.version": "3.20.10"
+      },
+      "platform": {
+        "architecture": "arm64",
+        "os": "linux",
+        "variant": "v8"
+      }
+    },
+    "Command": "sleep 3600",
+    "Created": 1791430750,
+    "Ports": null,
+    "Labels": {
+      "desktop.docker.io/ports.scheme": "v2"
+    },
+    "State": "running",
+    "Status": "Up 3 minutes",
+    "HostConfig": {
+      "NetworkMode": "mqltest-internal"
+    },
+    "NetworkSettings": {
+      "Networks": {
+        "mqltest-internal": {
+          "IPAMConfig": null,
+          "Links": null,
+          "Aliases": null,
+          "DriverOpts": null,
+          "GwPriority": 0,
+          "NetworkID": "3dbfb59aab1a240f1f3e799ff6c54f337965ebc7477db9c9b8fb955a76ff900e",
+          "EndpointID": "bd33215dd9e190b2720bdf87b909a7b2624e0533a61e89f8dcd6c7b769677ade",
+          "Gateway": "",
+          "IPAddress": "172.19.0.2",
+          "MacAddress": "9a:26:60:bd:a1:5f",
+          "IPPrefixLen": 16,
+          "IPv6Gateway": "",
+          "GlobalIPv6Address": "",
+          "GlobalIPv6PrefixLen": 0,
+          "DNSNames": null
+        }
+      }
+    },
+    "Mounts": [
+      {
+        "Type": "volume",
+        "Name": "mqltest-named",
+        "Source": "/var/lib/docker/volumes/mqltest-named/_data",
+        "Destination": "/n2",
+        "Driver": "local",
+        "Mode": "ro",
+        "RW": false,
+        "Propagation": ""
+      }
+    ]
+  },
+  {
+    "Id": "6de758c1071d389bd1513e7f083cb1b9c7db20de4645ba363668e792ba589d39",
+    "Names": [
+      "/mqltest-c1"
+    ],
+    "Image": "alpine:3.20",
+    "ImageID": "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+    "ImageManifestDescriptor": {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:45e09956dc667c5eff3583c9d94830261fb1ca0be10a0a7db36266edf5de9e1d",
+      "size": 1026,
+      "annotations": {
+        "com.docker.official-images.bashbrew.arch": "arm64v8",
+        "org.opencontainers.image.base.name": "scratch",
+        "org.opencontainers.image.created": "2026-04-16T23:53:21Z",
+        "org.opencontainers.image.revision": "0db70ae354ee747109ce0b9a0cfbcd3c907bc822",
+        "org.opencontainers.image.source": "https://github.com/alpinelinux/docker-alpine.git#0db70ae354ee747109ce0b9a0cfbcd3c907bc822:aarch64",
+        "org.opencontainers.image.url": "https://hub.docker.com/_/alpine",
+        "org.opencontainers.image.version": "3.20.10"
+      },
+      "platform": {
+        "architecture": "arm64",
+        "os": "linux",
+        "variant": "v8"
+      }
+    },
+    "Command": "sleep 3600",
+    "Created": 1791430750,
+    "Ports": null,
+    "Labels": {
+      "desktop.docker.io/ports.scheme": "v2"
+    },
+    "State": "running",
+    "Status": "Up 3 minutes",
+    "HostConfig": {
+      "NetworkMode": "mqltest-noicc"
+    },
+    "NetworkSettings": {
+      "Networks": {
+        "mqltest-noicc": {
+          "IPAMConfig": null,
+          "Links": null,
+          "Aliases": null,
+          "DriverOpts": null,
+          "GwPriority": 0,
+          "NetworkID": "3894654c92da4e8caf4f50d92836b49b064407420756e78ec078213bc7f7749d",
+          "EndpointID": "c7843887b2f4764e70eecbe8ad7c80fa21ffa69cb61b082b61cbbfdd482d11b3",
+          "Gateway": "172.20.0.1",
+          "IPAddress": "172.20.0.2",
+          "MacAddress": "be:da:91:02:5d:79",
+          "IPPrefixLen": 16,
+          "IPv6Gateway": "",
+          "GlobalIPv6Address": "",
+          "GlobalIPv6PrefixLen": 0,
+          "DNSNames": null
+        },
+        "mqltest-v6": {
+          "IPAMConfig": {},
+          "Links": null,
+          "Aliases": null,
+          "DriverOpts": null,
+          "GwPriority": 0,
+          "NetworkID": "344d40638bd5ecc2d4a7acb5ba913e098b0860190c7d71966397c5f93fcd268b",
+          "EndpointID": "78992aa2917296f60c2213ad82fc48648368529e07c89439d0bf6998a7ace06a",
+          "Gateway": "172.30.10.1",
+          "IPAddress": "172.30.10.2",
+          "MacAddress": "aa:aa:ed:fb:5d:01",
+          "IPPrefixLen": 24,
+          "IPv6Gateway": "fd00:dead:beef::1",
+          "GlobalIPv6Address": "fd00:dead:beef::2",
+          "GlobalIPv6PrefixLen": 64,
+          "DNSNames": null
+        }
+      }
+    },
+    "Mounts": [
+      {
+        "Type": "volume",
+        "Name": "dadacadc2c28b1e7891769f6ef274b10f64e1ebdddbacceea47b7dadbfc92b02",
+        "Source": "",
+        "Destination": "/data",
+        "Driver": "local",
+        "Mode": "",
+        "RW": true,
+        "Propagation": ""
+      },
+      {
+        "Type": "volume",
+        "Name": "mqltest-named",
+        "Source": "/var/lib/docker/volumes/mqltest-named/_data",
+        "Destination": "/named",
+        "Driver": "local",
+        "Mode": "z",
+        "RW": true,
+        "Propagation": ""
+      }
+    ]
+  }
+]

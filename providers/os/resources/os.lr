@@ -7427,6 +7427,10 @@ docker {
   containers() []docker.container
   // Configuration of the Docker Engine daemon on the host
   daemon() docker.daemon
+  // All networks defined on the Docker host, including the predefined bridge, host, and none
+  networks() []docker.network
+  // All volumes stored on the Docker host, named and anonymous
+  volumes() []docker.volume
 }
 
 // Dockerfile parser
@@ -8171,6 +8175,8 @@ docker.container @defaults("names.first status"){
   devices() []docker.container.device
   // Volumes, bind mounts, and tmpfs mounts in the container
   mounts() []docker.container.mount
+  // Networks the container is connected to
+  networks() []docker.network
 }
 
 // Resource limit set for a Docker container
@@ -8232,6 +8238,117 @@ private docker.container.mount @defaults("type containerPath hostPath readOnly")
   propagation string
   // Volume driver (e.g., local), empty for other mount types
   driver string
+}
+
+// Docker network
+//
+// A network defined on the Docker host, selected by `name`, for example
+// `docker.network(name: "bridge")`. `internal` marks a network with no route to
+// the outside, `subnets` holds the address ranges containers on it receive, and
+// for the bridge driver `icc`, `ipMasquerade`, and `hostBindingIpv4` report
+// whether containers on the network can reach each other, whether their traffic
+// leaves through the host's address, and the address published ports bind to.
+// `containers` lists the containers connected to it, for example
+// `docker.networks.where(internal == false) { name containers.length }`.
+docker.network @defaults("name driver internal") {
+  init(name string)
+  // Network ID
+  id string
+  // Network name
+  name string
+  // Network driver (e.g., bridge, host, null, overlay, macvlan, ipvlan)
+  driver string
+  // Scope the network exists in: local for this host, swarm for the cluster
+  scope string
+  // Whether the network is cut off from any route to the outside
+  internal bool
+  // Whether standalone containers can connect to this swarm network
+  attachable bool
+  // Whether the network is the swarm routing mesh
+  ingress bool
+  // Whether IPv4 is enabled on the network
+  ipv4Enabled bool
+  // Whether IPv6 is enabled on the network
+  ipv6Enabled bool
+  // Address ranges assigned to containers on the network
+  subnets []docker.network.subnet
+  // Driver options, as key-value pairs
+  //
+  // For example `com.docker.network.bridge.enable_icc` or
+  // `com.docker.network.driver.mtu`. The predefined bridge network reports the
+  // options the daemon started it with.
+  options map[string]string
+  // Network labels, as key-value pairs
+  labels map[string]string
+  // Time the network was created
+  createdAt time
+  // Whether containers on the network can reach each other
+  //
+  // The `com.docker.network.bridge.enable_icc` option, true when the network
+  // does not set it. Null for a network whose driver is not bridge.
+  icc() bool
+  // Whether traffic from containers on the network is masqueraded behind the host's address
+  //
+  // The `com.docker.network.bridge.enable_ip_masquerade` option, true when the
+  // network does not set it. Null for a network whose driver is not bridge.
+  ipMasquerade() bool
+  // Default host address ports published on the network bind to
+  //
+  // The `com.docker.network.bridge.host_binding_ipv4` option, for example
+  // `127.0.0.1`. Null when the network does not set it, in which case a
+  // published port binds to the daemon's default address, every interface
+  // (`0.0.0.0`) unless dockerd is started with `--ip`. Null for a network whose
+  // driver is not bridge.
+  hostBindingIpv4() string
+  // Containers connected to the network, running or stopped
+  containers() []docker.container
+}
+
+// Address range of a Docker network
+private docker.network.subnet @defaults("subnet gateway") {
+  // Subnet in CIDR notation (e.g., 172.18.0.0/16)
+  subnet string
+  // Gateway address, empty when the network sets none
+  gateway string
+  // Range within the subnet that container addresses are allocated from, empty when it is the whole subnet
+  ipRange string
+}
+
+// Docker volume
+//
+// A volume stored on the Docker host, selected by `name`, for example
+// `docker.volume(name: "pgdata")`. `mountpoint` is the host path backing the
+// volume, which is what a container writing to the volume ultimately writes
+// to, and `containers` lists the containers that mount it, for example
+// `docker.volumes.where(containers.length == 0)` for volumes nothing uses.
+docker.volume @defaults("name driver mountpoint") {
+  init(name string)
+  // Volume name
+  name string
+  // Volume driver (e.g., local)
+  driver string
+  // Host path backing the volume
+  mountpoint string
+  // Time the volume was created, null when the driver does not report it
+  createdAt time
+  // Volume labels, as key-value pairs
+  labels map[string]string
+  // Driver options, as key-value pairs
+  //
+  // For the local driver, `type`, `device`, and `o` describe a filesystem
+  // mounted as the volume, for example an NFS export or a tmpfs.
+  options map[string]string
+  // Scope the volume exists in: local for this host, global for the cluster
+  scope string
+  // Whether the volume was created without a name, for a container's anonymous volume
+  //
+  // True when the volume carries the `com.docker.volume.anonymous` label,
+  // which Docker Engine 23.0 and later set on the volumes it creates for a
+  // container's unnamed `-v /path` or image `VOLUME`. A volume an older engine
+  // created reads false.
+  anonymous bool
+  // Containers that mount the volume, running or stopped
+  containers() []docker.container
 }
 
 // Docker Engine daemon configuration

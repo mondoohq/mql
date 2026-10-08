@@ -254,6 +254,9 @@ const (
 	ResourceDockerContainerPort                           string = "docker.container.port"
 	ResourceDockerContainerDevice                         string = "docker.container.device"
 	ResourceDockerContainerMount                          string = "docker.container.mount"
+	ResourceDockerNetwork                                 string = "docker.network"
+	ResourceDockerNetworkSubnet                           string = "docker.network.subnet"
+	ResourceDockerVolume                                  string = "docker.volume"
 	ResourceDockerDaemon                                  string = "docker.daemon"
 	ResourceDockerDaemonUlimit                            string = "docker.daemon.ulimit"
 	ResourceContainerd                                    string = "containerd"
@@ -1657,6 +1660,18 @@ func init() {
 		"docker.container.mount": {
 			// to override args, implement: initDockerContainerMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createDockerContainerMount,
+		},
+		"docker.network": {
+			Init:   initDockerNetwork,
+			Create: createDockerNetwork,
+		},
+		"docker.network.subnet": {
+			// to override args, implement: initDockerNetworkSubnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDockerNetworkSubnet,
+		},
+		"docker.volume": {
+			Init:   initDockerVolume,
+			Create: createDockerVolume,
 		},
 		"docker.daemon": {
 			Init:   initDockerDaemon,
@@ -8937,6 +8952,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"docker.daemon": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDocker).GetDaemon()).ToDataRes(types.Resource("docker.daemon"))
 	},
+	"docker.networks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDocker).GetNetworks()).ToDataRes(types.Array(types.Resource("docker.network")))
+	},
+	"docker.volumes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDocker).GetVolumes()).ToDataRes(types.Array(types.Resource("docker.volume")))
+	},
 	"docker.file.file": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerFile).GetFile()).ToDataRes(types.Resource("file"))
 	},
@@ -9495,6 +9516,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"docker.container.mounts": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerContainer).GetMounts()).ToDataRes(types.Array(types.Resource("docker.container.mount")))
 	},
+	"docker.container.networks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetNetworks()).ToDataRes(types.Array(types.Resource("docker.network")))
+	},
 	"docker.container.ulimit.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerContainerUlimit).GetName()).ToDataRes(types.String)
 	},
@@ -9551,6 +9575,93 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"docker.container.mount.driver": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerContainerMount).GetDriver()).ToDataRes(types.String)
+	},
+	"docker.network.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetId()).ToDataRes(types.String)
+	},
+	"docker.network.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetName()).ToDataRes(types.String)
+	},
+	"docker.network.driver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetDriver()).ToDataRes(types.String)
+	},
+	"docker.network.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetScope()).ToDataRes(types.String)
+	},
+	"docker.network.internal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetInternal()).ToDataRes(types.Bool)
+	},
+	"docker.network.attachable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetAttachable()).ToDataRes(types.Bool)
+	},
+	"docker.network.ingress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetIngress()).ToDataRes(types.Bool)
+	},
+	"docker.network.ipv4Enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetIpv4Enabled()).ToDataRes(types.Bool)
+	},
+	"docker.network.ipv6Enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetIpv6Enabled()).ToDataRes(types.Bool)
+	},
+	"docker.network.subnets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetSubnets()).ToDataRes(types.Array(types.Resource("docker.network.subnet")))
+	},
+	"docker.network.options": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetOptions()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"docker.network.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"docker.network.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"docker.network.icc": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetIcc()).ToDataRes(types.Bool)
+	},
+	"docker.network.ipMasquerade": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetIpMasquerade()).ToDataRes(types.Bool)
+	},
+	"docker.network.hostBindingIpv4": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetHostBindingIpv4()).ToDataRes(types.String)
+	},
+	"docker.network.containers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetContainers()).ToDataRes(types.Array(types.Resource("docker.container")))
+	},
+	"docker.network.subnet.subnet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetworkSubnet).GetSubnet()).ToDataRes(types.String)
+	},
+	"docker.network.subnet.gateway": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetworkSubnet).GetGateway()).ToDataRes(types.String)
+	},
+	"docker.network.subnet.ipRange": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetworkSubnet).GetIpRange()).ToDataRes(types.String)
+	},
+	"docker.volume.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetName()).ToDataRes(types.String)
+	},
+	"docker.volume.driver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetDriver()).ToDataRes(types.String)
+	},
+	"docker.volume.mountpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetMountpoint()).ToDataRes(types.String)
+	},
+	"docker.volume.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"docker.volume.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"docker.volume.options": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetOptions()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"docker.volume.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetScope()).ToDataRes(types.String)
+	},
+	"docker.volume.anonymous": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetAnonymous()).ToDataRes(types.Bool)
+	},
+	"docker.volume.containers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetContainers()).ToDataRes(types.Array(types.Resource("docker.container")))
 	},
 	"docker.daemon.configFile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerDaemon).GetConfigFile()).ToDataRes(types.Resource("file"))
@@ -27692,6 +27803,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDocker).Daemon, ok = plugin.RawToTValue[*mqlDockerDaemon](v.Value, v.Error)
 		return
 	},
+	"docker.networks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDocker).Networks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.volumes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDocker).Volumes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"docker.file.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDockerFile).__id, ok = v.Value.(string)
 		return
@@ -28520,6 +28639,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDockerContainer).Mounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"docker.container.networks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).Networks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"docker.container.ulimit.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDockerContainerUlimit).__id, ok = v.Value.(string)
 		return
@@ -28610,6 +28733,134 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"docker.container.mount.driver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDockerContainerMount).Driver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.network.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.driver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Driver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.internal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Internal, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.attachable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Attachable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.ingress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Ingress, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.ipv4Enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Ipv4Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.ipv6Enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Ipv6Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.subnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Subnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.network.options": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Options, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.network.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.network.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"docker.network.icc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Icc, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.ipMasquerade": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).IpMasquerade, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.hostBindingIpv4": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).HostBindingIpv4, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.network.subnet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetworkSubnet).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.network.subnet.subnet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetworkSubnet).Subnet, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.subnet.gateway": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetworkSubnet).Gateway, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.subnet.ipRange": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetworkSubnet).IpRange, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.volume.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.volume.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.volume.driver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Driver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.volume.mountpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Mountpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.volume.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"docker.volume.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.volume.options": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Options, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.volume.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.volume.anonymous": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Anonymous, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.volume.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"docker.daemon.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -67216,6 +67467,8 @@ type mqlDocker struct {
 	Images     plugin.TValue[[]any]
 	Containers plugin.TValue[[]any]
 	Daemon     plugin.TValue[*mqlDockerDaemon]
+	Networks   plugin.TValue[[]any]
+	Volumes    plugin.TValue[[]any]
 }
 
 // createDocker creates a new instance of this resource
@@ -67295,6 +67548,38 @@ func (c *mqlDocker) GetDaemon() *plugin.TValue[*mqlDockerDaemon] {
 		}
 
 		return c.daemon()
+	})
+}
+
+func (c *mqlDocker) GetNetworks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Networks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker", c.__id, "networks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networks()
+	})
+}
+
+func (c *mqlDocker) GetVolumes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Volumes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker", c.__id, "volumes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.volumes()
 	})
 }
 
@@ -69147,6 +69432,7 @@ type mqlDockerContainer struct {
 	Ports               plugin.TValue[[]any]
 	Devices             plugin.TValue[[]any]
 	Mounts              plugin.TValue[[]any]
+	Networks            plugin.TValue[[]any]
 }
 
 // createDockerContainer creates a new instance of this resource
@@ -69460,6 +69746,22 @@ func (c *mqlDockerContainer) GetMounts() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlDockerContainer) GetNetworks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Networks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.container", c.__id, "networks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networks()
+	})
+}
+
 // mqlDockerContainerUlimit for the docker.container.ulimit resource
 type mqlDockerContainerUlimit struct {
 	MqlRuntime *plugin.Runtime
@@ -69709,6 +70011,308 @@ func (c *mqlDockerContainerMount) GetPropagation() *plugin.TValue[string] {
 
 func (c *mqlDockerContainerMount) GetDriver() *plugin.TValue[string] {
 	return &c.Driver
+}
+
+// mqlDockerNetwork for the docker.network resource
+type mqlDockerNetwork struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDockerNetworkInternal it will be used here
+	Id              plugin.TValue[string]
+	Name            plugin.TValue[string]
+	Driver          plugin.TValue[string]
+	Scope           plugin.TValue[string]
+	Internal        plugin.TValue[bool]
+	Attachable      plugin.TValue[bool]
+	Ingress         plugin.TValue[bool]
+	Ipv4Enabled     plugin.TValue[bool]
+	Ipv6Enabled     plugin.TValue[bool]
+	Subnets         plugin.TValue[[]any]
+	Options         plugin.TValue[map[string]any]
+	Labels          plugin.TValue[map[string]any]
+	CreatedAt       plugin.TValue[*time.Time]
+	Icc             plugin.TValue[bool]
+	IpMasquerade    plugin.TValue[bool]
+	HostBindingIpv4 plugin.TValue[string]
+	Containers      plugin.TValue[[]any]
+}
+
+// createDockerNetwork creates a new instance of this resource
+func createDockerNetwork(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerNetwork{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.network", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerNetwork) MqlName() string {
+	return "docker.network"
+}
+
+func (c *mqlDockerNetwork) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerNetwork) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDockerNetwork) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDockerNetwork) GetDriver() *plugin.TValue[string] {
+	return &c.Driver
+}
+
+func (c *mqlDockerNetwork) GetScope() *plugin.TValue[string] {
+	return &c.Scope
+}
+
+func (c *mqlDockerNetwork) GetInternal() *plugin.TValue[bool] {
+	return &c.Internal
+}
+
+func (c *mqlDockerNetwork) GetAttachable() *plugin.TValue[bool] {
+	return &c.Attachable
+}
+
+func (c *mqlDockerNetwork) GetIngress() *plugin.TValue[bool] {
+	return &c.Ingress
+}
+
+func (c *mqlDockerNetwork) GetIpv4Enabled() *plugin.TValue[bool] {
+	return &c.Ipv4Enabled
+}
+
+func (c *mqlDockerNetwork) GetIpv6Enabled() *plugin.TValue[bool] {
+	return &c.Ipv6Enabled
+}
+
+func (c *mqlDockerNetwork) GetSubnets() *plugin.TValue[[]any] {
+	return &c.Subnets
+}
+
+func (c *mqlDockerNetwork) GetOptions() *plugin.TValue[map[string]any] {
+	return &c.Options
+}
+
+func (c *mqlDockerNetwork) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlDockerNetwork) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDockerNetwork) GetIcc() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Icc, func() (bool, error) {
+		return c.icc()
+	})
+}
+
+func (c *mqlDockerNetwork) GetIpMasquerade() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IpMasquerade, func() (bool, error) {
+		return c.ipMasquerade()
+	})
+}
+
+func (c *mqlDockerNetwork) GetHostBindingIpv4() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.HostBindingIpv4, func() (string, error) {
+		return c.hostBindingIpv4()
+	})
+}
+
+func (c *mqlDockerNetwork) GetContainers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Containers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.network", c.__id, "containers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.containers()
+	})
+}
+
+// mqlDockerNetworkSubnet for the docker.network.subnet resource
+type mqlDockerNetworkSubnet struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDockerNetworkSubnetInternal it will be used here
+	Subnet  plugin.TValue[string]
+	Gateway plugin.TValue[string]
+	IpRange plugin.TValue[string]
+}
+
+// createDockerNetworkSubnet creates a new instance of this resource
+func createDockerNetworkSubnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerNetworkSubnet{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.network.subnet", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerNetworkSubnet) MqlName() string {
+	return "docker.network.subnet"
+}
+
+func (c *mqlDockerNetworkSubnet) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerNetworkSubnet) GetSubnet() *plugin.TValue[string] {
+	return &c.Subnet
+}
+
+func (c *mqlDockerNetworkSubnet) GetGateway() *plugin.TValue[string] {
+	return &c.Gateway
+}
+
+func (c *mqlDockerNetworkSubnet) GetIpRange() *plugin.TValue[string] {
+	return &c.IpRange
+}
+
+// mqlDockerVolume for the docker.volume resource
+type mqlDockerVolume struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDockerVolumeInternal it will be used here
+	Name       plugin.TValue[string]
+	Driver     plugin.TValue[string]
+	Mountpoint plugin.TValue[string]
+	CreatedAt  plugin.TValue[*time.Time]
+	Labels     plugin.TValue[map[string]any]
+	Options    plugin.TValue[map[string]any]
+	Scope      plugin.TValue[string]
+	Anonymous  plugin.TValue[bool]
+	Containers plugin.TValue[[]any]
+}
+
+// createDockerVolume creates a new instance of this resource
+func createDockerVolume(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerVolume{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.volume", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerVolume) MqlName() string {
+	return "docker.volume"
+}
+
+func (c *mqlDockerVolume) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerVolume) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDockerVolume) GetDriver() *plugin.TValue[string] {
+	return &c.Driver
+}
+
+func (c *mqlDockerVolume) GetMountpoint() *plugin.TValue[string] {
+	return &c.Mountpoint
+}
+
+func (c *mqlDockerVolume) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDockerVolume) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlDockerVolume) GetOptions() *plugin.TValue[map[string]any] {
+	return &c.Options
+}
+
+func (c *mqlDockerVolume) GetScope() *plugin.TValue[string] {
+	return &c.Scope
+}
+
+func (c *mqlDockerVolume) GetAnonymous() *plugin.TValue[bool] {
+	return &c.Anonymous
+}
+
+func (c *mqlDockerVolume) GetContainers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Containers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.volume", c.__id, "containers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.containers()
+	})
 }
 
 // mqlDockerDaemon for the docker.daemon resource

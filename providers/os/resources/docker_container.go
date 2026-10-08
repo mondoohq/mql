@@ -24,6 +24,11 @@ import (
 )
 
 type mqlDockerContainerInternal struct {
+	// endpoints and volumeNames come from the container listing, so the
+	// network and volume edges need no call per container.
+	endpoints   []dockerContainerEndpoint
+	volumeNames []string
+
 	lock       sync.Mutex
 	inspected  atomic.Bool
 	inspect    *container.InspectResponse

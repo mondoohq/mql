@@ -1,0 +1,40 @@
+{
+  "Volumes": [
+    {
+      "CreatedAt": "2026-10-08T03:39:09Z",
+      "Driver": "local",
+      "Labels": {
+        "owner": "me"
+      },
+      "Mountpoint": "/var/lib/docker/volumes/mqltest-named/_data",
+      "Name": "mqltest-named",
+      "Options": null,
+      "Scope": "local"
+    },
+    {
+      "CreatedAt": "2026-10-08T03:39:09Z",
+      "Driver": "local",
+      "Labels": null,
+      "Mountpoint": "/var/lib/docker/volumes/mqltest-opts/_data",
+      "Name": "mqltest-opts",
+      "Options": {
+        "device": "tmpfs",
+        "o": "size=10m",
+        "type": "tmpfs"
+      },
+      "Scope": "local"
+    },
+    {
+      "CreatedAt": "2026-10-08T03:39:10Z",
+      "Driver": "local",
+      "Labels": {
+        "com.docker.volume.anonymous": ""
+      },
+      "Mountpoint": "/var/lib/docker/volumes/dadacadc2c28b1e7891769f6ef274b10f64e1ebdddbacceea47b7dadbfc92b02/_data",
+      "Name": "dadacadc2c28b1e7891769f6ef274b10f64e1ebdddbacceea47b7dadbfc92b02",
+      "Options": null,
+      "Scope": "local"
+    }
+  ],
+  "Warnings": null
+}
