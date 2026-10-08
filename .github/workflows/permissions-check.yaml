@@ -10,18 +10,21 @@ name: Permission Manifests
 # permissions whether every manifest entry can be used (see validate/aws.go,
 # gcp.go and azure.go for the sources), then has each cloud accept the whole
 # manifest itself (scripts/test-iam-permissions.sh): IAM Access Analyzer over
-# the AWS policies, a custom role created and deleted on GCP and on Azure. It
-# runs when a manifest or the tooling changes, one job per cloud, so a failure
-# names the cloud and the clouds do not wait on each other.
+# the AWS policies, a custom role created and deleted on GCP (project level)
+# and on Azure. It runs when a manifest or the tooling changes, one job per
+# cloud, so a failure names the cloud and the clouds do not wait on each other.
 #
 # The identities, all reached through OIDC federation from this repository: an
 # AWS role allowed access-analyzer:ValidatePolicy; a GCP service account that
-# can see the project and the organization and create and delete custom roles
-# on both (roles/iam.roleAdmin and roles/iam.organizationRoleAdmin on a dev
-# project and org); an Azure app registration with roleDefinitions/write and
-# delete at a dev scope (User Access Administrator on a dev subscription). A
-# pull request from a fork has no secrets: the GCP and Azure jobs are skipped
-# and the AWS job checks the public list only, each with a warning.
+# creates and deletes custom roles on a dev project (roles/iam.roleAdmin) and
+# reads the organization (roles/browser) for queryTestablePermissions, nothing
+# more, because creating a role on the organization would need iam.roles.update
+# and delete over every custom role of the organization, so the org-level list
+# is checked against the catalog only; an Azure app registration with
+# roleDefinitions read, write and delete at a dev scope (a custom role on a dev
+# subscription). A pull request from a fork has no secrets: the GCP and Azure
+# jobs are skipped and the AWS job checks the public list only, each with a
+# warning.
 on:
   pull_request:
     paths:
@@ -144,10 +147,9 @@ jobs:
           GCP_ORGANIZATION: ${{ secrets.PERMISSIONS_GCP_ORGANIZATION }}
         run: go run ./providers-sdk/v1/util/permissions/validate providers/gcp
 
-      - name: IAM accepts the manifest as custom roles (created and deleted)
+      - name: IAM accepts the project-level list as a custom role (created and deleted)
         env:
           GCP_PROJECT: ${{ secrets.PERMISSIONS_GCP_PROJECT }}
-          GCP_ORGANIZATION: ${{ secrets.PERMISSIONS_GCP_ORGANIZATION }}
         run: scripts/test-iam-permissions.sh gcp-check
 
   azure:

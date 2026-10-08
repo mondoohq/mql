@@ -13,9 +13,13 @@
 #
 #   AWS    IAM Access Analyzer validates identity policies built from the
 #          manifest (creates nothing).
-#   GCP    a custom role is created from the manifest on a project (and, for
-#          org_level_permissions, on an organization) and deleted again;
-#          `gcloud iam roles create` refuses a permission IAM does not know.
+#   GCP    a custom role is created from the manifest's project-level
+#          permissions on a project and deleted again; `gcloud iam roles
+#          create` refuses a permission IAM does not know. The org-level list
+#          is checked against queryTestablePermissions only (the validator):
+#          creating a role on the organization needs iam.roles.* over every
+#          custom role of the organization, which no CI identity gets.
+#          gcp-create-org remains for a human with that access.
 #   Azure  a custom role is created from the manifest at a scope and deleted
 #          again; Azure refuses an unregistered operation with
 #          InvalidActionOrNotAction.
@@ -34,7 +38,7 @@
 #   scripts/test-iam-permissions.sh aws-delete              # tear them down
 #
 #   GCP_PROJECT=<id> GCP_ORGANIZATION=<id> ...
-#   scripts/test-iam-permissions.sh gcp-check               # create + delete the project and organization custom roles
+#   scripts/test-iam-permissions.sh gcp-check               # create + delete the project-level custom role
 #   scripts/test-iam-permissions.sh gcp-create              # create the project-level custom role
 #   scripts/test-iam-permissions.sh gcp-create-org          # create the org-level custom role
 #   scripts/test-iam-permissions.sh gcp-delete              # delete the project-level custom role
@@ -253,19 +257,19 @@ gcp_delete_org() {
   echo ">> Done."
 }
 
-# The GCP check: IAM accepts both manifest lists as custom roles, project and
-# organization, cleaned up again. If a step fails, whatever was created is
-# removed on the way out (best effort) so the next run starts clean.
+# The GCP check: IAM accepts the project-level list as a custom role, cleaned
+# up again. The org-level list is not created as a role here (see the header);
+# the validator checks it against queryTestablePermissions. If a step fails,
+# whatever was created is removed on the way out (best effort) so the next run
+# starts clean.
 gcp_check() {
   trap 'rc=$?; trap - EXIT; gcp_cleanup; exit $rc' EXIT
-  gcp_create;     gcp_delete
-  gcp_create_org; gcp_delete_org
+  gcp_create; gcp_delete
   trap - EXIT
 }
 
 gcp_cleanup() {
-  [[ -z "${GCP_PROJECT:-}" ]]      || gcloud iam roles delete "$GCP_ROLE_ID" --project="$GCP_PROJECT" --quiet >/dev/null 2>&1 || true
-  [[ -z "${GCP_ORGANIZATION:-}" ]] || gcloud iam roles delete "$GCP_ORG_ROLE_ID" --organization="$GCP_ORGANIZATION" --quiet >/dev/null 2>&1 || true
+  [[ -z "${GCP_PROJECT:-}" ]] || gcloud iam roles delete "$GCP_ROLE_ID" --project="$GCP_PROJECT" --quiet >/dev/null 2>&1 || true
 }
 
 # ---------------------------------------------------------------------------
@@ -334,8 +338,8 @@ AWS:
   aws-create              create role mql-perms-test + managed policies
   aws-delete              tear the AWS role + policies back down
 
-GCP (GCP_PROJECT and GCP_ORGANIZATION must be set):
-  gcp-check               create + delete the project and organization custom roles
+GCP (GCP_PROJECT must be set; GCP_ORGANIZATION for the -org commands):
+  gcp-check               create + delete the project-level custom role
   gcp-create              create project-level custom role mqlReadonlyCheck
   gcp-create-org          create org-level custom role mqlReadonlyCheckOrg
   gcp-delete              delete the project-level custom role

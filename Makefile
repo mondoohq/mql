@@ -336,9 +336,9 @@ providers/permissions:
 # queryTestablePermissions (gcloud login, GCP_PROJECT, GCP_ORGANIZATION) and
 # Azure's provider operation registry (az login). check/live then has each
 # cloud accept the whole manifest itself: IAM Access Analyzer over the AWS
-# policies (aws login), custom roles created and deleted on GCP (iam.roles.create
-# on GCP_PROJECT and GCP_ORGANIZATION) and on Azure (roleDefinitions/write at
-# AZURE_CHECK_SCOPE, e.g. /subscriptions/<id>).
+# policies (aws login), a custom role created and deleted on GCP (iam.roles.create
+# on GCP_PROJECT; the org-level list is checked by check/catalog only) and on
+# Azure (roleDefinitions/write at AZURE_CHECK_SCOPE, e.g. /subscriptions/<id>).
 providers/permissions/check: providers/permissions/check/catalog providers/permissions/check/live
 
 providers/permissions/check/catalog:
