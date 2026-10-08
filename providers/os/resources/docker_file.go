@@ -785,8 +785,18 @@ func (p *mqlDockerFile) finalStage(file *mqlFile) (*mqlDockerFileStage, error) {
 
 // isRootUser reports whether the user part of a USER value is root. An empty
 // user is root as well: it is what a USER set from an empty variable builds.
+//
+// It resolves the user the way the runtime does (moby/sys/user GetExecUser,
+// used by runc and the engines): a value strconv.Atoi accepts is a UID, so
+// `00`, `+0` and `-0` are root, and anything else is a name, matched exactly.
 func isRootUser(user string) bool {
-	return user == "" || user == "0" || user == "root"
+	if user == "" {
+		return true
+	}
+	if uid, err := strconv.Atoi(user); err == nil {
+		return uid == 0
+	}
+	return user == "root"
 }
 
 func locationLine(location []parser.Range) int {

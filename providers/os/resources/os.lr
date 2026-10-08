@@ -7524,8 +7524,8 @@ private docker.file.stage @defaults("from.name") {
   onbuild []docker.file.onbuild
   // Whether this stage runs as root
   //
-  // True when the stage's last `USER` instruction resolves to UID 0 (`0` or
-  // `root`), or is set from a variable that has no value in the Dockerfile,
+  // True when the stage's last `USER` instruction resolves to UID 0 (`root`,
+  // or a number equal to 0 such as `0` or `00`), or is set from a variable that has no value in the Dockerfile,
   // such as an `ARG` without a default. A stage without `USER` has the user
   // of the stage it is built from (`FROM <stage>`). A stage built from an
   // image and without `USER` counts as root, because the image's user is not
@@ -7643,8 +7643,9 @@ private docker.file.user @defaults("user") @context("file.context") {
   group string
   // Whether the declared user is root
   //
-  // True when `user` is `0` or `root`, or is set from a variable that has no
-  // value in the Dockerfile. The group is not considered.
+  // True when `user` is `root` or a number equal to 0 (such as `0` or `00`),
+  // or is set from a variable that has no value in the Dockerfile. The group
+  // is not considered.
   isRoot bool
 }
 
@@ -7973,9 +7974,9 @@ docker.image {
   user() string
   // Whether a container started from the image runs as root
   //
-  // True when `user` is empty or its user part is `0` or `root`. A named user
-  // other than `root` counts as not root, because the image's account database
-  // is not read.
+  // True when `user` is empty, or its user part is `root` or a number equal to
+  // 0 (such as `0` or `00`). A name other than `root` counts as not root, even
+  // when the image's /etc/passwd gives it UID 0.
   runsAsRoot() bool
   // Command the image runs, prefixed to `cmd` (e.g., ["/docker-entrypoint.sh"])
   entrypoint() []string

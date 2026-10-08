@@ -88,6 +88,11 @@ func TestImageUserIsRoot(t *testing.T) {
 		"1000:0":      false,
 		"nginx":       false,
 		"65532:65532": false,
+		"00":          true,
+		"+0:1000":     true,
+		"-0":          true,
+		"0001":        false,
+		"Root":        false,
 	} {
 		assert.Equal(t, want, imageUserIsRoot(user), user)
 	}
