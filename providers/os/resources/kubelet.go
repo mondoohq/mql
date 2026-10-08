@@ -598,6 +598,14 @@ func resolveKubeletExecutable(exe string, probe kubeletBinaryProbe) string {
 	if path.IsAbs(exe) {
 		return exe
 	}
+	return resolveRootExecutable(exe, kubeletInstallPaths, probe)
+}
+
+// resolveRootExecutable returns the binary of a process that is safe to run:
+// the path root runs it from in the system's own mount namespace (argv[0]
+// first, then /proc/<pid>/exe), else the first of installPaths that only root
+// can change, else exe as the process list reports it.
+func resolveRootExecutable(exe string, installPaths []string, probe kubeletBinaryProbe) string {
 	if running := probe.rootExe(); running != "" {
 		for _, p := range []string{probe.argv0(), running} {
 			if path.IsAbs(p) && probe.resolve(p) == running {
@@ -605,7 +613,7 @@ func resolveKubeletExecutable(exe string, probe kubeletBinaryProbe) string {
 			}
 		}
 	}
-	for _, p := range kubeletInstallPaths {
+	for _, p := range installPaths {
 		if probe.trustedBinary(p) {
 			return p
 		}
@@ -657,19 +665,34 @@ func parseKubeletProcSnapshot(out string) string {
 // target. Each read is a command, so it runs with sudo where the scan does:
 // /proc/<pid>/exe of a root process is not readable by others.
 func (m *mqlKubelet) kubeletBinaryProbe(proc *mqlProcess) kubeletBinaryProbe {
-	pid := proc.GetPid()
+	return newBinaryProbe(m.MqlRuntime, proc)
+}
+
+// newBinaryProbe reads the facts resolveRootExecutable needs from the target,
+// about a process, or about files alone when proc is nil.
+func newBinaryProbe(runtime *plugin.Runtime, proc *mqlProcess) kubeletBinaryProbe {
+	runQuiet := func(command string) (string, bool) {
+		return runCommandQuiet(runtime, command)
+	}
 	return kubeletBinaryProbe{
 		rootExe: func() string {
+			if proc == nil {
+				return ""
+			}
+			pid := proc.GetPid()
 			if pid.Error != nil {
 				return ""
 			}
-			out, ok := m.runQuiet(kubeletProcSnapshotCommand(pid.Data))
+			out, ok := runQuiet(kubeletProcSnapshotCommand(pid.Data))
 			if !ok {
 				return ""
 			}
 			return parseKubeletProcSnapshot(out)
 		},
 		argv0: func() string {
+			if proc == nil {
+				return ""
+			}
 			command := proc.GetCommand()
 			if command.Error != nil {
 				return ""
@@ -681,11 +704,11 @@ func (m *mqlKubelet) kubeletBinaryProbe(proc *mqlProcess) kubeletBinaryProbe {
 			return fields[0]
 		},
 		resolve: func(p string) string {
-			out, _ := m.runQuiet("readlink -f -- " + shellQuote(p))
+			out, _ := runQuiet("readlink -f -- " + shellQuote(p))
 			return strings.TrimSpace(out)
 		},
 		trustedBinary: func(p string) bool {
-			out, ok := m.runQuiet("stat -L -c '%u %a' -- " + shellQuote(p))
+			out, ok := runQuiet("stat -L -c '%u %a' -- " + shellQuote(p))
 			if !ok {
 				return false
 			}

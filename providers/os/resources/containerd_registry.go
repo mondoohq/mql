@@ -9,7 +9,6 @@ import (
 	"path"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -75,7 +74,12 @@ func parseContainerdHostsFile(namespace, file, content string) ([]containerdRegi
 		h.File = file
 		res = append(res, h)
 	}
-	server, err := newContainerdRegistryHost(namespace, doc.Server, dir, doc.containerdHostFile)
+	// without a server, images come from the namespace's registry itself
+	serverURL := doc.Server
+	if serverURL == "" && namespace != "_default" {
+		serverURL = containerdDefaultHost(namespace)
+	}
+	server, err := newContainerdRegistryHost(namespace, serverURL, dir, doc.containerdHostFile)
 	if err != nil {
 		return nil, err
 	}
@@ -198,9 +202,13 @@ func containerdHostsFiles(fs afero.Fs, roots []string) [][2]string {
 // registry.mirrors and registry.configs settings: every mirror endpoint of a
 // namespace, then the namespace's registry itself, with the TLS settings
 // configured for each endpoint's host.
-func containerdInlineRegistryHosts(registry map[string]any) []containerdRegistryHost {
-	mirrors, _ := registry["mirrors"].(map[string]any)
-	configs, _ := registry["configs"].(map[string]any)
+func containerdInlineRegistryHosts(registry map[string]any, fold bool) []containerdRegistryHost {
+	get := func(m map[string]any, key string) any {
+		v, _ := containerdGet(m, key, fold)
+		return v
+	}
+	mirrors, _ := get(registry, "mirrors").(map[string]any)
+	configs, _ := get(registry, "configs").(map[string]any)
 
 	tlsFor := func(h *containerdRegistryHost) {
 		u, err := url.Parse(h.URL)
@@ -208,12 +216,12 @@ func containerdInlineRegistryHosts(registry map[string]any) []containerdRegistry
 			return
 		}
 		cfg, _ := configs[u.Host].(map[string]any)
-		tls, _ := cfg["tls"].(map[string]any)
-		h.SkipVerify, _ = tls["insecure_skip_verify"].(bool)
-		if ca, ok := tls["ca_file"].(string); ok && ca != "" {
+		tls, _ := get(cfg, "tls").(map[string]any)
+		h.SkipVerify, _ = get(tls, "insecure_skip_verify").(bool)
+		if ca, ok := get(tls, "ca_file").(string); ok && ca != "" {
 			h.CACerts = []string{ca}
 		}
-		if cert, ok := tls["cert_file"].(string); ok && cert != "" {
+		if cert, ok := get(tls, "cert_file").(string); ok && cert != "" {
 			h.ClientCerts = []string{cert}
 		}
 	}
@@ -228,7 +236,7 @@ func containerdInlineRegistryHosts(registry map[string]any) []containerdRegistry
 	for _, ns := range namespaces {
 		mirror, _ := mirrors[ns].(map[string]any)
 		hasServer := false
-		for _, e := range containerdStrings(mirror["endpoint"]) {
+		for _, e := range containerdStrings(get(mirror, "endpoint")) {
 			h := containerdRegistryHost{Namespace: ns, URL: containerdHostURL(e), Capabilities: containerdAllCapabilities}
 			if u, err := url.Parse(h.URL); err == nil {
 				covered[u.Host] = true
@@ -299,12 +307,12 @@ func (c *mqlContainerd) registryHosts() ([]any, error) {
 			return nil, err
 		}
 		registry, _ := v.(map[string]any)
-		hosts = containerdInlineRegistryHosts(registry)
+		hosts = containerdInlineRegistryHosts(registry, c.major == 2)
 	}
 
 	res := []any{}
-	for i, h := range hosts {
-		r, err := c.newRegistryHost(i, h)
+	for _, h := range hosts {
+		r, err := c.newRegistryHost(h)
 		if err != nil {
 			return nil, err
 		}
@@ -325,7 +333,22 @@ func (c *mqlContainerd) fileResources(paths []string) ([]any, error) {
 	return res, nil
 }
 
-func (c *mqlContainerd) newRegistryHost(i int, h containerdRegistryHost) (plugin.Resource, error) {
+// containerdRegistryHostID identifies a host by where it is configured, its
+// namespace and URL, and whether it is the namespace's server, which may
+// share its URL with one of the hosts.
+func containerdRegistryHostID(h containerdRegistryHost) string {
+	src := h.File
+	if src == "" {
+		src = "config"
+	}
+	role := "host"
+	if h.Server {
+		role = "server"
+	}
+	return "containerd.registryHost/" + src + "/" + h.Namespace + "/" + role + "/" + h.URL
+}
+
+func (c *mqlContainerd) newRegistryHost(h containerdRegistryHost) (plugin.Resource, error) {
 	caps := make([]any, 0, len(h.Capabilities))
 	for _, s := range h.Capabilities {
 		caps = append(caps, strings.ToLower(s))
@@ -346,12 +369,8 @@ func (c *mqlContainerd) newRegistryHost(i int, h containerdRegistryHost) (plugin
 		}
 		file = llx.ResourceData(f, "file")
 	}
-	src := h.File
-	if src == "" {
-		src = "config"
-	}
 	return CreateResource(c.MqlRuntime, "containerd.registryHost", map[string]*llx.RawData{
-		"__id":         llx.StringData("containerd.registryHost/" + src + "/" + strconv.Itoa(i)),
+		"__id":         llx.StringData(containerdRegistryHostID(h)),
 		"namespace":    llx.StringData(h.Namespace),
 		"url":          llx.StringData(h.URL),
 		"server":       llx.BoolData(h.Server),

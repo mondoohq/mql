@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"encoding/json"
 	"io/fs"
 	"os"
 	"path"
@@ -58,7 +59,7 @@ func containerdDump(t *testing.T, name string) map[string]any {
 
 func dumpValue(t *testing.T, dump map[string]any, keys ...string) any {
 	t.Helper()
-	v, ok := containerdLookup(dump, keys)
+	v, ok := containerdLookup(dump, keys, false)
 	require.True(t, ok, "dump has no %v", keys)
 	return v
 }
@@ -123,7 +124,7 @@ func assertContainerdMatchesDump(t *testing.T, cfg *containerdConfig, version st
 	assert.Equal(t, splitContainerdConfigPath(dumpValue(t, dump, at(imagesPrefix, "registry", "config_path")...).(string)), paths)
 
 	want := dumpValue(t, dump, at(runtimesKeys, "runtimes")...).(map[string]any)
-	got := containerdRuntimesFrom(effectiveContainerdRuntimes(cfg.merged, cfg.version, effectiveContainerdMajor(major, cfg.version)))
+	got := containerdRuntimesFrom(effectiveContainerdRuntimes(cfg.merged, cfg.version, effectiveContainerdMajor(major, cfg.version)), major == 2)
 	require.Equal(t, len(want), len(got))
 	for _, rt := range got {
 		w, ok := want[rt.Name].(map[string]any)
@@ -297,7 +298,7 @@ func TestWithoutContainerdSecrets(t *testing.T) {
 	require.NoError(t, err)
 
 	clean := withoutContainerdSecrets(cfg.merged)
-	registry, ok := containerdLookup(clean, []string{"plugins", containerdCRIPlugin, "registry"})
+	registry, ok := containerdLookup(clean, []string{"plugins", containerdCRIPlugin, "registry"}, false)
 	require.True(t, ok)
 	configs := registry.(map[string]any)["configs"].(map[string]any)
 	quay := configs["quay.io"].(map[string]any)
@@ -306,7 +307,7 @@ func TestWithoutContainerdSecrets(t *testing.T) {
 	assert.Contains(t, registry.(map[string]any), "mirrors")
 
 	// the loaded configuration itself keeps them
-	_, ok = containerdLookup(cfg.merged, []string{"plugins", containerdCRIPlugin, "registry", "configs", "quay.io", "auth"})
+	_, ok = containerdLookup(cfg.merged, []string{"plugins", containerdCRIPlugin, "registry", "configs", "quay.io", "auth"}, false)
 	assert.True(t, ok)
 }
 
@@ -375,7 +376,7 @@ func TestEffectiveContainerdRuntimesMigration(t *testing.T) {
 			"runc": map[string]any{"runtime_type": "io.containerd.runc.v2"},
 		}}},
 	}}
-	got := containerdRuntimesFrom(effectiveContainerdRuntimes(cfg, 2, 2))
+	got := containerdRuntimesFrom(effectiveContainerdRuntimes(cfg, 2, 2), true)
 	names := []string{}
 	for _, r := range got {
 		names = append(names, r.Name+"="+r.Type)
@@ -384,7 +385,66 @@ func TestEffectiveContainerdRuntimesMigration(t *testing.T) {
 	assert.Equal(t, "kata=io.containerd.kata.v2,runc=io.containerd.runc.v2", strings.Join(names, ","))
 
 	// a version 3 configuration's version 2 section is not read
-	got = containerdRuntimesFrom(effectiveContainerdRuntimes(cfg, 3, 2))
+	got = containerdRuntimesFrom(effectiveContainerdRuntimes(cfg, 3, 2), true)
 	require.Len(t, got, 1)
 	assert.Equal(t, "runc", got[0].Name)
+}
+
+func TestLoadContainerdConfigCaseInsensitiveKeys(t *testing.T) {
+	// containerd 2.x reads Enable_SELinux as enable_selinux, 1.x ignores it
+	fsys := containerdTestFS(t, nil, "casefold", "/etc/containerd")
+	for _, version := range []string{"2.2.0", "1.7.18"} {
+		t.Run(version, func(t *testing.T) {
+			cfg, err := loadContainerdConfig(fsys, containerdConfigFile, containerdMajor(version))
+			require.NoError(t, err)
+			assertContainerdMatchesDump(t, cfg, version, containerdDump(t, "casefold-dump-v"+version+".toml"))
+		})
+	}
+	cfg, err := loadContainerdConfig(fsys, containerdConfigFile, 2)
+	require.NoError(t, err)
+	got, ok := cfg.effective(2, containerdRuntimeSetting("enable_selinux", false, false))
+	require.True(t, ok)
+	assert.Equal(t, true, got)
+}
+
+func TestWithoutContainerdSecretsAnyCase(t *testing.T) {
+	// containerd 2.2 loads every one of these credentials, whatever the case
+	// of their keys (checked with `containerd config dump`)
+	fsys := containerdTestFS(t, nil, "secrets", "/etc/containerd")
+	cfg, err := loadContainerdConfig(fsys, containerdConfigFile, 2)
+	require.NoError(t, err)
+
+	data, err := json.Marshal(withoutContainerdSecrets(cfg.merged))
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "secret-")
+	// the TLS settings next to them stay
+	assert.Contains(t, string(data), "insecure_skip_verify")
+}
+
+func TestContainerdVersionBinaries(t *testing.T) {
+	probe := func(rootExe, argv0 string, trusted ...string) kubeletBinaryProbe {
+		return kubeletBinaryProbe{
+			rootExe: func() string { return rootExe },
+			argv0:   func() string { return argv0 },
+			resolve: func(p string) string { return p },
+			trustedBinary: func(p string) bool {
+				for _, t := range trusted {
+					if t == p {
+						return true
+					}
+				}
+				return false
+			},
+		}
+	}
+
+	// a process path is run only when root runs that very file
+	assert.Equal(t, []string{"/usr/local/bin/containerd", "containerd"},
+		containerdVersionBinaries(true, probe("/usr/local/bin/containerd", "/usr/local/bin/containerd")))
+	// any other process named containerd gets nothing run from its path
+	assert.Equal(t, []string{"containerd"},
+		containerdVersionBinaries(true, probe("", "/tmp/evil/containerd")))
+	// install paths only when root alone can change them
+	assert.Equal(t, []string{"containerd", "/var/lib/rancher/rke2/bin/containerd"},
+		containerdVersionBinaries(false, probe("", "", "/var/lib/rancher/rke2/bin/containerd")))
 }

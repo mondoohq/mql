@@ -8445,8 +8445,9 @@ containerd.registryHost @defaults("namespace url") {
   namespace string
   // URL of the host (for example "https://registry-1.docker.io")
   //
-  // Empty for the server of a namespace that names none: images are then
-  // pulled from the namespace's registry itself.
+  // A namespace whose hosts.toml names no server is served by its own
+  // registry. Empty for the server of the `_default` namespace without one,
+  // which is the registry each image names.
   url string
   // Whether this is the namespace's server rather than one of its hosts (mirrors)
   server bool

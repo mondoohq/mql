@@ -54,11 +54,9 @@ var containerdConfigFiles = []string{
 	"/etc/k0s/containerd.toml",
 }
 
-// containerdBinaries are the containerd binaries to ask for the version when
-// no running containerd names its own: the one on the PATH, then the ones the
-// Kubernetes distributions ship on no PATH.
-var containerdBinaries = []string{
-	"containerd",
+// containerdInstallPaths are the containerd binaries the Kubernetes
+// distributions ship on no PATH, in directories only root can write.
+var containerdInstallPaths = []string{
 	"/var/lib/rancher/rke2/bin/containerd",
 	"/snap/microk8s/current/bin/containerd",
 	"/snap/k8s/current/bin/containerd",
@@ -170,16 +168,12 @@ func (c *mqlContainerd) load() {
 	c.loaded = true
 
 	c.proc = findContainerdProcess(c.MqlRuntime)
-	exe := ""
 	if c.proc != nil {
 		if command := c.proc.GetCommand(); command.Error == nil {
 			c.flags = parseContainerdCommandLine(command.Data)
 		}
-		if e := c.proc.GetExecutable(); e.Error == nil && path.Base(e.Data) == "containerd" {
-			exe = e.Data
-		}
 	}
-	c.ver = c.containerdVersion(exe)
+	c.ver = c.containerdVersion(containerdVersionBinaries(c.proc != nil, newBinaryProbe(c.MqlRuntime, c.proc)))
 	c.major = containerdMajor(c.ver)
 }
 
@@ -223,13 +217,31 @@ func findContainerdProcess(runtime *plugin.Runtime) *mqlProcess {
 	return nil
 }
 
-// containerdVersion asks a containerd binary for its version: the running
-// one's when known, otherwise the first of containerdBinaries that answers.
-func (c *mqlContainerd) containerdVersion(exe string) string {
-	bins := containerdBinaries
-	if exe != "" {
-		bins = append([]string{exe}, bins...)
+// containerdVersionBinaries returns the containerd binaries to ask for the
+// version, in order. The containerd process is matched by name, and any user
+// can start a process named containerd, so its binary is run only when root
+// runs that very file in the system's own mount namespace, as for the
+// kubelet. Then the containerd on the PATH, then the install paths that only
+// root can change.
+func containerdVersionBinaries(hasProcess bool, probe kubeletBinaryProbe) []string {
+	res := []string{}
+	if hasProcess {
+		if p := resolveRootExecutable("", nil, probe); path.IsAbs(p) {
+			res = append(res, p)
+		}
 	}
+	res = append(res, "containerd")
+	for _, p := range containerdInstallPaths {
+		if probe.trustedBinary(p) {
+			res = append(res, p)
+		}
+	}
+	return res
+}
+
+// containerdVersion asks containerd binaries for the version, and returns the
+// first answer.
+func (c *mqlContainerd) containerdVersion(bins []string) string {
 	for _, bin := range bins {
 		out, ok := runCommandQuiet(c.MqlRuntime, shellquote.Join(bin, "--version"))
 		if !ok {
@@ -613,60 +625,48 @@ func (c *mqlContainerd) configuration() (map[string]any, error) {
 	return convert.JsonToDict(withoutContainerdSecrets(cfg.merged))
 }
 
+// containerdSecretKeys are the settings that hold registry credentials or
+// headers (which carry tokens): the CRI registry's auths, headers, and each
+// registry's auth with its username, password, auth and identitytoken.
+var containerdSecretKeys = []string{"auth", "auths", "headers", "header", "username", "password", "identitytoken"}
+
+func isContainerdSecretKey(k string) bool {
+	for _, s := range containerdSecretKeys {
+		if strings.EqualFold(k, s) {
+			return true
+		}
+	}
+	return false
+}
+
 // withoutContainerdSecrets returns a copy of a configuration without the
-// registry credentials and headers the CRI plugins may hold.
+// registry credentials and headers it may hold, wherever they are. containerd
+// matches setting names regardless of case (`Auth`, `AUTHS`, `Headers`), so
+// they are matched the same way.
 func withoutContainerdSecrets(cfg map[string]any) map[string]any {
 	res := make(map[string]any, len(cfg))
 	for k, v := range cfg {
-		res[k] = v
-	}
-	plugins, ok := cfg["plugins"].(map[string]any)
-	if !ok {
-		return res
-	}
-	cleanPlugins := make(map[string]any, len(plugins))
-	for id, section := range plugins {
-		cleanPlugins[id] = section
-		table, ok := section.(map[string]any)
-		if !ok {
+		if isContainerdSecretKey(k) {
 			continue
 		}
-		registry, ok := table["registry"].(map[string]any)
-		if !ok {
-			continue
-		}
-		cleanRegistry := map[string]any{}
-		for k, v := range registry {
-			switch k {
-			case "auths", "headers":
-				continue
-			case "configs":
-				configs, _ := v.(map[string]any)
-				cleanConfigs := map[string]any{}
-				for host, hc := range configs {
-					hostConfig, _ := hc.(map[string]any)
-					clean := map[string]any{}
-					for hk, hv := range hostConfig {
-						if hk != "auth" {
-							clean[hk] = hv
-						}
-					}
-					cleanConfigs[host] = clean
-				}
-				cleanRegistry[k] = cleanConfigs
-			default:
-				cleanRegistry[k] = v
-			}
-		}
-		cleanTable := make(map[string]any, len(table))
-		for k, v := range table {
-			cleanTable[k] = v
-		}
-		cleanTable["registry"] = cleanRegistry
-		cleanPlugins[id] = cleanTable
+		res[k] = withoutContainerdSecretsValue(v)
 	}
-	res["plugins"] = cleanPlugins
 	return res
+}
+
+func withoutContainerdSecretsValue(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		return withoutContainerdSecrets(x)
+	case []any:
+		res := make([]any, len(x))
+		for i, item := range x {
+			res[i] = withoutContainerdSecretsValue(item)
+		}
+		return res
+	default:
+		return v
+	}
 }
 
 // containerdSetting is a CRI setting: where configuration version 2 and
@@ -743,20 +743,40 @@ var containerdSandboxImages = map[string]string{
 	"2.3": "registry.k8s.io/pause:3.10.2",
 }
 
-// containerdLookup returns the value at a path of nested tables.
-func containerdLookup(cfg map[string]any, keys []string) (any, bool) {
+// containerdLookup returns the value at a path of nested tables. With fold,
+// keys past the first (a plugin id or top-level setting) also match
+// regardless of case when none matches exactly, as containerd 2.x decodes
+// settings into its structs; containerd 1.x does not.
+func containerdLookup(cfg map[string]any, keys []string, fold bool) (any, bool) {
 	var cur any = cfg
-	for _, k := range keys {
+	for i, k := range keys {
 		table, ok := cur.(map[string]any)
 		if !ok {
 			return nil, false
 		}
-		cur, ok = table[k]
+		cur, ok = containerdGet(table, k, fold && i > 0)
 		if !ok {
 			return nil, false
 		}
 	}
 	return cur, true
+}
+
+// containerdGet returns a setting of a table: the key that matches exactly,
+// else, with fold, one that matches regardless of case.
+func containerdGet(table map[string]any, key string, fold bool) (any, bool) {
+	if v, ok := table[key]; ok {
+		return v, true
+	}
+	if !fold {
+		return nil, false
+	}
+	for k, v := range table {
+		if strings.EqualFold(k, key) {
+			return v, true
+		}
+	}
+	return nil, false
 }
 
 // effectiveMajor is the containerd major version the settings are read for:
@@ -778,16 +798,17 @@ func effectiveContainerdMajor(major int, version int64) int {
 // and migrates the version 2 locations of an older one to version 3.
 func containerdSettingValue(cfg map[string]any, version int64, major int, s containerdSetting) (any, bool) {
 	plugins, _ := cfg["plugins"].(map[string]any)
+	fold := major == 2
 	switch {
 	case major == 1:
-		return containerdLookup(plugins, s.v2)
+		return containerdLookup(plugins, s.v2, false)
 	case version >= 3:
-		return containerdLookup(plugins, s.v3)
+		return containerdLookup(plugins, s.v3, fold)
 	default:
-		if v, ok := containerdLookup(plugins, s.v2); ok {
+		if v, ok := containerdLookup(plugins, s.v2, fold); ok {
 			return v, true
 		}
-		return containerdLookup(plugins, s.v3)
+		return containerdLookup(plugins, s.v3, fold)
 	}
 }
 
@@ -887,7 +908,7 @@ func (c *mqlContainerd) topLevel(flag string, keys []string) (any, error) {
 	if flag != "" {
 		return flag, nil
 	}
-	v, _ := containerdLookup(cfg.merged, keys)
+	v, _ := containerdLookup(cfg.merged, keys, effectiveContainerdMajor(c.major, cfg.version) == 2)
 	return v, nil
 }
 
@@ -1057,7 +1078,8 @@ func (cfg *containerdConfig) registryConfigPaths(major int) ([]string, bool) {
 	case 2:
 		registry, _ := containerdSettingValue(cfg.merged, cfg.version, major, containerdRegistry)
 		table, _ := registry.(map[string]any)
-		if mirrors, _ := table["mirrors"].(map[string]any); len(mirrors) > 0 {
+		v, _ := containerdGet(table, "mirrors", true)
+		if mirrors, _ := v.(map[string]any); len(mirrors) > 0 {
 			return []string{}, true
 		}
 		return splitContainerdConfigPath(containerdDefaultRegistryConfigPath), true
@@ -1108,7 +1130,7 @@ type containerdRuntime struct {
 
 // containerdRuntimesFrom reads the runtime handlers of a runtimes table, in
 // name order.
-func containerdRuntimesFrom(table map[string]any) []containerdRuntime {
+func containerdRuntimesFrom(table map[string]any, fold bool) []containerdRuntime {
 	names := make([]string, 0, len(table))
 	for name := range table {
 		names = append(names, name)
@@ -1117,12 +1139,17 @@ func containerdRuntimesFrom(table map[string]any) []containerdRuntime {
 	res := make([]containerdRuntime, 0, len(names))
 	for _, name := range names {
 		rt, _ := table[name].(map[string]any)
-		options, _ := rt["options"].(map[string]any)
-		r := containerdRuntime{Name: name, PodAnnotations: containerdStrings(rt["pod_annotations"])}
-		r.Type, _ = rt["runtime_type"].(string)
-		r.ShimPath, _ = rt["runtime_path"].(string)
-		r.BaseRuntimeSpec, _ = rt["base_runtime_spec"].(string)
-		r.PrivilegedWithoutHostDevices, _ = rt["privileged_without_host_devices"].(bool)
+		get := func(m map[string]any, key string) any {
+			v, _ := containerdGet(m, key, fold)
+			return v
+		}
+		options, _ := get(rt, "options").(map[string]any)
+		r := containerdRuntime{Name: name, PodAnnotations: containerdStrings(get(rt, "pod_annotations"))}
+		r.Type, _ = get(rt, "runtime_type").(string)
+		r.ShimPath, _ = get(rt, "runtime_path").(string)
+		r.BaseRuntimeSpec, _ = get(rt, "base_runtime_spec").(string)
+		r.PrivilegedWithoutHostDevices, _ = get(rt, "privileged_without_host_devices").(bool)
+		// the options go to the runtime as they are written
 		r.Path, _ = options["BinaryName"].(string)
 		r.Root, _ = options["Root"].(string)
 		r.SystemdCgroup, _ = options["SystemdCgroup"].(bool)
@@ -1133,13 +1160,13 @@ func containerdRuntimesFrom(table map[string]any) []containerdRuntime {
 
 // effectiveContainerdRuntimes returns the runtime handlers containerd runs
 // with. containerd 2.x keeps its built-in runc handler next to the ones the
-// files add, and migrates the handlers of a version 2 configuration to the
+// files add, with the files' runc settings applied over it, and migrates the handlers of a version 2 configuration to the
 // ones of version 3 that do not exist yet. containerd 1.x has only the
 // handlers of the files once they set any.
 func effectiveContainerdRuntimes(cfg map[string]any, version int64, major int) map[string]any {
 	plugins, _ := cfg["plugins"].(map[string]any)
-	v2, _ := containerdLookup(plugins, containerdRuntimes.v2)
-	v3, _ := containerdLookup(plugins, containerdRuntimes.v3)
+	v2, _ := containerdLookup(plugins, containerdRuntimes.v2, major == 2)
+	v3, _ := containerdLookup(plugins, containerdRuntimes.v3, major == 2)
 	v2Table, _ := v2.(map[string]any)
 	v3Table, _ := v3.(map[string]any)
 
@@ -1164,10 +1191,19 @@ func effectiveContainerdRuntimes(cfg map[string]any, version int64, major int) m
 		}
 	}
 
-	if len(res) == 0 || major != 1 {
-		if _, ok := res["runc"]; !ok {
-			res["runc"] = map[string]any{"runtime_type": "io.containerd.runc.v2"}
+	builtin := map[string]any{"runtime_type": "io.containerd.runc.v2"}
+	switch {
+	case major != 1:
+		// the files' runc settings apply over the built-in runc handler
+		if rt, ok := res["runc"].(map[string]any); ok {
+			merged := map[string]any{}
+			mergeContainerdTables(merged, builtin)
+			mergeContainerdTables(merged, rt)
+			builtin = merged
 		}
+		res["runc"] = builtin
+	case len(res) == 0:
+		res["runc"] = builtin
 	}
 	return res
 }
@@ -1180,7 +1216,7 @@ func (c *mqlContainerd) runtimes() ([]any, error) {
 	def := c.GetDefaultRuntime()
 	major := effectiveContainerdMajor(c.major, cfg.version)
 	res := []any{}
-	for _, rt := range containerdRuntimesFrom(effectiveContainerdRuntimes(cfg.merged, cfg.version, major)) {
+	for _, rt := range containerdRuntimesFrom(effectiveContainerdRuntimes(cfg.merged, cfg.version, major), major == 2) {
 		annotations := make([]any, 0, len(rt.PodAnnotations))
 		for _, a := range rt.PodAnnotations {
 			annotations = append(annotations, a)

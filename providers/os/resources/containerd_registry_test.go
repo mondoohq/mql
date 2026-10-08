@@ -70,9 +70,19 @@ skip_verify = true
 	require.Len(t, hosts, 2)
 	assert.Equal(t, "https://mirror.example.com", hosts[0].URL)
 	assert.False(t, hosts[0].SkipVerify)
-	assert.Equal(t, "", hosts[1].URL)
+	assert.Equal(t, "https://quay.io", hosts[1].URL)
 	assert.True(t, hosts[1].Server)
 	assert.True(t, hosts[1].SkipVerify)
+
+	// Docker Hub's namespace is served from its registry host, and the
+	// fallback namespace from whichever registry an image names
+	hosts, err = parseContainerdHostsFile("docker.io", "/h/hosts.toml", `skip_verify = false`)
+	require.NoError(t, err)
+	assert.Equal(t, "https://registry-1.docker.io", hosts[0].URL)
+	hosts, err = parseContainerdHostsFile("_default", "/h/hosts.toml", `[host."https://m.example.com"]`)
+	require.NoError(t, err)
+	require.Len(t, hosts, 2)
+	assert.Equal(t, "", hosts[1].URL)
 
 	_, err = parseContainerdHostsFile("quay.io", "/h/hosts.toml", `ca = 5`)
 	assert.Error(t, err)
@@ -109,7 +119,7 @@ func TestContainerdInlineRegistryHosts(t *testing.T) {
 	require.True(t, ok)
 	assert.Empty(t, paths)
 
-	hosts := containerdInlineRegistryHosts(registry.(map[string]any))
+	hosts := containerdInlineRegistryHosts(registry.(map[string]any), false)
 	all := []string{"pull", "resolve", "push"}
 	assert.Equal(t, []containerdRegistryHost{
 		{Namespace: "docker.io", URL: "https://mirror.example.com", Capabilities: all, CACerts: []string{"/etc/containerd/mirror-ca.crt"}},
@@ -123,4 +133,22 @@ func TestContainerdNamespace(t *testing.T) {
 	assert.Equal(t, "registry.local:5000", containerdNamespace("registry.local_5000_"))
 	assert.Equal(t, "docker.io", containerdNamespace("docker.io"))
 	assert.Equal(t, "_default", containerdNamespace("_default"))
+}
+
+func TestContainerdRegistryHostID(t *testing.T) {
+	// a host and the server may share a URL, and ids must not depend on
+	// the order of the files
+	host := containerdRegistryHost{Namespace: "docker.io", URL: "https://registry-1.docker.io", File: "/etc/containerd/certs.d/docker.io/hosts.toml"}
+	server := host
+	server.Server = true
+	other := host
+	other.Namespace = "quay.io"
+	inline := host
+	inline.File = ""
+	ids := map[string]bool{}
+	for _, h := range []containerdRegistryHost{host, server, other, inline} {
+		ids[containerdRegistryHostID(h)] = true
+	}
+	assert.Len(t, ids, 4)
+	assert.Equal(t, containerdRegistryHostID(host), containerdRegistryHostID(host))
 }
