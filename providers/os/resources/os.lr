@@ -8362,6 +8362,12 @@ private docker.daemon.ulimit @defaults("name soft hard") {
 containerd {
   // All containers across every containerd namespace
   containers() []containerd.container
+  // All images across every containerd namespace
+  //
+  // Kubernetes keeps its images in the `k8s.io` namespace. An image stored
+  // under several references is listed once for each, for example
+  // `containerd.images.where(namespace == "k8s.io" && runsAsRoot) { name }`.
+  images() []containerd.image
   // containerd version (for example "2.2.0")
   //
   // Reported by the containerd binary. Null when it cannot be run, as on an
@@ -8616,6 +8622,75 @@ containerd.container @defaults("id status") {
   cpuShares() int
   // Maximum number of processes in the container, null when unlimited
   pidsLimit() int
+  // Image the container was created from
+  //
+  // The image of `image` in the container's namespace. Null when it is no
+  // longer stored.
+  sourceImage() containerd.image
+}
+
+// Image stored by containerd
+//
+// An image reference in a containerd namespace, with the `digest` and
+// `mediaType` of its manifest or index, the `platforms` it is published for,
+// and its `labels`. The configuration fields come from the image built for
+// the host's platform: `configDigest` (the image ID Kubernetes reports), `size`, `createdAt`,
+// `os`, `architecture`, `user` and `runsAsRoot`, `entrypoint`, `cmd`,
+// `exposedPorts`, and the `layers`. They are null when containerd does not
+// store that image's content, for example
+// `containerd.images.where(runsAsRoot == false) { name user }`.
+containerd.image @defaults("name namespace") {
+  // Image reference (for example "docker.io/library/alpine:3.22")
+  name string
+  // containerd namespace the image belongs to (for example "k8s.io")
+  namespace string
+  // Digest of the image's manifest or, for a multi-platform image, its index
+  digest string
+  // Media type of the manifest or index (for example "application/vnd.oci.image.index.v1+json")
+  mediaType string
+  // Platforms the image is published for (for example "linux/amd64", "linux/arm64/v8")
+  platforms []string
+  // Image labels (for example "io.cri-containerd.pinned")
+  labels map[string]string
+  // Digest of the image configuration, which is the image ID Kubernetes and crictl report
+  configDigest() string
+  // Size in bytes of the image's configuration and compressed layers
+  size() int
+  // Time the image was built, null when the image does not record it
+  createdAt() time
+  // Operating system the image targets (for example "linux")
+  os() string
+  // Processor architecture the image targets (for example "amd64", "arm64")
+  architecture() string
+  // Processor architecture variant (for example "v7", "v8"); empty when the image sets none
+  variant() string
+  // Account a container started from the image runs as, empty when it runs as root
+  //
+  // The image's `USER`, for example `65535:65535` or `nonroot`. Kubernetes
+  // overrides it with the pod's `runAsUser`, which `containerd.container.uid`
+  // reports.
+  user() string
+  // Whether a container started from the image runs as root
+  //
+  // True when `user` is empty, or its user part is `root` or a number equal to
+  // 0 (such as `0` or `00`). A name other than `root` counts as not root, even
+  // when the image's /etc/passwd gives it UID 0.
+  runsAsRoot() bool
+  // Command the image runs, prefixed to `cmd`
+  entrypoint() []string
+  // Default arguments to `entrypoint`, or the command when there is no entrypoint
+  cmd() []string
+  // Working directory of the image's command, empty when the image sets none
+  workingDir() string
+  // Ports the image declares with `EXPOSE`, as `port/protocol` (for example "53/udp")
+  exposedPorts() []string
+  // Digests of the image's filesystem layers, base layer first
+  //
+  // The digests of the uncompressed layer contents (diff IDs), the same
+  // whichever registry or compression the image came from.
+  layers() []string
+  // Containers created from the image, running or stopped
+  containers() []containerd.container
 }
 
 // Mount of a containerd container
