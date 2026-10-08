@@ -95,24 +95,73 @@ func TestDockerInspectDecode(t *testing.T) {
 	assert.Nil(t, loose.State.Health, "no health check means no health status")
 }
 
+// loadDockerInfoSecurityOptions reads `docker info --format
+// '{{json .SecurityOptions}}'` from Docker 29.8.2 daemons: Docker Desktop
+// (desktop), and docker:29-dind started with --seccomp-profile=unconfined
+// (unconfined) and with --seccomp-profile=/etc/dsc.json (custom).
+func loadDockerInfoSecurityOptions(t *testing.T, name string) []string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "docker", "info-securityoptions-"+name+".json"))
+	require.NoError(t, err)
+	var res []string
+	require.NoError(t, json.Unmarshal(data, &res))
+	return res
+}
+
+func TestParseDockerDaemonSeccomp(t *testing.T) {
+	assert.Equal(t, dockerDaemonSeccomp{supported: true, profile: "default"},
+		parseDockerDaemonSeccomp(loadDockerInfoSecurityOptions(t, "desktop")))
+	assert.Equal(t, dockerDaemonSeccomp{supported: true, profile: "unconfined"},
+		parseDockerDaemonSeccomp(loadDockerInfoSecurityOptions(t, "unconfined")))
+	assert.Equal(t, dockerDaemonSeccomp{supported: true, profile: "custom"},
+		parseDockerDaemonSeccomp(loadDockerInfoSecurityOptions(t, "custom")))
+	// a kernel without seccomp: the daemon reports no seccomp entry
+	assert.Equal(t, dockerDaemonSeccomp{supported: false, profile: "unconfined"},
+		parseDockerDaemonSeccomp([]string{"name=cgroupns"}))
+	assert.False(t, parseDockerDaemonSeccomp(nil).supported)
+}
+
 func TestDockerSeccompProfile(t *testing.T) {
+	builtin := parseDockerDaemonSeccomp(loadDockerInfoSecurityOptions(t, "desktop"))
 	cases := map[string]string{
 		"default":  "default",
 		"hardened": "default",
 		// privileged runs without seccomp although it names no profile
-		"host":    "unconfined",
-		"loose":   "unconfined",
-		"seccomp": "custom",
+		"host":  "unconfined",
+		"loose": "unconfined",
+		// {"defaultAction":"SCMP_ACT_ALLOW"} filters nothing
+		"seccomp": "unconfined",
 	}
 	for name, want := range cases {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, want, dockerSeccompProfile(loadDockerInspect(t, name).HostConfig))
+			assert.Equal(t, want, dockerSeccompProfile(loadDockerInspect(t, name).HostConfig, builtin))
 		})
 	}
 
-	assert.Equal(t, "unconfined", dockerSeccompProfile(&container.HostConfig{SecurityOpt: []string{"seccomp:unconfined"}}))
-	assert.Equal(t, "default", dockerSeccompProfile(&container.HostConfig{SecurityOpt: []string{"seccomp=builtin"}}))
-	assert.Equal(t, "default", dockerSeccompProfile(nil))
+	// a container naming no profile runs with the daemon's
+	unconfinedDaemon := parseDockerDaemonSeccomp(loadDockerInfoSecurityOptions(t, "unconfined"))
+	def := loadDockerInspect(t, "default").HostConfig
+	assert.Equal(t, "unconfined", dockerSeccompProfile(def, unconfinedDaemon))
+	assert.Equal(t, "custom", dockerSeccompProfile(def, dockerDaemonSeccomp{supported: true, profile: "custom"}))
+	assert.Equal(t, "unconfined", dockerSeccompProfile(def, dockerDaemonSeccomp{supported: false, profile: "unconfined"}))
+	// ...unless it names one
+	assert.Equal(t, "default", dockerSeccompProfile(&container.HostConfig{SecurityOpt: []string{"seccomp=builtin"}}, unconfinedDaemon))
+	// a kernel without seccomp filters nothing, whatever the container asks for
+	assert.Equal(t, "unconfined", dockerSeccompProfile(&container.HostConfig{SecurityOpt: []string{"seccomp=builtin"}}, dockerDaemonSeccomp{}))
+
+	assert.Equal(t, "unconfined", dockerSeccompProfile(&container.HostConfig{SecurityOpt: []string{"seccomp:unconfined"}}, builtin))
+	restrictive := `seccomp={"defaultAction":"SCMP_ACT_ERRNO","syscalls":[{"names":["read"],"action":"SCMP_ACT_ALLOW"}]}`
+	assert.Equal(t, "custom", dockerSeccompProfile(&container.HostConfig{SecurityOpt: []string{restrictive}}, builtin))
+	assert.Equal(t, "default", dockerSeccompProfile(nil, builtin))
+}
+
+func TestDockerSeccompAllowsAll(t *testing.T) {
+	assert.True(t, dockerSeccompAllowsAll(`{"defaultAction":"SCMP_ACT_ALLOW"}`))
+	assert.True(t, dockerSeccompAllowsAll(`{"defaultAction":"SCMP_ACT_LOG","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_ALLOW"}]}`))
+	assert.False(t, dockerSeccompAllowsAll(`{"defaultAction":"SCMP_ACT_ALLOW","syscalls":[{"names":["ptrace"],"action":"SCMP_ACT_ERRNO"}]}`),
+		"an allow-by-default profile that denies one call still filters")
+	assert.False(t, dockerSeccompAllowsAll(`{"defaultAction":"SCMP_ACT_ERRNO"}`))
+	assert.False(t, dockerSeccompAllowsAll(`not json`))
 }
 
 func TestDockerNoNewPrivileges(t *testing.T) {

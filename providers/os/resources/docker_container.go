@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -27,6 +28,40 @@ type mqlDockerContainerInternal struct {
 	inspected  atomic.Bool
 	inspect    *container.InspectResponse
 	inspectErr error
+}
+
+type mqlDockerInternal struct {
+	lock             sync.Mutex
+	infoFetched      atomic.Bool
+	daemonSeccompVal dockerDaemonSeccomp
+	daemonInfoErr    error
+}
+
+// daemonSeccomp reads the daemon's seccomp setting once per scan.
+func (p *mqlDocker) daemonSeccomp() (dockerDaemonSeccomp, error) {
+	if p.infoFetched.Load() {
+		return p.daemonSeccompVal, p.daemonInfoErr
+	}
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if p.infoFetched.Load() {
+		return p.daemonSeccompVal, p.daemonInfoErr
+	}
+
+	cl, err := dockerClient(p.MqlRuntime)
+	if err != nil {
+		p.daemonInfoErr = err
+	} else {
+		defer cl.Close()
+		info, err := cl.Info(context.Background(), client.InfoOptions{})
+		if err != nil {
+			p.daemonInfoErr = classifyDockerError(err)
+		} else {
+			p.daemonSeccompVal = parseDockerDaemonSeccomp(info.Info.SecurityOptions)
+		}
+	}
+	p.infoFetched.Store(true)
+	return p.daemonSeccompVal, p.daemonInfoErr
 }
 
 // classifyDockerError turns a refusal from the Docker daemon into a typed
@@ -152,7 +187,15 @@ func (p *mqlDockerContainer) seccompProfile() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return dockerSeccompProfile(inspect.HostConfig), nil
+	d, err := NewResource(p.MqlRuntime, "docker", map[string]*llx.RawData{})
+	if err != nil {
+		return "", err
+	}
+	daemon, err := d.(*mqlDocker).daemonSeccomp()
+	if err != nil {
+		return "", err
+	}
+	return dockerSeccompProfile(inspect.HostConfig, daemon), nil
 }
 
 func (p *mqlDockerContainer) apparmorProfile() (string, error) {
@@ -427,18 +470,65 @@ func (p *mqlDockerContainer) mounts() ([]any, error) {
 	return res, nil
 }
 
+// dockerDaemonSeccomp is the seccomp setting of the daemon, which applies to
+// every container that names no profile of its own.
+type dockerDaemonSeccomp struct {
+	// supported is false when the daemon reports no seccomp support, so no
+	// container it runs is filtered.
+	supported bool
+	// profile is "default", "unconfined", or "custom".
+	profile string
+}
+
+// parseDockerDaemonSeccomp reads the daemon's seccomp setting from the
+// SecurityOptions of the Engine API's /info, entries such as
+// `name=seccomp,profile=builtin`. A daemon without a `name=seccomp` entry
+// runs on a kernel without seccomp, and filters nothing.
+func parseDockerDaemonSeccomp(securityOptions []string) dockerDaemonSeccomp {
+	for _, opt := range securityOptions {
+		var name, profile string
+		for _, kv := range strings.Split(opt, ",") {
+			k, v, _ := strings.Cut(kv, "=")
+			switch k {
+			case "name":
+				name = v
+			case "profile":
+				profile = v
+			}
+		}
+		if name != "seccomp" {
+			continue
+		}
+		switch profile {
+		case "", "builtin", "default":
+			return dockerDaemonSeccomp{supported: true, profile: "default"}
+		case "unconfined":
+			return dockerDaemonSeccomp{supported: true, profile: "unconfined"}
+		default:
+			// a profile file on the daemon's host, which the API does not return
+			return dockerDaemonSeccomp{supported: true, profile: "custom"}
+		}
+	}
+	return dockerDaemonSeccomp{supported: false, profile: "unconfined"}
+}
+
 // dockerSeccompProfile reports the seccomp profile the container effectively
 // runs with. Docker applies no seccomp filter to a privileged container, even
-// when a profile was named, and the CLI sends a custom profile's JSON content
-// rather than its path.
-func dockerSeccompProfile(hc *container.HostConfig) string {
-	if hc == nil {
-		return "default"
-	}
-	if hc.Privileged {
+// when a profile was named. A container that names no profile runs with the
+// daemon's. The CLI sends a custom profile's JSON content rather than its path,
+// so the profile itself can be read: one that allows every system call is
+// reported as unconfined.
+func dockerSeccompProfile(hc *container.HostConfig, daemon dockerDaemonSeccomp) string {
+	if hc != nil && hc.Privileged {
 		return "unconfined"
 	}
-	profile := "default"
+	if !daemon.supported {
+		return "unconfined"
+	}
+	profile := daemon.profile
+	if hc == nil {
+		return profile
+	}
 	for _, opt := range hc.SecurityOpt {
 		key, value, ok := splitDockerSecurityOpt(opt)
 		if !ok || key != "seccomp" {
@@ -447,13 +537,50 @@ func dockerSeccompProfile(hc *container.HostConfig) string {
 		switch value {
 		case "unconfined":
 			profile = "unconfined"
-		case "builtin", "":
+		case "builtin":
 			profile = "default"
+		case "":
+			// an empty value names no profile, so the daemon's applies
 		default:
-			profile = "custom"
+			if dockerSeccompAllowsAll(value) {
+				profile = "unconfined"
+			} else {
+				profile = "custom"
+			}
 		}
 	}
 	return profile
+}
+
+// dockerSeccompPermissiveActions are the seccomp actions that let a system
+// call run.
+var dockerSeccompPermissiveActions = map[string]struct{}{
+	"SCMP_ACT_ALLOW": {},
+	"SCMP_ACT_LOG":   {},
+}
+
+// dockerSeccompAllowsAll reports whether a seccomp profile lets every system
+// call run: its default action and every rule's action allow or only log the
+// call. A profile that cannot be parsed is not assumed to allow everything.
+func dockerSeccompAllowsAll(profileJSON string) bool {
+	var profile struct {
+		DefaultAction string `json:"defaultAction"`
+		Syscalls      []struct {
+			Action string `json:"action"`
+		} `json:"syscalls"`
+	}
+	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
+		return false
+	}
+	if _, ok := dockerSeccompPermissiveActions[profile.DefaultAction]; !ok {
+		return false
+	}
+	for _, sc := range profile.Syscalls {
+		if _, ok := dockerSeccompPermissiveActions[sc.Action]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // dockerNoNewPrivileges reports whether the no-new-privileges security option

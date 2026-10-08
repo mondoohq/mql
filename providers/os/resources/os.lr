@@ -8026,9 +8026,12 @@ docker.container @defaults("names.first status"){
   securityOptions() []string
   // Seccomp profile the container runs with
   //
-  // One of `default` (the engine's default profile), `unconfined` (no seccomp
-  // filtering, either requested or because the container is privileged), or
-  // `custom` (a profile supplied with the container).
+  // One of `default` (the engine's built-in profile), `unconfined` (no system
+  // call is filtered), or `custom` (another profile). A container that names no
+  // profile runs with the daemon's, which is `unconfined` when the daemon is
+  // started with `--seccomp-profile=unconfined` or the kernel lacks seccomp.
+  // A privileged container, and one whose profile allows every system call,
+  // also reports `unconfined`.
   seccompProfile() string
   // AppArmor profile the container runs with
   //
@@ -8039,8 +8042,9 @@ docker.container @defaults("names.first status"){
   //
   // True when the container was started with the `no-new-privileges` security
   // option, which stops setuid binaries and file capabilities from raising the
-  // privileges of a process. False when the option is absent, even if the
-  // daemon applies it to every container by default.
+  // privileges of a process. Reports the container's own option only: false
+  // when the option is absent, even if the daemon applies it to every container
+  // by default, which `docker.daemon.noNewPrivileges` reports.
   noNewPrivileges() bool
   // Whether the container's root filesystem is read-only
   readOnlyRootfs() bool
@@ -8151,7 +8155,7 @@ private docker.container.device @defaults("hostPath containerPath") {
 // mount or the storage location of a volume, so
 // `mounts.where(type == "bind" && hostPath == "/var/run/docker.sock")` finds a
 // container that can control the Docker daemon.
-docker.container.mount @defaults("type containerPath hostPath readOnly") {
+private docker.container.mount @defaults("type containerPath hostPath readOnly") {
   // Mount type: bind, volume, tmpfs, image, npipe, or cluster
   type string
   // Volume name, empty for other mount types

@@ -65873,7 +65873,7 @@ func (c *mqlCgroup) GetChildren() *plugin.TValue[[]any] {
 type mqlDocker struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDockerInternal it will be used here
+	mqlDockerInternal
 	Images     plugin.TValue[[]any]
 	Containers plugin.TValue[[]any]
 	Daemon     plugin.TValue[*mqlDockerDaemon]
