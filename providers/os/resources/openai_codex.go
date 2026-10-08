@@ -213,42 +213,68 @@ func (r *mqlOpenaiCodex) skills() ([]interface{}, error) {
 	seen := map[string]struct{}{}
 
 	for _, codexDir := range r.codexDirs() {
-		// system skills
-		systemSkillsDir := filepath.Join(codexDir, "skills", ".system")
-		if subdirs, err := listSubdirsAfero(afs, systemSkillsDir); err == nil {
-			for _, dir := range subdirs {
-				res, err := r.readCodexSkill(afs, dir.name, dir.path, "system", seen)
-				if err != nil {
-					return nil, err
-				}
-				if res != nil {
-					result = append(result, res)
-				}
+		for _, dir := range codexSkillDirs(afs, codexDir) {
+			res, err := r.readCodexSkill(afs, dir.name, dir.path, dir.plugin, seen)
+			if err != nil {
+				return nil, err
 			}
-		}
-
-		// plugin skills
-		pluginsDir := filepath.Join(codexDir, ".tmp", "plugins", "plugins")
-		if pluginDirs, err := listSubdirsAfero(afs, pluginsDir); err == nil {
-			for _, pluginDir := range pluginDirs {
-				skillDirs, err := listSubdirsAfero(afs, filepath.Join(pluginDir.path, "skills"))
-				if err != nil {
-					continue
-				}
-				for _, skillDir := range skillDirs {
-					res, err := r.readCodexSkill(afs, skillDir.name, skillDir.path, pluginDir.name, seen)
-					if err != nil {
-						return nil, err
-					}
-					if res != nil {
-						result = append(result, res)
-					}
-				}
+			if res != nil {
+				result = append(result, res)
 			}
 		}
 	}
 
 	return result, nil
+}
+
+// codexSkillDir is a directory that may hold a Codex skill's SKILL.md.
+type codexSkillDir struct {
+	name   string
+	path   string
+	plugin string // "system" for bundled skills, the plugin name, or "" for user skills
+}
+
+// codexSkillDirs lists the skill directories under one Codex config dir:
+//
+//   - user skills, installed directly under skills/<name>
+//   - Codex's bundled skills under skills/.system/<name>
+//   - plugin skills under .tmp/plugins/plugins/<plugin>/skills/<name>
+//
+// Hidden directories under skills/ other than .system are not skills.
+// Missing or unreadable directories are skipped.
+func codexSkillDirs(afs *afero.Afero, codexDir string) []codexSkillDir {
+	var dirs []codexSkillDir
+
+	skillsDir := filepath.Join(codexDir, "skills")
+	if subdirs, err := listSubdirsAfero(afs, skillsDir); err == nil {
+		for _, d := range subdirs {
+			if strings.HasPrefix(d.name, ".") {
+				continue
+			}
+			dirs = append(dirs, codexSkillDir{name: d.name, path: d.path})
+		}
+	}
+
+	if subdirs, err := listSubdirsAfero(afs, filepath.Join(skillsDir, ".system")); err == nil {
+		for _, d := range subdirs {
+			dirs = append(dirs, codexSkillDir{name: d.name, path: d.path, plugin: "system"})
+		}
+	}
+
+	pluginsDir := filepath.Join(codexDir, ".tmp", "plugins", "plugins")
+	if pluginDirs, err := listSubdirsAfero(afs, pluginsDir); err == nil {
+		for _, pluginDir := range pluginDirs {
+			skillDirs, err := listSubdirsAfero(afs, filepath.Join(pluginDir.path, "skills"))
+			if err != nil {
+				continue
+			}
+			for _, d := range skillDirs {
+				dirs = append(dirs, codexSkillDir{name: d.name, path: d.path, plugin: pluginDir.name})
+			}
+		}
+	}
+
+	return dirs
 }
 
 // codexDirs returns the codex config dirs to scan: every user's ~/.codex, or

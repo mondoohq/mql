@@ -20772,7 +20772,7 @@ openai.codex @defaults("configPath") @maturity("preview") {
   lastRefresh() string
   // Installed plugins
   plugins() []openai.codex.plugin
-  // System and plugin skills
+  // Skills the user installed, skills bundled with Codex, and plugin skills
   skills() []openai.codex.skill
   // MCP servers configured across plugins
   mcpServers() []openai.codex.mcpServer
@@ -20834,7 +20834,8 @@ private openai.codex.plugin @defaults("name") @maturity("preview") {
 // Skill defined by a SKILL.md file, giving the agent packaged
 // instructions for a task. The name and description come from the file's
 // YAML frontmatter, content holds the full markdown body, and plugin
-// records which plugin supplied the skill (empty for system skills).
+// records where the skill came from: the plugin that supplied it, `system`
+// for a skill bundled with Codex, or empty for one the user installed.
 // Use sha256 to detect tampering with skill content.
 private openai.codex.skill @defaults("name") @maturity("preview") {
   // Skill name
@@ -20843,7 +20844,7 @@ private openai.codex.skill @defaults("name") @maturity("preview") {
   description string
   // Path to the SKILL.md file that defines the skill
   source string
-  // Plugin that provides this skill (empty for system skills)
+  // Plugin that provides this skill: `system` for a skill bundled with Codex, empty for a user-installed skill
   plugin string
   // Full markdown content of the skill definition
   content string

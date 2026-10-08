@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/BurntSushi/toml"
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -191,68 +192,32 @@ func TestCodexConnectorParsing(t *testing.T) {
 	assert.Equal(t, "connector_abc123", appConfig.Apps["github"].ID)
 }
 
-func TestCodexPluginDiscovery(t *testing.T) {
-	afs := testAfero()
-	dir := createTestCodexConfig(t)
-	pluginsDir := filepath.Join(dir, ".tmp", "plugins", "plugins")
-
-	entries, err := afs.ReadDir(pluginsDir)
-	require.NoError(t, err)
-
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() {
-			names = append(names, e.Name())
-		}
+func TestCodexSkillDirs(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	for _, d := range []string{
+		"/home/u/.codex/skills/my-skill",           // user-installed
+		"/home/u/.codex/skills/other-skill",        // user-installed
+		"/home/u/.codex/skills/.system/imagegen",   // bundled with Codex
+		"/home/u/.codex/skills/.cache/not-a-skill", // hidden, not a skill dir
+		"/home/u/.codex/.tmp/plugins/plugins/github/skills/gh-fix-ci",
+		"/home/u/.codex/.tmp/plugins/plugins/empty", // plugin without skills
+	} {
+		require.NoError(t, mem.MkdirAll(d, 0o755))
 	}
-	assert.Contains(t, names, "github")
-	assert.Contains(t, names, "cloudflare")
-	assert.Contains(t, names, "slack")
+	// A file directly under skills/ is not a skill directory.
+	require.NoError(t, afero.WriteFile(mem, "/home/u/.codex/skills/README.md", []byte("x"), 0o644))
+
+	got := codexSkillDirs(&afero.Afero{Fs: mem}, "/home/u/.codex")
+	assert.Equal(t, []codexSkillDir{
+		{name: "my-skill", path: "/home/u/.codex/skills/my-skill"},
+		{name: "other-skill", path: "/home/u/.codex/skills/other-skill"},
+		{name: "imagegen", path: "/home/u/.codex/skills/.system/imagegen", plugin: "system"},
+		{name: "gh-fix-ci", path: "/home/u/.codex/.tmp/plugins/plugins/github/skills/gh-fix-ci", plugin: "github"},
+	}, got)
 }
 
-func TestCodexPluginHasMcpAndHooks(t *testing.T) {
-	afs := testAfero()
-	dir := createTestCodexConfig(t)
-	cfDir := filepath.Join(dir, ".tmp", "plugins", "plugins", "cloudflare")
-	githubDir := filepath.Join(dir, ".tmp", "plugins", "plugins", "github")
-
-	exists, _ := afs.Exists(filepath.Join(cfDir, ".mcp.json"))
-	assert.True(t, exists, "cloudflare should have .mcp.json")
-
-	exists, _ = afs.Exists(filepath.Join(cfDir, "hooks.json"))
-	assert.True(t, exists, "cloudflare should have hooks.json")
-
-	exists, _ = afs.Exists(filepath.Join(githubDir, ".mcp.json"))
-	assert.False(t, exists, "github should not have .mcp.json")
-
-	exists, _ = afs.Exists(filepath.Join(githubDir, "hooks.json"))
-	assert.False(t, exists, "github should not have hooks.json")
-}
-
-func TestCodexSkillDiscovery(t *testing.T) {
-	afs := testAfero()
-	dir := createTestCodexConfig(t)
-
-	// System skills
-	systemDir := filepath.Join(dir, "skills", ".system")
-	entries, err := afs.ReadDir(systemDir)
-	require.NoError(t, err)
-	require.Len(t, entries, 1)
-	assert.Equal(t, "imagegen", entries[0].Name())
-
-	// Plugin skills
-	githubSkillsDir := filepath.Join(dir, ".tmp", "plugins", "plugins", "github", "skills")
-	skillEntries, err := afs.ReadDir(githubSkillsDir)
-	require.NoError(t, err)
-
-	var skillNames []string
-	for _, e := range skillEntries {
-		if e.IsDir() {
-			skillNames = append(skillNames, e.Name())
-		}
-	}
-	assert.Contains(t, skillNames, "github")
-	assert.Contains(t, skillNames, "gh-fix-ci")
+func TestCodexSkillDirsMissingConfigDir(t *testing.T) {
+	assert.Empty(t, codexSkillDirs(&afero.Afero{Fs: afero.NewMemMapFs()}, "/home/u/.codex"))
 }
 
 func TestCodexSkillParsing(t *testing.T) {
