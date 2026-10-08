@@ -250,10 +250,40 @@ const (
 	ResourceDockerFileOnbuild                             string = "docker.file.onbuild"
 	ResourceDockerImage                                   string = "docker.image"
 	ResourceDockerContainer                               string = "docker.container"
+	ResourceDockerContainerUlimit                         string = "docker.container.ulimit"
+	ResourceDockerContainerPort                           string = "docker.container.port"
+	ResourceDockerContainerDevice                         string = "docker.container.device"
+	ResourceDockerContainerMount                          string = "docker.container.mount"
+	ResourceDockerNetwork                                 string = "docker.network"
+	ResourceDockerNetworkSubnet                           string = "docker.network.subnet"
+	ResourceDockerVolume                                  string = "docker.volume"
+	ResourceDockerDaemon                                  string = "docker.daemon"
+	ResourceDockerDaemonUlimit                            string = "docker.daemon.ulimit"
 	ResourceContainerd                                    string = "containerd"
+	ResourceContainerdRuntime                             string = "containerd.runtime"
+	ResourceContainerdRegistryHost                        string = "containerd.registryHost"
 	ResourceContainerdContainer                           string = "containerd.container"
+	ResourceContainerdImage                               string = "containerd.image"
+	ResourceContainerdContainerMount                      string = "containerd.container.mount"
+	ResourceCrio                                          string = "crio"
+	ResourceCrioNamespaceSignaturePolicy                  string = "crio.namespaceSignaturePolicy"
+	ResourceCrioRuntime                                   string = "crio.runtime"
+	ResourceCrioContainer                                 string = "crio.container"
+	ResourceCrioImage                                     string = "crio.image"
+	ResourceCrioContainerMount                            string = "crio.container.mount"
+	ResourceContainersRegistries                          string = "containers.registries"
+	ResourceContainersRegistry                            string = "containers.registry"
+	ResourceContainersRegistryMirror                      string = "containers.registry.mirror"
+	ResourceContainersPolicy                              string = "containers.policy"
+	ResourceContainersPolicyScope                         string = "containers.policy.scope"
+	ResourceContainersPolicyRequirement                   string = "containers.policy.requirement"
+	ResourceContainersConf                                string = "containers.conf"
+	ResourceContainersStorage                             string = "containers.storage"
 	ResourcePodman                                        string = "podman"
 	ResourcePodmanContainer                               string = "podman.container"
+	ResourcePodmanContainerUlimit                         string = "podman.container.ulimit"
+	ResourcePodmanContainerDevice                         string = "podman.container.device"
+	ResourcePodmanContainerMount                          string = "podman.container.mount"
 	ResourcePodmanImage                                   string = "podman.image"
 	ResourcePodmanPod                                     string = "podman.pod"
 	ResourcePodmanVolume                                  string = "podman.volume"
@@ -1617,13 +1647,121 @@ func init() {
 			// to override args, implement: initDockerContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createDockerContainer,
 		},
+		"docker.container.ulimit": {
+			// to override args, implement: initDockerContainerUlimit(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDockerContainerUlimit,
+		},
+		"docker.container.port": {
+			// to override args, implement: initDockerContainerPort(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDockerContainerPort,
+		},
+		"docker.container.device": {
+			// to override args, implement: initDockerContainerDevice(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDockerContainerDevice,
+		},
+		"docker.container.mount": {
+			// to override args, implement: initDockerContainerMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDockerContainerMount,
+		},
+		"docker.network": {
+			Init:   initDockerNetwork,
+			Create: createDockerNetwork,
+		},
+		"docker.network.subnet": {
+			// to override args, implement: initDockerNetworkSubnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDockerNetworkSubnet,
+		},
+		"docker.volume": {
+			Init:   initDockerVolume,
+			Create: createDockerVolume,
+		},
+		"docker.daemon": {
+			Init:   initDockerDaemon,
+			Create: createDockerDaemon,
+		},
+		"docker.daemon.ulimit": {
+			// to override args, implement: initDockerDaemonUlimit(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDockerDaemonUlimit,
+		},
 		"containerd": {
 			// to override args, implement: initContainerd(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createContainerd,
 		},
+		"containerd.runtime": {
+			// to override args, implement: initContainerdRuntime(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainerdRuntime,
+		},
+		"containerd.registryHost": {
+			// to override args, implement: initContainerdRegistryHost(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainerdRegistryHost,
+		},
 		"containerd.container": {
 			// to override args, implement: initContainerdContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createContainerdContainer,
+		},
+		"containerd.image": {
+			// to override args, implement: initContainerdImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainerdImage,
+		},
+		"containerd.container.mount": {
+			// to override args, implement: initContainerdContainerMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainerdContainerMount,
+		},
+		"crio": {
+			// to override args, implement: initCrio(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCrio,
+		},
+		"crio.namespaceSignaturePolicy": {
+			// to override args, implement: initCrioNamespaceSignaturePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCrioNamespaceSignaturePolicy,
+		},
+		"crio.runtime": {
+			// to override args, implement: initCrioRuntime(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCrioRuntime,
+		},
+		"crio.container": {
+			// to override args, implement: initCrioContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCrioContainer,
+		},
+		"crio.image": {
+			// to override args, implement: initCrioImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCrioImage,
+		},
+		"crio.container.mount": {
+			// to override args, implement: initCrioContainerMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCrioContainerMount,
+		},
+		"containers.registries": {
+			// to override args, implement: initContainersRegistries(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainersRegistries,
+		},
+		"containers.registry": {
+			// to override args, implement: initContainersRegistry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainersRegistry,
+		},
+		"containers.registry.mirror": {
+			// to override args, implement: initContainersRegistryMirror(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainersRegistryMirror,
+		},
+		"containers.policy": {
+			Init:   initContainersPolicy,
+			Create: createContainersPolicy,
+		},
+		"containers.policy.scope": {
+			// to override args, implement: initContainersPolicyScope(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainersPolicyScope,
+		},
+		"containers.policy.requirement": {
+			// to override args, implement: initContainersPolicyRequirement(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainersPolicyRequirement,
+		},
+		"containers.conf": {
+			// to override args, implement: initContainersConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainersConf,
+		},
+		"containers.storage": {
+			// to override args, implement: initContainersStorage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainersStorage,
 		},
 		"podman": {
 			// to override args, implement: initPodman(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1632,6 +1770,18 @@ func init() {
 		"podman.container": {
 			Init:   initPodmanContainer,
 			Create: createPodmanContainer,
+		},
+		"podman.container.ulimit": {
+			// to override args, implement: initPodmanContainerUlimit(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPodmanContainerUlimit,
+		},
+		"podman.container.device": {
+			// to override args, implement: initPodmanContainerDevice(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPodmanContainerDevice,
+		},
+		"podman.container.mount": {
+			// to override args, implement: initPodmanContainerMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPodmanContainerMount,
 		},
 		"podman.image": {
 			Init:   initPodmanImage,
@@ -8809,6 +8959,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"docker.containers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDocker).GetContainers()).ToDataRes(types.Array(types.Resource("docker.container")))
 	},
+	"docker.daemon": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDocker).GetDaemon()).ToDataRes(types.Resource("docker.daemon"))
+	},
+	"docker.networks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDocker).GetNetworks()).ToDataRes(types.Array(types.Resource("docker.network")))
+	},
+	"docker.volumes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDocker).GetVolumes()).ToDataRes(types.Array(types.Resource("docker.volume")))
+	},
 	"docker.file.file": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerFile).GetFile()).ToDataRes(types.Resource("file"))
 	},
@@ -9199,6 +9358,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"docker.image.labels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerImage).GetLabels()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"docker.image.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"docker.image.author": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetAuthor()).ToDataRes(types.String)
+	},
+	"docker.image.os": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetOs()).ToDataRes(types.String)
+	},
+	"docker.image.architecture": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetArchitecture()).ToDataRes(types.String)
+	},
+	"docker.image.variant": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetVariant()).ToDataRes(types.String)
+	},
+	"docker.image.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetUser()).ToDataRes(types.String)
+	},
+	"docker.image.runsAsRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetRunsAsRoot()).ToDataRes(types.Bool)
+	},
+	"docker.image.entrypoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetEntrypoint()).ToDataRes(types.Array(types.String))
+	},
+	"docker.image.cmd": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetCmd()).ToDataRes(types.Array(types.String))
+	},
+	"docker.image.workingDir": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetWorkingDir()).ToDataRes(types.String)
+	},
+	"docker.image.exposedPorts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetExposedPorts()).ToDataRes(types.Array(types.String))
+	},
+	"docker.image.hasHealthcheck": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetHasHealthcheck()).ToDataRes(types.Bool)
+	},
+	"docker.image.healthcheckTest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetHealthcheckTest()).ToDataRes(types.Array(types.String))
+	},
+	"docker.image.healthcheckInterval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetHealthcheckInterval()).ToDataRes(types.Int)
+	},
+	"docker.image.layers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetLayers()).ToDataRes(types.Array(types.String))
+	},
+	"docker.image.containers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerImage).GetContainers()).ToDataRes(types.Array(types.Resource("docker.container")))
+	},
 	"docker.container.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerContainer).GetRunning()).ToDataRes(types.Asset("os.any"))
 	},
@@ -9229,8 +9436,494 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"docker.container.hostConfig": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDockerContainer).GetHostConfig()).ToDataRes(types.Dict)
 	},
+	"docker.container.sourceImage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetSourceImage()).ToDataRes(types.Resource("docker.image"))
+	},
+	"docker.container.privileged": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetPrivileged()).ToDataRes(types.Bool)
+	},
+	"docker.container.capAdd": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetCapAdd()).ToDataRes(types.Array(types.String))
+	},
+	"docker.container.capDrop": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetCapDrop()).ToDataRes(types.Array(types.String))
+	},
+	"docker.container.securityOptions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetSecurityOptions()).ToDataRes(types.Array(types.String))
+	},
+	"docker.container.seccompProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetSeccompProfile()).ToDataRes(types.String)
+	},
+	"docker.container.apparmorProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetApparmorProfile()).ToDataRes(types.String)
+	},
+	"docker.container.noNewPrivileges": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetNoNewPrivileges()).ToDataRes(types.Bool)
+	},
+	"docker.container.readOnlyRootfs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetReadOnlyRootfs()).ToDataRes(types.Bool)
+	},
+	"docker.container.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetUser()).ToDataRes(types.String)
+	},
+	"docker.container.networkMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetNetworkMode()).ToDataRes(types.String)
+	},
+	"docker.container.pidMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetPidMode()).ToDataRes(types.String)
+	},
+	"docker.container.ipcMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetIpcMode()).ToDataRes(types.String)
+	},
+	"docker.container.utsMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetUtsMode()).ToDataRes(types.String)
+	},
+	"docker.container.usernsMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetUsernsMode()).ToDataRes(types.String)
+	},
+	"docker.container.cgroupnsMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetCgroupnsMode()).ToDataRes(types.String)
+	},
+	"docker.container.restartPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetRestartPolicy()).ToDataRes(types.String)
+	},
+	"docker.container.restartMaxRetries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetRestartMaxRetries()).ToDataRes(types.Int)
+	},
+	"docker.container.memoryLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetMemoryLimit()).ToDataRes(types.Int)
+	},
+	"docker.container.cpuShares": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetCpuShares()).ToDataRes(types.Int)
+	},
+	"docker.container.nanoCpus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetNanoCpus()).ToDataRes(types.Int)
+	},
+	"docker.container.pidsLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetPidsLimit()).ToDataRes(types.Int)
+	},
+	"docker.container.ulimits": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetUlimits()).ToDataRes(types.Array(types.Resource("docker.container.ulimit")))
+	},
+	"docker.container.hasHealthcheck": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetHasHealthcheck()).ToDataRes(types.Bool)
+	},
+	"docker.container.healthcheckTest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetHealthcheckTest()).ToDataRes(types.Array(types.String))
+	},
+	"docker.container.healthcheckInterval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetHealthcheckInterval()).ToDataRes(types.Int)
+	},
+	"docker.container.healthStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetHealthStatus()).ToDataRes(types.String)
+	},
+	"docker.container.ports": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetPorts()).ToDataRes(types.Array(types.Resource("docker.container.port")))
+	},
+	"docker.container.devices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetDevices()).ToDataRes(types.Array(types.Resource("docker.container.device")))
+	},
+	"docker.container.mounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetMounts()).ToDataRes(types.Array(types.Resource("docker.container.mount")))
+	},
+	"docker.container.networks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainer).GetNetworks()).ToDataRes(types.Array(types.Resource("docker.network")))
+	},
+	"docker.container.ulimit.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerUlimit).GetName()).ToDataRes(types.String)
+	},
+	"docker.container.ulimit.soft": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerUlimit).GetSoft()).ToDataRes(types.Int)
+	},
+	"docker.container.ulimit.hard": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerUlimit).GetHard()).ToDataRes(types.Int)
+	},
+	"docker.container.port.hostIp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerPort).GetHostIp()).ToDataRes(types.String)
+	},
+	"docker.container.port.hostPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerPort).GetHostPort()).ToDataRes(types.Int)
+	},
+	"docker.container.port.containerPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerPort).GetContainerPort()).ToDataRes(types.Int)
+	},
+	"docker.container.port.protocol": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerPort).GetProtocol()).ToDataRes(types.String)
+	},
+	"docker.container.port.allInterfaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerPort).GetAllInterfaces()).ToDataRes(types.Bool)
+	},
+	"docker.container.device.hostPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerDevice).GetHostPath()).ToDataRes(types.String)
+	},
+	"docker.container.device.containerPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerDevice).GetContainerPath()).ToDataRes(types.String)
+	},
+	"docker.container.device.permissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerDevice).GetPermissions()).ToDataRes(types.String)
+	},
+	"docker.container.mount.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerMount).GetType()).ToDataRes(types.String)
+	},
+	"docker.container.mount.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerMount).GetName()).ToDataRes(types.String)
+	},
+	"docker.container.mount.hostPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerMount).GetHostPath()).ToDataRes(types.String)
+	},
+	"docker.container.mount.containerPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerMount).GetContainerPath()).ToDataRes(types.String)
+	},
+	"docker.container.mount.readOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerMount).GetReadOnly()).ToDataRes(types.Bool)
+	},
+	"docker.container.mount.mode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerMount).GetMode()).ToDataRes(types.String)
+	},
+	"docker.container.mount.propagation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerMount).GetPropagation()).ToDataRes(types.String)
+	},
+	"docker.container.mount.driver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerContainerMount).GetDriver()).ToDataRes(types.String)
+	},
+	"docker.network.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetId()).ToDataRes(types.String)
+	},
+	"docker.network.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetName()).ToDataRes(types.String)
+	},
+	"docker.network.driver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetDriver()).ToDataRes(types.String)
+	},
+	"docker.network.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetScope()).ToDataRes(types.String)
+	},
+	"docker.network.internal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetInternal()).ToDataRes(types.Bool)
+	},
+	"docker.network.attachable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetAttachable()).ToDataRes(types.Bool)
+	},
+	"docker.network.ingress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetIngress()).ToDataRes(types.Bool)
+	},
+	"docker.network.ipv4Enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetIpv4Enabled()).ToDataRes(types.Bool)
+	},
+	"docker.network.ipv6Enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetIpv6Enabled()).ToDataRes(types.Bool)
+	},
+	"docker.network.subnets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetSubnets()).ToDataRes(types.Array(types.Resource("docker.network.subnet")))
+	},
+	"docker.network.options": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetOptions()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"docker.network.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"docker.network.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"docker.network.icc": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetIcc()).ToDataRes(types.Bool)
+	},
+	"docker.network.ipMasquerade": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetIpMasquerade()).ToDataRes(types.Bool)
+	},
+	"docker.network.hostBindingIpv4": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetHostBindingIpv4()).ToDataRes(types.String)
+	},
+	"docker.network.containers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetwork).GetContainers()).ToDataRes(types.Array(types.Resource("docker.container")))
+	},
+	"docker.network.subnet.subnet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetworkSubnet).GetSubnet()).ToDataRes(types.String)
+	},
+	"docker.network.subnet.gateway": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetworkSubnet).GetGateway()).ToDataRes(types.String)
+	},
+	"docker.network.subnet.ipRange": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerNetworkSubnet).GetIpRange()).ToDataRes(types.String)
+	},
+	"docker.volume.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetName()).ToDataRes(types.String)
+	},
+	"docker.volume.driver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetDriver()).ToDataRes(types.String)
+	},
+	"docker.volume.mountpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetMountpoint()).ToDataRes(types.String)
+	},
+	"docker.volume.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"docker.volume.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"docker.volume.options": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetOptions()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"docker.volume.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetScope()).ToDataRes(types.String)
+	},
+	"docker.volume.anonymous": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetAnonymous()).ToDataRes(types.Bool)
+	},
+	"docker.volume.containers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerVolume).GetContainers()).ToDataRes(types.Array(types.Resource("docker.container")))
+	},
+	"docker.daemon.configFile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetConfigFile()).ToDataRes(types.Resource("file"))
+	},
+	"docker.daemon.process": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetProcess()).ToDataRes(types.Resource("process"))
+	},
+	"docker.daemon.configuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetConfiguration()).ToDataRes(types.Dict)
+	},
+	"docker.daemon.icc": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetIcc()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.usernsRemap": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetUsernsRemap()).ToDataRes(types.String)
+	},
+	"docker.daemon.liveRestore": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetLiveRestore()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.noNewPrivileges": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetNoNewPrivileges()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.userlandProxy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetUserlandProxy()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.logDriver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetLogDriver()).ToDataRes(types.String)
+	},
+	"docker.daemon.logOpts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetLogOpts()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"docker.daemon.logLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetLogLevel()).ToDataRes(types.String)
+	},
+	"docker.daemon.insecureRegistries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetInsecureRegistries()).ToDataRes(types.Array(types.String))
+	},
+	"docker.daemon.registryMirrors": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetRegistryMirrors()).ToDataRes(types.Array(types.String))
+	},
+	"docker.daemon.authorizationPlugins": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetAuthorizationPlugins()).ToDataRes(types.Array(types.String))
+	},
+	"docker.daemon.hosts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetHosts()).ToDataRes(types.Array(types.String))
+	},
+	"docker.daemon.tls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetTls()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.tlsVerify": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetTlsVerify()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.tlsCaCert": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetTlsCaCert()).ToDataRes(types.Resource("file"))
+	},
+	"docker.daemon.tlsCert": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetTlsCert()).ToDataRes(types.Resource("file"))
+	},
+	"docker.daemon.tlsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetTlsKey()).ToDataRes(types.Resource("file"))
+	},
+	"docker.daemon.seccompProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetSeccompProfile()).ToDataRes(types.String)
+	},
+	"docker.daemon.selinuxEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetSelinuxEnabled()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.defaultUlimits": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetDefaultUlimits()).ToDataRes(types.Array(types.Resource("docker.daemon.ulimit")))
+	},
+	"docker.daemon.cgroupParent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetCgroupParent()).ToDataRes(types.String)
+	},
+	"docker.daemon.dataRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetDataRoot()).ToDataRes(types.String)
+	},
+	"docker.daemon.storageDriver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetStorageDriver()).ToDataRes(types.String)
+	},
+	"docker.daemon.experimental": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetExperimental()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.iptables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetIptables()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.ipForward": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetIpForward()).ToDataRes(types.Bool)
+	},
+	"docker.daemon.defaultRuntime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetDefaultRuntime()).ToDataRes(types.String)
+	},
+	"docker.daemon.runtimes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetRuntimes()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"docker.daemon.features": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemon).GetFeatures()).ToDataRes(types.Map(types.String, types.Bool))
+	},
+	"docker.daemon.ulimit.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemonUlimit).GetName()).ToDataRes(types.String)
+	},
+	"docker.daemon.ulimit.soft": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemonUlimit).GetSoft()).ToDataRes(types.Int)
+	},
+	"docker.daemon.ulimit.hard": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDockerDaemonUlimit).GetHard()).ToDataRes(types.Int)
+	},
 	"containerd.containers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainerd).GetContainers()).ToDataRes(types.Array(types.Resource("containerd.container")))
+	},
+	"containerd.images": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetImages()).ToDataRes(types.Array(types.Resource("containerd.image")))
+	},
+	"containerd.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetVersion()).ToDataRes(types.String)
+	},
+	"containerd.process": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetProcess()).ToDataRes(types.Resource("process"))
+	},
+	"containerd.configFile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetConfigFile()).ToDataRes(types.Resource("file"))
+	},
+	"containerd.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"containerd.configuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetConfiguration()).ToDataRes(types.Dict)
+	},
+	"containerd.configVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetConfigVersion()).ToDataRes(types.Int)
+	},
+	"containerd.root": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetRoot()).ToDataRes(types.String)
+	},
+	"containerd.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetState()).ToDataRes(types.String)
+	},
+	"containerd.grpcAddress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetGrpcAddress()).ToDataRes(types.String)
+	},
+	"containerd.grpcUid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetGrpcUid()).ToDataRes(types.Int)
+	},
+	"containerd.grpcGid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetGrpcGid()).ToDataRes(types.Int)
+	},
+	"containerd.grpcTcpAddress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetGrpcTcpAddress()).ToDataRes(types.String)
+	},
+	"containerd.disabledPlugins": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetDisabledPlugins()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.sandboxImage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetSandboxImage()).ToDataRes(types.String)
+	},
+	"containerd.snapshotter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetSnapshotter()).ToDataRes(types.String)
+	},
+	"containerd.defaultRuntime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetDefaultRuntime()).ToDataRes(types.String)
+	},
+	"containerd.runtimes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetRuntimes()).ToDataRes(types.Array(types.Resource("containerd.runtime")))
+	},
+	"containerd.enableUnprivilegedPorts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetEnableUnprivilegedPorts()).ToDataRes(types.Bool)
+	},
+	"containerd.enableUnprivilegedIcmp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetEnableUnprivilegedIcmp()).ToDataRes(types.Bool)
+	},
+	"containerd.selinuxEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetSelinuxEnabled()).ToDataRes(types.Bool)
+	},
+	"containerd.restrictOomScoreAdj": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetRestrictOomScoreAdj()).ToDataRes(types.Bool)
+	},
+	"containerd.deviceOwnershipFromSecurityContext": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetDeviceOwnershipFromSecurityContext()).ToDataRes(types.Bool)
+	},
+	"containerd.disableApparmor": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetDisableApparmor()).ToDataRes(types.Bool)
+	},
+	"containerd.tolerateMissingHugetlbController": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetTolerateMissingHugetlbController()).ToDataRes(types.Bool)
+	},
+	"containerd.registryConfigPaths": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetRegistryConfigPaths()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.registryHosts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetRegistryHosts()).ToDataRes(types.Array(types.Resource("containerd.registryHost")))
+	},
+	"containerd.streamAddress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetStreamAddress()).ToDataRes(types.String)
+	},
+	"containerd.streamPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetStreamPort()).ToDataRes(types.Int)
+	},
+	"containerd.streamTlsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetStreamTlsEnabled()).ToDataRes(types.Bool)
+	},
+	"containerd.runtime.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRuntime).GetName()).ToDataRes(types.String)
+	},
+	"containerd.runtime.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRuntime).GetType()).ToDataRes(types.String)
+	},
+	"containerd.runtime.shimPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRuntime).GetShimPath()).ToDataRes(types.String)
+	},
+	"containerd.runtime.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRuntime).GetPath()).ToDataRes(types.String)
+	},
+	"containerd.runtime.root": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRuntime).GetRoot()).ToDataRes(types.String)
+	},
+	"containerd.runtime.systemdCgroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRuntime).GetSystemdCgroup()).ToDataRes(types.Bool)
+	},
+	"containerd.runtime.privilegedWithoutHostDevices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRuntime).GetPrivilegedWithoutHostDevices()).ToDataRes(types.Bool)
+	},
+	"containerd.runtime.podAnnotations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRuntime).GetPodAnnotations()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.runtime.baseRuntimeSpec": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRuntime).GetBaseRuntimeSpec()).ToDataRes(types.String)
+	},
+	"containerd.runtime.isDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRuntime).GetIsDefault()).ToDataRes(types.Bool)
+	},
+	"containerd.registryHost.namespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRegistryHost).GetNamespace()).ToDataRes(types.String)
+	},
+	"containerd.registryHost.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRegistryHost).GetUrl()).ToDataRes(types.String)
+	},
+	"containerd.registryHost.server": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRegistryHost).GetServer()).ToDataRes(types.Bool)
+	},
+	"containerd.registryHost.capabilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRegistryHost).GetCapabilities()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.registryHost.skipVerify": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRegistryHost).GetSkipVerify()).ToDataRes(types.Bool)
+	},
+	"containerd.registryHost.caCerts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRegistryHost).GetCaCerts()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"containerd.registryHost.clientCerts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRegistryHost).GetClientCerts()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"containerd.registryHost.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdRegistryHost).GetFile()).ToDataRes(types.Resource("file"))
 	},
 	"containerd.container.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainerdContainer).GetId()).ToDataRes(types.String)
@@ -9255,6 +9948,615 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"containerd.container.snapshotter": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainerdContainer).GetSnapshotter()).ToDataRes(types.String)
+	},
+	"containerd.container.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetName()).ToDataRes(types.String)
+	},
+	"containerd.container.podName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetPodName()).ToDataRes(types.String)
+	},
+	"containerd.container.podNamespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetPodNamespace()).ToDataRes(types.String)
+	},
+	"containerd.container.sandboxId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetSandboxId()).ToDataRes(types.String)
+	},
+	"containerd.container.privileged": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetPrivileged()).ToDataRes(types.Bool)
+	},
+	"containerd.container.capabilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetCapabilities()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.container.boundingCapabilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetBoundingCapabilities()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.container.seccompUnconfined": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetSeccompUnconfined()).ToDataRes(types.Bool)
+	},
+	"containerd.container.seccompDefaultAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetSeccompDefaultAction()).ToDataRes(types.String)
+	},
+	"containerd.container.apparmorProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetApparmorProfile()).ToDataRes(types.String)
+	},
+	"containerd.container.selinuxLabel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetSelinuxLabel()).ToDataRes(types.String)
+	},
+	"containerd.container.noNewPrivileges": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetNoNewPrivileges()).ToDataRes(types.Bool)
+	},
+	"containerd.container.readOnlyRootfs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetReadOnlyRootfs()).ToDataRes(types.Bool)
+	},
+	"containerd.container.uid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetUid()).ToDataRes(types.Int)
+	},
+	"containerd.container.gid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetGid()).ToDataRes(types.Int)
+	},
+	"containerd.container.hostNetwork": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetHostNetwork()).ToDataRes(types.Bool)
+	},
+	"containerd.container.hostPID": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetHostPID()).ToDataRes(types.Bool)
+	},
+	"containerd.container.hostIPC": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetHostIPC()).ToDataRes(types.Bool)
+	},
+	"containerd.container.mounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetMounts()).ToDataRes(types.Array(types.Resource("containerd.container.mount")))
+	},
+	"containerd.container.memoryLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetMemoryLimit()).ToDataRes(types.Int)
+	},
+	"containerd.container.nanoCpus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetNanoCpus()).ToDataRes(types.Int)
+	},
+	"containerd.container.cpuShares": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetCpuShares()).ToDataRes(types.Int)
+	},
+	"containerd.container.pidsLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetPidsLimit()).ToDataRes(types.Int)
+	},
+	"containerd.container.sourceImage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainer).GetSourceImage()).ToDataRes(types.Resource("containerd.image"))
+	},
+	"containerd.image.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetName()).ToDataRes(types.String)
+	},
+	"containerd.image.namespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetNamespace()).ToDataRes(types.String)
+	},
+	"containerd.image.digest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetDigest()).ToDataRes(types.String)
+	},
+	"containerd.image.mediaType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetMediaType()).ToDataRes(types.String)
+	},
+	"containerd.image.platforms": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetPlatforms()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.image.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"containerd.image.configDigest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetConfigDigest()).ToDataRes(types.String)
+	},
+	"containerd.image.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetSize()).ToDataRes(types.Int)
+	},
+	"containerd.image.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"containerd.image.os": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetOs()).ToDataRes(types.String)
+	},
+	"containerd.image.architecture": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetArchitecture()).ToDataRes(types.String)
+	},
+	"containerd.image.variant": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetVariant()).ToDataRes(types.String)
+	},
+	"containerd.image.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetUser()).ToDataRes(types.String)
+	},
+	"containerd.image.runsAsRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetRunsAsRoot()).ToDataRes(types.Bool)
+	},
+	"containerd.image.entrypoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetEntrypoint()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.image.cmd": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetCmd()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.image.workingDir": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetWorkingDir()).ToDataRes(types.String)
+	},
+	"containerd.image.exposedPorts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetExposedPorts()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.image.layers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetLayers()).ToDataRes(types.Array(types.String))
+	},
+	"containerd.image.containers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdImage).GetContainers()).ToDataRes(types.Array(types.Resource("containerd.container")))
+	},
+	"containerd.container.mount.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainerMount).GetType()).ToDataRes(types.String)
+	},
+	"containerd.container.mount.containerPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainerMount).GetContainerPath()).ToDataRes(types.String)
+	},
+	"containerd.container.mount.hostPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainerMount).GetHostPath()).ToDataRes(types.String)
+	},
+	"containerd.container.mount.readOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainerMount).GetReadOnly()).ToDataRes(types.Bool)
+	},
+	"containerd.container.mount.propagation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainerMount).GetPropagation()).ToDataRes(types.String)
+	},
+	"containerd.container.mount.options": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerdContainerMount).GetOptions()).ToDataRes(types.Array(types.String))
+	},
+	"crio.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetVersion()).ToDataRes(types.String)
+	},
+	"crio.configFiles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetConfigFiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"crio.configuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetConfiguration()).ToDataRes(types.Dict)
+	},
+	"crio.defaultRuntime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetDefaultRuntime()).ToDataRes(types.String)
+	},
+	"crio.seccompProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetSeccompProfile()).ToDataRes(types.String)
+	},
+	"crio.apparmorProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetApparmorProfile()).ToDataRes(types.String)
+	},
+	"crio.selinux": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetSelinux()).ToDataRes(types.Bool)
+	},
+	"crio.defaultCapabilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetDefaultCapabilities()).ToDataRes(types.Array(types.String))
+	},
+	"crio.defaultSysctls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetDefaultSysctls()).ToDataRes(types.Array(types.String))
+	},
+	"crio.readOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetReadOnly()).ToDataRes(types.Bool)
+	},
+	"crio.allowedDevices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetAllowedDevices()).ToDataRes(types.Array(types.String))
+	},
+	"crio.containers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetContainers()).ToDataRes(types.Array(types.Resource("crio.container")))
+	},
+	"crio.images": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetImages()).ToDataRes(types.Array(types.Resource("crio.image")))
+	},
+	"crio.signaturePolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetSignaturePolicy()).ToDataRes(types.Resource("containers.policy"))
+	},
+	"crio.namespaceSignaturePolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetNamespaceSignaturePolicies()).ToDataRes(types.Array(types.Resource("crio.namespaceSignaturePolicy")))
+	},
+	"crio.runtimes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetRuntimes()).ToDataRes(types.Array(types.Resource("crio.runtime")))
+	},
+	"crio.streamAddress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetStreamAddress()).ToDataRes(types.String)
+	},
+	"crio.streamPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetStreamPort()).ToDataRes(types.Int)
+	},
+	"crio.streamTlsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrio).GetStreamTlsEnabled()).ToDataRes(types.Bool)
+	},
+	"crio.namespaceSignaturePolicy.namespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioNamespaceSignaturePolicy).GetNamespace()).ToDataRes(types.String)
+	},
+	"crio.namespaceSignaturePolicy.policy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioNamespaceSignaturePolicy).GetPolicy()).ToDataRes(types.Resource("containers.policy"))
+	},
+	"crio.runtime.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetName()).ToDataRes(types.String)
+	},
+	"crio.runtime.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetPath()).ToDataRes(types.String)
+	},
+	"crio.runtime.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetType()).ToDataRes(types.String)
+	},
+	"crio.runtime.root": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetRoot()).ToDataRes(types.String)
+	},
+	"crio.runtime.monitorPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetMonitorPath()).ToDataRes(types.String)
+	},
+	"crio.runtime.allowedAnnotations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetAllowedAnnotations()).ToDataRes(types.Array(types.String))
+	},
+	"crio.runtime.privilegedWithoutHostDevices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetPrivilegedWithoutHostDevices()).ToDataRes(types.Bool)
+	},
+	"crio.runtime.isDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioRuntime).GetIsDefault()).ToDataRes(types.Bool)
+	},
+	"crio.container.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetId()).ToDataRes(types.String)
+	},
+	"crio.container.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetName()).ToDataRes(types.String)
+	},
+	"crio.container.podName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetPodName()).ToDataRes(types.String)
+	},
+	"crio.container.podNamespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetPodNamespace()).ToDataRes(types.String)
+	},
+	"crio.container.sandboxId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetSandboxId()).ToDataRes(types.String)
+	},
+	"crio.container.image": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetImage()).ToDataRes(types.String)
+	},
+	"crio.container.imageRef": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetImageRef()).ToDataRes(types.String)
+	},
+	"crio.container.pid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetPid()).ToDataRes(types.Int)
+	},
+	"crio.container.privileged": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetPrivileged()).ToDataRes(types.Bool)
+	},
+	"crio.container.seccompProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetSeccompProfile()).ToDataRes(types.String)
+	},
+	"crio.container.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"crio.container.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetCreated()).ToDataRes(types.Time)
+	},
+	"crio.container.mounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetMounts()).ToDataRes(types.Array(types.Resource("crio.container.mount")))
+	},
+	"crio.container.capabilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetCapabilities()).ToDataRes(types.Array(types.String))
+	},
+	"crio.container.boundingCapabilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetBoundingCapabilities()).ToDataRes(types.Array(types.String))
+	},
+	"crio.container.seccompUnconfined": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetSeccompUnconfined()).ToDataRes(types.Bool)
+	},
+	"crio.container.seccompDefaultAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetSeccompDefaultAction()).ToDataRes(types.String)
+	},
+	"crio.container.apparmorProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetApparmorProfile()).ToDataRes(types.String)
+	},
+	"crio.container.selinuxLabel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetSelinuxLabel()).ToDataRes(types.String)
+	},
+	"crio.container.noNewPrivileges": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetNoNewPrivileges()).ToDataRes(types.Bool)
+	},
+	"crio.container.readOnlyRootfs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetReadOnlyRootfs()).ToDataRes(types.Bool)
+	},
+	"crio.container.uid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetUid()).ToDataRes(types.Int)
+	},
+	"crio.container.gid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetGid()).ToDataRes(types.Int)
+	},
+	"crio.container.hostNetwork": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetHostNetwork()).ToDataRes(types.Bool)
+	},
+	"crio.container.hostPID": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetHostPID()).ToDataRes(types.Bool)
+	},
+	"crio.container.hostIPC": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetHostIPC()).ToDataRes(types.Bool)
+	},
+	"crio.container.memoryLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetMemoryLimit()).ToDataRes(types.Int)
+	},
+	"crio.container.nanoCpus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetNanoCpus()).ToDataRes(types.Int)
+	},
+	"crio.container.cpuShares": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetCpuShares()).ToDataRes(types.Int)
+	},
+	"crio.container.pidsLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetPidsLimit()).ToDataRes(types.Int)
+	},
+	"crio.container.sourceImage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainer).GetSourceImage()).ToDataRes(types.Resource("crio.image"))
+	},
+	"crio.image.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetId()).ToDataRes(types.String)
+	},
+	"crio.image.names": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetNames()).ToDataRes(types.Array(types.String))
+	},
+	"crio.image.repoDigests": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetRepoDigests()).ToDataRes(types.Array(types.String))
+	},
+	"crio.image.digest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetDigest()).ToDataRes(types.String)
+	},
+	"crio.image.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetSize()).ToDataRes(types.Int)
+	},
+	"crio.image.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"crio.image.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"crio.image.os": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetOs()).ToDataRes(types.String)
+	},
+	"crio.image.architecture": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetArchitecture()).ToDataRes(types.String)
+	},
+	"crio.image.variant": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetVariant()).ToDataRes(types.String)
+	},
+	"crio.image.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetUser()).ToDataRes(types.String)
+	},
+	"crio.image.runsAsRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetRunsAsRoot()).ToDataRes(types.Bool)
+	},
+	"crio.image.entrypoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetEntrypoint()).ToDataRes(types.Array(types.String))
+	},
+	"crio.image.cmd": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetCmd()).ToDataRes(types.Array(types.String))
+	},
+	"crio.image.workingDir": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetWorkingDir()).ToDataRes(types.String)
+	},
+	"crio.image.exposedPorts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetExposedPorts()).ToDataRes(types.Array(types.String))
+	},
+	"crio.image.layers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetLayers()).ToDataRes(types.Array(types.String))
+	},
+	"crio.image.containers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioImage).GetContainers()).ToDataRes(types.Array(types.Resource("crio.container")))
+	},
+	"crio.container.mount.containerPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainerMount).GetContainerPath()).ToDataRes(types.String)
+	},
+	"crio.container.mount.hostPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainerMount).GetHostPath()).ToDataRes(types.String)
+	},
+	"crio.container.mount.readOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainerMount).GetReadOnly()).ToDataRes(types.Bool)
+	},
+	"crio.container.mount.recursiveReadOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainerMount).GetRecursiveReadOnly()).ToDataRes(types.Bool)
+	},
+	"crio.container.mount.propagation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainerMount).GetPropagation()).ToDataRes(types.String)
+	},
+	"crio.container.mount.selinuxRelabel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCrioContainerMount).GetSelinuxRelabel()).ToDataRes(types.Bool)
+	},
+	"containers.registries.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistries).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"containers.registries.unqualifiedSearchRegistries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistries).GetUnqualifiedSearchRegistries()).ToDataRes(types.Array(types.String))
+	},
+	"containers.registries.shortNameMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistries).GetShortNameMode()).ToDataRes(types.String)
+	},
+	"containers.registries.aliases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistries).GetAliases()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"containers.registries.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistries).GetList()).ToDataRes(types.Array(types.Resource("containers.registry")))
+	},
+	"containers.registry.prefix": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistry).GetPrefix()).ToDataRes(types.String)
+	},
+	"containers.registry.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistry).GetLocation()).ToDataRes(types.String)
+	},
+	"containers.registry.insecure": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistry).GetInsecure()).ToDataRes(types.Bool)
+	},
+	"containers.registry.blocked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistry).GetBlocked()).ToDataRes(types.Bool)
+	},
+	"containers.registry.mirrorByDigestOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistry).GetMirrorByDigestOnly()).ToDataRes(types.Bool)
+	},
+	"containers.registry.mirrors": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistry).GetMirrors()).ToDataRes(types.Array(types.Resource("containers.registry.mirror")))
+	},
+	"containers.registry.mirror.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistryMirror).GetLocation()).ToDataRes(types.String)
+	},
+	"containers.registry.mirror.insecure": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistryMirror).GetInsecure()).ToDataRes(types.Bool)
+	},
+	"containers.registry.mirror.pullFromMirror": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersRegistryMirror).GetPullFromMirror()).ToDataRes(types.String)
+	},
+	"containers.policy.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicy).GetPath()).ToDataRes(types.String)
+	},
+	"containers.policy.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicy).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"containers.policy.defaultRequirements": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicy).GetDefaultRequirements()).ToDataRes(types.Array(types.Resource("containers.policy.requirement")))
+	},
+	"containers.policy.scopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicy).GetScopes()).ToDataRes(types.Array(types.Resource("containers.policy.scope")))
+	},
+	"containers.policy.scope.transport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicyScope).GetTransport()).ToDataRes(types.String)
+	},
+	"containers.policy.scope.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicyScope).GetScope()).ToDataRes(types.String)
+	},
+	"containers.policy.scope.requirements": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicyScope).GetRequirements()).ToDataRes(types.Array(types.Resource("containers.policy.requirement")))
+	},
+	"containers.policy.requirement.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicyRequirement).GetType()).ToDataRes(types.String)
+	},
+	"containers.policy.requirement.keyType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicyRequirement).GetKeyType()).ToDataRes(types.String)
+	},
+	"containers.policy.requirement.keyPaths": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicyRequirement).GetKeyPaths()).ToDataRes(types.Array(types.String))
+	},
+	"containers.policy.requirement.inlineKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicyRequirement).GetInlineKey()).ToDataRes(types.Bool)
+	},
+	"containers.policy.requirement.fulcioCAPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicyRequirement).GetFulcioCAPath()).ToDataRes(types.String)
+	},
+	"containers.policy.requirement.fulcioOIDCIssuer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicyRequirement).GetFulcioOIDCIssuer()).ToDataRes(types.String)
+	},
+	"containers.policy.requirement.fulcioSubjectEmail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicyRequirement).GetFulcioSubjectEmail()).ToDataRes(types.String)
+	},
+	"containers.policy.requirement.rekorPublicKeyPaths": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicyRequirement).GetRekorPublicKeyPaths()).ToDataRes(types.Array(types.String))
+	},
+	"containers.policy.requirement.signedIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersPolicyRequirement).GetSignedIdentity()).ToDataRes(types.Dict)
+	},
+	"containers.conf.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"containers.conf.privileged": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetPrivileged()).ToDataRes(types.Bool)
+	},
+	"containers.conf.defaultCapabilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetDefaultCapabilities()).ToDataRes(types.Array(types.String))
+	},
+	"containers.conf.defaultSysctls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetDefaultSysctls()).ToDataRes(types.Array(types.String))
+	},
+	"containers.conf.defaultUlimits": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetDefaultUlimits()).ToDataRes(types.Array(types.String))
+	},
+	"containers.conf.devices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetDevices()).ToDataRes(types.Array(types.String))
+	},
+	"containers.conf.mounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetMounts()).ToDataRes(types.Array(types.String))
+	},
+	"containers.conf.volumes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetVolumes()).ToDataRes(types.Array(types.String))
+	},
+	"containers.conf.envHost": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetEnvHost()).ToDataRes(types.Bool)
+	},
+	"containers.conf.seccompProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetSeccompProfile()).ToDataRes(types.String)
+	},
+	"containers.conf.apparmorProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetApparmorProfile()).ToDataRes(types.String)
+	},
+	"containers.conf.label": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetLabel()).ToDataRes(types.Bool)
+	},
+	"containers.conf.readOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetReadOnly()).ToDataRes(types.Bool)
+	},
+	"containers.conf.pidsLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetPidsLimit()).ToDataRes(types.Int)
+	},
+	"containers.conf.userns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetUserns()).ToDataRes(types.String)
+	},
+	"containers.conf.netns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetNetns()).ToDataRes(types.String)
+	},
+	"containers.conf.pidns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetPidns()).ToDataRes(types.String)
+	},
+	"containers.conf.ipcns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetIpcns()).ToDataRes(types.String)
+	},
+	"containers.conf.utsns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetUtsns()).ToDataRes(types.String)
+	},
+	"containers.conf.cgroupns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetCgroupns()).ToDataRes(types.String)
+	},
+	"containers.conf.cgroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetCgroups()).ToDataRes(types.String)
+	},
+	"containers.conf.logDriver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetLogDriver()).ToDataRes(types.String)
+	},
+	"containers.conf.runtime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetRuntime()).ToDataRes(types.String)
+	},
+	"containers.conf.eventsLogger": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetEventsLogger()).ToDataRes(types.String)
+	},
+	"containers.conf.cgroupManager": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetCgroupManager()).ToDataRes(types.String)
+	},
+	"containers.conf.networkBackend": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetNetworkBackend()).ToDataRes(types.String)
+	},
+	"containers.conf.defaultNetwork": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetDefaultNetwork()).ToDataRes(types.String)
+	},
+	"containers.storage.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"containers.storage.configuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetConfiguration()).ToDataRes(types.Dict)
+	},
+	"containers.storage.driver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetDriver()).ToDataRes(types.String)
+	},
+	"containers.storage.driverPriority": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetDriverPriority()).ToDataRes(types.Array(types.String))
+	},
+	"containers.storage.graphRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetGraphRoot()).ToDataRes(types.String)
+	},
+	"containers.storage.runRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetRunRoot()).ToDataRes(types.String)
+	},
+	"containers.storage.imageStore": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetImageStore()).ToDataRes(types.String)
+	},
+	"containers.storage.additionalImageStores": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetAdditionalImageStores()).ToDataRes(types.Array(types.String))
+	},
+	"containers.storage.transientStore": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetTransientStore()).ToDataRes(types.Bool)
+	},
+	"containers.storage.overlayMountProgram": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetOverlayMountProgram()).ToDataRes(types.String)
+	},
+	"containers.storage.overlayMountOptions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetOverlayMountOptions()).ToDataRes(types.Array(types.String))
+	},
+	"containers.storage.pullOptions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetPullOptions()).ToDataRes(types.Map(types.String, types.String))
 	},
 	"podman.installed": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPodman).GetInstalled()).ToDataRes(types.Bool)
@@ -9390,6 +10692,99 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"podman.container.restartPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPodmanContainer).GetRestartPolicy()).ToDataRes(types.String)
+	},
+	"podman.container.ipcMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetIpcMode()).ToDataRes(types.String)
+	},
+	"podman.container.utsMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetUtsMode()).ToDataRes(types.String)
+	},
+	"podman.container.cgroupnsMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetCgroupnsMode()).ToDataRes(types.String)
+	},
+	"podman.container.seccompProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetSeccompProfile()).ToDataRes(types.String)
+	},
+	"podman.container.apparmorProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetApparmorProfile()).ToDataRes(types.String)
+	},
+	"podman.container.noNewPrivileges": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetNoNewPrivileges()).ToDataRes(types.Bool)
+	},
+	"podman.container.memoryLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetMemoryLimit()).ToDataRes(types.Int)
+	},
+	"podman.container.cpuShares": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetCpuShares()).ToDataRes(types.Int)
+	},
+	"podman.container.nanoCpus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetNanoCpus()).ToDataRes(types.Int)
+	},
+	"podman.container.pidsLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetPidsLimit()).ToDataRes(types.Int)
+	},
+	"podman.container.ulimits": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetUlimits()).ToDataRes(types.Array(types.Resource("podman.container.ulimit")))
+	},
+	"podman.container.hasHealthcheck": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetHasHealthcheck()).ToDataRes(types.Bool)
+	},
+	"podman.container.healthcheckTest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetHealthcheckTest()).ToDataRes(types.Array(types.String))
+	},
+	"podman.container.healthcheckInterval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetHealthcheckInterval()).ToDataRes(types.Int)
+	},
+	"podman.container.healthStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetHealthStatus()).ToDataRes(types.String)
+	},
+	"podman.container.devices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetDevices()).ToDataRes(types.Array(types.Resource("podman.container.device")))
+	},
+	"podman.container.mounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainer).GetMounts()).ToDataRes(types.Array(types.Resource("podman.container.mount")))
+	},
+	"podman.container.ulimit.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerUlimit).GetName()).ToDataRes(types.String)
+	},
+	"podman.container.ulimit.soft": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerUlimit).GetSoft()).ToDataRes(types.Int)
+	},
+	"podman.container.ulimit.hard": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerUlimit).GetHard()).ToDataRes(types.Int)
+	},
+	"podman.container.device.hostPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerDevice).GetHostPath()).ToDataRes(types.String)
+	},
+	"podman.container.device.containerPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerDevice).GetContainerPath()).ToDataRes(types.String)
+	},
+	"podman.container.device.permissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerDevice).GetPermissions()).ToDataRes(types.String)
+	},
+	"podman.container.mount.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerMount).GetType()).ToDataRes(types.String)
+	},
+	"podman.container.mount.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerMount).GetName()).ToDataRes(types.String)
+	},
+	"podman.container.mount.hostPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerMount).GetHostPath()).ToDataRes(types.String)
+	},
+	"podman.container.mount.containerPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerMount).GetContainerPath()).ToDataRes(types.String)
+	},
+	"podman.container.mount.readOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerMount).GetReadOnly()).ToDataRes(types.Bool)
+	},
+	"podman.container.mount.mode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerMount).GetMode()).ToDataRes(types.String)
+	},
+	"podman.container.mount.propagation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerMount).GetPropagation()).ToDataRes(types.String)
+	},
+	"podman.container.mount.driver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPodmanContainerMount).GetDriver()).ToDataRes(types.String)
 	},
 	"podman.image.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPodmanImage).GetId()).ToDataRes(types.String)
@@ -11470,6 +12865,57 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"kubelet.tlsMinVersion": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKubelet).GetTlsMinVersion()).ToDataRes(types.String)
 	},
+	"kubelet.configDir": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetConfigDir()).ToDataRes(types.String)
+	},
+	"kubelet.configDropIns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetConfigDropIns()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"kubelet.kubeconfig": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetKubeconfig()).ToDataRes(types.Resource("file"))
+	},
+	"kubelet.servingCertificates": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetServingCertificates()).ToDataRes(types.Array(types.Resource("certificate")))
+	},
+	"kubelet.clientCAs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetClientCAs()).ToDataRes(types.Array(types.Resource("certificate")))
+	},
+	"kubelet.webhookAuthenticationEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetWebhookAuthenticationEnabled()).ToDataRes(types.Bool)
+	},
+	"kubelet.staticPodPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetStaticPodPath()).ToDataRes(types.String)
+	},
+	"kubelet.staticPodManifests": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetStaticPodManifests()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"kubelet.allowedUnsafeSysctls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetAllowedUnsafeSysctls()).ToDataRes(types.Array(types.String))
+	},
+	"kubelet.seccompDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetSeccompDefault()).ToDataRes(types.Bool)
+	},
+	"kubelet.podPidsLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetPodPidsLimit()).ToDataRes(types.Int)
+	},
+	"kubelet.enableDebuggingHandlers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetEnableDebuggingHandlers()).ToDataRes(types.Bool)
+	},
+	"kubelet.enableSystemLogHandler": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetEnableSystemLogHandler()).ToDataRes(types.Bool)
+	},
+	"kubelet.enableSystemLogQuery": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetEnableSystemLogQuery()).ToDataRes(types.Bool)
+	},
+	"kubelet.enableProfilingHandler": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetEnableProfilingHandler()).ToDataRes(types.Bool)
+	},
+	"kubelet.imagePullCredentialsVerificationPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetImagePullCredentialsVerificationPolicy()).ToDataRes(types.String)
+	},
+	"kubelet.featureGates": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKubelet).GetFeatureGates()).ToDataRes(types.Map(types.String, types.Bool))
+	},
 	"python.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPython).GetPath()).ToDataRes(types.String)
 	},
@@ -11805,6 +13251,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"terraform.package.version": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTerraformPackage).GetVersion()).ToDataRes(types.String)
+	},
+	"terraform.package.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTerraformPackage).GetType()).ToDataRes(types.String)
+	},
+	"terraform.package.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTerraformPackage).GetSource()).ToDataRes(types.String)
 	},
 	"terraform.package.purl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTerraformPackage).GetPurl()).ToDataRes(types.String)
@@ -26474,6 +27926,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDocker).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"docker.daemon": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDocker).Daemon, ok = plugin.RawToTValue[*mqlDockerDaemon](v.Value, v.Error)
+		return
+	},
+	"docker.networks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDocker).Networks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.volumes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDocker).Volumes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"docker.file.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDockerFile).__id, ok = v.Value.(string)
 		return
@@ -27074,6 +28538,70 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDockerImage).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"docker.image.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"docker.image.author": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Author, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.image.os": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Os, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.image.architecture": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Architecture, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.image.variant": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Variant, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.image.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).User, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.image.runsAsRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).RunsAsRoot, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.image.entrypoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Entrypoint, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.image.cmd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Cmd, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.image.workingDir": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).WorkingDir, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.image.exposedPorts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).ExposedPorts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.image.hasHealthcheck": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).HasHealthcheck, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.image.healthcheckTest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).HealthcheckTest, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.image.healthcheckInterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).HealthcheckInterval, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.image.layers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Layers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.image.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerImage).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"docker.container.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDockerContainer).__id, ok = v.Value.(string)
 		return
@@ -27118,12 +28646,704 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDockerContainer).HostConfig, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"docker.container.sourceImage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).SourceImage, ok = plugin.RawToTValue[*mqlDockerImage](v.Value, v.Error)
+		return
+	},
+	"docker.container.privileged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).Privileged, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.container.capAdd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).CapAdd, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.container.capDrop": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).CapDrop, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.container.securityOptions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).SecurityOptions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.container.seccompProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).SeccompProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.apparmorProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).ApparmorProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.noNewPrivileges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).NoNewPrivileges, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.container.readOnlyRootfs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).ReadOnlyRootfs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.container.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).User, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.networkMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).NetworkMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.pidMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).PidMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.ipcMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).IpcMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.utsMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).UtsMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.usernsMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).UsernsMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.cgroupnsMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).CgroupnsMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.restartPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).RestartPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.restartMaxRetries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).RestartMaxRetries, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.container.memoryLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).MemoryLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.container.cpuShares": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).CpuShares, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.container.nanoCpus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).NanoCpus, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.container.pidsLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).PidsLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.container.ulimits": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).Ulimits, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.container.hasHealthcheck": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).HasHealthcheck, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.container.healthcheckTest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).HealthcheckTest, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.container.healthcheckInterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).HealthcheckInterval, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.container.healthStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).HealthStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.ports": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).Ports, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.container.devices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).Devices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.container.mounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).Mounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.container.networks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainer).Networks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.container.ulimit.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerUlimit).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.container.ulimit.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerUlimit).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.ulimit.soft": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerUlimit).Soft, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.container.ulimit.hard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerUlimit).Hard, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.container.port.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerPort).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.container.port.hostIp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerPort).HostIp, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.port.hostPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerPort).HostPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.container.port.containerPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerPort).ContainerPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.container.port.protocol": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerPort).Protocol, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.port.allInterfaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerPort).AllInterfaces, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.container.device.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerDevice).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.container.device.hostPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerDevice).HostPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.device.containerPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerDevice).ContainerPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.device.permissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerDevice).Permissions, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.mount.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerMount).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.container.mount.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerMount).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.mount.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerMount).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.mount.hostPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerMount).HostPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.mount.containerPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerMount).ContainerPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.mount.readOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerMount).ReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.container.mount.mode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerMount).Mode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.mount.propagation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerMount).Propagation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.container.mount.driver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerContainerMount).Driver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.network.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.driver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Driver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.internal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Internal, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.attachable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Attachable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.ingress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Ingress, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.ipv4Enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Ipv4Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.ipv6Enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Ipv6Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.subnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Subnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.network.options": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Options, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.network.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.network.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"docker.network.icc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Icc, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.ipMasquerade": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).IpMasquerade, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.network.hostBindingIpv4": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).HostBindingIpv4, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetwork).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.network.subnet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetworkSubnet).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.network.subnet.subnet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetworkSubnet).Subnet, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.subnet.gateway": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetworkSubnet).Gateway, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.network.subnet.ipRange": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerNetworkSubnet).IpRange, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.volume.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.volume.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.volume.driver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Driver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.volume.mountpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Mountpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.volume.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"docker.volume.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.volume.options": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Options, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.volume.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.volume.anonymous": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Anonymous, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.volume.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerVolume).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.daemon.configFile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).ConfigFile, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.process": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Process, ok = plugin.RawToTValue[*mqlProcess](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.configuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Configuration, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.icc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Icc, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.usernsRemap": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).UsernsRemap, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.liveRestore": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).LiveRestore, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.noNewPrivileges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).NoNewPrivileges, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.userlandProxy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).UserlandProxy, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.logDriver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).LogDriver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.logOpts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).LogOpts, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.logLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).LogLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.insecureRegistries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).InsecureRegistries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.registryMirrors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).RegistryMirrors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.authorizationPlugins": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).AuthorizationPlugins, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.hosts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Hosts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.tls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Tls, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.tlsVerify": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).TlsVerify, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.tlsCaCert": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).TlsCaCert, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.tlsCert": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).TlsCert, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.tlsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).TlsKey, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.seccompProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).SeccompProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.selinuxEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).SelinuxEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.defaultUlimits": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).DefaultUlimits, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.cgroupParent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).CgroupParent, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.dataRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).DataRoot, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.storageDriver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).StorageDriver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.experimental": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Experimental, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.iptables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Iptables, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.ipForward": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).IpForward, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.defaultRuntime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).DefaultRuntime, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.runtimes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Runtimes, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.features": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemon).Features, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.ulimit.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemonUlimit).__id, ok = v.Value.(string)
+		return
+	},
+	"docker.daemon.ulimit.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemonUlimit).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.ulimit.soft": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemonUlimit).Soft, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"docker.daemon.ulimit.hard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDockerDaemonUlimit).Hard, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"containerd.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlContainerd).__id, ok = v.Value.(string)
 		return
 	},
 	"containerd.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlContainerd).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.images": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).Images, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.process": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).Process, ok = plugin.RawToTValue[*mqlProcess](v.Value, v.Error)
+		return
+	},
+	"containerd.configFile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).ConfigFile, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"containerd.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.configuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).Configuration, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"containerd.configVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).ConfigVersion, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containerd.root": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).Root, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.grpcAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).GrpcAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.grpcUid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).GrpcUid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containerd.grpcGid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).GrpcGid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containerd.grpcTcpAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).GrpcTcpAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.disabledPlugins": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).DisabledPlugins, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.sandboxImage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).SandboxImage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.snapshotter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).Snapshotter, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.defaultRuntime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).DefaultRuntime, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.runtimes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).Runtimes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.enableUnprivilegedPorts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).EnableUnprivilegedPorts, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.enableUnprivilegedIcmp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).EnableUnprivilegedIcmp, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.selinuxEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).SelinuxEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.restrictOomScoreAdj": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).RestrictOomScoreAdj, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.deviceOwnershipFromSecurityContext": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).DeviceOwnershipFromSecurityContext, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.disableApparmor": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).DisableApparmor, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.tolerateMissingHugetlbController": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).TolerateMissingHugetlbController, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.registryConfigPaths": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).RegistryConfigPaths, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.registryHosts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).RegistryHosts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.streamAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).StreamAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.streamPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).StreamPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containerd.streamTlsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).StreamTlsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.runtime.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRuntime).__id, ok = v.Value.(string)
+		return
+	},
+	"containerd.runtime.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRuntime).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.runtime.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRuntime).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.runtime.shimPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRuntime).ShimPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.runtime.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRuntime).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.runtime.root": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRuntime).Root, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.runtime.systemdCgroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRuntime).SystemdCgroup, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.runtime.privilegedWithoutHostDevices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRuntime).PrivilegedWithoutHostDevices, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.runtime.podAnnotations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRuntime).PodAnnotations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.runtime.baseRuntimeSpec": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRuntime).BaseRuntimeSpec, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.runtime.isDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRuntime).IsDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.registryHost.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRegistryHost).__id, ok = v.Value.(string)
+		return
+	},
+	"containerd.registryHost.namespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRegistryHost).Namespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.registryHost.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRegistryHost).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.registryHost.server": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRegistryHost).Server, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.registryHost.capabilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRegistryHost).Capabilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.registryHost.skipVerify": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRegistryHost).SkipVerify, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.registryHost.caCerts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRegistryHost).CaCerts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.registryHost.clientCerts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRegistryHost).ClientCerts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.registryHost.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdRegistryHost).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
 		return
 	},
 	"containerd.container.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -27160,6 +29380,882 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"containerd.container.snapshotter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlContainerdContainer).Snapshotter, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.container.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.container.podName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).PodName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.container.podNamespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).PodNamespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.container.sandboxId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).SandboxId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.container.privileged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).Privileged, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.container.capabilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).Capabilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.container.boundingCapabilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).BoundingCapabilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.container.seccompUnconfined": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).SeccompUnconfined, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.container.seccompDefaultAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).SeccompDefaultAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.container.apparmorProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).ApparmorProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.container.selinuxLabel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).SelinuxLabel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.container.noNewPrivileges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).NoNewPrivileges, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.container.readOnlyRootfs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).ReadOnlyRootfs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.container.uid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).Uid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containerd.container.gid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).Gid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containerd.container.hostNetwork": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).HostNetwork, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.container.hostPID": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).HostPID, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.container.hostIPC": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).HostIPC, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.container.mounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).Mounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.container.memoryLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).MemoryLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containerd.container.nanoCpus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).NanoCpus, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containerd.container.cpuShares": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).CpuShares, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containerd.container.pidsLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).PidsLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containerd.container.sourceImage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainer).SourceImage, ok = plugin.RawToTValue[*mqlContainerdImage](v.Value, v.Error)
+		return
+	},
+	"containerd.image.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).__id, ok = v.Value.(string)
+		return
+	},
+	"containerd.image.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.namespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Namespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.digest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Digest, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.mediaType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).MediaType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.platforms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Platforms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.image.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"containerd.image.configDigest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).ConfigDigest, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containerd.image.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"containerd.image.os": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Os, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.architecture": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Architecture, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.variant": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Variant, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).User, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.runsAsRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).RunsAsRoot, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.image.entrypoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Entrypoint, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.image.cmd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Cmd, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.image.workingDir": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).WorkingDir, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.image.exposedPorts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).ExposedPorts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.image.layers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Layers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.image.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdImage).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containerd.container.mount.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainerMount).__id, ok = v.Value.(string)
+		return
+	},
+	"containerd.container.mount.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainerMount).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.container.mount.containerPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainerMount).ContainerPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.container.mount.hostPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainerMount).HostPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.container.mount.readOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainerMount).ReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containerd.container.mount.propagation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainerMount).Propagation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containerd.container.mount.options": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerdContainerMount).Options, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).__id, ok = v.Value.(string)
+		return
+	},
+	"crio.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.configFiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).ConfigFiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.configuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).Configuration, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"crio.defaultRuntime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).DefaultRuntime, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.seccompProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).SeccompProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.apparmorProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).ApparmorProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.selinux": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).Selinux, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.defaultCapabilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).DefaultCapabilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.defaultSysctls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).DefaultSysctls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.readOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).ReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.allowedDevices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).AllowedDevices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.images": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).Images, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.signaturePolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).SignaturePolicy, ok = plugin.RawToTValue[*mqlContainersPolicy](v.Value, v.Error)
+		return
+	},
+	"crio.namespaceSignaturePolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).NamespaceSignaturePolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.runtimes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).Runtimes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.streamAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).StreamAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.streamPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).StreamPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.streamTlsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrio).StreamTlsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.namespaceSignaturePolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioNamespaceSignaturePolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"crio.namespaceSignaturePolicy.namespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioNamespaceSignaturePolicy).Namespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.namespaceSignaturePolicy.policy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioNamespaceSignaturePolicy).Policy, ok = plugin.RawToTValue[*mqlContainersPolicy](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).__id, ok = v.Value.(string)
+		return
+	},
+	"crio.runtime.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.root": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).Root, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.monitorPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).MonitorPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.allowedAnnotations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).AllowedAnnotations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.privilegedWithoutHostDevices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).PrivilegedWithoutHostDevices, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.runtime.isDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioRuntime).IsDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).__id, ok = v.Value.(string)
+		return
+	},
+	"crio.container.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.podName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).PodName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.podNamespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).PodNamespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.sandboxId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).SandboxId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.image": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Image, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.imageRef": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).ImageRef, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.pid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Pid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.container.privileged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Privileged, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.seccompProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).SeccompProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"crio.container.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"crio.container.mounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Mounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.container.capabilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Capabilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.container.boundingCapabilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).BoundingCapabilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.container.seccompUnconfined": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).SeccompUnconfined, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.seccompDefaultAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).SeccompDefaultAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.apparmorProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).ApparmorProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.selinuxLabel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).SelinuxLabel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.noNewPrivileges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).NoNewPrivileges, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.readOnlyRootfs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).ReadOnlyRootfs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.uid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Uid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.container.gid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).Gid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.container.hostNetwork": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).HostNetwork, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.hostPID": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).HostPID, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.hostIPC": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).HostIPC, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.memoryLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).MemoryLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.container.nanoCpus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).NanoCpus, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.container.cpuShares": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).CpuShares, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.container.pidsLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).PidsLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.container.sourceImage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainer).SourceImage, ok = plugin.RawToTValue[*mqlCrioImage](v.Value, v.Error)
+		return
+	},
+	"crio.image.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).__id, ok = v.Value.(string)
+		return
+	},
+	"crio.image.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.names": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Names, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.repoDigests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).RepoDigests, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.digest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Digest, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"crio.image.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"crio.image.os": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Os, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.architecture": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Architecture, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.variant": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Variant, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).User, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.runsAsRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).RunsAsRoot, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.image.entrypoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Entrypoint, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.cmd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Cmd, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.workingDir": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).WorkingDir, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.image.exposedPorts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).ExposedPorts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.layers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Layers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.image.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioImage).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"crio.container.mount.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).__id, ok = v.Value.(string)
+		return
+	},
+	"crio.container.mount.containerPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).ContainerPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.mount.hostPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).HostPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.mount.readOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).ReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.mount.recursiveReadOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).RecursiveReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"crio.container.mount.propagation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).Propagation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"crio.container.mount.selinuxRelabel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCrioContainerMount).SelinuxRelabel, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.registries.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistries).__id, ok = v.Value.(string)
+		return
+	},
+	"containers.registries.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistries).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.registries.unqualifiedSearchRegistries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistries).UnqualifiedSearchRegistries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.registries.shortNameMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistries).ShortNameMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.registries.aliases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistries).Aliases, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"containers.registries.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistries).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.registry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).__id, ok = v.Value.(string)
+		return
+	},
+	"containers.registry.prefix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).Prefix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.registry.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.registry.insecure": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).Insecure, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.registry.blocked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).Blocked, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.registry.mirrorByDigestOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).MirrorByDigestOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.registry.mirrors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistry).Mirrors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.registry.mirror.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistryMirror).__id, ok = v.Value.(string)
+		return
+	},
+	"containers.registry.mirror.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistryMirror).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.registry.mirror.insecure": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistryMirror).Insecure, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.registry.mirror.pullFromMirror": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersRegistryMirror).PullFromMirror, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.policy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"containers.policy.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicy).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.policy.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicy).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"containers.policy.defaultRequirements": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicy).DefaultRequirements, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.policy.scopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicy).Scopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.policy.scope.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyScope).__id, ok = v.Value.(string)
+		return
+	},
+	"containers.policy.scope.transport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyScope).Transport, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.policy.scope.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyScope).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.policy.scope.requirements": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyScope).Requirements, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.policy.requirement.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyRequirement).__id, ok = v.Value.(string)
+		return
+	},
+	"containers.policy.requirement.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyRequirement).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.policy.requirement.keyType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyRequirement).KeyType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.policy.requirement.keyPaths": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyRequirement).KeyPaths, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.policy.requirement.inlineKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyRequirement).InlineKey, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.policy.requirement.fulcioCAPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyRequirement).FulcioCAPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.policy.requirement.fulcioOIDCIssuer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyRequirement).FulcioOIDCIssuer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.policy.requirement.fulcioSubjectEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyRequirement).FulcioSubjectEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.policy.requirement.rekorPublicKeyPaths": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyRequirement).RekorPublicKeyPaths, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.policy.requirement.signedIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersPolicyRequirement).SignedIdentity, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).__id, ok = v.Value.(string)
+		return
+	},
+	"containers.conf.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.privileged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Privileged, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.conf.defaultCapabilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).DefaultCapabilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.defaultSysctls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).DefaultSysctls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.defaultUlimits": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).DefaultUlimits, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.devices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Devices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.mounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Mounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.volumes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Volumes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.envHost": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).EnvHost, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.conf.seccompProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).SeccompProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.apparmorProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).ApparmorProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.label": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Label, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.conf.readOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).ReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.conf.pidsLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).PidsLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containers.conf.userns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Userns, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.netns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Netns, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.pidns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Pidns, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.ipcns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Ipcns, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.utsns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Utsns, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.cgroupns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Cgroupns, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.cgroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Cgroups, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.logDriver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).LogDriver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.runtime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Runtime, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.eventsLogger": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).EventsLogger, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.cgroupManager": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).CgroupManager, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.networkBackend": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).NetworkBackend, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.defaultNetwork": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).DefaultNetwork, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.storage.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).__id, ok = v.Value.(string)
+		return
+	},
+	"containers.storage.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.storage.configuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).Configuration, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"containers.storage.driver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).Driver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.storage.driverPriority": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).DriverPriority, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.storage.graphRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).GraphRoot, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.storage.runRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).RunRoot, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.storage.imageStore": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).ImageStore, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.storage.additionalImageStores": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).AdditionalImageStores, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.storage.transientStore": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).TransientStore, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.storage.overlayMountProgram": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).OverlayMountProgram, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.storage.overlayMountOptions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).OverlayMountOptions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.storage.pullOptions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).PullOptions, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"podman.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -27348,6 +30444,142 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"podman.container.restartPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPodmanContainer).RestartPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.ipcMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).IpcMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.utsMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).UtsMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.cgroupnsMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).CgroupnsMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.seccompProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).SeccompProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.apparmorProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).ApparmorProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.noNewPrivileges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).NoNewPrivileges, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"podman.container.memoryLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).MemoryLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"podman.container.cpuShares": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).CpuShares, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"podman.container.nanoCpus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).NanoCpus, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"podman.container.pidsLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).PidsLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"podman.container.ulimits": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).Ulimits, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"podman.container.hasHealthcheck": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).HasHealthcheck, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"podman.container.healthcheckTest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).HealthcheckTest, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"podman.container.healthcheckInterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).HealthcheckInterval, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"podman.container.healthStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).HealthStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.devices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).Devices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"podman.container.mounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainer).Mounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"podman.container.ulimit.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerUlimit).__id, ok = v.Value.(string)
+		return
+	},
+	"podman.container.ulimit.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerUlimit).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.ulimit.soft": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerUlimit).Soft, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"podman.container.ulimit.hard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerUlimit).Hard, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"podman.container.device.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerDevice).__id, ok = v.Value.(string)
+		return
+	},
+	"podman.container.device.hostPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerDevice).HostPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.device.containerPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerDevice).ContainerPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.device.permissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerDevice).Permissions, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.mount.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerMount).__id, ok = v.Value.(string)
+		return
+	},
+	"podman.container.mount.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerMount).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.mount.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerMount).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.mount.hostPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerMount).HostPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.mount.containerPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerMount).ContainerPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.mount.readOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerMount).ReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"podman.container.mount.mode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerMount).Mode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.mount.propagation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerMount).Propagation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"podman.container.mount.driver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPodmanContainerMount).Driver, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"podman.image.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -30546,6 +33778,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlKubelet).TlsMinVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"kubelet.configDir": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).ConfigDir, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kubelet.configDropIns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).ConfigDropIns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kubelet.kubeconfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).Kubeconfig, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"kubelet.servingCertificates": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).ServingCertificates, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kubelet.clientCAs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).ClientCAs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kubelet.webhookAuthenticationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).WebhookAuthenticationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kubelet.staticPodPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).StaticPodPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kubelet.staticPodManifests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).StaticPodManifests, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kubelet.allowedUnsafeSysctls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).AllowedUnsafeSysctls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kubelet.seccompDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).SeccompDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kubelet.podPidsLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).PodPidsLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"kubelet.enableDebuggingHandlers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).EnableDebuggingHandlers, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kubelet.enableSystemLogHandler": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).EnableSystemLogHandler, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kubelet.enableSystemLogQuery": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).EnableSystemLogQuery, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kubelet.enableProfilingHandler": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).EnableProfilingHandler, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kubelet.imagePullCredentialsVerificationPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).ImagePullCredentialsVerificationPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kubelet.featureGates": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKubelet).FeatureGates, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"python.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPython).__id, ok = v.Value.(string)
 		return
@@ -31072,6 +34372,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"terraform.package.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTerraformPackage).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"terraform.package.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTerraformPackage).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"terraform.package.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTerraformPackage).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"terraform.package.purl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -64446,9 +67754,12 @@ func (c *mqlCgroup) GetChildren() *plugin.TValue[[]any] {
 type mqlDocker struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDockerInternal it will be used here
+	mqlDockerInternal
 	Images     plugin.TValue[[]any]
 	Containers plugin.TValue[[]any]
+	Daemon     plugin.TValue[*mqlDockerDaemon]
+	Networks   plugin.TValue[[]any]
+	Volumes    plugin.TValue[[]any]
 }
 
 // createDocker creates a new instance of this resource
@@ -64512,6 +67823,54 @@ func (c *mqlDocker) GetContainers() *plugin.TValue[[]any] {
 		}
 
 		return c.containers()
+	})
+}
+
+func (c *mqlDocker) GetDaemon() *plugin.TValue[*mqlDockerDaemon] {
+	return plugin.GetOrCompute[*mqlDockerDaemon](&c.Daemon, func() (*mqlDockerDaemon, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker", c.__id, "daemon")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDockerDaemon), nil
+			}
+		}
+
+		return c.daemon()
+	})
+}
+
+func (c *mqlDocker) GetNetworks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Networks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker", c.__id, "networks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networks()
+	})
+}
+
+func (c *mqlDocker) GetVolumes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Volumes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker", c.__id, "volumes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.volumes()
 	})
 }
 
@@ -66132,12 +69491,28 @@ func (c *mqlDockerFileOnbuild) GetContext() *plugin.TValue[*mqlFileContext] {
 type mqlDockerImage struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDockerImageInternal it will be used here
-	Id          plugin.TValue[string]
-	Size        plugin.TValue[int64]
-	RepoDigests plugin.TValue[[]any]
-	Tags        plugin.TValue[[]any]
-	Labels      plugin.TValue[map[string]any]
+	mqlDockerImageInternal
+	Id                  plugin.TValue[string]
+	Size                plugin.TValue[int64]
+	RepoDigests         plugin.TValue[[]any]
+	Tags                plugin.TValue[[]any]
+	Labels              plugin.TValue[map[string]any]
+	CreatedAt           plugin.TValue[*time.Time]
+	Author              plugin.TValue[string]
+	Os                  plugin.TValue[string]
+	Architecture        plugin.TValue[string]
+	Variant             plugin.TValue[string]
+	User                plugin.TValue[string]
+	RunsAsRoot          plugin.TValue[bool]
+	Entrypoint          plugin.TValue[[]any]
+	Cmd                 plugin.TValue[[]any]
+	WorkingDir          plugin.TValue[string]
+	ExposedPorts        plugin.TValue[[]any]
+	HasHealthcheck      plugin.TValue[bool]
+	HealthcheckTest     plugin.TValue[[]any]
+	HealthcheckInterval plugin.TValue[int64]
+	Layers              plugin.TValue[[]any]
+	Containers          plugin.TValue[[]any]
 }
 
 // createDockerImage creates a new instance of this resource
@@ -66197,21 +69572,158 @@ func (c *mqlDockerImage) GetLabels() *plugin.TValue[map[string]any] {
 	return &c.Labels
 }
 
+func (c *mqlDockerImage) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
+}
+
+func (c *mqlDockerImage) GetAuthor() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Author, func() (string, error) {
+		return c.author()
+	})
+}
+
+func (c *mqlDockerImage) GetOs() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Os, func() (string, error) {
+		return c.os()
+	})
+}
+
+func (c *mqlDockerImage) GetArchitecture() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Architecture, func() (string, error) {
+		return c.architecture()
+	})
+}
+
+func (c *mqlDockerImage) GetVariant() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Variant, func() (string, error) {
+		return c.variant()
+	})
+}
+
+func (c *mqlDockerImage) GetUser() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.User, func() (string, error) {
+		return c.user()
+	})
+}
+
+func (c *mqlDockerImage) GetRunsAsRoot() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RunsAsRoot, func() (bool, error) {
+		return c.runsAsRoot()
+	})
+}
+
+func (c *mqlDockerImage) GetEntrypoint() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Entrypoint, func() ([]any, error) {
+		return c.entrypoint()
+	})
+}
+
+func (c *mqlDockerImage) GetCmd() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Cmd, func() ([]any, error) {
+		return c.cmd()
+	})
+}
+
+func (c *mqlDockerImage) GetWorkingDir() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.WorkingDir, func() (string, error) {
+		return c.workingDir()
+	})
+}
+
+func (c *mqlDockerImage) GetExposedPorts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExposedPorts, func() ([]any, error) {
+		return c.exposedPorts()
+	})
+}
+
+func (c *mqlDockerImage) GetHasHealthcheck() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HasHealthcheck, func() (bool, error) {
+		return c.hasHealthcheck()
+	})
+}
+
+func (c *mqlDockerImage) GetHealthcheckTest() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.HealthcheckTest, func() ([]any, error) {
+		return c.healthcheckTest()
+	})
+}
+
+func (c *mqlDockerImage) GetHealthcheckInterval() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.HealthcheckInterval, func() (int64, error) {
+		return c.healthcheckInterval()
+	})
+}
+
+func (c *mqlDockerImage) GetLayers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Layers, func() ([]any, error) {
+		return c.layers()
+	})
+}
+
+func (c *mqlDockerImage) GetContainers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Containers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.image", c.__id, "containers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.containers()
+	})
+}
+
 // mqlDockerContainer for the docker.container resource
 type mqlDockerContainer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDockerContainerInternal it will be used here
-	Running    plugin.TValue[*llx.AssetValue]
-	Id         plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Image      plugin.TValue[string]
-	Imageid    plugin.TValue[string]
-	Names      plugin.TValue[[]any]
-	State      plugin.TValue[string]
-	Status     plugin.TValue[string]
-	Labels     plugin.TValue[map[string]any]
-	HostConfig plugin.TValue[any]
+	mqlDockerContainerInternal
+	Running             plugin.TValue[*llx.AssetValue]
+	Id                  plugin.TValue[string]
+	Command             plugin.TValue[string]
+	Image               plugin.TValue[string]
+	Imageid             plugin.TValue[string]
+	Names               plugin.TValue[[]any]
+	State               plugin.TValue[string]
+	Status              plugin.TValue[string]
+	Labels              plugin.TValue[map[string]any]
+	HostConfig          plugin.TValue[any]
+	SourceImage         plugin.TValue[*mqlDockerImage]
+	Privileged          plugin.TValue[bool]
+	CapAdd              plugin.TValue[[]any]
+	CapDrop             plugin.TValue[[]any]
+	SecurityOptions     plugin.TValue[[]any]
+	SeccompProfile      plugin.TValue[string]
+	ApparmorProfile     plugin.TValue[string]
+	NoNewPrivileges     plugin.TValue[bool]
+	ReadOnlyRootfs      plugin.TValue[bool]
+	User                plugin.TValue[string]
+	NetworkMode         plugin.TValue[string]
+	PidMode             plugin.TValue[string]
+	IpcMode             plugin.TValue[string]
+	UtsMode             plugin.TValue[string]
+	UsernsMode          plugin.TValue[string]
+	CgroupnsMode        plugin.TValue[string]
+	RestartPolicy       plugin.TValue[string]
+	RestartMaxRetries   plugin.TValue[int64]
+	MemoryLimit         plugin.TValue[int64]
+	CpuShares           plugin.TValue[int64]
+	NanoCpus            plugin.TValue[int64]
+	PidsLimit           plugin.TValue[int64]
+	Ulimits             plugin.TValue[[]any]
+	HasHealthcheck      plugin.TValue[bool]
+	HealthcheckTest     plugin.TValue[[]any]
+	HealthcheckInterval plugin.TValue[int64]
+	HealthStatus        plugin.TValue[string]
+	Ports               plugin.TValue[[]any]
+	Devices             plugin.TValue[[]any]
+	Mounts              plugin.TValue[[]any]
+	Networks            plugin.TValue[[]any]
 }
 
 // createDockerContainer creates a new instance of this resource
@@ -66295,12 +69807,1218 @@ func (c *mqlDockerContainer) GetHostConfig() *plugin.TValue[any] {
 	})
 }
 
+func (c *mqlDockerContainer) GetSourceImage() *plugin.TValue[*mqlDockerImage] {
+	return plugin.GetOrCompute[*mqlDockerImage](&c.SourceImage, func() (*mqlDockerImage, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.container", c.__id, "sourceImage")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDockerImage), nil
+			}
+		}
+
+		return c.sourceImage()
+	})
+}
+
+func (c *mqlDockerContainer) GetPrivileged() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Privileged, func() (bool, error) {
+		return c.privileged()
+	})
+}
+
+func (c *mqlDockerContainer) GetCapAdd() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CapAdd, func() ([]any, error) {
+		return c.capAdd()
+	})
+}
+
+func (c *mqlDockerContainer) GetCapDrop() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CapDrop, func() ([]any, error) {
+		return c.capDrop()
+	})
+}
+
+func (c *mqlDockerContainer) GetSecurityOptions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SecurityOptions, func() ([]any, error) {
+		return c.securityOptions()
+	})
+}
+
+func (c *mqlDockerContainer) GetSeccompProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SeccompProfile, func() (string, error) {
+		return c.seccompProfile()
+	})
+}
+
+func (c *mqlDockerContainer) GetApparmorProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ApparmorProfile, func() (string, error) {
+		return c.apparmorProfile()
+	})
+}
+
+func (c *mqlDockerContainer) GetNoNewPrivileges() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.NoNewPrivileges, func() (bool, error) {
+		return c.noNewPrivileges()
+	})
+}
+
+func (c *mqlDockerContainer) GetReadOnlyRootfs() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ReadOnlyRootfs, func() (bool, error) {
+		return c.readOnlyRootfs()
+	})
+}
+
+func (c *mqlDockerContainer) GetUser() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.User, func() (string, error) {
+		return c.user()
+	})
+}
+
+func (c *mqlDockerContainer) GetNetworkMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.NetworkMode, func() (string, error) {
+		return c.networkMode()
+	})
+}
+
+func (c *mqlDockerContainer) GetPidMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.PidMode, func() (string, error) {
+		return c.pidMode()
+	})
+}
+
+func (c *mqlDockerContainer) GetIpcMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.IpcMode, func() (string, error) {
+		return c.ipcMode()
+	})
+}
+
+func (c *mqlDockerContainer) GetUtsMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.UtsMode, func() (string, error) {
+		return c.utsMode()
+	})
+}
+
+func (c *mqlDockerContainer) GetUsernsMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.UsernsMode, func() (string, error) {
+		return c.usernsMode()
+	})
+}
+
+func (c *mqlDockerContainer) GetCgroupnsMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CgroupnsMode, func() (string, error) {
+		return c.cgroupnsMode()
+	})
+}
+
+func (c *mqlDockerContainer) GetRestartPolicy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.RestartPolicy, func() (string, error) {
+		return c.restartPolicy()
+	})
+}
+
+func (c *mqlDockerContainer) GetRestartMaxRetries() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.RestartMaxRetries, func() (int64, error) {
+		return c.restartMaxRetries()
+	})
+}
+
+func (c *mqlDockerContainer) GetMemoryLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MemoryLimit, func() (int64, error) {
+		return c.memoryLimit()
+	})
+}
+
+func (c *mqlDockerContainer) GetCpuShares() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.CpuShares, func() (int64, error) {
+		return c.cpuShares()
+	})
+}
+
+func (c *mqlDockerContainer) GetNanoCpus() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.NanoCpus, func() (int64, error) {
+		return c.nanoCpus()
+	})
+}
+
+func (c *mqlDockerContainer) GetPidsLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PidsLimit, func() (int64, error) {
+		return c.pidsLimit()
+	})
+}
+
+func (c *mqlDockerContainer) GetUlimits() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Ulimits, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.container", c.__id, "ulimits")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.ulimits()
+	})
+}
+
+func (c *mqlDockerContainer) GetHasHealthcheck() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HasHealthcheck, func() (bool, error) {
+		return c.hasHealthcheck()
+	})
+}
+
+func (c *mqlDockerContainer) GetHealthcheckTest() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.HealthcheckTest, func() ([]any, error) {
+		return c.healthcheckTest()
+	})
+}
+
+func (c *mqlDockerContainer) GetHealthcheckInterval() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.HealthcheckInterval, func() (int64, error) {
+		return c.healthcheckInterval()
+	})
+}
+
+func (c *mqlDockerContainer) GetHealthStatus() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.HealthStatus, func() (string, error) {
+		return c.healthStatus()
+	})
+}
+
+func (c *mqlDockerContainer) GetPorts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Ports, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.container", c.__id, "ports")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.ports()
+	})
+}
+
+func (c *mqlDockerContainer) GetDevices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Devices, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.container", c.__id, "devices")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.devices()
+	})
+}
+
+func (c *mqlDockerContainer) GetMounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Mounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.container", c.__id, "mounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mounts()
+	})
+}
+
+func (c *mqlDockerContainer) GetNetworks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Networks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.container", c.__id, "networks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networks()
+	})
+}
+
+// mqlDockerContainerUlimit for the docker.container.ulimit resource
+type mqlDockerContainerUlimit struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDockerContainerUlimitInternal it will be used here
+	Name plugin.TValue[string]
+	Soft plugin.TValue[int64]
+	Hard plugin.TValue[int64]
+}
+
+// createDockerContainerUlimit creates a new instance of this resource
+func createDockerContainerUlimit(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerContainerUlimit{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.container.ulimit", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerContainerUlimit) MqlName() string {
+	return "docker.container.ulimit"
+}
+
+func (c *mqlDockerContainerUlimit) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerContainerUlimit) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDockerContainerUlimit) GetSoft() *plugin.TValue[int64] {
+	return &c.Soft
+}
+
+func (c *mqlDockerContainerUlimit) GetHard() *plugin.TValue[int64] {
+	return &c.Hard
+}
+
+// mqlDockerContainerPort for the docker.container.port resource
+type mqlDockerContainerPort struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDockerContainerPortInternal it will be used here
+	HostIp        plugin.TValue[string]
+	HostPort      plugin.TValue[int64]
+	ContainerPort plugin.TValue[int64]
+	Protocol      plugin.TValue[string]
+	AllInterfaces plugin.TValue[bool]
+}
+
+// createDockerContainerPort creates a new instance of this resource
+func createDockerContainerPort(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerContainerPort{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.container.port", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerContainerPort) MqlName() string {
+	return "docker.container.port"
+}
+
+func (c *mqlDockerContainerPort) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerContainerPort) GetHostIp() *plugin.TValue[string] {
+	return &c.HostIp
+}
+
+func (c *mqlDockerContainerPort) GetHostPort() *plugin.TValue[int64] {
+	return &c.HostPort
+}
+
+func (c *mqlDockerContainerPort) GetContainerPort() *plugin.TValue[int64] {
+	return &c.ContainerPort
+}
+
+func (c *mqlDockerContainerPort) GetProtocol() *plugin.TValue[string] {
+	return &c.Protocol
+}
+
+func (c *mqlDockerContainerPort) GetAllInterfaces() *plugin.TValue[bool] {
+	return &c.AllInterfaces
+}
+
+// mqlDockerContainerDevice for the docker.container.device resource
+type mqlDockerContainerDevice struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDockerContainerDeviceInternal it will be used here
+	HostPath      plugin.TValue[string]
+	ContainerPath plugin.TValue[string]
+	Permissions   plugin.TValue[string]
+}
+
+// createDockerContainerDevice creates a new instance of this resource
+func createDockerContainerDevice(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerContainerDevice{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.container.device", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerContainerDevice) MqlName() string {
+	return "docker.container.device"
+}
+
+func (c *mqlDockerContainerDevice) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerContainerDevice) GetHostPath() *plugin.TValue[string] {
+	return &c.HostPath
+}
+
+func (c *mqlDockerContainerDevice) GetContainerPath() *plugin.TValue[string] {
+	return &c.ContainerPath
+}
+
+func (c *mqlDockerContainerDevice) GetPermissions() *plugin.TValue[string] {
+	return &c.Permissions
+}
+
+// mqlDockerContainerMount for the docker.container.mount resource
+type mqlDockerContainerMount struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDockerContainerMountInternal it will be used here
+	Type          plugin.TValue[string]
+	Name          plugin.TValue[string]
+	HostPath      plugin.TValue[string]
+	ContainerPath plugin.TValue[string]
+	ReadOnly      plugin.TValue[bool]
+	Mode          plugin.TValue[string]
+	Propagation   plugin.TValue[string]
+	Driver        plugin.TValue[string]
+}
+
+// createDockerContainerMount creates a new instance of this resource
+func createDockerContainerMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerContainerMount{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.container.mount", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerContainerMount) MqlName() string {
+	return "docker.container.mount"
+}
+
+func (c *mqlDockerContainerMount) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerContainerMount) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlDockerContainerMount) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDockerContainerMount) GetHostPath() *plugin.TValue[string] {
+	return &c.HostPath
+}
+
+func (c *mqlDockerContainerMount) GetContainerPath() *plugin.TValue[string] {
+	return &c.ContainerPath
+}
+
+func (c *mqlDockerContainerMount) GetReadOnly() *plugin.TValue[bool] {
+	return &c.ReadOnly
+}
+
+func (c *mqlDockerContainerMount) GetMode() *plugin.TValue[string] {
+	return &c.Mode
+}
+
+func (c *mqlDockerContainerMount) GetPropagation() *plugin.TValue[string] {
+	return &c.Propagation
+}
+
+func (c *mqlDockerContainerMount) GetDriver() *plugin.TValue[string] {
+	return &c.Driver
+}
+
+// mqlDockerNetwork for the docker.network resource
+type mqlDockerNetwork struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDockerNetworkInternal it will be used here
+	Id              plugin.TValue[string]
+	Name            plugin.TValue[string]
+	Driver          plugin.TValue[string]
+	Scope           plugin.TValue[string]
+	Internal        plugin.TValue[bool]
+	Attachable      plugin.TValue[bool]
+	Ingress         plugin.TValue[bool]
+	Ipv4Enabled     plugin.TValue[bool]
+	Ipv6Enabled     plugin.TValue[bool]
+	Subnets         plugin.TValue[[]any]
+	Options         plugin.TValue[map[string]any]
+	Labels          plugin.TValue[map[string]any]
+	CreatedAt       plugin.TValue[*time.Time]
+	Icc             plugin.TValue[bool]
+	IpMasquerade    plugin.TValue[bool]
+	HostBindingIpv4 plugin.TValue[string]
+	Containers      plugin.TValue[[]any]
+}
+
+// createDockerNetwork creates a new instance of this resource
+func createDockerNetwork(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerNetwork{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.network", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerNetwork) MqlName() string {
+	return "docker.network"
+}
+
+func (c *mqlDockerNetwork) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerNetwork) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDockerNetwork) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDockerNetwork) GetDriver() *plugin.TValue[string] {
+	return &c.Driver
+}
+
+func (c *mqlDockerNetwork) GetScope() *plugin.TValue[string] {
+	return &c.Scope
+}
+
+func (c *mqlDockerNetwork) GetInternal() *plugin.TValue[bool] {
+	return &c.Internal
+}
+
+func (c *mqlDockerNetwork) GetAttachable() *plugin.TValue[bool] {
+	return &c.Attachable
+}
+
+func (c *mqlDockerNetwork) GetIngress() *plugin.TValue[bool] {
+	return &c.Ingress
+}
+
+func (c *mqlDockerNetwork) GetIpv4Enabled() *plugin.TValue[bool] {
+	return &c.Ipv4Enabled
+}
+
+func (c *mqlDockerNetwork) GetIpv6Enabled() *plugin.TValue[bool] {
+	return &c.Ipv6Enabled
+}
+
+func (c *mqlDockerNetwork) GetSubnets() *plugin.TValue[[]any] {
+	return &c.Subnets
+}
+
+func (c *mqlDockerNetwork) GetOptions() *plugin.TValue[map[string]any] {
+	return &c.Options
+}
+
+func (c *mqlDockerNetwork) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlDockerNetwork) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDockerNetwork) GetIcc() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Icc, func() (bool, error) {
+		return c.icc()
+	})
+}
+
+func (c *mqlDockerNetwork) GetIpMasquerade() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IpMasquerade, func() (bool, error) {
+		return c.ipMasquerade()
+	})
+}
+
+func (c *mqlDockerNetwork) GetHostBindingIpv4() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.HostBindingIpv4, func() (string, error) {
+		return c.hostBindingIpv4()
+	})
+}
+
+func (c *mqlDockerNetwork) GetContainers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Containers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.network", c.__id, "containers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.containers()
+	})
+}
+
+// mqlDockerNetworkSubnet for the docker.network.subnet resource
+type mqlDockerNetworkSubnet struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDockerNetworkSubnetInternal it will be used here
+	Subnet  plugin.TValue[string]
+	Gateway plugin.TValue[string]
+	IpRange plugin.TValue[string]
+}
+
+// createDockerNetworkSubnet creates a new instance of this resource
+func createDockerNetworkSubnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerNetworkSubnet{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.network.subnet", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerNetworkSubnet) MqlName() string {
+	return "docker.network.subnet"
+}
+
+func (c *mqlDockerNetworkSubnet) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerNetworkSubnet) GetSubnet() *plugin.TValue[string] {
+	return &c.Subnet
+}
+
+func (c *mqlDockerNetworkSubnet) GetGateway() *plugin.TValue[string] {
+	return &c.Gateway
+}
+
+func (c *mqlDockerNetworkSubnet) GetIpRange() *plugin.TValue[string] {
+	return &c.IpRange
+}
+
+// mqlDockerVolume for the docker.volume resource
+type mqlDockerVolume struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDockerVolumeInternal it will be used here
+	Name       plugin.TValue[string]
+	Driver     plugin.TValue[string]
+	Mountpoint plugin.TValue[string]
+	CreatedAt  plugin.TValue[*time.Time]
+	Labels     plugin.TValue[map[string]any]
+	Options    plugin.TValue[map[string]any]
+	Scope      plugin.TValue[string]
+	Anonymous  plugin.TValue[bool]
+	Containers plugin.TValue[[]any]
+}
+
+// createDockerVolume creates a new instance of this resource
+func createDockerVolume(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerVolume{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.volume", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerVolume) MqlName() string {
+	return "docker.volume"
+}
+
+func (c *mqlDockerVolume) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerVolume) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDockerVolume) GetDriver() *plugin.TValue[string] {
+	return &c.Driver
+}
+
+func (c *mqlDockerVolume) GetMountpoint() *plugin.TValue[string] {
+	return &c.Mountpoint
+}
+
+func (c *mqlDockerVolume) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDockerVolume) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlDockerVolume) GetOptions() *plugin.TValue[map[string]any] {
+	return &c.Options
+}
+
+func (c *mqlDockerVolume) GetScope() *plugin.TValue[string] {
+	return &c.Scope
+}
+
+func (c *mqlDockerVolume) GetAnonymous() *plugin.TValue[bool] {
+	return &c.Anonymous
+}
+
+func (c *mqlDockerVolume) GetContainers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Containers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.volume", c.__id, "containers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.containers()
+	})
+}
+
+// mqlDockerDaemon for the docker.daemon resource
+type mqlDockerDaemon struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDockerDaemonInternal
+	ConfigFile           plugin.TValue[*mqlFile]
+	Process              plugin.TValue[*mqlProcess]
+	Configuration        plugin.TValue[any]
+	Icc                  plugin.TValue[bool]
+	UsernsRemap          plugin.TValue[string]
+	LiveRestore          plugin.TValue[bool]
+	NoNewPrivileges      plugin.TValue[bool]
+	UserlandProxy        plugin.TValue[bool]
+	LogDriver            plugin.TValue[string]
+	LogOpts              plugin.TValue[map[string]any]
+	LogLevel             plugin.TValue[string]
+	InsecureRegistries   plugin.TValue[[]any]
+	RegistryMirrors      plugin.TValue[[]any]
+	AuthorizationPlugins plugin.TValue[[]any]
+	Hosts                plugin.TValue[[]any]
+	Tls                  plugin.TValue[bool]
+	TlsVerify            plugin.TValue[bool]
+	TlsCaCert            plugin.TValue[*mqlFile]
+	TlsCert              plugin.TValue[*mqlFile]
+	TlsKey               plugin.TValue[*mqlFile]
+	SeccompProfile       plugin.TValue[string]
+	SelinuxEnabled       plugin.TValue[bool]
+	DefaultUlimits       plugin.TValue[[]any]
+	CgroupParent         plugin.TValue[string]
+	DataRoot             plugin.TValue[string]
+	StorageDriver        plugin.TValue[string]
+	Experimental         plugin.TValue[bool]
+	Iptables             plugin.TValue[bool]
+	IpForward            plugin.TValue[bool]
+	DefaultRuntime       plugin.TValue[string]
+	Runtimes             plugin.TValue[map[string]any]
+	Features             plugin.TValue[map[string]any]
+}
+
+// createDockerDaemon creates a new instance of this resource
+func createDockerDaemon(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerDaemon{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.daemon", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerDaemon) MqlName() string {
+	return "docker.daemon"
+}
+
+func (c *mqlDockerDaemon) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerDaemon) GetConfigFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.ConfigFile, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.daemon", c.__id, "configFile")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.configFile()
+	})
+}
+
+func (c *mqlDockerDaemon) GetProcess() *plugin.TValue[*mqlProcess] {
+	return plugin.GetOrCompute[*mqlProcess](&c.Process, func() (*mqlProcess, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.daemon", c.__id, "process")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlProcess), nil
+			}
+		}
+
+		return c.process()
+	})
+}
+
+func (c *mqlDockerDaemon) GetConfiguration() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Configuration, func() (any, error) {
+		return c.configuration()
+	})
+}
+
+func (c *mqlDockerDaemon) GetIcc() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Icc, func() (bool, error) {
+		return c.icc()
+	})
+}
+
+func (c *mqlDockerDaemon) GetUsernsRemap() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.UsernsRemap, func() (string, error) {
+		return c.usernsRemap()
+	})
+}
+
+func (c *mqlDockerDaemon) GetLiveRestore() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.LiveRestore, func() (bool, error) {
+		return c.liveRestore()
+	})
+}
+
+func (c *mqlDockerDaemon) GetNoNewPrivileges() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.NoNewPrivileges, func() (bool, error) {
+		return c.noNewPrivileges()
+	})
+}
+
+func (c *mqlDockerDaemon) GetUserlandProxy() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.UserlandProxy, func() (bool, error) {
+		return c.userlandProxy()
+	})
+}
+
+func (c *mqlDockerDaemon) GetLogDriver() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.LogDriver, func() (string, error) {
+		return c.logDriver()
+	})
+}
+
+func (c *mqlDockerDaemon) GetLogOpts() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.LogOpts, func() (map[string]any, error) {
+		return c.logOpts()
+	})
+}
+
+func (c *mqlDockerDaemon) GetLogLevel() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.LogLevel, func() (string, error) {
+		return c.logLevel()
+	})
+}
+
+func (c *mqlDockerDaemon) GetInsecureRegistries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.InsecureRegistries, func() ([]any, error) {
+		return c.insecureRegistries()
+	})
+}
+
+func (c *mqlDockerDaemon) GetRegistryMirrors() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RegistryMirrors, func() ([]any, error) {
+		return c.registryMirrors()
+	})
+}
+
+func (c *mqlDockerDaemon) GetAuthorizationPlugins() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AuthorizationPlugins, func() ([]any, error) {
+		return c.authorizationPlugins()
+	})
+}
+
+func (c *mqlDockerDaemon) GetHosts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Hosts, func() ([]any, error) {
+		return c.hosts()
+	})
+}
+
+func (c *mqlDockerDaemon) GetTls() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Tls, func() (bool, error) {
+		return c.tls()
+	})
+}
+
+func (c *mqlDockerDaemon) GetTlsVerify() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.TlsVerify, func() (bool, error) {
+		return c.tlsVerify()
+	})
+}
+
+func (c *mqlDockerDaemon) GetTlsCaCert() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.TlsCaCert, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.daemon", c.__id, "tlsCaCert")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.tlsCaCert()
+	})
+}
+
+func (c *mqlDockerDaemon) GetTlsCert() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.TlsCert, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.daemon", c.__id, "tlsCert")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.tlsCert()
+	})
+}
+
+func (c *mqlDockerDaemon) GetTlsKey() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.TlsKey, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.daemon", c.__id, "tlsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.tlsKey()
+	})
+}
+
+func (c *mqlDockerDaemon) GetSeccompProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SeccompProfile, func() (string, error) {
+		return c.seccompProfile()
+	})
+}
+
+func (c *mqlDockerDaemon) GetSelinuxEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SelinuxEnabled, func() (bool, error) {
+		return c.selinuxEnabled()
+	})
+}
+
+func (c *mqlDockerDaemon) GetDefaultUlimits() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DefaultUlimits, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("docker.daemon", c.__id, "defaultUlimits")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.defaultUlimits()
+	})
+}
+
+func (c *mqlDockerDaemon) GetCgroupParent() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CgroupParent, func() (string, error) {
+		return c.cgroupParent()
+	})
+}
+
+func (c *mqlDockerDaemon) GetDataRoot() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DataRoot, func() (string, error) {
+		return c.dataRoot()
+	})
+}
+
+func (c *mqlDockerDaemon) GetStorageDriver() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.StorageDriver, func() (string, error) {
+		return c.storageDriver()
+	})
+}
+
+func (c *mqlDockerDaemon) GetExperimental() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Experimental, func() (bool, error) {
+		return c.experimental()
+	})
+}
+
+func (c *mqlDockerDaemon) GetIptables() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Iptables, func() (bool, error) {
+		return c.iptables()
+	})
+}
+
+func (c *mqlDockerDaemon) GetIpForward() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IpForward, func() (bool, error) {
+		return c.ipForward()
+	})
+}
+
+func (c *mqlDockerDaemon) GetDefaultRuntime() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DefaultRuntime, func() (string, error) {
+		return c.defaultRuntime()
+	})
+}
+
+func (c *mqlDockerDaemon) GetRuntimes() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Runtimes, func() (map[string]any, error) {
+		return c.runtimes()
+	})
+}
+
+func (c *mqlDockerDaemon) GetFeatures() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Features, func() (map[string]any, error) {
+		return c.features()
+	})
+}
+
+// mqlDockerDaemonUlimit for the docker.daemon.ulimit resource
+type mqlDockerDaemonUlimit struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDockerDaemonUlimitInternal it will be used here
+	Name plugin.TValue[string]
+	Soft plugin.TValue[int64]
+	Hard plugin.TValue[int64]
+}
+
+// createDockerDaemonUlimit creates a new instance of this resource
+func createDockerDaemonUlimit(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDockerDaemonUlimit{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("docker.daemon.ulimit", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDockerDaemonUlimit) MqlName() string {
+	return "docker.daemon.ulimit"
+}
+
+func (c *mqlDockerDaemonUlimit) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDockerDaemonUlimit) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDockerDaemonUlimit) GetSoft() *plugin.TValue[int64] {
+	return &c.Soft
+}
+
+func (c *mqlDockerDaemonUlimit) GetHard() *plugin.TValue[int64] {
+	return &c.Hard
+}
+
 // mqlContainerd for the containerd resource
 type mqlContainerd struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlContainerdInternal it will be used here
-	Containers plugin.TValue[[]any]
+	mqlContainerdInternal
+	Containers                         plugin.TValue[[]any]
+	Images                             plugin.TValue[[]any]
+	Version                            plugin.TValue[string]
+	Process                            plugin.TValue[*mqlProcess]
+	ConfigFile                         plugin.TValue[*mqlFile]
+	Files                              plugin.TValue[[]any]
+	Configuration                      plugin.TValue[any]
+	ConfigVersion                      plugin.TValue[int64]
+	Root                               plugin.TValue[string]
+	State                              plugin.TValue[string]
+	GrpcAddress                        plugin.TValue[string]
+	GrpcUid                            plugin.TValue[int64]
+	GrpcGid                            plugin.TValue[int64]
+	GrpcTcpAddress                     plugin.TValue[string]
+	DisabledPlugins                    plugin.TValue[[]any]
+	SandboxImage                       plugin.TValue[string]
+	Snapshotter                        plugin.TValue[string]
+	DefaultRuntime                     plugin.TValue[string]
+	Runtimes                           plugin.TValue[[]any]
+	EnableUnprivilegedPorts            plugin.TValue[bool]
+	EnableUnprivilegedIcmp             plugin.TValue[bool]
+	SelinuxEnabled                     plugin.TValue[bool]
+	RestrictOomScoreAdj                plugin.TValue[bool]
+	DeviceOwnershipFromSecurityContext plugin.TValue[bool]
+	DisableApparmor                    plugin.TValue[bool]
+	TolerateMissingHugetlbController   plugin.TValue[bool]
+	RegistryConfigPaths                plugin.TValue[[]any]
+	RegistryHosts                      plugin.TValue[[]any]
+	StreamAddress                      plugin.TValue[string]
+	StreamPort                         plugin.TValue[int64]
+	StreamTlsEnabled                   plugin.TValue[bool]
 }
 
 // createContainerd creates a new instance of this resource
@@ -66351,19 +71069,451 @@ func (c *mqlContainerd) GetContainers() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlContainerd) GetImages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Images, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd", c.__id, "images")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.images()
+	})
+}
+
+func (c *mqlContainerd) GetVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
+		return c.version()
+	})
+}
+
+func (c *mqlContainerd) GetProcess() *plugin.TValue[*mqlProcess] {
+	return plugin.GetOrCompute[*mqlProcess](&c.Process, func() (*mqlProcess, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd", c.__id, "process")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlProcess), nil
+			}
+		}
+
+		return c.process()
+	})
+}
+
+func (c *mqlContainerd) GetConfigFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.ConfigFile, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd", c.__id, "configFile")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.configFile()
+	})
+}
+
+func (c *mqlContainerd) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.files()
+	})
+}
+
+func (c *mqlContainerd) GetConfiguration() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Configuration, func() (any, error) {
+		return c.configuration()
+	})
+}
+
+func (c *mqlContainerd) GetConfigVersion() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ConfigVersion, func() (int64, error) {
+		return c.configVersion()
+	})
+}
+
+func (c *mqlContainerd) GetRoot() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Root, func() (string, error) {
+		return c.root()
+	})
+}
+
+func (c *mqlContainerd) GetState() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.State, func() (string, error) {
+		return c.state()
+	})
+}
+
+func (c *mqlContainerd) GetGrpcAddress() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.GrpcAddress, func() (string, error) {
+		return c.grpcAddress()
+	})
+}
+
+func (c *mqlContainerd) GetGrpcUid() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.GrpcUid, func() (int64, error) {
+		return c.grpcUid()
+	})
+}
+
+func (c *mqlContainerd) GetGrpcGid() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.GrpcGid, func() (int64, error) {
+		return c.grpcGid()
+	})
+}
+
+func (c *mqlContainerd) GetGrpcTcpAddress() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.GrpcTcpAddress, func() (string, error) {
+		return c.grpcTcpAddress()
+	})
+}
+
+func (c *mqlContainerd) GetDisabledPlugins() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DisabledPlugins, func() ([]any, error) {
+		return c.disabledPlugins()
+	})
+}
+
+func (c *mqlContainerd) GetSandboxImage() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SandboxImage, func() (string, error) {
+		return c.sandboxImage()
+	})
+}
+
+func (c *mqlContainerd) GetSnapshotter() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Snapshotter, func() (string, error) {
+		return c.snapshotter()
+	})
+}
+
+func (c *mqlContainerd) GetDefaultRuntime() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DefaultRuntime, func() (string, error) {
+		return c.defaultRuntime()
+	})
+}
+
+func (c *mqlContainerd) GetRuntimes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Runtimes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd", c.__id, "runtimes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.runtimes()
+	})
+}
+
+func (c *mqlContainerd) GetEnableUnprivilegedPorts() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableUnprivilegedPorts, func() (bool, error) {
+		return c.enableUnprivilegedPorts()
+	})
+}
+
+func (c *mqlContainerd) GetEnableUnprivilegedIcmp() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableUnprivilegedIcmp, func() (bool, error) {
+		return c.enableUnprivilegedIcmp()
+	})
+}
+
+func (c *mqlContainerd) GetSelinuxEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SelinuxEnabled, func() (bool, error) {
+		return c.selinuxEnabled()
+	})
+}
+
+func (c *mqlContainerd) GetRestrictOomScoreAdj() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RestrictOomScoreAdj, func() (bool, error) {
+		return c.restrictOomScoreAdj()
+	})
+}
+
+func (c *mqlContainerd) GetDeviceOwnershipFromSecurityContext() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.DeviceOwnershipFromSecurityContext, func() (bool, error) {
+		return c.deviceOwnershipFromSecurityContext()
+	})
+}
+
+func (c *mqlContainerd) GetDisableApparmor() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.DisableApparmor, func() (bool, error) {
+		return c.disableApparmor()
+	})
+}
+
+func (c *mqlContainerd) GetTolerateMissingHugetlbController() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.TolerateMissingHugetlbController, func() (bool, error) {
+		return c.tolerateMissingHugetlbController()
+	})
+}
+
+func (c *mqlContainerd) GetRegistryConfigPaths() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RegistryConfigPaths, func() ([]any, error) {
+		return c.registryConfigPaths()
+	})
+}
+
+func (c *mqlContainerd) GetRegistryHosts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RegistryHosts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd", c.__id, "registryHosts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.registryHosts()
+	})
+}
+
+func (c *mqlContainerd) GetStreamAddress() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.StreamAddress, func() (string, error) {
+		return c.streamAddress()
+	})
+}
+
+func (c *mqlContainerd) GetStreamPort() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.StreamPort, func() (int64, error) {
+		return c.streamPort()
+	})
+}
+
+func (c *mqlContainerd) GetStreamTlsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.StreamTlsEnabled, func() (bool, error) {
+		return c.streamTlsEnabled()
+	})
+}
+
+// mqlContainerdRuntime for the containerd.runtime resource
+type mqlContainerdRuntime struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlContainerdRuntimeInternal it will be used here
+	Name                         plugin.TValue[string]
+	Type                         plugin.TValue[string]
+	ShimPath                     plugin.TValue[string]
+	Path                         plugin.TValue[string]
+	Root                         plugin.TValue[string]
+	SystemdCgroup                plugin.TValue[bool]
+	PrivilegedWithoutHostDevices plugin.TValue[bool]
+	PodAnnotations               plugin.TValue[[]any]
+	BaseRuntimeSpec              plugin.TValue[string]
+	IsDefault                    plugin.TValue[bool]
+}
+
+// createContainerdRuntime creates a new instance of this resource
+func createContainerdRuntime(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainerdRuntime{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containerd.runtime", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainerdRuntime) MqlName() string {
+	return "containerd.runtime"
+}
+
+func (c *mqlContainerdRuntime) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainerdRuntime) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlContainerdRuntime) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlContainerdRuntime) GetShimPath() *plugin.TValue[string] {
+	return &c.ShimPath
+}
+
+func (c *mqlContainerdRuntime) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlContainerdRuntime) GetRoot() *plugin.TValue[string] {
+	return &c.Root
+}
+
+func (c *mqlContainerdRuntime) GetSystemdCgroup() *plugin.TValue[bool] {
+	return &c.SystemdCgroup
+}
+
+func (c *mqlContainerdRuntime) GetPrivilegedWithoutHostDevices() *plugin.TValue[bool] {
+	return &c.PrivilegedWithoutHostDevices
+}
+
+func (c *mqlContainerdRuntime) GetPodAnnotations() *plugin.TValue[[]any] {
+	return &c.PodAnnotations
+}
+
+func (c *mqlContainerdRuntime) GetBaseRuntimeSpec() *plugin.TValue[string] {
+	return &c.BaseRuntimeSpec
+}
+
+func (c *mqlContainerdRuntime) GetIsDefault() *plugin.TValue[bool] {
+	return &c.IsDefault
+}
+
+// mqlContainerdRegistryHost for the containerd.registryHost resource
+type mqlContainerdRegistryHost struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlContainerdRegistryHostInternal it will be used here
+	Namespace    plugin.TValue[string]
+	Url          plugin.TValue[string]
+	Server       plugin.TValue[bool]
+	Capabilities plugin.TValue[[]any]
+	SkipVerify   plugin.TValue[bool]
+	CaCerts      plugin.TValue[[]any]
+	ClientCerts  plugin.TValue[[]any]
+	File         plugin.TValue[*mqlFile]
+}
+
+// createContainerdRegistryHost creates a new instance of this resource
+func createContainerdRegistryHost(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainerdRegistryHost{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containerd.registryHost", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainerdRegistryHost) MqlName() string {
+	return "containerd.registryHost"
+}
+
+func (c *mqlContainerdRegistryHost) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainerdRegistryHost) GetNamespace() *plugin.TValue[string] {
+	return &c.Namespace
+}
+
+func (c *mqlContainerdRegistryHost) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlContainerdRegistryHost) GetServer() *plugin.TValue[bool] {
+	return &c.Server
+}
+
+func (c *mqlContainerdRegistryHost) GetCapabilities() *plugin.TValue[[]any] {
+	return &c.Capabilities
+}
+
+func (c *mqlContainerdRegistryHost) GetSkipVerify() *plugin.TValue[bool] {
+	return &c.SkipVerify
+}
+
+func (c *mqlContainerdRegistryHost) GetCaCerts() *plugin.TValue[[]any] {
+	return &c.CaCerts
+}
+
+func (c *mqlContainerdRegistryHost) GetClientCerts() *plugin.TValue[[]any] {
+	return &c.ClientCerts
+}
+
+func (c *mqlContainerdRegistryHost) GetFile() *plugin.TValue[*mqlFile] {
+	return &c.File
+}
+
 // mqlContainerdContainer for the containerd.container resource
 type mqlContainerdContainer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlContainerdContainerInternal it will be used here
-	Id          plugin.TValue[string]
-	Image       plugin.TValue[string]
-	Status      plugin.TValue[string]
-	Labels      plugin.TValue[map[string]any]
-	Pid         plugin.TValue[int64]
-	Namespace   plugin.TValue[string]
-	Runtime     plugin.TValue[string]
-	Snapshotter plugin.TValue[string]
+	mqlContainerdContainerInternal
+	Id                   plugin.TValue[string]
+	Image                plugin.TValue[string]
+	Status               plugin.TValue[string]
+	Labels               plugin.TValue[map[string]any]
+	Pid                  plugin.TValue[int64]
+	Namespace            plugin.TValue[string]
+	Runtime              plugin.TValue[string]
+	Snapshotter          plugin.TValue[string]
+	Name                 plugin.TValue[string]
+	PodName              plugin.TValue[string]
+	PodNamespace         plugin.TValue[string]
+	SandboxId            plugin.TValue[string]
+	Privileged           plugin.TValue[bool]
+	Capabilities         plugin.TValue[[]any]
+	BoundingCapabilities plugin.TValue[[]any]
+	SeccompUnconfined    plugin.TValue[bool]
+	SeccompDefaultAction plugin.TValue[string]
+	ApparmorProfile      plugin.TValue[string]
+	SelinuxLabel         plugin.TValue[string]
+	NoNewPrivileges      plugin.TValue[bool]
+	ReadOnlyRootfs       plugin.TValue[bool]
+	Uid                  plugin.TValue[int64]
+	Gid                  plugin.TValue[int64]
+	HostNetwork          plugin.TValue[bool]
+	HostPID              plugin.TValue[bool]
+	HostIPC              plugin.TValue[bool]
+	Mounts               plugin.TValue[[]any]
+	MemoryLimit          plugin.TValue[int64]
+	NanoCpus             plugin.TValue[int64]
+	CpuShares            plugin.TValue[int64]
+	PidsLimit            plugin.TValue[int64]
+	SourceImage          plugin.TValue[*mqlContainerdImage]
 }
 
 // createContainerdContainer creates a new instance of this resource
@@ -66433,6 +71583,2105 @@ func (c *mqlContainerdContainer) GetRuntime() *plugin.TValue[string] {
 
 func (c *mqlContainerdContainer) GetSnapshotter() *plugin.TValue[string] {
 	return &c.Snapshotter
+}
+
+func (c *mqlContainerdContainer) GetName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Name, func() (string, error) {
+		return c.name()
+	})
+}
+
+func (c *mqlContainerdContainer) GetPodName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.PodName, func() (string, error) {
+		return c.podName()
+	})
+}
+
+func (c *mqlContainerdContainer) GetPodNamespace() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.PodNamespace, func() (string, error) {
+		return c.podNamespace()
+	})
+}
+
+func (c *mqlContainerdContainer) GetSandboxId() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SandboxId, func() (string, error) {
+		return c.sandboxId()
+	})
+}
+
+func (c *mqlContainerdContainer) GetPrivileged() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Privileged, func() (bool, error) {
+		return c.privileged()
+	})
+}
+
+func (c *mqlContainerdContainer) GetCapabilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Capabilities, func() ([]any, error) {
+		return c.capabilities()
+	})
+}
+
+func (c *mqlContainerdContainer) GetBoundingCapabilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BoundingCapabilities, func() ([]any, error) {
+		return c.boundingCapabilities()
+	})
+}
+
+func (c *mqlContainerdContainer) GetSeccompUnconfined() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SeccompUnconfined, func() (bool, error) {
+		return c.seccompUnconfined()
+	})
+}
+
+func (c *mqlContainerdContainer) GetSeccompDefaultAction() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SeccompDefaultAction, func() (string, error) {
+		return c.seccompDefaultAction()
+	})
+}
+
+func (c *mqlContainerdContainer) GetApparmorProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ApparmorProfile, func() (string, error) {
+		return c.apparmorProfile()
+	})
+}
+
+func (c *mqlContainerdContainer) GetSelinuxLabel() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SelinuxLabel, func() (string, error) {
+		return c.selinuxLabel()
+	})
+}
+
+func (c *mqlContainerdContainer) GetNoNewPrivileges() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.NoNewPrivileges, func() (bool, error) {
+		return c.noNewPrivileges()
+	})
+}
+
+func (c *mqlContainerdContainer) GetReadOnlyRootfs() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ReadOnlyRootfs, func() (bool, error) {
+		return c.readOnlyRootfs()
+	})
+}
+
+func (c *mqlContainerdContainer) GetUid() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Uid, func() (int64, error) {
+		return c.uid()
+	})
+}
+
+func (c *mqlContainerdContainer) GetGid() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Gid, func() (int64, error) {
+		return c.gid()
+	})
+}
+
+func (c *mqlContainerdContainer) GetHostNetwork() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HostNetwork, func() (bool, error) {
+		return c.hostNetwork()
+	})
+}
+
+func (c *mqlContainerdContainer) GetHostPID() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HostPID, func() (bool, error) {
+		return c.hostPID()
+	})
+}
+
+func (c *mqlContainerdContainer) GetHostIPC() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HostIPC, func() (bool, error) {
+		return c.hostIPC()
+	})
+}
+
+func (c *mqlContainerdContainer) GetMounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Mounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd.container", c.__id, "mounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mounts()
+	})
+}
+
+func (c *mqlContainerdContainer) GetMemoryLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MemoryLimit, func() (int64, error) {
+		return c.memoryLimit()
+	})
+}
+
+func (c *mqlContainerdContainer) GetNanoCpus() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.NanoCpus, func() (int64, error) {
+		return c.nanoCpus()
+	})
+}
+
+func (c *mqlContainerdContainer) GetCpuShares() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.CpuShares, func() (int64, error) {
+		return c.cpuShares()
+	})
+}
+
+func (c *mqlContainerdContainer) GetPidsLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PidsLimit, func() (int64, error) {
+		return c.pidsLimit()
+	})
+}
+
+func (c *mqlContainerdContainer) GetSourceImage() *plugin.TValue[*mqlContainerdImage] {
+	return plugin.GetOrCompute[*mqlContainerdImage](&c.SourceImage, func() (*mqlContainerdImage, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd.container", c.__id, "sourceImage")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlContainerdImage), nil
+			}
+		}
+
+		return c.sourceImage()
+	})
+}
+
+// mqlContainerdImage for the containerd.image resource
+type mqlContainerdImage struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlContainerdImageInternal
+	Name         plugin.TValue[string]
+	Namespace    plugin.TValue[string]
+	Digest       plugin.TValue[string]
+	MediaType    plugin.TValue[string]
+	Platforms    plugin.TValue[[]any]
+	Labels       plugin.TValue[map[string]any]
+	ConfigDigest plugin.TValue[string]
+	Size         plugin.TValue[int64]
+	CreatedAt    plugin.TValue[*time.Time]
+	Os           plugin.TValue[string]
+	Architecture plugin.TValue[string]
+	Variant      plugin.TValue[string]
+	User         plugin.TValue[string]
+	RunsAsRoot   plugin.TValue[bool]
+	Entrypoint   plugin.TValue[[]any]
+	Cmd          plugin.TValue[[]any]
+	WorkingDir   plugin.TValue[string]
+	ExposedPorts plugin.TValue[[]any]
+	Layers       plugin.TValue[[]any]
+	Containers   plugin.TValue[[]any]
+}
+
+// createContainerdImage creates a new instance of this resource
+func createContainerdImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainerdImage{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containerd.image", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainerdImage) MqlName() string {
+	return "containerd.image"
+}
+
+func (c *mqlContainerdImage) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainerdImage) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlContainerdImage) GetNamespace() *plugin.TValue[string] {
+	return &c.Namespace
+}
+
+func (c *mqlContainerdImage) GetDigest() *plugin.TValue[string] {
+	return &c.Digest
+}
+
+func (c *mqlContainerdImage) GetMediaType() *plugin.TValue[string] {
+	return &c.MediaType
+}
+
+func (c *mqlContainerdImage) GetPlatforms() *plugin.TValue[[]any] {
+	return &c.Platforms
+}
+
+func (c *mqlContainerdImage) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlContainerdImage) GetConfigDigest() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ConfigDigest, func() (string, error) {
+		return c.configDigest()
+	})
+}
+
+func (c *mqlContainerdImage) GetSize() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Size, func() (int64, error) {
+		return c.size()
+	})
+}
+
+func (c *mqlContainerdImage) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
+}
+
+func (c *mqlContainerdImage) GetOs() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Os, func() (string, error) {
+		return c.os()
+	})
+}
+
+func (c *mqlContainerdImage) GetArchitecture() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Architecture, func() (string, error) {
+		return c.architecture()
+	})
+}
+
+func (c *mqlContainerdImage) GetVariant() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Variant, func() (string, error) {
+		return c.variant()
+	})
+}
+
+func (c *mqlContainerdImage) GetUser() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.User, func() (string, error) {
+		return c.user()
+	})
+}
+
+func (c *mqlContainerdImage) GetRunsAsRoot() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RunsAsRoot, func() (bool, error) {
+		return c.runsAsRoot()
+	})
+}
+
+func (c *mqlContainerdImage) GetEntrypoint() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Entrypoint, func() ([]any, error) {
+		return c.entrypoint()
+	})
+}
+
+func (c *mqlContainerdImage) GetCmd() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Cmd, func() ([]any, error) {
+		return c.cmd()
+	})
+}
+
+func (c *mqlContainerdImage) GetWorkingDir() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.WorkingDir, func() (string, error) {
+		return c.workingDir()
+	})
+}
+
+func (c *mqlContainerdImage) GetExposedPorts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExposedPorts, func() ([]any, error) {
+		return c.exposedPorts()
+	})
+}
+
+func (c *mqlContainerdImage) GetLayers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Layers, func() ([]any, error) {
+		return c.layers()
+	})
+}
+
+func (c *mqlContainerdImage) GetContainers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Containers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd.image", c.__id, "containers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.containers()
+	})
+}
+
+// mqlContainerdContainerMount for the containerd.container.mount resource
+type mqlContainerdContainerMount struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlContainerdContainerMountInternal it will be used here
+	Type          plugin.TValue[string]
+	ContainerPath plugin.TValue[string]
+	HostPath      plugin.TValue[string]
+	ReadOnly      plugin.TValue[bool]
+	Propagation   plugin.TValue[string]
+	Options       plugin.TValue[[]any]
+}
+
+// createContainerdContainerMount creates a new instance of this resource
+func createContainerdContainerMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainerdContainerMount{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containerd.container.mount", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainerdContainerMount) MqlName() string {
+	return "containerd.container.mount"
+}
+
+func (c *mqlContainerdContainerMount) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainerdContainerMount) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlContainerdContainerMount) GetContainerPath() *plugin.TValue[string] {
+	return &c.ContainerPath
+}
+
+func (c *mqlContainerdContainerMount) GetHostPath() *plugin.TValue[string] {
+	return &c.HostPath
+}
+
+func (c *mqlContainerdContainerMount) GetReadOnly() *plugin.TValue[bool] {
+	return &c.ReadOnly
+}
+
+func (c *mqlContainerdContainerMount) GetPropagation() *plugin.TValue[string] {
+	return &c.Propagation
+}
+
+func (c *mqlContainerdContainerMount) GetOptions() *plugin.TValue[[]any] {
+	return &c.Options
+}
+
+// mqlCrio for the crio resource
+type mqlCrio struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCrioInternal it will be used here
+	Version                    plugin.TValue[string]
+	ConfigFiles                plugin.TValue[[]any]
+	Configuration              plugin.TValue[any]
+	DefaultRuntime             plugin.TValue[string]
+	SeccompProfile             plugin.TValue[string]
+	ApparmorProfile            plugin.TValue[string]
+	Selinux                    plugin.TValue[bool]
+	DefaultCapabilities        plugin.TValue[[]any]
+	DefaultSysctls             plugin.TValue[[]any]
+	ReadOnly                   plugin.TValue[bool]
+	AllowedDevices             plugin.TValue[[]any]
+	Containers                 plugin.TValue[[]any]
+	Images                     plugin.TValue[[]any]
+	SignaturePolicy            plugin.TValue[*mqlContainersPolicy]
+	NamespaceSignaturePolicies plugin.TValue[[]any]
+	Runtimes                   plugin.TValue[[]any]
+	StreamAddress              plugin.TValue[string]
+	StreamPort                 plugin.TValue[int64]
+	StreamTlsEnabled           plugin.TValue[bool]
+}
+
+// createCrio creates a new instance of this resource
+func createCrio(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCrio{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("crio", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCrio) MqlName() string {
+	return "crio"
+}
+
+func (c *mqlCrio) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCrio) GetVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
+		return c.version()
+	})
+}
+
+func (c *mqlCrio) GetConfigFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ConfigFiles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio", c.__id, "configFiles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.configFiles()
+	})
+}
+
+func (c *mqlCrio) GetConfiguration() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Configuration, func() (any, error) {
+		return c.configuration()
+	})
+}
+
+func (c *mqlCrio) GetDefaultRuntime() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DefaultRuntime, func() (string, error) {
+		return c.defaultRuntime()
+	})
+}
+
+func (c *mqlCrio) GetSeccompProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SeccompProfile, func() (string, error) {
+		return c.seccompProfile()
+	})
+}
+
+func (c *mqlCrio) GetApparmorProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ApparmorProfile, func() (string, error) {
+		return c.apparmorProfile()
+	})
+}
+
+func (c *mqlCrio) GetSelinux() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Selinux, func() (bool, error) {
+		return c.selinux()
+	})
+}
+
+func (c *mqlCrio) GetDefaultCapabilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DefaultCapabilities, func() ([]any, error) {
+		return c.defaultCapabilities()
+	})
+}
+
+func (c *mqlCrio) GetDefaultSysctls() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DefaultSysctls, func() ([]any, error) {
+		return c.defaultSysctls()
+	})
+}
+
+func (c *mqlCrio) GetReadOnly() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ReadOnly, func() (bool, error) {
+		return c.readOnly()
+	})
+}
+
+func (c *mqlCrio) GetAllowedDevices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedDevices, func() ([]any, error) {
+		return c.allowedDevices()
+	})
+}
+
+func (c *mqlCrio) GetContainers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Containers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio", c.__id, "containers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.containers()
+	})
+}
+
+func (c *mqlCrio) GetImages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Images, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio", c.__id, "images")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.images()
+	})
+}
+
+func (c *mqlCrio) GetSignaturePolicy() *plugin.TValue[*mqlContainersPolicy] {
+	return plugin.GetOrCompute[*mqlContainersPolicy](&c.SignaturePolicy, func() (*mqlContainersPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio", c.__id, "signaturePolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlContainersPolicy), nil
+			}
+		}
+
+		return c.signaturePolicy()
+	})
+}
+
+func (c *mqlCrio) GetNamespaceSignaturePolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NamespaceSignaturePolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio", c.__id, "namespaceSignaturePolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.namespaceSignaturePolicies()
+	})
+}
+
+func (c *mqlCrio) GetRuntimes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Runtimes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio", c.__id, "runtimes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.runtimes()
+	})
+}
+
+func (c *mqlCrio) GetStreamAddress() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.StreamAddress, func() (string, error) {
+		return c.streamAddress()
+	})
+}
+
+func (c *mqlCrio) GetStreamPort() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.StreamPort, func() (int64, error) {
+		return c.streamPort()
+	})
+}
+
+func (c *mqlCrio) GetStreamTlsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.StreamTlsEnabled, func() (bool, error) {
+		return c.streamTlsEnabled()
+	})
+}
+
+// mqlCrioNamespaceSignaturePolicy for the crio.namespaceSignaturePolicy resource
+type mqlCrioNamespaceSignaturePolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCrioNamespaceSignaturePolicyInternal it will be used here
+	Namespace plugin.TValue[string]
+	Policy    plugin.TValue[*mqlContainersPolicy]
+}
+
+// createCrioNamespaceSignaturePolicy creates a new instance of this resource
+func createCrioNamespaceSignaturePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCrioNamespaceSignaturePolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("crio.namespaceSignaturePolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCrioNamespaceSignaturePolicy) MqlName() string {
+	return "crio.namespaceSignaturePolicy"
+}
+
+func (c *mqlCrioNamespaceSignaturePolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCrioNamespaceSignaturePolicy) GetNamespace() *plugin.TValue[string] {
+	return &c.Namespace
+}
+
+func (c *mqlCrioNamespaceSignaturePolicy) GetPolicy() *plugin.TValue[*mqlContainersPolicy] {
+	return &c.Policy
+}
+
+// mqlCrioRuntime for the crio.runtime resource
+type mqlCrioRuntime struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCrioRuntimeInternal it will be used here
+	Name                         plugin.TValue[string]
+	Path                         plugin.TValue[string]
+	Type                         plugin.TValue[string]
+	Root                         plugin.TValue[string]
+	MonitorPath                  plugin.TValue[string]
+	AllowedAnnotations           plugin.TValue[[]any]
+	PrivilegedWithoutHostDevices plugin.TValue[bool]
+	IsDefault                    plugin.TValue[bool]
+}
+
+// createCrioRuntime creates a new instance of this resource
+func createCrioRuntime(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCrioRuntime{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("crio.runtime", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCrioRuntime) MqlName() string {
+	return "crio.runtime"
+}
+
+func (c *mqlCrioRuntime) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCrioRuntime) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlCrioRuntime) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlCrioRuntime) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlCrioRuntime) GetRoot() *plugin.TValue[string] {
+	return &c.Root
+}
+
+func (c *mqlCrioRuntime) GetMonitorPath() *plugin.TValue[string] {
+	return &c.MonitorPath
+}
+
+func (c *mqlCrioRuntime) GetAllowedAnnotations() *plugin.TValue[[]any] {
+	return &c.AllowedAnnotations
+}
+
+func (c *mqlCrioRuntime) GetPrivilegedWithoutHostDevices() *plugin.TValue[bool] {
+	return &c.PrivilegedWithoutHostDevices
+}
+
+func (c *mqlCrioRuntime) GetIsDefault() *plugin.TValue[bool] {
+	return &c.IsDefault
+}
+
+// mqlCrioContainer for the crio.container resource
+type mqlCrioContainer struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCrioContainerInternal
+	Id                   plugin.TValue[string]
+	Name                 plugin.TValue[string]
+	PodName              plugin.TValue[string]
+	PodNamespace         plugin.TValue[string]
+	SandboxId            plugin.TValue[string]
+	Image                plugin.TValue[string]
+	ImageRef             plugin.TValue[string]
+	Pid                  plugin.TValue[int64]
+	Privileged           plugin.TValue[bool]
+	SeccompProfile       plugin.TValue[string]
+	Labels               plugin.TValue[map[string]any]
+	Created              plugin.TValue[*time.Time]
+	Mounts               plugin.TValue[[]any]
+	Capabilities         plugin.TValue[[]any]
+	BoundingCapabilities plugin.TValue[[]any]
+	SeccompUnconfined    plugin.TValue[bool]
+	SeccompDefaultAction plugin.TValue[string]
+	ApparmorProfile      plugin.TValue[string]
+	SelinuxLabel         plugin.TValue[string]
+	NoNewPrivileges      plugin.TValue[bool]
+	ReadOnlyRootfs       plugin.TValue[bool]
+	Uid                  plugin.TValue[int64]
+	Gid                  plugin.TValue[int64]
+	HostNetwork          plugin.TValue[bool]
+	HostPID              plugin.TValue[bool]
+	HostIPC              plugin.TValue[bool]
+	MemoryLimit          plugin.TValue[int64]
+	NanoCpus             plugin.TValue[int64]
+	CpuShares            plugin.TValue[int64]
+	PidsLimit            plugin.TValue[int64]
+	SourceImage          plugin.TValue[*mqlCrioImage]
+}
+
+// createCrioContainer creates a new instance of this resource
+func createCrioContainer(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCrioContainer{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("crio.container", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCrioContainer) MqlName() string {
+	return "crio.container"
+}
+
+func (c *mqlCrioContainer) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCrioContainer) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCrioContainer) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlCrioContainer) GetPodName() *plugin.TValue[string] {
+	return &c.PodName
+}
+
+func (c *mqlCrioContainer) GetPodNamespace() *plugin.TValue[string] {
+	return &c.PodNamespace
+}
+
+func (c *mqlCrioContainer) GetSandboxId() *plugin.TValue[string] {
+	return &c.SandboxId
+}
+
+func (c *mqlCrioContainer) GetImage() *plugin.TValue[string] {
+	return &c.Image
+}
+
+func (c *mqlCrioContainer) GetImageRef() *plugin.TValue[string] {
+	return &c.ImageRef
+}
+
+func (c *mqlCrioContainer) GetPid() *plugin.TValue[int64] {
+	return &c.Pid
+}
+
+func (c *mqlCrioContainer) GetPrivileged() *plugin.TValue[bool] {
+	return &c.Privileged
+}
+
+func (c *mqlCrioContainer) GetSeccompProfile() *plugin.TValue[string] {
+	return &c.SeccompProfile
+}
+
+func (c *mqlCrioContainer) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlCrioContainer) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlCrioContainer) GetMounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Mounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio.container", c.__id, "mounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mounts()
+	})
+}
+
+func (c *mqlCrioContainer) GetCapabilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Capabilities, func() ([]any, error) {
+		return c.capabilities()
+	})
+}
+
+func (c *mqlCrioContainer) GetBoundingCapabilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BoundingCapabilities, func() ([]any, error) {
+		return c.boundingCapabilities()
+	})
+}
+
+func (c *mqlCrioContainer) GetSeccompUnconfined() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SeccompUnconfined, func() (bool, error) {
+		return c.seccompUnconfined()
+	})
+}
+
+func (c *mqlCrioContainer) GetSeccompDefaultAction() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SeccompDefaultAction, func() (string, error) {
+		return c.seccompDefaultAction()
+	})
+}
+
+func (c *mqlCrioContainer) GetApparmorProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ApparmorProfile, func() (string, error) {
+		return c.apparmorProfile()
+	})
+}
+
+func (c *mqlCrioContainer) GetSelinuxLabel() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SelinuxLabel, func() (string, error) {
+		return c.selinuxLabel()
+	})
+}
+
+func (c *mqlCrioContainer) GetNoNewPrivileges() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.NoNewPrivileges, func() (bool, error) {
+		return c.noNewPrivileges()
+	})
+}
+
+func (c *mqlCrioContainer) GetReadOnlyRootfs() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ReadOnlyRootfs, func() (bool, error) {
+		return c.readOnlyRootfs()
+	})
+}
+
+func (c *mqlCrioContainer) GetUid() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Uid, func() (int64, error) {
+		return c.uid()
+	})
+}
+
+func (c *mqlCrioContainer) GetGid() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Gid, func() (int64, error) {
+		return c.gid()
+	})
+}
+
+func (c *mqlCrioContainer) GetHostNetwork() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HostNetwork, func() (bool, error) {
+		return c.hostNetwork()
+	})
+}
+
+func (c *mqlCrioContainer) GetHostPID() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HostPID, func() (bool, error) {
+		return c.hostPID()
+	})
+}
+
+func (c *mqlCrioContainer) GetHostIPC() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HostIPC, func() (bool, error) {
+		return c.hostIPC()
+	})
+}
+
+func (c *mqlCrioContainer) GetMemoryLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MemoryLimit, func() (int64, error) {
+		return c.memoryLimit()
+	})
+}
+
+func (c *mqlCrioContainer) GetNanoCpus() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.NanoCpus, func() (int64, error) {
+		return c.nanoCpus()
+	})
+}
+
+func (c *mqlCrioContainer) GetCpuShares() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.CpuShares, func() (int64, error) {
+		return c.cpuShares()
+	})
+}
+
+func (c *mqlCrioContainer) GetPidsLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PidsLimit, func() (int64, error) {
+		return c.pidsLimit()
+	})
+}
+
+func (c *mqlCrioContainer) GetSourceImage() *plugin.TValue[*mqlCrioImage] {
+	return plugin.GetOrCompute[*mqlCrioImage](&c.SourceImage, func() (*mqlCrioImage, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio.container", c.__id, "sourceImage")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlCrioImage), nil
+			}
+		}
+
+		return c.sourceImage()
+	})
+}
+
+// mqlCrioImage for the crio.image resource
+type mqlCrioImage struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCrioImageInternal
+	Id           plugin.TValue[string]
+	Names        plugin.TValue[[]any]
+	RepoDigests  plugin.TValue[[]any]
+	Digest       plugin.TValue[string]
+	Size         plugin.TValue[int64]
+	Labels       plugin.TValue[map[string]any]
+	CreatedAt    plugin.TValue[*time.Time]
+	Os           plugin.TValue[string]
+	Architecture plugin.TValue[string]
+	Variant      plugin.TValue[string]
+	User         plugin.TValue[string]
+	RunsAsRoot   plugin.TValue[bool]
+	Entrypoint   plugin.TValue[[]any]
+	Cmd          plugin.TValue[[]any]
+	WorkingDir   plugin.TValue[string]
+	ExposedPorts plugin.TValue[[]any]
+	Layers       plugin.TValue[[]any]
+	Containers   plugin.TValue[[]any]
+}
+
+// createCrioImage creates a new instance of this resource
+func createCrioImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCrioImage{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("crio.image", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCrioImage) MqlName() string {
+	return "crio.image"
+}
+
+func (c *mqlCrioImage) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCrioImage) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCrioImage) GetNames() *plugin.TValue[[]any] {
+	return &c.Names
+}
+
+func (c *mqlCrioImage) GetRepoDigests() *plugin.TValue[[]any] {
+	return &c.RepoDigests
+}
+
+func (c *mqlCrioImage) GetDigest() *plugin.TValue[string] {
+	return &c.Digest
+}
+
+func (c *mqlCrioImage) GetSize() *plugin.TValue[int64] {
+	return &c.Size
+}
+
+func (c *mqlCrioImage) GetLabels() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Labels, func() (map[string]any, error) {
+		return c.labels()
+	})
+}
+
+func (c *mqlCrioImage) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
+}
+
+func (c *mqlCrioImage) GetOs() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Os, func() (string, error) {
+		return c.os()
+	})
+}
+
+func (c *mqlCrioImage) GetArchitecture() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Architecture, func() (string, error) {
+		return c.architecture()
+	})
+}
+
+func (c *mqlCrioImage) GetVariant() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Variant, func() (string, error) {
+		return c.variant()
+	})
+}
+
+func (c *mqlCrioImage) GetUser() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.User, func() (string, error) {
+		return c.user()
+	})
+}
+
+func (c *mqlCrioImage) GetRunsAsRoot() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RunsAsRoot, func() (bool, error) {
+		return c.runsAsRoot()
+	})
+}
+
+func (c *mqlCrioImage) GetEntrypoint() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Entrypoint, func() ([]any, error) {
+		return c.entrypoint()
+	})
+}
+
+func (c *mqlCrioImage) GetCmd() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Cmd, func() ([]any, error) {
+		return c.cmd()
+	})
+}
+
+func (c *mqlCrioImage) GetWorkingDir() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.WorkingDir, func() (string, error) {
+		return c.workingDir()
+	})
+}
+
+func (c *mqlCrioImage) GetExposedPorts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExposedPorts, func() ([]any, error) {
+		return c.exposedPorts()
+	})
+}
+
+func (c *mqlCrioImage) GetLayers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Layers, func() ([]any, error) {
+		return c.layers()
+	})
+}
+
+func (c *mqlCrioImage) GetContainers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Containers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("crio.image", c.__id, "containers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.containers()
+	})
+}
+
+// mqlCrioContainerMount for the crio.container.mount resource
+type mqlCrioContainerMount struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCrioContainerMountInternal it will be used here
+	ContainerPath     plugin.TValue[string]
+	HostPath          plugin.TValue[string]
+	ReadOnly          plugin.TValue[bool]
+	RecursiveReadOnly plugin.TValue[bool]
+	Propagation       plugin.TValue[string]
+	SelinuxRelabel    plugin.TValue[bool]
+}
+
+// createCrioContainerMount creates a new instance of this resource
+func createCrioContainerMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCrioContainerMount{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("crio.container.mount", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCrioContainerMount) MqlName() string {
+	return "crio.container.mount"
+}
+
+func (c *mqlCrioContainerMount) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCrioContainerMount) GetContainerPath() *plugin.TValue[string] {
+	return &c.ContainerPath
+}
+
+func (c *mqlCrioContainerMount) GetHostPath() *plugin.TValue[string] {
+	return &c.HostPath
+}
+
+func (c *mqlCrioContainerMount) GetReadOnly() *plugin.TValue[bool] {
+	return &c.ReadOnly
+}
+
+func (c *mqlCrioContainerMount) GetRecursiveReadOnly() *plugin.TValue[bool] {
+	return &c.RecursiveReadOnly
+}
+
+func (c *mqlCrioContainerMount) GetPropagation() *plugin.TValue[string] {
+	return &c.Propagation
+}
+
+func (c *mqlCrioContainerMount) GetSelinuxRelabel() *plugin.TValue[bool] {
+	return &c.SelinuxRelabel
+}
+
+// mqlContainersRegistries for the containers.registries resource
+type mqlContainersRegistries struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlContainersRegistriesInternal
+	Files                       plugin.TValue[[]any]
+	UnqualifiedSearchRegistries plugin.TValue[[]any]
+	ShortNameMode               plugin.TValue[string]
+	Aliases                     plugin.TValue[map[string]any]
+	List                        plugin.TValue[[]any]
+}
+
+// createContainersRegistries creates a new instance of this resource
+func createContainersRegistries(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainersRegistries{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containers.registries", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainersRegistries) MqlName() string {
+	return "containers.registries"
+}
+
+func (c *mqlContainersRegistries) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainersRegistries) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containers.registries", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.files()
+	})
+}
+
+func (c *mqlContainersRegistries) GetUnqualifiedSearchRegistries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.UnqualifiedSearchRegistries, func() ([]any, error) {
+		return c.unqualifiedSearchRegistries()
+	})
+}
+
+func (c *mqlContainersRegistries) GetShortNameMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ShortNameMode, func() (string, error) {
+		return c.shortNameMode()
+	})
+}
+
+func (c *mqlContainersRegistries) GetAliases() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Aliases, func() (map[string]any, error) {
+		return c.aliases()
+	})
+}
+
+func (c *mqlContainersRegistries) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containers.registries", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlContainersRegistry for the containers.registry resource
+type mqlContainersRegistry struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlContainersRegistryInternal it will be used here
+	Prefix             plugin.TValue[string]
+	Location           plugin.TValue[string]
+	Insecure           plugin.TValue[bool]
+	Blocked            plugin.TValue[bool]
+	MirrorByDigestOnly plugin.TValue[bool]
+	Mirrors            plugin.TValue[[]any]
+}
+
+// createContainersRegistry creates a new instance of this resource
+func createContainersRegistry(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainersRegistry{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containers.registry", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainersRegistry) MqlName() string {
+	return "containers.registry"
+}
+
+func (c *mqlContainersRegistry) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainersRegistry) GetPrefix() *plugin.TValue[string] {
+	return &c.Prefix
+}
+
+func (c *mqlContainersRegistry) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlContainersRegistry) GetInsecure() *plugin.TValue[bool] {
+	return &c.Insecure
+}
+
+func (c *mqlContainersRegistry) GetBlocked() *plugin.TValue[bool] {
+	return &c.Blocked
+}
+
+func (c *mqlContainersRegistry) GetMirrorByDigestOnly() *plugin.TValue[bool] {
+	return &c.MirrorByDigestOnly
+}
+
+func (c *mqlContainersRegistry) GetMirrors() *plugin.TValue[[]any] {
+	return &c.Mirrors
+}
+
+// mqlContainersRegistryMirror for the containers.registry.mirror resource
+type mqlContainersRegistryMirror struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlContainersRegistryMirrorInternal it will be used here
+	Location       plugin.TValue[string]
+	Insecure       plugin.TValue[bool]
+	PullFromMirror plugin.TValue[string]
+}
+
+// createContainersRegistryMirror creates a new instance of this resource
+func createContainersRegistryMirror(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainersRegistryMirror{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containers.registry.mirror", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainersRegistryMirror) MqlName() string {
+	return "containers.registry.mirror"
+}
+
+func (c *mqlContainersRegistryMirror) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainersRegistryMirror) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlContainersRegistryMirror) GetInsecure() *plugin.TValue[bool] {
+	return &c.Insecure
+}
+
+func (c *mqlContainersRegistryMirror) GetPullFromMirror() *plugin.TValue[string] {
+	return &c.PullFromMirror
+}
+
+// mqlContainersPolicy for the containers.policy resource
+type mqlContainersPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlContainersPolicyInternal
+	Path                plugin.TValue[string]
+	File                plugin.TValue[*mqlFile]
+	DefaultRequirements plugin.TValue[[]any]
+	Scopes              plugin.TValue[[]any]
+}
+
+// createContainersPolicy creates a new instance of this resource
+func createContainersPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainersPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containers.policy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainersPolicy) MqlName() string {
+	return "containers.policy"
+}
+
+func (c *mqlContainersPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainersPolicy) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlContainersPolicy) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containers.policy", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.file()
+	})
+}
+
+func (c *mqlContainersPolicy) GetDefaultRequirements() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DefaultRequirements, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containers.policy", c.__id, "defaultRequirements")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.defaultRequirements()
+	})
+}
+
+func (c *mqlContainersPolicy) GetScopes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Scopes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containers.policy", c.__id, "scopes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.scopes()
+	})
+}
+
+// mqlContainersPolicyScope for the containers.policy.scope resource
+type mqlContainersPolicyScope struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlContainersPolicyScopeInternal it will be used here
+	Transport    plugin.TValue[string]
+	Scope        plugin.TValue[string]
+	Requirements plugin.TValue[[]any]
+}
+
+// createContainersPolicyScope creates a new instance of this resource
+func createContainersPolicyScope(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainersPolicyScope{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containers.policy.scope", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainersPolicyScope) MqlName() string {
+	return "containers.policy.scope"
+}
+
+func (c *mqlContainersPolicyScope) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainersPolicyScope) GetTransport() *plugin.TValue[string] {
+	return &c.Transport
+}
+
+func (c *mqlContainersPolicyScope) GetScope() *plugin.TValue[string] {
+	return &c.Scope
+}
+
+func (c *mqlContainersPolicyScope) GetRequirements() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Requirements, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containers.policy.scope", c.__id, "requirements")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.requirements()
+	})
+}
+
+// mqlContainersPolicyRequirement for the containers.policy.requirement resource
+type mqlContainersPolicyRequirement struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlContainersPolicyRequirementInternal it will be used here
+	Type                plugin.TValue[string]
+	KeyType             plugin.TValue[string]
+	KeyPaths            plugin.TValue[[]any]
+	InlineKey           plugin.TValue[bool]
+	FulcioCAPath        plugin.TValue[string]
+	FulcioOIDCIssuer    plugin.TValue[string]
+	FulcioSubjectEmail  plugin.TValue[string]
+	RekorPublicKeyPaths plugin.TValue[[]any]
+	SignedIdentity      plugin.TValue[any]
+}
+
+// createContainersPolicyRequirement creates a new instance of this resource
+func createContainersPolicyRequirement(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainersPolicyRequirement{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containers.policy.requirement", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainersPolicyRequirement) MqlName() string {
+	return "containers.policy.requirement"
+}
+
+func (c *mqlContainersPolicyRequirement) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainersPolicyRequirement) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlContainersPolicyRequirement) GetKeyType() *plugin.TValue[string] {
+	return &c.KeyType
+}
+
+func (c *mqlContainersPolicyRequirement) GetKeyPaths() *plugin.TValue[[]any] {
+	return &c.KeyPaths
+}
+
+func (c *mqlContainersPolicyRequirement) GetInlineKey() *plugin.TValue[bool] {
+	return &c.InlineKey
+}
+
+func (c *mqlContainersPolicyRequirement) GetFulcioCAPath() *plugin.TValue[string] {
+	return &c.FulcioCAPath
+}
+
+func (c *mqlContainersPolicyRequirement) GetFulcioOIDCIssuer() *plugin.TValue[string] {
+	return &c.FulcioOIDCIssuer
+}
+
+func (c *mqlContainersPolicyRequirement) GetFulcioSubjectEmail() *plugin.TValue[string] {
+	return &c.FulcioSubjectEmail
+}
+
+func (c *mqlContainersPolicyRequirement) GetRekorPublicKeyPaths() *plugin.TValue[[]any] {
+	return &c.RekorPublicKeyPaths
+}
+
+func (c *mqlContainersPolicyRequirement) GetSignedIdentity() *plugin.TValue[any] {
+	return &c.SignedIdentity
+}
+
+// mqlContainersConf for the containers.conf resource
+type mqlContainersConf struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlContainersConfInternal
+	Files               plugin.TValue[[]any]
+	Privileged          plugin.TValue[bool]
+	DefaultCapabilities plugin.TValue[[]any]
+	DefaultSysctls      plugin.TValue[[]any]
+	DefaultUlimits      plugin.TValue[[]any]
+	Devices             plugin.TValue[[]any]
+	Mounts              plugin.TValue[[]any]
+	Volumes             plugin.TValue[[]any]
+	EnvHost             plugin.TValue[bool]
+	SeccompProfile      plugin.TValue[string]
+	ApparmorProfile     plugin.TValue[string]
+	Label               plugin.TValue[bool]
+	ReadOnly            plugin.TValue[bool]
+	PidsLimit           plugin.TValue[int64]
+	Userns              plugin.TValue[string]
+	Netns               plugin.TValue[string]
+	Pidns               plugin.TValue[string]
+	Ipcns               plugin.TValue[string]
+	Utsns               plugin.TValue[string]
+	Cgroupns            plugin.TValue[string]
+	Cgroups             plugin.TValue[string]
+	LogDriver           plugin.TValue[string]
+	Runtime             plugin.TValue[string]
+	EventsLogger        plugin.TValue[string]
+	CgroupManager       plugin.TValue[string]
+	NetworkBackend      plugin.TValue[string]
+	DefaultNetwork      plugin.TValue[string]
+}
+
+// createContainersConf creates a new instance of this resource
+func createContainersConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainersConf{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containers.conf", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainersConf) MqlName() string {
+	return "containers.conf"
+}
+
+func (c *mqlContainersConf) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainersConf) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containers.conf", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.files()
+	})
+}
+
+func (c *mqlContainersConf) GetPrivileged() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Privileged, func() (bool, error) {
+		return c.privileged()
+	})
+}
+
+func (c *mqlContainersConf) GetDefaultCapabilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DefaultCapabilities, func() ([]any, error) {
+		return c.defaultCapabilities()
+	})
+}
+
+func (c *mqlContainersConf) GetDefaultSysctls() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DefaultSysctls, func() ([]any, error) {
+		return c.defaultSysctls()
+	})
+}
+
+func (c *mqlContainersConf) GetDefaultUlimits() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DefaultUlimits, func() ([]any, error) {
+		return c.defaultUlimits()
+	})
+}
+
+func (c *mqlContainersConf) GetDevices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Devices, func() ([]any, error) {
+		return c.devices()
+	})
+}
+
+func (c *mqlContainersConf) GetMounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Mounts, func() ([]any, error) {
+		return c.mounts()
+	})
+}
+
+func (c *mqlContainersConf) GetVolumes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Volumes, func() ([]any, error) {
+		return c.volumes()
+	})
+}
+
+func (c *mqlContainersConf) GetEnvHost() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnvHost, func() (bool, error) {
+		return c.envHost()
+	})
+}
+
+func (c *mqlContainersConf) GetSeccompProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SeccompProfile, func() (string, error) {
+		return c.seccompProfile()
+	})
+}
+
+func (c *mqlContainersConf) GetApparmorProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ApparmorProfile, func() (string, error) {
+		return c.apparmorProfile()
+	})
+}
+
+func (c *mqlContainersConf) GetLabel() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Label, func() (bool, error) {
+		return c.label()
+	})
+}
+
+func (c *mqlContainersConf) GetReadOnly() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ReadOnly, func() (bool, error) {
+		return c.readOnly()
+	})
+}
+
+func (c *mqlContainersConf) GetPidsLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PidsLimit, func() (int64, error) {
+		return c.pidsLimit()
+	})
+}
+
+func (c *mqlContainersConf) GetUserns() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Userns, func() (string, error) {
+		return c.userns()
+	})
+}
+
+func (c *mqlContainersConf) GetNetns() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Netns, func() (string, error) {
+		return c.netns()
+	})
+}
+
+func (c *mqlContainersConf) GetPidns() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Pidns, func() (string, error) {
+		return c.pidns()
+	})
+}
+
+func (c *mqlContainersConf) GetIpcns() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Ipcns, func() (string, error) {
+		return c.ipcns()
+	})
+}
+
+func (c *mqlContainersConf) GetUtsns() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Utsns, func() (string, error) {
+		return c.utsns()
+	})
+}
+
+func (c *mqlContainersConf) GetCgroupns() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Cgroupns, func() (string, error) {
+		return c.cgroupns()
+	})
+}
+
+func (c *mqlContainersConf) GetCgroups() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Cgroups, func() (string, error) {
+		return c.cgroups()
+	})
+}
+
+func (c *mqlContainersConf) GetLogDriver() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.LogDriver, func() (string, error) {
+		return c.logDriver()
+	})
+}
+
+func (c *mqlContainersConf) GetRuntime() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Runtime, func() (string, error) {
+		return c.runtime()
+	})
+}
+
+func (c *mqlContainersConf) GetEventsLogger() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.EventsLogger, func() (string, error) {
+		return c.eventsLogger()
+	})
+}
+
+func (c *mqlContainersConf) GetCgroupManager() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CgroupManager, func() (string, error) {
+		return c.cgroupManager()
+	})
+}
+
+func (c *mqlContainersConf) GetNetworkBackend() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.NetworkBackend, func() (string, error) {
+		return c.networkBackend()
+	})
+}
+
+func (c *mqlContainersConf) GetDefaultNetwork() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DefaultNetwork, func() (string, error) {
+		return c.defaultNetwork()
+	})
+}
+
+// mqlContainersStorage for the containers.storage resource
+type mqlContainersStorage struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlContainersStorageInternal
+	Files                 plugin.TValue[[]any]
+	Configuration         plugin.TValue[any]
+	Driver                plugin.TValue[string]
+	DriverPriority        plugin.TValue[[]any]
+	GraphRoot             plugin.TValue[string]
+	RunRoot               plugin.TValue[string]
+	ImageStore            plugin.TValue[string]
+	AdditionalImageStores plugin.TValue[[]any]
+	TransientStore        plugin.TValue[bool]
+	OverlayMountProgram   plugin.TValue[string]
+	OverlayMountOptions   plugin.TValue[[]any]
+	PullOptions           plugin.TValue[map[string]any]
+}
+
+// createContainersStorage creates a new instance of this resource
+func createContainersStorage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainersStorage{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containers.storage", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainersStorage) MqlName() string {
+	return "containers.storage"
+}
+
+func (c *mqlContainersStorage) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainersStorage) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containers.storage", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.files()
+	})
+}
+
+func (c *mqlContainersStorage) GetConfiguration() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Configuration, func() (any, error) {
+		return c.configuration()
+	})
+}
+
+func (c *mqlContainersStorage) GetDriver() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Driver, func() (string, error) {
+		return c.driver()
+	})
+}
+
+func (c *mqlContainersStorage) GetDriverPriority() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DriverPriority, func() ([]any, error) {
+		return c.driverPriority()
+	})
+}
+
+func (c *mqlContainersStorage) GetGraphRoot() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.GraphRoot, func() (string, error) {
+		return c.graphRoot()
+	})
+}
+
+func (c *mqlContainersStorage) GetRunRoot() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.RunRoot, func() (string, error) {
+		return c.runRoot()
+	})
+}
+
+func (c *mqlContainersStorage) GetImageStore() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ImageStore, func() (string, error) {
+		return c.imageStore()
+	})
+}
+
+func (c *mqlContainersStorage) GetAdditionalImageStores() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AdditionalImageStores, func() ([]any, error) {
+		return c.additionalImageStores()
+	})
+}
+
+func (c *mqlContainersStorage) GetTransientStore() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.TransientStore, func() (bool, error) {
+		return c.transientStore()
+	})
+}
+
+func (c *mqlContainersStorage) GetOverlayMountProgram() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.OverlayMountProgram, func() (string, error) {
+		return c.overlayMountProgram()
+	})
+}
+
+func (c *mqlContainersStorage) GetOverlayMountOptions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OverlayMountOptions, func() ([]any, error) {
+		return c.overlayMountOptions()
+	})
+}
+
+func (c *mqlContainersStorage) GetPullOptions() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.PullOptions, func() (map[string]any, error) {
+		return c.pullOptions()
+	})
 }
 
 // mqlPodman for the podman resource
@@ -66681,6 +73930,23 @@ type mqlPodmanContainer struct {
 	PidMode               plugin.TValue[string]
 	UsernsMode            plugin.TValue[string]
 	RestartPolicy         plugin.TValue[string]
+	IpcMode               plugin.TValue[string]
+	UtsMode               plugin.TValue[string]
+	CgroupnsMode          plugin.TValue[string]
+	SeccompProfile        plugin.TValue[string]
+	ApparmorProfile       plugin.TValue[string]
+	NoNewPrivileges       plugin.TValue[bool]
+	MemoryLimit           plugin.TValue[int64]
+	CpuShares             plugin.TValue[int64]
+	NanoCpus              plugin.TValue[int64]
+	PidsLimit             plugin.TValue[int64]
+	Ulimits               plugin.TValue[[]any]
+	HasHealthcheck        plugin.TValue[bool]
+	HealthcheckTest       plugin.TValue[[]any]
+	HealthcheckInterval   plugin.TValue[int64]
+	HealthStatus          plugin.TValue[string]
+	Devices               plugin.TValue[[]any]
+	Mounts                plugin.TValue[[]any]
 }
 
 // createPodmanContainer creates a new instance of this resource
@@ -66878,6 +74144,325 @@ func (c *mqlPodmanContainer) GetRestartPolicy() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.RestartPolicy, func() (string, error) {
 		return c.restartPolicy()
 	})
+}
+
+func (c *mqlPodmanContainer) GetIpcMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.IpcMode, func() (string, error) {
+		return c.ipcMode()
+	})
+}
+
+func (c *mqlPodmanContainer) GetUtsMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.UtsMode, func() (string, error) {
+		return c.utsMode()
+	})
+}
+
+func (c *mqlPodmanContainer) GetCgroupnsMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CgroupnsMode, func() (string, error) {
+		return c.cgroupnsMode()
+	})
+}
+
+func (c *mqlPodmanContainer) GetSeccompProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SeccompProfile, func() (string, error) {
+		return c.seccompProfile()
+	})
+}
+
+func (c *mqlPodmanContainer) GetApparmorProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ApparmorProfile, func() (string, error) {
+		return c.apparmorProfile()
+	})
+}
+
+func (c *mqlPodmanContainer) GetNoNewPrivileges() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.NoNewPrivileges, func() (bool, error) {
+		return c.noNewPrivileges()
+	})
+}
+
+func (c *mqlPodmanContainer) GetMemoryLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MemoryLimit, func() (int64, error) {
+		return c.memoryLimit()
+	})
+}
+
+func (c *mqlPodmanContainer) GetCpuShares() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.CpuShares, func() (int64, error) {
+		return c.cpuShares()
+	})
+}
+
+func (c *mqlPodmanContainer) GetNanoCpus() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.NanoCpus, func() (int64, error) {
+		return c.nanoCpus()
+	})
+}
+
+func (c *mqlPodmanContainer) GetPidsLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PidsLimit, func() (int64, error) {
+		return c.pidsLimit()
+	})
+}
+
+func (c *mqlPodmanContainer) GetUlimits() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Ulimits, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("podman.container", c.__id, "ulimits")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.ulimits()
+	})
+}
+
+func (c *mqlPodmanContainer) GetHasHealthcheck() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HasHealthcheck, func() (bool, error) {
+		return c.hasHealthcheck()
+	})
+}
+
+func (c *mqlPodmanContainer) GetHealthcheckTest() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.HealthcheckTest, func() ([]any, error) {
+		return c.healthcheckTest()
+	})
+}
+
+func (c *mqlPodmanContainer) GetHealthcheckInterval() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.HealthcheckInterval, func() (int64, error) {
+		return c.healthcheckInterval()
+	})
+}
+
+func (c *mqlPodmanContainer) GetHealthStatus() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.HealthStatus, func() (string, error) {
+		return c.healthStatus()
+	})
+}
+
+func (c *mqlPodmanContainer) GetDevices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Devices, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("podman.container", c.__id, "devices")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.devices()
+	})
+}
+
+func (c *mqlPodmanContainer) GetMounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Mounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("podman.container", c.__id, "mounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mounts()
+	})
+}
+
+// mqlPodmanContainerUlimit for the podman.container.ulimit resource
+type mqlPodmanContainerUlimit struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlPodmanContainerUlimitInternal it will be used here
+	Name plugin.TValue[string]
+	Soft plugin.TValue[int64]
+	Hard plugin.TValue[int64]
+}
+
+// createPodmanContainerUlimit creates a new instance of this resource
+func createPodmanContainerUlimit(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPodmanContainerUlimit{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("podman.container.ulimit", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPodmanContainerUlimit) MqlName() string {
+	return "podman.container.ulimit"
+}
+
+func (c *mqlPodmanContainerUlimit) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPodmanContainerUlimit) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlPodmanContainerUlimit) GetSoft() *plugin.TValue[int64] {
+	return &c.Soft
+}
+
+func (c *mqlPodmanContainerUlimit) GetHard() *plugin.TValue[int64] {
+	return &c.Hard
+}
+
+// mqlPodmanContainerDevice for the podman.container.device resource
+type mqlPodmanContainerDevice struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlPodmanContainerDeviceInternal it will be used here
+	HostPath      plugin.TValue[string]
+	ContainerPath plugin.TValue[string]
+	Permissions   plugin.TValue[string]
+}
+
+// createPodmanContainerDevice creates a new instance of this resource
+func createPodmanContainerDevice(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPodmanContainerDevice{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("podman.container.device", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPodmanContainerDevice) MqlName() string {
+	return "podman.container.device"
+}
+
+func (c *mqlPodmanContainerDevice) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPodmanContainerDevice) GetHostPath() *plugin.TValue[string] {
+	return &c.HostPath
+}
+
+func (c *mqlPodmanContainerDevice) GetContainerPath() *plugin.TValue[string] {
+	return &c.ContainerPath
+}
+
+func (c *mqlPodmanContainerDevice) GetPermissions() *plugin.TValue[string] {
+	return &c.Permissions
+}
+
+// mqlPodmanContainerMount for the podman.container.mount resource
+type mqlPodmanContainerMount struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlPodmanContainerMountInternal it will be used here
+	Type          plugin.TValue[string]
+	Name          plugin.TValue[string]
+	HostPath      plugin.TValue[string]
+	ContainerPath plugin.TValue[string]
+	ReadOnly      plugin.TValue[bool]
+	Mode          plugin.TValue[string]
+	Propagation   plugin.TValue[string]
+	Driver        plugin.TValue[string]
+}
+
+// createPodmanContainerMount creates a new instance of this resource
+func createPodmanContainerMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPodmanContainerMount{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("podman.container.mount", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPodmanContainerMount) MqlName() string {
+	return "podman.container.mount"
+}
+
+func (c *mqlPodmanContainerMount) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPodmanContainerMount) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlPodmanContainerMount) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlPodmanContainerMount) GetHostPath() *plugin.TValue[string] {
+	return &c.HostPath
+}
+
+func (c *mqlPodmanContainerMount) GetContainerPath() *plugin.TValue[string] {
+	return &c.ContainerPath
+}
+
+func (c *mqlPodmanContainerMount) GetReadOnly() *plugin.TValue[bool] {
+	return &c.ReadOnly
+}
+
+func (c *mqlPodmanContainerMount) GetMode() *plugin.TValue[string] {
+	return &c.Mode
+}
+
+func (c *mqlPodmanContainerMount) GetPropagation() *plugin.TValue[string] {
+	return &c.Propagation
+}
+
+func (c *mqlPodmanContainerMount) GetDriver() *plugin.TValue[string] {
+	return &c.Driver
 }
 
 // mqlPodmanImage for the podman.image resource
@@ -76679,24 +84264,41 @@ type mqlKubelet struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlKubeletInternal it will be used here
-	ConfigFile                     plugin.TValue[*mqlFile]
-	Process                        plugin.TValue[*mqlProcess]
-	Configuration                  plugin.TValue[any]
-	Version                        plugin.TValue[string]
-	AnonymousAuthEnabled           plugin.TValue[bool]
-	AuthorizationMode              plugin.TValue[string]
-	ClientCAFile                   plugin.TValue[string]
-	ReadOnlyPort                   plugin.TValue[int64]
-	StreamingConnectionIdleTimeout plugin.TValue[string]
-	ProtectKernelDefaults          plugin.TValue[bool]
-	MakeIPTablesUtilChains         plugin.TValue[bool]
-	EventRecordQPS                 plugin.TValue[int64]
-	TlsCertFile                    plugin.TValue[string]
-	TlsPrivateKeyFile              plugin.TValue[string]
-	RotateCertificates             plugin.TValue[bool]
-	ServerTLSBootstrap             plugin.TValue[bool]
-	TlsCipherSuites                plugin.TValue[[]any]
-	TlsMinVersion                  plugin.TValue[string]
+	ConfigFile                             plugin.TValue[*mqlFile]
+	Process                                plugin.TValue[*mqlProcess]
+	Configuration                          plugin.TValue[any]
+	Version                                plugin.TValue[string]
+	AnonymousAuthEnabled                   plugin.TValue[bool]
+	AuthorizationMode                      plugin.TValue[string]
+	ClientCAFile                           plugin.TValue[string]
+	ReadOnlyPort                           plugin.TValue[int64]
+	StreamingConnectionIdleTimeout         plugin.TValue[string]
+	ProtectKernelDefaults                  plugin.TValue[bool]
+	MakeIPTablesUtilChains                 plugin.TValue[bool]
+	EventRecordQPS                         plugin.TValue[int64]
+	TlsCertFile                            plugin.TValue[string]
+	TlsPrivateKeyFile                      plugin.TValue[string]
+	RotateCertificates                     plugin.TValue[bool]
+	ServerTLSBootstrap                     plugin.TValue[bool]
+	TlsCipherSuites                        plugin.TValue[[]any]
+	TlsMinVersion                          plugin.TValue[string]
+	ConfigDir                              plugin.TValue[string]
+	ConfigDropIns                          plugin.TValue[[]any]
+	Kubeconfig                             plugin.TValue[*mqlFile]
+	ServingCertificates                    plugin.TValue[[]any]
+	ClientCAs                              plugin.TValue[[]any]
+	WebhookAuthenticationEnabled           plugin.TValue[bool]
+	StaticPodPath                          plugin.TValue[string]
+	StaticPodManifests                     plugin.TValue[[]any]
+	AllowedUnsafeSysctls                   plugin.TValue[[]any]
+	SeccompDefault                         plugin.TValue[bool]
+	PodPidsLimit                           plugin.TValue[int64]
+	EnableDebuggingHandlers                plugin.TValue[bool]
+	EnableSystemLogHandler                 plugin.TValue[bool]
+	EnableSystemLogQuery                   plugin.TValue[bool]
+	EnableProfilingHandler                 plugin.TValue[bool]
+	ImagePullCredentialsVerificationPolicy plugin.TValue[string]
+	FeatureGates                           plugin.TValue[map[string]any]
 }
 
 // createKubelet creates a new instance of this resource
@@ -76832,6 +84434,158 @@ func (c *mqlKubelet) GetTlsCipherSuites() *plugin.TValue[[]any] {
 func (c *mqlKubelet) GetTlsMinVersion() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.TlsMinVersion, func() (string, error) {
 		return c.tlsMinVersion()
+	})
+}
+
+func (c *mqlKubelet) GetConfigDir() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ConfigDir, func() (string, error) {
+		return c.configDir()
+	})
+}
+
+func (c *mqlKubelet) GetConfigDropIns() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ConfigDropIns, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("kubelet", c.__id, "configDropIns")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.configDropIns()
+	})
+}
+
+func (c *mqlKubelet) GetKubeconfig() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.Kubeconfig, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("kubelet", c.__id, "kubeconfig")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.kubeconfig()
+	})
+}
+
+func (c *mqlKubelet) GetServingCertificates() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ServingCertificates, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("kubelet", c.__id, "servingCertificates")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.servingCertificates()
+	})
+}
+
+func (c *mqlKubelet) GetClientCAs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ClientCAs, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("kubelet", c.__id, "clientCAs")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.clientCAs()
+	})
+}
+
+func (c *mqlKubelet) GetWebhookAuthenticationEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.WebhookAuthenticationEnabled, func() (bool, error) {
+		return c.webhookAuthenticationEnabled()
+	})
+}
+
+func (c *mqlKubelet) GetStaticPodPath() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.StaticPodPath, func() (string, error) {
+		return c.staticPodPath()
+	})
+}
+
+func (c *mqlKubelet) GetStaticPodManifests() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.StaticPodManifests, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("kubelet", c.__id, "staticPodManifests")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.staticPodManifests()
+	})
+}
+
+func (c *mqlKubelet) GetAllowedUnsafeSysctls() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedUnsafeSysctls, func() ([]any, error) {
+		return c.allowedUnsafeSysctls()
+	})
+}
+
+func (c *mqlKubelet) GetSeccompDefault() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SeccompDefault, func() (bool, error) {
+		return c.seccompDefault()
+	})
+}
+
+func (c *mqlKubelet) GetPodPidsLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PodPidsLimit, func() (int64, error) {
+		return c.podPidsLimit()
+	})
+}
+
+func (c *mqlKubelet) GetEnableDebuggingHandlers() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableDebuggingHandlers, func() (bool, error) {
+		return c.enableDebuggingHandlers()
+	})
+}
+
+func (c *mqlKubelet) GetEnableSystemLogHandler() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableSystemLogHandler, func() (bool, error) {
+		return c.enableSystemLogHandler()
+	})
+}
+
+func (c *mqlKubelet) GetEnableSystemLogQuery() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableSystemLogQuery, func() (bool, error) {
+		return c.enableSystemLogQuery()
+	})
+}
+
+func (c *mqlKubelet) GetEnableProfilingHandler() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableProfilingHandler, func() (bool, error) {
+		return c.enableProfilingHandler()
+	})
+}
+
+func (c *mqlKubelet) GetImagePullCredentialsVerificationPolicy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ImagePullCredentialsVerificationPolicy, func() (string, error) {
+		return c.imagePullCredentialsVerificationPolicy()
+	})
+}
+
+func (c *mqlKubelet) GetFeatureGates() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.FeatureGates, func() (map[string]any, error) {
+		return c.featureGates()
 	})
 }
 
@@ -78856,6 +86610,8 @@ type mqlTerraformPackage struct {
 	Id      plugin.TValue[string]
 	Name    plugin.TValue[string]
 	Version plugin.TValue[string]
+	Type    plugin.TValue[string]
+	Source  plugin.TValue[string]
 	Purl    plugin.TValue[string]
 	Cpes    plugin.TValue[[]any]
 	Files   plugin.TValue[[]any]
@@ -78911,6 +86667,18 @@ func (c *mqlTerraformPackage) GetName() *plugin.TValue[string] {
 func (c *mqlTerraformPackage) GetVersion() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
 		return c.version()
+	})
+}
+
+func (c *mqlTerraformPackage) GetType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Type, func() (string, error) {
+		return c.compute_type()
+	})
+}
+
+func (c *mqlTerraformPackage) GetSource() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Source, func() (string, error) {
+		return c.source()
 	})
 }
 

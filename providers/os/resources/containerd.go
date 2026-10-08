@@ -27,6 +27,8 @@ type containerInfo struct {
 	} `json:"Runtime"`
 	Snapshotter string            `json:"Snapshotter"`
 	Labels      map[string]string `json:"Labels"`
+	SandboxID   string            `json:"SandboxID"`
+	Spec        json.RawMessage   `json:"Spec"`
 }
 
 // taskData holds information about a containerd task
@@ -90,39 +92,70 @@ func parseContainerInfo(jsonData []byte) (*containerInfo, error) {
 
 // ctrBinaries are the containerd CLIs to try, in order. SUSE packages ctr as
 // containerd-ctr in /usr/sbin, which is not on a non-root PATH. Docker 18.09
-// and older bundle their own CLI as docker-containerd-ctr.
-var ctrBinaries = []string{"ctr", "containerd-ctr", "/usr/sbin/containerd-ctr", "docker-containerd-ctr"}
+// and older bundle their own CLI as docker-containerd-ctr. The Kubernetes
+// distributions that run their own containerd ship ctr on no PATH: RKE2 in
+// /var/lib/rancher/rke2/bin, Canonical Kubernetes and MicroK8s in their snaps,
+// and k0s only as a subcommand of the k0s binary. K3s links ctr onto PATH.
+var ctrBinaries = [][]string{
+	{"ctr"},
+	{"containerd-ctr"},
+	{"/usr/sbin/containerd-ctr"},
+	{"docker-containerd-ctr"},
+	{"/var/lib/rancher/rke2/bin/ctr"},
+	{"/snap/k8s/current/bin/ctr"},
+	{"/snap/microk8s/current/bin/ctr"},
+	{"k0s", "ctr"},
+}
 
 const (
 	// containerdSocket is where a standalone containerd listens by default.
+	// Canonical Kubernetes uses it too.
 	containerdSocket = "/run/containerd/containerd.sock"
 	// dockerContainerdSocket is where dockerd's own containerd listens. dockerd
 	// starts one when no containerd serves containerdSocket (SUSE's
 	// containerd.service conflicts with docker.service, and Docker 18.09 and
 	// older always bundle one).
 	dockerContainerdSocket = "/run/docker/containerd/containerd.sock"
+	// rke2ContainerdSocket is where the containerd that RKE2 and K3s run
+	// listens.
+	rke2ContainerdSocket = "/run/k3s/containerd/containerd.sock"
+	// microk8sContainerdSocket is where MicroK8s's containerd listens.
+	microk8sContainerdSocket = "/var/snap/microk8s/common/run/containerd.sock"
+	// k0sContainerdSocket is where k0s's containerd listens.
+	k0sContainerdSocket = "/run/k0s/containerd.sock"
 )
+
+// otherContainerdSockets are the sockets of containerds that do not serve
+// containerdSocket, in order of preference.
+var otherContainerdSockets = []string{
+	dockerContainerdSocket,
+	rke2ContainerdSocket,
+	microk8sContainerdSocket,
+	k0sContainerdSocket,
+}
 
 // containerdAddressArgs returns the ctr arguments that select the containerd
 // socket. The default socket wins whenever it may exist, since dockerd adopts
-// a running containerd's socket. Only when it is missing and dockerd's own
-// socket is there (or hidden from this user, whom ctr will then report as
-// refused) does ctr need --address.
+// a running containerd's socket. Only when it is missing does ctr need
+// --address, for the first other socket that is there (or hidden from this
+// user, whom ctr will then report as refused).
 func containerdAddressArgs(stat func(path string) error) []string {
 	if err := stat(containerdSocket); !errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
-	if err := stat(dockerContainerdSocket); errors.Is(err, fs.ErrNotExist) {
-		return nil
+	for _, socket := range otherContainerdSockets {
+		if err := stat(socket); !errors.Is(err, fs.ErrNotExist) {
+			return []string{"--address", socket}
+		}
 	}
-	return []string{"--address", dockerContainerdSocket}
+	return nil
 }
 
 // ctrCLIs returns the containerd command lines to try, in order.
 func ctrCLIs(addressArgs []string) [][]string {
 	clis := make([][]string, 0, len(ctrBinaries))
 	for _, bin := range ctrBinaries {
-		clis = append(clis, append([]string{bin}, addressArgs...))
+		clis = append(clis, append(append([]string{}, bin...), addressArgs...))
 	}
 	return clis
 }
@@ -236,6 +269,13 @@ func (p *mqlContainerd) containers() ([]any, error) {
 			}
 		}
 
+		type listed struct {
+			id   string
+			info *containerInfo
+			spec *ociSpec
+		}
+		var infos []listed
+		specs := map[string]*ociSpec{}
 		for _, containerID := range containerIDs {
 			if containerID == "" {
 				continue
@@ -261,6 +301,18 @@ func (p *mqlContainerd) containers() ([]any, error) {
 				log.Debug().Str("namespace", ns).Str("container", containerID).Err(err).Msg("skipping container, failed to parse info")
 				continue
 			}
+			spec, err := parseOCISpec(info.Spec)
+			if err != nil {
+				// the container is still listed, without the fields its spec gives
+				log.Debug().Str("namespace", ns).Str("container", containerID).Err(err).Msg("cannot parse the container's spec")
+			}
+			specs[containerID] = spec
+			infos = append(infos, listed{id: containerID, info: info, spec: spec})
+		}
+
+		for _, l := range infos {
+			info := l.info
+			containerID := l.id
 
 			// Convert labels to map[string]any
 			labels := make(map[string]any)
@@ -289,7 +341,17 @@ func (p *mqlContainerd) containers() ([]any, error) {
 				return nil, err
 			}
 
-			containers = append(containers, containerRes.(*mqlContainerdContainer))
+			c := containerRes.(*mqlContainerdContainer)
+			c.spec = l.spec
+			c.infoSandboxID = info.SandboxID
+			if l.spec != nil {
+				sandboxID := l.spec.Annotations[criSandboxIDAnnotation]
+				if sandboxID == "" {
+					sandboxID = info.SandboxID
+				}
+				c.sandbox = specs[sandboxID]
+			}
+			containers = append(containers, c)
 		}
 	}
 

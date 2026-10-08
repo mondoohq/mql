@@ -112,7 +112,7 @@ func (r *mqlJenkinsPackages) gatherData() error {
 			"purl":         llx.StringData(jenkins.NewPackageUrl(p.Name, p.Version)),
 			"longName":     llx.StringData(p.LongName),
 			"url":          llx.StringData(p.Url),
-			"dependencies": llx.ArrayData(deps, "string"),
+			"dependencies": llx.ArrayData(deps, types.String),
 			"files":        llx.ArrayData(mqlFiles, types.Resource("pkgFileInfo")),
 		})
 		if err != nil {

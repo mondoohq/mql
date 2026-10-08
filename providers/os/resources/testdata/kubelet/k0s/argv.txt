@@ -1,0 +1,10 @@
+/var/lib/k0s/bin/kubelet
+--cert-dir=/var/lib/k0s/kubelet/pki
+--config=/run/k0s/kubelet/config.yaml
+--containerd=/run/k0s/containerd.sock
+--hostname-override=ip-172-17-2-200
+--kubeconfig=/run/k0s/kubelet-direct.conf
+--node-labels=node.k0sproject.io/role=control-plane
+--root-dir=/var/lib/k0s/kubelet
+--runtime-cgroups=/system.slice/containerd.service
+--v=1

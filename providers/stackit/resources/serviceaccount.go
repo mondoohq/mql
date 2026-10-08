@@ -21,7 +21,7 @@ func (r *mqlStackit) serviceAccounts() ([]any, error) {
 	resp, err := client.DefaultAPI.ListServiceAccounts(bgctx(), c.ProjectID()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -55,8 +55,11 @@ func (r *mqlStackitServiceAccount) memberships() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListUserMemberships(bgctx(), r.Email.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -146,7 +149,7 @@ func (r *mqlStackitServiceAccount) keys() ([]any, error) {
 	resp, err := client.DefaultAPI.ListServiceAccountKeys(bgctx(), r.ProjectId.Data, r.Email.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -174,7 +177,7 @@ func (r *mqlStackitServiceAccount) federatedIdentityProviders() ([]any, error) {
 	resp, err := client.DefaultAPI.ListFederatedIdentityProviders(bgctx(), r.ProjectId.Data, r.Email.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		// A service account with federation never configured answers 404
 		// rather than an empty list.

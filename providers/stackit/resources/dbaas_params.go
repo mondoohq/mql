@@ -54,8 +54,14 @@ func observabilityInstanceRef(runtime *plugin.Runtime, id string, field *plugin.
 		"id": llx.StringData(id),
 	})
 	if err != nil {
-		if isNotFound(err) || isAccessDenied(err) {
+		if isNotFound(err) {
 			return markNull[mqlStackitObservabilityInstance](field)
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				return markNull[mqlStackitObservabilityInstance](field)
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}

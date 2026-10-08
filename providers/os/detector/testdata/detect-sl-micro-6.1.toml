@@ -1,0 +1,26 @@
+# Captured from registry.suse.com/suse/sl-micro/6.1/base-os-container:latest.
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[files."/etc/os-release"]
+content = """
+NAME="SL-Micro"
+VERSION="6.1"
+VERSION_ID="6.1"
+PRETTY_NAME="SUSE Linux Micro 6.1"
+ID="sl-micro"
+ID_LIKE="suse sle-micro opensuse-microos microos"
+ANSI_COLOR="0;32"
+CPE_NAME="cpe:/o:suse:sl-micro:6.1"
+HOME_URL="https://www.suse.com/products/micro/"
+DOCUMENTATION_URL="https://documentation.suse.com/sl-micro/6.1/"
+LOGO="distributor-logo"
+IMAGE_REPO="registry.suse.com/suse/sl-micro/6.1/base-os-container"
+IMAGE_TAG="2.2.1-5.195"
+IMAGE="registry.suse.com/suse/sl-micro/6.1/base-os-container:2.2.1-5.195"
+TIMESTAMP=20261002084720
+GRUB_ENTRY_NAME="SUSE Linux Micro"
+"""

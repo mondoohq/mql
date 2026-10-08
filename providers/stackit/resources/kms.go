@@ -124,7 +124,7 @@ func (r *mqlStackitKms) keyRings() ([]any, error) {
 	resp, err := client.DefaultAPI.ListKeyRings(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -208,7 +208,7 @@ func (r *mqlStackitKmsKeyRing) keys() ([]any, error) {
 	resp, err := client.DefaultAPI.ListKeys(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -252,6 +252,13 @@ func (r *mqlStackitKmsKey) id() (string, error) {
 // and keeps the older ones readable, so the newest createdAt is what a
 // key-age check reads.
 func (r *mqlStackitKmsKey) versions() ([]any, error) {
+	// A deleted key's versions can no longer be listed: the API answers 404
+	// "key not found" for it. A deleted key genuinely has no versions to
+	// read, so answer that without the call; a 404 on a live key stays an
+	// error.
+	if r.State.Data == string(kms.KEYSTATE_DELETED) {
+		return []any{}, nil
+	}
 	c := conn(r.MqlRuntime)
 	client, err := c.KMS()
 	if err != nil {
@@ -260,7 +267,7 @@ func (r *mqlStackitKmsKey) versions() ([]any, error) {
 	resp, err := client.DefaultAPI.ListVersions(bgctx(), c.ProjectID(), c.Region(), r.KeyRingId.Data, r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -306,7 +313,7 @@ func (r *mqlStackitKmsKeyRing) wrappingKeys() ([]any, error) {
 	resp, err := client.DefaultAPI.ListWrappingKeys(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}

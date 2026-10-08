@@ -489,8 +489,14 @@ func kmsKeyRingRef(runtime *plugin.Runtime, id string, field *plugin.TValue[*mql
 		"id": llx.StringData(id),
 	})
 	if err != nil {
-		if isNotFound(err) || isAccessDenied(err) {
+		if isNotFound(err) {
 			return markNull[mqlStackitKmsKeyRing](field)
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				return markNull[mqlStackitKmsKeyRing](field)
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}

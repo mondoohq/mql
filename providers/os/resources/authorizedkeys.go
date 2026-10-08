@@ -11,6 +11,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/resources/authorizedkeys"
+	"go.mondoo.com/mql/types"
 )
 
 func (x *mqlAuthorizedkeysEntry) id() (string, error) {
@@ -97,7 +98,7 @@ func (x *mqlAuthorizedkeys) list(file *mqlFile, content string) ([]any, error) {
 			"type":    llx.StringData(entry.Key.Type()),
 			"key":     llx.StringData(entry.Base64Key()),
 			"label":   llx.StringData(entry.Label),
-			"options": llx.ArrayData(llx.TArr2Raw[string](entry.Options), "string"),
+			"options": llx.ArrayData(llx.TArr2Raw[string](entry.Options), types.String),
 			"file":    llx.ResourceData(file, "file"),
 			"bits":    llx.IntData(entry.Bits()),
 		})

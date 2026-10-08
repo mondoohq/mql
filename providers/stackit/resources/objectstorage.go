@@ -36,8 +36,11 @@ func (r *mqlStackitObjectStorage) buckets() ([]any, error) {
 	if err != nil {
 		// A 404 here means the project is not onboarded to Object Storage
 		// (the service returns "project.not_found"); treat it as no buckets.
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -120,9 +123,16 @@ func (r *mqlStackitObjectStorageBucket) fetchDefaultRetention() (int64, string, 
 	}
 	resp, err := client.DefaultAPI.GetDefaultRetention(bgctx(), c.ProjectID(), c.Region(), r.Name.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			r.retentionFetched = true
 			return 0, "", nil
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				r.retentionFetched = true
+				return 0, "", nil
+			}
+			return 0, "", refusal(err)
 		}
 		return 0, "", err
 	}
@@ -154,8 +164,11 @@ func (r *mqlStackitObjectStorage) credentialsGroups() ([]any, error) {
 	if err != nil {
 		// A 404 means the project is not onboarded to Object Storage; treat it
 		// as no credentials groups.
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -219,8 +232,11 @@ func (r *mqlStackitObjectStorageCredentialsGroup) accessKeys() ([]any, error) {
 	resp, err := client.DefaultAPI.ListAccessKeys(bgctx(), c.ProjectID(), c.Region()).
 		CredentialsGroup(r.Id.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}

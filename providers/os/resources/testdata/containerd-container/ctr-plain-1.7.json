@@ -1,0 +1,294 @@
+{
+    "ID": "plainctr",
+    "Labels": {
+        "io.containerd.image.config.stop-signal": "SIGTERM"
+    },
+    "Image": "docker.io/library/busybox:1.36",
+    "Runtime": {
+        "Name": "io.containerd.runc.v2",
+        "Options": {
+            "type_url": "containerd.runc.v1.Options"
+        }
+    },
+    "SnapshotKey": "plainctr",
+    "Snapshotter": "overlayfs",
+    "CreatedAt": "2026-10-08T00:50:18.580978961Z",
+    "UpdatedAt": "2026-10-08T00:50:18.580978961Z",
+    "Extensions": {},
+    "SandboxID": "",
+    "Spec": {
+        "ociVersion": "1.1.0",
+        "process": {
+            "user": {
+                "uid": 0,
+                "gid": 0,
+                "additionalGids": [
+                    0,
+                    10
+                ]
+            },
+            "args": [
+                "sleep",
+                "1000"
+            ],
+            "env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "cwd": "/",
+            "capabilities": {
+                "bounding": [
+                    "CAP_CHOWN",
+                    "CAP_DAC_OVERRIDE",
+                    "CAP_FSETID",
+                    "CAP_FOWNER",
+                    "CAP_MKNOD",
+                    "CAP_NET_RAW",
+                    "CAP_SETGID",
+                    "CAP_SETUID",
+                    "CAP_SETFCAP",
+                    "CAP_SETPCAP",
+                    "CAP_NET_BIND_SERVICE",
+                    "CAP_SYS_CHROOT",
+                    "CAP_KILL",
+                    "CAP_AUDIT_WRITE"
+                ],
+                "effective": [
+                    "CAP_CHOWN",
+                    "CAP_DAC_OVERRIDE",
+                    "CAP_FSETID",
+                    "CAP_FOWNER",
+                    "CAP_MKNOD",
+                    "CAP_NET_RAW",
+                    "CAP_SETGID",
+                    "CAP_SETUID",
+                    "CAP_SETFCAP",
+                    "CAP_SETPCAP",
+                    "CAP_NET_BIND_SERVICE",
+                    "CAP_SYS_CHROOT",
+                    "CAP_KILL",
+                    "CAP_AUDIT_WRITE"
+                ],
+                "permitted": [
+                    "CAP_CHOWN",
+                    "CAP_DAC_OVERRIDE",
+                    "CAP_FSETID",
+                    "CAP_FOWNER",
+                    "CAP_MKNOD",
+                    "CAP_NET_RAW",
+                    "CAP_SETGID",
+                    "CAP_SETUID",
+                    "CAP_SETFCAP",
+                    "CAP_SETPCAP",
+                    "CAP_NET_BIND_SERVICE",
+                    "CAP_SYS_CHROOT",
+                    "CAP_KILL",
+                    "CAP_AUDIT_WRITE"
+                ]
+            },
+            "rlimits": [
+                {
+                    "type": "RLIMIT_NOFILE",
+                    "hard": 1024,
+                    "soft": 1024
+                }
+            ],
+            "noNewPrivileges": true
+        },
+        "root": {
+            "path": "rootfs"
+        },
+        "mounts": [
+            {
+                "destination": "/proc",
+                "type": "proc",
+                "source": "proc",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev"
+                ]
+            },
+            {
+                "destination": "/dev",
+                "type": "tmpfs",
+                "source": "tmpfs",
+                "options": [
+                    "nosuid",
+                    "strictatime",
+                    "mode=755",
+                    "size=65536k"
+                ]
+            },
+            {
+                "destination": "/dev/pts",
+                "type": "devpts",
+                "source": "devpts",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "newinstance",
+                    "ptmxmode=0666",
+                    "mode=0620",
+                    "gid=5"
+                ]
+            },
+            {
+                "destination": "/dev/shm",
+                "type": "tmpfs",
+                "source": "shm",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev",
+                    "mode=1777",
+                    "size=65536k"
+                ]
+            },
+            {
+                "destination": "/dev/mqueue",
+                "type": "mqueue",
+                "source": "mqueue",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev"
+                ]
+            },
+            {
+                "destination": "/sys",
+                "type": "sysfs",
+                "source": "sysfs",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev",
+                    "ro"
+                ]
+            },
+            {
+                "destination": "/run",
+                "type": "tmpfs",
+                "source": "tmpfs",
+                "options": [
+                    "nosuid",
+                    "strictatime",
+                    "mode=755",
+                    "size=65536k"
+                ]
+            }
+        ],
+        "linux": {
+            "resources": {
+                "devices": [
+                    {
+                        "allow": false,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 1,
+                        "minor": 3,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 1,
+                        "minor": 8,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 1,
+                        "minor": 7,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 5,
+                        "minor": 0,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 1,
+                        "minor": 5,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 1,
+                        "minor": 9,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 5,
+                        "minor": 1,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 136,
+                        "access": "rwm"
+                    },
+                    {
+                        "allow": true,
+                        "type": "c",
+                        "major": 5,
+                        "minor": 2,
+                        "access": "rwm"
+                    }
+                ],
+                "cpu": {
+                    "shares": 1024
+                }
+            },
+            "cgroupsPath": "/default/plainctr",
+            "namespaces": [
+                {
+                    "type": "pid"
+                },
+                {
+                    "type": "ipc"
+                },
+                {
+                    "type": "uts"
+                },
+                {
+                    "type": "mount"
+                },
+                {
+                    "type": "network"
+                }
+            ],
+            "maskedPaths": [
+                "/proc/acpi",
+                "/proc/asound",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/sys/firmware",
+                "/sys/devices/virtual/powercap",
+                "/proc/scsi"
+            ],
+            "readonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        }
+    }
+}

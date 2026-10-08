@@ -24,7 +24,7 @@ func (r *mqlStackitDns) zones() ([]any, error) {
 		resp, err := client.DefaultAPI.ListZones(bgctx(), c.ProjectID()).Page(page).PageSize(pageSize).Execute()
 		if err != nil {
 			if isAccessDenied(err) {
-				return []any{}, nil
+				return deniedList(err)
 			}
 			return nil, err
 		}
@@ -139,7 +139,7 @@ func (r *mqlStackitDnsZone) recordSets() ([]any, error) {
 		resp, err := client.DefaultAPI.ListRecordSets(bgctx(), c.ProjectID(), r.Id.Data).Page(page).PageSize(pageSize).Execute()
 		if err != nil {
 			if isAccessDenied(err) {
-				return []any{}, nil
+				return deniedList(err)
 			}
 			return nil, err
 		}

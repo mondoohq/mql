@@ -63,9 +63,16 @@ func (r *mqlStackitVpnGateway) fetchStatus() (*vpn.GatewayStatusResponse, error)
 	}
 	resp, err := client.DefaultAPI.GetGatewayStatus(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			r.statusFetched.Store(true)
 			return nil, nil
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				r.statusFetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -196,8 +203,14 @@ func (r *mqlStackitVpnTunnel) tunnelStatus() (*vpn.TunnelStatus, error) {
 		"id": llx.StringData(r.cacheGatewayID),
 	})
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return nil, nil
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -350,8 +363,11 @@ func (r *mqlStackitVpn) gateways() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListGateways(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -427,8 +443,11 @@ func (r *mqlStackitVpnGateway) connections() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListGatewayConnections(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}

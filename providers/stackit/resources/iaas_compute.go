@@ -28,7 +28,7 @@ func (r *mqlStackit) backups() ([]any, error) {
 	resp, err := client.DefaultAPI.ListBackups(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func (r *mqlStackit) affinityGroups() ([]any, error) {
 	resp, err := client.DefaultAPI.ListAffinityGroups(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}

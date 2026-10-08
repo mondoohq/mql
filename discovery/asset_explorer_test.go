@@ -9,7 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/cli/config"
+	"go.mondoo.com/mql/providers"
 	inventory "go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // TestMergeConnectionFeatures verifies that connection features are the union of
@@ -322,4 +324,52 @@ func TestTrackedAssetParentChain(t *testing.T) {
 	e := newTestExplorer(root, mid, leaf)
 	foundRoot := e.findRootAsset(leaf)
 	assert.Equal(t, "root", foundRoot.Name)
+}
+
+// gatewayWithChildren is a connected asset whose connection reported children,
+// as a repository-discovering provider does.
+func gatewayWithChildren(children ...*inventory.Asset) *TrackedAsset {
+	return &TrackedAsset{
+		Asset: &inventory.Asset{Name: "gateway"},
+		State: AssetConnected,
+		Runtime: &providers.Runtime{
+			Provider: &providers.ConnectedProvider{
+				Connection: &plugin.ConnectRes{
+					Inventory: &inventory.Inventory{Spec: &inventory.InventorySpec{Assets: children}},
+				},
+			},
+		},
+	}
+}
+
+// A provider presets Name and PlatformIds on the children it discovers. The
+// explorer must track those very assets, with their presets intact, and treat a
+// repeated preset id as a duplicate.
+func TestAssetExplorerDiscoverChildrenHonorsPresetIdentity(t *testing.T) {
+	const (
+		idA = "//platformid.api.mondoo.app/runtime/terraform/domain/dev.azure.com/org/fabrikam-fixture-org/project/scan-test/repo/ado-scan-test-iac"
+		idB = "//platformid.api.mondoo.app/runtime/terraform/domain/dev.azure.com/org/fabrikam-other-fixture-org/project/scan-test/repo/ado-scan-test-iac"
+	)
+	childA := &inventory.Asset{Name: "scan-test/ado-scan-test-iac", PlatformIds: []string{idA}}
+	childB := &inventory.Asset{Name: "scan-test/ado-scan-test-iac", PlatformIds: []string{idB}}
+	again := &inventory.Asset{Name: "scan-test/ado-scan-test-iac", PlatformIds: []string{idA}}
+
+	gateway := gatewayWithChildren(childA, childB, again)
+	e := newTestExplorer(gateway)
+
+	e.discoverChildren(gateway)
+
+	require.Len(t, gateway.Children, 2, "two organizations, one repository name: two assets; the repeated id is dropped")
+	assert.Same(t, childA, gateway.Children[0].Asset, "the preset asset itself is tracked, not a copy")
+	assert.Same(t, childB, gateway.Children[1].Asset)
+	assert.Equal(t, []string{idA}, gateway.Children[0].Asset.PlatformIds)
+	assert.Equal(t, []string{idB}, gateway.Children[1].Asset.PlatformIds)
+	assert.Equal(t, "scan-test/ado-scan-test-iac", gateway.Children[0].Asset.Name)
+	for _, child := range gateway.Children {
+		assert.Equal(t, AssetDiscovered, child.State)
+		assert.Same(t, gateway, child.Parent)
+	}
+	assert.True(t, e.hasPlatformID([]string{idA}), "preset ids feed the dedup index")
+	assert.True(t, e.hasPlatformID([]string{idB}))
+	assert.Len(t, e.allAssets, 3, "the gateway and its two children")
 }

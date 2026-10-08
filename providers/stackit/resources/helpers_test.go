@@ -5,12 +5,17 @@ package resources
 
 import (
 	"errors"
+	"net/http"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/stackitcloud/stackit-sdk-go/core/oapierror"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestTimeOrNil(t *testing.T) {
@@ -365,4 +370,21 @@ func TestStrOrNil(t *testing.T) {
 			t.Fatalf("strOrNil(\"\", true) = %q, want %q", *got, "")
 		}
 	})
+}
+
+func TestDeniedList(t *testing.T) {
+	denied := &oapierror.GenericOpenAPIError{StatusCode: http.StatusForbidden}
+
+	// Structured errors off: the v13 answer, an empty list and no error.
+	list, err := deniedList(denied)
+	require.NoError(t, err)
+	assert.Equal(t, []any{}, list)
+
+	// Structured errors on: the refusal is the answer, classified, so a
+	// missing permission does not read as an empty project.
+	plugin.ReadFeatures([]byte(mql.Features{byte(mql.StructuredErrors)}))
+	t.Cleanup(func() { plugin.ReadFeatures(nil) })
+	list, err = deniedList(denied)
+	assert.Nil(t, list)
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
 }

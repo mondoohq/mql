@@ -30,6 +30,13 @@ type PermissionManifest struct {
 }
 
 // PermissionDetail describes a single extracted API call and its mapped permission.
+//
+// Permission is the IAM permission the call needs; Action is the SDK operation
+// the provider calls. They are usually the same name, and differ where the
+// cloud authorizes several operations with one permission (AWS GetFindingV2
+// is authorized by access-analyzer:GetFinding; every API Gateway read by
+// apigateway:GET) or names the permission after the resource rather than the
+// method (GCP, Azure).
 type PermissionDetail struct {
 	Permission string `json:"permission"`
 	Service    string `json:"service"`
@@ -73,7 +80,12 @@ func main() {
 	case "gcp":
 		details = extractGCPPermissions(providerPath)
 	case "azure":
-		details = extractAzurePermissions(providerPath)
+		var err error
+		details, err = extractAzurePermissions(providerPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "skipping %s: not a supported cloud provider (aws, gcp, azure)\n", providerName)
 		os.Exit(0)
@@ -344,6 +356,8 @@ var awsServiceNameOverrides = map[string]string{
 	"opensearchserverless":     "aoss",
 	"redshiftserverless":       "redshift-serverless",
 	"mwaa":                     "airflow",
+	// VPC Lattice's IAM prefix is hyphenated; the SDK package is not.
+	"vpclattice": "vpc-lattice",
 }
 
 // awsPermissionOverrides maps a generated "service:Action" permission to the
@@ -351,8 +365,10 @@ var awsServiceNameOverrides = map[string]string{
 // match the IAM action name (the per-service-prefix renames are handled by
 // awsServiceNameOverrides instead). An empty-string value means the operation
 // has no corresponding IAM action and should be skipped entirely. Every entry
-// here was verified live against IAM Access Analyzer (validate-policy) — the
-// left side reported INVALID_ACTION and the right side validated clean.
+// here was verified against IAM Access Analyzer (validate-policy) or the
+// Service Authorization Reference — the left side is not an IAM action and the
+// right side is. `go run ./providers-sdk/v1/util/permissions/validate` checks
+// the whole manifest against the published catalogs; run it after adding one.
 var awsPermissionOverrides = map[string]string{
 	// S3 API operation names differ from the S3 IAM action names.
 	"s3:GetBucketAccelerateConfiguration":           "s3:GetAccelerateConfiguration",
@@ -390,8 +406,18 @@ var awsPermissionOverrides = map[string]string{
 	// Detective's IAM action is singular (the SDK operation is plural).
 	"detective:ListOrganizationAdminAccounts": "detective:ListOrganizationAdminAccount",
 
-	// The Access Analyzer ListFindingsV2 API maps to access-analyzer:ListFindings.
+	// The Access Analyzer V2 APIs are governed by the V1 actions: the SDK
+	// documents that GetFinding and GetFindingV2 both use
+	// access-analyzer:GetFinding, and ListFindingsV2 likewise.
 	"access-analyzer:ListFindingsV2": "access-analyzer:ListFindings",
+	"access-analyzer:GetFindingV2":   "access-analyzer:GetFinding",
+
+	// IAM spells these actions differently from the SDK operations. Action
+	// matching is case-insensitive, so the SDK spelling would be granted, but
+	// the manifest is what customers paste into policies and should carry the
+	// documented spelling.
+	"memorydb:DescribeACLs": "memorydb:DescribeAcls",
+	"s3:GetBucketCors":      "s3:GetBucketCORS",
 
 	// Amazon Keyspaces uses the cassandra: IAM prefix; reads require
 	// cassandra:Select and tag reads require cassandra:TagResource.
@@ -405,6 +431,21 @@ var awsPermissionOverrides = map[string]string{
 	// yet; skip rather than emit an action that does not exist.
 	"bedrock:GetAdvancedPromptOptimizationJob":   "",
 	"bedrock:ListAdvancedPromptOptimizationJobs": "",
+
+	// AWS's Service Reference lists these operations but maps them to no
+	// action, and has no action of the obvious name (checked 2026-10-07):
+	// knowledge-base VPC configurations (bedrockagent SDK, 2026-09-25),
+	// Client VPN Cedar authorization policies (ec2 SDK, 2026-09-28) and the
+	// Glue Data Catalog export configuration, which the Glue guide names but
+	// IAM Access Analyzer rejects as INVALID_ACTION ("does not exist"). A
+	// policy carrying one of these authorizes nothing, so nothing is emitted
+	// until AWS publishes the action; the permission check (make
+	// providers/permissions/check) asks AWS's list and Access Analyzer on every
+	// manifest change, so a published action shows up as a missing entry.
+	"bedrock:GetVpcConfiguration":                 "",
+	"bedrock:ListVpcConfigurations":               "",
+	"ec2:GetClientVpnEndpointAuthorizationPolicy": "",
+	"glue:GetDataCatalogExportConfiguration":      "",
 }
 
 // awsApplyOverride resolves a generated "service:Action" permission against
@@ -537,6 +578,25 @@ func extractAWSPermissions(root string) []PermissionDetail {
 									Permission: perm,
 									Service:    strings.SplitN(perm, ":", 2)[0],
 									Action:     action,
+									SourceFile: fileName,
+								})
+							}
+						}
+					}
+				}
+
+				// Pattern 3: conn.ServiceMethod(region).MethodName() — the client is
+				// used inline instead of being stored in a variable first, so the
+				// assignment scan above never saw it.
+				if inner, ok := sel.X.(*ast.CallExpr); ok {
+					if innerSel, ok := inner.Fun.(*ast.SelectorExpr); ok {
+						if svcName := awsConnectionMethodToService(innerSel.Sel.Name); svcName != "" && isAWSAPIMethod(methodName) {
+							iamService := awsServiceToIAM(svcName)
+							if perm, ok := awsApplyOverride(iamService + ":" + methodName); ok {
+								details = append(details, PermissionDetail{
+									Permission: perm,
+									Service:    strings.SplitN(perm, ":", 2)[0],
+									Action:     methodName,
 									SourceFile: fileName,
 								})
 							}
@@ -1189,6 +1249,17 @@ var gcpPermissionOverrides = map[string]map[string]string{
 		"GetCryptoKey": "cloudkms.cryptoKeys.get",
 		"GetIamPolicy": "cloudkms.cryptoKeys.getIamPolicy",
 	},
+	"datastore": {
+		// Firestore index permissions were renamed to datastore.schemas.*; the
+		// datastore.indexes.* names are in no predefined role any more and the
+		// Firestore IAM documentation lists only the schemas spelling.
+		"ListIndexes": "datastore.schemas.list",
+	},
+	"networkmanagement": {
+		// Network Management permissions are all lowercase; the generic
+		// derivation keeps the method's camel case.
+		"ListConnectivityTests": "networkmanagement.connectivitytests.list",
+	},
 	"networksecurity": {
 		// Gateway security policy rules are a nested collection whose REST
 		// resource is just "Rules"; the generic derivation yields the
@@ -1352,8 +1423,9 @@ var gcpPermissionOverrides = map[string]map[string]string{
 		// The Cloud Identity Groups API is not governed by project/org IAM
 		// permissions (it uses group-scope authorization via member/owner/admin
 		// roles), so no IAM permission corresponds to these calls — skip them.
-		"Groups.List":      "",
-		"Memberships.List": "",
+		"Groups.List":                "",
+		"Memberships.List":           "",
+		"Groups.GetSecuritySettings": "",
 	},
 	"dlp": {
 		// The DLP API exposes jobs under a `jobs` permission, not `dlpJobs`.
@@ -1405,9 +1477,15 @@ var gcpPermissionOverrides = map[string]map[string]string{
 		// aiplatform.schedules.list).
 		"GetSchedule": "aiplatform.schedules.get",
 		// GetIamPolicy is the shared google.iam.v1 mixin method on both
-		// ModelClient and NotebookClient; map each to its resource-scoped
-		// permission (clientType derived from NewModelClient/NewNotebookClient).
-		"Model.GetIamPolicy":    "aiplatform.models.getIamPolicy",
+		// ModelClient and NotebookClient (clientType derived from
+		// NewModelClient/NewNotebookClient). Notebook runtime templates have a
+		// resource-scoped permission; models do not: queryTestablePermissions
+		// knows no aiplatform.models.getIamPolicy at project or organization
+		// scope (checked 2026-10-07, while aiplatform.endpoints.getIamPolicy
+		// and the other Vertex AI getIamPolicy permissions are all listed), so
+		// nothing is emitted for the model call rather than a name IAM would
+		// never grant.
+		"Model.GetIamPolicy":    "",
 		"Notebook.GetIamPolicy": "aiplatform.notebookRuntimeTemplates.getIamPolicy",
 	},
 	"documentai": {
@@ -1422,11 +1500,16 @@ var gcpPermissionOverrides = map[string]map[string]string{
 		"GetSchema": "pubsub.schemas.get",
 	},
 	"iam": {
-		// The resource segment for a pool's providers is the generic "Providers",
-		// which findMeaningfulResource qualifies with the parent pool type so the
-		// two pool families map to their distinct IAM permissions.
-		"WorkloadIdentityPools.Providers.List": "iam.workloadIdentityPoolProviders.list",
-		"WorkforcePools.Providers.List":        "iam.workforcePoolProviders.list",
+		// Google names the workload identity and workforce pool permissions in
+		// the service-qualified form; the dotted spellings exist only as aliases
+		// (queryTestablePermissions reports the qualified name as the
+		// primaryPermission of each). The resource segment for a pool's providers
+		// is the generic "Providers", which findMeaningfulResource qualifies with
+		// the parent pool type so the two pool families stay distinct.
+		"WorkloadIdentityPools.List":           "iam.googleapis.com/workloadIdentityPools.list",
+		"WorkloadIdentityPools.Providers.List": "iam.googleapis.com/workloadIdentityPoolProviders.list",
+		"WorkforcePools.List":                  "iam.googleapis.com/workforcePools.list",
+		"WorkforcePools.Providers.List":        "iam.googleapis.com/workforcePoolProviders.list",
 		// IAM v2 deny policies are listed via iam.denypolicies.list, not the
 		// generic "iam.policies.list" (which is not a real permission).
 		"ListPolicies": "iam.denypolicies.list",
@@ -1437,6 +1520,10 @@ var gcpPermissionOverrides = map[string]map[string]string{
 		// Projects.ServiceAccounts.Keys.List, whose resource segment is the bare
 		// "Keys"; the real permission names the parent resource type.
 		"Keys.List": "iam.serviceAccountKeys.list",
+		// IAM v3 principal access boundary permissions are all lowercase; the
+		// generic derivation keeps the method's camel case.
+		"ListPolicyBindings":                  "iam.policybindings.list",
+		"ListPrincipalAccessBoundaryPolicies": "iam.principalaccessboundarypolicies.list",
 	},
 	"kmsinventory": {
 		// The KMS Inventory API has no IAM permissions of its own. Reading a
@@ -1489,9 +1576,11 @@ var gcpPermissionOverrides = map[string]map[string]string{
 		// the auto-derived "resourcemanager.projects.getancestry" (not a real
 		// permission).
 		"Projects.GetAncestry": "resourcemanager.projects.get",
-		// Tag bindings are listed via the resourceTagBindings permission, not a
-		// "resourcemanager.tagBindings.list" form (which is not a real permission).
-		"TagBindings.List": "resourcemanager.resourceTagBindings.list",
+		// Listing the tag bindings of a project is governed by the hierarchy
+		// node's listTagBindings permission (the one in roles/resourcemanager
+		// .tagViewer); neither "resourcemanager.tagBindings.list" nor
+		// "resourcemanager.resourceTagBindings.list" is a real permission.
+		"TagBindings.List": "resourcemanager.hierarchyNodes.listTagBindings",
 		// Reading effective tag binding collections on a resource is governed by
 		// that resource's listEffectiveTags permission (we only call it for
 		// storage buckets in storage.go), not the auto-derived
@@ -1508,15 +1597,20 @@ var gcpOrgLevelPermissions = map[string]bool{
 	// Custom org-policy constraints are an organization-scoped resource;
 	// ListCustomConstraints is only callable with an "organizations/{id}"
 	// parent, so the permission is rejected in a project-level custom role.
-	"orgpolicy.customConstraints.list":           true,
-	"resourcemanager.folders.get":                true,
-	"resourcemanager.folders.getIamPolicy":       true,
-	"resourcemanager.folders.list":               true,
-	"resourcemanager.folders.search":             true,
-	"resourcemanager.organizations.get":          true,
-	"resourcemanager.organizations.getIamPolicy": true,
-	"resourcemanager.projects.list":              true,
-	"resourcemanager.projects.search":            true,
+	"orgpolicy.customConstraints.list": true,
+	// Workforce pools are an organization resource: the permissions are
+	// absent from queryTestablePermissions at project scope and present at
+	// organization scope (GA, custom-role supported).
+	"iam.googleapis.com/workforcePools.list":         true,
+	"iam.googleapis.com/workforcePoolProviders.list": true,
+	"resourcemanager.folders.get":                    true,
+	"resourcemanager.folders.getIamPolicy":           true,
+	"resourcemanager.folders.list":                   true,
+	"resourcemanager.folders.search":                 true,
+	"resourcemanager.organizations.get":              true,
+	"resourcemanager.organizations.getIamPolicy":     true,
+	"resourcemanager.projects.list":                  true,
+	"resourcemanager.projects.search":                true,
 }
 
 // gcpSkipMethods lists method names that match isGCPAPIMethod patterns but are
@@ -1650,709 +1744,322 @@ func gcpRESTToPermission(service, resource, method string) (string, bool) {
 // =============================================================================
 // Azure Permission Extraction
 // =============================================================================
+//
+// Azure names an operation from the ARM URL path of the call: the resource
+// provider namespace and the resource type segments after the last
+// /providers/ in the path, then the verb, read for a GET and <segment>/action
+// for a POST. Every generated Azure SDK client method carries that path in its
+// request builder (the <method>CreateRequest function next to it), so the
+// permission is read from the SDK source in the module cache, at the version
+// the provider's go.mod pins, rather than guessed from the client's name. A
+// client's name says nothing about its parent resource (DatabasesClient reads
+// clusters/{c}/databases) and one client's methods read different resources
+// (WebAppsClient lists sites, but also sites/{s}/slots); the path knows both.
+//
+// Two small tables remain. azurePathOperationOverrides covers the operations
+// whose registered name differs from the path convention, and
+// azureUnregisteredOperations the operations no resource provider registers
+// at all, which Azure refuses in a custom role and which are therefore not
+// emitted. azureSDKCallOverrides is the escape hatch for a call whose request
+// builder cannot be read.
 
-func extractAzurePermissions(root string) []PermissionDetail {
+// azureCall is one SDK method call the provider makes.
+type azureCall struct {
+	importPath string // e.g. github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2
+	client     string // e.g. DatabasesClient; "Client" for a package's generic client
+	method     string // e.g. NewListByClusterPager
+	file       string // the provider file the call is in
+}
+
+// key identifies the call independently of the file: "<import path> <Client>.<Method>".
+func (c azureCall) key() string {
+	return c.importPath + " " + c.client + "." + c.method
+}
+
+// azureSDKCallOverrides maps a call, by key, to the operation it needs, for the
+// rare call whose request builder cannot be read from the SDK source. An empty
+// value means the call needs no operation and is skipped. Prefer fixing the
+// derivation over adding an entry.
+var azureSDKCallOverrides = map[string]string{}
+
+// azurePathOperationOverrides maps an operation as the path convention names
+// it (lower-cased) to the name the resource provider actually registered, for
+// the providers that deviate from the convention. The registered name is what
+// a custom role must carry.
+var azurePathOperationOverrides = map[string]string{
+	// Data Protection registers Resource Guards under a subscription and
+	// resource-group prefix that the API path does not have.
+	"microsoft.dataprotection/resourceguards/read": "Microsoft.DataProtection/subscriptions/resourceGroups/providers/resourceGuards/read",
+	// Two singleton segments the path has and the registered name drops: the
+	// activity log is read at eventtypes/management/values, and the vault
+	// config at backupconfig/vaultconfig.
+	"microsoft.insights/eventtypes/management/values/read":            "Microsoft.Insights/eventtypes/values/Read",
+	"microsoft.recoveryservices/vaults/backupconfig/vaultconfig/read": "Microsoft.RecoveryServices/Vaults/backupconfig/read",
+}
+
+// azureUnregisteredOperations lists, lower-cased, the operations the provider
+// calls for which no resource provider has registered an operation with Azure
+// Resource Manager (`az provider operation list` does not list them). Azure
+// refuses an unregistered operation in a custom role with
+// InvalidActionOrNotAction, so a manifest naming one could not be used to
+// build a role, and nothing is emitted for these. Checked 2026-10-07; when
+// Azure registers one, remove it here so it is emitted again. Several are
+// calls the provider should stop making: the classic administrators and
+// auto-provisioning APIs are retired, as is the single-server PostgreSQL SDK.
+var azureUnregisteredOperations = map[string]string{
+	"microsoft.authorization/classicadministrators/read":                                 "retired API; iam.go still lists classic administrators",
+	"microsoft.security/autoprovisioningsettings/read":                                   "retired API; cloud_defender.go still reads it",
+	"microsoft.security/regulatorycompliancestandards/read":                              "API exists, operation never registered",
+	"microsoft.security/regulatorycompliancestandards/regulatorycompliancecontrols/read": "API exists, operation never registered",
+	"microsoft.dbforpostgresql/servergroupsv2/read":                                      "only child operations are registered",
+	"microsoft.dbforpostgresql/servers/read":                                             "retired single-server API; postgresql.go still uses it",
+	"microsoft.dbforpostgresql/servers/configurations/read":                              "retired single-server API; postgresql.go still uses it",
+	"microsoft.dbforpostgresql/servers/databases/read":                                   "retired single-server API; postgresql.go still uses it",
+	"microsoft.dbforpostgresql/servers/firewallrules/read":                               "retired single-server API; postgresql.go still uses it",
+	"microsoft.documentdb/databaseaccounts/cassandraroleassignments/read":                "preview data-plane RBAC API",
+	"microsoft.documentdb/databaseaccounts/cassandraroledefinitions/read":                "preview data-plane RBAC API",
+	"microsoft.documentdb/databaseaccounts/gremlinroleassignments/read":                  "preview data-plane RBAC API",
+	"microsoft.documentdb/databaseaccounts/gremlinroledefinitions/read":                  "preview data-plane RBAC API",
+	"microsoft.documentdb/databaseaccounts/mongomiroleassignments/read":                  "preview data-plane RBAC API",
+	"microsoft.documentdb/databaseaccounts/mongomiroledefinitions/read":                  "preview data-plane RBAC API",
+	"microsoft.documentdb/databaseaccounts/tableroleassignments/read":                    "preview data-plane RBAC API",
+	"microsoft.documentdb/databaseaccounts/tableroledefinitions/read":                    "preview data-plane RBAC API",
+	"microsoft.fileshares/fileshares/filesharesnapshots/read":                            "preview",
+}
+
+func extractAzurePermissions(root string) ([]PermissionDetail, error) {
+	sdk, err := loadAzureSDKIndex(root)
+	if err != nil {
+		return nil, err
+	}
+	return extractAzurePermissionsWith(sdk, root)
+}
+
+// extractAzurePermissionsWith derives the permissions for every read call under
+// root, resolving the calls' SDK sources through sdk.
+func extractAzurePermissionsWith(sdk *azureSDKIndex, root string) ([]PermissionDetail, error) {
 	var details []PermissionDetail
-	files := listGoFiles(root)
+	for _, call := range azureCalls(root) {
+		d, emit, err := azureDetail(sdk, call)
+		if err != nil {
+			return nil, err
+		}
+		if emit {
+			details = append(details, d)
+		}
+	}
+	return details, nil
+}
 
-	for _, filePath := range files {
-		fileName := filepath.Base(filePath)
+// azureDetail derives the permission for one call.
+func azureDetail(sdk *azureSDKIndex, call azureCall) (PermissionDetail, bool, error) {
+	if op, ok := azureSDKCallOverrides[call.key()]; ok {
+		if op == "" {
+			return PermissionDetail{}, false, nil
+		}
+		return PermissionDetail{Permission: op, Service: azureNamespaceOf(op), Action: call.method, SourceFile: call.file}, true, nil
+	}
+	urlPath, httpMethod, err := sdk.request(call)
+	if err != nil {
+		return PermissionDetail{}, false, fmt.Errorf("%s in %s: %w\n  (if the SDK really builds no request for this call, add an azureSDKCallOverrides entry)", call.key(), call.file, err)
+	}
+	ns, op := azureOperationFromPath(urlPath, httpMethod)
+	if registered, ok := azurePathOperationOverrides[strings.ToLower(op)]; ok {
+		op = registered
+	}
+	if _, skip := azureUnregisteredOperations[strings.ToLower(op)]; skip {
+		return PermissionDetail{}, false, nil
+	}
+	return PermissionDetail{Permission: op, Service: ns, Action: call.method, SourceFile: call.file}, true, nil
+}
+
+// azureNamespaceOf returns the resource provider namespace of an operation.
+func azureNamespaceOf(op string) string {
+	ns, _, _ := strings.Cut(op, "/")
+	return ns
+}
+
+// azureOperationFromPath derives the operation Azure names for a call from the
+// URL template and HTTP method of its request: the namespace and resource type
+// segments after the last /providers/ in the path, without the {parameters}
+// and without the literal "default" singleton segment, then read for GET and
+// <segment>/action for POST. A path with no /providers/ is Azure Resource
+// Manager's own, under Microsoft.Resources. It returns the namespace and the
+// operation.
+func azureOperationFromPath(urlPath, httpMethod string) (string, string) {
+	urlPath, _, _ = strings.Cut(urlPath, "?")
+	ns := "Microsoft.Resources"
+	rest := urlPath
+	if i := strings.LastIndex(urlPath, "/providers/"); i >= 0 {
+		rest = urlPath[i+len("/providers/"):]
+		ns, rest, _ = strings.Cut(rest, "/")
+	}
+	var segs []string
+	for _, s := range strings.Split(rest, "/") {
+		if s == "" || strings.HasPrefix(s, "{") || s == "default" {
+			continue
+		}
+		segs = append(segs, s)
+	}
+	typ := strings.Join(segs, "/")
+	switch httpMethod {
+	case "GET":
+		if typ == "" {
+			return ns, ns + "/read"
+		}
+		return ns, ns + "/" + typ + "/read"
+	case "POST":
+		return ns, ns + "/" + typ + "/action"
+	default:
+		return ns, ns + "/" + typ + "/" + strings.ToLower(httpMethod)
+	}
+}
+
+// azureCalls finds every read call the provider makes on an Azure SDK client:
+// the client variable is created from an imported package
+// (`client, err := armkusto.NewDatabasesClient(...)`), from a client factory
+// (`f := armsecurity.NewClientFactory(...)` then `f.NewPricingsClient()`), or
+// inline (`f.NewPricingsClient().Get(...)`); the read methods are the pagers
+// and getters isAzureReadMethod names.
+func azureCalls(root string) []azureCall {
+	var calls []azureCall
+	for _, filePath := range listGoFiles(root) {
 		fset := token.NewFileSet()
 		f, err := parser.ParseFile(fset, filePath, nil, 0)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to parse %s: %v\n", filePath, err)
 			continue
 		}
+		calls = append(calls, azureCallsInFile(f, filepath.Base(filePath))...)
+	}
+	return calls
+}
 
-		// Build import map: alias -> ARM info
-		azureImports := extractAzureImports(f)
-		if len(azureImports) == 0 {
-			continue
-		}
-
+// azureCallsInFile finds the read calls in one parsed provider file.
+func azureCallsInFile(f *ast.File, fileName string) []azureCall {
+	imports := extractAzureImports(f) // alias -> import path
+	if len(imports) == 0 {
+		return nil
+	}
+	var calls []azureCall
+	{
 		ast.Inspect(f, func(n ast.Node) bool {
 			fn, ok := n.(*ast.FuncDecl)
-			if !ok {
+			if !ok || fn.Body == nil {
 				return true
 			}
-			if fn.Body == nil {
-				return true
-			}
-
-			// Track client variables: varName -> (ARM provider, resource type)
-			clientVars := map[string]*azureClientInfo{}
-			// Track client-factory variables: varName -> ARM provider. Many azure
-			// SDKs (e.g. armsecurity) create clients via
-			// `f := pkg.NewClientFactory(...)` then `f.NewXxxClient()` rather than
-			// a package-qualified `pkg.NewXxxClient(...)`, so we resolve the ARM
-			// provider through the factory var.
-			factoryVars := map[string]string{}
+			clientVars := map[string]azureCall{} // var -> import path + client type
+			factoryVars := map[string]string{}   // var -> import path
 
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				assignStmt, ok := n.(*ast.AssignStmt)
+				assign, ok := n.(*ast.AssignStmt)
 				if !ok {
 					return true
 				}
-
-				for i, rhs := range assignStmt.Rhs {
+				for i, rhs := range assign.Rhs {
 					call, ok := rhs.(*ast.CallExpr)
-					if !ok {
+					if !ok || i >= len(assign.Lhs) {
 						continue
 					}
 					sel, ok := call.Fun.(*ast.SelectorExpr)
 					if !ok {
 						continue
 					}
-					methodName := sel.Sel.Name
-
-					pkgIdent, isIdentReceiver := sel.X.(*ast.Ident)
-
-					// Pattern: f := pkg.NewClientFactory(...) — remember the
-					// factory var so its clients resolve to this ARM provider.
-					if methodName == "NewClientFactory" {
-						if isIdentReceiver {
-							if imp, isAzureImport := azureImports[pkgIdent.Name]; isAzureImport && i < len(assignStmt.Lhs) {
-								if ident, ok := assignStmt.Lhs[i].(*ast.Ident); ok {
-									factoryVars[ident.Name] = imp.armProvider
-								}
-							}
+					recv, ok := sel.X.(*ast.Ident)
+					if !ok {
+						continue
+					}
+					lhs, ok := assign.Lhs[i].(*ast.Ident)
+					if !ok {
+						continue
+					}
+					ctor := sel.Sel.Name
+					switch {
+					case ctor == "NewClientFactory":
+						if path, ok := imports[recv.Name]; ok {
+							factoryVars[lhs.Name] = path
 						}
-						continue
-					}
-
-					// Pattern: pkg.NewXxxClient(...) or factoryVar.NewXxxClient(...)
-					if !strings.HasPrefix(methodName, "New") || !strings.HasSuffix(methodName, "Client") {
-						continue
-					}
-					if !isIdentReceiver {
-						continue
-					}
-
-					// Resolve the ARM provider: either the receiver is a tracked
-					// azure package import, or a tracked client-factory var.
-					imp, isAzureImport := azureImports[pkgIdent.Name]
-					armProvider := ""
-					if isAzureImport {
-						armProvider = imp.armProvider
-					} else if prov, isFactory := factoryVars[pkgIdent.Name]; isFactory {
-						armProvider = prov
-					} else {
-						continue
-					}
-
-					// Extract resource type from constructor name
-					// e.g., NewVirtualMachinesClient -> VirtualMachines
-					// NewClient -> "" (generic client, map via package)
-					resourceType := strings.TrimPrefix(methodName, "New")
-					resourceType = strings.TrimSuffix(resourceType, "Client")
-
-					// A generic NewClient carries no resource type; only a
-					// package import can map it via its package name.
-					if resourceType == "" {
-						if !isAzureImport {
-							continue
+					case strings.HasPrefix(ctor, "New") && strings.HasSuffix(ctor, "Client"):
+						path, ok := imports[recv.Name]
+						if !ok {
+							path, ok = factoryVars[recv.Name]
 						}
-						resourceType = azureResourceFromPackage(imp.pkgName)
-					}
-
-					if i < len(assignStmt.Lhs) {
-						if ident, ok := assignStmt.Lhs[i].(*ast.Ident); ok {
-							clientVars[ident.Name] = &azureClientInfo{
-								armProvider:  armProvider,
-								resourceType: resourceType,
-							}
+						if ok {
+							clientVars[lhs.Name] = azureCall{importPath: path, client: strings.TrimPrefix(ctor, "New")}
 						}
 					}
 				}
 				return true
 			})
 
-			emitReadPerm := func(armProvider, resourceType, methodName string) {
-				perm := azurePermission(armProvider, resourceType)
-				// A client serving multiple read methods may need per-method
-				// permissions that the client-level derivation can't express.
-				if o, ok := azureMethodPermissionOverrides[resourceType+"."+methodName]; ok {
-					perm = o
-				}
-				details = append(details, PermissionDetail{
-					Permission: perm,
-					Service:    armProvider,
-					Action:     methodName,
-					SourceFile: fileName,
-				})
-			}
-
-			// Find pager/method calls on client variables
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
 				if !ok {
 					return true
 				}
 				sel, ok := call.Fun.(*ast.SelectorExpr)
-				if !ok {
+				if !ok || !isAzureReadMethod(sel.Sel.Name) {
 					return true
 				}
-				methodName := sel.Sel.Name
-				if !isAzureReadMethod(methodName) {
-					return true
-				}
-
 				switch recv := sel.X.(type) {
 				case *ast.Ident:
-					// Read method on a tracked client var: client.NewListPager(...)
-					if info, ok := clientVars[recv.Name]; ok {
-						emitReadPerm(info.armProvider, info.resourceType, methodName)
+					// client.NewListPager(...)
+					if c, ok := clientVars[recv.Name]; ok {
+						c.method, c.file = sel.Sel.Name, fileName
+						calls = append(calls, c)
 					}
 				case *ast.CallExpr:
-					// Inline factory chain: factoryVar.NewXxxClient().NewListPager(...)
-					innerSel, ok := recv.Fun.(*ast.SelectorExpr)
+					// factoryVar.NewXxxClient().NewListPager(...)
+					inner, ok := recv.Fun.(*ast.SelectorExpr)
 					if !ok {
 						return true
 					}
-					facIdent, ok := innerSel.X.(*ast.Ident)
+					fac, ok := inner.X.(*ast.Ident)
 					if !ok {
 						return true
 					}
-					prov, isFactory := factoryVars[facIdent.Name]
-					if !isFactory {
-						return true
-					}
-					ctor := innerSel.Sel.Name
-					if !strings.HasPrefix(ctor, "New") || !strings.HasSuffix(ctor, "Client") {
-						return true
-					}
-					resourceType := strings.TrimSuffix(strings.TrimPrefix(ctor, "New"), "Client")
-					// A generic NewClient() on a factory has no resource type in
-					// its name and no package to derive one from (the receiver is
-					// a factory var, not an import), so skip it — same as the
-					// stored-variable path, which also can't map a factory generic.
-					if resourceType != "" {
-						emitReadPerm(prov, resourceType, methodName)
+					path, ok := factoryVars[fac.Name]
+					ctor := inner.Sel.Name
+					if ok && strings.HasPrefix(ctor, "New") && strings.HasSuffix(ctor, "Client") {
+						calls = append(calls, azureCall{importPath: path, client: strings.TrimPrefix(ctor, "New"), method: sel.Sel.Name, file: fileName})
 					}
 				}
-
 				return true
 			})
-
 			return false
 		})
 	}
-
-	return details
+	return calls
 }
 
-type azureImportInfo struct {
-	alias       string // import alias
-	armProvider string // e.g., "Microsoft.Compute"
-	pkgName     string // e.g., "armcompute"
-}
-
-type azureClientInfo struct {
-	armProvider  string // e.g., "Microsoft.Compute"
-	resourceType string // e.g., "VirtualMachines"
-}
-
-func extractAzureImports(f *ast.File) map[string]*azureImportInfo {
-	result := map[string]*azureImportInfo{}
+// extractAzureImports returns alias -> import path for the Azure SDK resource
+// manager packages a file imports.
+func extractAzureImports(f *ast.File) map[string]string {
+	result := map[string]string{}
 	for _, imp := range f.Imports {
 		path := strings.Trim(imp.Path.Value, `"`)
 		if !strings.Contains(path, "azure-sdk-for-go/sdk/resourcemanager/") {
 			continue
 		}
-		// e.g., github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v7
-		parts := strings.Split(path, "/")
-		// Find the "resourcemanager" index
-		rmIdx := -1
-		for i, p := range parts {
-			if p == "resourcemanager" {
-				rmIdx = i
-				break
-			}
-		}
-		if rmIdx < 0 || rmIdx+2 >= len(parts) {
-			continue
-		}
-		serviceName := parts[rmIdx+1] // e.g., "compute"
-		armPkg := parts[rmIdx+2]      // e.g., "armcompute"
-
-		alias := armPkg
-		// Strip version suffix from alias if package has /v7 etc.
+		alias := ""
 		if imp.Name != nil {
 			alias = imp.Name.Name
+		} else {
+			// The package name is the last path element, or the one before a
+			// major-version element: .../armcompute/v7 is package armcompute.
+			parts := strings.Split(path, "/")
+			alias = parts[len(parts)-1]
+			if len(parts) > 1 && regexp.MustCompile(`^v\d+$`).MatchString(alias) {
+				alias = parts[len(parts)-2]
+			}
 		}
-
-		armProvider := azureServiceToARM(serviceName)
-
-		result[alias] = &azureImportInfo{
-			alias:       alias,
-			armProvider: armProvider,
-			pkgName:     armPkg,
-		}
+		result[alias] = path
 	}
 	return result
 }
 
-// azureServiceToARM maps Azure SDK service names to ARM provider namespaces.
-var azureServiceToARMMap = map[string]string{
-	"compute":               "Microsoft.Compute",
-	"network":               "Microsoft.Network",
-	"storage":               "Microsoft.Storage",
-	"keyvault":              "Microsoft.KeyVault",
-	"sql":                   "Microsoft.Sql",
-	"postgresql":            "Microsoft.DBforPostgreSQL",
-	"mysql":                 "Microsoft.DBforMySQL",
-	"mariadb":               "Microsoft.DBforMariaDB",
-	"cosmos":                "Microsoft.DocumentDB",
-	"cosmosdb":              "Microsoft.DocumentDB",
-	"redis":                 "Microsoft.Cache",
-	"containerservice":      "Microsoft.ContainerService",
-	"containerregistry":     "Microsoft.ContainerRegistry",
-	"web":                   "Microsoft.Web",
-	"monitor":               "Microsoft.Insights",
-	"applicationinsights":   "Microsoft.Insights",
-	"advisor":               "Microsoft.Advisor",
-	"authorization":         "Microsoft.Authorization",
-	"security":              "Microsoft.Security",
-	"subscription":          "Microsoft.Resources",
-	"resources":             "Microsoft.Resources",
-	"search":                "Microsoft.Search",
-	"servicebus":            "Microsoft.ServiceBus",
-	"servicefabric":         "Microsoft.ServiceFabric",
-	"eventhub":              "Microsoft.EventHub",
-	"iothub":                "Microsoft.Devices",
-	"managedidentity":       "Microsoft.ManagedIdentity",
-	"desktopvirtualization": "Microsoft.DesktopVirtualization",
-	"appservice":            "Microsoft.Web",
-	"databoxedge":           "Microsoft.DataBoxEdge",
-	"logic":                 "Microsoft.Logic",
-	"msi":                   "Microsoft.ManagedIdentity",
-	"frontdoor":             "Microsoft.Network",
-	"datafactory":           "Microsoft.DataFactory",
-	"cosmosforpostgresql":   "Microsoft.DBforPostgreSQL",
-	"batch":                 "Microsoft.Batch",
-	"databricks":            "Microsoft.Databricks",
-	"synapse":               "Microsoft.Synapse",
-	"operationalinsights":   "Microsoft.OperationalInsights",
-	"recoveryservices":      "Microsoft.RecoveryServices",
-	"hybridcompute":         "Microsoft.HybridCompute",
-	"appcontainers":         "Microsoft.App",
-	"containerinstance":     "Microsoft.ContainerInstance",
-	"machinelearning":       "Microsoft.MachineLearningServices",
-	// The SDK package is armmanagementgroups but the ARM namespace is
-	// Microsoft.Management; without this the default branch would emit
-	// "Microsoft.Managementgroups", which is not a real provider.
-	"managementgroups": "Microsoft.Management",
-	// The default branch capitalizes only the first letter, giving
-	// "Microsoft.Eventgrid" and "Microsoft.Apimanagement" for these two.
-	"eventgrid":     "Microsoft.EventGrid",
-	"apimanagement": "Microsoft.ApiManagement",
-	// Same again: the default branch would emit "Microsoft.Dataprotection" and
-	// "Microsoft.Databox", neither of which is a real provider namespace.
-	"dataprotection": "Microsoft.DataProtection",
-	"databox":        "Microsoft.DataBox",
-	// Same again: the default branch would emit "Microsoft.Netapp", which is
-	// not a real provider namespace.
-	"netapp": "Microsoft.NetApp",
-	// Same again: the default branch would emit "Microsoft.Fileshares", which
-	// is not a real provider namespace.
-	"fileshares": "Microsoft.FileShares",
-	// Same again: the default branch would emit "Microsoft.Elasticsan", which
-	// is not a real provider namespace.
-	"elasticsan": "Microsoft.ElasticSan",
-	// Same again: the default branch would emit "Microsoft.Storagecache",
-	// which is not a real provider namespace.
-	"storagecache": "Microsoft.StorageCache",
-}
-
-func azureServiceToARM(service string) string {
-	if service == "" {
-		return "Microsoft.Unknown"
-	}
-	if arm, ok := azureServiceToARMMap[service]; ok {
-		return arm
-	}
-	// Default: Microsoft.<Capitalized service name>
-	return "Microsoft." + strings.ToUpper(service[:1]) + service[1:]
-}
-
-// azureMethodPermissionOverrides maps "<ResourceType>.<Method>" to the correct
-// permission for cases where one SDK client serves multiple read methods that
-// require different RBAC permissions. The client-derived permission is the same
-// for every method on the client, so a permission-string override (which keys on
-// that shared result) cannot distinguish them — this map keys on the
-// constructor-derived resource type plus the read method name instead.
-var azureMethodPermissionOverrides = map[string]string{
-	// SQLResourcesClient serves SQL container, role-assignment and role-definition
-	// reads. The client maps everything to sqlDatabases/containers/read (see the
-	// sQLResources override below), so the role calls each need their own mapping
-	// to the correct resource.
-	"SQLResources.NewListSQLRoleAssignmentsPager": "Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments/read",
-	"SQLResources.NewListSQLRoleDefinitionsPager": "Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions/read",
-
-	// The Cassandra, Gremlin, Table and MongoMI resource clients each serve
-	// role-assignment and role-definition reads that the client name derives to a
-	// coarse <api>Resources/read; redirect them to the correct databaseAccounts
-	// sub-resource, matching the SQLResources entries above.
-	"CassandraResources.NewListCassandraRoleAssignmentsPager": "Microsoft.DocumentDB/databaseAccounts/cassandraRoleAssignments/read",
-	"CassandraResources.NewListCassandraRoleDefinitionsPager": "Microsoft.DocumentDB/databaseAccounts/cassandraRoleDefinitions/read",
-	"GremlinResources.NewListGremlinRoleAssignmentsPager":     "Microsoft.DocumentDB/databaseAccounts/gremlinRoleAssignments/read",
-	"GremlinResources.NewListGremlinRoleDefinitionsPager":     "Microsoft.DocumentDB/databaseAccounts/gremlinRoleDefinitions/read",
-	"TableResources.NewListTableRoleAssignmentsPager":         "Microsoft.DocumentDB/databaseAccounts/tableRoleAssignments/read",
-	"TableResources.NewListTableRoleDefinitionsPager":         "Microsoft.DocumentDB/databaseAccounts/tableRoleDefinitions/read",
-	"MongoMIResources.NewListMongoMIRoleAssignmentsPager":     "Microsoft.DocumentDB/databaseAccounts/mongoMIRoleAssignments/read",
-	"MongoMIResources.NewListMongoMIRoleDefinitionsPager":     "Microsoft.DocumentDB/databaseAccounts/mongoMIRoleDefinitions/read",
-
-	// armlocks lives under the resourcemanager/resources directory, so the
-	// service derives to Microsoft.Resources; locks are actually governed by
-	// Microsoft.Authorization. The service key cannot be remapped because
-	// armresources, armdeployments, armsubscriptions and armpolicy legitimately
-	// share it.
-	"ManagementLocks.NewListAtSubscriptionLevelPager": "Microsoft.Authorization/locks/read",
-
-	// The entities listing walks the management group hierarchy; the governing
-	// permission is on managementGroups, not on an "entities" resource type.
-	"Entities.NewListPager": "Microsoft.Management/managementGroups/read",
-
-	// Synapse client names begin with an acronym (IPFirewallRules, SQLPools),
-	// which the resource-type derivation lower-cases one character at a time
-	// into "iPFirewallRules" and "sQLPools". They are also all children of a
-	// workspace, which the client name does not carry.
-	"IPFirewallRules.NewListByWorkspacePager": "Microsoft.Synapse/workspaces/firewallRules/read",
-	"SQLPools.NewListByWorkspacePager":        "Microsoft.Synapse/workspaces/sqlPools/read",
-	"SQLPoolTransparentDataEncryptions.Get":   "Microsoft.Synapse/workspaces/sqlPools/transparentDataEncryption/read",
-	"SQLPoolBlobAuditingPolicies.Get":         "Microsoft.Synapse/workspaces/sqlPools/auditingSettings/read",
-
-	// armfrontdoor's client is named PoliciesClient, which derives to a bare
-	// "policies" resource type under Microsoft.Network rather than the Front
-	// Door firewall policy type it actually reads.
-	"Policies.NewListBySubscriptionPager": "Microsoft.Network/frontdoorWebApplicationFirewallPolicies/read",
-	"Policies.Get":                        "Microsoft.Network/frontdoorWebApplicationFirewallPolicies/read",
-
-	// Event Grid event subscriptions are children of the topic, system topic or
-	// domain they belong to; the client names flatten that nesting.
-	"TopicEventSubscriptions.NewListPager":                    "Microsoft.EventGrid/topics/eventSubscriptions/read",
-	"SystemTopicEventSubscriptions.NewListBySystemTopicPager": "Microsoft.EventGrid/systemTopics/eventSubscriptions/read",
-	"DomainEventSubscriptions.NewListPager":                   "Microsoft.EventGrid/domains/eventSubscriptions/read",
-
-	// Every API Management child resource sits under service/, and the acronym
-	// clients (APIClient, APIPolicyClient) derive to "aPI" and "aPIPolicy".
-	"API.NewListByServicePager":        "Microsoft.ApiManagement/service/apis/read",
-	"APIPolicy.Get":                    "Microsoft.ApiManagement/service/apis/policies/read",
-	"Product.NewListByServicePager":    "Microsoft.ApiManagement/service/products/read",
-	"ProductPolicy.Get":                "Microsoft.ApiManagement/service/products/policies/read",
-	"NamedValue.NewListByServicePager": "Microsoft.ApiManagement/service/namedValues/read",
-	"Policy.Get":                       "Microsoft.ApiManagement/service/policies/read",
-	"Subscription.NewListPager":        "Microsoft.ApiManagement/service/subscriptions/read",
-
-	// Container Apps VNet connections are children of a sandbox group.
-	"VnetConnections.NewListBySandboxGroupPager": "Microsoft.App/sandboxGroups/vnetConnections/read",
-}
-
-// azurePermissionOverrides maps generated permission strings to the correct
-// Azure RBAC permission. Many Azure SDK client names don't include parent
-// resource paths (e.g., servers/) or use different names than the ARM API.
-var azurePermissionOverrides = map[string]string{
-	// Batch: client names don't match ARM resource types
-	"Microsoft.Batch/account/read": "Microsoft.Batch/batchAccounts/read",
-	"Microsoft.Batch/pool/read":    "Microsoft.Batch/batchAccounts/pools/read",
-
-	// Cache (Redis): sub-resources need redis/ parent path
-	"Microsoft.Cache/firewallRules/read":  "Microsoft.Cache/redis/firewallRules/read",
-	"Microsoft.Cache/patchSchedules/read": "Microsoft.Cache/redis/patchSchedules/read",
-
-	// Cosmos DB for PostgreSQL: SDK package maps to different ARM resource type
-	"Microsoft.DBforPostgreSQL/clusters/read": "Microsoft.DBforPostgreSQL/serverGroupsv2/read",
-
-	// MySQL: sub-resources need servers/ parent path
-	"Microsoft.DBforMySQL/configurations/read": "Microsoft.DBforMySQL/servers/configurations/read",
-	"Microsoft.DBforMySQL/databases/read":      "Microsoft.DBforMySQL/servers/databases/read",
-	"Microsoft.DBforMySQL/firewallRules/read":  "Microsoft.DBforMySQL/servers/firewallRules/read",
-
-	// PostgreSQL: the legacy single-server resource type (servers/) is retired
-	// and not in the RBAC catalog; all sub-resources resolve to flexibleServers/.
-	"Microsoft.DBforPostgreSQL/configurations/read":                   "Microsoft.DBforPostgreSQL/flexibleServers/configurations/read",
-	"Microsoft.DBforPostgreSQL/databases/read":                        "Microsoft.DBforPostgreSQL/flexibleServers/databases/read",
-	"Microsoft.DBforPostgreSQL/firewallRules/read":                    "Microsoft.DBforPostgreSQL/flexibleServers/firewallRules/read",
-	"Microsoft.DBforPostgreSQL/advancedThreatProtectionSettings/read": "Microsoft.DBforPostgreSQL/flexibleServers/advancedThreatProtectionSettings/read",
-
-	// Network: client names don't match ARM resource types
-	"Microsoft.Network/interfaces/read":                       "Microsoft.Network/networkInterfaces/read",
-	"Microsoft.Network/securityGroups/read":                   "Microsoft.Network/networkSecurityGroups/read",
-	"Microsoft.Network/subnets/read":                          "Microsoft.Network/virtualNetworks/subnets/read",
-	"Microsoft.Network/flowLogs/read":                         "Microsoft.Network/networkWatchers/flowLogs/read",
-	"Microsoft.Network/watchers/read":                         "Microsoft.Network/networkWatchers/read",
-	"Microsoft.Network/virtualNetworkPeerings/read":           "Microsoft.Network/virtualNetworks/virtualNetworkPeerings/read",
-	"Microsoft.Network/virtualNetworkGatewayConnections/read": "Microsoft.Network/connections/read",
-
-	// SQL: sub-resources need servers/ or servers/databases/ parent paths
-	"Microsoft.Sql/databases/read":                                "Microsoft.Sql/servers/databases/read",
-	"Microsoft.Sql/firewallRules/read":                            "Microsoft.Sql/servers/firewallRules/read",
-	"Microsoft.Sql/iPv6FirewallRules/read":                        "Microsoft.Sql/servers/ipv6FirewallRules/read",
-	"Microsoft.Sql/virtualNetworkRules/read":                      "Microsoft.Sql/servers/virtualNetworkRules/read",
-	"Microsoft.Sql/encryptionProtectors/read":                     "Microsoft.Sql/servers/encryptionProtector/read",
-	"Microsoft.Sql/backupShortTermRetentionPolicies/read":         "Microsoft.Sql/servers/databases/backupShortTermRetentionPolicies/read",
-	"Microsoft.Sql/longTermRetentionPolicies/read":                "Microsoft.Sql/servers/databases/backupLongTermRetentionPolicies/read",
-	"Microsoft.Sql/transparentDataEncryptions/read":               "Microsoft.Sql/servers/databases/transparentDataEncryption/read",
-	"Microsoft.Sql/databaseAdvancedThreatProtectionSettings/read": "Microsoft.Sql/servers/databases/advancedThreatProtectionSettings/read",
-	"Microsoft.Sql/databaseBlobAuditingPolicies/read":             "Microsoft.Sql/servers/databases/auditingSettings/read",
-	"Microsoft.Sql/databaseSecurityAlertPolicies/read":            "Microsoft.Sql/servers/databases/securityAlertPolicies/read",
-	"Microsoft.Sql/databaseUsages/read":                           "Microsoft.Sql/servers/databases/usages/read",
-	"Microsoft.Sql/serverAdvancedThreatProtectionSettings/read":   "Microsoft.Sql/servers/advancedThreatProtectionSettings/read",
-	"Microsoft.Sql/serverAzureADAdministrators/read":              "Microsoft.Sql/servers/administrators/read",
-	"Microsoft.Sql/serverAzureADOnlyAuthentications/read":         "Microsoft.Sql/servers/azureADOnlyAuthentications/read",
-	"Microsoft.Sql/serverBlobAuditingPolicies/read":               "Microsoft.Sql/servers/auditingSettings/read",
-	"Microsoft.Sql/serverConnectionPolicies/read":                 "Microsoft.Sql/servers/connectionPolicies/read",
-	"Microsoft.Sql/serverSecurityAlertPolicies/read":              "Microsoft.Sql/servers/securityAlertPolicies/read",
-	"Microsoft.Sql/serverVulnerabilityAssessments/read":           "Microsoft.Sql/servers/vulnerabilityAssessments/read",
-
-	// Storage: client names don't match ARM resource types
-	"Microsoft.Storage/accounts/read":       "Microsoft.Storage/storageAccounts/read",
-	"Microsoft.Storage/blobContainers/read": "Microsoft.Storage/storageAccounts/blobServices/containers/read",
-
-	// Web: client names don't match ARM resource types
-	"Microsoft.Web/environments/read": "Microsoft.Web/hostingEnvironments/read",
-	"Microsoft.Web/plans/read":        "Microsoft.Web/serverfarms/read",
-	"Microsoft.Web/webApps/read":      "Microsoft.Web/sites/read",
-
-	// CDN: Azure Front Door SDK clients omit the profiles/ parent path
-	"Microsoft.Cdn/aFDCustomDomains/read": "Microsoft.Cdn/profiles/customdomains/read",
-	"Microsoft.Cdn/aFDEndpoints/read":     "Microsoft.Cdn/profiles/afdendpoints/read",
-	"Microsoft.Cdn/aFDOriginGroups/read":  "Microsoft.Cdn/profiles/origingroups/read",
-	"Microsoft.Cdn/aFDOrigins/read":       "Microsoft.Cdn/profiles/origingroups/origins/read",
-	"Microsoft.Cdn/securityPolicies/read": "Microsoft.Cdn/profiles/securitypolicies/read",
-
-	// ContainerRegistry: sub-resources need registries/ parent path
-	"Microsoft.ContainerRegistry/cacheRules/read":          "Microsoft.ContainerRegistry/registries/cacheRules/read",
-	"Microsoft.ContainerRegistry/connectedRegistries/read": "Microsoft.ContainerRegistry/registries/connectedRegistries/read",
-	"Microsoft.ContainerRegistry/credentialSets/read":      "Microsoft.ContainerRegistry/registries/credentialSets/read",
-	"Microsoft.ContainerRegistry/replications/read":        "Microsoft.ContainerRegistry/registries/replications/read",
-	"Microsoft.ContainerRegistry/scopeMaps/read":           "Microsoft.ContainerRegistry/registries/scopeMaps/read",
-	"Microsoft.ContainerRegistry/tokens/read":              "Microsoft.ContainerRegistry/registries/tokens/read",
-	"Microsoft.ContainerRegistry/webhooks/read":            "Microsoft.ContainerRegistry/registries/webhooks/read",
-
-	// DNS: Azure DNS lives under Microsoft.Network, not Microsoft.Dns
-	"Microsoft.Dns/recordSets/read": "Microsoft.Network/dnszones/recordsets/read",
-	"Microsoft.Dns/zones/read":      "Microsoft.Network/dnszones/read",
-
-	// Private DNS: lives under Microsoft.Network/privateDnsZones, not Microsoft.Privatedns
-	"Microsoft.Privatedns/privateZones/read":        "Microsoft.Network/privateDnsZones/read",
-	"Microsoft.Privatedns/virtualNetworkLinks/read": "Microsoft.Network/privateDnsZones/virtualNetworkLinks/read",
-
-	// EventHub: sub-resources need namespaces/ (or namespaces/eventhubs/) parent path
-	"Microsoft.EventHub/consumerGroups/read": "Microsoft.EventHub/namespaces/eventhubs/consumergroups/read",
-	"Microsoft.EventHub/eventHubs/read":      "Microsoft.EventHub/namespaces/eventhubs/read",
-
-	// Network: SDK calls Application Gateway WAF, which has a longer ARM type name
-	"Microsoft.Network/webApplicationFirewallPolicies/read": "Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/read",
-
-	// OperationalInsights: sub-resources need workspaces/ parent path;
-	// queryPacks is the standalone resource and uses lowercase querypacks;
-	// log queries map to workspaces/savedSearches
-	"Microsoft.OperationalInsights/dataExports/read":    "Microsoft.OperationalInsights/workspaces/dataexports/read",
-	"Microsoft.OperationalInsights/linkedServices/read": "Microsoft.OperationalInsights/workspaces/linkedservices/read",
-	"Microsoft.OperationalInsights/queries/read":        "Microsoft.OperationalInsights/workspaces/savedSearches/read",
-	"Microsoft.OperationalInsights/queryPacks/read":     "Microsoft.OperationalInsights/querypacks/read",
-	"Microsoft.OperationalInsights/tables/read":         "Microsoft.OperationalInsights/workspaces/tables/read",
-
-	// RecoveryServices: backup sub-resources need Vaults/ parent path; backupResourceVaultConfigs
-	// is the SDK client name but the ARM operation is called backupconfig
-	"Microsoft.RecoveryServices/backupPolicies/read":             "Microsoft.RecoveryServices/Vaults/backupPolicies/read",
-	"Microsoft.RecoveryServices/backupProtectedItems/read":       "Microsoft.RecoveryServices/Vaults/backupProtectedItems/read",
-	"Microsoft.RecoveryServices/backupResourceVaultConfigs/read": "Microsoft.RecoveryServices/Vaults/backupconfig/read",
-
-	// Resources: resource groups are nested under subscriptions/
-	"Microsoft.Resources/resourceGroups/read": "Microsoft.Resources/subscriptions/resourceGroups/read",
-
-	// ServiceBus: sub-resources need namespaces/ parent path; subscriptions are nested under topics
-	"Microsoft.ServiceBus/queues/read":        "Microsoft.ServiceBus/namespaces/queues/read",
-	"Microsoft.ServiceBus/topics/read":        "Microsoft.ServiceBus/namespaces/topics/read",
-	"Microsoft.ServiceBus/subscriptions/read": "Microsoft.ServiceBus/namespaces/topics/subscriptions/read",
-
-	// Storage: encryption/management policy and local user sub-resources need
-	// storageAccounts/ parent path
-	"Microsoft.Storage/encryptionScopes/read":           "Microsoft.Storage/storageAccounts/encryptionScopes/read",
-	"Microsoft.Storage/localUsers/read":                 "Microsoft.Storage/storageAccounts/localUsers/read",
-	"Microsoft.Storage/managementPolicies/read":         "Microsoft.Storage/storageAccounts/managementPolicies/read",
-	"Microsoft.Storage/fileShares/read":                 "Microsoft.Storage/storageAccounts/fileServices/shares/read",
-	"Microsoft.Storage/privateEndpointConnections/read": "Microsoft.Storage/storageAccounts/privateEndpointConnections/read",
-	"Microsoft.Storage/objectReplicationPolicies/read":  "Microsoft.Storage/storageAccounts/objectReplicationPolicies/read",
-	"Microsoft.Storage/inventoryPolicies/read":          "Microsoft.Storage/storageAccounts/inventoryPolicies/read",
-	"Microsoft.Storage/blobInventoryPolicies/read":      "Microsoft.Storage/storageAccounts/inventoryPolicies/read",
-	"Microsoft.Storage/queue/read":                      "Microsoft.Storage/storageAccounts/queueServices/queues/read",
-	"Microsoft.Storage/table/read":                      "Microsoft.Storage/storageAccounts/tableServices/tables/read",
-
-	// Data Factory: child resources are nested under factories/
-	"Microsoft.DataFactory/linkedServices/read":          "Microsoft.DataFactory/factories/linkedservices/read",
-	"Microsoft.DataFactory/integrationRuntimes/read":     "Microsoft.DataFactory/factories/integrationruntimes/read",
-	"Microsoft.DataFactory/managedVirtualNetworks/read":  "Microsoft.DataFactory/factories/managedvirtualnetworks/read",
-	"Microsoft.DataFactory/managedPrivateEndpoints/read": "Microsoft.DataFactory/factories/managedvirtualnetworks/managedprivateendpoints/read",
-
-	// CDN: AFD routes are nested under profiles/afdendpoints/
-	"Microsoft.Cdn/routes/read": "Microsoft.Cdn/profiles/afdendpoints/routes/read",
-
-	// Network: privateDnsZoneGroups are nested under privateEndpoints/
-	"Microsoft.Network/privateDNSZoneGroups/read": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups/read",
-
-	// HybridCompute: machine extensions are nested under machines/, not a top-level type
-	"Microsoft.HybridCompute/machineExtensions/read": "Microsoft.HybridCompute/machines/extensions/read",
-
-	// App (Container Apps): SDK client names omit the managedEnvironments/ or
-	// containerApps/ parent path.
-	"Microsoft.App/certificates/read":                                 "Microsoft.App/managedEnvironments/certificates/read",
-	"Microsoft.App/daprComponents/read":                               "Microsoft.App/managedEnvironments/daprComponents/read",
-	"Microsoft.App/maintenanceConfigurations/read":                    "Microsoft.App/managedEnvironments/maintenanceConfigurations/read",
-	"Microsoft.App/managedEnvironmentPrivateEndpointConnections/read": "Microsoft.App/managedEnvironments/privateEndpointConnections/read",
-	"Microsoft.App/hTTPRouteConfig/read":                              "Microsoft.App/managedEnvironments/httpRouteConfigs/read",
-	"Microsoft.App/containerAppsAuthConfigs/read":                     "Microsoft.App/containerApps/authConfigs/read",
-	"Microsoft.App/containerAppsRevisions/read":                       "Microsoft.App/containerApps/revisions/read",
-
-	// Cognitive Services: sub-resources are nested under accounts/ (and projects/).
-	"Microsoft.Cognitiveservices/accountConnections/read":    "Microsoft.CognitiveServices/accounts/connections/read",
-	"Microsoft.Cognitiveservices/projectConnections/read":    "Microsoft.CognitiveServices/accounts/projects/connections/read",
-	"Microsoft.Cognitiveservices/projects/read":              "Microsoft.CognitiveServices/accounts/projects/read",
-	"Microsoft.Cognitiveservices/deployments/read":           "Microsoft.CognitiveServices/accounts/deployments/read",
-	"Microsoft.Cognitiveservices/defenderForAISettings/read": "Microsoft.CognitiveServices/accounts/defenderForAISettings/read",
-	"Microsoft.Cognitiveservices/raiPolicies/read":           "Microsoft.CognitiveServices/accounts/raiPolicies/read",
-	"Microsoft.Cognitiveservices/raiTopics/read":             "Microsoft.CognitiveServices/accounts/raiTopics/read",
-
-	// Compute: dedicated hosts live under hostGroups/; gallery images under
-	// galleries/; scale-set sub-resources under virtualMachineScaleSets/.
-	"Microsoft.Compute/dedicatedHostGroups/read":              "Microsoft.Compute/hostGroups/read",
-	"Microsoft.Compute/dedicatedHosts/read":                   "Microsoft.Compute/hostGroups/hosts/read",
-	"Microsoft.Compute/galleryImages/read":                    "Microsoft.Compute/galleries/images/read",
-	"Microsoft.Compute/galleryImageVersions/read":             "Microsoft.Compute/galleries/images/versions/read",
-	"Microsoft.Compute/virtualMachineScaleSetExtensions/read": "Microsoft.Compute/virtualMachineScaleSets/extensions/read",
-	"Microsoft.Compute/virtualMachineScaleSetVMs/read":        "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read",
-
-	// ContainerService: agent pools are nested under managedClusters/.
-	"Microsoft.ContainerService/agentPools/read": "Microsoft.ContainerService/managedClusters/agentPools/read",
-
-	// DBforPostgreSQL: the SDK ServersClient maps to the flexibleServers/ resource
-	// type (the configurations/databases/firewallRules sub-resources are handled by
-	// the existing PostgreSQL entries above, which already resolve to flexibleServers/).
-	"Microsoft.DBforPostgreSQL/servers/read":                    "Microsoft.DBforPostgreSQL/flexibleServers/read",
-	"Microsoft.DBforPostgreSQL/privateEndpointConnections/read": "Microsoft.DBforPostgreSQL/flexibleServers/privateEndpointConnections/read",
-
-	// DocumentDB: private endpoint connections are nested under databaseAccounts/;
-	// the SQLResources client reads SQL containers.
-	"Microsoft.DocumentDB/privateEndpointConnections/read": "Microsoft.DocumentDB/databaseAccounts/privateEndpointConnections/read",
-	"Microsoft.DocumentDB/sQLResources/read":               "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/read",
-
-	// Mongo cluster operations live under the Microsoft.DocumentDB provider.
-	"Microsoft.Mongocluster/mongoClusters/read": "Microsoft.DocumentDB/mongoClusters/read",
-
-	// MachineLearningServices: sub-resources are nested under workspaces/.
-	"Microsoft.MachineLearningServices/compute/read":             "Microsoft.MachineLearningServices/workspaces/computes/read",
-	"Microsoft.MachineLearningServices/modelContainers/read":     "Microsoft.MachineLearningServices/workspaces/models/read",
-	"Microsoft.MachineLearningServices/onlineDeployments/read":   "Microsoft.MachineLearningServices/workspaces/onlineEndpoints/deployments/read",
-	"Microsoft.MachineLearningServices/onlineEndpoints/read":     "Microsoft.MachineLearningServices/workspaces/onlineEndpoints/read",
-	"Microsoft.MachineLearningServices/serverlessEndpoints/read": "Microsoft.MachineLearningServices/workspaces/serverlessEndpoints/read",
-
-	// Network: several SDK clients omit the parent resource path.
-	"Microsoft.Network/connectionMonitors/read":                "Microsoft.Network/networkWatchers/connectionMonitors/read",
-	"Microsoft.Network/expressRouteCircuitAuthorizations/read": "Microsoft.Network/expressRouteCircuits/authorizations/read",
-	"Microsoft.Network/expressRouteCircuitPeerings/read":       "Microsoft.Network/expressRouteCircuits/peerings/read",
-	"Microsoft.Network/hubRouteTables/read":                    "Microsoft.Network/virtualHubs/hubRouteTables/read",
-	"Microsoft.Network/hubVirtualNetworkConnections/read":      "Microsoft.Network/virtualHubs/hubVirtualNetworkConnections/read",
-	"Microsoft.Network/packetCaptures/read":                    "Microsoft.Network/networkWatchers/packetCaptures/read",
-	// Traffic Manager operations live under the Microsoft.Network provider.
-	"Microsoft.Trafficmanager/profiles/read": "Microsoft.Network/trafficManagerProfiles/read",
-
-	// Search: the ARM resource type is searchServices, not services.
-	"Microsoft.Search/services/read": "Microsoft.Search/searchServices/read",
-
-	// Security: Defender for Storage settings use the longer resource type name.
-	"Microsoft.Security/defenderForStorage/read": "Microsoft.Security/defenderForStorageSettings/read",
-	// Security: the APICollections client name lowercases to an odd acronym casing.
-	"Microsoft.Security/aPICollections/read": "Microsoft.Security/apiCollections/read",
-
-	// Sql: server- and database-scoped sub-resources need their parent paths.
-	"Microsoft.Sql/dataMaskingPolicies/read":                  "Microsoft.Sql/servers/databases/dataMaskingPolicies/read",
-	"Microsoft.Sql/dataMaskingRules/read":                     "Microsoft.Sql/servers/databases/dataMaskingPolicies/rules/read",
-	"Microsoft.Sql/databaseVulnerabilityAssessmentScans/read": "Microsoft.Sql/servers/databases/vulnerabilityAssessments/scans/read",
-	"Microsoft.Sql/databaseVulnerabilityAssessments/read":     "Microsoft.Sql/servers/databases/vulnerabilityAssessments/read",
-	"Microsoft.Sql/failoverGroups/read":                       "Microsoft.Sql/servers/failoverGroups/read",
-	"Microsoft.Sql/geoBackupPolicies/read":                    "Microsoft.Sql/servers/databases/geoBackupPolicies/read",
-	"Microsoft.Sql/ledgerDigestUploads/read":                  "Microsoft.Sql/servers/databases/ledgerDigestUploads/read",
-	"Microsoft.Sql/managedDatabases/read":                     "Microsoft.Sql/managedInstances/databases/read",
-	"Microsoft.Sql/outboundFirewallRules/read":                "Microsoft.Sql/servers/outboundFirewallRules/read",
-	"Microsoft.Sql/privateEndpointConnections/read":           "Microsoft.Sql/servers/privateEndpointConnections/read",
-	"Microsoft.Sql/replicationLinks/read":                     "Microsoft.Sql/servers/replicationLinks/read",
-	"Microsoft.Sql/serverDevOpsAuditSettings/read":            "Microsoft.Sql/servers/devOpsAuditingSettings/read",
-	"Microsoft.Sql/serverKeys/read":                           "Microsoft.Sql/servers/keys/read",
-
-	// Storage: network security perimeter configs are nested under storageAccounts/.
-	"Microsoft.Storage/networkSecurityPerimeterConfigurations/read": "Microsoft.Storage/storageAccounts/networkSecurityPerimeterConfigurations/read",
-
-	// NetApp: the ARM resource type is netAppAccounts, and pools and volumes
-	// are nested under it, which the AccountsClient/PoolsClient/VolumesClient
-	// names do not carry.
-	"Microsoft.NetApp/accounts/read": "Microsoft.NetApp/netAppAccounts/read",
-	"Microsoft.NetApp/pools/read":    "Microsoft.NetApp/netAppAccounts/capacityPools/read",
-	"Microsoft.NetApp/volumes/read":  "Microsoft.NetApp/netAppAccounts/capacityPools/volumes/read",
-	// File shares: armfileshares exposes a generic NewClient, so the resource
-	// type comes from the package name and loses the camel hump. Snapshots are
-	// nested under the share, which the FileShareSnapshotsClient name does not
-	// carry.
-	"Microsoft.FileShares/fileshares/read":         "Microsoft.FileShares/fileShares/read",
-	"Microsoft.FileShares/fileShareSnapshots/read": "Microsoft.FileShares/fileShares/snapshots/read",
-	// Elastic SAN: volume groups are nested under elasticSans/, which the
-	// VolumeGroupsClient name does not carry.
-	"Microsoft.ElasticSan/volumeGroups/read": "Microsoft.ElasticSan/elasticSans/volumeGroups/read",
-	// Automation: every client is named after the singular child type, which
-	// sits under automationAccounts/.
-	"Microsoft.Automation/account/read":                  "Microsoft.Automation/automationAccounts/read",
-	"Microsoft.Automation/certificate/read":              "Microsoft.Automation/automationAccounts/certificates/read",
-	"Microsoft.Automation/credential/read":               "Microsoft.Automation/automationAccounts/credentials/read",
-	"Microsoft.Automation/variable/read":                 "Microsoft.Automation/automationAccounts/variables/read",
-	"Microsoft.Automation/runbook/read":                  "Microsoft.Automation/automationAccounts/runbooks/read",
-	"Microsoft.Automation/webhook/read":                  "Microsoft.Automation/automationAccounts/webhooks/read",
-	"Microsoft.Automation/hybridRunbookWorkerGroup/read": "Microsoft.Automation/automationAccounts/hybridRunbookWorkerGroups/read",
-	// API Management backends sit under service/.
-	"Microsoft.ApiManagement/backend/read": "Microsoft.ApiManagement/service/backends/read",
-	// VM run commands are children of the VM.
-	"Microsoft.Compute/virtualMachineRunCommands/read": "Microsoft.Compute/virtualMachines/runCommands/read",
-	// Data Protection: instances, policies and Resource Guard proxies are
-	// children of a backup vault.
-	"Microsoft.DataProtection/backupInstances/read":       "Microsoft.DataProtection/backupVaults/backupInstances/read",
-	"Microsoft.DataProtection/backupPolicies/read":        "Microsoft.DataProtection/backupVaults/backupPolicies/read",
-	"Microsoft.DataProtection/dppResourceGuardProxy/read": "Microsoft.DataProtection/backupVaults/backupResourceGuardProxies/read",
-	// SQL Managed Instance security settings are children of the instance.
-	"Microsoft.Sql/managedServerSecurityAlertPolicies/read":      "Microsoft.Sql/managedInstances/securityAlertPolicies/read",
-	"Microsoft.Sql/managedInstanceVulnerabilityAssessments/read": "Microsoft.Sql/managedInstances/vulnerabilityAssessments/read",
-}
-
-// azurePermission constructs the RBAC permission string.
-func azurePermission(armProvider, resourceType string) string {
-	// Convert PascalCase to camelCase for the resource type
-	rt := pascalToCamelCase(resourceType)
-	perm := armProvider + "/" + rt + "/read"
-
-	// Check for overrides where SDK names don't match ARM resource types
-	if override, ok := azurePermissionOverrides[perm]; ok {
-		return override
-	}
-	return perm
-}
-
-func pascalToCamelCase(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToLower(s[:1]) + s[1:]
-}
-
-// azureResourceFromPackage derives a resource type from an Azure ARM package name
-// when the constructor is generic (NewClient).
-// e.g., "armresources" -> "resources", "armsubscriptions" -> "subscriptions"
-func azureResourceFromPackage(pkgName string) string {
-	name := strings.TrimPrefix(pkgName, "arm")
-	if name == "" {
-		return pkgName
-	}
-	return name
-}
-
+// isAzureReadMethod reports whether an SDK method is one of the reads the
+// manifest accounts for.
 func isAzureReadMethod(name string) bool {
 	readMethods := []string{
 		"NewListPager", "NewListAllPager", "NewListBySubscriptionPager",
@@ -2376,4 +2083,111 @@ func isAzureReadMethod(name string) bool {
 	}
 	// Catch-all for other list pagers
 	return strings.HasPrefix(name, "NewList") && strings.HasSuffix(name, "Pager")
+}
+
+// =============================================================================
+// Reading the Azure SDK
+// =============================================================================
+
+// azureSDKIndex locates the Azure SDK sources the provider compiles against:
+// the module versions from its go.mod, unpacked in the module cache.
+type azureSDKIndex struct {
+	versions map[string]string // module path -> version
+	cache    string            // GOMODCACHE
+	read     func(string) ([]byte, error)
+}
+
+// loadAzureSDKIndex reads <providerRoot>/go.mod and finds the module cache
+// (GOMODCACHE, or `go env GOMODCACHE`).
+func loadAzureSDKIndex(providerRoot string) (*azureSDKIndex, error) {
+	data, err := os.ReadFile(filepath.Join(providerRoot, "go.mod"))
+	if err != nil {
+		return nil, err
+	}
+	versions := parseAzureSDKVersions(data)
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("%s/go.mod pins no Azure SDK modules", providerRoot)
+	}
+	cache := os.Getenv("GOMODCACHE")
+	if cache == "" {
+		out, err := exec.Command("go", "env", "GOMODCACHE").Output()
+		if err != nil {
+			return nil, fmt.Errorf("GOMODCACHE is not set and `go env GOMODCACHE` failed: %w", err)
+		}
+		cache = strings.TrimSpace(string(out))
+	}
+	return &azureSDKIndex{versions: versions, cache: cache, read: os.ReadFile}, nil
+}
+
+// parseAzureSDKVersions returns the Azure SDK modules a go.mod pins, module
+// path to version.
+func parseAzureSDKVersions(gomod []byte) map[string]string {
+	versions := map[string]string{}
+	// A require line: module path, version, optionally a trailing comment such
+	// as "// indirect". Anchored at both ends so nothing else on a line counts.
+	re := regexp.MustCompile(`^\s*(github\.com/Azure/azure-sdk-for-go/\S+)\s+(v\S+)\s*(?://.*)?$`)
+	for _, line := range strings.Split(string(gomod), "\n") {
+		if m := re.FindStringSubmatch(line); m != nil {
+			versions[m[1]] = m[2]
+		}
+	}
+	return versions
+}
+
+// dir returns the unpacked directory of the package at importPath: the longest
+// pinned module that is a prefix of it, plus the remaining path inside it.
+func (x *azureSDKIndex) dir(importPath string) (string, bool) {
+	best := ""
+	for mod := range x.versions {
+		if (importPath == mod || strings.HasPrefix(importPath, mod+"/")) && len(mod) > len(best) {
+			best = mod
+		}
+	}
+	if best == "" {
+		return "", false
+	}
+	// The module cache escapes upper-case letters as !lower.
+	var esc strings.Builder
+	for _, r := range best {
+		if r >= 'A' && r <= 'Z' {
+			esc.WriteByte('!')
+			esc.WriteRune(r + ('a' - 'A'))
+		} else {
+			esc.WriteRune(r)
+		}
+	}
+	return filepath.Join(x.cache, esc.String()+"@"+x.versions[best], strings.TrimPrefix(importPath, best)), true
+}
+
+// request finds the SDK function that builds the request for the call and
+// returns its URL template and HTTP method. Generated clients name it
+// <method>CreateRequest, where <method> is the operation's name in lower camel
+// case (NewListByClusterPager -> listByClusterCreateRequest), in the file
+// <client>_client.go (client.go for a package's generic Client).
+func (x *azureSDKIndex) request(call azureCall) (urlPath, httpMethod string, err error) {
+	dir, ok := x.dir(call.importPath)
+	if !ok {
+		return "", "", fmt.Errorf("%s is not pinned in go.mod", call.importPath)
+	}
+	file := filepath.Join(dir, "client.go")
+	if call.client != "Client" {
+		file = filepath.Join(dir, strings.ToLower(strings.TrimSuffix(call.client, "Client"))+"_client.go")
+	}
+	src, err := x.read(file)
+	if err != nil {
+		return "", "", fmt.Errorf("%w (is the module cache populated? `go mod download` in the provider)", err)
+	}
+	op := strings.TrimSuffix(strings.TrimPrefix(call.method, "New"), "Pager")
+	fn := strings.ToLower(op[:1]) + op[1:] + "CreateRequest"
+	re := regexp.MustCompile(`(?s)func \(client \*` + regexp.QuoteMeta(call.client) + `\) ` + regexp.QuoteMeta(fn) + `\(.*?\n\}`)
+	body := re.Find(src)
+	if body == nil {
+		return "", "", fmt.Errorf("no %s on %s in %s", fn, call.client, filepath.Base(file))
+	}
+	u := regexp.MustCompile(`urlPath := "([^"]+)"`).FindSubmatch(body)
+	h := regexp.MustCompile(`http\.Method(\w+)`).FindSubmatch(body)
+	if u == nil || h == nil {
+		return "", "", fmt.Errorf("%s on %s builds no URL path", fn, call.client)
+	}
+	return string(u[1]), strings.ToUpper(string(h[1])), nil
 }

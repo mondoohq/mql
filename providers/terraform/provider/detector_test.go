@@ -84,3 +84,42 @@ func TestDetect_AssetName(t *testing.T) {
 		assert.Equal(t, "test-local", asset.Name)
 	})
 }
+
+// A parent provider that discovers repositories presets each child's Name and
+// PlatformIds before the Terraform provider sees it. detect() must keep both:
+// an Azure DevOps ssh URL does not carry the organization where
+// ParseGitSshUrl looks for it, so the derived id cannot tell two same-named
+// repositories in different organizations apart.
+func TestDetect_KeepsAPresetChildIdentity(t *testing.T) {
+	newChild := func(org string) *inventory.Asset {
+		const project, repo = "scan-test", "ado-scan-test-iac"
+		return &inventory.Asset{
+			Name: project + "/" + repo,
+			PlatformIds: []string{
+				"//platformid.api.mondoo.app/runtime/terraform/domain/dev.azure.com/org/" + org + "/project/" + project + "/repo/" + repo,
+			},
+			Connections: []*inventory.Config{{
+				Type: HclConnectionType,
+				Options: map[string]string{
+					"ssh-url":  "git@ssh.dev.azure.com:v3/" + org + "/" + project + "/" + repo,
+					"http-url": "https://dev.azure.com/" + org + "/" + project + "/_git/" + repo,
+				},
+			}},
+		}
+	}
+
+	var ids []string
+	for _, org := range []string{"fabrikam-fixture-org", "fabrikam-other-fixture-org"} {
+		child := newChild(org)
+		preset := child.PlatformIds[0]
+
+		require.NoError(t, (&Service{}).detect(child, nil))
+
+		assert.Equal(t, "scan-test/ado-scan-test-iac", child.Name, "a preset name is kept")
+		assert.Equal(t, []string{preset}, child.PlatformIds, "a preset platform id is kept, not replaced by the derived one")
+		assert.Equal(t, preset, child.Connections[0].PlatformId)
+		assert.Equal(t, "terraform-hcl", child.Platform.Name, "detection still fills in the platform")
+		ids = append(ids, child.PlatformIds[0])
+	}
+	assert.NotEqual(t, ids[0], ids[1], "same-named repositories in two organizations stay distinct")
+}

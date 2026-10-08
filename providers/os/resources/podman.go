@@ -649,6 +649,220 @@ func (c *mqlPodmanContainer) restartPolicy() (string, error) {
 	return inspect.HostConfig.RestartPolicy.Name, nil
 }
 
+func (c *mqlPodmanContainer) ipcMode() (string, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return "", err
+	}
+	return inspect.HostConfig.IpcMode, nil
+}
+
+func (c *mqlPodmanContainer) utsMode() (string, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return "", err
+	}
+	return inspect.HostConfig.UTSMode, nil
+}
+
+func (c *mqlPodmanContainer) cgroupnsMode() (string, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return "", err
+	}
+	return inspect.HostConfig.CgroupMode, nil
+}
+
+func (c *mqlPodmanContainer) seccompProfile() (string, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return "", err
+	}
+	p, err := NewResource(c.MqlRuntime, "podman", map[string]*llx.RawData{})
+	if err != nil {
+		return "", err
+	}
+	info, err := p.(*mqlPodman).loadInfo()
+	if err != nil {
+		return "", err
+	}
+	// both paths come from the container's or the engine's settings, so they
+	// are read only as small regular files
+	readProfile := func(p string) string {
+		content, _ := readSmallRegularFile(c.MqlRuntime, p, maxSmallFileSize)
+		return content
+	}
+	var spec *ociSpec
+	if podmanStoragePath(inspect.OCIConfigPath, info.Store.GraphRoot, info.Store.RunRoot) {
+		if content := readProfile(inspect.OCIConfigPath); content != "" {
+			if parsed, err := parseOCISpec([]byte(content)); err == nil {
+				spec = parsed
+			}
+		}
+	}
+	return podmanSeccompProfile(inspect.HostConfig.Privileged, inspect.HostConfig.SecurityOpt, spec, info.Host.Security, readProfile), nil
+}
+
+func (c *mqlPodmanContainer) apparmorProfile() (string, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return "", err
+	}
+	return inspect.AppArmorProfile, nil
+}
+
+func (c *mqlPodmanContainer) noNewPrivileges() (bool, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return false, err
+	}
+	return securityOptNoNewPrivileges(inspect.HostConfig.SecurityOpt), nil
+}
+
+func (c *mqlPodmanContainer) limitField(field *plugin.TValue[int64], get func(*podmanInspectEntry) int64) (int64, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return 0, err
+	}
+	v := get(inspect)
+	n, ok := positiveLimit(&v)
+	if !ok {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return n, nil
+}
+
+func (c *mqlPodmanContainer) memoryLimit() (int64, error) {
+	return c.limitField(&c.MemoryLimit, func(e *podmanInspectEntry) int64 { return e.HostConfig.Memory })
+}
+
+func (c *mqlPodmanContainer) cpuShares() (int64, error) {
+	return c.limitField(&c.CpuShares, func(e *podmanInspectEntry) int64 { return e.HostConfig.CPUShares })
+}
+
+func (c *mqlPodmanContainer) nanoCpus() (int64, error) {
+	return c.limitField(&c.NanoCpus, func(e *podmanInspectEntry) int64 { return e.HostConfig.NanoCpus })
+}
+
+func (c *mqlPodmanContainer) pidsLimit() (int64, error) {
+	return c.limitField(&c.PidsLimit, func(e *podmanInspectEntry) int64 { return e.HostConfig.PidsLimit })
+}
+
+func (c *mqlPodmanContainer) ulimits() ([]any, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, u := range inspect.HostConfig.Ulimits {
+		name := podmanUlimitName(u.Name)
+		r, err := CreateResource(c.MqlRuntime, "podman.container.ulimit", map[string]*llx.RawData{
+			"__id": llx.StringData("podman.container.ulimit/" + c.Id.Data + "/" + name),
+			"name": llx.StringData(name),
+			"soft": llx.IntData(u.Soft),
+			"hard": llx.IntData(u.Hard),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+func (c *mqlPodmanContainer) hasHealthcheck() (bool, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return false, err
+	}
+	return healthcheckDefined(inspect.Config.Healthcheck), nil
+}
+
+func (c *mqlPodmanContainer) healthcheckTest() ([]any, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return nil, err
+	}
+	if inspect.Config.Healthcheck == nil {
+		return []any{}, nil
+	}
+	return convert.SliceAnyToInterface(inspect.Config.Healthcheck.Test), nil
+}
+
+func (c *mqlPodmanContainer) healthcheckInterval() (int64, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return 0, err
+	}
+	secs, ok := healthcheckIntervalSeconds(inspect.Config.Healthcheck)
+	if !ok {
+		c.HealthcheckInterval.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return secs, nil
+}
+
+func (c *mqlPodmanContainer) healthStatus() (string, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return "", err
+	}
+	status := inspect.healthStatus()
+	if status == "" {
+		c.HealthStatus.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return status, nil
+}
+
+func (c *mqlPodmanContainer) devices() ([]any, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, d := range inspect.HostConfig.Devices {
+		r, err := CreateResource(c.MqlRuntime, "podman.container.device", map[string]*llx.RawData{
+			"__id":          llx.StringData("podman.container.device/" + c.Id.Data + "/" + d.PathInContainer),
+			"hostPath":      llx.StringData(d.PathOnHost),
+			"containerPath": llx.StringData(d.PathInContainer),
+			"permissions":   llx.StringData(d.CgroupPermissions),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
+func (c *mqlPodmanContainer) mounts() ([]any, error) {
+	inspect, err := c.loadInspect()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, m := range containerMounts(inspect.Mounts, inspect.HostConfig.Tmpfs) {
+		r, err := CreateResource(c.MqlRuntime, "podman.container.mount", map[string]*llx.RawData{
+			"__id":          llx.StringData("podman.container.mount/" + c.Id.Data + "/" + m.Destination),
+			"type":          llx.StringData(string(m.Type)),
+			"name":          llx.StringData(m.Name),
+			"hostPath":      llx.StringData(m.Source),
+			"containerPath": llx.StringData(m.Destination),
+			"readOnly":      llx.BoolData(!m.RW),
+			"mode":          llx.StringData(m.Mode),
+			"propagation":   llx.StringData(string(m.Propagation)),
+			"driver":        llx.StringData(m.Driver),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+	}
+	return res, nil
+}
+
 func (c *mqlPodmanContainer) image() (*mqlPodmanImage, error) {
 	imageID := c.ImageId.Data
 	if imageID == "" {

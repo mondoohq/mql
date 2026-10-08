@@ -1,0 +1,6 @@
+version = 3
+
+[grpc]
+  address = "/run/containerd/legacy.sock"
+  gid = 1001
+  tcp_address = "127.0.0.1:2377"

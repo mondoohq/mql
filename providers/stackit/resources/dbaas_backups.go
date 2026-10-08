@@ -69,8 +69,11 @@ func (r *mqlStackitPostgresFlexInstance) backups() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListBackups(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -95,8 +98,11 @@ func (r *mqlStackitMongoDbFlexInstance) backups() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListBackups(bgctx(), c.ProjectID(), r.Id.Data, c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -143,8 +149,11 @@ func (r *mqlStackitSqlServerFlexInstance) backups() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListBackups(bgctx(), c.ProjectID(), r.Id.Data, c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -176,8 +185,11 @@ func (r *mqlStackitPostgresFlex) versions() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListVersions(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -192,8 +204,11 @@ func (r *mqlStackitMongoDbFlex) versions() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListVersions(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -208,8 +223,11 @@ func (r *mqlStackitSqlServerFlex) versions() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListVersions(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -258,8 +276,11 @@ func (r *mqlStackitOpenSearchInstance) backups() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListBackups(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -284,8 +305,11 @@ func (r *mqlStackitMariaDbInstance) backups() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListBackups(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -310,8 +334,11 @@ func (r *mqlStackitRedisInstance) backups() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListBackups(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -336,8 +363,11 @@ func (r *mqlStackitRabbitMqInstance) backups() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListBackups(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -362,8 +392,11 @@ func (r *mqlStackitLogMeInstance) backups() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListBackups(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -521,8 +554,11 @@ func (r *mqlStackitOpenSearch) offerings() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListOfferings(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -608,8 +644,11 @@ func (r *mqlStackitMariaDb) offerings() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListOfferings(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -695,8 +734,11 @@ func (r *mqlStackitRedis) offerings() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListOfferings(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -782,8 +824,11 @@ func (r *mqlStackitRabbitMq) offerings() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListOfferings(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -869,8 +914,11 @@ func (r *mqlStackitLogMe) offerings() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListOfferings(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}

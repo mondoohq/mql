@@ -1,0 +1,327 @@
+{
+    "ID": "a2f8eb03b8c59885a079bc2b563da3da96ed864759e480b38c969551cee38a06",
+    "Labels": {
+        "io.cri-containerd.kind": "container",
+        "io.kubernetes.container.name": "unconfined",
+        "io.kubernetes.pod.name": "unconfined",
+        "io.kubernetes.pod.namespace": "default",
+        "io.kubernetes.pod.uid": "72e9ddfb-e6f5-4318-9f03-b39750859a39"
+    },
+    "Image": "docker.io/library/busybox:1.36",
+    "Runtime": {
+        "Name": "io.containerd.runc.v2",
+        "Options": {
+            "type_url": "containerd.runc.v1.Options",
+            "value": "SAE="
+        }
+    },
+    "Snapshotter": "overlayfs",
+    "CreatedAt": "2026-10-08T00:33:15.998946752Z",
+    "UpdatedAt": "2026-10-08T00:33:15.998946752Z",
+    "Extensions": {
+        "io.cri-containerd.container.metadata": {
+            "type_url": "github.com/containerd/cri/pkg/store/container/Metadata",
+            "value": "eyJWZXJzaW9uIjoidjEiLCJNZXRhZGF0YSI6eyJJRCI6ImEyZjhlYjAzYjhjNTk4ODVhMDc5YmMyYjU2M2RhM2RhOTZlZDg2NDc1OWU0ODBiMzhjOTY5NTUxY2VlMzhhMDYiLCJOYW1lIjoidW5jb25maW5lZF91bmNvbmZpbmVkX2RlZmF1bHRfNzJlOWRkZmItZTZmNS00MzE4LTlmMDMtYjM5NzUwODU5YTM5XzAiLCJTYW5kYm94SUQiOiIyZWI3YjlmMWU2OGViMTUyZDRjNzhiODg4YWQzNGI3ODQ2YTY2OGUyODhhNzM2MDdlNTUxM2YwY2ZkMzUwOTk4IiwiQ29uZmlnIjp7Im1ldGFkYXRhIjp7Im5hbWUiOiJ1bmNvbmZpbmVkIn0sImltYWdlIjp7ImltYWdlIjoic2hhMjU2OmI3Yzg3M2JkOTdiZGM5MDQ2ZmM4OTRlMGIyMTZjOGFlZjMxZTBkYjRjNWI3NjFmYjUzMDIyZTQwNTc3YWI2YzAiLCJ1c2VyX3NwZWNpZmllZF9pbWFnZSI6ImJ1c3lib3g6MS4zNiJ9LCJjb21tYW5kIjpbInNsZWVwIiwiaW5maW5pdHkiXSwiZW52cyI6W3sia2V5IjoiS1VCRVJORVRFU19TRVJWSUNFX1BPUlRfSFRUUFMiLCJ2YWx1ZSI6IjQ0MyJ9LHsia2V5IjoiS1VCRVJORVRFU19QT1JUIiwidmFsdWUiOiJ0Y3A6Ly8xMC45Ni4wLjE6NDQzIn0seyJrZXkiOiJLVUJFUk5FVEVTX1BPUlRfNDQzX1RDUCIsInZhbHVlIjoidGNwOi8vMTAuOTYuMC4xOjQ0MyJ9LHsia2V5IjoiS1VCRVJORVRFU19QT1JUXzQ0M19UQ1BfUFJPVE8iLCJ2YWx1ZSI6InRjcCJ9LHsia2V5IjoiS1VCRVJORVRFU19QT1JUXzQ0M19UQ1BfUE9SVCIsInZhbHVlIjoiNDQzIn0seyJrZXkiOiJLVUJFUk5FVEVTX1BPUlRfNDQzX1RDUF9BRERSIiwidmFsdWUiOiIxMC45Ni4wLjEifSx7ImtleSI6IktVQkVSTkVURVNfU0VSVklDRV9IT1NUIiwidmFsdWUiOiIxMC45Ni4wLjEifSx7ImtleSI6IktVQkVSTkVURVNfU0VSVklDRV9QT1JUIiwidmFsdWUiOiI0NDMifV0sIm1vdW50cyI6W3siY29udGFpbmVyX3BhdGgiOiIvdmFyL3J1bi9zZWNyZXRzL2t1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQiLCJob3N0X3BhdGgiOiIvdmFyL2xpYi9rdWJlbGV0L3BvZHMvNzJlOWRkZmItZTZmNS00MzE4LTlmMDMtYjM5NzUwODU5YTM5L3ZvbHVtZXMva3ViZXJuZXRlcy5pb35wcm9qZWN0ZWQva3ViZS1hcGktYWNjZXNzLWRuZHdsIiwicmVhZG9ubHkiOnRydWV9LHsiY29udGFpbmVyX3BhdGgiOiIvZXRjL2hvc3RzIiwiaG9zdF9wYXRoIjoiL3Zhci9saWIva3ViZWxldC9wb2RzLzcyZTlkZGZiLWU2ZjUtNDMxOC05ZjAzLWIzOTc1MDg1OWEzOS9ldGMtaG9zdHMifSx7ImNvbnRhaW5lcl9wYXRoIjoiL2Rldi90ZXJtaW5hdGlvbi1sb2ciLCJob3N0X3BhdGgiOiIvdmFyL2xpYi9rdWJlbGV0L3BvZHMvNzJlOWRkZmItZTZmNS00MzE4LTlmMDMtYjM5NzUwODU5YTM5L2NvbnRhaW5lcnMvdW5jb25maW5lZC9jOTlmOTYyZSJ9XSwibGFiZWxzIjp7ImlvLmt1YmVybmV0ZXMuY29udGFpbmVyLm5hbWUiOiJ1bmNvbmZpbmVkIiwiaW8ua3ViZXJuZXRlcy5wb2QubmFtZSI6InVuY29uZmluZWQiLCJpby5rdWJlcm5ldGVzLnBvZC5uYW1lc3BhY2UiOiJkZWZhdWx0IiwiaW8ua3ViZXJuZXRlcy5wb2QudWlkIjoiNzJlOWRkZmItZTZmNS00MzE4LTlmMDMtYjM5NzUwODU5YTM5In0sImFubm90YXRpb25zIjp7ImlvLmt1YmVybmV0ZXMuY29udGFpbmVyLmhhc2giOiJjYzAyMTM3ZiIsImlvLmt1YmVybmV0ZXMuY29udGFpbmVyLnJlc3RhcnRDb3VudCI6IjAiLCJpby5rdWJlcm5ldGVzLmNvbnRhaW5lci50ZXJtaW5hdGlvbk1lc3NhZ2VQYXRoIjoiL2Rldi90ZXJtaW5hdGlvbi1sb2ciLCJpby5rdWJlcm5ldGVzLmNvbnRhaW5lci50ZXJtaW5hdGlvbk1lc3NhZ2VQb2xpY3kiOiJGaWxlIiwiaW8ua3ViZXJuZXRlcy5wb2QudGVybWluYXRpb25HcmFjZVBlcmlvZCI6IjMwIn0sImxvZ19wYXRoIjoidW5jb25maW5lZC8wLmxvZyIsImxpbnV4Ijp7InJlc291cmNlcyI6eyJjcHVfcGVyaW9kIjoxMDAwMDAsImNwdV9zaGFyZXMiOjIsIm9vbV9zY29yZV9hZGoiOjEwMDAsImh1Z2VwYWdlX2xpbWl0cyI6W3sicGFnZV9zaXplIjoiMk1CIn0seyJwYWdlX3NpemUiOiIzMk1CIn0seyJwYWdlX3NpemUiOiI2NEtCIn0seyJwYWdlX3NpemUiOiIxR0IifV0sInVuaWZpZWQiOnsibWVtb3J5Lm9vbS5ncm91cCI6IjEiLCJtZW1vcnkuc3dhcC5tYXgiOiIwIn19LCJzZWN1cml0eV9jb250ZXh0Ijp7ImNhcGFiaWxpdGllcyI6eyJhZGRfY2FwYWJpbGl0aWVzIjpbIlNZU19BRE1JTiIsIk5FVF9BRE1JTiJdfSwibmFtZXNwYWNlX29wdGlvbnMiOnsicGlkIjoxLCJ1c2VybnNfb3B0aW9ucyI6eyJtb2RlIjoyfX0sInJ1bl9hc191c2VyIjp7fSwibWFza2VkX3BhdGhzIjpbIi9wcm9jL2Fzb3VuZCIsIi9wcm9jL2FjcGkiLCIvcHJvYy9pbnRlcnJ1cHRzIiwiL3Byb2Mva2NvcmUiLCIvcHJvYy9rZXlzIiwiL3Byb2MvbGF0ZW5jeV9zdGF0cyIsIi9wcm9jL3RpbWVyX2xpc3QiLCIvcHJvYy90aW1lcl9zdGF0cyIsIi9wcm9jL3NjaGVkX2RlYnVnIiwiL3Byb2Mvc2NzaSIsIi9zeXMvZmlybXdhcmUiLCIvc3lzL2RldmljZXMvdmlydHVhbC9wb3dlcmNhcCJdLCJyZWFkb25seV9wYXRocyI6WyIvcHJvYy9idXMiLCIvcHJvYy9mcyIsIi9wcm9jL2lycSIsIi9wcm9jL3N5cyIsIi9wcm9jL3N5c3JxLXRyaWdnZXIiXSwic2VjY29tcCI6eyJwcm9maWxlX3R5cGUiOjF9fX19LCJJbWFnZVJlZiI6InNoYTI1NjpiN2M4NzNiZDk3YmRjOTA0NmZjODk0ZTBiMjE2YzhhZWYzMWUwZGI0YzViNzYxZmI1MzAyMmU0MDU3N2FiNmMwIiwiTG9nUGF0aCI6Ii92YXIvbG9nL3BvZHMvZGVmYXVsdF91bmNvbmZpbmVkXzcyZTlkZGZiLWU2ZjUtNDMxOC05ZjAzLWIzOTc1MDg1OWEzOS91bmNvbmZpbmVkLzAubG9nIiwiU3RvcFNpZ25hbCI6IiIsIlByb2Nlc3NMYWJlbCI6IiJ9fQ=="
+        }
+    },
+    "SandboxID": "2eb7b9f1e68eb152d4c78b888ad34b7846a668e288a73607e5513f0cfd350998",
+    "Spec": {
+        "ociVersion": "1.2.1",
+        "process": {
+            "user": {
+                "uid": 0,
+                "gid": 0,
+                "additionalGids": [
+                    0,
+                    10
+                ]
+            },
+            "args": [
+                "sleep",
+                "infinity"
+            ],
+            "env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "HOSTNAME=unconfined",
+                "KUBERNETES_SERVICE_PORT_HTTPS=443",
+                "KUBERNETES_PORT=tcp://10.96.0.1:443",
+                "KUBERNETES_PORT_443_TCP=tcp://10.96.0.1:443",
+                "KUBERNETES_PORT_443_TCP_PROTO=tcp",
+                "KUBERNETES_PORT_443_TCP_PORT=443",
+                "KUBERNETES_PORT_443_TCP_ADDR=10.96.0.1",
+                "KUBERNETES_SERVICE_HOST=10.96.0.1",
+                "KUBERNETES_SERVICE_PORT=443"
+            ],
+            "cwd": "/",
+            "capabilities": {
+                "bounding": [
+                    "CAP_CHOWN",
+                    "CAP_DAC_OVERRIDE",
+                    "CAP_FSETID",
+                    "CAP_FOWNER",
+                    "CAP_MKNOD",
+                    "CAP_NET_RAW",
+                    "CAP_SETGID",
+                    "CAP_SETUID",
+                    "CAP_SETFCAP",
+                    "CAP_SETPCAP",
+                    "CAP_NET_BIND_SERVICE",
+                    "CAP_SYS_CHROOT",
+                    "CAP_KILL",
+                    "CAP_AUDIT_WRITE",
+                    "CAP_SYS_ADMIN",
+                    "CAP_NET_ADMIN"
+                ],
+                "effective": [
+                    "CAP_CHOWN",
+                    "CAP_DAC_OVERRIDE",
+                    "CAP_FSETID",
+                    "CAP_FOWNER",
+                    "CAP_MKNOD",
+                    "CAP_NET_RAW",
+                    "CAP_SETGID",
+                    "CAP_SETUID",
+                    "CAP_SETFCAP",
+                    "CAP_SETPCAP",
+                    "CAP_NET_BIND_SERVICE",
+                    "CAP_SYS_CHROOT",
+                    "CAP_KILL",
+                    "CAP_AUDIT_WRITE",
+                    "CAP_SYS_ADMIN",
+                    "CAP_NET_ADMIN"
+                ],
+                "permitted": [
+                    "CAP_CHOWN",
+                    "CAP_DAC_OVERRIDE",
+                    "CAP_FSETID",
+                    "CAP_FOWNER",
+                    "CAP_MKNOD",
+                    "CAP_NET_RAW",
+                    "CAP_SETGID",
+                    "CAP_SETUID",
+                    "CAP_SETFCAP",
+                    "CAP_SETPCAP",
+                    "CAP_NET_BIND_SERVICE",
+                    "CAP_SYS_CHROOT",
+                    "CAP_KILL",
+                    "CAP_AUDIT_WRITE",
+                    "CAP_SYS_ADMIN",
+                    "CAP_NET_ADMIN"
+                ]
+            },
+            "oomScoreAdj": 1000
+        },
+        "root": {
+            "path": "rootfs"
+        },
+        "mounts": [
+            {
+                "destination": "/proc",
+                "type": "proc",
+                "source": "proc",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev"
+                ]
+            },
+            {
+                "destination": "/dev",
+                "type": "tmpfs",
+                "source": "tmpfs",
+                "options": [
+                    "nosuid",
+                    "strictatime",
+                    "mode=755",
+                    "size=65536k"
+                ]
+            },
+            {
+                "destination": "/dev/pts",
+                "type": "devpts",
+                "source": "devpts",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "newinstance",
+                    "ptmxmode=0666",
+                    "mode=0620",
+                    "gid=5"
+                ]
+            },
+            {
+                "destination": "/dev/mqueue",
+                "type": "mqueue",
+                "source": "mqueue",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev"
+                ]
+            },
+            {
+                "destination": "/sys",
+                "type": "sysfs",
+                "source": "sysfs",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev",
+                    "ro"
+                ]
+            },
+            {
+                "destination": "/sys/fs/cgroup",
+                "type": "cgroup",
+                "source": "cgroup",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev",
+                    "relatime",
+                    "ro"
+                ]
+            },
+            {
+                "destination": "/etc/hosts",
+                "type": "bind",
+                "source": "/var/lib/kubelet/pods/72e9ddfb-e6f5-4318-9f03-b39750859a39/etc-hosts",
+                "options": [
+                    "rbind",
+                    "rprivate",
+                    "rw"
+                ]
+            },
+            {
+                "destination": "/dev/termination-log",
+                "type": "bind",
+                "source": "/var/lib/kubelet/pods/72e9ddfb-e6f5-4318-9f03-b39750859a39/containers/unconfined/c99f962e",
+                "options": [
+                    "rbind",
+                    "rprivate",
+                    "rw"
+                ]
+            },
+            {
+                "destination": "/etc/hostname",
+                "type": "bind",
+                "source": "/var/lib/containerd/io.containerd.grpc.v1.cri/sandboxes/2eb7b9f1e68eb152d4c78b888ad34b7846a668e288a73607e5513f0cfd350998/hostname",
+                "options": [
+                    "rbind",
+                    "rprivate",
+                    "rw"
+                ]
+            },
+            {
+                "destination": "/etc/resolv.conf",
+                "type": "bind",
+                "source": "/var/lib/containerd/io.containerd.grpc.v1.cri/sandboxes/2eb7b9f1e68eb152d4c78b888ad34b7846a668e288a73607e5513f0cfd350998/resolv.conf",
+                "options": [
+                    "rbind",
+                    "rprivate",
+                    "rw"
+                ]
+            },
+            {
+                "destination": "/dev/shm",
+                "type": "bind",
+                "source": "/run/containerd/io.containerd.grpc.v1.cri/sandboxes/2eb7b9f1e68eb152d4c78b888ad34b7846a668e288a73607e5513f0cfd350998/shm",
+                "options": [
+                    "rbind",
+                    "rprivate",
+                    "rw"
+                ]
+            },
+            {
+                "destination": "/var/run/secrets/kubernetes.io/serviceaccount",
+                "type": "bind",
+                "source": "/var/lib/kubelet/pods/72e9ddfb-e6f5-4318-9f03-b39750859a39/volumes/kubernetes.io~projected/kube-api-access-dndwl",
+                "options": [
+                    "rbind",
+                    "rprivate",
+                    "ro"
+                ]
+            }
+        ],
+        "hooks": {
+            "createContainer": [
+                {
+                    "path": "/kind/bin/mount-product-files.sh"
+                }
+            ]
+        },
+        "annotations": {
+            "io.kubernetes.cri.container-name": "unconfined",
+            "io.kubernetes.cri.container-type": "container",
+            "io.kubernetes.cri.image-name": "busybox:1.36",
+            "io.kubernetes.cri.sandbox-id": "2eb7b9f1e68eb152d4c78b888ad34b7846a668e288a73607e5513f0cfd350998",
+            "io.kubernetes.cri.sandbox-name": "unconfined",
+            "io.kubernetes.cri.sandbox-namespace": "default",
+            "io.kubernetes.cri.sandbox-uid": "72e9ddfb-e6f5-4318-9f03-b39750859a39"
+        },
+        "linux": {
+            "resources": {
+                "devices": [
+                    {
+                        "allow": false,
+                        "access": "rwm"
+                    }
+                ],
+                "memory": {},
+                "cpu": {
+                    "shares": 2,
+                    "period": 100000
+                },
+                "unified": {
+                    "memory.oom.group": "1",
+                    "memory.swap.max": "0"
+                }
+            },
+            "cgroupsPath": "kubelet-kubepods-besteffort-pod72e9ddfb_e6f5_4318_9f03_b39750859a39.slice:cri-containerd:a2f8eb03b8c59885a079bc2b563da3da96ed864759e480b38c969551cee38a06",
+            "namespaces": [
+                {
+                    "type": "pid"
+                },
+                {
+                    "type": "ipc",
+                    "path": "/proc/10536/ns/ipc"
+                },
+                {
+                    "type": "uts",
+                    "path": "/proc/10536/ns/uts"
+                },
+                {
+                    "type": "mount"
+                },
+                {
+                    "type": "network",
+                    "path": "/proc/10536/ns/net"
+                },
+                {
+                    "type": "cgroup"
+                }
+            ],
+            "maskedPaths": [
+                "/proc/asound",
+                "/proc/acpi",
+                "/proc/interrupts",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/sys/firmware",
+                "/sys/devices/virtual/powercap"
+            ],
+            "readonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        }
+    }
+}

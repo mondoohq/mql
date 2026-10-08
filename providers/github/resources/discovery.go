@@ -211,21 +211,39 @@ func repo(runtime *plugin.Runtime, repoName string, owner string, conn *connecti
 	if err != nil {
 		return nil, err
 	}
-	if discoverRepoAsset(targets) {
+	// The mondoo.yml at the repository root governs the repository asset and
+	// the terraform asset discovered from it (cnspec ADR-0006). It is read
+	// once, and only when one of them is discovered.
+	withRepoAsset := discoverRepoAsset(targets)
+	withTerraform := stringx.ContainsAnyOf(targets, connection.DiscoveryAll, connection.DiscoveryTerraform)
+	var contextConfig *inventory.ContextConfig
+	if withRepoAsset || withTerraform {
+		contextConfig = repoContextConfig(conn.Context(), conn.Client(), owner, repo)
+	}
+
+	if withRepoAsset {
 		cfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.ID()))
 		cfg.Options["repository"] = repo.Name.Data
 		assetList = append(assetList, &inventory.Asset{
-			PlatformIds: []string{connection.NewGitHubRepoIdentifier(owner, repo.Name.Data)},
-			Name:        owner + "/" + repo.Name.Data,
-			Platform:    connection.NewGitHubRepoPlatform(owner, repo.Name.Data),
-			Labels:      convert.DictToTypedMap[string](repo.CustomProperties.Data),
-			Connections: []*inventory.Config{cfg},
+			PlatformIds:   []string{connection.NewGitHubRepoIdentifier(owner, repo.Name.Data)},
+			Name:          owner + "/" + repo.Name.Data,
+			Platform:      connection.NewGitHubRepoPlatform(owner, repo.Name.Data),
+			Labels:        convert.DictToTypedMap[string](repo.CustomProperties.Data),
+			Connections:   []*inventory.Config{cfg},
+			ContextConfig: contextConfig,
 		})
 	}
 
 	iacAssets, err := discoverRepoIac(conn, repo, targets)
 	if err != nil {
 		return nil, err
+	}
+	for _, a := range iacAssets {
+		// The terraform asset scans the whole checkout, so it sits at the
+		// config's own directory. Other IaC types are not covered yet.
+		if a.Connections[0].Type == "terraform-hcl-git" {
+			a.ContextConfig = withAssetPath(contextConfig, ".")
+		}
 	}
 	assetList = append(assetList, iacAssets...)
 

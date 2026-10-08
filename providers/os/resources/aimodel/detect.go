@@ -114,6 +114,7 @@ func Detectors() []Detector {
 		&KerasDetector{},
 		&TFHubDetector{},
 		&JanDetector{},
+		&ChromeDetector{},
 	}
 }
 

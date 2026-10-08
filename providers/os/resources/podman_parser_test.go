@@ -4,6 +4,8 @@
 package resources
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -419,8 +421,10 @@ func TestPodmanPortDicts(t *testing.T) {
 		"containerPort": int64(90),
 		"protocol":      "udp",
 		"range":         int64(1),
+		"allInterfaces": true,
 	}, ports[0], "an empty host_ip is every interface")
 	assert.Equal(t, "127.0.0.1", ports[1].(map[string]any)["hostIp"], "a bound address is kept")
+	assert.Equal(t, false, ports[1].(map[string]any)["allInterfaces"], "a bound address is not every interface")
 	assert.Empty(t, podmanPortDicts(nil))
 }
 
@@ -693,6 +697,7 @@ func TestPodmanPortDicts_Podman3(t *testing.T) {
 		"containerPort": int64(80),
 		"protocol":      "tcp",
 		"range":         int64(1),
+		"allInterfaces": true,
 	}}, podmanPortDicts(entries[0].Ports), "published on every interface")
 	assert.Equal(t, []any{map[string]any{
 		"hostIp":        "127.0.0.1",
@@ -700,6 +705,7 @@ func TestPodmanPortDicts_Podman3(t *testing.T) {
 		"containerPort": int64(80),
 		"protocol":      "tcp",
 		"range":         int64(1),
+		"allInterfaces": false,
 	}}, podmanPortDicts(entries[1].Ports), "bound to loopback")
 	assert.Empty(t, podmanPortDicts(entries[2].Ports))
 }
@@ -711,6 +717,7 @@ func TestPodmanPortDicts_UndecodedPortIsNotAllInterfaces(t *testing.T) {
 	ports := podmanPortDicts(entries[0].Ports)
 	require.Len(t, ports, 1)
 	assert.Equal(t, "", ports[0].(map[string]any)["hostIp"])
+	assert.Equal(t, false, ports[0].(map[string]any)["allInterfaces"])
 }
 
 func TestPodmanVersionFailure(t *testing.T) {
@@ -739,4 +746,210 @@ func TestPodmanVersionFailure(t *testing.T) {
 			assert.Equal(t, kase.refused, isPodmanRefused(kase.exitCode, kase.stderr), "refused")
 		})
 	}
+}
+
+func readPodmanFixture(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "podman", name))
+	require.NoError(t, err)
+	return string(b)
+}
+
+// podmanInspectFixture returns the inspect records of the containers podman
+// 5.8.7 ran with these settings:
+//
+//	plain       no options
+//	hardened    --read-only --security-opt no-new-privileges --cap-drop ALL
+//	            --cap-add NET_BIND_SERVICE --memory 64m --cpus 0.5
+//	            --cpu-shares 512 --pids-limit 100 --ulimit nofile=1024:2048
+//	            --user 1000:1000 --health-cmd true --health-interval 10s
+//	            -p 127.0.0.1:8080:80 --device /dev/fuse -v data:/data:ro
+//	            --tmpfs /scratch:ro,size=1m
+//	priv        --privileged --network host --pid host --ipc host --uts host
+//	            --cgroupns host -v /run/podman/podman.sock:/run/podman/podman.sock
+//	            -v /etc:/host/etc:ro,rshared
+//	unconfined  --security-opt seccomp=unconfined --security-opt apparmor=unconfined
+//	            --security-opt label=disable -p 9090:90/udp -p 7000-7002:7000-7002
+//	            --pids-limit 0
+//	allowall    --security-opt seccomp=/tmp/allow.json (a profile allowing every
+//	            call) --ipc shareable --health-cmd "exit 1" --health-interval 5s
+func podmanInspectFixture(t *testing.T) map[string]*podmanInspectEntry {
+	t.Helper()
+	entries, err := parsePodmanInspect(readPodmanFixture(t, "inspect.json"))
+	require.NoError(t, err)
+	ps, err := parsePodmanPs(readPodmanFixture(t, "ps.json"))
+	require.NoError(t, err)
+	names := map[string]string{}
+	for _, p := range ps {
+		names[p.ID] = podmanPrimaryName(p.Names)
+	}
+	res := map[string]*podmanInspectEntry{}
+	for i := range entries {
+		res[names[entries[i].ID]] = &entries[i]
+	}
+	require.Len(t, res, 5)
+	return res
+}
+
+func TestParsePodmanInspectConfinement(t *testing.T) {
+	c := podmanInspectFixture(t)
+
+	plain := c["plain"]
+	assert.Equal(t, "shareable", plain.HostConfig.IpcMode)
+	assert.Equal(t, "private", plain.HostConfig.UTSMode)
+	assert.Equal(t, "private", plain.HostConfig.CgroupMode)
+	assert.Equal(t, int64(2048), plain.HostConfig.PidsLimit, "podman's default limit")
+	assert.Equal(t, int64(0), plain.HostConfig.Memory)
+	assert.Nil(t, plain.Config.Healthcheck)
+	assert.Equal(t, "", plain.healthStatus())
+	assert.False(t, securityOptNoNewPrivileges(plain.HostConfig.SecurityOpt))
+
+	hard := c["hardened"]
+	assert.True(t, securityOptNoNewPrivileges(hard.HostConfig.SecurityOpt))
+	assert.Equal(t, int64(67108864), hard.HostConfig.Memory)
+	assert.Equal(t, int64(500000000), hard.HostConfig.NanoCpus)
+	assert.Equal(t, int64(512), hard.HostConfig.CPUShares)
+	assert.Equal(t, int64(100), hard.HostConfig.PidsLimit)
+	require.Len(t, hard.HostConfig.Ulimits, 2)
+	assert.Equal(t, "nofile", podmanUlimitName(hard.HostConfig.Ulimits[0].Name))
+	assert.Equal(t, int64(1024), hard.HostConfig.Ulimits[0].Soft)
+	assert.Equal(t, int64(2048), hard.HostConfig.Ulimits[0].Hard)
+	require.Len(t, hard.HostConfig.Devices, 1)
+	assert.Equal(t, "/dev/fuse", hard.HostConfig.Devices[0].PathOnHost)
+	assert.Equal(t, "/dev/fuse", hard.HostConfig.Devices[0].PathInContainer)
+	assert.True(t, healthcheckDefined(hard.Config.Healthcheck))
+	assert.Equal(t, []string{"CMD-SHELL", "true"}, hard.Config.Healthcheck.Test)
+	secs, ok := healthcheckIntervalSeconds(hard.Config.Healthcheck)
+	assert.True(t, ok)
+	assert.Equal(t, int64(10), secs)
+	assert.Equal(t, "starting", hard.healthStatus())
+
+	mounts := containerMounts(hard.Mounts, hard.HostConfig.Tmpfs)
+	require.Len(t, mounts, 2)
+	assert.Equal(t, "volume", string(mounts[0].Type))
+	assert.Equal(t, "data", mounts[0].Name)
+	assert.Equal(t, "/var/lib/containers/storage/volumes/data/_data", mounts[0].Source)
+	assert.Equal(t, "/data", mounts[0].Destination)
+	assert.False(t, mounts[0].RW)
+	assert.Equal(t, "local", mounts[0].Driver)
+	assert.Equal(t, "tmpfs", string(mounts[1].Type), "a --tmpfs mount is only in HostConfig.Tmpfs")
+	assert.Equal(t, "/scratch", mounts[1].Destination)
+	assert.False(t, mounts[1].RW)
+
+	priv := c["priv"]
+	assert.Equal(t, "host", priv.HostConfig.IpcMode)
+	assert.Equal(t, "host", priv.HostConfig.UTSMode)
+	assert.Equal(t, "host", priv.HostConfig.CgroupMode)
+	assert.Equal(t, "host", priv.HostConfig.PidMode)
+	mounts = containerMounts(priv.Mounts, priv.HostConfig.Tmpfs)
+	require.Len(t, mounts, 2)
+	assert.Equal(t, "bind", string(mounts[0].Type))
+	assert.Equal(t, "/run/podman/podman.sock", mounts[0].Source)
+	assert.True(t, mounts[0].RW)
+	assert.Equal(t, "/etc", mounts[1].Source)
+	assert.False(t, mounts[1].RW)
+	assert.Equal(t, "rshared", string(mounts[1].Propagation))
+
+	assert.Equal(t, int64(0), c["unconfined"].HostConfig.PidsLimit, "--pids-limit 0 is unlimited")
+	assert.Equal(t, "starting", c["allowall"].healthStatus())
+	secs, ok = healthcheckIntervalSeconds(c["allowall"].Config.Healthcheck)
+	assert.True(t, ok)
+	assert.Equal(t, int64(5), secs)
+}
+
+func TestPodmanSeccompProfile(t *testing.T) {
+	c := podmanInspectFixture(t)
+	info, err := parsePodmanInfo(readPodmanFixture(t, "info.json"))
+	require.NoError(t, err)
+	engine := info.Host.Security
+	require.NotNil(t, engine)
+	assert.Equal(t, "/usr/share/containers/seccomp.json", engine.SeccompProfilePath)
+
+	allowAll := `{"defaultAction":"SCMP_ACT_ALLOW"}`
+	files := map[string]string{"/tmp/allow.json": allowAll, "/etc/custom.json": `{"defaultAction":"SCMP_ACT_ERRNO"}`}
+	read := func(p string) string { return files[p] }
+	profile := func(name string) string {
+		e := c[name]
+		return podmanSeccompProfile(e.HostConfig.Privileged, e.HostConfig.SecurityOpt, nil, engine, read)
+	}
+
+	assert.Equal(t, "default", profile("plain"))
+	assert.Equal(t, "default", profile("hardened"))
+	assert.Equal(t, "unconfined", profile("priv"), "privileged")
+	assert.Equal(t, "unconfined", profile("unconfined"))
+	assert.Equal(t, "unconfined", profile("allowall"), "its profile allows every call")
+
+	// a profile that filters
+	assert.Equal(t, "custom", podmanSeccompProfile(false, []string{"seccomp=/etc/custom.json"}, nil, engine, read))
+	// one that cannot be read is not assumed to allow everything
+	assert.Equal(t, "custom", podmanSeccompProfile(false, []string{"seccomp=/missing.json"}, nil, engine, read))
+	// the engine's profile from containers.conf
+	allowEngine := &podmanInfoSecurity{SeccompEnabled: true, SeccompProfilePath: "/tmp/allow.json"}
+	assert.Equal(t, "unconfined", podmanSeccompProfile(false, nil, nil, allowEngine, read))
+	assert.Equal(t, "custom", podmanSeccompProfile(false, nil, nil, &podmanInfoSecurity{SeccompEnabled: true, SeccompProfilePath: "/etc/custom.json"}, read))
+	unconfinedEngine := &podmanInfoSecurity{SeccompEnabled: true, SeccompProfilePath: "unconfined"}
+	assert.Equal(t, "unconfined", podmanSeccompProfile(false, nil, nil, unconfinedEngine, read))
+	// a host without seccomp
+	assert.Equal(t, "unconfined", podmanSeccompProfile(false, nil, nil, &podmanInfoSecurity{SeccompEnabled: false}, read))
+
+	// The spec embeds the filter the container was created with, so with a
+	// spec no profile file is read at all: plain was created with the default
+	// profile and stays filtered after the engine's profile changes.
+	noRead := func(p string) string {
+		t.Errorf("a profile file was read although the spec was available: %s", p)
+		return ""
+	}
+	plainSpec, err := parseOCISpec([]byte(readPodmanFixture(t, "config-plain.json")))
+	require.NoError(t, err)
+	assert.Equal(t, "default", podmanSeccompProfile(false, nil, plainSpec, engine, noRead))
+	assert.Equal(t, "default", podmanSeccompProfile(false, nil, plainSpec, unconfinedEngine, noRead))
+	assert.Equal(t, "custom", podmanSeccompProfile(false, nil, plainSpec, allowEngine, noRead),
+		"filtered, and the engine names a profile other than the packaged one")
+	assert.Equal(t, "custom", podmanSeccompProfile(false, []string{"seccomp=/etc/custom.json"}, plainSpec, engine, noRead))
+	// a container naming a profile that allows everything: the spec says so
+	assert.Equal(t, "unconfined", podmanSeccompProfile(false, []string{"seccomp=/tmp/allow.json"}, &ociSpec{}, engine, noRead))
+	unconfinedSpec, err := parseOCISpec([]byte(readPodmanFixture(t, "config-unconfined.json")))
+	require.NoError(t, err)
+	e := c["unconfined"]
+	assert.Equal(t, "unconfined", podmanSeccompProfile(false, e.HostConfig.SecurityOpt, unconfinedSpec, engine, noRead))
+	assert.Equal(t, "unconfined", podmanSeccompProfile(false, nil, unconfinedSpec, engine, noRead), "the spec has no profile")
+}
+
+func TestPodmanStoragePath(t *testing.T) {
+	info, err := parsePodmanInfo(readPodmanFixture(t, "info.json"))
+	require.NoError(t, err)
+	roots := []string{info.Store.GraphRoot, info.Store.RunRoot}
+	assert.Equal(t, "/var/lib/containers/storage", info.Store.GraphRoot)
+
+	for _, e := range podmanInspectFixture(t) {
+		assert.True(t, podmanStoragePath(e.OCIConfigPath, roots...), e.OCIConfigPath)
+	}
+	assert.True(t, podmanStoragePath("/run/containers/storage/overlay-containers/x/userdata/config.json", roots...))
+	assert.False(t, podmanStoragePath("/dev/zero", roots...))
+	assert.False(t, podmanStoragePath("/var/lib/containers/storage/../../../dev/zero", roots...))
+	assert.False(t, podmanStoragePath("/var/lib/containers/storage-other/config.json", roots...))
+	assert.False(t, podmanStoragePath("var/lib/containers/storage/x/config.json", roots...), "relative")
+	assert.False(t, podmanStoragePath("", roots...))
+	assert.False(t, podmanStoragePath("/var/lib/containers/storage/x", "", "relative/root"))
+}
+
+func TestPodmanUlimitName(t *testing.T) {
+	assert.Equal(t, "nofile", podmanUlimitName("RLIMIT_NOFILE"))
+	assert.Equal(t, "nproc", podmanUlimitName("RLIMIT_NPROC"))
+	assert.Equal(t, "core", podmanUlimitName("core"))
+}
+
+// podman 4.3 and older name the health state Healthcheck
+func TestPodmanInspectHealthStatusOldName(t *testing.T) {
+	entries, err := parsePodmanInspect(`[{"Id":"x","State":{"Status":"running","Healthcheck":{"Status":"healthy"}},"Config":{"Healthcheck":{"Test":["CMD-SHELL","true"]}}}]`)
+	require.NoError(t, err)
+	assert.Equal(t, "healthy", entries[0].healthStatus())
+}
+
+// A stopped container keeps the last status of its health check, which is no
+// longer checked.
+func TestPodmanInspectHealthStatusStopped(t *testing.T) {
+	entries, err := parsePodmanInspect(`[{"Id":"x","State":{"Status":"exited","Health":{"Status":"unhealthy"}},"Config":{"Healthcheck":{"Test":["CMD-SHELL","exit 1"]}}}]`)
+	require.NoError(t, err)
+	assert.Equal(t, "", entries[0].healthStatus())
 }

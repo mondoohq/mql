@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path"
 	"sort"
@@ -436,4 +437,39 @@ func (r *mqlFileContext) content(file *mqlFile, rnge llx.Range) (string, error) 
 	}
 
 	return rnge.ExtractString(fileContent.Data, llx.DefaultExtractConfig), nil
+}
+
+// maxSmallFileSize is the most readSmallRegularFile reads. The files it is
+// for (a seccomp profile, a container's config.json) are a few KB.
+const maxSmallFileSize = 4 << 20
+
+// readSmallRegularFile reads a file whose path comes from a container's or an
+// engine's settings rather than from the provider: only an absolute path to a
+// regular file of at most maxSize bytes, after following links, so a path to
+// a device, FIFO, socket or huge file cannot hang the scan or exhaust its
+// memory. False when the file is missing, refused, or cannot be read.
+func readSmallRegularFile(runtime *plugin.Runtime, p string, maxSize int64) (string, bool) {
+	if !path.IsAbs(p) {
+		return "", false
+	}
+	p = path.Clean(p)
+	conn, ok := runtime.Connection.(shared.Connection)
+	if !ok {
+		return "", false
+	}
+	fs := conn.FileSystem()
+	fi, err := fs.Stat(p)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxSize {
+		return "", false
+	}
+	f, err := fs.Open(p)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxSize+1))
+	if err != nil || int64(len(b)) > maxSize {
+		return "", false
+	}
+	return string(b), true
 }

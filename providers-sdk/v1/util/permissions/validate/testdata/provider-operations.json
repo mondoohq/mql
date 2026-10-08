@@ -1,0 +1,15 @@
+[
+  {
+    "name": "Microsoft.Kusto",
+    "operations": [{"name": "Microsoft.Kusto/register/action"}],
+    "resourceTypes": [
+      {"name": "Clusters", "operations": [{"name": "Microsoft.Kusto/Clusters/read"}]},
+      {"name": "Clusters/Databases", "operations": [{"name": "Microsoft.Kusto/Clusters/Databases/read"}]}
+    ]
+  },
+  {
+    "name": "Microsoft.Web",
+    "operations": [{"name": "Microsoft.Web/sites/Read"}],
+    "resourceTypes": null
+  }
+]

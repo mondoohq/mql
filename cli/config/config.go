@@ -344,7 +344,7 @@ func GetFeatures() mql.Features {
 func Read() (*Config, error) {
 	// load viper config into a struct
 	var opts Config
-	err := viper.Unmarshal(&opts)
+	err := viper.Unmarshal(&opts, DecoderOption())
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to decode into config struct")
 	}
@@ -468,6 +468,12 @@ type CommonOpts struct {
 	// UpdateChannel selects which release track binary updates and providers
 	// resolve through. Unset means "stable". See KeyUpdateChannel.
 	UpdateChannel string `json:"update_channel,omitempty" mapstructure:"update_channel"`
+
+	// Exceptions are the user-scope exceptions (cnspec ADR-0006), in preview:
+	// the shape may still change. The same key in a context config, a
+	// mondoo.yml at a scanned root, is read separately by ParseContextConfig
+	// and never through this struct.
+	Exceptions []Exception `json:"exceptions,omitempty" mapstructure:"exceptions"`
 }
 
 // Workload Identity Federation

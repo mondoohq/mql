@@ -6,6 +6,7 @@ package resources
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -182,4 +183,45 @@ func TestFileOwnership_UnknownUidGid(t *testing.T) {
 	group := file.GetGroup()
 	require.NoError(t, group.Error, "file.group must not error for an unknown gid")
 	assert.True(t, group.State&plugin.StateIsNull != 0, "file.group should be null for an unknown gid")
+}
+
+// Paths from a container's settings are read only as small regular files, so
+// a device, FIFO or huge file cannot hang the scan or exhaust its memory.
+func TestReadSmallRegularFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "profile.json"), []byte(`{"defaultAction":"SCMP_ACT_ALLOW"}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "big.json"), make([]byte, 2048), 0o644))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "dir"), 0o755))
+	require.NoError(t, os.Symlink("profile.json", filepath.Join(dir, "link.json")))
+	// mkfifo is missing on Windows, where the FIFO cases are skipped
+	fifo := exec.Command("mkfifo", filepath.Join(dir, "fifo")).Run() == nil
+	if fifo {
+		require.NoError(t, os.Symlink("fifo", filepath.Join(dir, "fifolink")))
+	}
+	rt := memFSRuntime(t, afero.NewBasePathFs(afero.NewOsFs(), dir))
+
+	content, ok := readSmallRegularFile(rt, "/profile.json", 1024)
+	assert.True(t, ok)
+	assert.Equal(t, `{"defaultAction":"SCMP_ACT_ALLOW"}`, content)
+	content, ok = readSmallRegularFile(rt, "/link.json", 1024)
+	assert.True(t, ok, "a link to a regular file is followed")
+	assert.Equal(t, `{"defaultAction":"SCMP_ACT_ALLOW"}`, content)
+
+	_, ok = readSmallRegularFile(rt, "/big.json", 1024)
+	assert.False(t, ok, "over the size cap")
+	_, ok = readSmallRegularFile(rt, "/big.json", 2048)
+	assert.True(t, ok, "at the size cap")
+	_, ok = readSmallRegularFile(rt, "/dir", 1024)
+	assert.False(t, ok, "a directory")
+	_, ok = readSmallRegularFile(rt, "profile.json", 1024)
+	assert.False(t, ok, "a relative path")
+	_, ok = readSmallRegularFile(rt, "/missing.json", 1024)
+	assert.False(t, ok)
+	if fifo {
+		// reading a FIFO without a writer blocks forever
+		_, ok = readSmallRegularFile(rt, "/fifo", 1024)
+		assert.False(t, ok, "a FIFO")
+		_, ok = readSmallRegularFile(rt, "/fifolink", 1024)
+		assert.False(t, ok, "a link to a FIFO")
+	}
 }
