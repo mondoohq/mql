@@ -8289,15 +8289,179 @@ private docker.daemon.ulimit @defaults("name soft hard") {
   hard int
 }
 
-// containerd host
+// containerd container runtime
 //
-// Containers managed by the containerd runtime, gathered across all containerd
-// namespaces via the `ctr` CLI. Use it to inventory workloads on hosts that
-// run containerd directly (such as Kubernetes nodes) rather than through the
-// Docker daemon.
+// The containerd of a host or Kubernetes node (kubeadm, kind, K3s, RKE2,
+// MicroK8s, k0s, and Docker's own containerd): its version, the configuration
+// it runs with, and the containers it manages. The configuration is read from
+// `configFile` and the files it imports, merged the way containerd merges
+// them, and settings no file sets report containerd's built-in default, as
+// each field says. Configuration fields read files only, so they also work on
+// images and mounted filesystems. The registry audit is
+// `containerd.registryHosts.none(skipVerify)`.
 containerd {
   // All containers across every containerd namespace
   containers() []containerd.container
+  // containerd version (for example "2.2.0")
+  //
+  // Reported by the containerd binary. Null when it cannot be run, as on an
+  // image or a mounted filesystem.
+  version() string
+  // Running containerd process; null when containerd is not running or the process list cannot be read
+  process() process
+  // Main configuration file
+  //
+  // The file the running containerd's `--config` flag names. Otherwise the
+  // first that exists of /etc/containerd/config.toml and the files K3s, RKE2,
+  // MicroK8s and k0s generate, or /etc/containerd/config.toml when none
+  // exists, since containerd runs without one.
+  configFile() file
+  // Configuration files, in the order containerd applies them
+  //
+  // `configFile` followed by the files its `imports` name, and the files
+  // those import, each overriding the ones before. Empty when `configFile`
+  // does not exist.
+  files() []file
+  // Settings from the configuration files
+  //
+  // Keyed as in the files, with the `imports` merged in the way containerd
+  // merges them. Holds only what the files set, no defaults. Registry
+  // credentials (`auth`, `auths`) and registry headers are left out.
+  configuration() dict
+  // Configuration format version: 1, 2 (containerd 1.x and 2.x), or 3 (containerd 2.x)
+  //
+  // From the files, otherwise the version of containerd's built-in defaults.
+  // Null when no file sets it and the containerd version is unknown.
+  configVersion() int
+  // Root directory of containerd's persistent data; containerd's default is "/var/lib/containerd"
+  root() string
+  // Directory of containerd's transient state; containerd's default is "/run/containerd"
+  state() string
+  // Path of the socket containerd serves its API on; containerd's default is "/run/containerd/containerd.sock"
+  grpcAddress() string
+  // User ID that owns the API socket; containerd's default is 0
+  grpcUid() int
+  // Group ID that owns the API socket; containerd's default is 0
+  grpcGid() int
+  // TCP address containerd also serves its API on; empty when it serves the socket only
+  grpcTcpAddress() string
+  // Plugins containerd does not load (for example "io.containerd.grpc.v1.cri" for Docker's containerd)
+  disabledPlugins() []string
+  // Image of the pod sandbox (pause) container
+  //
+  // Null when no file sets it and the containerd version is unknown, since
+  // the built-in default changes between releases.
+  sandboxImage() string
+  // Snapshotter that unpacks images for Kubernetes pods; containerd's default is "overlayfs"
+  snapshotter() string
+  // Runtime handler Kubernetes containers use unless they ask for another; containerd's default is "runc"
+  defaultRuntime() string
+  // Runtime handlers Kubernetes pods can run with
+  runtimes() []containerd.runtime
+  // Whether pods may bind ports below 1024 without a capability
+  //
+  // Sets net.ipv4.ip_unprivileged_port_start to 0 in every pod. containerd
+  // 2.x defaults to true, 1.x to false. Null when no file sets it and the
+  // containerd version is unknown.
+  enableUnprivilegedPorts() bool
+  // Whether pods may send ICMP echo requests without a capability
+  //
+  // Sets net.ipv4.ping_group_range to every group in every pod. containerd
+  // 2.x defaults to true, 1.x to false. Null when no file sets it and the
+  // containerd version is unknown.
+  enableUnprivilegedIcmp() bool
+  // Whether containers run with SELinux labeling; containerd's default is false
+  selinuxEnabled() bool
+  // Whether containerd caps the OOM score adjustment of containers at its own; containerd's default is false
+  restrictOomScoreAdj() bool
+  // Whether devices a pod mounts are owned by the pod's user and group rather than by root; containerd's default is false
+  deviceOwnershipFromSecurityContext() bool
+  // Whether AppArmor is turned off for all containers; containerd's default is false
+  disableApparmor() bool
+  // Whether containers start when the hugetlb cgroup controller is missing; containerd's default is true
+  tolerateMissingHugetlbController() bool
+  // Directories containerd looks up registry host configurations (`hosts.toml`) in
+  //
+  // From the CRI `registry.config_path`, in the order they are tried. When
+  // neither it nor the deprecated `registry.mirrors` is set, containerd 2.x
+  // reads /etc/containerd/certs.d and /etc/docker/certs.d, and containerd 1.x
+  // none. Null when no file sets it and the containerd version is unknown.
+  registryConfigPaths() []string
+  // Registry hosts containerd pulls Kubernetes images from
+  //
+  // Read from the `hosts.toml` files in `registryConfigPaths` or, when no
+  // directory is configured, from the deprecated `registry.mirrors` and
+  // `registry.configs` settings.
+  registryHosts() []containerd.registryHost
+  // Listen address of the CRI streaming server for exec, attach and port forwarding
+  //
+  // containerd defaults to "127.0.0.1", so that only the kubelet on the node can
+  // reach it. Any other address exposes the server to the network.
+  streamAddress() string
+  // Port the CRI streaming server listens on; 0, containerd's default, picks a free port
+  streamPort() int
+  // Whether the CRI streaming server serves TLS; containerd's default is false
+  streamTlsEnabled() bool
+}
+
+// containerd runtime handler
+//
+// A `containerd.runtimes.<name>` entry of the CRI configuration: the runtime a
+// Kubernetes pod runs with when its RuntimeClass names this handler, or by
+// default.
+containerd.runtime @defaults("name type") {
+  // Handler name, as a RuntimeClass names it (for example "runc")
+  name string
+  // Runtime type, the containerd shim that runs containers (for example "io.containerd.runc.v2")
+  type string
+  // Path of the shim binary; empty when containerd finds it from `type`
+  shimPath string
+  // Path or name of the OCI runtime binary the shim runs; empty is runc on the PATH
+  path string
+  // Root directory the OCI runtime keeps container state in; empty is the runtime's default
+  root string
+  // Whether containers run in systemd-managed cgroups
+  systemdCgroup bool
+  // Whether privileged containers run without the host's devices
+  privilegedWithoutHostDevices bool
+  // Pod annotations passed on to the runtime
+  //
+  // Each one lets a pod change how the runtime runs it, for example
+  // "io.katacontainers.*".
+  podAnnotations []string
+  // OCI runtime spec file containers start from; empty is containerd's built-in spec
+  baseRuntimeSpec string
+  // Whether this is the handler containers use when they ask for none
+  isDefault bool
+}
+
+// Registry host containerd pulls images from
+//
+// A host of a registry namespace: a `[host."<url>"]` entry of the namespace's
+// `hosts.toml`, tried in the order listed, or the namespace's `server`, tried
+// last.
+containerd.registryHost @defaults("namespace url") {
+  // Registry namespace the host serves (for example "docker.io", or "_default" for every registry without its own)
+  namespace string
+  // URL of the host (for example "https://registry-1.docker.io")
+  //
+  // Empty for the server of a namespace that names none: images are then
+  // pulled from the namespace's registry itself.
+  url string
+  // Whether this is the namespace's server rather than one of its hosts (mirrors)
+  server bool
+  // Operations the host is trusted with: pull, resolve (tag to digest), push
+  //
+  // Every operation when the configuration names none.
+  capabilities []string
+  // Whether the host's TLS certificate and host name go unverified
+  skipVerify bool
+  // CA certificate files the host's certificate is verified against
+  caCerts []file
+  // Client certificate files presented to the host
+  clientCerts []file
+  // Configuration file the host is read from; null for a host from the deprecated `registry.mirrors` or `registry.configs`
+  file file
 }
 
 // Single containerd container
