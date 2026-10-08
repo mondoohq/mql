@@ -229,6 +229,7 @@ PROVIDERS := \
 	digitalocean \
 	dropbox \
 	elasticsearch \
+	exoscale \
 	gcp \
 	github \
 	gitlab \
@@ -238,6 +239,7 @@ PROVIDERS := \
 	helm \
 	hetzner \
 	huggingface \
+	ibm \
 	ipinfo \
 	ipmi \
 	iru \
