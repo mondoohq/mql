@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/mattn/go-isatty"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -16,6 +17,7 @@ import (
 	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/cli/components"
 	"go.mondoo.com/mql/cli/config"
+	"go.mondoo.com/mql/cli/inventoryloader"
 	"go.mondoo.com/mql/cli/shell"
 	"go.mondoo.com/mql/cli/theme"
 	"go.mondoo.com/mql/discovery"
@@ -30,6 +32,7 @@ func init() {
 
 	shellCmd.Flags().StringP("command", "c", "", "MQL query to execute in the shell")
 	shellCmd.Flags().String("platform-id", "", "Select a specific target asset by providing its platform ID")
+	shellCmd.Flags().String("inventory-file", "", "Set the path to an inventory file that defines exactly one asset to connect to, with its credentials")
 	shellCmd.Flags().StringToString("annotations", nil, "Specify annotations for this run")
 	_ = shellCmd.Flags().MarkHidden("annotations")
 }
@@ -41,6 +44,7 @@ var shellCmd = &cobra.Command{
 	PreRun: func(cmd *cobra.Command, args []string) {
 		_ = viper.BindPFlag("platform-id", cmd.Flags().Lookup("platform-id"))
 		_ = viper.BindPFlag("annotations", cmd.Flags().Lookup("annotations"))
+		_ = viper.BindPFlag("inventory-file", cmd.Flags().Lookup("inventory-file"))
 	},
 	// we have to initialize an empty run so it shows up as a runnable command in --help
 	Run: func(cmd *cobra.Command, args []string) {},
@@ -57,8 +61,12 @@ var shellRun = func(cmd *cobra.Command, runtime *providers.Runtime, cliRes *plug
 // commandline and config inputs.
 // TODO: the config is a shared structure, which should be moved to proto
 type ShellConfig struct {
-	Command        string
-	Asset          *inventory.Asset
+	Command string
+	Asset   *inventory.Asset
+	// Inventory is the inventory the shell connects through. It carries the
+	// credentials and vault configuration that Asset's secret references
+	// resolve against. When nil, StartShell builds one from Asset alone.
+	Inventory      *inventory.Inventory
 	Features       mql.Features
 	Strict         bool
 	PlatformID     string
@@ -90,16 +98,43 @@ func ParseShellConfig(cmd *cobra.Command, cliRes *plugin.ParseCLIRes) *ShellConf
 	annotations, _ := cmd.Flags().GetStringToString("annotations")
 	cliRes.Asset.AddAnnotations(annotations)
 
+	inv, err := ShellInventory(cliRes.Asset, viper.GetBool("insecure"), annotations)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to load inventory")
+	}
+
 	shellConf := ShellConfig{
 		Features:       config.Features,
 		Strict:         config.Strict,
 		PlatformID:     viper.GetString("platform-id"),
-		Asset:          cliRes.Asset,
+		Asset:          inv.Spec.Assets[0],
+		Inventory:      inv,
 		UpstreamConfig: upstreamConfig,
 	}
 
 	shellConf.Command, _ = cmd.Flags().GetString("command")
 	return &shellConf
+}
+
+// ShellInventory loads the inventory a shell connects through: the one named
+// by the "inventory-file" viper key when it is set, or else an inventory that
+// holds just the CLI asset. It is the same loader `run` and `scan` use, so the
+// asset's credentials resolve through the inventory's credentials section and
+// vault instead of having to be passed as command-line arguments.
+//
+// A shell is a session on one asset, so the inventory must define exactly one.
+// Discovery below that asset (an account's instances, a cluster's workloads)
+// is still offered for interactive selection once it is connected.
+func ShellInventory(asset *inventory.Asset, insecure bool, annotations map[string]string) (*inventory.Inventory, error) {
+	inv, err := inventoryloader.ParseOrUse(asset, insecure, annotations)
+	if err != nil {
+		return nil, err
+	}
+	if n := len(inv.Spec.GetAssets()); n != 1 {
+		return nil, errors.Newf("the shell connects to exactly one asset, but the inventory defines %d; "+
+			"use an inventory with a single asset", n)
+	}
+	return inv, nil
 }
 
 // shellSelectItem is a selectable item in the interactive asset traversal.
@@ -119,8 +154,13 @@ func (s shellSelectItem) Display() string {
 func StartShell(runtime *providers.Runtime, conf *ShellConfig) error {
 	ctx := context.Background()
 
+	inv := conf.Inventory
+	if inv == nil {
+		inv = inventory.New(inventory.WithAssets(conf.Asset))
+	}
+
 	explorer, err := discovery.NewAssetExplorer(ctx, discovery.AssetExplorerConfig{
-		Inventory: inventory.New(inventory.WithAssets(conf.Asset)),
+		Inventory: inv,
 		Upstream:  conf.UpstreamConfig,
 		Recording: runtime.Recording(),
 	})
