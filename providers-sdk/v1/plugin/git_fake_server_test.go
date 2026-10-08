@@ -321,7 +321,7 @@ var (
 )
 
 // cloneWithStockTransport clones the way gitClone does, but with go-git's
-// untouched http transport installed. It is the control the router is compared
+// untouched http transport installed. It is the control the wrapper is compared
 // against, so its CloneOptions must mirror gitClone's: go-git sends
 // "no-progress" only when Progress is nil, and gitClone passes os.Stderr.
 func cloneWithStockTransport(t *testing.T, url string) (string, error) {
@@ -377,7 +377,8 @@ func TestFakeGitServer_AnswersMissingAndWrongCredentialsWithAuthenticationRequir
 }
 
 // Azure DevOps answers go-git's default upload-pack request with HTTP 400,
-// because it lacks multi_ack_detailed. This is the failure the router fixes.
+// because it lacks multi_ack_detailed. This is the failure the server option
+// fixes.
 func TestFakeGitServer_AzureDevOpsModeRejectsGoGitsDefaultRequest(t *testing.T) {
 	srv := newFakeGitServer(t, fakeAzureDevOps, fixtureToken)
 

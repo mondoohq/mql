@@ -5,6 +5,7 @@ package plugin
 
 import (
 	"cmp"
+	"context"
 	"net/url"
 	"os"
 	"slices"
@@ -19,11 +20,27 @@ import (
 
 const GitUrlOptionKey = "git-http-url" // used for tracking the link to the git repo for later reference
 
+// GitServerOptionKey is the connection option that names the git server
+// implementation behind http-url when the clone has to adapt its request to
+// it. The provider that discovered the repository sets it, because it knows
+// what it talked to; nothing here guesses from the host name. Without it the
+// clone sends go-git's default request, which GitHub and GitLab accept.
+const GitServerOptionKey = "git-server"
+
+// GitServerAzureDevOps is the GitServerOptionKey value for Azure DevOps, which
+// rejects go-git's default upload-pack request (see git_transport.go).
+const GitServerAzureDevOps = "azure-devops"
+
 func NewGitClone(asset *inventory.Asset) (string, func(), error) {
 	cc := asset.Connections[0]
 
 	if len(cc.Options) == 0 {
 		return "", nil, errors.New("missing URLs in options for HCL over Git connection")
+	}
+
+	server, err := gitServerOption(cc.Options)
+	if err != nil {
+		return "", nil, errors.Wrap(err, "git repo "+asset.Name)
 	}
 
 	user := ""
@@ -64,14 +81,29 @@ func NewGitClone(asset *inventory.Asset) (string, func(), error) {
 		return "", nil, errors.New("missing url for git repo " + asset.Name)
 	}
 
-	path, closer, err := gitClone(gitUrl)
+	path, closer, err := gitClone(gitUrl, server)
 	if err != nil {
 		return "", nil, err
 	}
 	return path, closer, nil
 }
 
-func gitClone(gitUrl string) (string, func(), error) {
+// gitServerOption reads GitServerOptionKey. A value this package does not know
+// is an error rather than a silent default: a misspelt value would otherwise
+// send go-git's default request to a server that rejects it.
+func gitServerOption(opts map[string]string) (string, error) {
+	switch server := opts[GitServerOptionKey]; server {
+	case "", GitServerAzureDevOps:
+		return server, nil
+	default:
+		return "", errors.Errorf("unknown %s %q", GitServerOptionKey, server)
+	}
+}
+
+// gitClone clones gitUrl shallowly into a fresh temporary directory. server is
+// the GitServerOptionKey value, "" for go-git's default request; the transport
+// reads it from the clone's context.
+func gitClone(gitUrl, server string) (string, func(), error) {
 	installGitTransport()
 
 	cloneDir, err := os.MkdirTemp(os.TempDir(), "mql-git-clone")
@@ -97,7 +129,7 @@ func gitClone(gitUrl string) (string, func(), error) {
 	secrets, userinfoNames := urlSecrets(gitUrl)
 
 	log.Info().Str("url", infoUrl).Str("path", cloneDir).Msg("git clone")
-	repo, err := git.PlainClone(cloneDir, false, &git.CloneOptions{
+	repo, err := git.PlainCloneContext(withGitServer(context.Background(), server), cloneDir, false, &git.CloneOptions{
 		URL:               gitUrl,
 		Progress:          os.Stderr,
 		Depth:             1,

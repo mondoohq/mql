@@ -48,7 +48,7 @@ func TestGitClone_ReturnsTheRepositoryAndACloserThatRemovesIt(t *testing.T) {
 	tmp := isolateTempDir(t)
 	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
 
-	dir, closer, err := gitClone(srv.repoURL("localhost", "ci:"+fixtureToken))
+	dir, closer, err := gitClone(srv.repoURL("localhost", "ci:"+fixtureToken), "")
 	require.NoError(t, err)
 	require.NotNil(t, closer)
 
@@ -69,7 +69,7 @@ func TestGitClone_AuthenticationFailureIsReturnedAsAnError(t *testing.T) {
 	tmp := isolateTempDir(t)
 	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
 
-	dir, closer, err := gitClone(srv.repoURL("localhost", "ci:not-the-token"))
+	dir, closer, err := gitClone(srv.repoURL("localhost", "ci:not-the-token"), "")
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, "failed to clone git repo")
@@ -84,7 +84,7 @@ func TestGitClone_EmptyRepositoryIsReturnedAsAnError(t *testing.T) {
 	tmp := isolateTempDir(t)
 	srv := newEmptyFakeGitServer(t, fakeStandard, fixtureToken)
 
-	dir, closer, err := gitClone(srv.repoURL("localhost", "ci:"+fixtureToken))
+	dir, closer, err := gitClone(srv.repoURL("localhost", "ci:"+fixtureToken), "")
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, "remote repository is empty")
@@ -133,6 +133,27 @@ func TestNewGitClone_InputErrorsAreUnchanged(t *testing.T) {
 	require.EqualError(t, err, "missing url for git repo n")
 }
 
+// A git-server value this package does not know is refused up front, before a
+// directory is created or a request sent: a misspelt value would otherwise send
+// go-git's default request to a server that rejects it.
+func TestNewGitClone_UnknownGitServerIsAnError(t *testing.T) {
+	resetGitTransport(t)
+	tmp := isolateTempDir(t)
+	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
+	asset := gitAsset(srv.repoURL("localhost", ""), passwordCred("ci", fixtureToken, ""))
+	asset.Connections[0].Options[GitServerOptionKey] = "gitea"
+
+	path, closer, err := NewGitClone(asset)
+
+	require.EqualError(t, err, `git repo fixture: unknown git-server "gitea"`)
+	require.Empty(t, path)
+	require.Nil(t, closer)
+	require.Empty(t, srv.advertisementHeaders(), "nothing was sent")
+	require.Empty(t, srv.uploadPackRequests())
+	require.Empty(t, cloneDirsIn(t, tmp))
+	require.NotContains(t, asset.Connections[0].Options, GitUrlOptionKey, "nothing was recorded on the connection")
+}
+
 // go-git copies the request URL into its HTTP errors. It redacts a password but
 // not a username, and NewGitClone puts a token with no user name into the
 // username slot. A server error therefore used to print the token. A
@@ -156,16 +177,16 @@ func TestGitClone_ErrorsNeverContainTheCredential(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			isolateTempDir(t)
-			// A strict Azure DevOps fake reached through a host the router
-			// does not adjust answers go-git's default request with a 400,
-			// which is an error whose text carries the request URL.
+			// A strict Azure DevOps fake cloned without the server option
+			// answers go-git's default request with a 400, which is an error
+			// whose text carries the request URL.
 			srv := newFakeGitServer(t, fakeAzureDevOps, tt.token)
 			u := srv.repoURL("localhost", "")
 			parsed, err := url.Parse(u)
 			require.NoError(t, err)
 			parsed.User = tt.userinfo(tt.token)
 
-			_, _, err = gitClone(parsed.String())
+			_, _, err = gitClone(parsed.String(), "")
 
 			require.Error(t, err)
 			require.ErrorContains(t, err, "status code: 400", "the failure must be the server's 400, not an auth error")
@@ -253,19 +274,19 @@ func TestURLSecrets(t *testing.T) {
 	}
 }
 
-func TestGitClone_InstallsTheRouterOnFirstUse(t *testing.T) {
+func TestGitClone_InstallsTheWrapperOnFirstUse(t *testing.T) {
 	resetGitTransport(t)
 	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
-	require.Same(t, stockHTTP, client.Protocols["http"], "precondition: nothing is routed yet")
+	require.Same(t, stockHTTP, client.Protocols["http"], "precondition: nothing is wrapped yet")
 
-	_, closer, err := gitClone(srv.repoURL("localhost", "ci:"+fixtureToken))
+	_, closer, err := gitClone(srv.repoURL("localhost", "ci:"+fixtureToken), "")
 	require.NoError(t, err)
 	closer()
 
 	for scheme, stock := range map[string]transport.Transport{"http": stockHTTP, "https": stockHTTPS} {
-		router, ok := client.Protocols[scheme].(*hostRoutedTransport)
+		wrapper, ok := client.Protocols[scheme].(*gitServerTransport)
 		require.True(t, ok, scheme)
-		require.Same(t, stock, router.base, scheme)
+		require.Same(t, stock, wrapper.base, scheme)
 	}
 }
 
@@ -285,12 +306,14 @@ func TestNewGitClone_ClonesWithEveryCredentialShape(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tmp := isolateTempDir(t)
 			resetGitTransport(t)
-			routeLoopbackAsADO(t)
-			// Strict Azure DevOps fake on the host the router treats as Azure
-			// DevOps: the clone only works if the router adjusted the request.
+			// Strict Azure DevOps fake, and an asset whose connection names
+			// Azure DevOps as the server, as the azuredevops provider builds
+			// its children: the clone only works if the option reached the
+			// transport and the request was adjusted.
 			srv := newFakeGitServer(t, fakeAzureDevOps, fixtureToken)
 			httpURL := srv.repoURL("127.0.0.1", "")
 			asset := gitAsset(httpURL, tt.cred)
+			asset.Connections[0].Options[GitServerOptionKey] = GitServerAzureDevOps
 
 			dir, closer, err := NewGitClone(asset)
 			require.NoError(t, err)
@@ -310,10 +333,11 @@ func TestNewGitClone_ClonesWithEveryCredentialShape(t *testing.T) {
 	}
 }
 
-func TestNewGitClone_NonAzureDevOpsHostCloneIsUnchanged(t *testing.T) {
+// An asset without the server option, as the GitHub and GitLab providers build
+// them, clones exactly as it did before the wrapper existed.
+func TestNewGitClone_WithoutTheServerOptionTheCloneIsUnchanged(t *testing.T) {
 	resetGitTransport(t)
 	isolateTempDir(t)
-	routeLoopbackAsADO(t) // 127.0.0.1 is routed; localhost is the "GitHub or GitLab" host
 	srv := newFakeGitServer(t, fakeStandard, fixtureToken)
 
 	// Control: go-git's own transport against the URL NewGitClone builds from
