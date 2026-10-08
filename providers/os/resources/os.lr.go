@@ -695,6 +695,8 @@ const (
 	ResourceOpenhandsSkill                                string = "openhands.skill"
 	ResourceQwenCode                                      string = "qwen.code"
 	ResourceQwenCodeSkill                                 string = "qwen.code.skill"
+	ResourceAgentskills                                   string = "agentskills"
+	ResourceAgentskillsSkill                              string = "agentskills.skill"
 	ResourceSriov                                         string = "sriov"
 	ResourceSriovPhysicalFunction                         string = "sriov.physicalFunction"
 	ResourceSriovVirtualFunction                          string = "sriov.virtualFunction"
@@ -3426,6 +3428,14 @@ func init() {
 		"qwen.code.skill": {
 			// to override args, implement: initQwenCodeSkill(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createQwenCodeSkill,
+		},
+		"agentskills": {
+			// to override args, implement: initAgentskills(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAgentskills,
+		},
+		"agentskills.skill": {
+			// to override args, implement: initAgentskillsSkill(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAgentskillsSkill,
 		},
 		"sriov": {
 			// to override args, implement: initSriov(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -19584,6 +19594,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"qwen.code.skill.purl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlQwenCodeSkill).GetPurl()).ToDataRes(types.String)
+	},
+	"agentskills.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskills).GetPath()).ToDataRes(types.String)
+	},
+	"agentskills.skills": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskills).GetSkills()).ToDataRes(types.Array(types.Resource("agentskills.skill")))
+	},
+	"agentskills.skill.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetPath()).ToDataRes(types.String)
+	},
+	"agentskills.skill.directory": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetDirectory()).ToDataRes(types.String)
+	},
+	"agentskills.skill.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetName()).ToDataRes(types.String)
+	},
+	"agentskills.skill.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetDescription()).ToDataRes(types.String)
+	},
+	"agentskills.skill.license": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetLicense()).ToDataRes(types.String)
+	},
+	"agentskills.skill.compatibility": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetCompatibility()).ToDataRes(types.String)
+	},
+	"agentskills.skill.metadata": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetMetadata()).ToDataRes(types.Dict)
+	},
+	"agentskills.skill.allowedTools": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetAllowedTools()).ToDataRes(types.Array(types.String))
+	},
+	"agentskills.skill.frontmatter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetFrontmatter()).ToDataRes(types.Dict)
+	},
+	"agentskills.skill.body": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetBody()).ToDataRes(types.String)
+	},
+	"agentskills.skill.content": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetContent()).ToDataRes(types.String)
+	},
+	"agentskills.skill.sha256": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetSha256()).ToDataRes(types.String)
+	},
+	"agentskills.skill.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"agentskills.skill.errors": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetErrors()).ToDataRes(types.Array(types.String))
 	},
 	"sriov.physicalFunctions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSriov).GetPhysicalFunctions()).ToDataRes(types.Array(types.Resource("sriov.physicalFunction")))
@@ -43956,6 +44014,78 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"qwen.code.skill.purl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlQwenCodeSkill).Purl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentskills.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskills).__id, ok = v.Value.(string)
+		return
+	},
+	"agentskills.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskills).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentskills.skills": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskills).Skills, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).__id, ok = v.Value.(string)
+		return
+	},
+	"agentskills.skill.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.directory": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Directory, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.license": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).License, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.compatibility": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Compatibility, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.metadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Metadata, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.allowedTools": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).AllowedTools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.frontmatter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Frontmatter, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.body": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Body, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.content": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Content, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.sha256": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Sha256, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.errors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Errors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"sriov.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -113800,6 +113930,200 @@ func (c *mqlQwenCodeSkill) GetPurl() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Purl, func() (string, error) {
 		return c.purl()
 	})
+}
+
+// mqlAgentskills for the agentskills resource
+type mqlAgentskills struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAgentskillsInternal it will be used here
+	Path   plugin.TValue[string]
+	Skills plugin.TValue[[]any]
+}
+
+// createAgentskills creates a new instance of this resource
+func createAgentskills(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAgentskills{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("agentskills", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAgentskills) MqlName() string {
+	return "agentskills"
+}
+
+func (c *mqlAgentskills) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAgentskills) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlAgentskills) GetSkills() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Skills, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("agentskills", c.__id, "skills")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.skills()
+	})
+}
+
+// mqlAgentskillsSkill for the agentskills.skill resource
+type mqlAgentskillsSkill struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAgentskillsSkillInternal it will be used here
+	Path          plugin.TValue[string]
+	Directory     plugin.TValue[string]
+	Name          plugin.TValue[string]
+	Description   plugin.TValue[string]
+	License       plugin.TValue[string]
+	Compatibility plugin.TValue[string]
+	Metadata      plugin.TValue[any]
+	AllowedTools  plugin.TValue[[]any]
+	Frontmatter   plugin.TValue[any]
+	Body          plugin.TValue[string]
+	Content       plugin.TValue[string]
+	Sha256        plugin.TValue[string]
+	Files         plugin.TValue[[]any]
+	Errors        plugin.TValue[[]any]
+}
+
+// createAgentskillsSkill creates a new instance of this resource
+func createAgentskillsSkill(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAgentskillsSkill{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("agentskills.skill", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAgentskillsSkill) MqlName() string {
+	return "agentskills.skill"
+}
+
+func (c *mqlAgentskillsSkill) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAgentskillsSkill) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlAgentskillsSkill) GetDirectory() *plugin.TValue[string] {
+	return &c.Directory
+}
+
+func (c *mqlAgentskillsSkill) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAgentskillsSkill) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAgentskillsSkill) GetLicense() *plugin.TValue[string] {
+	return &c.License
+}
+
+func (c *mqlAgentskillsSkill) GetCompatibility() *plugin.TValue[string] {
+	return &c.Compatibility
+}
+
+func (c *mqlAgentskillsSkill) GetMetadata() *plugin.TValue[any] {
+	return &c.Metadata
+}
+
+func (c *mqlAgentskillsSkill) GetAllowedTools() *plugin.TValue[[]any] {
+	return &c.AllowedTools
+}
+
+func (c *mqlAgentskillsSkill) GetFrontmatter() *plugin.TValue[any] {
+	return &c.Frontmatter
+}
+
+func (c *mqlAgentskillsSkill) GetBody() *plugin.TValue[string] {
+	return &c.Body
+}
+
+func (c *mqlAgentskillsSkill) GetContent() *plugin.TValue[string] {
+	return &c.Content
+}
+
+func (c *mqlAgentskillsSkill) GetSha256() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Sha256, func() (string, error) {
+		return c.sha256()
+	})
+}
+
+func (c *mqlAgentskillsSkill) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("agentskills.skill", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.files()
+	})
+}
+
+func (c *mqlAgentskillsSkill) GetErrors() *plugin.TValue[[]any] {
+	return &c.Errors
 }
 
 // mqlSriov for the sriov resource

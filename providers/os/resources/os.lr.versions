@@ -1,6 +1,24 @@
 # Copyright Mondoo, Inc. 2024, 2026
 # SPDX-License-Identifier: BUSL-1.1
 
+agentskills 14.18.2
+agentskills.path 14.18.2
+agentskills.skill 14.18.2
+agentskills.skill.allowedTools 14.18.2
+agentskills.skill.body 14.18.2
+agentskills.skill.compatibility 14.18.2
+agentskills.skill.content 14.18.2
+agentskills.skill.description 14.18.2
+agentskills.skill.directory 14.18.2
+agentskills.skill.errors 14.18.2
+agentskills.skill.files 14.18.2
+agentskills.skill.frontmatter 14.18.2
+agentskills.skill.license 14.18.2
+agentskills.skill.metadata 14.18.2
+agentskills.skill.name 14.18.2
+agentskills.skill.path 14.18.2
+agentskills.skill.sha256 14.18.2
+agentskills.skills 14.18.2
 ai 13.16.9
 ai.model 13.16.9
 ai.model.architecture 13.16.10

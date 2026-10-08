@@ -23097,6 +23097,91 @@ private qwen.code.skill @defaults("name") @maturity("preview") {
   purl() string
 }
 
+// Agent Skills under a directory
+//
+// Skills that follow the Agent Skills specification (https://agentskills.io/specification),
+// independent of the agent that loads them. The `path` field selects the directory
+// searched, for example `agentskills(path: "/home/alice/src/my-skills")`. Every SKILL.md
+// below it is a skill, including skills nested in plugin directories; the files inside a
+// skill, `.git`, and `node_modules` are not searched. Use it to validate a skills
+// repository against the specification or to inventory the skills in a checkout.
+agentskills @defaults("path") @maturity("preview") {
+  init(path string)
+  // Directory searched for skills
+  path string
+  // Skills found under the directory, one per SKILL.md file
+  skills() []agentskills.skill
+}
+
+// Agent skill defined by a SKILL.md file
+//
+// A skill directory as the Agent Skills specification defines it. The frontmatter fields
+// hold the values exactly as written, with no fallbacks, so a missing or malformed value
+// can be checked: `name` is empty when the frontmatter omits it, and `errors` explains a
+// frontmatter that cannot be read. `directory` is what the specification requires `name`
+// to equal, `files` lists the bundled scripts, references, and assets, and `sha256` pins
+// the definition.
+private agentskills.skill @defaults("name path") @maturity("preview") {
+  // Path to the SKILL.md file
+  path string
+  // Name of the directory that contains SKILL.md
+  directory string
+  // Skill name
+  //
+  // Frontmatter `name` field. The specification requires 1-64 lowercase letters, digits,
+  // and single hyphens, equal to `directory`. Empty when the frontmatter omits it.
+  name string
+  // Skill description
+  //
+  // Frontmatter `description` field, stating what the skill does and when to use it. The
+  // specification requires 1-1024 characters. Empty when the frontmatter omits it.
+  description string
+  // License of the skill
+  //
+  // Frontmatter `license` field, a license name or the path of a bundled license file.
+  // Empty when unset.
+  license string
+  // Environment requirements
+  //
+  // Frontmatter `compatibility` field, naming the products, system packages, or network
+  // access the skill needs. The specification allows at most 500 characters. Empty when
+  // unset.
+  compatibility string
+  // Additional properties
+  //
+  // Frontmatter `metadata` field, a map of keys the specification leaves to the author.
+  // Null when unset.
+  metadata dict
+  // Tools the skill is pre-approved to use
+  //
+  // Frontmatter `allowed-tools` field, a space-separated list such as
+  // `Bash(git add:*) Read`. Spaces inside parentheses belong to one entry, and commas also
+  // separate entries, as some agents write them. Empty when unset.
+  allowedTools []string
+  // All frontmatter fields as written
+  //
+  // Includes fields outside the specification that individual agents read, such as
+  // `argument-hint`. Null when the frontmatter cannot be read.
+  frontmatter dict
+  // Markdown instructions after the frontmatter
+  body string
+  // Full content of the SKILL.md file
+  content string
+  // SHA-256 hash of the SKILL.md content
+  sha256() string
+  // Files bundled with the skill
+  //
+  // Every file in the skill directory other than SKILL.md, such as those under `scripts`,
+  // `references`, and `assets`.
+  files() []file
+  // Problems reading the frontmatter
+  //
+  // Empty when the frontmatter parses and its specified fields have the right types.
+  // Otherwise one message per problem, for example a missing or unterminated frontmatter
+  // block, invalid YAML, or a `name` that is not a string.
+  errors []string
+}
+
 // SR-IOV network devices
 //
 // Single-root I/O virtualization state of the host's network hardware. The
