@@ -9205,6 +9205,172 @@ containers.policy.requirement @defaults("type") {
   signedIdentity dict
 }
 
+// Container engine configuration (containers.conf)
+//
+// The containers.conf(5) configuration Podman, Buildah and Skopeo read as
+// root, merged from the system file and its drop-ins the way Podman does.
+// Podman 6 and later read the first of /etc/containers/containers.conf and
+// /usr/share/containers/containers.conf, then the drop-ins in
+// /etc/containers/containers.rootful.conf.d, /etc/containers/containers.conf.d,
+// /usr/share/containers/containers.rootful.conf.d and
+// /usr/share/containers/containers.conf.d in name order. Earlier versions read
+// /usr/share/containers/containers.conf, then /etc/containers/containers.conf
+// on top of it, then the drop-ins in /etc/containers/containers.conf.d. The
+// version is taken from the installed podman package. Each field reports the
+// setting containers get by default: `privileged`, `defaultCapabilities`,
+// `seccompProfile`, and the namespace modes (`userns`, `netns`, `pidns`,
+// `ipcns`, `utsns`, `cgroupns`) describe how much of the host a container
+// shares unless it asks otherwise, for example
+// `containers.conf { privileged == false && pidns != "host" }`. A setting no
+// file sets reports the engine's default, or null where that default depends
+// on the host, as each field says.
+containers.conf {
+  // Configuration files, in the order they are applied
+  files() []file
+  // Merged configuration of all files
+  configuration() dict
+  // Whether containers run privileged by default
+  //
+  // A privileged container keeps every capability and turns off the seccomp,
+  // AppArmor, SELinux and device restrictions. False when unset.
+  privileged() bool
+  // Capabilities every container gets
+  //
+  // When unset, the engine's default: CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_FOWNER,
+  // CAP_FSETID, CAP_KILL, CAP_NET_BIND_SERVICE, CAP_SETFCAP, CAP_SETGID,
+  // CAP_SETPCAP, CAP_SETUID, and CAP_SYS_CHROOT.
+  defaultCapabilities() []string
+  // Sysctls set in every container, as name=value (e.g., net.ipv4.ping_group_range=0 0)
+  defaultSysctls() []string
+  // Resource limits set in every container, as name=soft:hard (e.g., nofile=1024:2048)
+  defaultUlimits() []string
+  // Host devices added to every container, as host-path:container-path:permissions
+  devices() []string
+  // Mounts added to every container (e.g., type=bind,source=/srv,destination=/srv,ro)
+  mounts() []string
+  // Volumes added to every container, as host-path:container-path:options
+  volumes() []string
+  // Whether every host environment variable is passed into containers; false when unset
+  envHost() bool
+  // Seccomp profile containers run with, a file path or `unconfined`
+  //
+  // Null when unset: the engine then applies its default profile,
+  // /etc/containers/seccomp.json when it exists, otherwise
+  // /usr/share/containers/seccomp.json.
+  seccompProfile() string
+  // AppArmor profile containers run with
+  //
+  // Null when unset: the engine then applies its built-in profile, named
+  // `containers-default-` followed by the library version, on hosts that use
+  // AppArmor.
+  apparmorProfile() string
+  // Whether containers are separated with SELinux labels
+  //
+  // Null when unset: the engine then labels containers whenever SELinux is
+  // enabled on the host. Ignored on hosts without SELinux.
+  label() bool
+  // Whether containers run with a read-only root filesystem; false when unset
+  readOnly() bool
+  // Maximum number of processes in a container, 0 for no limit; 2048 when unset
+  pidsLimit() int
+  // User namespace mode: host, private, auto, keep-id, or nomap
+  //
+  // `host` when unset, where root in the container is root on the host.
+  userns() string
+  // Network namespace mode (e.g., private, bridge, host, none, pasta); `private` when unset
+  netns() string
+  // PID namespace mode: private or host; `private` when unset
+  pidns() string
+  // IPC namespace mode: shareable, private, host, or none; `shareable` when unset
+  ipcns() string
+  // UTS namespace mode: private or host; `private` when unset
+  utsns() string
+  // Cgroup namespace mode: private or host
+  //
+  // When unset, `private` for Podman 6 and later. Null when unset for earlier
+  // versions, which use `private` on cgroup v2 hosts and `host` on cgroup v1.
+  cgroupns() string
+  // Whether containers get cgroups: enabled, disabled, or no-conmon; `enabled` when unset
+  cgroups() string
+  // Log driver for container output: k8s-file, journald, none, or passthrough
+  //
+  // Null when unset: the engine then uses journald when the systemd journal is
+  // available and k8s-file otherwise.
+  logDriver() string
+  // Default OCI runtime (e.g., crun, runc, kata)
+  //
+  // Null when unset: the engine then uses the first one installed of crun,
+  // runc, runj, kata, runsc, and ocijail.
+  runtime() string
+  // Where engine events are logged: journald, file, or none
+  //
+  // Null when unset: the engine then uses journald on systemd hosts with a
+  // journal and file otherwise.
+  eventsLogger() string
+  // Cgroup manager: systemd or cgroupfs
+  //
+  // Null when unset: the engine then uses systemd on hosts booted with systemd
+  // and cgroupfs otherwise.
+  cgroupManager() string
+  // Network backend: netavark or cni
+  //
+  // Null when unset: Podman 6 and later use netavark, earlier versions pick
+  // cni only when it was used before.
+  networkBackend() string
+  // Network containers join in bridge mode; `podman` when unset
+  defaultNetwork() string
+}
+
+// Container storage configuration (storage.conf)
+//
+// The containers-storage.conf(5) configuration Podman, Buildah, Skopeo and
+// CRI-O store images and containers with: /etc/containers/storage.conf, or
+// /usr/share/containers/storage.conf when it is absent, then the drop-ins in
+// /etc/containers/storage.rootful.conf.d, /etc/containers/storage.conf.d,
+// /usr/share/containers/storage.rootful.conf.d and
+// /usr/share/containers/storage.conf.d in name order, which Podman 6 and later
+// read. `driver`, `graphRoot` and `runRoot` say where and how images and
+// containers are stored, and `overlayMountOptions` the options overlay layers
+// are mounted with, for example
+// `containers.storage.overlayMountOptions.contains("nodev")`. A setting no
+// file sets reports the library's default, or null where that default
+// depends on the host, as each field says.
+containers.storage {
+  // Configuration files, in the order they are applied
+  files() []file
+  // Merged configuration of all files
+  configuration() dict
+  // Storage driver (e.g., overlay, vfs, btrfs, zfs)
+  //
+  // Null when unset: the library then picks one that works on the host,
+  // trying `driverPriority` first.
+  driver() string
+  // Drivers tried in order when `driver` is unset
+  driverPriority() []string
+  // Directory images and container layers are stored in; /var/lib/containers/storage when unset
+  graphRoot() string
+  // Directory for temporary state such as mounted layers; /run/containers/storage when unset
+  runRoot() string
+  // Separate directory newly pulled images are stored in; empty when they are stored in `graphRoot`
+  imageStore() string
+  // Read-only image stores used in addition to `graphRoot`
+  additionalImageStores() []string
+  // Whether container metadata is kept in `runRoot` and lost on reboot; false when unset
+  transientStore() bool
+  // Program that mounts overlay layers instead of the kernel (e.g., /usr/bin/fuse-overlayfs)
+  //
+  // Empty when the kernel's overlay filesystem is used.
+  overlayMountProgram() string
+  // Options overlay layers are mounted with (e.g., nodev, metacopy=on)
+  //
+  // From `mountopt` in [storage.options.overlay], or in [storage.options]
+  // when the overlay table sets none. `nodev` stops device files in an image
+  // from being usable in its containers.
+  overlayMountOptions() []string
+  // Options for pulling images, as key-value pairs (e.g., enable_partial_images, use_hard_links, convert_images)
+  pullOptions() map[string]string
+}
+
 // Podman container engine
 //
 // Workloads managed by Podman, together with the engine settings that apply to

@@ -277,6 +277,8 @@ const (
 	ResourceContainersPolicy                              string = "containers.policy"
 	ResourceContainersPolicyScope                         string = "containers.policy.scope"
 	ResourceContainersPolicyRequirement                   string = "containers.policy.requirement"
+	ResourceContainersConf                                string = "containers.conf"
+	ResourceContainersStorage                             string = "containers.storage"
 	ResourcePodman                                        string = "podman"
 	ResourcePodmanContainer                               string = "podman.container"
 	ResourcePodmanContainerUlimit                         string = "podman.container.ulimit"
@@ -1752,6 +1754,14 @@ func init() {
 		"containers.policy.requirement": {
 			// to override args, implement: initContainersPolicyRequirement(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createContainersPolicyRequirement,
+		},
+		"containers.conf": {
+			// to override args, implement: initContainersConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainersConf,
+		},
+		"containers.storage": {
+			// to override args, implement: initContainersStorage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainersStorage,
 		},
 		"podman": {
 			// to override args, implement: initPodman(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -10430,6 +10440,126 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"containers.policy.requirement.signedIdentity": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainersPolicyRequirement).GetSignedIdentity()).ToDataRes(types.Dict)
+	},
+	"containers.conf.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"containers.conf.configuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetConfiguration()).ToDataRes(types.Dict)
+	},
+	"containers.conf.privileged": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetPrivileged()).ToDataRes(types.Bool)
+	},
+	"containers.conf.defaultCapabilities": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetDefaultCapabilities()).ToDataRes(types.Array(types.String))
+	},
+	"containers.conf.defaultSysctls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetDefaultSysctls()).ToDataRes(types.Array(types.String))
+	},
+	"containers.conf.defaultUlimits": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetDefaultUlimits()).ToDataRes(types.Array(types.String))
+	},
+	"containers.conf.devices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetDevices()).ToDataRes(types.Array(types.String))
+	},
+	"containers.conf.mounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetMounts()).ToDataRes(types.Array(types.String))
+	},
+	"containers.conf.volumes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetVolumes()).ToDataRes(types.Array(types.String))
+	},
+	"containers.conf.envHost": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetEnvHost()).ToDataRes(types.Bool)
+	},
+	"containers.conf.seccompProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetSeccompProfile()).ToDataRes(types.String)
+	},
+	"containers.conf.apparmorProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetApparmorProfile()).ToDataRes(types.String)
+	},
+	"containers.conf.label": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetLabel()).ToDataRes(types.Bool)
+	},
+	"containers.conf.readOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetReadOnly()).ToDataRes(types.Bool)
+	},
+	"containers.conf.pidsLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetPidsLimit()).ToDataRes(types.Int)
+	},
+	"containers.conf.userns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetUserns()).ToDataRes(types.String)
+	},
+	"containers.conf.netns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetNetns()).ToDataRes(types.String)
+	},
+	"containers.conf.pidns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetPidns()).ToDataRes(types.String)
+	},
+	"containers.conf.ipcns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetIpcns()).ToDataRes(types.String)
+	},
+	"containers.conf.utsns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetUtsns()).ToDataRes(types.String)
+	},
+	"containers.conf.cgroupns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetCgroupns()).ToDataRes(types.String)
+	},
+	"containers.conf.cgroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetCgroups()).ToDataRes(types.String)
+	},
+	"containers.conf.logDriver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetLogDriver()).ToDataRes(types.String)
+	},
+	"containers.conf.runtime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetRuntime()).ToDataRes(types.String)
+	},
+	"containers.conf.eventsLogger": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetEventsLogger()).ToDataRes(types.String)
+	},
+	"containers.conf.cgroupManager": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetCgroupManager()).ToDataRes(types.String)
+	},
+	"containers.conf.networkBackend": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetNetworkBackend()).ToDataRes(types.String)
+	},
+	"containers.conf.defaultNetwork": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersConf).GetDefaultNetwork()).ToDataRes(types.String)
+	},
+	"containers.storage.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"containers.storage.configuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetConfiguration()).ToDataRes(types.Dict)
+	},
+	"containers.storage.driver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetDriver()).ToDataRes(types.String)
+	},
+	"containers.storage.driverPriority": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetDriverPriority()).ToDataRes(types.Array(types.String))
+	},
+	"containers.storage.graphRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetGraphRoot()).ToDataRes(types.String)
+	},
+	"containers.storage.runRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetRunRoot()).ToDataRes(types.String)
+	},
+	"containers.storage.imageStore": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetImageStore()).ToDataRes(types.String)
+	},
+	"containers.storage.additionalImageStores": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetAdditionalImageStores()).ToDataRes(types.Array(types.String))
+	},
+	"containers.storage.transientStore": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetTransientStore()).ToDataRes(types.Bool)
+	},
+	"containers.storage.overlayMountProgram": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetOverlayMountProgram()).ToDataRes(types.String)
+	},
+	"containers.storage.overlayMountOptions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetOverlayMountOptions()).ToDataRes(types.Array(types.String))
+	},
+	"containers.storage.pullOptions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainersStorage).GetPullOptions()).ToDataRes(types.Map(types.String, types.String))
 	},
 	"podman.installed": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPodman).GetInstalled()).ToDataRes(types.Bool)
@@ -29965,6 +30095,174 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"containers.policy.requirement.signedIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlContainersPolicyRequirement).SignedIdentity, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).__id, ok = v.Value.(string)
+		return
+	},
+	"containers.conf.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.configuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Configuration, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.privileged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Privileged, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.conf.defaultCapabilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).DefaultCapabilities, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.defaultSysctls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).DefaultSysctls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.defaultUlimits": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).DefaultUlimits, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.devices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Devices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.mounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Mounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.volumes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Volumes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.conf.envHost": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).EnvHost, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.conf.seccompProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).SeccompProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.apparmorProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).ApparmorProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.label": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Label, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.conf.readOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).ReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.conf.pidsLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).PidsLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"containers.conf.userns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Userns, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.netns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Netns, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.pidns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Pidns, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.ipcns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Ipcns, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.utsns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Utsns, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.cgroupns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Cgroupns, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.cgroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Cgroups, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.logDriver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).LogDriver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.runtime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).Runtime, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.eventsLogger": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).EventsLogger, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.cgroupManager": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).CgroupManager, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.networkBackend": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).NetworkBackend, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.conf.defaultNetwork": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersConf).DefaultNetwork, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.storage.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).__id, ok = v.Value.(string)
+		return
+	},
+	"containers.storage.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.storage.configuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).Configuration, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"containers.storage.driver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).Driver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.storage.driverPriority": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).DriverPriority, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.storage.graphRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).GraphRoot, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.storage.runRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).RunRoot, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.storage.imageStore": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).ImageStore, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.storage.additionalImageStores": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).AdditionalImageStores, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.storage.transientStore": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).TransientStore, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"containers.storage.overlayMountProgram": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).OverlayMountProgram, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"containers.storage.overlayMountOptions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).OverlayMountOptions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"containers.storage.pullOptions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainersStorage).PullOptions, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"podman.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -73020,6 +73318,384 @@ func (c *mqlContainersPolicyRequirement) GetRekorPublicKeyPaths() *plugin.TValue
 
 func (c *mqlContainersPolicyRequirement) GetSignedIdentity() *plugin.TValue[any] {
 	return &c.SignedIdentity
+}
+
+// mqlContainersConf for the containers.conf resource
+type mqlContainersConf struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlContainersConfInternal
+	Files               plugin.TValue[[]any]
+	Configuration       plugin.TValue[any]
+	Privileged          plugin.TValue[bool]
+	DefaultCapabilities plugin.TValue[[]any]
+	DefaultSysctls      plugin.TValue[[]any]
+	DefaultUlimits      plugin.TValue[[]any]
+	Devices             plugin.TValue[[]any]
+	Mounts              plugin.TValue[[]any]
+	Volumes             plugin.TValue[[]any]
+	EnvHost             plugin.TValue[bool]
+	SeccompProfile      plugin.TValue[string]
+	ApparmorProfile     plugin.TValue[string]
+	Label               plugin.TValue[bool]
+	ReadOnly            plugin.TValue[bool]
+	PidsLimit           plugin.TValue[int64]
+	Userns              plugin.TValue[string]
+	Netns               plugin.TValue[string]
+	Pidns               plugin.TValue[string]
+	Ipcns               plugin.TValue[string]
+	Utsns               plugin.TValue[string]
+	Cgroupns            plugin.TValue[string]
+	Cgroups             plugin.TValue[string]
+	LogDriver           plugin.TValue[string]
+	Runtime             plugin.TValue[string]
+	EventsLogger        plugin.TValue[string]
+	CgroupManager       plugin.TValue[string]
+	NetworkBackend      plugin.TValue[string]
+	DefaultNetwork      plugin.TValue[string]
+}
+
+// createContainersConf creates a new instance of this resource
+func createContainersConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainersConf{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containers.conf", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainersConf) MqlName() string {
+	return "containers.conf"
+}
+
+func (c *mqlContainersConf) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainersConf) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containers.conf", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.files()
+	})
+}
+
+func (c *mqlContainersConf) GetConfiguration() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Configuration, func() (any, error) {
+		return c.configuration()
+	})
+}
+
+func (c *mqlContainersConf) GetPrivileged() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Privileged, func() (bool, error) {
+		return c.privileged()
+	})
+}
+
+func (c *mqlContainersConf) GetDefaultCapabilities() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DefaultCapabilities, func() ([]any, error) {
+		return c.defaultCapabilities()
+	})
+}
+
+func (c *mqlContainersConf) GetDefaultSysctls() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DefaultSysctls, func() ([]any, error) {
+		return c.defaultSysctls()
+	})
+}
+
+func (c *mqlContainersConf) GetDefaultUlimits() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DefaultUlimits, func() ([]any, error) {
+		return c.defaultUlimits()
+	})
+}
+
+func (c *mqlContainersConf) GetDevices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Devices, func() ([]any, error) {
+		return c.devices()
+	})
+}
+
+func (c *mqlContainersConf) GetMounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Mounts, func() ([]any, error) {
+		return c.mounts()
+	})
+}
+
+func (c *mqlContainersConf) GetVolumes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Volumes, func() ([]any, error) {
+		return c.volumes()
+	})
+}
+
+func (c *mqlContainersConf) GetEnvHost() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnvHost, func() (bool, error) {
+		return c.envHost()
+	})
+}
+
+func (c *mqlContainersConf) GetSeccompProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SeccompProfile, func() (string, error) {
+		return c.seccompProfile()
+	})
+}
+
+func (c *mqlContainersConf) GetApparmorProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ApparmorProfile, func() (string, error) {
+		return c.apparmorProfile()
+	})
+}
+
+func (c *mqlContainersConf) GetLabel() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Label, func() (bool, error) {
+		return c.label()
+	})
+}
+
+func (c *mqlContainersConf) GetReadOnly() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ReadOnly, func() (bool, error) {
+		return c.readOnly()
+	})
+}
+
+func (c *mqlContainersConf) GetPidsLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PidsLimit, func() (int64, error) {
+		return c.pidsLimit()
+	})
+}
+
+func (c *mqlContainersConf) GetUserns() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Userns, func() (string, error) {
+		return c.userns()
+	})
+}
+
+func (c *mqlContainersConf) GetNetns() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Netns, func() (string, error) {
+		return c.netns()
+	})
+}
+
+func (c *mqlContainersConf) GetPidns() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Pidns, func() (string, error) {
+		return c.pidns()
+	})
+}
+
+func (c *mqlContainersConf) GetIpcns() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Ipcns, func() (string, error) {
+		return c.ipcns()
+	})
+}
+
+func (c *mqlContainersConf) GetUtsns() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Utsns, func() (string, error) {
+		return c.utsns()
+	})
+}
+
+func (c *mqlContainersConf) GetCgroupns() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Cgroupns, func() (string, error) {
+		return c.cgroupns()
+	})
+}
+
+func (c *mqlContainersConf) GetCgroups() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Cgroups, func() (string, error) {
+		return c.cgroups()
+	})
+}
+
+func (c *mqlContainersConf) GetLogDriver() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.LogDriver, func() (string, error) {
+		return c.logDriver()
+	})
+}
+
+func (c *mqlContainersConf) GetRuntime() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Runtime, func() (string, error) {
+		return c.runtime()
+	})
+}
+
+func (c *mqlContainersConf) GetEventsLogger() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.EventsLogger, func() (string, error) {
+		return c.eventsLogger()
+	})
+}
+
+func (c *mqlContainersConf) GetCgroupManager() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CgroupManager, func() (string, error) {
+		return c.cgroupManager()
+	})
+}
+
+func (c *mqlContainersConf) GetNetworkBackend() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.NetworkBackend, func() (string, error) {
+		return c.networkBackend()
+	})
+}
+
+func (c *mqlContainersConf) GetDefaultNetwork() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DefaultNetwork, func() (string, error) {
+		return c.defaultNetwork()
+	})
+}
+
+// mqlContainersStorage for the containers.storage resource
+type mqlContainersStorage struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlContainersStorageInternal
+	Files                 plugin.TValue[[]any]
+	Configuration         plugin.TValue[any]
+	Driver                plugin.TValue[string]
+	DriverPriority        plugin.TValue[[]any]
+	GraphRoot             plugin.TValue[string]
+	RunRoot               plugin.TValue[string]
+	ImageStore            plugin.TValue[string]
+	AdditionalImageStores plugin.TValue[[]any]
+	TransientStore        plugin.TValue[bool]
+	OverlayMountProgram   plugin.TValue[string]
+	OverlayMountOptions   plugin.TValue[[]any]
+	PullOptions           plugin.TValue[map[string]any]
+}
+
+// createContainersStorage creates a new instance of this resource
+func createContainersStorage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainersStorage{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("containers.storage", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainersStorage) MqlName() string {
+	return "containers.storage"
+}
+
+func (c *mqlContainersStorage) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainersStorage) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containers.storage", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.files()
+	})
+}
+
+func (c *mqlContainersStorage) GetConfiguration() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Configuration, func() (any, error) {
+		return c.configuration()
+	})
+}
+
+func (c *mqlContainersStorage) GetDriver() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Driver, func() (string, error) {
+		return c.driver()
+	})
+}
+
+func (c *mqlContainersStorage) GetDriverPriority() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DriverPriority, func() ([]any, error) {
+		return c.driverPriority()
+	})
+}
+
+func (c *mqlContainersStorage) GetGraphRoot() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.GraphRoot, func() (string, error) {
+		return c.graphRoot()
+	})
+}
+
+func (c *mqlContainersStorage) GetRunRoot() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.RunRoot, func() (string, error) {
+		return c.runRoot()
+	})
+}
+
+func (c *mqlContainersStorage) GetImageStore() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ImageStore, func() (string, error) {
+		return c.imageStore()
+	})
+}
+
+func (c *mqlContainersStorage) GetAdditionalImageStores() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AdditionalImageStores, func() ([]any, error) {
+		return c.additionalImageStores()
+	})
+}
+
+func (c *mqlContainersStorage) GetTransientStore() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.TransientStore, func() (bool, error) {
+		return c.transientStore()
+	})
+}
+
+func (c *mqlContainersStorage) GetOverlayMountProgram() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.OverlayMountProgram, func() (string, error) {
+		return c.overlayMountProgram()
+	})
+}
+
+func (c *mqlContainersStorage) GetOverlayMountOptions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OverlayMountOptions, func() ([]any, error) {
+		return c.overlayMountOptions()
+	})
+}
+
+func (c *mqlContainersStorage) GetPullOptions() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.PullOptions, func() (map[string]any, error) {
+		return c.pullOptions()
+	})
 }
 
 // mqlPodman for the podman resource

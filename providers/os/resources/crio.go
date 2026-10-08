@@ -32,9 +32,6 @@ const (
 	crioConfigDir = "/etc/crio/crio.conf.d"
 	// crioVersionFile is where the running CRI-O records its version.
 	crioVersionFile = "/var/run/crio/version"
-	// crioDefaultStorageRoot is containers/storage's root unless crio.root
-	// says otherwise.
-	crioDefaultStorageRoot = "/var/lib/containers/storage"
 )
 
 var crioContainerID = regexp.MustCompile(`^[0-9a-f]{64}$`)

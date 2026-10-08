@@ -26,7 +26,9 @@ import (
 const maxStorageListSize = 32 << 20
 
 // crioStorage returns containers/storage's root and graph driver as CRI-O
-// uses them.
+// uses them: crio.root and crio.storage_driver when CRI-O's configuration sets
+// them, otherwise graphroot and driver from storage.conf, which CRI-O starts
+// from.
 func (c *mqlCrio) crioStorage() (string, string, error) {
 	cfg := c.GetConfiguration()
 	if cfg.Error != nil {
@@ -35,10 +37,30 @@ func (c *mqlCrio) crioStorage() (string, string, error) {
 	data, _ := cfg.Data.(map[string]any)
 	crioTable, _ := data["crio"].(map[string]any)
 	root, _ := crioTable["root"].(string)
-	if root == "" {
-		root = crioDefaultStorageRoot
-	}
 	driver, _ := crioTable["storage_driver"].(string)
+	if root != "" && driver != "" {
+		return root, driver, nil
+	}
+
+	raw, err := CreateResource(c.MqlRuntime, "containers.storage", map[string]*llx.RawData{})
+	if err != nil {
+		return "", "", err
+	}
+	storage := raw.(*mqlContainersStorage)
+	if root == "" {
+		graphRoot := storage.GetGraphRoot()
+		if graphRoot.Error != nil {
+			return "", "", graphRoot.Error
+		}
+		root = graphRoot.Data
+	}
+	if driver == "" {
+		d := storage.GetDriver()
+		if d.Error != nil {
+			return "", "", d.Error
+		}
+		driver = d.Data
+	}
 	if driver == "" {
 		driver = "overlay"
 	}
