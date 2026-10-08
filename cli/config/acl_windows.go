@@ -37,18 +37,45 @@ var programDataDir = func() string {
 // isUnderProgramData reports whether path is inside a folder below ProgramData,
 // such as C:\ProgramData\Mondoo\mondoo.yml. The comparison ignores case, as
 // Windows paths do.
+//
+// Both sides are resolved the way filepath.EvalSymlinks resolves them, which
+// also expands 8.3 short names, so a path that reached the writer in another
+// spelling (migrate resolves the config path first) is still recognized.
 func isUnderProgramData(path string) bool {
-	root := filepath.Clean(programDataDir())
-	abs, err := filepath.Abs(path)
-	if err != nil {
+	root := resolvePath(programDataDir())
+	abs := resolvePath(path)
+	if root == "" || abs == "" {
 		return false
 	}
-	rel, err := filepath.Rel(strings.ToLower(root), strings.ToLower(filepath.Clean(abs)))
+	rel, err := filepath.Rel(strings.ToLower(root), strings.ToLower(abs))
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return false
 	}
 	// a file directly in ProgramData is not ours to lock down
 	return strings.Contains(rel, string(filepath.Separator))
+}
+
+// resolvePath returns the absolute, symlink- and short-name-free form of path.
+// A path that does not exist yet is resolved through its closest existing
+// parent. It returns "" when path cannot be made absolute.
+func resolvePath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	abs = filepath.Clean(abs)
+	rest := ""
+	for dir := abs; ; {
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Join(resolved, rest)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return abs
+		}
+		rest = filepath.Join(filepath.Base(dir), rest)
+		dir = parent
+	}
 }
 
 // restrictAccess limits a credentials file under ProgramData to SYSTEM and
