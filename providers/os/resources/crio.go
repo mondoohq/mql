@@ -133,7 +133,9 @@ func (c *mqlCrio) crioConfigFilePaths() ([]string, error) {
 // CRI-O walks the directory with filepath.Walk and applies every file it
 // finds: files in subdirectories too, hidden files too, in the walk's
 // lexical order. A symbolic link to a file is read through; one to a
-// directory, or a dangling one, has nothing to read.
+// directory, or a dangling one, has nothing to read. Filesystems that can
+// lstat report a link as such; on the others an entry that cannot be read,
+// such as a dangling link, is skipped rather than failing the listing.
 func crioDropInPaths(fs afero.Fs, dir string) ([]string, error) {
 	if _, err := fs.Stat(dir); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -144,7 +146,10 @@ func crioDropInPaths(fs afero.Fs, dir string) ([]string, error) {
 	paths := []string{}
 	err := afero.Walk(fs, dir, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			if p == dir {
+				return err
+			}
+			return nil
 		}
 		if info.IsDir() {
 			return nil

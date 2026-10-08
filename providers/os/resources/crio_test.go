@@ -130,6 +130,28 @@ func TestCrioDropInPaths(t *testing.T) {
 	paths, err = crioDropInPaths(afero.NewMemMapFs(), "/etc/crio/crio.conf.d")
 	require.NoError(t, err)
 	assert.Empty(t, paths)
+
+	// an entry that cannot be stat'ed, as a dangling link is on a filesystem
+	// that cannot lstat, is left out instead of failing the listing
+	broken := &statErrorFs{Fs: mockFS, broken: "/etc/crio/crio.conf.d/98-notes.txt"}
+	paths, err = crioDropInPaths(broken, "/etc/crio/crio.conf.d")
+	require.NoError(t, err)
+	assert.NotContains(t, paths, "/etc/crio/crio.conf.d/98-notes.txt")
+	assert.Contains(t, paths, "/etc/crio/crio.conf.d/99-sweep.conf")
+}
+
+// statErrorFs fails to stat one path, like a dangling symbolic link on a
+// filesystem that follows links when it stats.
+type statErrorFs struct {
+	afero.Fs
+	broken string
+}
+
+func (f *statErrorFs) Stat(name string) (os.FileInfo, error) {
+	if name == f.broken {
+		return nil, os.ErrNotExist
+	}
+	return f.Fs.Stat(name)
 }
 
 // containers/storage on a Debian 12 host running CRI-O and Podman side by
