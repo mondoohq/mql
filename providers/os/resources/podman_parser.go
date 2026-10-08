@@ -184,6 +184,20 @@ func isPodmanDefaultSeccompProfile(profile string) bool {
 	return ok || profile == "" || profile == "default"
 }
 
+// podmanAppArmorProfile reports the AppArmor profile a container runs with.
+// Podman records the profile it applied, but none for a privileged container,
+// which runs unconfined: on a host with AppArmor that is reported as such,
+// as Docker records it.
+func podmanAppArmorProfile(recorded string, privileged bool, engine *podmanInfoSecurity) string {
+	if recorded != "" {
+		return recorded
+	}
+	if privileged && engine != nil && engine.ApparmorEnabled {
+		return "unconfined"
+	}
+	return ""
+}
+
 // podmanSeccompProfile reports the seccomp profile a container effectively
 // runs with: default, unconfined or custom. A privileged container is not
 // filtered.

@@ -9534,8 +9534,8 @@ podman.container @defaults("name state imageName") {
   seccompProfile() string
   // AppArmor profile the container runs with
   //
-  // For example `containers-default-0.50.0` or `unconfined`. Empty when the host
-  // does not use AppArmor.
+  // For example `containers-default-0.50.0` or `unconfined`, which a
+  // privileged container reports. Empty when the host does not use AppArmor.
   apparmorProfile() string
   // Whether the container's processes are prevented from gaining privileges
   //

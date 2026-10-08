@@ -1,0 +1,133 @@
+{
+  "host": {
+    "arch": "amd64",
+    "buildahVersion": "1.28.2",
+    "cgroupManager": "systemd",
+    "cgroupVersion": "v2",
+    "cgroupControllers": [
+      "cpuset",
+      "cpu",
+      "io",
+      "memory",
+      "hugetlb",
+      "pids",
+      "rdma",
+      "misc"
+    ],
+    "conmon": {
+      "package": "conmon_2.1.6+ds1-1_amd64",
+      "path": "/usr/bin/conmon",
+      "version": "conmon version 2.1.6, commit: unknown"
+    },
+    "cpus": 2,
+    "cpuUtilization": {
+      "userPercent": 4.06,
+      "systemPercent": 1.78,
+      "idlePercent": 94.16
+    },
+    "distribution": {
+      "distribution": "debian",
+      "version": "12",
+      "codename": "bookworm"
+    },
+    "eventLogger": "journald",
+    "hostname": "ip-172-17-2-5",
+    "idMappings": {
+      "gidmap": null,
+      "uidmap": null
+    },
+    "kernel": "6.1.0-53-cloud-amd64",
+    "logDriver": "journald",
+    "memFree": 1535983616,
+    "memTotal": 4055683072,
+    "networkBackend": "netavark",
+    "ociRuntime": {
+      "name": "runc",
+      "package": "runc_1.1.5+ds1-1+deb12u1_amd64",
+      "path": "/usr/bin/runc",
+      "version": "runc version 1.1.5+ds1\ncommit: 1.1.5+ds1-1+deb12u1\nspec: 1.0.2-dev\ngo: go1.19.8\nlibseccomp: 2.5.4"
+    },
+    "os": "linux",
+    "remoteSocket": {
+      "path": "/run/podman/podman.sock",
+      "exists": true
+    },
+    "serviceIsRemote": false,
+    "security": {
+      "apparmorEnabled": true,
+      "capabilities": "CAP_CHOWN,CAP_DAC_OVERRIDE,CAP_FOWNER,CAP_FSETID,CAP_KILL,CAP_NET_BIND_SERVICE,CAP_SETFCAP,CAP_SETGID,CAP_SETPCAP,CAP_SETUID,CAP_SYS_CHROOT",
+      "rootless": false,
+      "seccompEnabled": true,
+      "seccompProfilePath": "/usr/share/containers/seccomp.json",
+      "selinuxEnabled": false
+    },
+    "slirp4netns": {
+      "executable": "/usr/bin/slirp4netns",
+      "package": "slirp4netns_1.2.0-1_amd64",
+      "version": "slirp4netns version 1.2.0\ncommit: 656041d45cfca7a4176f6b7eed9e4fe6c11e8383\nlibslirp: 4.7.0\nSLIRP_CONFIG_VERSION_MAX: 4\nlibseccomp: 2.5.4"
+    },
+    "swapFree": 0,
+    "swapTotal": 0,
+    "uptime": "0h 21m 36.00s",
+    "linkmode": "dynamic"
+  },
+  "store": {
+    "configFile": "/usr/share/containers/storage.conf",
+    "containerStore": {
+      "number": 14,
+      "paused": 0,
+      "running": 12,
+      "stopped": 2
+    },
+    "graphDriverName": "overlay",
+    "graphOptions": {
+      
+    },
+    "graphRoot": "/var/lib/containers/storage",
+    "graphRootAllocated": 31462268928,
+    "graphRootUsed": 2529513472,
+    "graphStatus": {
+      "Backing Filesystem": "extfs",
+      "Native Overlay Diff": "true",
+      "Supports d_type": "true",
+      "Using metacopy": "false"
+    },
+    "imageCopyTmpDir": "/var/tmp",
+    "imageStore": {
+      "number": 15
+    },
+    "runRoot": "/run/containers/storage",
+    "volumePath": "/var/lib/containers/storage/volumes"
+  },
+  "registries": {
+    "search": [
+  "docker.io"
+]
+  },
+  "plugins": {
+    "volume": [
+      "local"
+    ],
+    "network": [
+      "bridge",
+      "macvlan"
+    ],
+    "log": [
+      "k8s-file",
+      "none",
+      "passthrough",
+      "journald"
+    ],
+    "authorization": null
+  },
+  "version": {
+    "APIVersion": "4.3.1",
+    "Version": "4.3.1",
+    "GoVersion": "go1.19.8",
+    "GitCommit": "",
+    "BuiltTime": "Thu Jan  1 00:00:00 1970",
+    "Built": 0,
+    "OsArch": "linux/amd64",
+    "Os": "linux"
+  }
+}

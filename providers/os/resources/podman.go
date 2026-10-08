@@ -708,7 +708,18 @@ func (c *mqlPodmanContainer) apparmorProfile() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return inspect.AppArmorProfile, nil
+	if inspect.AppArmorProfile != "" || !inspect.HostConfig.Privileged {
+		return inspect.AppArmorProfile, nil
+	}
+	p, err := NewResource(c.MqlRuntime, "podman", map[string]*llx.RawData{})
+	if err != nil {
+		return "", err
+	}
+	info, err := p.(*mqlPodman).loadInfo()
+	if err != nil {
+		return "", err
+	}
+	return podmanAppArmorProfile(inspect.AppArmorProfile, inspect.HostConfig.Privileged, info.Host.Security), nil
 }
 
 func (c *mqlPodmanContainer) noNewPrivileges() (bool, error) {

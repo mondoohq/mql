@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -952,4 +953,38 @@ func TestPodmanInspectHealthStatusStopped(t *testing.T) {
 	entries, err := parsePodmanInspect(`[{"Id":"x","State":{"Status":"exited","Health":{"Status":"unhealthy"}},"Config":{"Healthcheck":{"Test":["CMD-SHELL","exit 1"]}}}]`)
 	require.NoError(t, err)
 	assert.Equal(t, "", entries[0].healthStatus())
+}
+
+// Podman 4.3.1 on Debian 12, with AppArmor: the privileged container's inspect
+// record names no profile, and its process runs unconfined
+// (/proc/<pid>/attr/current reads "unconfined").
+func TestPodmanAppArmorProfile(t *testing.T) {
+	entries, err := parsePodmanInspect(readPodmanFixture(t, "debian12-inspect.json"))
+	require.NoError(t, err)
+	info, err := parsePodmanInfo(readPodmanFixture(t, "debian12-info.json"))
+	require.NoError(t, err)
+	require.True(t, info.Host.Security.ApparmorEnabled)
+
+	var named []struct {
+		ID   string `json:"Id"`
+		Name string `json:"Name"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(readPodmanFixture(t, "debian12-inspect.json")), &named))
+	names := map[string]string{}
+	for _, n := range named {
+		names[n.ID] = n.Name
+	}
+	got := map[string]string{}
+	for _, e := range entries {
+		got[names[e.ID]] = podmanAppArmorProfile(e.AppArmorProfile, e.HostConfig.Privileged, info.Host.Security)
+	}
+	assert.Equal(t, map[string]string{
+		"p-plain":  "containers-default-0.50.1",
+		"p-priv":   "unconfined",
+		"p-unconf": "unconfined",
+	}, got)
+
+	// without AppArmor on the host there is no profile to report
+	assert.Equal(t, "", podmanAppArmorProfile("", true, &podmanInfoSecurity{}))
+	assert.Equal(t, "", podmanAppArmorProfile("", true, nil))
 }
