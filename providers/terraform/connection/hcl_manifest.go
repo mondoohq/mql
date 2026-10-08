@@ -206,5 +206,6 @@ func NewHclGitConnection(id uint32, asset *inventory.Asset) (*Connection, error)
 		return nil, err
 	}
 	conn.closer = closer
+	conn.cloneRoot = path
 	return conn, nil
 }

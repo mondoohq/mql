@@ -90,6 +90,44 @@ message Asset {
   // Resource-anchored relationships to other assets (ADR 030). Each edge
   // names the counterparty asset and the resource on it that anchors the edge.
   repeated AssetRelationship relationships = 39;
+
+  // Preview: may still change (cnspec ADR-0006).
+  // The mondoo.yml found at the root this asset was scanned from, as the
+  // provider found it at connect time. Only the provider knows where that
+  // root is, which may be a temporary clone (cnspec ADR-0006).
+  ContextConfig context_config = 40;
+}
+
+// Preview: may still change (cnspec ADR-0006).
+// ContextConfig is a config file found at a scanned root. The content is
+// carried unparsed: it is untrusted input, written by anyone who can change
+// the scanned repository, and consumers parse it into their own restricted
+// schema rather than into the client configuration.
+message ContextConfig {
+  // raw file content
+  bytes content = 1;
+  // where the file was found
+  ConfigOrigin origin = 2;
+  // this asset's path relative to the directory holding the config, slash
+  // separated: "." for that directory itself, empty when the asset has no
+  // path below it (a repository asset, for instance)
+  string asset_path = 3;
+}
+
+// Preview: may still change (cnspec ADR-0006).
+// ConfigOrigin names the file a context config was read from, so reports can
+// name the file that governed a result.
+message ConfigOrigin {
+  // provider that found the file, e.g. "terraform" or "github"
+  string provider = 1;
+  // repository the file was read from, e.g. "github.com/org/repo"; empty for
+  // a local directory
+  string repository = 2;
+  // ref the file was read at (branch, tag or commit), where known
+  string ref = 3;
+  // path of the file: relative to the repository root when repository is set,
+  // otherwise the path on the machine that read it
+  string path = 4;
 }
 
 // AssetRelationship is a directed, resource-anchored edge to another asset. An

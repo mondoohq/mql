@@ -52,6 +52,10 @@ type Options struct {
 	// Ignore are directory base names to skip, at any depth. Empty means skip
 	// nothing; connection.DefaultIgnore is the default the caller applies.
 	Ignore []string
+	// ContextConfig is the mondoo.yml at the tree root, nil when there is none.
+	// Every asset the walk emits is governed by it, at its path below the root
+	// (cnspec ADR-0006).
+	ContextConfig *inventory.ContextConfig
 }
 
 // Result is what the walk found.
@@ -99,6 +103,9 @@ func Walk(tree Tree, sel Selection, opts Options, root *inventory.Asset, prober 
 		}
 
 		child := childAsset(optIn, tree.Root, c.target)
+		// Set before the probe, so a provider that would read a config at its
+		// own path keeps the tree root's: an iac scan has one root.
+		child.ContextConfig = contextConfigAt(opts.ContextConfig, c.target)
 		connectRes, err := prober.Probe(child)
 		if err != nil {
 			if plugin.IsNoMatchError(err) {
@@ -124,6 +131,7 @@ func Walk(tree Tree, sel Selection, opts Options, root *inventory.Asset, prober 
 			detection.AdoptAsset(existing, rootRef)
 		} else {
 			setDiscoverAuto(accepted)
+			accepted.ContextConfig = contextConfigAt(opts.ContextConfig, c.target)
 			for _, id := range accepted.GetPlatformIds() {
 				byPlatformID[id] = accepted
 			}
@@ -306,6 +314,23 @@ func childAsset(optIn plugin.TargetOptIn, treeRoot, target string) *inventory.As
 			Options: options,
 		}},
 	}
+}
+
+// contextConfigAt is the tree root's context config as it governs the asset
+// at target, slash-separated and relative to the tree root. The root itself is
+// ".". The config's own asset path, when the tree root sits below the config,
+// is the prefix.
+func contextConfigAt(cfg *inventory.ContextConfig, target string) *inventory.ContextConfig {
+	if cfg == nil {
+		return nil
+	}
+	res := cfg.CloneVT()
+	base := cfg.GetAssetPath()
+	if base == "" {
+		base = "."
+	}
+	res.AssetPath = path.Join(base, target)
+	return res
 }
 
 // setDiscoverAuto asks the discovery layer to discover what the child itself

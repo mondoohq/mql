@@ -6,9 +6,12 @@ package resources
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/moby/moby/api/types/container"
 )
 
 // podmanPsEntry is one record of "podman ps --format json".
@@ -88,27 +91,170 @@ func firstNonNil[T any](values ...*T) *T {
 }
 
 // podmanInspectEntry is one record of "podman inspect --format json", limited to
-// the fields describing what the container may reach.
+// the fields describing what the container may reach. The mount, device and
+// health check records have the shape Docker's have, so they decode into the
+// Docker API types.
 type podmanInspectEntry struct {
-	ID            string   `json:"Id"`
-	EffectiveCaps []string `json:"EffectiveCaps"`
-	BoundingCaps  []string `json:"BoundingCaps"`
-	Config        struct {
-		User string `json:"User"`
+	ID              string                 `json:"Id"`
+	EffectiveCaps   []string               `json:"EffectiveCaps"`
+	BoundingCaps    []string               `json:"BoundingCaps"`
+	AppArmorProfile string                 `json:"AppArmorProfile"`
+	OCIConfigPath   string                 `json:"OCIConfigPath"`
+	Mounts          []container.MountPoint `json:"Mounts"`
+	State           struct {
+		Status string        `json:"Status"`
+		Health *podmanHealth `json:"Health"`
+		// Healthcheck is the name podman 4.3 and older use for Health
+		Healthcheck *podmanHealth `json:"Healthcheck"`
+	} `json:"State"`
+	Config struct {
+		User        string                  `json:"User"`
+		Healthcheck *container.HealthConfig `json:"Healthcheck"`
 	} `json:"Config"`
 	HostConfig struct {
-		Privileged     bool     `json:"Privileged"`
-		CapAdd         []string `json:"CapAdd"`
-		CapDrop        []string `json:"CapDrop"`
-		SecurityOpt    []string `json:"SecurityOpt"`
-		ReadonlyRootfs bool     `json:"ReadonlyRootfs"`
-		NetworkMode    string   `json:"NetworkMode"`
-		PidMode        string   `json:"PidMode"`
-		UsernsMode     string   `json:"UsernsMode"`
+		Privileged     bool                      `json:"Privileged"`
+		CapAdd         []string                  `json:"CapAdd"`
+		CapDrop        []string                  `json:"CapDrop"`
+		SecurityOpt    []string                  `json:"SecurityOpt"`
+		ReadonlyRootfs bool                      `json:"ReadonlyRootfs"`
+		NetworkMode    string                    `json:"NetworkMode"`
+		PidMode        string                    `json:"PidMode"`
+		IpcMode        string                    `json:"IpcMode"`
+		UTSMode        string                    `json:"UTSMode"`
+		UsernsMode     string                    `json:"UsernsMode"`
+		CgroupMode     string                    `json:"CgroupMode"`
+		Memory         int64                     `json:"Memory"`
+		NanoCpus       int64                     `json:"NanoCpus"`
+		CPUShares      int64                     `json:"CpuShares"`
+		PidsLimit      int64                     `json:"PidsLimit"`
+		Ulimits        []podmanUlimit            `json:"Ulimits"`
+		Devices        []container.DeviceMapping `json:"Devices"`
+		Tmpfs          map[string]string         `json:"Tmpfs"`
 		RestartPolicy  struct {
 			Name string `json:"Name"`
 		} `json:"RestartPolicy"`
 	} `json:"HostConfig"`
+}
+
+type podmanHealth struct {
+	Status string `json:"Status"`
+}
+
+// healthStatus returns the status of the container's health check, empty
+// when it has none or the container is not running. Podman keeps the last
+// status of a stopped container.
+func (e *podmanInspectEntry) healthStatus() string {
+	if e.State.Status != "running" || !healthcheckDefined(e.Config.Healthcheck) {
+		return ""
+	}
+	if h := e.State.Health; h != nil && h.Status != "" {
+		return h.Status
+	}
+	if h := e.State.Healthcheck; h != nil {
+		return h.Status
+	}
+	return ""
+}
+
+// podmanUlimit is a resource limit as podman inspect lists it, named by its
+// rlimit constant (RLIMIT_NOFILE).
+type podmanUlimit struct {
+	Name string `json:"Name"`
+	Soft int64  `json:"Soft"`
+	Hard int64  `json:"Hard"`
+}
+
+// podmanUlimitName returns the name Docker and the --ulimit flag use for a
+// limit (nofile for RLIMIT_NOFILE).
+func podmanUlimitName(name string) string {
+	return strings.ToLower(strings.TrimPrefix(name, "RLIMIT_"))
+}
+
+// podmanDefaultSeccompProfiles are where the packages install the seccomp
+// profile Podman applies by default.
+var podmanDefaultSeccompProfiles = map[string]struct{}{
+	"/usr/share/containers/seccomp.json": {},
+	"/etc/containers/seccomp.json":       {},
+}
+
+// isPodmanDefaultSeccompProfile reports whether a profile setting names the
+// profile Podman ships.
+func isPodmanDefaultSeccompProfile(profile string) bool {
+	_, ok := podmanDefaultSeccompProfiles[profile]
+	return ok || profile == "" || profile == "default"
+}
+
+// podmanSeccompProfile reports the seccomp profile a container effectively
+// runs with: default, unconfined or custom. A privileged container is not
+// filtered.
+//
+// The container's OCI spec, when it can be read, embeds the filter it was
+// created with, so it alone decides whether any system call is filtered, and
+// no profile file is read: a filtered container is custom when it, or the
+// engine, names a profile other than the packaged one.
+//
+// Without the spec, the profile is the one the container names, by path, or
+// else the engine's from `podman info`, which is the one a container created
+// now gets. readProfile reads a named profile, so one that allows every
+// system call is reported as unconfined.
+func podmanSeccompProfile(privileged bool, securityOpt []string, spec *ociSpec, engine *podmanInfoSecurity, readProfile func(string) string) string {
+	if privileged {
+		return "unconfined"
+	}
+	named := ""
+	for _, opt := range securityOpt {
+		key, value, ok := splitSecurityOpt(opt)
+		if ok && key == "seccomp" && value != "" {
+			named = value
+		}
+	}
+
+	if spec != nil {
+		if spec.seccompUnconfined() {
+			return "unconfined"
+		}
+		if named != "" && named != "unconfined" && !isPodmanDefaultSeccompProfile(named) {
+			return "custom"
+		}
+		if named == "" && engine != nil && engine.SeccompProfilePath != "unconfined" && !isPodmanDefaultSeccompProfile(engine.SeccompProfilePath) {
+			return "custom"
+		}
+		return "default"
+	}
+
+	if engine != nil && !engine.SeccompEnabled {
+		return "unconfined"
+	}
+	profile := named
+	if profile == "" && engine != nil {
+		profile = engine.SeccompProfilePath
+	}
+	if isPodmanDefaultSeccompProfile(profile) {
+		return "default"
+	}
+	if profile == "unconfined" || seccompAllowsAll(readProfile(profile)) {
+		return "unconfined"
+	}
+	return "custom"
+}
+
+// podmanStoragePath reports whether a path lies under one of podman's storage
+// roots (store.graphRoot, store.runRoot), where podman writes a container's
+// config.json.
+func podmanStoragePath(p string, roots ...string) bool {
+	if !path.IsAbs(p) {
+		return false
+	}
+	p = path.Clean(p)
+	for _, root := range roots {
+		if root == "" || !path.IsAbs(root) {
+			continue
+		}
+		if strings.HasPrefix(p, path.Clean(root)+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // podmanImageEntry is one record of "podman images --format json".
@@ -198,6 +344,8 @@ type podmanInfo struct {
 	} `json:"host"`
 	Store struct {
 		GraphDriverName string `json:"graphDriverName"`
+		GraphRoot       string `json:"graphRoot"`
+		RunRoot         string `json:"runRoot"`
 	} `json:"store"`
 	Version struct {
 		Version string `json:"Version"`
@@ -445,6 +593,7 @@ func podmanPortDicts(ports []podmanPort) []any {
 			"containerPort": port.ContainerPort,
 			"protocol":      port.Protocol,
 			"range":         port.Range,
+			"allInterfaces": hostIP == podmanAllInterfaces || hostIP == "::",
 		})
 	}
 	return res

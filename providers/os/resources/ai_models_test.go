@@ -27,7 +27,7 @@ func TestAiModelID_DistinctForSameStrippedName(t *testing.T) {
 		require.NoError(t, afero.WriteFile(fs, home+"/"+p, []byte("x"), 0o644))
 	}
 
-	models := aimodel.DetectAll(&afero.Afero{Fs: fs}, home, "linux", nil)
+	models := aimodel.DetectAll(&afero.Afero{Fs: fs}, []string{home}, "linux", nil)
 	require.Len(t, models, 4)
 
 	ids := map[string]string{}

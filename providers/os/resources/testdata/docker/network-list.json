@@ -1,0 +1,249 @@
+[
+  {
+    "Name": "none",
+    "Id": "36c51b070c11112b88c0e11c6d2e869f57df67549f6d6fa952c37ed9c2db6183",
+    "Created": "2026-10-02T04:18:05.736342458Z",
+    "Scope": "local",
+    "Driver": "null",
+    "EnableIPv4": true,
+    "EnableIPv6": false,
+    "IPAM": {
+      "Driver": "default",
+      "Options": null,
+      "Config": null
+    },
+    "Internal": false,
+    "Attachable": false,
+    "Ingress": false,
+    "ConfigFrom": {
+      "Network": ""
+    },
+    "ConfigOnly": false,
+    "Options": {},
+    "Labels": {}
+  },
+  {
+    "Name": "bridge",
+    "Id": "87d5b3caf655b7574190c5ee4f3de12fc200798ed76cdc7790c9d4a8b5475256",
+    "Created": "2026-10-08T00:08:11.968610666Z",
+    "Scope": "local",
+    "Driver": "bridge",
+    "EnableIPv4": true,
+    "EnableIPv6": false,
+    "IPAM": {
+      "Driver": "default",
+      "Options": null,
+      "Config": [
+        {
+          "Subnet": "172.17.0.0/16",
+          "Gateway": "172.17.0.1"
+        }
+      ]
+    },
+    "Internal": false,
+    "Attachable": false,
+    "Ingress": false,
+    "ConfigFrom": {
+      "Network": ""
+    },
+    "ConfigOnly": false,
+    "Options": {
+      "com.docker.network.bridge.default_bridge": "true",
+      "com.docker.network.bridge.enable_icc": "true",
+      "com.docker.network.bridge.enable_ip_masquerade": "true",
+      "com.docker.network.bridge.host_binding_ipv4": "0.0.0.0",
+      "com.docker.network.bridge.name": "docker0",
+      "com.docker.network.driver.mtu": "65535"
+    },
+    "Labels": {}
+  },
+  {
+    "Name": "mqltest-internal",
+    "Id": "3dbfb59aab1a240f1f3e799ff6c54f337965ebc7477db9c9b8fb955a76ff900e",
+    "Created": "2026-10-08T03:39:09.56100201Z",
+    "Scope": "local",
+    "Driver": "bridge",
+    "EnableIPv4": true,
+    "EnableIPv6": false,
+    "IPAM": {
+      "Driver": "default",
+      "Options": {},
+      "Config": [
+        {
+          "Subnet": "172.19.0.0/16",
+          "Gateway": "172.19.0.1"
+        }
+      ]
+    },
+    "Internal": true,
+    "Attachable": false,
+    "Ingress": false,
+    "ConfigFrom": {
+      "Network": ""
+    },
+    "ConfigOnly": false,
+    "Options": {
+      "com.docker.network.enable_ipv4": "true",
+      "com.docker.network.enable_ipv6": "false"
+    },
+    "Labels": {}
+  },
+  {
+    "Name": "mqltest-v6",
+    "Id": "344d40638bd5ecc2d4a7acb5ba913e098b0860190c7d71966397c5f93fcd268b",
+    "Created": "2026-10-08T03:39:09.645783927Z",
+    "Scope": "local",
+    "Driver": "bridge",
+    "EnableIPv4": true,
+    "EnableIPv6": true,
+    "IPAM": {
+      "Driver": "default",
+      "Options": {},
+      "Config": [
+        {
+          "Subnet": "172.30.10.0/24",
+          "Gateway": "172.30.10.1"
+        },
+        {
+          "Subnet": "fd00:dead:beef::/64",
+          "Gateway": "fd00:dead:beef::1"
+        }
+      ]
+    },
+    "Internal": false,
+    "Attachable": false,
+    "Ingress": false,
+    "ConfigFrom": {
+      "Network": ""
+    },
+    "ConfigOnly": false,
+    "Options": {
+      "com.docker.network.enable_ipv4": "true"
+    },
+    "Labels": {}
+  },
+  {
+    "Name": "mqltest-noicc",
+    "Id": "3894654c92da4e8caf4f50d92836b49b064407420756e78ec078213bc7f7749d",
+    "Created": "2026-10-08T03:39:09.758258094Z",
+    "Scope": "local",
+    "Driver": "bridge",
+    "EnableIPv4": true,
+    "EnableIPv6": false,
+    "IPAM": {
+      "Driver": "default",
+      "Options": {},
+      "Config": [
+        {
+          "Subnet": "172.20.0.0/16",
+          "Gateway": "172.20.0.1"
+        }
+      ]
+    },
+    "Internal": false,
+    "Attachable": false,
+    "Ingress": false,
+    "ConfigFrom": {
+      "Network": ""
+    },
+    "ConfigOnly": false,
+    "Options": {
+      "com.docker.network.bridge.enable_icc": "false",
+      "com.docker.network.bridge.enable_ip_masquerade": "false",
+      "com.docker.network.bridge.host_binding_ipv4": "127.0.0.1",
+      "com.docker.network.enable_ipv4": "true",
+      "com.docker.network.enable_ipv6": "false"
+    },
+    "Labels": {
+      "team": "sec"
+    }
+  },
+  {
+    "Name": "mqltest-attach",
+    "Id": "b9d9dc904763fc3a15ca7906c4286cd308df1728cdec0f8ede102bd24e1fd8c7",
+    "Created": "2026-10-08T03:39:09.833519094Z",
+    "Scope": "local",
+    "Driver": "bridge",
+    "EnableIPv4": true,
+    "EnableIPv6": false,
+    "IPAM": {
+      "Driver": "default",
+      "Options": {},
+      "Config": [
+        {
+          "Subnet": "172.21.0.0/16",
+          "Gateway": "172.21.0.1"
+        }
+      ]
+    },
+    "Internal": false,
+    "Attachable": true,
+    "Ingress": false,
+    "ConfigFrom": {
+      "Network": ""
+    },
+    "ConfigOnly": false,
+    "Options": {
+      "com.docker.network.enable_ipv4": "true",
+      "com.docker.network.enable_ipv6": "false"
+    },
+    "Labels": {
+      "a": "b"
+    }
+  },
+  {
+    "Name": "host",
+    "Id": "11403b7bfc6a624d12a63bb81ac236fb162db7124a66c6525df9d3d5856a5fbb",
+    "Created": "2026-10-02T04:18:05.756793625Z",
+    "Scope": "local",
+    "Driver": "host",
+    "EnableIPv4": true,
+    "EnableIPv6": false,
+    "IPAM": {
+      "Driver": "default",
+      "Options": null,
+      "Config": null
+    },
+    "Internal": false,
+    "Attachable": false,
+    "Ingress": false,
+    "ConfigFrom": {
+      "Network": ""
+    },
+    "ConfigOnly": false,
+    "Options": {},
+    "Labels": {}
+  },
+  {
+    "Name": "mqltest-range",
+    "Id": "0d370e9ab7598674e3e32c8e0de0e7fc783cf6d8b5add5dd10bc59c7b867837e",
+    "Created": "2026-10-08T03:42:50.281540543Z",
+    "Scope": "local",
+    "Driver": "bridge",
+    "EnableIPv4": true,
+    "EnableIPv6": false,
+    "IPAM": {
+      "Driver": "default",
+      "Options": {},
+      "Config": [
+        {
+          "Subnet": "172.31.0.0/16",
+          "IPRange": "172.31.5.0/24",
+          "Gateway": "172.31.0.254"
+        }
+      ]
+    },
+    "Internal": false,
+    "Attachable": false,
+    "Ingress": false,
+    "ConfigFrom": {
+      "Network": ""
+    },
+    "ConfigOnly": false,
+    "Options": {
+      "com.docker.network.enable_ipv4": "true",
+      "com.docker.network.enable_ipv6": "false"
+    },
+    "Labels": {}
+  }
+]

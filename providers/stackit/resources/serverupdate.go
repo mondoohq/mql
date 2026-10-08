@@ -25,8 +25,14 @@ func (r *mqlStackitServer) updateServiceEnabled() (bool, error) {
 	}
 	resp, err := client.DefaultAPI.GetServiceResource(bgctx(), c.ProjectID(), r.Id.Data, c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return nullBool(&r.UpdateServiceEnabled)
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				return nullBool(&r.UpdateServiceEnabled)
+			}
+			return false, refusal(err)
 		}
 		return false, err
 	}
@@ -48,8 +54,11 @@ func (r *mqlStackit) serverUpdatePolicies() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListUpdatePolicies(bgctx(), c.ProjectID()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -98,10 +107,16 @@ func (r *mqlStackitServer) updates() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListUpdates(bgctx(), c.ProjectID(), r.Id.Data, c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			// A 404 means the Server Update service is not enabled for this
 			// server, a legitimate "no updates" state rather than an error.
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				return []any{}, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -149,8 +164,11 @@ func (r *mqlStackitServer) updateSchedules() ([]any, error) {
 	}
 	resp, err := client.DefaultAPI.ListUpdateSchedules(bgctx(), c.ProjectID(), r.Id.Data, c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return []any{}, nil
+		}
+		if isAccessDenied(err) {
+			return deniedList(err)
 		}
 		return nil, err
 	}

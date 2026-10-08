@@ -2379,7 +2379,8 @@ func TestResource_K8sKubeletAKS(t *testing.T) {
 		res := x.TestQuery(t, "kubelet.configuration[\"authentication\"][\"anonymous\"][\"enabled\"]")
 		assert.NotEmpty(t, res)
 		assert.Empty(t, res[0].Result().Error)
-		assert.Equal(t, "false", res[0].Data.Value)
+		// --anonymous-auth=false is the config's bool, not the flag's string
+		assert.Equal(t, false, res[0].Data.Value)
 	})
 
 	t.Run("kubelet flag tls-cipher-suites", func(t *testing.T) {
@@ -2403,11 +2404,11 @@ func TestResource_K8sKubeletAKS(t *testing.T) {
 		assert.Empty(t, res[0].Result().Error)
 		assert.Equal(t, "0", res[0].Data.Value)
 
-		// default is 10250
+		// default is 10250; --read-only-port=0 is the config's number
 		res = x.TestQuery(t, "kubelet.configuration[\"readOnlyPort\"]")
 		assert.NotEmpty(t, res)
 		assert.Empty(t, res[0].Result().Error)
-		assert.Equal(t, "0", res[0].Data.Value)
+		assert.Equal(t, 0.0, res[0].Data.Value)
 	})
 
 	t.Run("typed readOnlyPort coerces string flag", func(t *testing.T) {

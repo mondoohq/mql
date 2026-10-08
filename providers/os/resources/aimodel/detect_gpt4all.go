@@ -4,7 +4,6 @@
 package aimodel
 
 import (
-	"path/filepath"
 	"strings"
 )
 
@@ -50,13 +49,13 @@ func (d *GPT4AllDetector) Detect(ctx DetectContext) []ModelInfo {
 			}
 			paramSize := parameterSizeFromName(e.Name())
 			if format == "gguf" {
-				paramSize = parameterSizeFromGGUF(ctx.Fs, []string{filepath.Join(dir, e.Name())}, e.Name())
+				paramSize = parameterSizeFromGGUF(ctx.Fs, []string{joinPath(dir, e.Name())}, e.Name())
 			}
 
 			results = append(results, ModelInfo{
 				Name:          e.Name(),
 				Source:        "gpt4all",
-				Path:          filepath.Join(dir, e.Name()),
+				Path:          joinPath(dir, e.Name()),
 				Size:          e.Size(),
 				ModifiedAt:    e.ModTime(),
 				Format:        format,
@@ -70,15 +69,15 @@ func (d *GPT4AllDetector) Detect(ctx DetectContext) []ModelInfo {
 
 func gpt4allDirs(home string, osFamily string) []string {
 	dirs := []string{
-		filepath.Join(home, ".cache", "gpt4all"),
+		joinPath(home, ".cache", "gpt4all"),
 	}
 	switch osFamily {
 	case "darwin":
-		dirs = append(dirs, filepath.Join(home, "Library", "Application Support", "nomic.ai", "GPT4All"))
+		dirs = append(dirs, joinPath(home, "Library", "Application Support", "nomic.ai", "GPT4All"))
 	case "linux":
-		dirs = append(dirs, filepath.Join(home, ".local", "share", "nomic.ai", "GPT4All"))
+		dirs = append(dirs, joinPath(home, ".local", "share", "nomic.ai", "GPT4All"))
 	case "windows":
-		dirs = append(dirs, filepath.Join(home, "AppData", "Local", "nomic.ai", "GPT4All"))
+		dirs = append(dirs, joinPath(home, "AppData", "Local", "nomic.ai", "GPT4All"))
 	}
 	return dirs
 }

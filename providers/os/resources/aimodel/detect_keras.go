@@ -4,7 +4,6 @@
 package aimodel
 
 import (
-	"path/filepath"
 	"strings"
 )
 
@@ -13,7 +12,7 @@ import (
 type KerasDetector struct{}
 
 func (d *KerasDetector) Detect(ctx DetectContext) []ModelInfo {
-	modelsDir := filepath.Join(ctx.Home, ".keras", "models")
+	modelsDir := joinPath(ctx.Home, ".keras", "models")
 	entries, err := ctx.Fs.ReadDir(modelsDir)
 	if err != nil {
 		return nil
@@ -39,7 +38,7 @@ func (d *KerasDetector) Detect(ctx DetectContext) []ModelInfo {
 		results = append(results, ModelInfo{
 			Name:       name,
 			Source:     "keras",
-			Path:       filepath.Join(modelsDir, e.Name()),
+			Path:       joinPath(modelsDir, e.Name()),
 			Size:       e.Size(),
 			ModifiedAt: e.ModTime(),
 			Format:     format,

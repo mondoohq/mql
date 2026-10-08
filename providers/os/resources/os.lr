@@ -30,6 +30,7 @@ alias os.base.cline = cline
 alias os.base.cloud = cloud
 alias os.base.containerd = containerd
 alias os.base.continuedev = continuedev
+alias os.base.crio = crio
 alias os.base.cursor = cursor
 alias os.base.docker = docker
 alias os.base.edr = edr
@@ -7417,12 +7418,19 @@ private cgroup @defaults("path unitType memoryMax") {
 // and labels; `containers` lists running and stopped containers with their
 // state, image, command, and labels. Use it to audit what is deployed on a
 // Docker host, for example `docker.containers.where(status == /Up/)` for
-// currently running workloads.
+// currently running workloads. `daemon` reports the configuration the Docker
+// daemon runs with.
 docker {
   // All Docker images stored on the host
   images() []docker.image
   // All Docker containers on the host, running and stopped
   containers() []docker.container
+  // Configuration of the Docker Engine daemon on the host
+  daemon() docker.daemon
+  // All networks defined on the Docker host, including the predefined bridge, host, and none
+  networks() []docker.network
+  // All volumes stored on the Docker host, named and anonymous
+  volumes() []docker.volume
 }
 
 // Dockerfile parser
@@ -7520,8 +7528,8 @@ private docker.file.stage @defaults("from.name") {
   onbuild []docker.file.onbuild
   // Whether this stage runs as root
   //
-  // True when the stage's last `USER` instruction resolves to UID 0 (`0` or
-  // `root`), or is set from a variable that has no value in the Dockerfile,
+  // True when the stage's last `USER` instruction resolves to UID 0 (`root`,
+  // or a number equal to 0 such as `0` or `00`), or is set from a variable that has no value in the Dockerfile,
   // such as an `ARG` without a default. A stage without `USER` has the user
   // of the stage it is built from (`FROM <stage>`). A stage built from an
   // image and without `USER` counts as root, because the image's user is not
@@ -7639,8 +7647,9 @@ private docker.file.user @defaults("user") @context("file.context") {
   group string
   // Whether the declared user is root
   //
-  // True when `user` is `0` or `root`, or is set from a variable that has no
-  // value in the Dockerfile. The group is not considered.
+  // True when `user` is `root` or a number equal to 0 (such as `0` or `00`),
+  // or is set from a variable that has no value in the Dockerfile. The group
+  // is not considered.
   isRoot bool
 }
 
@@ -7932,10 +7941,15 @@ private docker.file.onbuild @defaults("expression") @context("file.context") {
 // Single Docker image on the host
 //
 // An image stored on the Docker host, with its content-addressable `id`, the
-// `tags` and `repoDigests` it is known by, its `size`, and its `labels`. Use
-// it to inventory images and check provenance, for example
+// `tags` and `repoDigests` it is known by, its `size`, and its `labels`. The
+// image configuration reports what a container started from it runs: `user`
+// and `runsAsRoot`, `entrypoint` and `cmd`, `exposedPorts`, the health check,
+// and the platform (`os`, `architecture`, `variant`) and build time
+// (`createdAt`). `containers` lists the containers created from it. Use it to
+// inventory images and check provenance, for example
 // `docker.images.where(tags.none(_ == /latest/))` to find images not pinned to
-// a floating tag.
+// a floating tag, or `docker.images.where(runsAsRoot)` to find images whose
+// containers run as root unless told otherwise.
 docker.image {
   // Image ID, the content-addressable digest of the image config
   id string
@@ -7947,16 +7961,76 @@ docker.image {
   tags []string
   // Image labels, as key/value pairs
   labels map[string]string
+  // Time the image was built, null when the image does not record it
+  createdAt() time
+  // Author recorded in the image, for example by `MAINTAINER`
+  author() string
+  // Operating system the image targets (e.g., linux, windows)
+  os() string
+  // Processor architecture the image targets (e.g., amd64, arm64)
+  architecture() string
+  // Processor architecture variant (e.g., v7, v8), empty when the image sets none
+  variant() string
+  // Account a container started from the image runs as, empty when it runs as root
+  //
+  // The image's `USER`, for example `1000:1000` or `nginx`. A container can
+  // override it, which `docker.container.user` reports.
+  user() string
+  // Whether a container started from the image runs as root
+  //
+  // True when `user` is empty, or its user part is `root` or a number equal to
+  // 0 (such as `0` or `00`). A name other than `root` counts as not root, even
+  // when the image's /etc/passwd gives it UID 0.
+  runsAsRoot() bool
+  // Command the image runs, prefixed to `cmd` (e.g., ["/docker-entrypoint.sh"])
+  entrypoint() []string
+  // Default arguments to `entrypoint`, or the command when there is no entrypoint
+  cmd() []string
+  // Working directory of the image's command, empty when the image sets none
+  workingDir() string
+  // Ports the image declares with `EXPOSE`, as `port/protocol` (e.g., 80/tcp)
+  //
+  // Exposing a port documents it, it does not publish it on the host; see
+  // `docker.container.ports` for what is published.
+  exposedPorts() []string
+  // Whether the image defines a health check
+  //
+  // False when it defines none, or when it disables the one of its base image
+  // with `HEALTHCHECK NONE`.
+  hasHealthcheck() bool
+  // Health check command, for example ["CMD-SHELL", "curl -f http://localhost/"]
+  //
+  // The first entry is `CMD` or `CMD-SHELL`, or `NONE` when the image disables
+  // its base image's health check. Empty when there is none.
+  healthcheckTest() []string
+  // Seconds between health checks, null when the image has no health check
+  //
+  // Reports the engine default of 30 when the health check does not set one.
+  healthcheckInterval() int
+  // Digests of the image's filesystem layers, base layer first
+  //
+  // The digests of the uncompressed layer contents (diff IDs), which stay the
+  // same whichever registry or compression the image came from, so a layer of
+  // a known base image can be found in images built from it.
+  layers() []string
+  // Containers created from the image, running or stopped
+  containers() []docker.container
 }
 
 // Single Docker container on the host
 //
 // A container on the Docker host, running or stopped, with its `state`,
-// `status`, source `image`, startup `command`, `labels`, and the embedded
-// Linux operating system running inside it (queryable through `os`).
-// `hostConfig` exposes the daemon-side runtime settings such as privilege,
-// capabilities, and mounts. Filter by state, for example
-// `docker.containers.where(state == "running")`.
+// `status`, source `image`, startup `command`, and `labels`. The confinement
+// settings describe what the container can reach on the host: `privileged`
+// disables nearly every confinement at once, `capAdd` and `capDrop` adjust the
+// capability set, `seccompProfile`, `apparmorProfile`, and `noNewPrivileges`
+// report the process restrictions, and the namespace modes (`networkMode`,
+// `pidMode`, `ipcMode`, `utsMode`, `usernsMode`, `cgroupnsMode`) report which
+// host namespaces it shares. `mounts`, `devices`, and `ports` list what of the
+// host is exposed inside it, for example
+// `docker.containers.none(mounts.any(hostPath == "/var/run/docker.sock"))`
+// finds containers that control the Docker daemon. Filter by state, for
+// example `docker.containers.where(state == "running")`.
 docker.container @defaults("names.first status"){
   // The running container as its own asset
   //
@@ -7994,17 +8068,584 @@ docker.container @defaults("names.first status"){
   // bindings, bind mounts, and restart policy. Central to container-hardening
   // audits, for example checking `hostConfig["Privileged"] == false`.
   hostConfig() dict
+  // Image the container was created from
+  //
+  // Null when the image is no longer stored on the host.
+  sourceImage() docker.image
+  // Whether the container runs privileged
+  //
+  // A privileged container keeps every capability, drops the seccomp and device
+  // restrictions, and can reach host devices directly, so it is close to
+  // running as root on the host.
+  privileged() bool
+  // Capabilities requested in addition to the engine default (e.g., CAP_NET_ADMIN)
+  capAdd() []string
+  // Capabilities requested to be removed from the engine default (e.g., ALL)
+  capDrop() []string
+  // Security options applied to the container
+  //
+  // Entries such as `seccomp=unconfined`, `apparmor=unconfined`,
+  // `label=disable`, or `no-new-privileges`, as passed to the engine. A custom
+  // seccomp profile appears as `seccomp=` followed by the profile's JSON.
+  securityOptions() []string
+  // Seccomp profile the container runs with
+  //
+  // One of `default` (the engine's built-in profile), `unconfined` (no system
+  // call is filtered), or `custom` (another profile). A container that names no
+  // profile runs with the daemon's, which is `unconfined` when the daemon is
+  // started with `--seccomp-profile=unconfined` or the kernel lacks seccomp.
+  // A privileged container, and one whose profile allows every system call,
+  // also reports `unconfined`.
+  seccompProfile() string
+  // AppArmor profile the container runs with
+  //
+  // For example `docker-default` or `unconfined`. Empty when the host does not
+  // use AppArmor.
+  apparmorProfile() string
+  // Whether the container's processes are prevented from gaining privileges
+  //
+  // True when the container was started with the `no-new-privileges` security
+  // option, which stops setuid binaries and file capabilities from raising the
+  // privileges of a process. Reports the container's own option only: false
+  // when the option is absent, even if the daemon applies it to every container
+  // by default, which `docker.daemon.noNewPrivileges` reports.
+  noNewPrivileges() bool
+  // Whether the container's root filesystem is read-only
+  readOnlyRootfs() bool
+  // Account the main process runs as, empty when it runs as root
+  //
+  // Set by the container or, when it sets none, by the image's `USER`, for
+  // example `1000:1000` or `nginx`.
+  user() string
+  // Network mode (e.g., bridge, host, none, container:<id>)
+  networkMode() string
+  // PID namespace mode, `host` when it shares the host's processes, empty when private
+  pidMode() string
+  // IPC namespace mode (e.g., private, shareable, host, container:<id>)
+  ipcMode() string
+  // UTS namespace mode, `host` when it shares the host's hostname, empty when private
+  utsMode() string
+  // User namespace mode, empty when the container uses the daemon's setting
+  //
+  // `host` turns off user namespace remapping for this container when the
+  // daemon enables it.
+  usernsMode() string
+  // Cgroup namespace mode (e.g., private, host)
+  cgroupnsMode() string
+  // Restart policy name (e.g., no, always, on-failure, unless-stopped)
+  restartPolicy() string
+  // Number of restart attempts the on-failure restart policy makes, 0 when unlimited or unused
+  restartMaxRetries() int
+  // Memory limit in bytes, null when the container's memory is unlimited
+  memoryLimit() int
+  // CPU shares relative to other containers, null when left at the engine default (1024)
+  cpuShares() int
+  // CPU quota in billionths of a CPU (e.g., 500000000 for half a CPU), null when unlimited
+  nanoCpus() int
+  // Maximum number of processes in the container, null when unlimited
+  pidsLimit() int
+  // Resource limits set for the container's processes
+  //
+  // Only the limits set on the container itself; the rest come from the
+  // daemon's defaults.
+  ulimits() []docker.container.ulimit
+  // Whether the container has a health check
+  //
+  // False when neither the container nor its image defines one, or when it was
+  // disabled with `--no-healthcheck`.
+  hasHealthcheck() bool
+  // Health check command, for example ["CMD-SHELL", "curl -f http://localhost/"]
+  //
+  // The first entry is `CMD` or `CMD-SHELL`, or `NONE` when the image's health
+  // check is disabled. Empty when there is none.
+  healthcheckTest() []string
+  // Seconds between health checks, null when the container has no health check
+  //
+  // Reports the engine default of 30 when the health check does not set one.
+  healthcheckInterval() int
+  // Health status (e.g., starting, healthy, unhealthy), null when the container has no health check or is not running
+  healthStatus() string
+  // Ports published on the host
+  //
+  // The bindings the container was created with, also reported when it is
+  // stopped. `ports.where(allInterfaces)` lists the ports reachable on every
+  // host interface rather than on one address such as 127.0.0.1.
+  ports() []docker.container.port
+  // Host devices exposed inside the container
+  devices() []docker.container.device
+  // Volumes, bind mounts, and tmpfs mounts in the container
+  mounts() []docker.container.mount
+  // Networks the container is connected to
+  networks() []docker.network
 }
 
-// containerd host
+// Resource limit set for a Docker container
+private docker.container.ulimit @defaults("name soft hard") {
+  // Limit name (e.g., nofile, nproc, core)
+  name string
+  // Soft limit, -1 when unlimited
+  soft int
+  // Hard limit, -1 when unlimited
+  hard int
+}
+
+// Port a Docker container publishes on the host
+private docker.container.port @defaults("hostIp hostPort containerPort protocol") {
+  // Host address the port is bound to, empty when bound to every interface
+  hostIp string
+  // Host port, 0 when the engine picks a free port when the container starts
+  hostPort int
+  // Port inside the container
+  containerPort int
+  // Protocol: tcp, udp, or sctp
+  protocol string
+  // Whether the port is reachable on every host interface
+  //
+  // True when `hostIp` is empty, `0.0.0.0`, or `::`.
+  allInterfaces bool
+}
+
+// Host device exposed inside a Docker container
+private docker.container.device @defaults("hostPath containerPath") {
+  // Device path on the host
+  hostPath string
+  // Device path inside the container
+  containerPath string
+  // Device cgroup permissions, a combination of r (read), w (write), and m (mknod)
+  permissions string
+}
+
+// Mount in a Docker container
 //
-// Containers managed by the containerd runtime, gathered across all containerd
-// namespaces via the `ctr` CLI. Use it to inventory workloads on hosts that
-// run containerd directly (such as Kubernetes nodes) rather than through the
-// Docker daemon.
+// One volume, bind mount, or tmpfs mount. `hostPath` is the host side of a bind
+// mount or the storage location of a volume, so
+// `mounts.where(type == "bind" && hostPath == "/var/run/docker.sock")` finds a
+// container that can control the Docker daemon.
+private docker.container.mount @defaults("type containerPath hostPath readOnly") {
+  // Mount type: bind, volume, tmpfs, image, npipe, or cluster
+  type string
+  // Volume name, empty for other mount types
+  name string
+  // Path on the host that is mounted, empty for a tmpfs mount
+  hostPath string
+  // Path inside the container
+  containerPath string
+  // Whether the mount is read-only
+  readOnly bool
+  // Mode options supplied with the mount (e.g., ro, z, Z)
+  mode string
+  // Mount propagation (e.g., rprivate, rshared, rslave), empty when not applicable
+  propagation string
+  // Volume driver (e.g., local), empty for other mount types
+  driver string
+}
+
+// Docker network
+//
+// A network defined on the Docker host, selected by `name`, for example
+// `docker.network(name: "bridge")`. `internal` marks a network with no route to
+// the outside, `subnets` holds the address ranges containers on it receive, and
+// for the bridge driver `icc`, `ipMasquerade`, and `hostBindingIpv4` report
+// whether containers on the network can reach each other, whether their traffic
+// leaves through the host's address, and the address published ports bind to.
+// `containers` lists the containers connected to it, for example
+// `docker.networks.where(internal == false) { name containers.length }`.
+docker.network @defaults("name driver internal") {
+  init(name string)
+  // Network ID
+  id string
+  // Network name
+  name string
+  // Network driver (e.g., bridge, host, null, overlay, macvlan, ipvlan)
+  driver string
+  // Scope the network exists in: local for this host, swarm for the cluster
+  scope string
+  // Whether the network is cut off from any route to the outside
+  internal bool
+  // Whether standalone containers can connect to this swarm network
+  attachable bool
+  // Whether the network is the swarm routing mesh
+  ingress bool
+  // Whether IPv4 is enabled on the network
+  ipv4Enabled bool
+  // Whether IPv6 is enabled on the network
+  ipv6Enabled bool
+  // Address ranges assigned to containers on the network
+  subnets []docker.network.subnet
+  // Driver options, as key-value pairs
+  //
+  // For example `com.docker.network.bridge.enable_icc` or
+  // `com.docker.network.driver.mtu`. The predefined bridge network reports the
+  // options the daemon started it with.
+  options map[string]string
+  // Network labels, as key-value pairs
+  labels map[string]string
+  // Time the network was created
+  createdAt time
+  // Whether containers on the network can reach each other
+  //
+  // The `com.docker.network.bridge.enable_icc` option, true when the network
+  // does not set it. Null for a network whose driver is not bridge.
+  icc() bool
+  // Whether traffic from containers on the network is masqueraded behind the host's address
+  //
+  // The `com.docker.network.bridge.enable_ip_masquerade` option, true when the
+  // network does not set it. Null for a network whose driver is not bridge.
+  ipMasquerade() bool
+  // Default host address ports published on the network bind to
+  //
+  // The `com.docker.network.bridge.host_binding_ipv4` option, for example
+  // `127.0.0.1`. Null when the network does not set it, in which case a
+  // published port binds to the daemon's default address, every interface
+  // (`0.0.0.0`) unless dockerd is started with `--ip`. Null for a network whose
+  // driver is not bridge.
+  hostBindingIpv4() string
+  // Containers connected to the network, running or stopped
+  containers() []docker.container
+}
+
+// Address range of a Docker network
+private docker.network.subnet @defaults("subnet gateway") {
+  // Subnet in CIDR notation (e.g., 172.18.0.0/16)
+  subnet string
+  // Gateway address, empty when the network sets none
+  gateway string
+  // Range within the subnet that container addresses are allocated from, empty when it is the whole subnet
+  ipRange string
+}
+
+// Docker volume
+//
+// A volume stored on the Docker host, selected by `name`, for example
+// `docker.volume(name: "pgdata")`. `mountpoint` is the host path backing the
+// volume, which is what a container writing to the volume ultimately writes
+// to, and `containers` lists the containers that mount it, for example
+// `docker.volumes.where(containers.length == 0)` for volumes nothing uses.
+docker.volume @defaults("name driver mountpoint") {
+  init(name string)
+  // Volume name
+  name string
+  // Volume driver (e.g., local)
+  driver string
+  // Host path backing the volume
+  mountpoint string
+  // Time the volume was created, null when the driver does not report it
+  createdAt time
+  // Volume labels, as key-value pairs
+  labels map[string]string
+  // Driver options, as key-value pairs
+  //
+  // For the local driver, `type`, `device`, and `o` describe a filesystem
+  // mounted as the volume, for example an NFS export or a tmpfs.
+  options map[string]string
+  // Scope the volume exists in: local for this host, global for the cluster
+  scope string
+  // Whether the volume was created without a name, for a container's anonymous volume
+  //
+  // True when the volume carries the `com.docker.volume.anonymous` label,
+  // which Docker Engine 23.0 and later set on the volumes it creates for a
+  // container's unnamed `-v /path` or image `VOLUME`. A volume an older engine
+  // created reads false.
+  anonymous bool
+  // Containers that mount the volume, running or stopped
+  containers() []docker.container
+}
+
+// Docker Engine daemon configuration
+//
+// The settings dockerd runs with, read from its configuration file
+// (`configFile`, /etc/docker/daemon.json unless the running dockerd names
+// another with `--config-file`) and the command-line flags of the running
+// `process`. It reads files and the process list, not the Docker API, so it
+// works over SSH and on images and mounted filesystems where nothing is
+// running. Settings neither source sets report the value dockerd uses by
+// default, as each field says. The headline audit is a TCP listener in
+// `hosts` without `tlsVerify`, for example
+// `docker.daemon { hosts.where(_ == /^tcp:/).length == 0 || tlsVerify }`.
+docker.daemon @defaults("configFile.path hosts") {
+  // Daemon configuration file
+  //
+  // The file the running dockerd's `--config-file` flag names, otherwise
+  // /etc/docker/daemon.json. Reported even when it does not exist, since
+  // dockerd runs without one.
+  configFile() file
+  // Running dockerd process; null when dockerd is not running or the process list cannot be read
+  process() process
+  // Settings from the configuration file and the process flags
+  //
+  // Keyed by the configuration file's keys. Flags appear under the key their
+  // setting has in the file (`--host` as `hosts`, `--log-opt` as `log-opts`).
+  // dockerd refuses to start when a setting is in both, so a flag only fills
+  // in what the file leaves out. Holds only what is set, no defaults.
+  configuration() dict
+  // Whether containers on the default bridge network can talk to each other; dockerd's default is true
+  icc() bool
+  // User and group that container root is remapped to (`userns-remap`); empty when user namespace remapping is off
+  usernsRemap() string
+  // Whether containers keep running while dockerd is down or restarting; dockerd's default is false
+  liveRestore() bool
+  // Whether containers run with no-new-privileges unless they opt out; dockerd's default is false
+  noNewPrivileges() bool
+  // Whether published ports are forwarded through the userland proxy process; dockerd's default is true
+  userlandProxy() bool
+  // Default logging driver for containers; dockerd's default is "json-file"
+  logDriver() string
+  // Default options of the logging driver (for example "max-size": "10m")
+  logOpts() map[string]string
+  // Logging level of the daemon itself; dockerd's default is "info"
+  logLevel() string
+  // Registries the daemon reaches over plain HTTP or without verifying their TLS certificate
+  insecureRegistries() []string
+  // Registry mirrors the daemon pulls Docker Hub images through
+  registryMirrors() []string
+  // Authorization plugins every Engine API request is checked against
+  authorizationPlugins() []string
+  // Addresses the Engine API listens on
+  //
+  // As configured, for example "unix:///var/run/docker.sock", "fd://" (the
+  // socket systemd passes in) or "tcp://0.0.0.0:2376". When none is
+  // configured dockerd listens on "unix:///var/run/docker.sock" alone, which
+  // is what this reports then.
+  hosts() []string
+  // Whether the Engine API serves TLS on its TCP listeners
+  //
+  // Set by `tls`, and turned on by any `tlsverify` setting, true or false.
+  tls() bool
+  // Whether the Engine API requires and verifies client certificates
+  //
+  // From `tlsverify`, otherwise from `tls`: `tls` alone also verifies client
+  // certificates. False when TLS is off, so a TCP listener in `hosts` with
+  // this false accepts unauthenticated clients.
+  tlsVerify() bool
+  // CA certificate file client certificates are verified against (`tlscacert`); null when not configured
+  tlsCaCert() file
+  // Server certificate file the Engine API presents (`tlscert`); null when not configured
+  tlsCert() file
+  // Private key file of the server certificate (`tlskey`); null when not configured
+  tlsKey() file
+  // Seccomp profile containers get unless they set one
+  //
+  // "builtin" is Docker's default profile, which dockerd uses when none is
+  // configured. "unconfined" turns seccomp off; any other value is the path of
+  // a profile file.
+  seccompProfile() string
+  // Whether dockerd applies SELinux labels to containers; dockerd's default is false
+  selinuxEnabled() bool
+  // Default resource limits for containers
+  defaultUlimits() []docker.daemon.ulimit
+  // Parent cgroup of all containers; empty when dockerd uses its default for the cgroup driver
+  cgroupParent() string
+  // Root directory of the daemon's persistent state; dockerd's default is "/var/lib/docker"
+  dataRoot() string
+  // Storage driver for images and containers; empty when dockerd picks one itself
+  storageDriver() string
+  // Whether experimental daemon features are on; dockerd's default is false
+  experimental() bool
+  // Whether dockerd manages iptables rules for container networking; dockerd's default is true
+  iptables() bool
+  // Whether dockerd turns on IP forwarding in the kernel; dockerd's default is true
+  ipForward() bool
+  // Runtime containers use unless they ask for another; dockerd's default is "runc"
+  defaultRuntime() string
+  // Runtimes registered besides the built-in ones
+  //
+  // The runtime's name mapped to its binary (`path`) or, for a runtime with
+  // its own containerd shim, its `runtimeType`.
+  runtimes() map[string]string
+  // Daemon features turned on (true) or off (false), for example "containerd-snapshotter"
+  features() map[string]bool
+}
+
+// Default resource limit of the Docker daemon
+private docker.daemon.ulimit @defaults("name soft hard") {
+  // Resource name (for example "nofile" or "nproc")
+  name string
+  // Soft limit
+  soft int
+  // Hard limit
+  hard int
+}
+
+// containerd container runtime
+//
+// The containerd of a host or Kubernetes node (kubeadm, kind, K3s, RKE2,
+// MicroK8s, k0s, and Docker's own containerd): its version, the configuration
+// it runs with, and the containers it manages. The configuration is read from
+// `configFile` and the files it imports, merged the way containerd merges
+// them, and settings no file sets report containerd's built-in default, as
+// each field says. Configuration fields read files only, so they also work on
+// images and mounted filesystems. The registry audit is
+// `containerd.registryHosts.none(skipVerify)`.
 containerd {
   // All containers across every containerd namespace
   containers() []containerd.container
+  // All images across every containerd namespace
+  //
+  // Kubernetes keeps its images in the `k8s.io` namespace. An image stored
+  // under several references is listed once for each, for example
+  // `containerd.images.where(namespace == "k8s.io" && runsAsRoot) { name }`.
+  images() []containerd.image
+  // containerd version (for example "2.2.0")
+  //
+  // Reported by the containerd binary. Null when it cannot be run, as on an
+  // image or a mounted filesystem.
+  version() string
+  // Running containerd process; null when containerd is not running or the process list cannot be read
+  process() process
+  // Main configuration file
+  //
+  // The file the running containerd's `--config` flag names. Otherwise the
+  // first that exists of /etc/containerd/config.toml and the files K3s, RKE2,
+  // MicroK8s and k0s generate, or /etc/containerd/config.toml when none
+  // exists, since containerd runs without one.
+  configFile() file
+  // Configuration files, in the order containerd applies them
+  //
+  // `configFile` followed by the files its `imports` name, and the files
+  // those import, each overriding the ones before. Empty when `configFile`
+  // does not exist.
+  files() []file
+  // Settings from the configuration files
+  //
+  // Keyed as in the files, with the `imports` merged in the way containerd
+  // merges them. Holds only what the files set, no defaults. Registry
+  // credentials (`auth`, `auths`) and registry headers are left out.
+  configuration() dict
+  // Configuration format version: 1, 2 (containerd 1.x and 2.x), 3 (containerd 2.x), or 4 (containerd 2.3 and later)
+  //
+  // From the files, otherwise the version of containerd's built-in defaults.
+  // Null when no file sets it and the containerd version is unknown.
+  configVersion() int
+  // Root directory of containerd's persistent data; containerd's default is "/var/lib/containerd"
+  root() string
+  // Directory of containerd's transient state; containerd's default is "/run/containerd"
+  state() string
+  // Path of the socket containerd serves its API on; containerd's default is "/run/containerd/containerd.sock"
+  grpcAddress() string
+  // User ID that owns the API socket; containerd's default is 0
+  grpcUid() int
+  // Group ID that owns the API socket; containerd's default is 0
+  grpcGid() int
+  // TCP address containerd also serves its API on; empty when it serves the socket only
+  grpcTcpAddress() string
+  // Plugins containerd does not load (for example "io.containerd.grpc.v1.cri" for Docker's containerd)
+  disabledPlugins() []string
+  // Image of the pod sandbox (pause) container
+  //
+  // Null when no file sets it and the containerd version is unknown, since
+  // the built-in default changes between releases.
+  sandboxImage() string
+  // Snapshotter that unpacks images for Kubernetes pods; containerd's default is "overlayfs"
+  snapshotter() string
+  // Runtime handler Kubernetes containers use unless they ask for another; containerd's default is "runc"
+  defaultRuntime() string
+  // Runtime handlers Kubernetes pods can run with
+  runtimes() []containerd.runtime
+  // Whether pods may bind ports below 1024 without a capability
+  //
+  // Sets net.ipv4.ip_unprivileged_port_start to 0 in every pod. containerd
+  // 2.x defaults to true, 1.x to false. Null when no file sets it and the
+  // containerd version is unknown.
+  enableUnprivilegedPorts() bool
+  // Whether pods may send ICMP echo requests without a capability
+  //
+  // Sets net.ipv4.ping_group_range to every group in every pod. containerd
+  // 2.x defaults to true, 1.x to false. Null when no file sets it and the
+  // containerd version is unknown.
+  enableUnprivilegedIcmp() bool
+  // Whether containers run with SELinux labeling; containerd's default is false
+  selinuxEnabled() bool
+  // Whether containerd caps the OOM score adjustment of containers at its own; containerd's default is false
+  restrictOomScoreAdj() bool
+  // Whether devices a pod mounts are owned by the pod's user and group rather than by root; containerd's default is false
+  deviceOwnershipFromSecurityContext() bool
+  // Whether AppArmor is turned off for all containers; containerd's default is false
+  disableApparmor() bool
+  // Whether containers start when the hugetlb cgroup controller is missing; containerd's default is true
+  tolerateMissingHugetlbController() bool
+  // Directories containerd looks up registry host configurations (`hosts.toml`) in
+  //
+  // From the CRI `registry.config_path`, in the order they are tried. When
+  // neither it nor the deprecated `registry.mirrors` is set, containerd 2.x
+  // reads /etc/containerd/certs.d and /etc/docker/certs.d, and containerd 1.x
+  // none. Null when no file sets it and the containerd version is unknown.
+  registryConfigPaths() []string
+  // Registry hosts containerd pulls Kubernetes images from
+  //
+  // Read from the `hosts.toml` files in `registryConfigPaths` or, when no
+  // directory is configured, from the deprecated `registry.mirrors` and
+  // `registry.configs` settings.
+  registryHosts() []containerd.registryHost
+  // Listen address of the CRI streaming server for exec, attach and port forwarding
+  //
+  // containerd defaults to "127.0.0.1", so that only the kubelet on the node can
+  // reach it. Any other address exposes the server to the network.
+  streamAddress() string
+  // Port the CRI streaming server listens on; 0, containerd's default, picks a free port
+  streamPort() int
+  // Whether the CRI streaming server serves TLS; containerd's default is false
+  streamTlsEnabled() bool
+}
+
+// containerd runtime handler
+//
+// A `containerd.runtimes.<name>` entry of the CRI configuration: the runtime a
+// Kubernetes pod runs with when its RuntimeClass names this handler, or by
+// default.
+containerd.runtime @defaults("name type") {
+  // Handler name, as a RuntimeClass names it (for example "runc")
+  name string
+  // Runtime type, the containerd shim that runs containers (for example "io.containerd.runc.v2")
+  type string
+  // Path of the shim binary; empty when containerd finds it from `type`
+  shimPath string
+  // Path or name of the OCI runtime binary the shim runs; empty is runc on the PATH
+  path string
+  // Root directory the OCI runtime keeps container state in; empty is the runtime's default
+  root string
+  // Whether containers run in systemd-managed cgroups
+  systemdCgroup bool
+  // Whether privileged containers run without the host's devices
+  privilegedWithoutHostDevices bool
+  // Pod annotations passed on to the runtime
+  //
+  // Each one lets a pod change how the runtime runs it, for example
+  // "io.katacontainers.*".
+  podAnnotations []string
+  // OCI runtime spec file containers start from; empty is containerd's built-in spec
+  baseRuntimeSpec string
+  // Whether this is the handler containers use when they ask for none
+  isDefault bool
+}
+
+// Registry host containerd pulls images from
+//
+// A host of a registry namespace: a `[host."<url>"]` entry of the namespace's
+// `hosts.toml`, tried in the order listed, or the namespace's `server`, tried
+// last.
+containerd.registryHost @defaults("namespace url") {
+  // Registry namespace the host serves (for example "docker.io", or "_default" for every registry without its own)
+  namespace string
+  // URL of the host (for example "https://registry-1.docker.io")
+  //
+  // A namespace whose hosts.toml names no server is served by its own
+  // registry. Empty for the server of the `_default` namespace without one,
+  // which is the registry each image names.
+  url string
+  // Whether this is the namespace's server rather than one of its hosts (mirrors)
+  server bool
+  // Operations the host is trusted with: pull, resolve (tag to digest), push
+  //
+  // Every operation when the configuration names none.
+  capabilities []string
+  // Whether the host's TLS certificate and host name go unverified
+  skipVerify bool
+  // CA certificate files the host's certificate is verified against
+  caCerts []file
+  // Client certificate files presented to the host
+  clientCerts []file
+  // Configuration file the host is read from; null for a host from the deprecated `registry.mirrors` or `registry.configs`
+  file file
 }
 
 // Single containerd container
@@ -8012,7 +8653,12 @@ containerd {
 // A container managed by containerd, identified by `id` within its
 // `namespace`, with its `image` reference, lifecycle `status`, process `pid`,
 // `labels`, the `runtime` handling it (e.g. `io.containerd.runc.v2`), and the
-// `snapshotter` providing its filesystem.
+// `snapshotter` providing its filesystem. The confinement fields are read
+// from the OCI runtime spec the container was created with: capabilities,
+// seccomp, AppArmor, the host namespaces it shares, its mounts and resource
+// limits. For a Kubernetes container they also name its pod, for example
+// `containerd.containers.where(privileged) { podNamespace podName name }`.
+// The pod sandbox (pause) containers are listed too.
 containerd.container @defaults("id status") {
   // Container ID
   id string
@@ -8030,6 +8676,697 @@ containerd.container @defaults("id status") {
   runtime string
   // Container snapshotter
   snapshotter string
+  // Container name within its Kubernetes pod (for example "kube-proxy"); empty for a container Kubernetes did not create
+  name() string
+  // Name of the Kubernetes pod the container belongs to
+  podName() string
+  // Namespace of the Kubernetes pod the container belongs to
+  podNamespace() string
+  // ID of the pod sandbox the container runs in; empty for a container Kubernetes did not create
+  sandboxId() string
+  // Whether the container runs privileged
+  //
+  // True when its spec has what privileged mode sets: /sys mounted writable
+  // and no paths of /proc masked. A privileged container keeps every
+  // capability, runs without seccomp and AppArmor, and can reach the host's
+  // devices. Null when containerd reports no spec for the container.
+  privileged() bool
+  // Effective capabilities of the container's process (for example "CAP_NET_BIND_SERVICE")
+  capabilities() []string
+  // Bounding set of capabilities, the most the container's processes can gain
+  boundingCapabilities() []string
+  // Whether no system call is filtered
+  //
+  // True when the spec sets no seccomp profile, which is what Kubernetes's
+  // Unconfined profile and privileged mode do, or one that lets every system
+  // call run.
+  seccompUnconfined() bool
+  // Action the seccomp profile takes on system calls it does not list (for example "SCMP_ACT_ERRNO"); empty without a profile
+  seccompDefaultAction() string
+  // AppArmor profile the container runs with (for example "cri-containerd.apparmor.d"); empty when none is applied
+  apparmorProfile() string
+  // SELinux label of the container's process; empty when none is applied
+  selinuxLabel() string
+  // Whether the container's processes are prevented from gaining privileges (allowPrivilegeEscalation false)
+  noNewPrivileges() bool
+  // Whether the container's root filesystem is read-only
+  readOnlyRootfs() bool
+  // User ID the container's process runs as, 0 for root
+  uid() int
+  // Group ID the container's process runs as
+  gid() int
+  // Whether the container uses the host's network namespace
+  //
+  // For a Kubernetes container, whether its pod sandbox does (hostNetwork).
+  hostNetwork() bool
+  // Whether the container shares the host's process namespace (hostPID)
+  hostPID() bool
+  // Whether the container shares the host's IPC namespace (hostIPC)
+  hostIPC() bool
+  // Mounts of the container
+  //
+  // Every mount of its spec: the kernel filesystems (/proc, /sys, /dev),
+  // the files containerd and the kubelet add (/etc/hosts, the service account
+  // token), and the pod's volumes, including hostPath volumes.
+  // `mounts.where(hostPath == /containerd\.sock$/)` finds a container that
+  // controls containerd.
+  mounts() []containerd.container.mount
+  // Memory limit in bytes, null when the container's memory is unlimited
+  memoryLimit() int
+  // CPU quota in billionths of a CPU (for example 250000000 for 250m), null when unlimited
+  nanoCpus() int
+  // Relative CPU weight (cgroup cpu shares), null when not set
+  cpuShares() int
+  // Maximum number of processes in the container, null when unlimited
+  pidsLimit() int
+  // Image the container was created from
+  //
+  // The image of `image` in the container's namespace. Null when it is no
+  // longer stored.
+  sourceImage() containerd.image
+}
+
+// Image stored by containerd
+//
+// An image reference in a containerd namespace, with the `digest` and
+// `mediaType` of its manifest or index, the `platforms` it is published for,
+// and its `labels`. The configuration fields come from the image built for
+// the host's platform: `configDigest` (the image ID Kubernetes reports), `size`, `createdAt`,
+// `os`, `architecture`, `user` and `runsAsRoot`, `entrypoint`, `cmd`,
+// `exposedPorts`, and the `layers`. They are null when containerd does not
+// store that image's content, for example
+// `containerd.images.where(runsAsRoot == false) { name user }`.
+containerd.image @defaults("name namespace") {
+  // Image reference (for example "docker.io/library/alpine:3.22")
+  name string
+  // containerd namespace the image belongs to (for example "k8s.io")
+  namespace string
+  // Digest of the image's manifest or, for a multi-platform image, its index
+  digest string
+  // Media type of the manifest or index (for example "application/vnd.oci.image.index.v1+json")
+  mediaType string
+  // Platforms the image is published for (for example "linux/amd64", "linux/arm64/v8")
+  platforms []string
+  // Image labels (for example "io.cri-containerd.pinned")
+  labels map[string]string
+  // Digest of the image configuration, which is the image ID Kubernetes and crictl report
+  configDigest() string
+  // Size in bytes of the image's configuration and compressed layers
+  size() int
+  // Time the image was built, null when the image does not record it
+  createdAt() time
+  // Operating system the image targets (for example "linux")
+  os() string
+  // Processor architecture the image targets (for example "amd64", "arm64")
+  architecture() string
+  // Processor architecture variant (for example "v7", "v8"); empty when the image sets none
+  variant() string
+  // Account a container started from the image runs as, empty when it runs as root
+  //
+  // The image's `USER`, for example `65535:65535` or `nonroot`. Kubernetes
+  // overrides it with the pod's `runAsUser`, which `containerd.container.uid`
+  // reports.
+  user() string
+  // Whether a container started from the image runs as root
+  //
+  // True when `user` is empty, or its user part is `root` or a number equal to
+  // 0 (such as `0` or `00`). A name other than `root` counts as not root, even
+  // when the image's /etc/passwd gives it UID 0.
+  runsAsRoot() bool
+  // Command the image runs, prefixed to `cmd`
+  entrypoint() []string
+  // Default arguments to `entrypoint`, or the command when there is no entrypoint
+  cmd() []string
+  // Working directory of the image's command, empty when the image sets none
+  workingDir() string
+  // Ports the image declares with `EXPOSE`, as `port/protocol` (for example "53/udp")
+  exposedPorts() []string
+  // Digests of the image's filesystem layers, base layer first
+  //
+  // The digests of the uncompressed layer contents (diff IDs), the same
+  // whichever registry or compression the image came from.
+  layers() []string
+  // Containers created from the image, running or stopped
+  containers() []containerd.container
+}
+
+// Mount of a containerd container
+private containerd.container.mount @defaults("containerPath hostPath readOnly") {
+  // Mount type (for example "bind", "proc", "tmpfs")
+  type string
+  // Path inside the container
+  containerPath string
+  // Path on the host that is mounted; empty for a mount that is not a bind mount
+  hostPath string
+  // Whether the mount is read-only
+  readOnly bool
+  // Mount propagation (for example "rprivate", "rslave", "rshared"); empty when not set
+  propagation string
+  // Mount options (for example "rbind", "nosuid")
+  options []string
+}
+
+// CRI-O container runtime
+//
+// The CRI-O container runtime of a Kubernetes node (OpenShift, MicroShift,
+// and Kubernetes set up with CRI-O): its version, its effective configuration
+// with the security defaults it applies to every container, and the
+// containers it runs. `configuration` is what the running CRI-O reports;
+// without a running CRI-O it is merged from `configFiles`.
+crio {
+  // CRI-O version (for example "1.37.2")
+  version() string
+  // Configuration files, in the order CRI-O applies them
+  //
+  // /etc/crio/crio.conf when present, then every file in /etc/crio/crio.conf.d
+  // in name order, each overriding the ones before.
+  configFiles() []file
+  // Effective CRI-O configuration
+  //
+  // The configuration the running CRI-O reports, with its defaults filled in.
+  // Without a running CRI-O, merged from `configFiles`, which holds only what
+  // they set.
+  configuration() dict
+  // Runtime handler containers use unless they ask for another (for example "crun" or "runc")
+  defaultRuntime() string
+  // Seccomp profile applied to containers that set none; empty is CRI-O's built-in default profile
+  seccompProfile() string
+  // AppArmor profile applied to containers that set none (for example "crio-default")
+  apparmorProfile() string
+  // Whether CRI-O runs containers with SELinux labeling
+  selinux() bool
+  // Capabilities every container gets by default
+  defaultCapabilities() []string
+  // Sysctls set in every pod (for example "net.ipv4.ip_unprivileged_port_start=0")
+  defaultSysctls() []string
+  // Whether containers run with a read-only root filesystem by default
+  readOnly() bool
+  // Host devices containers may request
+  allowedDevices() []string
+  // Containers CRI-O runs, without the pod sandboxes that hold them
+  containers() []crio.container
+  // Images CRI-O stores
+  //
+  // Read from containers/storage under `crio.root` (by default
+  // /var/lib/containers/storage), for example
+  // `crio.images.where(runsAsRoot) { names }`.
+  images() []crio.image
+  // Image signature policy CRI-O verifies pulled images against
+  //
+  // From `crio.image.signature_policy`, by default /etc/containers/policy.json.
+  // Null when the policy file cannot be read.
+  signaturePolicy() containers.policy
+  // Signature policies for the pods of single Kubernetes namespaces
+  //
+  // The `<namespace>.json` files in `crio.image.signature_policy_dir`. A pod in
+  // a namespace with its own policy is verified against that policy instead of
+  // `signaturePolicy`.
+  namespaceSignaturePolicies() []crio.namespaceSignaturePolicy
+  // Runtime handlers CRI-O can run containers with
+  runtimes() []crio.runtime
+  // Listen address of the streaming server for exec, attach and port forwarding
+  //
+  // CRI-O defaults to "127.0.0.1", so that only the kubelet on the node can reach
+  // it. Any other address exposes the server to the network.
+  streamAddress() string
+  // Port the streaming server listens on; 0 picks a free port
+  streamPort() int
+  // Whether the streaming server serves TLS
+  streamTlsEnabled() bool
+}
+
+// Signature policy CRI-O applies to the pods of one Kubernetes namespace
+crio.namespaceSignaturePolicy @defaults("namespace") {
+  // Kubernetes namespace
+  namespace string
+  // Policy the namespace's pods are verified against
+  policy containers.policy
+}
+
+// CRI-O runtime handler
+//
+// A `[crio.runtime.runtimes.<name>]` entry: the low-level runtime CRI-O runs a
+// container with when a pod's RuntimeClass names it, or by default.
+crio.runtime @defaults("name path") {
+  // Handler name, as a RuntimeClass names it (for example "crun")
+  name string
+  // Path of the runtime binary
+  path string
+  // Runtime type: oci (the default), vm (for example Kata Containers), or pod
+  type string
+  // Root directory the runtime keeps container state in
+  root string
+  // Path of the monitor that supervises containers (conmon)
+  monitorPath string
+  // Annotations a pod may set to change how the runtime runs its containers
+  //
+  // Each one hands a pod a capability, for example "io.containers.trace-syscall"
+  // or "io.kubernetes.cri-o.userns-mode".
+  allowedAnnotations []string
+  // Whether privileged containers run without the host's devices
+  privilegedWithoutHostDevices bool
+  // Whether this is the handler containers use when they ask for none
+  isDefault bool
+}
+
+// CRI-O container
+//
+// A container CRI-O runs for a Kubernetes pod, with its pod (`podName`,
+// `podNamespace`, `sandboxId`), its image, and how it is confined: read from
+// the OCI runtime spec CRI-O created it with (its capabilities, seccomp,
+// AppArmor and SELinux settings, user, and resource limits) and from its pod
+// sandbox (the host namespaces it shares). The spec is stored on the node, so
+// these fields also work when CRI-O is stopped and on a scanned image or
+// filesystem. For example
+// `crio.containers.where(privileged || hostPID) { podNamespace podName name }`.
+crio.container @defaults("name podName podNamespace") {
+  // Container ID
+  id string
+  // Container name within its pod (for example "kube-proxy")
+  name string
+  // Name of the Kubernetes pod the container belongs to
+  podName string
+  // Namespace of the Kubernetes pod the container belongs to
+  podNamespace string
+  // ID of the pod sandbox the container runs in
+  sandboxId string
+  // Image the container runs (for example "registry.k8s.io/kube-proxy:v1.37.1")
+  image string
+  // Image digest reference the container runs
+  imageRef string
+  // Process ID of the container, 0 when it is not running or CRI-O cannot be asked
+  pid int
+  // Whether the container runs privileged
+  //
+  // A privileged container keeps every capability, runs without seccomp and
+  // AppArmor, and can reach the host's devices.
+  privileged bool
+  // Seccomp profile the container runs with (for example "Unconfined", "RuntimeDefault", or a profile path)
+  seccompProfile string
+  // Container labels
+  labels map[string]string
+  // When the container was created
+  created time
+  // Volumes mounted into the container
+  //
+  // Every Kubernetes volume, including hostPath volumes, and the files CRI-O
+  // adds, such as /etc/hosts. Null when CRI-O's record of the container cannot
+  // be read.
+  mounts() []crio.container.mount
+  // Effective capabilities of the container's process (for example "CAP_NET_BIND_SERVICE")
+  capabilities() []string
+  // Bounding set of capabilities, the most the container's processes can gain
+  boundingCapabilities() []string
+  // Whether no system call is filtered
+  //
+  // True when the spec sets no seccomp profile, which is what the Unconfined
+  // profile and privileged mode do, or one that lets every system call run.
+  seccompUnconfined() bool
+  // Action the seccomp profile takes on system calls it does not list (for example "SCMP_ACT_ERRNO"); empty without a profile
+  seccompDefaultAction() string
+  // AppArmor profile the container runs with (for example "crio-default"); empty when none is applied
+  apparmorProfile() string
+  // SELinux label of the container's process; empty when none is applied
+  selinuxLabel() string
+  // Whether the container's processes are prevented from gaining privileges (allowPrivilegeEscalation false)
+  noNewPrivileges() bool
+  // Whether the container's root filesystem is read-only
+  readOnlyRootfs() bool
+  // User ID the container's process runs as, 0 for root
+  uid() int
+  // Group ID the container's process runs as
+  gid() int
+  // Whether the container uses the node's network namespace (hostNetwork)
+  hostNetwork() bool
+  // Whether the container shares the node's process namespace (hostPID)
+  hostPID() bool
+  // Whether the container shares the node's IPC namespace (hostIPC)
+  hostIPC() bool
+  // Memory limit in bytes, null when the container's memory is unlimited
+  memoryLimit() int
+  // CPU quota in billionths of a CPU (for example 250000000 for 250m), null when unlimited
+  nanoCpus() int
+  // Relative CPU weight (cgroup cpu shares), null when not set
+  cpuShares() int
+  // Maximum number of processes in the container, null when unlimited
+  pidsLimit() int
+  // Image the container was created from
+  //
+  // Null when the image is no longer stored.
+  sourceImage() crio.image
+}
+
+// Image stored by CRI-O
+//
+// An image in CRI-O's containers/storage, selected by its `id`, with the
+// `names` and `repoDigests` it is known by and its `size`. The configuration
+// fields describe what a container started from it runs: `user` and
+// `runsAsRoot`, `entrypoint` and `cmd`, `exposedPorts`, its `labels`, and
+// the platform (`os`, `architecture`, `variant`) and build time
+// (`createdAt`). They are null when the image's configuration is not stored.
+// `containers` lists the containers created from it, for example
+// `crio.images.where(runsAsRoot && containers.length > 0) { names }`.
+crio.image @defaults("names id") {
+  // Image ID, the digest of the image configuration without its algorithm prefix
+  id string
+  // References the image is tagged with (for example "registry.k8s.io/pause:3.10.2")
+  names []string
+  // Content-addressed references the image can be pulled by
+  repoDigests []string
+  // Manifest digest of the image
+  digest string
+  // Size of the image in bytes, as crictl and Kubernetes report it
+  //
+  // The uncompressed size of its layers and the size of its stored metadata.
+  size int
+  // Image labels, as key-value pairs
+  labels() map[string]string
+  // Time the image was built, null when the image does not record it
+  createdAt() time
+  // Operating system the image targets (for example "linux")
+  os() string
+  // Processor architecture the image targets (for example "amd64", "arm64")
+  architecture() string
+  // Processor architecture variant (for example "v7", "v8"); empty when the image sets none
+  variant() string
+  // Account a container started from the image runs as, empty when it runs as root
+  //
+  // The image's `USER`, for example `65535:65535` or `nonroot`. Kubernetes
+  // overrides it with the pod's `runAsUser`, which `crio.container.uid`
+  // reports.
+  user() string
+  // Whether a container started from the image runs as root
+  //
+  // True when `user` is empty, or its user part is `root` or a number equal to
+  // 0 (such as `0` or `00`). A name other than `root` counts as not root, even
+  // when the image's /etc/passwd gives it UID 0.
+  runsAsRoot() bool
+  // Command the image runs, prefixed to `cmd`
+  entrypoint() []string
+  // Default arguments to `entrypoint`, or the command when there is no entrypoint
+  cmd() []string
+  // Working directory of the image's command, empty when the image sets none
+  workingDir() string
+  // Ports the image declares with `EXPOSE`, as `port/protocol` (for example "53/udp")
+  exposedPorts() []string
+  // Digests of the image's filesystem layers, base layer first
+  //
+  // The digests of the uncompressed layer contents (diff IDs), the same
+  // whichever registry or compression the image came from.
+  layers() []string
+  // Containers created from the image
+  containers() []crio.container
+}
+
+// Volume mounted into a CRI-O container
+crio.container.mount @defaults("containerPath hostPath readOnly") {
+  // Path inside the container
+  containerPath string
+  // Path on the node that is mounted
+  hostPath string
+  // Whether the mount is read-only
+  readOnly bool
+  // Whether the mounts below it are read-only too
+  recursiveReadOnly bool
+  // Mount propagation: "None", "HostToContainer" or "Bidirectional"
+  propagation string
+  // Whether CRI-O relabels the host path for SELinux
+  selinuxRelabel bool
+}
+
+// Container image registries configuration
+//
+// The containers-registries.conf(5) configuration that Podman, Buildah,
+// Skopeo and CRI-O read: /etc/containers/registries.conf, or
+// /usr/share/containers/registries.conf when it is absent, and the drop-ins in
+// the registries.conf.d directories, merged in name order as these tools merge
+// them for root. Each entry is the configuration for one registry or
+// repository prefix: `containers.registries.where(insecure)` lists the ones
+// pulled from without TLS verification, and `blocked` marks the ones pulls are
+// refused from. `unqualifiedSearchRegistries` lists where a short image name
+// is looked up, `shortNameMode` how a short name found in several of them is
+// resolved, and `aliases` the short names mapped to fully qualified images.
+containers.registries {
+  []containers.registry
+  // Configuration files, in the order they are applied
+  files() []file
+  // Registries a short image name is looked up in, in order
+  unqualifiedSearchRegistries() []string
+  // How a short image name found in several registries is resolved
+  //
+  // "enforcing" fails the pull unless a user picks the registry, "permissive"
+  // falls back to trying every registry in `unqualifiedSearchRegistries` when
+  // there is no terminal to ask, and "disabled" always tries them all. When
+  // the configuration sets none, the tools use "permissive", which is reported.
+  shortNameMode() string
+  // Short image names and the fully qualified images they stand for (for example "fedora": "registry.fedoraproject.org/fedora")
+  aliases() map[string]string
+}
+
+// Configuration for one container image registry or repository prefix
+containers.registry @defaults("prefix location insecure blocked") {
+  // Image names this entry applies to (for example "docker.io", "example.com/team" or "*.example.com")
+  prefix string
+  // Where images are pulled from; empty for a wildcard prefix that pulls each image from where it names
+  location string
+  // Whether images are pulled over plain HTTP or TLS with an unverified certificate
+  insecure bool
+  // Whether pulling images is refused
+  blocked bool
+  // Whether mirrors are only used for images pulled by digest
+  mirrorByDigestOnly bool
+  // Mirrors tried before `location`, in order
+  mirrors []containers.registry.mirror
+}
+
+// Mirror of a container image registry
+containers.registry.mirror @defaults("location insecure") {
+  // Where images are pulled from
+  location string
+  // Whether images are pulled over plain HTTP or TLS with an unverified certificate
+  insecure bool
+  // Which pulls use the mirror: "all", "digest-only" or "tag-only"
+  pullFromMirror string
+}
+
+// Container image signature policy
+//
+// A containers-policy.json(5) file, by default /etc/containers/policy.json:
+// the requirements images must meet before Podman, Buildah, Skopeo or CRI-O
+// pull them, by default (`defaultRequirements`) and per registry or repository
+// (`scopes`). A requirement of type insecureAcceptAnything pulls images
+// without verifying any signature. The `path` field selects another policy
+// file, for example `containers.policy(path: "/etc/crio/policies/payments.json")`.
+containers.policy @defaults("path") {
+  init(path? string)
+  // Path of the policy file
+  path string
+  // Policy file
+  file() file
+  // Requirements for images no scope matches
+  defaultRequirements() []containers.policy.requirement
+  // Registries and repositories with requirements of their own
+  scopes() []containers.policy.scope
+}
+
+// Registry or repository of a container image signature policy with requirements of its own
+containers.policy.scope @defaults("transport scope") {
+  // Transport the scope belongs to (for example "docker")
+  transport string
+  // Registry, repository or image the requirements apply to; empty for the transport's default
+  scope string
+  // Requirements images in the scope must meet
+  requirements() []containers.policy.requirement
+}
+
+// Requirement of a container image signature policy
+containers.policy.requirement @defaults("type") {
+  // Requirement type
+  //
+  // One of insecureAcceptAnything, reject, signedBy (GPG), or sigstoreSigned.
+  type string
+  // Kind of key a signedBy requirement verifies with (for example "GPGKeys")
+  keyType string
+  // Files holding the public keys signatures are verified with
+  keyPaths []string
+  // Whether the public key is given inline in the policy file
+  inlineKey bool
+  // Certificate authority that issues Fulcio certificates for keyless sigstore signatures
+  fulcioCAPath string
+  // OIDC issuer a keyless sigstore signature's certificate must name
+  fulcioOIDCIssuer string
+  // Email a keyless sigstore signature's certificate must name
+  fulcioSubjectEmail string
+  // Files holding the Rekor public keys transparency log entries are verified with
+  rekorPublicKeyPaths []string
+  // How the signed image identity must match the pulled image
+  //
+  // Holds the type (for example "matchRepoDigestOrExact") and its settings.
+  signedIdentity dict
+}
+
+// Container engine configuration (containers.conf)
+//
+// The containers.conf(5) configuration Podman, Buildah and Skopeo read as
+// root, merged from the system file and its drop-ins the way Podman does.
+// Podman 6 and later read the first of /etc/containers/containers.conf and
+// /usr/share/containers/containers.conf, then the drop-ins in
+// /etc/containers/containers.rootful.conf.d, /etc/containers/containers.conf.d,
+// /usr/share/containers/containers.rootful.conf.d and
+// /usr/share/containers/containers.conf.d in name order. Earlier versions read
+// /usr/share/containers/containers.conf, then /etc/containers/containers.conf
+// on top of it, then the drop-ins in /etc/containers/containers.conf.d. The
+// version is taken from the installed podman package. Each field reports the
+// setting containers get by default: `privileged`, `defaultCapabilities`,
+// `seccompProfile`, and the namespace modes (`userns`, `netns`, `pidns`,
+// `ipcns`, `utsns`, `cgroupns`) describe how much of the host a container
+// shares unless it asks otherwise, for example
+// `containers.conf { privileged == false && pidns != "host" }`. A setting no
+// file sets reports the engine's default, or null where that default depends
+// on the host, as each field says.
+containers.conf {
+  // Configuration files, in the order they are applied
+  files() []file
+  // Whether containers run privileged by default
+  //
+  // A privileged container keeps every capability and turns off the seccomp,
+  // AppArmor, SELinux and device restrictions. False when unset.
+  privileged() bool
+  // Capabilities every container gets
+  //
+  // When unset, the engine's default: CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_FOWNER,
+  // CAP_FSETID, CAP_KILL, CAP_NET_BIND_SERVICE, CAP_SETFCAP, CAP_SETGID,
+  // CAP_SETPCAP, CAP_SETUID, and CAP_SYS_CHROOT.
+  defaultCapabilities() []string
+  // Sysctls set in every container, as name=value (e.g., net.ipv4.ping_group_range=0 0)
+  defaultSysctls() []string
+  // Resource limits set in every container, as name=soft:hard (e.g., nofile=1024:2048)
+  defaultUlimits() []string
+  // Host devices added to every container, as host-path:container-path:permissions
+  devices() []string
+  // Mounts added to every container (e.g., type=bind,source=/srv,destination=/srv,ro)
+  mounts() []string
+  // Volumes added to every container, as host-path:container-path:options
+  volumes() []string
+  // Whether every host environment variable is passed into containers; false when unset
+  envHost() bool
+  // Seccomp profile containers run with, a file path or `unconfined`
+  //
+  // Null when unset: the engine then applies its default profile,
+  // /etc/containers/seccomp.json when it exists, otherwise
+  // /usr/share/containers/seccomp.json.
+  seccompProfile() string
+  // AppArmor profile containers run with
+  //
+  // Null when unset: the engine then applies its built-in profile, named
+  // `containers-default-` followed by the library version, on hosts that use
+  // AppArmor.
+  apparmorProfile() string
+  // Whether containers are separated with SELinux labels
+  //
+  // Null when unset: the engine then labels containers whenever SELinux is
+  // enabled on the host. Ignored on hosts without SELinux.
+  label() bool
+  // Whether containers run with a read-only root filesystem; false when unset
+  readOnly() bool
+  // Maximum number of processes in a container, 0 for no limit; 2048 when unset
+  pidsLimit() int
+  // User namespace mode: host, private, auto, keep-id, or nomap
+  //
+  // `host` when unset, where root in the container is root on the host.
+  userns() string
+  // Network namespace mode (e.g., private, bridge, host, none, pasta); `private` when unset
+  netns() string
+  // PID namespace mode: private or host; `private` when unset
+  pidns() string
+  // IPC namespace mode: shareable, private, host, or none; `shareable` when unset
+  ipcns() string
+  // UTS namespace mode: private or host; `private` when unset
+  utsns() string
+  // Cgroup namespace mode: private or host
+  //
+  // When unset, `private` for Podman 6 and later. Null when unset for earlier
+  // versions, which use `private` on cgroup v2 hosts and `host` on cgroup v1.
+  cgroupns() string
+  // Whether containers get cgroups: enabled, disabled, or no-conmon; `enabled` when unset
+  cgroups() string
+  // Log driver for container output: k8s-file, journald, none, or passthrough
+  //
+  // Null when unset: the engine then uses journald when the systemd journal is
+  // available and k8s-file otherwise.
+  logDriver() string
+  // Default OCI runtime (e.g., crun, runc, kata)
+  //
+  // Null when unset: the engine then uses the first one installed of crun,
+  // runc, runj, kata, runsc, and ocijail.
+  runtime() string
+  // Where engine events are logged: journald, file, or none
+  //
+  // Null when unset: the engine then uses journald on systemd hosts with a
+  // journal and file otherwise.
+  eventsLogger() string
+  // Cgroup manager: systemd or cgroupfs
+  //
+  // Null when unset: the engine then uses systemd on hosts booted with systemd
+  // and cgroupfs otherwise.
+  cgroupManager() string
+  // Network backend: netavark or cni
+  //
+  // Null when unset: Podman 6 and later use netavark, earlier versions pick
+  // cni only when it was used before.
+  networkBackend() string
+  // Network containers join in bridge mode; `podman` when unset
+  defaultNetwork() string
+}
+
+// Container storage configuration (storage.conf)
+//
+// The containers-storage.conf(5) configuration Podman, Buildah, Skopeo and
+// CRI-O store images and containers with: /etc/containers/storage.conf, or
+// /usr/share/containers/storage.conf when it is absent, then the drop-ins in
+// /etc/containers/storage.rootful.conf.d, /etc/containers/storage.conf.d,
+// /usr/share/containers/storage.rootful.conf.d and
+// /usr/share/containers/storage.conf.d in name order, which Podman 6 and later
+// read. `driver`, `graphRoot` and `runRoot` say where and how images and
+// containers are stored, and `overlayMountOptions` the options overlay layers
+// are mounted with, for example
+// `containers.storage.overlayMountOptions.contains("nodev")`. A setting no
+// file sets reports the library's default, or null where that default
+// depends on the host, as each field says.
+containers.storage {
+  // Configuration files, in the order they are applied
+  files() []file
+  // Merged configuration of all files
+  configuration() dict
+  // Storage driver (e.g., overlay, vfs, btrfs, zfs)
+  //
+  // Null when unset: the library then picks one that works on the host,
+  // trying `driverPriority` first.
+  driver() string
+  // Drivers tried in order when `driver` is unset
+  driverPriority() []string
+  // Directory images and container layers are stored in; /var/lib/containers/storage when unset
+  graphRoot() string
+  // Directory for temporary state such as mounted layers; /run/containers/storage when unset
+  runRoot() string
+  // Separate directory newly pulled images are stored in; empty when they are stored in `graphRoot`
+  imageStore() string
+  // Read-only image stores used in addition to `graphRoot`
+  additionalImageStores() []string
+  // Whether container metadata is kept in `runRoot` and lost on reboot; false when unset
+  transientStore() bool
+  // Program that mounts overlay layers instead of the kernel (e.g., /usr/bin/fuse-overlayfs)
+  //
+  // Empty when the kernel's overlay filesystem is used.
+  overlayMountProgram() string
+  // Options overlay layers are mounted with (e.g., nodev, metacopy=on)
+  //
+  // From `mountopt` in [storage.options.overlay], or in [storage.options]
+  // when the overlay table sets none. `nodev` stops device files in an image
+  // from being usable in its containers.
+  overlayMountOptions() []string
+  // Options for pulling images, as key-value pairs (e.g., enable_partial_images, use_hard_links, convert_images)
+  pullOptions() map[string]string
 }
 
 // Podman container engine
@@ -8092,7 +9429,14 @@ podman @defaults("installed version rootless") {
 // `effectiveCapabilities` and `boundingCapabilities` over `capAdd` and
 // `capDrop` for an audit: the engine folds a dropped capability into the
 // resulting set rather than echoing it back, so a dropped capability leaves
-// `capDrop` empty while the effective set shrinks.
+// `capDrop` empty while the effective set shrinks. `seccompProfile`,
+// `apparmorProfile`, and `noNewPrivileges` report the process restrictions,
+// the namespace modes (`networkMode`, `pidMode`, `ipcMode`, `utsMode`,
+// `usernsMode`, `cgroupnsMode`) report which host namespaces it shares, and
+// `mounts`, `devices`, and `ports` list what of the host is exposed inside it,
+// for example
+// `podman.containers.none(mounts.any(hostPath == /podman\.sock$/))` finds
+// containers that control the Podman service.
 podman.container @defaults("name state imageName") {
   init(id string)
   // Container ID
@@ -8127,11 +9471,14 @@ podman.container @defaults("name state imageName") {
   networks []string
   // Published port mappings
   //
-  // One entry per mapping, each carrying `hostIp` and `protocol` as strings and
+  // One entry per mapping, each carrying `hostIp` and `protocol` as strings,
   // `hostPort`, `containerPort`, and `range` as integers, so they compare
-  // numerically (e.g., `ports.where(containerPort == 5432)`). A `hostIp` of
-  // `0.0.0.0` publishes the port on every host interface, and `range` counts
-  // how many consecutive ports the mapping covers, `1` for a single port.
+  // numerically (e.g., `ports.where(containerPort == 5432)`), and
+  // `allInterfaces` as a boolean. A `hostIp` of `0.0.0.0` publishes the port on
+  // every host interface, which `allInterfaces` reports, so
+  // `ports.where(allInterfaces == true)` lists the ports reachable on every
+  // host interface rather than on one address such as 127.0.0.1. `range` counts how
+  // many consecutive ports the mapping covers, `1` for a single port.
   ports []dict
 
   // Whether the container runs privileged
@@ -8170,6 +9517,113 @@ podman.container @defaults("name state imageName") {
   usernsMode() string
   // Restart policy name (e.g., no, always, on-failure, unless-stopped)
   restartPolicy() string
+  // IPC namespace mode (e.g., private, shareable, host, container:<id>)
+  ipcMode() string
+  // UTS namespace mode, `host` when it shares the host's hostname (e.g., private, host)
+  utsMode() string
+  // Cgroup namespace mode (e.g., private, host)
+  cgroupnsMode() string
+  // Seccomp profile the container runs with
+  //
+  // One of `default` (the profile Podman ships), `unconfined` (no system call
+  // is filtered), or `custom` (another profile). A privileged container, one
+  // on a host without seccomp, and one whose profile allows every system call
+  // report `unconfined`, read from the filter the container was created with.
+  // A filtered container that names no profile is `default` or `custom` by
+  // the engine's profile, `seccomp_profile` in containers.conf.
+  seccompProfile() string
+  // AppArmor profile the container runs with
+  //
+  // For example `containers-default-0.50.0` or `unconfined`. Empty when the host
+  // does not use AppArmor.
+  apparmorProfile() string
+  // Whether the container's processes are prevented from gaining privileges
+  //
+  // True when the container runs with the `no-new-privileges` security option,
+  // which stops setuid binaries and file capabilities from raising the
+  // privileges of a process.
+  noNewPrivileges() bool
+  // Memory limit in bytes, null when the container's memory is unlimited
+  memoryLimit() int
+  // CPU shares relative to other containers, null when left at the engine default (1024)
+  cpuShares() int
+  // CPU quota in billionths of a CPU (e.g., 500000000 for half a CPU), null when unlimited
+  nanoCpus() int
+  // Maximum number of processes in the container, null when unlimited
+  //
+  // Podman applies a limit of 2048 unless the container or containers.conf
+  // sets another.
+  pidsLimit() int
+  // Resource limits set for the container's processes
+  //
+  // Includes the ones Podman applies by default (nofile and nproc), not only
+  // those set on the container.
+  ulimits() []podman.container.ulimit
+  // Whether the container has a health check
+  //
+  // False when neither the container nor its image defines one, or when it was
+  // disabled with `--no-healthcheck`.
+  hasHealthcheck() bool
+  // Health check command, for example ["CMD-SHELL", "curl -f http://localhost/"]
+  //
+  // The first entry is `CMD` or `CMD-SHELL`, or `NONE` when the image's health
+  // check is disabled. Empty when there is none.
+  healthcheckTest() []string
+  // Seconds between health checks, null when the container has no health check
+  //
+  // Reports the engine default of 30 when the health check does not set one.
+  healthcheckInterval() int
+  // Health status (e.g., starting, healthy, unhealthy), null when the container has no health check or is not running
+  healthStatus() string
+  // Host devices exposed inside the container
+  devices() []podman.container.device
+  // Volumes, bind mounts, and tmpfs mounts in the container
+  mounts() []podman.container.mount
+}
+
+// Resource limit set for a Podman container
+private podman.container.ulimit @defaults("name soft hard") {
+  // Limit name (e.g., nofile, nproc, core)
+  name string
+  // Soft limit, -1 when unlimited
+  soft int
+  // Hard limit, -1 when unlimited
+  hard int
+}
+
+// Host device exposed inside a Podman container
+private podman.container.device @defaults("hostPath containerPath") {
+  // Device path on the host
+  hostPath string
+  // Device path inside the container
+  containerPath string
+  // Device cgroup permissions, a combination of r (read), w (write), and m (mknod)
+  permissions string
+}
+
+// Mount in a Podman container
+//
+// One volume, bind mount, or tmpfs mount. `hostPath` is the host side of a bind
+// mount or the storage location of a volume, so
+// `mounts.where(type == "bind" && hostPath == "/run/podman/podman.sock")` finds
+// a container that can control the Podman service.
+private podman.container.mount @defaults("type containerPath hostPath readOnly") {
+  // Mount type: bind, volume, tmpfs, or image
+  type string
+  // Volume name, empty for other mount types
+  name string
+  // Path on the host that is mounted, empty for a tmpfs mount
+  hostPath string
+  // Path inside the container
+  containerPath string
+  // Whether the mount is read-only
+  readOnly bool
+  // Mode options supplied with the mount (e.g., z, Z), or a tmpfs mount's options
+  mode string
+  // Mount propagation (e.g., rprivate, rshared, rslave), empty when not applicable
+  propagation string
+  // Volume driver (e.g., local), empty for other mount types
+  driver string
 }
 
 // Podman image
@@ -11343,6 +12797,59 @@ kubelet {
   tlsCipherSuites() []string
   // Minimum TLS version the kubelet server accepts (for example "VersionTLS12")
   tlsMinVersion() string
+  // Directory of kubelet drop-in configuration files
+  //
+  // The `--config-dir` directory, whose `*.conf` files override the config file
+  // in name order. K3s and RKE2 write most of the kubelet's configuration here.
+  // Empty when the kubelet uses no drop-in directory.
+  configDir() string
+  // Drop-in configuration files the kubelet applies, in the order it applies them
+  configDropIns() []file
+  // Kubeconfig file the kubelet authenticates to the API server with
+  kubeconfig() file
+  // Certificates the kubelet server presents on its HTTPS port
+  //
+  // Read from `tlsCertFile`. When none is configured, from the certificate the
+  // kubelet keeps in its certificate directory: the one the API server issued
+  // (`kubelet-server-current.pem`) with `serverTLSBootstrap`, otherwise the
+  // self-signed `kubelet.crt` it generates at startup.
+  servingCertificates() []network.certificate
+  // Certificate authorities the kubelet server trusts for client certificates, from `clientCAFile`
+  clientCAs() []network.certificate
+  // Whether the kubelet server authenticates bearer tokens through the API server's TokenReview
+  webhookAuthenticationEnabled() bool
+  // Path the kubelet reads static pod manifests from
+  //
+  // Static pods are started by the kubelet itself, without going through the API
+  // server's admission control. Empty when the kubelet runs no static pods from a path.
+  staticPodPath() string
+  // Static pod manifests in `staticPodPath`
+  staticPodManifests() []file
+  // Unsafe sysctls pods on this node may set (for example "net.ipv4.ip_forward")
+  allowedUnsafeSysctls() []string
+  // Whether containers without a seccomp profile get the container runtime's default profile instead of none
+  seccompDefault() bool
+  // Maximum number of processes per pod; -1 means unlimited
+  podPidsLimit() int
+  // Whether the kubelet server serves exec, attach, port-forward, logs and the other debugging handlers
+  enableDebuggingHandlers() bool
+  // Whether the kubelet server exposes the node's log directory at /logs
+  enableSystemLogHandler() bool
+  // Whether the kubelet server answers node log queries on /logs/query
+  enableSystemLogQuery() bool
+  // Whether the kubelet server serves profiling data at /debug/pprof
+  enableProfilingHandler() bool
+  // Whether a pod may use an image another pod pulled with credentials it does not hold
+  //
+  // One of NeverVerify, NeverVerifyPreloadedImages, NeverVerifyAllowlistedImages,
+  // or AlwaysVerify. Set from Kubernetes 1.35, where the
+  // KubeletEnsureSecretPulledImages feature gate is on by default.
+  imagePullCredentialsVerificationPolicy() string
+  // Feature gates set in the kubelet's configuration or flags
+  //
+  // Only gates set explicitly. A gate absent here runs with its default for the
+  // kubelet's version.
+  featureGates() map[string]bool
 }
 
 // Python package inventory
@@ -11777,43 +13284,51 @@ swift.package @defaults("name version purl") {
   files() []pkgFileInfo
 }
 
-// Terraform provider inventory (SBOM cataloger)
+// Terraform dependency inventory (SBOM cataloger)
 //
-// Terraform provider versions pinned in `.terraform.lock.hcl`, useful for
-// auditing which provider versions an infrastructure workspace depends on.
-// Note: the terraform.* namespace is also used by the dedicated Terraform provider
-// for IaC resource scanning. These SBOM resources focus on provider version inventory
-// from .terraform.lock.hcl, not Terraform configuration analysis.
+// The providers and modules a Terraform workspace depends on. Three sources are
+// read and merged: `.terraform.lock.hcl` for the provider versions `terraform
+// init` resolved, the `*.tf` files for the modules the configuration calls and
+// the providers it requires, and `.terraform/modules/modules.json` for what
+// init actually installed. A dependency stated in more than one of them is
+// reported once, at the most precise version available.
+//
+// Note: the terraform.* namespace is also used by the dedicated Terraform
+// provider for IaC resource scanning. These SBOM resources inventory
+// dependencies; they do not analyze Terraform configuration.
 terraform.packages {
   []terraform.package
 
   init(path? string)
 
-  // Path to search for .terraform.lock.hcl
+  // Path to search for Terraform files
   path string
 
   // Files used to determine the packages
   files() []pkgFileInfo
 }
 
-// Terraform provider dependency
+// Terraform dependency
 //
-// Single Terraform provider pinned in `.terraform.lock.hcl`, exposing its
-// unique `id`, `name` in `namespace/type` form, `version`, `purl`
-// identifier, CPE identifiers for vulnerability matching, and the lock
-// files that reference it.
-terraform.package @defaults("name version purl") {
-  // Unique identifier for the provider within the inventory
+// A single provider or module a Terraform workspace depends on, exposing its
+// unique `id`, `name`, `version`, `purl` identifier, the `source` address as
+// written, and the files that reference it.
+terraform.package @defaults("name version type purl") {
+  // Unique identifier for the dependency within the inventory
   id string
-  // Name of the provider in namespace/type form
+  // Name: namespace/type for a provider, namespace/name/target-system for a registry module, host/owner/repo for a repository module
   name() string
-  // Pinned provider version
+  // Resolved version, empty when only a version constraint was stated (a provider with no lock file committed, or a module on a mutable reference)
   version() string
-  // Package URL (purl), a standardized identifier for the provider
+  // Kind of dependency: "provider" or "module"
+  type() string
+  // Source address as written, the only place a private registry host survives (such a provider shares its purl coordinate with the public registry)
+  source() string
+  // Package URL (purl), a standardized identifier for the dependency
   purl() string
   // Common Platform Enumeration (CPE) identifiers for matching against vulnerability advisories
   cpes() []core.cpe
-  // Lock files that reference this provider
+  // Files that reference this dependency
   files() []pkgFileInfo
 }
 
@@ -18582,7 +20097,8 @@ zfs.dataset @defaults("name type usedBytes") {
 //
 // Locally cached AI models discovered from tools such as Ollama, Hugging
 // Face Hub, LM Studio, GPT4All, PyTorch Hub, Keras, TensorFlow Hub, and
-// Jan. Iterate `models` to audit which AI models are present on the
+// Jan, plus the Gemini Nano model Google Chrome downloads for its built-in
+// AI features. Iterate `models` to audit which AI models are present on the
 // system, their sizes, file formats, publishers, and licenses.
 ai @maturity("preview") {
   // All locally cached AI models across all supported sources
@@ -18594,7 +20110,7 @@ ai @maturity("preview") {
 // Single locally cached AI model. The `name` field identifies
 // the model and `source` indicates which tool cached it (for example
 // `"ollama"`, `"huggingface"`, `"lmstudio"`, `"gpt4all"`, `"pytorch"`,
-// `"keras"`, `"tfhub"`, or `"jan"`). Use `ai.models.where(source == "ollama")`
+// `"keras"`, `"tfhub"`, `"jan"`, or `"chrome"`). Use `ai.models.where(source == "ollama")`
 // to filter by source, or inspect `size` and `modifiedAt` to find the
 // largest or most recently used models on the system.
 private ai.model @defaults("name source") @maturity("preview") {
@@ -18604,7 +20120,7 @@ private ai.model @defaults("name source") @maturity("preview") {
   // keep a namespace other than library and a registry other than Ollama's own,
   // as in "someuser/smollm:135m" or "hf.co/bartowski/smollm2-135m-instruct-gguf:Q4_K_M".
   name string
-  // Source tool that cached this model (ollama, huggingface, lmstudio, gpt4all, pytorch, keras, tfhub, jan)
+  // Source tool that cached this model (ollama, huggingface, lmstudio, gpt4all, pytorch, keras, tfhub, jan, chrome)
   source string
   // Publisher or organization that released the model (e.g., "meta-llama", "google", "mistralai")
   vendor string

@@ -1,7 +1,7 @@
 {
   "provider": "gcp",
-  "version": "14.4.0",
-  "generated_at": "2026-10-05T21:00:19+02:00",
+  "version": "14.4.2",
+  "generated_at": "2026-10-07T10:54:29+03:00",
   "permissions": [
     "accessapproval.settings.get",
     "aiplatform.batchPredictionJobs.list",
@@ -20,7 +20,6 @@
     "aiplatform.metadataStores.list",
     "aiplatform.modelDeploymentMonitoringJobs.list",
     "aiplatform.models.get",
-    "aiplatform.models.getIamPolicy",
     "aiplatform.models.list",
     "aiplatform.notebookExecutionJobs.list",
     "aiplatform.notebookRuntimeTemplates.get",
@@ -75,7 +74,6 @@
     "clouddeploy.targets.list",
     "cloudfunctions.functions.getIamPolicy",
     "cloudfunctions.functions.list",
-    "cloudidentity.groups.getsecuritysettings",
     "cloudkms.cryptoKeyVersions.list",
     "cloudkms.cryptoKeys.get",
     "cloudkms.cryptoKeys.getIamPolicy",
@@ -160,7 +158,7 @@
     "dataproc.jobs.list",
     "datastore.backupSchedules.list",
     "datastore.databases.list",
-    "datastore.indexes.list",
+    "datastore.schemas.list",
     "datastream.connectionProfiles.get",
     "datastream.connectionProfiles.list",
     "datastream.privateConnections.get",
@@ -201,16 +199,14 @@
     "gkebackup.backupPlans.list",
     "gkebackup.restorePlans.list",
     "iam.denypolicies.list",
-    "iam.policyBindings.list",
-    "iam.principalAccessBoundaryPolicies.list",
+    "iam.googleapis.com/workloadIdentityPoolProviders.list",
+    "iam.googleapis.com/workloadIdentityPools.list",
+    "iam.policybindings.list",
+    "iam.principalaccessboundarypolicies.list",
     "iam.roles.list",
     "iam.serviceAccountKeys.list",
     "iam.serviceAccounts.getIamPolicy",
     "iam.serviceAccounts.list",
-    "iam.workforcePoolProviders.list",
-    "iam.workforcePools.list",
-    "iam.workloadIdentityPoolProviders.list",
-    "iam.workloadIdentityPools.list",
     "iap.projects.getSettings",
     "iap.tunnelDestGroups.list",
     "iap.web.getIamPolicy",
@@ -241,7 +237,7 @@
     "monitoring.uptimeCheckConfigs.list",
     "networkconnectivity.hubs.list",
     "networkconnectivity.spokes.list",
-    "networkmanagement.connectivityTests.list",
+    "networkmanagement.connectivitytests.list",
     "networksecurity.addressGroups.list",
     "networksecurity.authorizationPolicies.list",
     "networksecurity.clientTlsPolicies.list",
@@ -277,9 +273,9 @@
     "redis.backups.list",
     "redis.clusters.list",
     "redis.instances.list",
+    "resourcemanager.hierarchyNodes.listTagBindings",
     "resourcemanager.projects.get",
     "resourcemanager.projects.getIamPolicy",
-    "resourcemanager.resourceTagBindings.list",
     "run.jobs.getIamPolicy",
     "run.jobs.list",
     "run.operations.list",
@@ -412,12 +408,6 @@
       "permission": "aiplatform.models.get",
       "service": "aiplatform",
       "action": "GetModel",
-      "source_file": "vertexai.go"
-    },
-    {
-      "permission": "aiplatform.models.getIamPolicy",
-      "service": "aiplatform",
-      "action": "GetIamPolicy",
       "source_file": "vertexai.go"
     },
     {
@@ -755,12 +745,6 @@
       "service": "cloudfunctions",
       "action": "ListFunctions",
       "source_file": "cloud_functions_v2.go"
-    },
-    {
-      "permission": "cloudidentity.groups.getsecuritysettings",
-      "service": "cloudidentity",
-      "action": "Groups.GetSecuritySettings",
-      "source_file": "cloudidentity.go"
     },
     {
       "permission": "cloudkms.cryptoKeyVersions.list",
@@ -1327,7 +1311,7 @@
       "source_file": "firestore.go"
     },
     {
-      "permission": "datastore.indexes.list",
+      "permission": "datastore.schemas.list",
       "service": "datastore",
       "action": "ListIndexes",
       "source_file": "firestore.go"
@@ -1573,13 +1557,39 @@
       "source_file": "iam.go"
     },
     {
-      "permission": "iam.policyBindings.list",
+      "permission": "iam.googleapis.com/workforcePoolProviders.list",
+      "service": "iam",
+      "action": "WorkforcePools.Providers.List",
+      "source_file": "iam_workforce.go",
+      "scope": "org"
+    },
+    {
+      "permission": "iam.googleapis.com/workforcePools.list",
+      "service": "iam",
+      "action": "WorkforcePools.List",
+      "source_file": "iam_workforce.go",
+      "scope": "org"
+    },
+    {
+      "permission": "iam.googleapis.com/workloadIdentityPoolProviders.list",
+      "service": "iam",
+      "action": "WorkloadIdentityPools.Providers.List",
+      "source_file": "iam_workload_identity.go"
+    },
+    {
+      "permission": "iam.googleapis.com/workloadIdentityPools.list",
+      "service": "iam",
+      "action": "WorkloadIdentityPools.List",
+      "source_file": "iam_workload_identity.go"
+    },
+    {
+      "permission": "iam.policybindings.list",
       "service": "iam",
       "action": "ListPolicyBindings",
       "source_file": "iam_pab.go"
     },
     {
-      "permission": "iam.principalAccessBoundaryPolicies.list",
+      "permission": "iam.principalaccessboundarypolicies.list",
       "service": "iam",
       "action": "ListPrincipalAccessBoundaryPolicies",
       "source_file": "iam_pab.go"
@@ -1607,30 +1617,6 @@
       "service": "iam",
       "action": "ListServiceAccounts",
       "source_file": "iam.go"
-    },
-    {
-      "permission": "iam.workforcePoolProviders.list",
-      "service": "iam",
-      "action": "WorkforcePools.Providers.List",
-      "source_file": "iam_workforce.go"
-    },
-    {
-      "permission": "iam.workforcePools.list",
-      "service": "iam",
-      "action": "WorkforcePools.List",
-      "source_file": "iam_workforce.go"
-    },
-    {
-      "permission": "iam.workloadIdentityPoolProviders.list",
-      "service": "iam",
-      "action": "WorkloadIdentityPools.Providers.List",
-      "source_file": "iam_workload_identity.go"
-    },
-    {
-      "permission": "iam.workloadIdentityPools.list",
-      "service": "iam",
-      "action": "WorkloadIdentityPools.List",
-      "source_file": "iam_workload_identity.go"
     },
     {
       "permission": "iap.projects.getSettings",
@@ -1819,7 +1805,7 @@
       "source_file": "network_connectivity.go"
     },
     {
-      "permission": "networkmanagement.connectivityTests.list",
+      "permission": "networkmanagement.connectivitytests.list",
       "service": "networkmanagement",
       "action": "ListConnectivityTests",
       "source_file": "network_management.go"
@@ -2063,6 +2049,12 @@
       "scope": "org"
     },
     {
+      "permission": "resourcemanager.hierarchyNodes.listTagBindings",
+      "service": "resourcemanager",
+      "action": "TagBindings.List",
+      "source_file": "project.go"
+    },
+    {
       "permission": "resourcemanager.organizations.get",
       "service": "resourcemanager",
       "action": "Organizations.Get",
@@ -2114,12 +2106,6 @@
       "action": "Projects.List",
       "source_file": "project.go",
       "scope": "org"
-    },
-    {
-      "permission": "resourcemanager.resourceTagBindings.list",
-      "service": "resourcemanager",
-      "action": "TagBindings.List",
-      "source_file": "project.go"
     },
     {
       "permission": "run.jobs.getIamPolicy",
@@ -2303,6 +2289,8 @@
     }
   ],
   "org_level_permissions": [
+    "iam.googleapis.com/workforcePoolProviders.list",
+    "iam.googleapis.com/workforcePools.list",
     "orgpolicy.customConstraints.list",
     "resourcemanager.folders.get",
     "resourcemanager.folders.getIamPolicy",

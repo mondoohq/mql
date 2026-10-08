@@ -631,6 +631,65 @@ func TestSuse5MicroDetector(t *testing.T) {
 	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
 }
 
+// SUSE Linux Micro 6.0 and 6.1 set ID=sl-micro. They are the same product as
+// SUSE Linux Enterprise Micro 5 and report as suse-microos, keeping the
+// os-release ID as the distro id.
+func TestSlMicro6Detector(t *testing.T) {
+	for _, tc := range []struct {
+		fixture string
+		version string
+		title   string
+	}{
+		{"./testdata/detect-sl-micro-6.0.toml", "6.0", "SUSE Linux Micro 6.0"},
+		{"./testdata/detect-sl-micro-6.1.toml", "6.1", "SUSE Linux Micro 6.1"},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			di, err := detectPlatformFromMock(tc.fixture)
+			require.NoError(t, err)
+
+			assert.Equal(t, "suse-microos", di.Name)
+			assert.Equal(t, "sl-micro", di.Metadata[LabelDistroID])
+			assert.Equal(t, tc.version, di.Version)
+			assert.Equal(t, tc.title, di.Title)
+			assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+		})
+	}
+}
+
+// SUSE Linux Micro 6.2 sets ID=sles and VERSION_ID=16.0, and was reported as
+// SLES 16.0.
+func TestSlMicro62IsNotSles(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-sl-micro-6.2.toml")
+	require.NoError(t, err)
+
+	assert.Equal(t, "suse-microos", di.Name)
+	assert.Equal(t, "6.2", di.Version, "the SUSE Linux Micro version, not the SLES one")
+	assert.Equal(t, "SUSE Linux Micro 6.2", di.Title, "SUSE's SLES title is replaced")
+	assert.Equal(t, "sl-micro", di.Metadata[LabelDistroID], "the distro id 6.0 and 6.1 set, so package URLs do not read sles-6.2")
+	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+}
+
+// A Harvester node is SUSE Linux Micro 6.2 with its own PRETTY_NAME, which
+// stays as the title.
+func TestHarvesterNodeDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-harvester-1.8.toml")
+	require.NoError(t, err)
+
+	assert.Equal(t, "suse-microos", di.Name)
+	assert.Equal(t, "6.2", di.Version)
+	assert.Equal(t, "Harvester v1.8.2", di.Title)
+	assert.Equal(t, "v1.8.2", di.Metadata[LabelHarvesterVersion])
+	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+}
+
+// A plain SUSE Linux Micro system is not a Harvester node.
+func TestSlMicroWithoutHarvesterRelease(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-sl-micro-6.2.toml")
+	require.NoError(t, err)
+
+	assert.NotContains(t, di.Metadata, LabelHarvesterVersion)
+}
+
 // openSUSE MicroOS sets ID=opensuse-microos, which no resolver claimed: the
 // suse family's only micro leaf matched SLE Micro's ID=suse-microos. Detection
 // fell through to the generic resolver, so the platform carried no suse family
@@ -1032,6 +1091,32 @@ func TestMinimosIsClaimedByItsOwnResolver(t *testing.T) {
 	require.NotNil(t, leaf)
 
 	assert.NotEqual(t, defaultLinux, leaf, "MinimOS must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+// CleanStart OS is the distribution behind the CleanStart hardened container
+// images.
+func TestCleanstartDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-cleanstart.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "cleanstart", di.Name, "os name should be identified")
+	assert.Equal(t, "CleanStart", di.Title, "os title should be identified")
+	assert.Equal(t, "20241216", di.Version, "the release line is a date stamp, not a dotted version")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+func TestCleanstartIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-cleanstart.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.Equal(t, cleanstart, leaf, "CleanStart OS must be claimed by its own resolver")
 	assert.False(t, isUnidentifiedPlatform(pf, leaf),
 		"a container image claimed only by the generic resolver is reported as scratch")
 }

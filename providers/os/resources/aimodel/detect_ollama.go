@@ -6,7 +6,6 @@ package aimodel
 import (
 	"encoding/json"
 	"io"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -134,7 +133,7 @@ func (d *OllamaDetector) Detect(ctx DetectContext) []ModelInfo {
 		if ctx.Home == "" {
 			return nil
 		}
-		dirs = []string{filepath.Join(ctx.Home, ".ollama", "models")}
+		dirs = []string{joinPath(ctx.Home, ".ollama", "models")}
 	}
 
 	var results []ModelInfo
@@ -157,7 +156,7 @@ func (d *OllamaDetector) Detect(ctx DetectContext) []ModelInfo {
 // directory OLLAMA_MODELS points at (or $HOME/.ollama/models by default), which
 // holds the manifests and blobs subdirectories.
 func DetectOllamaModels(afs *afero.Afero, modelsDir string) []ModelInfo {
-	manifestsDir := filepath.Join(modelsDir, "manifests")
+	manifestsDir := joinPath(modelsDir, "manifests")
 
 	// Ollama manifests follow a 4-level structure: registry/namespace/model/tag
 	// (e.g. registry.ollama.ai/library/llama3/latest).
@@ -172,7 +171,7 @@ func DetectOllamaModels(afs *afero.Afero, modelsDir string) []ModelInfo {
 		if !registry.IsDir() {
 			continue
 		}
-		registryDir := filepath.Join(manifestsDir, registry.Name())
+		registryDir := joinPath(manifestsDir, registry.Name())
 		namespaces, err := afs.ReadDir(registryDir)
 		if err != nil {
 			continue
@@ -181,7 +180,7 @@ func DetectOllamaModels(afs *afero.Afero, modelsDir string) []ModelInfo {
 			if !ns.IsDir() {
 				continue
 			}
-			nsDir := filepath.Join(registryDir, ns.Name())
+			nsDir := joinPath(registryDir, ns.Name())
 			models, err := afs.ReadDir(nsDir)
 			if err != nil {
 				continue
@@ -191,7 +190,7 @@ func DetectOllamaModels(afs *afero.Afero, modelsDir string) []ModelInfo {
 					continue
 				}
 				modelBase := model.Name()
-				modelDir := filepath.Join(nsDir, modelBase)
+				modelDir := joinPath(nsDir, modelBase)
 				tags, err := afs.ReadDir(modelDir)
 				if err != nil {
 					continue
@@ -200,7 +199,7 @@ func DetectOllamaModels(afs *afero.Afero, modelsDir string) []ModelInfo {
 					if tag.IsDir() {
 						continue
 					}
-					tagPath := filepath.Join(modelDir, tag.Name())
+					tagPath := joinPath(modelDir, tag.Name())
 					data, err := afs.ReadFile(tagPath)
 					if err != nil {
 						continue
@@ -284,7 +283,7 @@ func readOllamaLicenseLayer(afs *afero.Afero, modelsDir string, layers []ollamaL
 			continue
 		}
 		blobName := strings.Replace(l.Digest, ":", "-", 1)
-		blobPath := filepath.Join(modelsDir, "blobs", blobName)
+		blobPath := joinPath(modelsDir, "blobs", blobName)
 		f, err := afs.Open(blobPath)
 		if err != nil {
 			continue
@@ -379,7 +378,7 @@ func readOllamaConfig(afs *afero.Afero, modelsDir string, digest string) ollamaE
 		return result
 	}
 	blobName := strings.Replace(digest, ":", "-", 1)
-	blobPath := filepath.Join(modelsDir, "blobs", blobName)
+	blobPath := joinPath(modelsDir, "blobs", blobName)
 	data, err := afs.ReadFile(blobPath)
 	if err != nil {
 		return result

@@ -39,13 +39,19 @@ func isConfDFileName(name string) bool {
 // holds a given name wins, and the winners are returned as full paths ordered
 // by file name (strcmp order), which is the order the files are applied in.
 func selectConfDFiles(dirs []string, listings [][]string) []string {
+	return selectConfDFilesWith(dirs, listings, isConfDFileName)
+}
+
+// selectConfDFilesWith is selectConfDFiles for a reader that decides with
+// accept which names it reads.
+func selectConfDFilesWith(dirs []string, listings [][]string, accept func(string) bool) []string {
 	winners := map[string]string{}
 	for i, dir := range dirs {
 		if i >= len(listings) {
 			break
 		}
 		for _, name := range listings[i] {
-			if !isConfDFileName(name) {
+			if !accept(name) {
 				continue
 			}
 			if _, ok := winners[name]; ok {
@@ -76,6 +82,12 @@ func selectConfDFiles(dirs []string, listings [][]string) []string {
 // the files from the other directories are still returned, together with the
 // joined errors.
 func listConfDFiles(runtime *plugin.Runtime, dirs []string) ([]string, error) {
+	return listConfDFilesWith(runtime, dirs, isConfDFileName)
+}
+
+// listConfDFilesWith is listConfDFiles for a reader that decides with accept
+// which names it reads.
+func listConfDFilesWith(runtime *plugin.Runtime, dirs []string, accept func(string) bool) ([]string, error) {
 	conn := runtime.Connection.(shared.Connection)
 	fs := conn.FileSystem()
 
@@ -118,5 +130,5 @@ func listConfDFiles(runtime *plugin.Runtime, dirs []string) ([]string, error) {
 		}
 	}
 
-	return selectConfDFiles(dirs, listings), errors.Join(errs...)
+	return selectConfDFilesWith(dirs, listings, accept), errors.Join(errs...)
 }

@@ -9,6 +9,8 @@ import (
 
 	"github.com/stackitcloud/stackit-sdk-go/core/config"
 	resourcemanager "github.com/stackitcloud/stackit-sdk-go/services/resourcemanager/v0api"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
@@ -263,4 +265,26 @@ func TestNewStackitConnection_ExplicitRegion(t *testing.T) {
 	if conn.Region() != "eu02" {
 		t.Fatalf("expected eu02, got %q", conn.Region())
 	}
+}
+
+func TestWithRequestTimeoutAllocatesPerClient(t *testing.T) {
+	var a, b config.Configuration
+	opt := withRequestTimeout()
+	require.NoError(t, opt(&a))
+	require.NoError(t, opt(&b))
+
+	require.NotNil(t, a.HTTPClient)
+	assert.Equal(t, requestTimeout, a.HTTPClient.Timeout)
+	// The SDK overwrites each client's Transport with its own auth round
+	// tripper, so two service clients must never share one *http.Client.
+	assert.NotSame(t, a.HTTPClient, b.HTTPClient)
+}
+
+func TestBuildAuthOptionsSetsRequestTimeout(t *testing.T) {
+	var cfg config.Configuration
+	for _, opt := range buildAuthOptions(&inventory.Config{Options: map[string]string{}}) {
+		require.NoError(t, opt(&cfg))
+	}
+	require.NotNil(t, cfg.HTTPClient)
+	assert.Equal(t, requestTimeout, cfg.HTTPClient.Timeout)
 }

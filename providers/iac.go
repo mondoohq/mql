@@ -121,6 +121,13 @@ func (s *iacProviderService) Connect(req *plugin.ConnectReq, callback plugin.Pro
 	source := iacconn.Source{Kind: iacconn.KindFile, Origin: absPath}
 	iacDetectAsset(asset, conf, absPath)
 
+	// The mondoo.yml at the tree root governs the project and everything the
+	// walk finds in it (cnspec ADR-0006). A config the caller already attached,
+	// from a repository it cloned for instance, is kept.
+	if asset.ContextConfig == nil {
+		asset.ContextConfig = plugin.ReadContextConfig(treeRoot, &inventory.ConfigOrigin{Provider: "iac"}, ".")
+	}
+
 	conn, err := s.iacConnect(req, callback, source)
 	if err != nil {
 		return nil, err
@@ -276,7 +283,7 @@ func (s *iacProviderService) walkTree(parent *Runtime, req *plugin.ConnectReq, t
 		OptIns: optIns,
 		All:    iacDiscoverHasAll(req.Asset.Connections[0]),
 	}
-	return walk.Walk(tree, selection, walk.Options{Ignore: ignore}, root, prober)
+	return walk.Walk(tree, selection, walk.Options{Ignore: ignore, ContextConfig: root.GetContextConfig()}, root, prober)
 }
 
 func iacDiscoverHasAll(conf *inventory.Config) bool {

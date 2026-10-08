@@ -256,6 +256,7 @@ use (
    ./mql/providers/hcp
    ./mql/providers/hetzner
    ./mql/providers/huggingface
+   ./mql/providers/ibm
    ./mql/providers/ipinfo
    ./mql/providers/ipmi
    ./mql/providers/iru

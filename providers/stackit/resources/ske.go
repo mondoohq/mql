@@ -21,7 +21,7 @@ func (r *mqlStackitSke) clusters() ([]any, error) {
 	resp, err := client.DefaultAPI.ListClusters(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}

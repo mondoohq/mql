@@ -5,12 +5,58 @@ package aimodel
 
 import (
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/spf13/afero"
 )
+
+// joinPath joins path elements in the style of the target that base belongs
+// to. filepath.Join follows the host mql runs on instead, so scanning Windows
+// from macOS reported C:\Users\me/.cache/huggingface/hub, and scanning Linux
+// from Windows would turn every slash into a backslash. A base with a drive
+// letter or a UNC prefix is a Windows path and is joined with backslashes,
+// normalizing any slash already in it; anything else is joined with slashes.
+// base must not be empty: like filepath.Join, an empty base yields a relative
+// path, and every detector starts from a user home or a resolved store.
+func joinPath(base string, elem ...string) string {
+	if !isWindowsPath(base) {
+		return path.Join(append([]string{base}, elem...)...)
+	}
+
+	parts := []string{}
+	for _, p := range append([]string{base}, elem...) {
+		parts = append(parts, strings.FieldsFunc(p, isPathSeparator)...)
+	}
+	joined := strings.Join(parts, `\`)
+	if strings.HasPrefix(base, `\\`) {
+		return `\\` + joined
+	}
+	return joined
+}
+
+// baseName is the last element of p, split on both separators so that a
+// Windows path reads the same on every host.
+func baseName(p string) string {
+	if i := strings.LastIndexFunc(p, isPathSeparator); i >= 0 {
+		return p[i+1:]
+	}
+	return p
+}
+
+func isWindowsPath(p string) bool {
+	if strings.HasPrefix(p, `\\`) {
+		return true
+	}
+	return len(p) >= 2 && p[1] == ':' &&
+		(p[0] >= 'a' && p[0] <= 'z' || p[0] >= 'A' && p[0] <= 'Z')
+}
+
+func isPathSeparator(r rune) bool {
+	return r == '/' || r == '\\'
+}
 
 // ModelInfo holds the metadata for a single discovered AI model cache entry.
 // Each detector populates what it can; fields left empty mean the source
@@ -68,15 +114,37 @@ func Detectors() []Detector {
 		&KerasDetector{},
 		&TFHubDetector{},
 		&JanDetector{},
+		&ChromeDetector{},
 	}
 }
 
-// DetectAll runs every detector and returns the combined results.
-func DetectAll(afs *afero.Afero, home, osFamily string, ollamaModelsDirs []string) []ModelInfo {
-	ctx := DetectContext{Fs: afs, Home: home, OSFamily: osFamily, OllamaModelsDirs: ollamaModelsDirs}
+// DetectAll runs every detector against each user home and returns the
+// combined results. Resolved Ollama stores already include every user's own
+// store besides the daemon's, so Ollama reads them once, which also keeps one
+// model reachable through two stores a single model. A model is reported once
+// per source and path, however many homes lead to it.
+func DetectAll(afs *afero.Afero, homes []string, osFamily string, ollamaModelsDirs []string) []ModelInfo {
 	var all []ModelInfo
+	seen := map[string]struct{}{}
+	add := func(models []ModelInfo) {
+		for _, m := range models {
+			key := m.Source + "\x00" + m.Path
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			all = append(all, m)
+		}
+	}
+
 	for _, d := range Detectors() {
-		all = append(all, d.Detect(ctx)...)
+		if _, ok := d.(*OllamaDetector); ok && len(ollamaModelsDirs) > 0 {
+			add(d.Detect(DetectContext{Fs: afs, OSFamily: osFamily, OllamaModelsDirs: ollamaModelsDirs}))
+			continue
+		}
+		for _, home := range homes {
+			add(d.Detect(DetectContext{Fs: afs, Home: home, OSFamily: osFamily}))
+		}
 	}
 	return all
 }

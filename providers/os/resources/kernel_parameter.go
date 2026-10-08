@@ -13,6 +13,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/kernel"
+	"go.mondoo.com/mql/types"
 )
 
 // kernelSysctls is the live and configured state of every kernel parameter,
@@ -288,7 +289,7 @@ func kernelParameterArgs(runtime *plugin.Runtime, state *kernelSysctls, name str
 		setting.path = a.File
 		settings[i] = setting
 	}
-	args["settings"] = llx.ArrayData(settings, "kernel.parameter.setting")
+	args["settings"] = llx.ArrayData(settings, types.Resource("kernel.parameter.setting"))
 
 	return args, nil
 }

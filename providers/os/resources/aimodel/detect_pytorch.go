@@ -4,7 +4,6 @@
 package aimodel
 
 import (
-	"path/filepath"
 	"strings"
 )
 
@@ -15,7 +14,7 @@ import (
 type PyTorchHubDetector struct{}
 
 func (d *PyTorchHubDetector) Detect(ctx DetectContext) []ModelInfo {
-	checkpointsDir := filepath.Join(ctx.Home, ".cache", "torch", "hub", "checkpoints")
+	checkpointsDir := joinPath(ctx.Home, ".cache", "torch", "hub", "checkpoints")
 	entries, err := ctx.Fs.ReadDir(checkpointsDir)
 	if err != nil {
 		return nil
@@ -43,7 +42,7 @@ func (d *PyTorchHubDetector) Detect(ctx DetectContext) []ModelInfo {
 		results = append(results, ModelInfo{
 			Name:       name,
 			Source:     "pytorch",
-			Path:       filepath.Join(checkpointsDir, e.Name()),
+			Path:       joinPath(checkpointsDir, e.Name()),
 			Size:       e.Size(),
 			ModifiedAt: e.ModTime(),
 			Format:     "pytorch",

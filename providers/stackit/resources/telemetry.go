@@ -52,7 +52,7 @@ func (r *mqlStackitTelemetry) routers() ([]any, error) {
 		resp, err := req.Execute()
 		if err != nil {
 			if isAccessDenied(err) {
-				return []any{}, nil
+				return deniedList(err)
 			}
 			return nil, err
 		}
@@ -92,7 +92,7 @@ func (r *mqlStackitTelemetryRouter) destinations() ([]any, error) {
 		resp, err := req.Execute()
 		if err != nil {
 			if isAccessDenied(err) {
-				return []any{}, nil
+				return deniedList(err)
 			}
 			return nil, err
 		}
@@ -168,7 +168,7 @@ func (r *mqlStackitTelemetryRouter) accessTokens() ([]any, error) {
 		resp, err := req.Execute()
 		if err != nil {
 			if isAccessDenied(err) {
-				return []any{}, nil
+				return deniedList(err)
 			}
 			return nil, err
 		}
@@ -247,9 +247,16 @@ func (r *mqlStackitTelemetry) link() (*mqlStackitTelemetryLink, error) {
 	}
 	resp, err := client.DefaultAPI.GetProjectTelemetryLink(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			r.Link.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				r.Link.State = plugin.StateIsSet | plugin.StateIsNull
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}

@@ -208,6 +208,31 @@ func TestCtrCommand(t *testing.T) {
 		ctrCommand(clis[3], "-n", "g08ns", "containers", "info", "c-run"))
 	// building a command line leaves the CLI untouched for the next call
 	assert.Equal(t, []string{"docker-containerd-ctr", "--address", "/run/docker/containerd/containerd.sock"}, clis[3])
+
+	// RKE2's ctr is on no PATH and its containerd listens under /run/k3s
+	clis = ctrCLIs([]string{"--address", rke2ContainerdSocket})
+	assert.Equal(t,
+		"/var/lib/rancher/rke2/bin/ctr --address /run/k3s/containerd/containerd.sock namespaces list -q",
+		ctrCommand(clis[4], "namespaces", "list", "-q"))
+
+	// Canonical Kubernetes's ctr is in its snap; its containerd serves the
+	// default socket
+	clis = ctrCLIs(nil)
+	assert.Equal(t, "/snap/k8s/current/bin/ctr namespaces list -q", ctrCommand(clis[5], "namespaces", "list", "-q"))
+
+	// MicroK8s's ctr is in its snap, its socket in the snap's data
+	clis = ctrCLIs([]string{"--address", microk8sContainerdSocket})
+	assert.Equal(t,
+		"/snap/microk8s/current/bin/ctr --address /var/snap/microk8s/common/run/containerd.sock namespaces list -q",
+		ctrCommand(clis[6], "namespaces", "list", "-q"))
+
+	// k0s has ctr only as a subcommand
+	clis = ctrCLIs([]string{"--address", k0sContainerdSocket})
+	assert.Equal(t, "k0s ctr --address /run/k0s/containerd.sock namespaces list -q",
+		ctrCommand(clis[7], "namespaces", "list", "-q"))
+	// building a command line leaves the multi-word CLI untouched
+	assert.Equal(t, []string{"k0s", "ctr", "--address", "/run/k0s/containerd.sock"}, clis[7])
+	assert.Equal(t, []string{"k0s", "ctr"}, ctrBinaries[7], "the shared CLI list is not modified")
 }
 
 func TestContainerdAddressArgs(t *testing.T) {
@@ -245,6 +270,32 @@ func TestContainerdAddressArgs(t *testing.T) {
 	// socket shows, while /run/docker is 0700 and refuses the stat
 	assert.Equal(t, dockerAddress, containerdAddressArgs(statFrom(map[string]error{
 		dockerContainerdSocket: fs.ErrPermission,
+	})))
+
+	// RKE2 (a Harvester v1.8.2 node): only RKE2's containerd runs, under
+	// /run/k3s, and /run/containerd does not exist
+	assert.Equal(t, []string{"--address", "/run/k3s/containerd/containerd.sock"},
+		containerdAddressArgs(statFrom(map[string]error{
+			containerdSocket:       fs.ErrNotExist,
+			dockerContainerdSocket: fs.ErrNotExist,
+			rke2ContainerdSocket:   nil,
+		})))
+	// MicroK8s: /run/containerd holds runc state but no socket
+	assert.Equal(t, []string{"--address", "/var/snap/microk8s/common/run/containerd.sock"},
+		containerdAddressArgs(statFrom(map[string]error{
+			containerdSocket:         fs.ErrNotExist,
+			microk8sContainerdSocket: nil,
+		})))
+	// k0s
+	assert.Equal(t, []string{"--address", "/run/k0s/containerd.sock"},
+		containerdAddressArgs(statFrom(map[string]error{
+			containerdSocket:    fs.ErrNotExist,
+			k0sContainerdSocket: nil,
+		})))
+	// a standalone containerd next to RKE2 keeps the default socket
+	assert.Nil(t, containerdAddressArgs(statFrom(map[string]error{
+		containerdSocket:     nil,
+		rke2ContainerdSocket: nil,
 	})))
 
 	// no containerd runs at all: ctr reports the default socket

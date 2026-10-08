@@ -787,6 +787,13 @@ func TestParseDockerfile_StageRunsAsRoot(t *testing.T) {
 		{"0:0", true},   // root with group
 		{"1001", false}, // non-root UID
 		{"app", false},  // non-root name
+		{"00", true},    // the runtime parses a numeric user with strconv.Atoi
+		{"0000", true},
+		{"+0", true},
+		{"-0", true},
+		{"0001", false},
+		{"ROOT", false}, // names match exactly
+		{"rooter", false},
 	}
 	for _, kase := range cases {
 		name := kase.user

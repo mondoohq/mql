@@ -1,0 +1,1314 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/ibm"
+option go_package = "go.mondoo.com/mql/providers/ibm/resources"
+option root = "ibm"
+
+// IBM Cloud account
+//
+// Root of the IBM Cloud provider, scoped to the account the API key belongs
+// to. Account-wide resources (IAM account settings, access groups, access and
+// authorization policies, service IDs, API keys, trusted profiles, resource
+// groups, and resource instances) are listed once. VPC infrastructure (VPCs,
+// subnets, virtual server instances, security groups, network ACLs, floating
+// IPs, public gateways, load balancers, block storage volumes, SSH keys, and
+// flow log collectors) is collected from every VPC region the connection is
+// scoped to, and each object carries its `region`. Power Virtual Server
+// workspaces are found through the resource controller and queried in their
+// own zone. Cloud Object Storage buckets, Key Protect keys, Activity Tracker
+// Event Routing, and IBM Cloud Databases cover data protection and audit
+// logging.
+ibm @root {
+  // Account ID
+  accountId string
+  // IAM settings of the account
+  iamAccountSettings() ibm.iam.accountSettings
+  // Resource groups
+  resourceGroups() []ibm.resourceGroup
+  // Resource instances (provisioned service instances)
+  resourceInstances() []ibm.resourceInstance
+  // IAM access groups
+  iamAccessGroups() []ibm.iam.accessGroup
+  // IAM access and authorization policies
+  iamPolicies() []ibm.iam.policy
+  // IAM service IDs
+  iamServiceIds() []ibm.iam.serviceId
+  // IAM API keys of users and service IDs
+  iamApiKeys() []ibm.iam.apiKey
+  // IAM trusted profiles
+  iamTrustedProfiles() []ibm.iam.trustedProfile
+  // VPC regions the connection queries
+  vpcRegions() []ibm.region
+  // VPCs in all regions
+  vpcs() []ibm.vpc
+  // VPC subnets in all regions
+  vpcSubnets() []ibm.vpc.subnet
+  // VPC virtual server instances in all regions
+  vpcInstances() []ibm.vpc.instance
+  // VPC security groups in all regions
+  vpcSecurityGroups() []ibm.vpc.securityGroup
+  // VPC network ACLs in all regions
+  vpcNetworkAcls() []ibm.vpc.networkAcl
+  // VPC floating IPs in all regions
+  vpcFloatingIps() []ibm.vpc.floatingIp
+  // VPC public gateways in all regions
+  vpcPublicGateways() []ibm.vpc.publicGateway
+  // VPC load balancers in all regions
+  vpcLoadBalancers() []ibm.vpc.loadBalancer
+  // VPC block storage volumes in all regions
+  vpcVolumes() []ibm.vpc.volume
+  // VPC SSH keys in all regions
+  vpcSshKeys() []ibm.vpc.sshKey
+  // VPC flow log collectors in all regions
+  vpcFlowLogCollectors() []ibm.vpc.flowLogCollector
+  // Power Virtual Server workspaces
+  powerWorkspaces() []ibm.power.workspace
+  // Cloud Object Storage buckets of every Cloud Object Storage instance
+  cosBuckets() []ibm.cos.bucket
+  // Key Protect and Hyper Protect Crypto Services instances
+  kmsInstances() []ibm.kms.instance
+  // Keys of every Key Protect and Hyper Protect Crypto Services instance
+  kmsKeys() []ibm.kms.key
+  // Activity Tracker Event Routing targets
+  atrackerTargets() []ibm.atracker.target
+  // Activity Tracker Event Routing routes
+  atrackerRoutes() []ibm.atracker.route
+  // Activity Tracker Event Routing account settings
+  atrackerSettings() ibm.atracker.settings
+  // IBM Cloud Databases deployments
+  databases() []ibm.database
+}
+
+// IBM Cloud IAM account settings
+//
+// Account-wide identity settings: the multi-factor authentication requirement,
+// whether creating service IDs and platform API keys is restricted, the
+// allowed IP addresses for sign-in, session and token lifetimes, and whether
+// the Public Access group is enabled. A setting IBM Cloud reports as NOT_SET
+// reads as null.
+private ibm.iam.accountSettings @defaults("mfa") {
+  // Account-wide MFA requirement: NONE, NONE_NO_ROPC, TOTP, TOTP4ALL, LEVEL1, LEVEL2, or LEVEL3
+  mfa string
+  // Whether creating service IDs is restricted: RESTRICTED or NOT_RESTRICTED
+  restrictCreateServiceId string
+  // Whether creating platform API keys is restricted: RESTRICTED or NOT_RESTRICTED
+  restrictCreatePlatformApiKey string
+  // Whether users can see other users of the account: RESTRICTED or NOT_RESTRICTED
+  restrictUserListVisibility string
+  // IP addresses and subnets allowed to sign in; empty when sign-in is not restricted by IP
+  allowedIpAddresses []string
+  // Session lifetime in seconds; null when the default applies
+  sessionExpirationInSeconds int
+  // Session inactivity timeout in seconds; null when the default applies
+  sessionInvalidationInSeconds int
+  // Maximum concurrent sessions per identity; null when the default applies
+  maxSessionsPerIdentity int
+  // Lifetime of system access tokens in seconds; null when the default applies
+  systemAccessTokenExpirationInSeconds int
+  // Lifetime of system refresh tokens in seconds; null when the default applies
+  systemRefreshTokenExpirationInSeconds int
+  // Per-user MFA requirements that override the account setting, keyed by IAM ID
+  userMfa map[string]string
+  // Whether the Public Access group is enabled, which lets anyone reach resources it is granted
+  publicAccessEnabled() bool
+}
+
+// IBM Cloud resource group
+//
+// A container that groups resource instances for access control and billing.
+private ibm.resourceGroup @defaults("name") {
+  // Resource group ID
+  id string
+  // Resource group name
+  name string
+  // Resource group CRN
+  crn string
+  // State, for example ACTIVE
+  state string
+  // Whether this is the account's default resource group
+  default bool
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud resource instance
+//
+// A provisioned instance of an IBM Cloud service, such as a Cloud Object
+// Storage instance, a Key Protect instance, or a Power Virtual Server
+// workspace, with the service it belongs to, its location, and its state.
+private ibm.resourceInstance @defaults("name service region state") {
+  // Resource instance ID, which IBM Cloud sets to its CRN
+  id string
+  // Resource instance CRN
+  crn string
+  // Resource instance GUID
+  guid string
+  // Resource instance name
+  name string
+  // Service name from the CRN, for example cloud-object-storage or power-iaas
+  service string
+  // Region or zone the instance is provisioned in, for example us-south or global
+  region string
+  // State, for example active or removed
+  state string
+  // Instance type, for example service_instance or composite_instance
+  type string
+  // Catalog ID of the service the instance belongs to
+  resourceId string
+  // Catalog ID of the instance's plan
+  resourcePlanId string
+  // Whether the instance is locked against changes and deletion
+  locked bool
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+  // IAM ID of the identity that created the instance
+  createdBy string
+  // Resource group the instance belongs to
+  resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud IAM access group
+//
+// A group of users, service IDs, and trusted profiles that receives access
+// through the policies assigned to the group, with its members and policies.
+private ibm.iam.accessGroup @defaults("name") {
+  // Access group ID
+  id string
+  // Access group name
+  name string
+  // Access group description
+  description string
+  // Access group CRN
+  crn string
+  // Whether the group's membership is managed by a federated identity provider
+  isFederated bool
+  // Creation timestamp
+  createdAt time
+  // Members of the group
+  members() []ibm.iam.accessGroup.member
+  // Policies assigned to the group
+  policies() []ibm.iam.policy
+}
+
+// IBM Cloud IAM access group member
+private ibm.iam.accessGroup.member @defaults("type name email") {
+  // IAM ID of the member
+  iamId string
+  // Member type: user, service, or profile
+  type string
+  // Member name
+  name string
+  // Member email address (users)
+  email string
+}
+
+// IBM Cloud IAM policy
+//
+// An access policy granting roles on resources to a subject (a user, service
+// ID, trusted profile, or access group), or an authorization policy granting
+// one service access to another. Subject and resource attributes are exposed
+// as maps, for example `resourceAttributes["serviceName"]`.
+private ibm.iam.policy @defaults("type roles") {
+  // Policy ID
+  id string
+  // Policy type: access or authorization
+  type string
+  // Policy description
+  description string
+  // State, for example active or deleted
+  state string
+  // Display names of the roles the policy grants, for example Administrator or Viewer
+  roles []string
+  // CRNs of the roles the policy grants
+  roleIds []string
+  // Attributes identifying the subject, for example iam_id or access_group_id
+  subjectAttributes map[string]string
+  // Attributes selecting the resources, for example accountId, serviceName, or resourceGroupId; empty values select all
+  resourceAttributes map[string]string
+  // Creation timestamp
+  createdAt time
+}
+
+// IBM Cloud IAM service ID
+//
+// A non-human identity for applications and automation, with its lock state,
+// its last authentication, and the API keys issued for it.
+private ibm.iam.serviceId @defaults("name") {
+  // Service ID
+  id string
+  // IAM ID of the service ID
+  iamId string
+  // Service ID name
+  name string
+  // Service ID description
+  description string
+  // Service ID CRN
+  crn string
+  // Whether the service ID is locked against changes and deletion
+  locked bool
+  // Creation timestamp
+  createdAt time
+  // Last modification timestamp
+  modifiedAt time
+  // Time of the last authentication; null when the service ID never authenticated or activity tracking is off
+  lastAuthentication time
+  // Number of authentications recorded for the service ID
+  authenticationCount int
+  // API keys issued for the service ID
+  apiKeys() []ibm.iam.apiKey
+}
+
+// IBM Cloud IAM API key
+//
+// An API key of a user or service ID, with its owner, lock and disabled state,
+// expiration, what happens when it is leaked, and its last authentication.
+// Only the key's metadata is read, never the key itself.
+private ibm.iam.apiKey @defaults("name iamId") {
+  // API key ID
+  id string
+  // API key name
+  name string
+  // API key description
+  description string
+  // API key CRN
+  crn string
+  // IAM ID of the user or service ID that owns the key
+  iamId string
+  // Whether the key is locked against changes and deletion
+  locked bool
+  // Whether the key is disabled
+  disabled bool
+  // Creation timestamp
+  createdAt time
+  // IAM ID of the identity that created the key
+  createdBy string
+  // Expiration time; null when the key does not expire
+  expiresAt time
+  // What IBM Cloud does when the key is found leaked: none, disable, or delete
+  actionWhenLeaked string
+  // Whether the key can be used for support sessions
+  supportSessions bool
+  // Time of the last authentication with the key; null when never used or activity tracking is off
+  lastAuthentication time
+  // Number of authentications recorded for the key
+  authenticationCount int
+  // Service ID that owns the key; null when a user owns it
+  serviceId() ibm.iam.serviceId
+}
+
+// IBM Cloud IAM trusted profile
+//
+// An identity that compute resources and federated users assume to receive
+// access, with its last authentication.
+private ibm.iam.trustedProfile @defaults("name") {
+  // Trusted profile ID
+  id string
+  // IAM ID of the trusted profile
+  iamId string
+  // Trusted profile name
+  name string
+  // Trusted profile description
+  description string
+  // Trusted profile CRN
+  crn string
+  // Creation timestamp
+  createdAt time
+  // Time of the last authentication; null when never used or activity tracking is off
+  lastAuthentication time
+  // Number of authentications recorded for the profile
+  authenticationCount int
+}
+
+// IBM Cloud VPC region
+//
+// A region that hosts VPC infrastructure, such as `us-south` or `eu-de`, with
+// its API endpoint.
+private ibm.region @defaults("name") {
+  // Region name, for example us-south
+  name string
+  // API endpoint of the region
+  endpoint string
+  // Region status: available or unavailable
+  status string
+}
+
+// IBM Cloud VPC
+//
+// A virtual private cloud with its classic-infrastructure access, default
+// security group and network ACL, and subnets.
+private ibm.vpc @defaults("name region") {
+  // VPC ID
+  id string
+  // VPC CRN
+  crn string
+  // VPC name
+  name string
+  // Region of the VPC
+  region string
+  // Status, for example available
+  status string
+  // Whether the VPC can reach classic infrastructure
+  classicAccess bool
+  // Creation timestamp
+  createdAt time
+  // Resource group of the VPC
+  resourceGroup() ibm.resourceGroup
+  // Default security group of the VPC
+  defaultSecurityGroup() ibm.vpc.securityGroup
+  // Default network ACL of the VPC
+  defaultNetworkAcl() ibm.vpc.networkAcl
+  // Subnets of the VPC
+  subnets() []ibm.vpc.subnet
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud VPC subnet
+//
+// A subnet of a VPC in one zone, with its address range, network ACL, and
+// public gateway.
+private ibm.vpc.subnet @defaults("name ipv4CidrBlock zone") {
+  // Subnet ID
+  id string
+  // Subnet CRN
+  crn string
+  // Subnet name
+  name string
+  // Region of the subnet
+  region string
+  // Zone of the subnet, for example us-south-1
+  zone string
+  // IPv4 range in CIDR notation
+  ipv4CidrBlock string
+  // IP version: ipv4
+  ipVersion string
+  // Status, for example available
+  status string
+  // Number of IPv4 addresses still available
+  availableIpv4AddressCount int
+  // Total number of IPv4 addresses
+  totalIpv4AddressCount int
+  // Creation timestamp
+  createdAt time
+  // VPC the subnet belongs to
+  vpc() ibm.vpc
+  // Network ACL applied to the subnet
+  networkAcl() ibm.vpc.networkAcl
+  // Public gateway attached to the subnet; null when the subnet has no outbound internet access through one
+  publicGateway() ibm.vpc.publicGateway
+  // Resource group of the subnet
+  resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud VPC virtual server instance
+//
+// A virtual server in a VPC with its profile, image, boot security (secure
+// boot, confidential computing), instance metadata service configuration, and
+// attached volumes. The `exposure` field combines its floating IPs and security
+// group rules into an internet-reachability verdict.
+private ibm.vpc.instance @defaults("name zone status") {
+  init(id? string)
+  // Instance ID
+  id string
+  // Instance CRN
+  crn string
+  // Instance name
+  name string
+  // Region of the instance
+  region string
+  // Zone of the instance
+  zone string
+  // Status, for example running or stopped
+  status string
+  // Lifecycle state, for example stable
+  lifecycleState string
+  // Profile name, for example bx2-2x8
+  profile string
+  // Name of the image the instance was created from
+  image string
+  // Number of virtual CPUs
+  vcpuCount int
+  // Memory in GiB
+  memory int
+  // Whether secure boot is enabled
+  enableSecureBoot bool
+  // Confidential computing mode: disabled, sgx, or tdx
+  confidentialComputeMode string
+  // Whether the instance metadata service is enabled
+  metadataServiceEnabled bool
+  // Protocol of the instance metadata service: http or https
+  metadataServiceProtocol string
+  // Hop limit for metadata service responses; 1 keeps them on the instance
+  metadataServiceResponseHopLimit int
+  // Creation timestamp
+  createdAt time
+  // VPC the instance runs in
+  vpc() ibm.vpc
+  // Resource group of the instance
+  resourceGroup() ibm.resourceGroup
+  // Volumes attached to the instance
+  volumes() []ibm.vpc.volume
+  // Security groups attached to the instance's network interfaces
+  securityGroups() []ibm.vpc.securityGroup
+  // Floating IPs bound to the instance's network interfaces
+  floatingIps() []ibm.vpc.floatingIp
+  // Internet exposure: a floating IP combined with a security group rule that admits any address
+  exposure() ibm.network.exposure
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud network exposure
+//
+// Whether a VPC instance is reachable from the internet: one of its network
+// interfaces has a floating IP, and a security group attached to it admits
+// inbound traffic from any address. The instance counts as internet-reachable
+// only when both hold. Network ACLs are not taken into account.
+private ibm.network.exposure @defaults("internetReachable hasPublicIp") {
+  // Whether the instance is reachable from the internet (a floating IP and a security group rule that admits any address)
+  internetReachable bool
+  // Whether a floating IP is bound to one of the instance's network interfaces
+  hasPublicIp bool
+  // Whether an attached security group admits inbound traffic from any address (0.0.0.0/0 or ::/0)
+  securityGroupAllowsIngress bool
+  // Inbound security group rules that admit traffic from any address
+  openIngressRules []ibm.vpc.securityGroup.rule
+}
+
+// IBM Cloud VPC security group
+//
+// A stateful firewall attached to network interfaces, load balancers, and
+// endpoint gateways in a VPC, with its inbound and outbound rules.
+private ibm.vpc.securityGroup @defaults("name region") {
+  init(id? string)
+  // Security group ID
+  id string
+  // Security group CRN
+  crn string
+  // Security group name
+  name string
+  // Region of the security group
+  region string
+  // Creation timestamp
+  createdAt time
+  // Number of network interfaces, load balancers, and endpoint gateways the group is attached to
+  targetCount int
+  // VPC the security group belongs to
+  vpc() ibm.vpc
+  // Resource group of the security group
+  resourceGroup() ibm.resourceGroup
+  // Inbound and outbound rules
+  rules() []ibm.vpc.securityGroup.rule
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud VPC security group rule
+private ibm.vpc.securityGroup.rule @defaults("direction protocol remoteCidr portMin portMax") {
+  // Rule ID
+  id string
+  // Direction: inbound or outbound
+  direction string
+  // IP version: ipv4
+  ipVersion string
+  // Protocol: all, tcp, udp, icmp, or icmp_tcp_udp, among others
+  protocol string
+  // First port of the range; null when the rule covers all ports
+  portMin int
+  // Last port of the range; null when the rule covers all ports
+  portMax int
+  // ICMP type; null for non-ICMP rules or any type
+  icmpType int
+  // ICMP code; null for non-ICMP rules or any code
+  icmpCode int
+  // Remote CIDR block; empty when the remote is an address or a security group
+  remoteCidr string
+  // Remote IP address; empty when the remote is a CIDR block or a security group
+  remoteAddress string
+  // Remote security group; null when the remote is a CIDR block or an address
+  remoteSecurityGroup() ibm.vpc.securityGroup
+}
+
+// IBM Cloud VPC network ACL
+//
+// A stateless access control list applied to subnets, with its ordered allow
+// and deny rules.
+private ibm.vpc.networkAcl @defaults("name region") {
+  // Network ACL ID
+  id string
+  // Network ACL CRN
+  crn string
+  // Network ACL name
+  name string
+  // Region of the network ACL
+  region string
+  // Creation timestamp
+  createdAt time
+  // VPC the network ACL belongs to
+  vpc() ibm.vpc
+  // Resource group of the network ACL
+  resourceGroup() ibm.resourceGroup
+  // Rules in evaluation order
+  rules() []ibm.vpc.networkAcl.rule
+  // Subnets the network ACL is applied to
+  subnets() []ibm.vpc.subnet
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud VPC network ACL rule
+private ibm.vpc.networkAcl.rule @defaults("action direction protocol source destination") {
+  // Rule ID
+  id string
+  // Rule name
+  name string
+  // Action: allow or deny
+  action string
+  // Direction: inbound or outbound
+  direction string
+  // IP version: ipv4
+  ipVersion string
+  // Protocol: all, tcp, udp, or icmp, among others
+  protocol string
+  // Source CIDR block
+  source string
+  // Destination CIDR block
+  destination string
+  // First source port; null when the rule covers all ports or the protocol has none
+  sourcePortMin int
+  // Last source port; null when the rule covers all ports or the protocol has none
+  sourcePortMax int
+  // First destination port; null when the rule covers all ports or the protocol has none
+  destinationPortMin int
+  // Last destination port; null when the rule covers all ports or the protocol has none
+  destinationPortMax int
+  // ICMP type; null for non-ICMP rules or any type
+  icmpType int
+  // ICMP code; null for non-ICMP rules or any code
+  icmpCode int
+}
+
+// IBM Cloud VPC floating IP
+//
+// A public IPv4 address bound to a network interface or attachment, which
+// makes the target reachable from the internet.
+private ibm.vpc.floatingIp @defaults("address zone") {
+  // Floating IP ID
+  id string
+  // Floating IP CRN
+  crn string
+  // Floating IP name
+  name string
+  // Public IPv4 address
+  address string
+  // Region of the floating IP
+  region string
+  // Zone of the floating IP
+  zone string
+  // Status, for example available
+  status string
+  // Resource type of the bound target, for example network_interface; empty when unbound
+  targetResourceType string
+  // Name of the bound target; empty when unbound
+  targetName string
+  // Creation timestamp
+  createdAt time
+  // Resource group of the floating IP
+  resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud VPC public gateway
+//
+// A gateway that gives the subnets attached to it outbound internet access
+// through its floating IP.
+private ibm.vpc.publicGateway @defaults("name zone address") {
+  // Public gateway ID
+  id string
+  // Public gateway CRN
+  crn string
+  // Public gateway name
+  name string
+  // Region of the public gateway
+  region string
+  // Zone of the public gateway
+  zone string
+  // Status, for example available
+  status string
+  // Public IPv4 address of the gateway
+  address string
+  // Creation timestamp
+  createdAt time
+  // VPC the public gateway belongs to
+  vpc() ibm.vpc
+  // Resource group of the public gateway
+  resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud VPC load balancer
+//
+// An application or network load balancer, public or private, with its
+// security groups, subnets, and data path logging.
+private ibm.vpc.loadBalancer @defaults("name region isPublic") {
+  // Load balancer ID
+  id string
+  // Load balancer CRN
+  crn string
+  // Load balancer name
+  name string
+  // Region of the load balancer
+  region string
+  // Fully qualified domain name
+  hostname string
+  // Whether the load balancer is reachable from the internet
+  isPublic bool
+  // Whether the load balancer is a private path load balancer
+  isPrivatePath bool
+  // Profile name, for example dynamic or network-fixed
+  profile string
+  // Operating status: online or offline
+  operatingStatus string
+  // Provisioning status, for example active
+  provisioningStatus string
+  // Whether data path logging is active
+  datapathLoggingActive bool
+  // Public IP addresses
+  publicIps []string
+  // Creation timestamp
+  createdAt time
+  // Security groups attached to the load balancer
+  securityGroups() []ibm.vpc.securityGroup
+  // Subnets the load balancer is deployed in
+  subnets() []ibm.vpc.subnet
+  // Resource group of the load balancer
+  resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud VPC block storage volume
+//
+// A block storage volume with its capacity, performance profile, encryption
+// type, and the instances it is attached to.
+private ibm.vpc.volume @defaults("name zone capacity") {
+  // Volume ID
+  id string
+  // Volume CRN
+  crn string
+  // Volume name
+  name string
+  // Region of the volume
+  region string
+  // Zone of the volume
+  zone string
+  // Capacity in GB
+  capacity int
+  // Maximum I/O operations per second
+  iops int
+  // Profile name, for example general-purpose or sdp
+  profile string
+  // Encryption type: provider_managed or user_managed (customer-managed key)
+  encryption string
+  // Customer-managed key encrypting the volume; null when IBM manages the key
+  encryptionKey() ibm.kms.key
+  // Status, for example available
+  status string
+  // Attachment state: attached, unattached, or unusable
+  attachmentState string
+  // Creation timestamp
+  createdAt time
+  // Resource group of the volume
+  resourceGroup() ibm.resourceGroup
+  // Instances the volume is attached to
+  instances() []ibm.vpc.instance
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud VPC SSH key
+//
+// A public SSH key registered in a region for provisioning instances, with
+// its type, length, and fingerprint.
+private ibm.vpc.sshKey @defaults("name type length") {
+  // SSH key ID
+  id string
+  // SSH key CRN
+  crn string
+  // SSH key name
+  name string
+  // Region of the SSH key
+  region string
+  // Key type: rsa or ed25519
+  type string
+  // Key length in bits
+  length int
+  // SHA256 fingerprint
+  fingerprint string
+  // Creation timestamp
+  createdAt time
+  // Resource group of the SSH key
+  resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud VPC flow log collector
+//
+// A collector that records network flows of a VPC, subnet, instance, or
+// network interface into a Cloud Object Storage bucket.
+private ibm.vpc.flowLogCollector @defaults("name active targetResourceType") {
+  // Collector ID
+  id string
+  // Collector CRN
+  crn string
+  // Collector name
+  name string
+  // Region of the collector
+  region string
+  // Whether the collector is collecting flow logs
+  active bool
+  // Whether the collector is deleted together with its target
+  autoDelete bool
+  // Lifecycle state, for example stable
+  lifecycleState string
+  // Name of the Cloud Object Storage bucket the logs are written to
+  storageBucketName string
+  // Resource type of the target: vpc, subnet, instance, network_interface, or virtual_network_interface
+  targetResourceType string
+  // Name of the target
+  targetName string
+  // Creation timestamp
+  createdAt time
+  // VPC of the collector's target
+  vpc() ibm.vpc
+  // Resource group of the collector
+  resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Power Virtual Server workspace
+//
+// A Power Virtual Server workspace in one zone, with its virtual server
+// instances, networks, storage volumes, and boot images.
+private ibm.power.workspace @defaults("name zone state") {
+  init(crn? string)
+  // Workspace GUID
+  id string
+  // Workspace CRN
+  crn string
+  // Workspace name
+  name string
+  // Zone of the workspace, for example wdc06
+  zone string
+  // State, for example active
+  state string
+  // Creation timestamp
+  createdAt time
+  // Resource group of the workspace
+  resourceGroup() ibm.resourceGroup
+  // Virtual server instances in the workspace
+  instances() []ibm.power.instance
+  // Networks in the workspace
+  networks() []ibm.power.network
+  // Storage volumes in the workspace
+  volumes() []ibm.power.volume
+  // Boot images available in the workspace
+  images() []ibm.power.image
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Power Virtual Server instance
+//
+// A Power virtual server (LPAR) with its operating system, processor and
+// memory allocation, IP addresses, and attached networks and volumes. A
+// non-empty `externalIps` list means the instance is reachable from the
+// internet.
+private ibm.power.instance @defaults("name status osType") {
+  // Instance ID
+  id string
+  // Instance CRN
+  crn string
+  // Instance name
+  name string
+  // Status, for example ACTIVE or SHUTOFF
+  status string
+  // Operating system type: aix, ibmi, or rhel, among others
+  osType string
+  // Operating system description
+  operatingSystem string
+  // Number of processors allocated
+  processors float
+  // Processor type: dedicated, shared, or capped
+  processorType string
+  // Memory in GB
+  memory float
+  // System type, for example s922
+  systemType string
+  // Storage type, for example tier1
+  storageType string
+  // Private IP addresses of the instance
+  ipAddresses []string
+  // Public IP addresses of the instance
+  externalIps []string
+  // Creation timestamp
+  createdAt time
+  // Boot image of the instance
+  image() ibm.power.image
+  // Networks the instance is attached to
+  networks() []ibm.power.network
+  // Volumes attached to the instance
+  volumes() []ibm.power.volume
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Power Virtual Server network
+//
+// A network in a Power Virtual Server workspace: a private VLAN, a public
+// network, or a dedicated network.
+private ibm.power.network @defaults("name type") {
+  // Network ID
+  id string
+  // Network CRN
+  crn string
+  // Network name
+  name string
+  // Network type: vlan, pub-vlan, or dhcp-vlan
+  type string
+  // VLAN ID
+  vlanId int
+  // Maximum transmission unit
+  mtu int
+  // Whether DHCP is managed by Power Virtual Server
+  dhcpManaged bool
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Power Virtual Server storage volume
+//
+// A block storage volume in a Power Virtual Server workspace with its size,
+// disk type, replication, and the instances it is attached to.
+private ibm.power.volume @defaults("name size state") {
+  // Volume ID
+  id string
+  // Volume CRN
+  crn string
+  // Volume name
+  name string
+  // Size in GB
+  size float
+  // State, for example available or in-use
+  state string
+  // Disk type, for example tier1
+  diskType string
+  // Whether the volume is bootable
+  bootable bool
+  // Whether the volume can be attached to more than one instance
+  shareable bool
+  // Whether the volume is replicated to another site
+  replicationEnabled bool
+  // Creation timestamp
+  createdAt time
+  // Instances the volume is attached to
+  instances() []ibm.power.instance
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Power Virtual Server boot image
+//
+// A boot image available in a Power Virtual Server workspace, such as an AIX
+// or IBM i stock image or an imported custom image.
+private ibm.power.image @defaults("name operatingSystem state") {
+  // Image ID
+  id string
+  // Image CRN
+  crn string
+  // Image name
+  name string
+  // Operating system, for example aix or ibmi
+  operatingSystem string
+  // State, for example active
+  state string
+  // Storage type, for example tier1
+  storageType string
+  // Creation timestamp
+  createdAt time
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud Object Storage bucket
+//
+// A bucket in a Cloud Object Storage instance with its location and storage
+// class, firewall, activity tracking and metrics, encryption key, versioning,
+// retention, and public exposure. A bucket is public when its ACL grants
+// AllUsers access or when the account's Public Access group is granted access
+// to it.
+private ibm.cos.bucket @defaults("name location storageClass") {
+  // Bucket name
+  name string
+  // Bucket CRN
+  crn string
+  // Location of the bucket, for example us-south (regional), us (cross region), or ams03 (single site)
+  location string
+  // Storage class, for example standard, smart, vault, or cold
+  storageClass string
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt() time
+  // Number of objects in the bucket
+  objectCount() int
+  // Bytes stored in the bucket
+  bytesUsed() int
+  // Maximum bytes the bucket may hold; null when unlimited
+  hardQuota() int
+  // IP addresses and ranges allowed to access the bucket; empty when no firewall is set
+  allowedIps() []string
+  // IP addresses and ranges denied access to the bucket
+  deniedIps() []string
+  // Network types allowed to access the bucket: public, private, or direct; empty when all are allowed
+  allowedNetworkTypes() []string
+  // Whether read data events are sent to Activity Tracker
+  activityTrackingReadDataEvents() bool
+  // Whether write data events are sent to Activity Tracker
+  activityTrackingWriteDataEvents() bool
+  // Whether management events are sent to Activity Tracker
+  activityTrackingManagementEvents() bool
+  // Whether usage metrics are sent to IBM Cloud Monitoring
+  usageMetricsEnabled() bool
+  // Whether request metrics are sent to IBM Cloud Monitoring
+  requestMetricsEnabled() bool
+  // Whether the bucket is encrypted with a customer-managed key from Key Protect or Hyper Protect Crypto Services
+  kmsEnabled() bool
+  // Customer-managed root key encrypting the bucket; null when IBM manages the key
+  kmsKey() ibm.kms.key
+  // Versioning status: Enabled or Suspended; empty when versioning was never enabled
+  versioning() string
+  // Whether object lock is enabled
+  objectLockEnabled() bool
+  // Whether an immutable retention policy is enabled
+  retentionEnabled() bool
+  // Default retention period in days; null without a retention policy
+  retentionDefaultDays() int
+  // Minimum retention period in days; null without a retention policy
+  retentionMinimumDays() int
+  // Maximum retention period in days; null without a retention policy
+  retentionMaximumDays() int
+  // Whether permanent retention can be set on objects
+  permanentRetentionEnabled() bool
+  // Whether the bucket ACL grants access to all users
+  publicAcl() bool
+  // Whether the bucket serves a static website
+  websiteEnabled() bool
+  // Whether anyone on the internet can access the bucket, through its ACL or the Public Access group
+  isPublic() bool
+  // Cloud Object Storage instance the bucket belongs to
+  instance() ibm.resourceInstance
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud key management instance
+//
+// A Key Protect or Hyper Protect Crypto Services instance with its
+// instance-wide policies (rotation, dual authorization for deletion, allowed
+// network and IP addresses, key creation and import access, metrics) and its
+// keys.
+private ibm.kms.instance @defaults("name region service") {
+  // Instance CRN
+  id string
+  // Instance GUID
+  guid string
+  // Instance name
+  name string
+  // Service: kms (Key Protect) or hs-crypto (Hyper Protect Crypto Services)
+  service string
+  // Region of the instance
+  region string
+  // Whether deleting a key requires approval by a second user
+  dualAuthDeleteEnabled() bool
+  // Whether the instance rotation policy is enabled for root keys
+  rotationEnabled() bool
+  // Rotation interval in months set by the instance rotation policy; null when it is not set
+  rotationIntervalMonth() int
+  // Whether metrics are sent to IBM Cloud Monitoring
+  metricsEnabled() bool
+  // Networks the instance accepts requests from: public-and-private or private-only; null when no policy is set
+  allowedNetwork() string
+  // Whether requests are restricted to the allowed IP addresses
+  allowedIpEnabled() bool
+  // IP addresses and ranges allowed to call the instance
+  allowedIps() []string
+  // Whether the key creation and import access policy is enabled
+  keyCreateImportAccessEnabled() bool
+  // Whether root keys can be created
+  createRootKey() bool
+  // Whether standard keys can be created
+  createStandardKey() bool
+  // Whether root keys can be imported
+  importRootKey() bool
+  // Whether standard keys can be imported
+  importStandardKey() bool
+  // Whether imported keys must use an import token
+  enforceToken() bool
+  // Resource group of the instance
+  resourceGroup() ibm.resourceGroup
+  // Keys in the instance
+  keys() []ibm.kms.key
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}
+
+// IBM Cloud key management key
+//
+// A root or standard key in a Key Protect or Hyper Protect Crypto Services
+// instance with its state, rotation policy and last rotation, expiration,
+// dual authorization for deletion, and the resources it protects.
+private ibm.kms.key @defaults("name standardKey state") {
+  // Key ID
+  id string
+  // Key CRN
+  crn string
+  // Key name
+  name string
+  // Key description
+  description string
+  // Whether this is a standard key; root keys wrap other keys and never leave the service
+  standardKey bool
+  // State: preActivation, active, suspended, deactivated, or destroyed
+  state string
+  // Whether the key material was imported rather than generated by the service
+  imported bool
+  // Key ring the key belongs to
+  keyRingId string
+  // Algorithm, for example AES
+  algorithmType string
+  // Whether the key has been deleted
+  deleted bool
+  // Whether the key's own rotation policy rotates it automatically; standard keys never rotate
+  rotationEnabled() bool
+  // Rotation interval in months from the key's own rotation policy; null when the key has none
+  rotationIntervalMonth() int
+  // Whether deleting the key requires approval by a second user
+  dualAuthDeleteEnabled bool
+  // Creation timestamp
+  createdAt time
+  // IAM ID of the identity that created the key
+  createdBy string
+  // Last update timestamp
+  updatedAt time
+  // Last rotation timestamp; null when the key was never rotated
+  lastRotatedAt time
+  // Expiration timestamp; null when the key does not expire
+  expiresAt time
+  // Instance the key belongs to
+  instance() ibm.kms.instance
+  // Resources protected by the key
+  registrations() []ibm.kms.key.registration
+}
+
+// IBM Cloud key management key registration
+private ibm.kms.key.registration @defaults("resourceCrn preventKeyDeletion") {
+  // CRN of the resource protected by the key
+  resourceCrn string
+  // Whether the registration prevents the key from being deleted
+  preventKeyDeletion bool
+  // Registration description
+  description string
+  // Creation timestamp
+  createdAt time
+}
+
+// IBM Cloud Activity Tracker Event Routing target
+//
+// A destination for audit events: a Cloud Object Storage bucket, a Cloud Logs
+// instance, an Event Streams topic, or an App Configuration instance, with the
+// status of its last write.
+private ibm.atracker.target @defaults("name type writeStatus") {
+  // Target ID
+  id string
+  // Target CRN
+  crn string
+  // Target name
+  name string
+  // Target type: cloud_object_storage, cloud_logs, event_streams, or app_config
+  type string
+  // Region of the target
+  region string
+  // Status of the last write: success or failed
+  writeStatus string
+  // Time of the last failed write; null when writing never failed
+  lastFailureAt time
+  // Reason for the last failed write
+  lastFailureReason string
+  // Whether the target authenticates with a service-to-service authorization instead of an API key
+  serviceToServiceEnabled bool
+  // Cloud Object Storage endpoint the target writes to; empty for other target types
+  cosEndpoint string
+  // Who manages the target: account or enterprise
+  managedBy string
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+  // Cloud Object Storage bucket the target writes to; null for other target types
+  cosBucket() ibm.cos.bucket
+  // Service instance receiving the events (Cloud Object Storage, Cloud Logs, Event Streams, or App Configuration)
+  destination() ibm.resourceInstance
+}
+
+// IBM Cloud Activity Tracker Event Routing route
+//
+// A route that sends the audit events of selected locations to targets. A
+// location of `*` selects every location, and `global` selects the events of
+// global services such as IAM.
+private ibm.atracker.route @defaults("name") {
+  // Route ID
+  id string
+  // Route CRN
+  crn string
+  // Route name
+  name string
+  // Route version
+  version int
+  // Who manages the route: account or enterprise
+  managedBy string
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+  // Rules in the route
+  rules() []ibm.atracker.route.rule
+}
+
+// IBM Cloud Activity Tracker Event Routing route rule
+private ibm.atracker.route.rule @defaults("locations") {
+  // Locations whose events the rule routes, for example us-south, global, or *
+  locations []string
+  // Targets the events are sent to
+  targets() []ibm.atracker.target
+}
+
+// IBM Cloud Activity Tracker Event Routing settings
+//
+// Account-wide routing settings: the default targets that receive events no
+// route matches, the regions targets may be created in, where routing
+// metadata is stored, and whether only the private API endpoint is accepted.
+private ibm.atracker.settings @defaults("metadataRegionPrimary privateApiEndpointOnly") {
+  // Regions targets may be created in; empty when any region is permitted
+  permittedTargetRegions []string
+  // Region storing the routing metadata
+  metadataRegionPrimary string
+  // Backup region for the routing metadata
+  metadataRegionBackup string
+  // Whether the routing API accepts only private endpoint requests
+  privateApiEndpointOnly bool
+  // Targets receiving events that no route matches
+  defaultTargets() []ibm.atracker.target
+}
+
+// IBM Cloud Databases deployment
+//
+// A managed database deployment (PostgreSQL, MySQL, Redis, MongoDB,
+// Elasticsearch, etcd, RabbitMQ, and others) with its version, public and
+// private endpoints, IP allowlist, disk and backup encryption keys, and
+// member count.
+private ibm.database @defaults("name type version region") {
+  // Deployment CRN
+  id string
+  // Deployment GUID
+  guid string
+  // Deployment name
+  name string
+  // Service name, for example databases-for-postgresql
+  service string
+  // Database type, for example postgresql
+  type() string
+  // Region of the deployment
+  region string
+  // State, for example active
+  state string
+  // Database version, for example 16
+  version() string
+  // Whether the deployment is reachable through public endpoints
+  publicEndpointEnabled() bool
+  // Whether the deployment is reachable through private endpoints
+  privateEndpointEnabled() bool
+  // IP addresses and ranges allowed to connect; empty when every address is allowed
+  allowlist() []string
+  // Number of members (nodes) in the deployment
+  memberCount() int
+  // Creation timestamp
+  createdAt time
+  // Key Protect or Hyper Protect Crypto Services key encrypting the disks; null when IBM manages the key
+  diskEncryptionKey() ibm.kms.key
+  // Key Protect or Hyper Protect Crypto Services key encrypting the backups; null when IBM manages the key
+  backupEncryptionKey() ibm.kms.key
+  // Resource group of the deployment
+  resourceGroup() ibm.resourceGroup
+  // User tags, for example env:prod
+  tags() []string
+  // Access management tags, which IAM policies can grant access by
+  accessTags() []string
+}

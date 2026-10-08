@@ -7,6 +7,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/packages"
+	"go.mondoo.com/mql/types"
 )
 
 func (r *mqlChocolateyPackages) list() ([]any, error) {
@@ -46,8 +47,8 @@ func (r *mqlChocolateyPackages) list() ([]any, error) {
 			"licenseUrl":   llx.StringData(pkg.LicenseUrl),
 			"path":         llx.StringData(pkg.Path),
 			"pinned":       llx.BoolData(pkg.Pinned),
-			"dependencies": llx.ArrayData(deps, "string"),
-			"tags":         llx.ArrayData(tags, "string"),
+			"dependencies": llx.ArrayData(deps, types.String),
+			"tags":         llx.ArrayData(tags, types.String),
 			"projectUrl":   llx.StringData(pkg.ProjectUrl),
 		})
 		if err != nil {

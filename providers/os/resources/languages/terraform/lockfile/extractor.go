@@ -4,11 +4,10 @@
 package lockfile
 
 import (
-	"bufio"
 	"io"
+	"regexp"
 	"strings"
 
-	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/resources/languages"
 	"go.mondoo.com/mql/providers/os/resources/languages/terraform"
 )
@@ -26,10 +25,12 @@ func (e *Extractor) Name() string {
 }
 
 func (e *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
-	lock, err := parseTerraformLock(r)
+	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
+
+	lock := parseTerraformLock(string(data))
 
 	if filename != "" {
 		lock.evidence = append(lock.evidence, filename)
@@ -38,99 +39,117 @@ func (e *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 	return lock, nil
 }
 
-// parseTerraformLock reads a .terraform.lock.hcl file line by line.
-// The format is a simplified HCL with provider blocks containing version fields.
-func parseTerraformLock(r io.Reader) (*terraformLock, error) {
+var (
+	// providerBlockRe matches the opening of a provider block. The body is
+	// then delimited by brace counting rather than by the line ending, so a
+	// single-line block is read as one block instead of running on into the
+	// next one.
+	providerBlockRe = regexp.MustCompile(`provider\s+"([^"]+)"\s*\{`)
+	// attrRe pulls a quoted scalar attribute out of a block body. The name is
+	// anchored on a word boundary so "constraints" is not read as "version".
+	versionRe     = regexp.MustCompile(`(?m)^\s*version\s*=\s*"([^"]*)"`)
+	constraintsRe = regexp.MustCompile(`(?m)^\s*constraints\s*=\s*"([^"]*)"`)
+	// hashesRe captures the contents of the hashes list.
+	hashesRe = regexp.MustCompile(`(?s)hashes\s*=\s*\[(.*?)\]`)
+	// hashEntryRe pulls each quoted hash out of that list.
+	hashEntryRe = regexp.MustCompile(`"([^"]+)"`)
+)
+
+// parseTerraformLock reads a .terraform.lock.hcl file.
+//
+// The format is a restricted HCL that "terraform init" generates: a sequence of
+// provider blocks, each holding a version, an optional constraints line and an
+// optional list of hashes. Blocks are located by brace counting so that layout
+// — one line or many — does not change what is read.
+func parseTerraformLock(content string) *terraformLock {
 	lock := &terraformLock{}
-	scanner := bufio.NewScanner(r)
 
-	var currentSource string
-	var currentVersion string
-	braceDepth := 0
+	content = stripComments(content)
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		// Skip empty lines and comments
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
+	for _, loc := range providerBlockRe.FindAllStringSubmatchIndex(content, -1) {
+		source := content[loc[2]:loc[3]]
+		if source == "" {
 			continue
 		}
 
-		// Detect provider block opening: provider "source" {
-		if strings.HasPrefix(line, "provider ") && strings.HasSuffix(line, "{") {
-			source := extractQuotedString(line)
-			if source != "" {
-				currentSource = source
-				currentVersion = ""
-				braceDepth = 1
-			}
-			continue
+		// loc[1] is just past the opening brace.
+		body, ok := blockBody(content, loc[1])
+		if !ok {
+			// Unterminated block: take what is left rather than dropping the
+			// provider entirely, so a truncated file still reports what it
+			// named.
+			body = content[loc[1]:]
 		}
 
-		// Track brace depth for nested blocks (e.g., hashes)
-		if braceDepth > 0 {
-			braceDepth += strings.Count(line, "{") - strings.Count(line, "}")
-
-			// Extract version from within the provider block.
-			// Match "version", "version ", "version=" but not e.g. "version_constraints".
-			if line == "version" || strings.HasPrefix(line, "version ") || strings.HasPrefix(line, "version=") {
-				if v := extractHCLValue(line); v != "" {
-					currentVersion = v
+		entry := providerEntry{Source: source}
+		if m := versionRe.FindStringSubmatch(body); m != nil {
+			entry.Version = m[1]
+		}
+		if m := constraintsRe.FindStringSubmatch(body); m != nil {
+			entry.Constraints = m[1]
+		}
+		if m := hashesRe.FindStringSubmatch(body); m != nil {
+			for _, h := range hashEntryRe.FindAllStringSubmatch(m[1], -1) {
+				value := h[1]
+				switch {
+				case strings.HasPrefix(value, "zh:"):
+					entry.ZipHashes = append(entry.ZipHashes, strings.TrimPrefix(value, "zh:"))
+				case strings.HasPrefix(value, "h1:"):
+					entry.DirHashes = append(entry.DirHashes, strings.TrimPrefix(value, "h1:"))
 				}
 			}
+		}
 
-			// Block closed — emit provider entry
-			if braceDepth == 0 && currentSource != "" {
-				lock.Providers = append(lock.Providers, providerEntry{
-					Source:  currentSource,
-					Version: currentVersion,
-				})
-				currentSource = ""
-				currentVersion = ""
+		lock.Providers = append(lock.Providers, entry)
+	}
+
+	return lock
+}
+
+// blockBody returns the text between start and the brace that closes the block
+// opened just before start. Quoted strings are skipped so a brace inside a
+// value cannot end the block early.
+func blockBody(content string, start int) (string, bool) {
+	depth := 1
+	inString := false
+	for i := start; i < len(content); i++ {
+		switch content[i] {
+		case '\\':
+			if inString {
+				i++
+			}
+		case '"':
+			inString = !inString
+		case '{':
+			if !inString {
+				depth++
+			}
+		case '}':
+			if !inString {
+				depth--
+				if depth == 0 {
+					return content[start:i], true
+				}
 			}
 		}
 	}
-
-	// Handle unclosed final block
-	if currentSource != "" {
-		log.Debug().Str("source", currentSource).Msg("unclosed provider block in terraform lock file")
-		lock.Providers = append(lock.Providers, providerEntry{
-			Source:  currentSource,
-			Version: currentVersion,
-		})
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	return lock, nil
+	return "", false
 }
 
-// extractQuotedString extracts the first double-quoted string from a line.
-// e.g., `provider "registry.terraform.io/hashicorp/aws" {` → `registry.terraform.io/hashicorp/aws`
-func extractQuotedString(line string) string {
-	first := strings.Index(line, "\"")
-	if first == -1 {
-		return ""
+// stripComments removes whole-line comments. Values in a lock file (source
+// addresses, versions, hashes) never contain "#", but a generated file always
+// opens with a two-line banner.
+func stripComments(content string) string {
+	lines := strings.Split(content, "\n")
+	kept := lines[:0]
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
+			continue
+		}
+		kept = append(kept, line)
 	}
-	second := strings.Index(line[first+1:], "\"")
-	if second == -1 {
-		return ""
-	}
-	return line[first+1 : first+1+second]
-}
-
-// extractHCLValue extracts the value from a simple HCL assignment like `version = "5.31.0"`.
-func extractHCLValue(line string) string {
-	_, value, ok := strings.Cut(line, "=")
-	if !ok {
-		return ""
-	}
-	value = strings.TrimSpace(value)
-	// Strip quotes
-	value = strings.Trim(value, "\"")
-	return value
+	return strings.Join(kept, "\n")
 }
 
 // Root returns nil — lock files don't have a root project.
@@ -138,7 +157,9 @@ func (l *terraformLock) Root() *languages.Package {
 	return nil
 }
 
-// Direct returns nil — all providers are treated equally.
+// Direct returns nil. A lock file records the providers Terraform resolved but
+// not which of them the configuration asked for by name; required_providers is
+// where that is stated, and it lives in the .tf files.
 func (l *terraformLock) Direct() languages.Packages {
 	return nil
 }
@@ -147,19 +168,31 @@ func (l *terraformLock) Direct() languages.Packages {
 func (l *terraformLock) Transitive() languages.Packages {
 	var packages languages.Packages
 	for _, p := range l.Providers {
-		namespace, providerType := terraform.ParseProviderSource(p.Source)
+		host, namespace, providerType := terraform.ParseProviderSource(p.Source)
 		name := namespace + "/" + providerType
 		if namespace == "" {
 			name = providerType
 		}
 
-		packages = append(packages, &languages.Package{
-			Name:         name,
-			Version:      p.Version,
-			Purl:         terraform.NewPackageUrl(namespace, providerType, p.Version),
-			Cpes:         terraform.NewCpes(namespace, providerType, p.Version),
+		pkg := &languages.Package{
+			Name:    name,
+			Type:    terraform.PackageTypeProvider,
+			Version: p.Version,
+			Purl:    terraform.NewPackageUrl(host, namespace, providerType, p.Version),
+			// Origin carries the source address exactly as the lock file wrote
+			// it. It is the only place the registry host survives: a private
+			// registry shares its purl coordinate with the public one.
+			Origin:       p.Source,
 			EvidenceList: terraform.NewEvidenceList(l.evidence),
-		})
+		}
+		for _, h := range p.ZipHashes {
+			pkg.Hashes = append(pkg.Hashes, languages.PackageHash{
+				Alg:   "SHA-256",
+				Value: h,
+			})
+		}
+
+		packages = append(packages, pkg)
 	}
 	return packages
 }

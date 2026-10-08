@@ -35,6 +35,21 @@ func languagePackages(pkgs []BomPackage, pkgType string) []*sbom.Package {
 	return out
 }
 
+// purlType reads the type out of a purl ("pkg:<type>/..."), falling back to
+// fallback when the purl is absent or malformed. It exists for ecosystems whose
+// one resource reports more than one kind of artifact.
+func purlType(purl, fallback string) string {
+	rest, ok := strings.CutPrefix(purl, "pkg:")
+	if !ok {
+		return fallback
+	}
+	t, _, ok := strings.Cut(rest, "/")
+	if !ok || t == "" {
+		return fallback
+	}
+	return t
+}
+
 // languagePackage maps one reported package, for the ecosystems whose loop
 // carries something of its own and cannot use languagePackages.
 func languagePackage(pkg BomPackage, pkgType string) *sbom.Package {
@@ -261,7 +276,13 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 				bom.Packages = append(bom.Packages, languagePackage(pkg, pkgType))
 			}
 
-			bom.Packages = append(bom.Packages, languagePackages(rb.TerraformPackages, "terraform")...)
+			// A Terraform workspace reports providers and modules together,
+			// and a module's coordinate depends on where it is fetched from.
+			// Hardcoding "terraform" here would label every module as a
+			// provider, so the type comes from the purl the extractor built.
+			for _, pkg := range rb.TerraformPackages {
+				bom.Packages = append(bom.Packages, languagePackage(pkg, purlType(pkg.Purl, "terraform")))
+			}
 
 			bom.Packages = append(bom.Packages, languagePackages(rb.JenkinsPackages, "jenkins-plugin")...)
 

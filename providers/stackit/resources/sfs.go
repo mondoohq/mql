@@ -70,7 +70,7 @@ func (r *mqlStackitSfs) resourcePools() ([]any, error) {
 	resp, err := client.DefaultAPI.ListResourcePools(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -95,7 +95,7 @@ func (r *mqlStackitSfs) exportPolicies() ([]any, error) {
 	resp, err := client.DefaultAPI.ListShareExportPolicies(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -119,8 +119,14 @@ func (r *mqlStackitSfs) lockId() (string, error) {
 	}
 	resp, err := client.DefaultAPI.GetLock(bgctx(), c.Region(), c.ProjectID()).Execute()
 	if err != nil {
-		if isAccessDenied(err) || isNotFound(err) {
+		if isNotFound(err) {
 			return "", nil
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				return "", nil
+			}
+			return "", refusal(err)
 		}
 		return "", err
 	}
@@ -205,8 +211,11 @@ func (r *mqlStackitSfsResourcePool) fetchSpace() (*sfs.ResourcePoolSpace, error)
 	resp, err := client.DefaultAPI.GetResourcePool(bgctx(), c.ProjectID(), region, r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			r.spaceFetched.Store(true)
-			return nil, nil
+			if !plugin.StructuredErrors() {
+				r.spaceFetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
 		}
 		return nil, err
 	}
@@ -267,7 +276,7 @@ func (r *mqlStackitSfsResourcePool) shares() ([]any, error) {
 	resp, err := client.DefaultAPI.ListShares(bgctx(), c.ProjectID(), r.Region.Data, r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -313,7 +322,7 @@ func (r *mqlStackitSfsResourcePool) snapshots() ([]any, error) {
 	resp, err := client.DefaultAPI.ListResourcePoolSnapshots(bgctx(), c.ProjectID(), r.Region.Data, r.Id.Data).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -437,7 +446,7 @@ func (r *mqlStackitSfsExportPolicy) rules() ([]any, error) {
 		resp, err := client.DefaultAPI.GetShareExportPolicy(bgctx(), c.ProjectID(), region, r.Id.Data).Execute()
 		if err != nil {
 			if isAccessDenied(err) {
-				return []any{}, nil
+				return deniedList(err)
 			}
 			return nil, err
 		}

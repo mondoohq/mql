@@ -16,9 +16,16 @@ func (a *mqlAi) id() (string, error) {
 }
 
 func (a *mqlAi) models() ([]any, error) {
-	home, err := targetHomeDir(a.MqlRuntime)
+	// Every user's home, not one picked by who is logged in: a server scanned
+	// over SSH with nobody at the console would otherwise be read as root's
+	// home only, and every other user's models would be missing.
+	users, err := targetUserHomes(a.MqlRuntime)
 	if err != nil {
 		return nil, err
+	}
+	homes := make([]string, 0, len(users))
+	for _, u := range users {
+		homes = append(homes, u.home)
 	}
 
 	conn := a.MqlRuntime.Connection.(shared.Connection)
@@ -26,7 +33,7 @@ func (a *mqlAi) models() ([]any, error) {
 	osFamily := targetOSFamily(conn)
 
 	var all []any
-	for _, m := range aimodel.DetectAll(afs, home, osFamily, ollamaModelDirs(a.MqlRuntime)) {
+	for _, m := range aimodel.DetectAll(afs, homes, osFamily, ollamaModelDirs(a.MqlRuntime)) {
 		res, err := newAiModelResource(a.MqlRuntime, m)
 		if err != nil {
 			return nil, err

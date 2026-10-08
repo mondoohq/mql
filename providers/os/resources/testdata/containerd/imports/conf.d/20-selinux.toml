@@ -1,0 +1,5 @@
+version = 2
+
+[plugins."io.containerd.grpc.v1.cri"]
+  enable_selinux = false
+  stream_server_address = "0.0.0.0"

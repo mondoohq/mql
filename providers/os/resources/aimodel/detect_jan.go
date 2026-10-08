@@ -42,7 +42,7 @@ type janModelPublisher struct {
 }
 
 func (d *JanDetector) Detect(ctx DetectContext) []ModelInfo {
-	modelsDir := filepath.Join(ctx.Home, "jan", "models")
+	modelsDir := joinPath(ctx.Home, "jan", "models")
 	entries, err := ctx.Fs.ReadDir(modelsDir)
 	if err != nil {
 		return nil
@@ -53,7 +53,7 @@ func (d *JanDetector) Detect(ctx DetectContext) []ModelInfo {
 		if !e.IsDir() {
 			continue
 		}
-		modelDir := filepath.Join(modelsDir, e.Name())
+		modelDir := joinPath(modelsDir, e.Name())
 
 		name := e.Name()
 		format := "unknown"
@@ -63,7 +63,7 @@ func (d *JanDetector) Detect(ctx DetectContext) []ModelInfo {
 		license := ""
 		var tags []string
 
-		metaPath := filepath.Join(modelDir, "model.json")
+		metaPath := joinPath(modelDir, "model.json")
 		if data, err := ctx.Fs.ReadFile(metaPath); err == nil {
 			var meta janModelMeta
 			if json.Unmarshal(data, &meta) == nil {

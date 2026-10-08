@@ -32,6 +32,10 @@ type Connection struct {
 	plan            *Plan
 	closer          func()
 
+	// cloneRoot is the directory a git connection cloned into. It is empty for
+	// connections that read a path the user gave.
+	cloneRoot string
+
 	// dialect records whether this configuration is Terraform's or OpenTofu's.
 	// For HCL it is detected from the files on disk; for state and plan files,
 	// whose JSON representations are identical, it comes from the connector the
@@ -56,6 +60,12 @@ func (c *Connection) SetFeatures(features []byte) {
 // Features returns the active MQL feature-flag bitset for this connection.
 func (c *Connection) Features() []byte {
 	return c.features
+}
+
+// CloneRoot is the directory a git connection cloned into, or "" when the
+// connection reads a path the user gave.
+func (c *Connection) CloneRoot() string {
+	return c.cloneRoot
 }
 
 func (c *Connection) Close() {

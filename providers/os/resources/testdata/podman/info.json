@@ -1,0 +1,159 @@
+{
+  "host": {
+    "arch": "arm64",
+    "buildahVersion": "1.43.4",
+    "cgroupManager": "cgroupfs",
+    "cgroupVersion": "v2",
+    "cgroupControllers": [
+      "cpuset",
+      "cpu",
+      "io",
+      "memory",
+      "hugetlb",
+      "pids",
+      "rdma"
+    ],
+    "conmon": {
+      "package": "conmon-2.2.1-2.fc44.aarch64",
+      "path": "/usr/bin/conmon",
+      "version": "conmon version 2.2.1, commit: "
+    },
+    "cpus": 14,
+    "cpuUtilization": {
+      "userPercent": 1.07,
+      "systemPercent": 0.63,
+      "idlePercent": 98.3
+    },
+    "databaseBackend": "sqlite",
+    "distribution": {
+      "distribution": "fedora",
+      "variant": "container",
+      "version": "44"
+    },
+    "eventLogger": "file",
+    "freeLocks": 2042,
+    "hostname": "772c3fbb5556",
+    "idMappings": {
+      "gidmap": null,
+      "uidmap": null
+    },
+    "kernel": "7.0.14-linuxkit",
+    "logDriver": "k8s-file",
+    "memFree": 1813352448,
+    "memTotal": 8318976000,
+    "networkBackend": "netavark",
+    "networkBackendInfo": {
+      "backend": "netavark",
+      "version": "netavark 1.17.2",
+      "package": "netavark-1.17.2-1.fc44.aarch64",
+      "path": "/usr/libexec/podman/netavark",
+      "dns": {
+        "version": "aardvark-dns 1.17.1",
+        "package": "aardvark-dns-1.17.1-1.fc44.aarch64",
+        "path": "/usr/libexec/podman/aardvark-dns"
+      },
+      "defaultNetwork": "podman"
+    },
+    "ociRuntime": {
+      "name": "crun",
+      "package": "crun-1.28-1.fc44.aarch64",
+      "path": "/usr/bin/crun",
+      "version": "crun version 1.28\ncommit: 54f16ffbefcd022bf032af768b5c5ce075c18bfc\nrundir: /run/crun\nspec: 1.0.0\n+SYSTEMD +SELINUX +APPARMOR +CAP +SECCOMP +EBPF +CRIU +LIBKRUN +WASM:wasmedge +JSON_C"
+    },
+    "os": "linux",
+    "remoteSocket": {
+      "path": "/run/podman/podman.sock",
+      "exists": true
+    },
+    "rootlessNetworkCmd": "pasta",
+    "serviceIsRemote": false,
+    "security": {
+      "apparmorEnabled": false,
+      "capabilities": "CAP_CHOWN,CAP_DAC_OVERRIDE,CAP_FOWNER,CAP_FSETID,CAP_KILL,CAP_NET_BIND_SERVICE,CAP_SETFCAP,CAP_SETGID,CAP_SETPCAP,CAP_SETUID,CAP_SYS_CHROOT",
+      "rootless": false,
+      "seccompEnabled": true,
+      "seccompProfilePath": "/usr/share/containers/seccomp.json",
+      "selinuxEnabled": false
+    },
+    "slirp4netns": {
+      "executable": "",
+      "package": "",
+      "version": ""
+    },
+    "pasta": {
+      "executable": "/usr/bin/pasta",
+      "package": "passt-0^20261002.gcba3570-1.fc44.aarch64",
+      "version": "pasta 0^20261002.gcba3570-1.fc44.aarch64-pasta\nCopyright Red Hat\nGNU General Public License, version 2 or later\n  \u003chttps://www.gnu.org/licenses/old-licenses/gpl-2.0.html\u003e\nThis is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n"
+    },
+    "swapFree": 1073737728,
+    "swapTotal": 1073737728,
+    "uptime": "1h 12m 23.00s (Approximately 0.04 days)",
+    "variant": "v8",
+    "linkmode": "dynamic"
+  },
+  "store": {
+    "configFile": "/etc/containers/storage.conf",
+    "containerStore": {
+      "number": 5,
+      "paused": 0,
+      "running": 5,
+      "stopped": 0
+    },
+    "graphDriverName": "vfs",
+    "graphOptions": {
+      "vfs.additionalImageStores": [
+  "/var/lib/shared",
+  "/usr/lib/containers/storage"
+],
+      "vfs.imagestore": "/usr/lib/containers/storage"
+    },
+    "graphRoot": "/var/lib/containers/storage",
+    "graphRootAllocated": 269426429952,
+    "graphRootUsed": 37622362112,
+    "graphStatus": {
+      
+    },
+    "imageCopyTmpDir": "/var/tmp",
+    "imageStore": {
+      "number": 1
+    },
+    "runRoot": "/run/containers/storage",
+    "volumePath": "/var/lib/containers/storage/volumes",
+    "transientStore": false
+  },
+  "registries": {
+    "search": [
+  "registry.fedoraproject.org",
+  "registry.access.redhat.com",
+  "docker.io"
+]
+  },
+  "plugins": {
+    "volume": [
+      "local"
+    ],
+    "network": [
+      "bridge",
+      "macvlan",
+      "ipvlan"
+    ],
+    "log": [
+      "k8s-file",
+      "none",
+      "passthrough",
+      "journald"
+    ],
+    "authorization": null
+  },
+  "version": {
+    "APIVersion": "5.8.7",
+    "Version": "5.8.7",
+    "GoVersion": "go1.26.8-X:nodwarf5",
+    "GitCommit": "c593b672bf3db1173aebea565ebf1a724ea196dc",
+    "BuiltTime": "Wed Sep 16 00:00:00 2026",
+    "Built": 1789516800,
+    "BuildOrigin": "Fedora Project",
+    "OsArch": "linux/arm64",
+    "Os": "linux"
+  }
+}

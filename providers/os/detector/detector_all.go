@@ -18,6 +18,9 @@ import (
 
 const (
 	LabelDistroID = "distro-id"
+	// LabelHarvesterVersion is the Harvester release a SUSE Linux Micro node
+	// runs, from /etc/harvester-release.yaml.
+	LabelHarvesterVersion = "harvester/version"
 )
 
 // Operating Systems
@@ -211,6 +214,22 @@ var echo = &PlatformResolver{
 	IsFamily: false,
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		return pf.Name == "echo", nil
+	},
+}
+
+// CleanStart OS is the distribution behind the CleanStart hardened container
+// images. It sets ID=cleanstart with no ID_LIKE, and VERSION_ID is a date
+// stamp ("20241216") that stays fixed while the images are rebuilt daily.
+//
+// The images are glibc-based and ship an apk database but no apk binary, the
+// same shape as Chainguard OS and MinimOS, so os-release is the only evidence
+// detection has and the package inventory reads from the database apk left
+// behind.
+var cleanstart = &PlatformResolver{
+	Name:     "cleanstart",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "cleanstart", nil
 	},
 }
 
@@ -1099,20 +1118,49 @@ var sles = &PlatformResolver{
 	},
 }
 
-// suseMicroOs claims both transactional SUSE systems: SUSE Linux Enterprise
-// Micro, which sets ID=suse-microos, and openSUSE MicroOS, which sets
-// ID=opensuse-microos. They share a read-only root, transactional-update and
-// zypper, so every consumer in the provider treats them alike, and the
-// services manager already dispatches on both names.
+// suseMicroOs claims the transactional SUSE systems: SUSE Linux Enterprise
+// Micro 5 and SUSE Linux Micro 6, both reported as suse-microos, and openSUSE
+// MicroOS, which sets ID=opensuse-microos. They share a read-only root,
+// transactional-update and zypper, so every consumer in the provider treats
+// them alike, and the services manager dispatches on both names.
+//
+// SUSE renamed the product with 6.0, and its os-release ID moved with it:
+// SUSE Linux Enterprise Micro 5 sets ID=suse-microos, SUSE Linux Micro 6.0 and
+// 6.1 set ID=sl-micro. 6.2 sets ID=sles and VERSION_ID=16.0, the SLES 16 code
+// base it is built from, and names itself only in SUSE_SUPPORT_PRODUCT and
+// SUSE_SUPPORT_PRODUCT_VERSION. Left to the sles resolver it reported as SLES
+// 16.0, so this runs before sles. Every release of the product is reported as
+// suse-microos, so one platform name finds all of them; the version tells 5.x
+// from 6.x. Harvester nodes run SUSE Linux Micro 6.2 and only replace
+// PRETTY_NAME, so they resolve here too.
 var suseMicroOs = &PlatformResolver{
 	Name:     "suse-microos",
 	IsFamily: false,
 	Emits:    []string{"suse-microos", "opensuse-microos"},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
-		if pf.Name == "suse-microos" || pf.Name == "opensuse-microos" {
-			return true, nil
+		switch pf.Name {
+		case "suse-microos", "opensuse-microos":
+		case "sl-micro":
+			pf.Name = "suse-microos"
+		case "sles":
+			osr, err := NewOSReleaseDetector(conn).osrelease()
+			if err != nil || !isSlMicro(osr) {
+				return false, nil
+			}
+			renameSlMicro(pf, osr)
+			if baseproduct := getSlesBaseProduct(conn); baseproduct != "" {
+				pf.Metadata["suse/baseproduct"] = baseproduct
+			}
+		default:
+			return false, nil
 		}
-		return false, nil
+
+		if pf.Name == "suse-microos" {
+			if version := harvesterVersion(conn); version != "" {
+				pf.Metadata[LabelHarvesterVersion] = version
+			}
+		}
+		return true, nil
 	},
 }
 
@@ -1689,7 +1737,8 @@ var debianFamily = &PlatformResolver{
 var suseFamily = &PlatformResolver{
 	Name:     "suse",
 	IsFamily: true,
-	Children: []*PlatformResolver{opensuse, sles, suseMicroOs},
+	// NOTE: suseMicroOs runs before sles. SUSE Linux Micro 6.2 sets ID=sles.
+	Children: []*PlatformResolver{opensuse, suseMicroOs, sles},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		return true, nil
 	},
@@ -1742,7 +1791,7 @@ var linuxFamily = &PlatformResolver{
 	IsFamily: true,
 	// NOTE: altlinux runs before the redhat family, whose members probe
 	// /etc/redhat-release and /etc/fedora-release, both of which ALT ships.
-	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, alpaquita, bellsoftHardenedContainers, chainguard, minimos, echo, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, cos, flatcar, talos, opencloudos, cirros, defaultLinux},
+	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, alpaquita, bellsoftHardenedContainers, chainguard, minimos, echo, cleanstart, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, cos, flatcar, talos, opencloudos, cirros, defaultLinux},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		detected := false
 		osrd := NewOSReleaseDetector(conn)

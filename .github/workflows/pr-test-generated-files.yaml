@@ -115,3 +115,8 @@ jobs:
           git diff --exit-code providers/**/*.lr.json
           git diff --exit-code providers/**/*.lr.go
           git diff --exit-code providers/**/*.resources.json
+          # The permission manifests carry the generator's run time and the
+          # provider version, neither of which is a code change: -I drops
+          # those two lines from the comparison so only permission changes
+          # fail the check.
+          git diff -I '"generated_at":' -I '"version":' --exit-code providers/**/*.permissions.json
