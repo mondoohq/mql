@@ -74,3 +74,43 @@ func TestParseContainersPolicyMalformed(t *testing.T) {
 	_, err := parseContainersPolicy(`{ "default": [ { "type": "reject" } `)
 	assert.Error(t, err, "a broken policy must not read as one without requirements")
 }
+
+// CentOS Stream 10's containers-common 6.0 ships the policy only as
+// /usr/share/containers/policy.json, which Podman 6 reads when there is no
+// /etc/containers/policy.json.
+func TestContainersPolicyPath(t *testing.T) {
+	existing := func(paths ...string) func(string) (bool, error) {
+		return func(p string) (bool, error) {
+			for _, x := range paths {
+				if x == p {
+					return true, nil
+				}
+			}
+			return false, nil
+		}
+	}
+	p, err := containersPolicyPath(existing("/etc/containers/policy.json", "/usr/share/containers/policy.json"))
+	require.NoError(t, err)
+	assert.Equal(t, "/etc/containers/policy.json", p, "the administrator's policy wins")
+
+	p, err = containersPolicyPath(existing("/usr/share/containers/policy.json"))
+	require.NoError(t, err)
+	assert.Equal(t, "/usr/share/containers/policy.json", p)
+
+	p, err = containersPolicyPath(existing())
+	require.NoError(t, err)
+	assert.Equal(t, "/etc/containers/policy.json", p, "without either, the missing /etc file is reported")
+
+	_, err = containersPolicyPath(func(string) (bool, error) { return false, assert.AnError })
+	assert.Error(t, err)
+
+	policy, err := parseContainersPolicy(readContainersFixture(t, "centos-stream10-usr-share-policy.json"))
+	require.NoError(t, err)
+	assert.Equal(t, "insecureAcceptAnything", policy.Default[0].Type)
+	scopes := policy.scopes()
+	require.Len(t, scopes, 3)
+	assert.Equal(t, "registry.access.redhat.com", scopes[0].Scope)
+	assert.Equal(t, "sigstoreSigned", scopes[0].Requirements[0].Type)
+	assert.Equal(t, []string{"/etc/pki/sigstore/SIGSTORE-redhat-release3"}, scopes[0].Requirements[0].keyPaths())
+	assert.Equal(t, []string{"/etc/pki/sigstore/REKOR-signing-key"}, scopes[0].Requirements[0].rekorKeyPaths())
+}

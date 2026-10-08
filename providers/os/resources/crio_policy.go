@@ -36,7 +36,13 @@ func crioConfigValueOf(c *mqlCrio, section, key string) any {
 }
 
 func (c *mqlCrio) signaturePolicy() (*mqlContainersPolicy, error) {
-	p := c.imageConfig("signature_policy", containersDefaultPolicy)
+	p := c.imageConfig("signature_policy", "")
+	if p == "" {
+		var err error
+		if p, err = containersPolicyPath(func(p string) (bool, error) { return registriesFileExists(c.MqlRuntime, p) }); err != nil {
+			return nil, err
+		}
+	}
 	if readKubeletFile(c.MqlRuntime, p) == "" {
 		c.SignaturePolicy.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil

@@ -8873,7 +8873,8 @@ crio {
   images() []crio.image
   // Image signature policy CRI-O verifies pulled images against
   //
-  // From `crio.image.signature_policy`, by default /etc/containers/policy.json.
+  // From `crio.image.signature_policy`, by default /etc/containers/policy.json,
+  // or /usr/share/containers/policy.json when only that one exists.
   // Null when the policy file cannot be read.
   signaturePolicy() containers.policy
   // Signature policies for the pods of single Kubernetes namespaces
@@ -9151,11 +9152,13 @@ containers.registry.mirror @defaults("location insecure") {
 
 // Container image signature policy
 //
-// A containers-policy.json(5) file, by default /etc/containers/policy.json:
-// the requirements images must meet before Podman, Buildah, Skopeo or CRI-O
-// pull them, by default (`defaultRequirements`) and per registry or repository
-// (`scopes`). A requirement of type insecureAcceptAnything pulls images
-// without verifying any signature. The `path` field selects another policy
+// A containers-policy.json(5) file, by default /etc/containers/policy.json,
+// or /usr/share/containers/policy.json when that one does not exist, which is
+// where containers-common 6 and later ship it: the requirements images must
+// meet before Podman, Buildah, Skopeo or CRI-O pull them, by default
+// (`defaultRequirements`) and per registry or repository (`scopes`). A
+// requirement of type insecureAcceptAnything pulls images without verifying
+// any signature. The `path` field selects another policy
 // file, for example `containers.policy(path: "/etc/crio/policies/payments.json")`.
 containers.policy @defaults("path") {
   init(path? string)
@@ -9363,7 +9366,9 @@ containers.storage {
   //
   // From `mountopt` in [storage.options.overlay], or in [storage.options]
   // when the overlay table sets none. `nodev` stops device files in an image
-  // from being usable in its containers.
+  // from being usable in its containers. Podman 5 and earlier, and other
+  // tools built with containers/storage older than 1.63, ignore the overlay
+  // options when `driver` is unset; CRI-O 1.37 and Podman 6 apply them.
   overlayMountOptions() []string
   // Options for pulling images, as key-value pairs (e.g., enable_partial_images, use_hard_links, convert_images)
   pullOptions() map[string]string

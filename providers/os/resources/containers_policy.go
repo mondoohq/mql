@@ -16,9 +16,31 @@ import (
 	"go.mondoo.com/mql/types"
 )
 
-// containersDefaultPolicy is the policy Podman, Buildah, Skopeo and CRI-O
-// verify images against unless they are told to use another.
-const containersDefaultPolicy = "/etc/containers/policy.json"
+const (
+	// containersDefaultPolicy is the policy Podman, Buildah, Skopeo and CRI-O
+	// verify images against unless they are told to use another.
+	containersDefaultPolicy = "/etc/containers/policy.json"
+	// containersVendorPolicy is the policy containers-common 6 and later ship,
+	// which the tools read when containersDefaultPolicy does not exist.
+	containersVendorPolicy = "/usr/share/containers/policy.json"
+)
+
+// containersPolicyPath picks the policy the tools read by default: the
+// administrator's /etc/containers/policy.json, otherwise the vendor's in
+// /usr/share/containers, which containers-common 6 ships instead of an /etc
+// copy. Without either it is the /etc path, whose absence is then reported.
+func containersPolicyPath(exists func(string) (bool, error)) (string, error) {
+	for _, p := range []string{containersDefaultPolicy, containersVendorPolicy} {
+		ok, err := exists(p)
+		if err != nil {
+			return "", err
+		}
+		if ok {
+			return p, nil
+		}
+	}
+	return containersDefaultPolicy, nil
+}
 
 // containersPolicyFile is a containers-policy.json(5) file.
 type containersPolicyFile struct {
@@ -108,7 +130,11 @@ func initContainersPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData)
 		}
 		return args, nil, nil
 	}
-	args["path"] = llx.StringData(containersDefaultPolicy)
+	p, err := containersPolicyPath(func(p string) (bool, error) { return registriesFileExists(runtime, p) })
+	if err != nil {
+		return nil, nil, err
+	}
+	args["path"] = llx.StringData(p)
 	return args, nil, nil
 }
 
