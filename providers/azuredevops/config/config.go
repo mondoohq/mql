@@ -18,7 +18,7 @@ var Config = plugin.Provider{
 	ID:   "go.mondoo.com/mql/providers/azuredevops",
 	// A pre-release: it is published to the preview channel until a first
 	// customer scan has proven it.
-	Version: "14.0.0-rc.1",
+	Version: "14.0.0-rc.2",
 	// Every root carries `asset`, which core owns (ADR 042).
 	Requires: []plugin.ProviderDep{
 		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
