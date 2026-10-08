@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/azuredevops/connection"
 	"go.mondoo.com/mql/providers/azuredevops/internal/fakeado"
 )
 
@@ -89,6 +90,8 @@ func TestServiceHooksAReaderCannotViewAreForbiddenNotEmpty(t *testing.T) {
 	require.Error(t, list.Error, "an invisible hook list must not read as no hooks")
 	assert.ErrorIs(t, list.Error, llx.ErrForbidden)
 	assert.Contains(t, list.Error.Error(), "View subscriptions")
+	// The portal has no page for this permission; the hint must be the CLI call.
+	assert.Contains(t, list.Error.Error(), "--namespace-id "+connection.ServiceHooksNamespace+" --token PublisherSecurity/")
 }
 
 func hookIDs(m map[string]*mqlAzuredevopsWebhook) []string {

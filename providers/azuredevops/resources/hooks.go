@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/azuredevops/connection"
 )
 
 func (r *mqlAzuredevopsRepository) webhooks() ([]any, error) {
@@ -19,8 +20,11 @@ func (r *mqlAzuredevopsRepository) webhooks() ([]any, error) {
 		return nil, classifyForbidden(err)
 	}
 	if !ok {
+		// The portal has no page for this permission, so name the CLI call.
 		return nil, llx.Forbidden(fmt.Errorf("azure devops: the credential may not view the service hooks of project %q; "+
-			"grant it View subscriptions under Project settings, Service hooks, Security", r.ProjectName.Data))
+			"grant it View subscriptions with: az devops security permission update --namespace-id %s "+
+			"--token PublisherSecurity/%s --allow-bit 1 --subject <its descriptor>",
+			r.ProjectName.Data, connection.ServiceHooksNamespace, r.ProjectId.Data))
 	}
 
 	subs, err := client.Subscriptions(apiContext())
