@@ -16,6 +16,7 @@ alias os.base.packages = packages
 alias os.base.service = service
 alias os.base.services = services
 alias os.unix.sshd = sshd
+alias os.base.agentskills = agentskills
 alias os.base.ai = ai
 alias os.base.aider = aider
 alias os.base.antigravity = antigravity
