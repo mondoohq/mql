@@ -140,6 +140,25 @@ func TestCrioDropInPaths(t *testing.T) {
 	assert.Contains(t, paths, "/etc/crio/crio.conf.d/99-sweep.conf")
 }
 
+// afero.Walk lstats on a filesystem that can, so links reach the callback as
+// links: one to a file is listed, one to a directory and a dangling one are
+// not, as CRI-O cannot read them as configuration either.
+func TestCrioDropInPathsSymlinks(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "crio.conf.d")
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "elsewhere"), 0o755))
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "real.conf"), []byte("[crio]\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "10-crio.conf"), []byte("[crio]\n"), 0o644))
+	require.NoError(t, os.Symlink(filepath.Join(root, "real.conf"), filepath.Join(dir, "20-link.conf")))
+	require.NoError(t, os.Symlink(filepath.Join(root, "elsewhere"), filepath.Join(dir, "30-dirlink")))
+	require.NoError(t, os.Symlink(filepath.Join(root, "missing.conf"), filepath.Join(dir, "40-dangling.conf")))
+
+	paths, err := crioDropInPaths(afero.NewOsFs(), dir)
+	require.NoError(t, err)
+	assert.Equal(t, []string{filepath.Join(dir, "10-crio.conf"), filepath.Join(dir, "20-link.conf")}, paths)
+}
+
 // statErrorFs fails to stat one path, like a dangling symbolic link on a
 // filesystem that follows links when it stats.
 type statErrorFs struct {
