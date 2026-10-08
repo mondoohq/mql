@@ -5,6 +5,7 @@ package resources
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -69,14 +70,16 @@ var (
 	}
 )
 
-// containersSecretKeys are tables and lists left out of the reported
-// configuration: [secrets] holds the secret driver's options, and the env
-// lists of [containers] and [engine] often carry proxy credentials.
-var containersSecretKeys = map[string]struct{}{
-	"secrets":        {},
-	"containers.env": {},
-	"engine.env":     {},
-}
+// containersConfStructTables and storageConfStructTables are the tables the
+// library decodes into structs. BurntSushi/toml matches a struct field's name
+// regardless of case when no key matches exactly, so `[Containers]` or
+// `Log_Driver` are read like `[containers]` and `log_driver`. Tables decoded
+// into maps, such as [storage.options.pull_options], keep their keys as
+// written.
+var (
+	containersConfStructTables = map[string]bool{"": true, "containers": true, "engine": true, "network": true}
+	storageConfStructTables    = map[string]bool{"": true, "storage": true, "storage.options": true, "storage.options.overlay": true}
+)
 
 // containersConfig is a merged containers.conf or storage.conf.
 type containersConfig struct {
@@ -145,25 +148,66 @@ func mergeContainersTOML(dst, src map[string]any, prefix string, appendAttr map[
 	}
 }
 
-// parseContainersTOML decodes one file.
-func parseContainersTOML(content string) (map[string]any, error) {
+// parseContainersTOML decodes one file, with the keys of the tables in
+// structTables in lower case.
+func parseContainersTOML(content string, structTables map[string]bool) (map[string]any, error) {
 	res := map[string]any{}
 	if _, err := toml.Decode(content, &res); err != nil {
 		return nil, err
 	}
-	return res, nil
+	return lowerStructKeys(res, "", structTables), nil
+}
+
+// lowerStructKeys folds the keys of struct tables to lower case. When a file
+// holds a key in two spellings, the library assigns the exact one, so it wins
+// here too; two spellings of one table are merged.
+func lowerStructKeys(table map[string]any, path string, structTables map[string]bool) map[string]any {
+	keys := make([]string, 0, len(table))
+	for k := range table {
+		keys = append(keys, k)
+	}
+	// exact (already lower case) keys last, so they are assigned last
+	sort.Slice(keys, func(i, j int) bool {
+		ei, ej := keys[i] == strings.ToLower(keys[i]), keys[j] == strings.ToLower(keys[j])
+		if ei != ej {
+			return !ei
+		}
+		return keys[i] < keys[j]
+	})
+	res := make(map[string]any, len(table))
+	for _, k := range keys {
+		nk := k
+		if structTables[path] {
+			nk = strings.ToLower(k)
+		}
+		child := nk
+		if path != "" {
+			child = path + "." + nk
+		}
+		v := table[k]
+		if t, ok := v.(map[string]any); ok {
+			t = lowerStructKeys(t, child, structTables)
+			if cur, ok := res[nk].(map[string]any); ok {
+				mergeContainersTOML(cur, t, child, map[string]bool{})
+				continue
+			}
+			v = t
+		}
+		res[nk] = v
+	}
+	return res
 }
 
 // mergeContainersFiles parses and merges file contents in order over the
 // defaults, which may be nil.
-func mergeContainersFiles(defaults map[string]any, paths []string, contents []string) (map[string]any, error) {
+func mergeContainersFiles(defaults map[string]any, structTables map[string]bool, paths []string, contents []string) (map[string]any, error) {
 	merged := map[string]any{}
 	appendAttr := map[string]bool{}
 	if defaults != nil {
 		mergeContainersTOML(merged, defaults, "", appendAttr)
 	}
 	for i, content := range contents {
-		parsed, err := parseContainersTOML(content)
+		parsed, err := parseContainersTOML(content, structTables)
 		if err != nil {
 			return nil, fmt.Errorf("cannot parse %s: %w", paths[i], err)
 		}
@@ -209,27 +253,6 @@ func containersStrings(table map[string]any, key string) ([]string, bool) {
 func containersInt(table map[string]any, key string) (int64, bool) {
 	v, ok := table[key].(int64)
 	return v, ok
-}
-
-// withoutContainersSecrets returns a copy of a configuration without the
-// settings listed in containersSecretKeys.
-func withoutContainersSecrets(cfg map[string]any, prefix string) map[string]any {
-	res := make(map[string]any, len(cfg))
-	for k, v := range cfg {
-		key := k
-		if prefix != "" {
-			key = prefix + "." + k
-		}
-		if _, ok := containersSecretKeys[key]; ok {
-			continue
-		}
-		if t, ok := v.(map[string]any); ok {
-			res[k] = withoutContainersSecrets(t, key)
-			continue
-		}
-		res[k] = v
-	}
-	return res
 }
 
 // podmanPackageMajorVersion reads the major version of an installed podman
@@ -328,7 +351,7 @@ func storageConfPaths(exists func(string) (bool, error), dropIns func([]string) 
 }
 
 // loadContainersConfig reads and merges the files.
-func loadContainersConfig(runtime *plugin.Runtime, defaults map[string]any, list func(exists func(string) (bool, error), dropIns func([]string) ([]string, error)) ([]string, error)) (*containersConfig, error) {
+func loadContainersConfig(runtime *plugin.Runtime, defaults map[string]any, structTables map[string]bool, list func(exists func(string) (bool, error), dropIns func([]string) ([]string, error)) ([]string, error)) (*containersConfig, error) {
 	exists := func(p string) (bool, error) { return registriesFileExists(runtime, p) }
 	dropIns := func(dirs []string) ([]string, error) {
 		return listConfDFilesWith(runtime, dirs, isRegistriesConfDFileName)
@@ -349,13 +372,13 @@ func loadContainersConfig(runtime *plugin.Runtime, defaults map[string]any, list
 		}
 		contents[i] = content.Data
 	}
-	raw, err := mergeContainersFiles(nil, paths, contents)
+	raw, err := mergeContainersFiles(nil, structTables, paths, contents)
 	if err != nil {
 		return nil, err
 	}
 	merged := raw
 	if defaults != nil {
-		if merged, err = mergeContainersFiles(defaults, paths, contents); err != nil {
+		if merged, err = mergeContainersFiles(defaults, structTables, paths, contents); err != nil {
 			return nil, err
 		}
 	}
@@ -394,7 +417,7 @@ func (c *mqlContainersConf) load() (*containersConfig, error) {
 	}
 	c.loaded = true
 	c.sharedLoader = containersSharedLoader(c.MqlRuntime)
-	c.cfg, c.err = loadContainersConfig(c.MqlRuntime, containersConfDefaults(), func(exists func(string) (bool, error), dropIns func([]string) ([]string, error)) ([]string, error) {
+	c.cfg, c.err = loadContainersConfig(c.MqlRuntime, containersConfDefaults(), containersConfStructTables, func(exists func(string) (bool, error), dropIns func([]string) ([]string, error)) ([]string, error) {
 		return containersConfPaths(c.sharedLoader, exists, dropIns)
 	})
 	return c.cfg, c.err
@@ -414,14 +437,6 @@ func (c *mqlContainersConf) files() ([]any, error) {
 		return nil, err
 	}
 	return containersConfigFiles(c.MqlRuntime, cfg)
-}
-
-func (c *mqlContainersConf) configuration() (any, error) {
-	cfg, err := c.load()
-	if err != nil {
-		return nil, err
-	}
-	return convert.JsonToDict(withoutContainersSecrets(cfg.raw, ""))
 }
 
 // stringOr reports a string setting of a table, or def when it is unset.
@@ -627,7 +642,7 @@ func (s *mqlContainersStorage) load() (*containersConfig, error) {
 		return s.cfg, s.err
 	}
 	s.loaded = true
-	s.cfg, s.err = loadContainersConfig(s.MqlRuntime, nil, storageConfPaths)
+	s.cfg, s.err = loadContainersConfig(s.MqlRuntime, nil, storageConfStructTables, storageConfPaths)
 	return s.cfg, s.err
 }
 

@@ -9227,8 +9227,6 @@ containers.policy.requirement @defaults("type") {
 containers.conf {
   // Configuration files, in the order they are applied
   files() []file
-  // Merged configuration of all files
-  configuration() dict
   // Whether containers run privileged by default
   //
   // A privileged container keeps every capability and turns off the seccomp,

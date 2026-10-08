@@ -42,11 +42,11 @@ func mergeContainersFixtures(t *testing.T, dir string, names ...string) map[stri
 	for i, n := range names {
 		contents[i] = readContainersConfFixture(t, dir, n)
 	}
-	var defaults map[string]any
+	defaults, tables := map[string]any(nil), storageConfStructTables
 	if dir == "containers-conf" {
-		defaults = containersConfDefaults()
+		defaults, tables = containersConfDefaults(), containersConfStructTables
 	}
-	merged, err := mergeContainersFiles(defaults, names, contents)
+	merged, err := mergeContainersFiles(defaults, tables, names, contents)
 	require.NoError(t, err)
 	return merged
 }
@@ -259,7 +259,7 @@ func TestContainersConfAppend(t *testing.T) {
 }
 
 func TestContainersConfAppendOff(t *testing.T) {
-	merged, err := mergeContainersFiles(nil, []string{"a", "b", "c"}, []string{
+	merged, err := mergeContainersFiles(nil, containersConfStructTables, []string{"a", "b", "c"}, []string{
 		`[containers]
 default_ulimits = ["nofile=1024:2048"]`,
 		`[containers]
@@ -272,20 +272,76 @@ default_ulimits = ["core=0:0", {append = false}]`,
 }
 
 func TestContainersConfParseError(t *testing.T) {
-	_, err := mergeContainersFiles(nil, []string{"/etc/containers/containers.conf"}, []string{"[containers\n"})
+	_, err := mergeContainersFiles(nil, containersConfStructTables, []string{"/etc/containers/containers.conf"}, []string{"[containers\n"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "/etc/containers/containers.conf")
 }
 
-func TestWithoutContainersSecrets(t *testing.T) {
-	merged := mergeContainersFixtures(t, "containers-conf", "fedora-usr-share.conf", "hardening.conf")
-	clean := withoutContainersSecrets(merged, "")
-	assert.NotContains(t, clean, "secrets")
-	ctrs := clean["containers"].(map[string]any)
-	assert.NotContains(t, ctrs, "env")
-	assert.Contains(t, ctrs, "seccomp_profile")
-	// the original keeps them, the fields read from it
-	assert.Contains(t, merged["containers"].(map[string]any), "env")
+// The library decodes these tables into structs, and BurntSushi/toml matches
+// field names regardless of case: with this drop-in Podman 5.8.7 reports the
+// log driver "none" and the events logger "none".
+func TestContainersConfKeyCase(t *testing.T) {
+	merged, err := mergeContainersFiles(containersConfDefaults(), containersConfStructTables, []string{"a", "b"}, []string{
+		`[containers]
+log_driver = "journald"
+default_capabilities = ["CAP_CHOWN"]`,
+		`[Containers]
+Log_Driver = "none"
+SECCOMP_PROFILE = "unconfined"
+Default_Capabilities = ["CAP_SYS_ADMIN", {append = true}]
+
+[ENGINE]
+Events_Logger = "none"`,
+	})
+	require.NoError(t, err)
+	c := confResource(merged, false)
+
+	logDriver, err := c.logDriver()
+	require.NoError(t, err)
+	assert.Equal(t, "none", logDriver)
+	seccomp, err := c.seccompProfile()
+	require.NoError(t, err)
+	assert.Equal(t, "unconfined", seccomp)
+	events, err := c.eventsLogger()
+	require.NoError(t, err)
+	assert.Equal(t, "none", events)
+	caps, err := c.defaultCapabilities()
+	require.NoError(t, err)
+	assert.Equal(t, []any{"CAP_CHOWN", "CAP_SYS_ADMIN"}, caps)
+}
+
+func TestLowerStructKeys(t *testing.T) {
+	in := map[string]any{
+		"Storage": map[string]any{
+			"Driver": "vfs",
+			"options": map[string]any{
+				"Pull_Options": map[string]any{"Enable_Partial_Images": "true"},
+			},
+		},
+		"storage": map[string]any{"driver": "overlay"},
+	}
+	out := lowerStructKeys(in, "", storageConfStructTables)
+	storage := out["storage"].(map[string]any)
+	assert.Equal(t, "overlay", storage["driver"], "the exact spelling wins")
+	assert.NotContains(t, out, "Storage")
+	// a map table keeps its keys as written
+	pull := storage["options"].(map[string]any)["pull_options"].(map[string]any)
+	assert.Equal(t, map[string]any{"Enable_Partial_Images": "true"}, pull)
+}
+
+func TestContainersStorageKeyCase(t *testing.T) {
+	merged, err := mergeContainersFiles(nil, storageConfStructTables, []string{"a"}, []string{`[Storage]
+Driver = "btrfs"
+[Storage.Options.Overlay]
+MountOpt = "nodev"`})
+	require.NoError(t, err)
+	s := storageResource(merged)
+	driver, err := s.driver()
+	require.NoError(t, err)
+	assert.Equal(t, "btrfs", driver)
+	opts, err := s.overlayMountOptions()
+	require.NoError(t, err)
+	assert.Equal(t, []any{"nodev"}, opts)
 }
 
 func TestPodmanPackageMajorVersion(t *testing.T) {

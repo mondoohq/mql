@@ -10444,9 +10444,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"containers.conf.files": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainersConf).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
 	},
-	"containers.conf.configuration": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlContainersConf).GetConfiguration()).ToDataRes(types.Dict)
-	},
 	"containers.conf.privileged": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainersConf).GetPrivileged()).ToDataRes(types.Bool)
 	},
@@ -30103,10 +30100,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"containers.conf.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlContainersConf).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
-		return
-	},
-	"containers.conf.configuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlContainersConf).Configuration, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
 	"containers.conf.privileged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -73326,7 +73319,6 @@ type mqlContainersConf struct {
 	__id       string
 	mqlContainersConfInternal
 	Files               plugin.TValue[[]any]
-	Configuration       plugin.TValue[any]
 	Privileged          plugin.TValue[bool]
 	DefaultCapabilities plugin.TValue[[]any]
 	DefaultSysctls      plugin.TValue[[]any]
@@ -73400,12 +73392,6 @@ func (c *mqlContainersConf) GetFiles() *plugin.TValue[[]any] {
 		}
 
 		return c.files()
-	})
-}
-
-func (c *mqlContainersConf) GetConfiguration() *plugin.TValue[any] {
-	return plugin.GetOrCompute[any](&c.Configuration, func() (any, error) {
-		return c.configuration()
 	})
 }
 

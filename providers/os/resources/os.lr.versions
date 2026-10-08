@@ -753,7 +753,6 @@ containers.conf.apparmorProfile 14.17.1
 containers.conf.cgroupManager 14.17.1
 containers.conf.cgroupns 14.17.1
 containers.conf.cgroups 14.17.1
-containers.conf.configuration 14.17.1
 containers.conf.defaultCapabilities 14.17.1
 containers.conf.defaultNetwork 14.17.1
 containers.conf.defaultSysctls 14.17.1
