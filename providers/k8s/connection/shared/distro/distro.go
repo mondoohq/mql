@@ -379,24 +379,33 @@ func Detect(ctx context.Context, p Probes) *Result {
 		}
 	}
 
-	var md *MetadataResult
-	if res.Source == "" && p.Metadata != nil {
-		var err error
-		md, err = p.Metadata(ctx)
-		ev := Evidence{}
-		if err != nil {
-			ev.Error = err.Error()
-		}
-		if md != nil {
-			ev.Distro, ev.Value = md.Distro, md.Value
-		}
-		decide(ProbeMetadata, ev)
-	}
-
 	certName := ""
 	if ev, ok := res.Evidence[ProbeCertificate]; ok && ev.Distro != "" {
 		certName = ev.Value
 	}
+
+	// The metadata service decides only when nothing else did. In the
+	// cluster, where there is no kubeconfig, it also names a managed cluster
+	// that the other signals identified but could not name.
+	var md *MetadataResult
+	if p.Metadata != nil {
+		undecided := res.Source == ""
+		unnamed := cloudOf[res.Name] != "" &&
+			identify(res.Name, p.Host, certName, p.Kubeconfig, nodes, nil).ClusterName == ""
+		if undecided || unnamed {
+			var err error
+			md, err = p.Metadata(ctx)
+			ev := Evidence{}
+			if err != nil {
+				ev.Error = err.Error()
+			}
+			if md != nil {
+				ev.Distro, ev.Value = md.Distro, md.Value
+			}
+			decide(ProbeMetadata, ev)
+		}
+	}
+
 	res.Identity = identify(res.Name, p.Host, certName, p.Kubeconfig, nodes, md)
 	return res
 }

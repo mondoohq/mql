@@ -31,6 +31,10 @@ var (
 	gkeEntry = regexp.MustCompile(`^gke_([a-z][a-z0-9:.-]*[a-z0-9])_([a-z0-9-]+)_([a-z0-9-]+)$`)
 )
 
+// cloudOf names the cloud of each managed distribution, as the metadata
+// probe reports it when the instance carries no distribution mark.
+var cloudOf = map[string]string{AKS: "azure", EKS: "aws", GKE: "gcp"}
+
 // identify works out the cluster's name, region and account. It reads the
 // kubeconfig only for a distribution the server itself confirmed, so a cluster
 // entry named like a managed cluster never makes one: the names in a kubeconfig
@@ -98,7 +102,7 @@ func identify(name, host, certName string, k *Kubeconfig, nodes []Node, md *Meta
 
 	// in the cluster, there is no kubeconfig: the metadata service and the
 	// nodes fill in what they know
-	if md != nil && md.Distro == name {
+	if md != nil && (md.Distro == name || md.Distro == "" && md.Value == cloudOf[name]) {
 		fill(&id, md.Identity, IdentityMetadata)
 	}
 	if name != Unknown {

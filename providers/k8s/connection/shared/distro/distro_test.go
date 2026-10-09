@@ -160,7 +160,9 @@ func TestDetectMetadataOnlyWhenUndecided(t *testing.T) {
 		return &MetadataResult{Distro: GKE, Value: "gcp instance attribute cluster-name",
 			Identity: Identity{ClusterName: "c1", Region: "us-central1-a", Account: "proj-1"}}, nil
 	}
-	res := Detect(context.Background(), Probes{Version: version("v1.33.5-gke.1162000"), Metadata: md})
+	// named by the kubeconfig: no need to ask
+	res := Detect(context.Background(), Probes{Version: version("v1.33.5-gke.1162000"), Metadata: md,
+		Kubeconfig: &Kubeconfig{ClusterEntry: "gke_my-project_us-central1_c"}})
 	assert.Equal(t, 0, calls)
 	assert.Equal(t, GKE, res.Name)
 
@@ -180,4 +182,32 @@ func TestDetectOpenShift(t *testing.T) {
 	})
 	assert.Equal(t, OpenShift, res.Name)
 	assert.Equal(t, ProbeAPIGroups, res.Source)
+}
+
+func TestDetectMetadataNamesInClusterManagedCluster(t *testing.T) {
+	calls := 0
+	md := func(context.Context) (*MetadataResult, error) {
+		calls++
+		return &MetadataResult{Distro: GKE, Value: "gcp instance attribute cluster-name",
+			Identity: Identity{ClusterName: "c1", Region: "us-central1-a", Account: "proj-1"}}, nil
+	}
+	// in the cluster: the version decides, the metadata names the cluster
+	res := Detect(context.Background(), Probes{Version: version("v1.33.5-gke.1162000"), Host: "https://10.0.0.1", Metadata: md})
+	assert.Equal(t, 1, calls)
+	assert.Equal(t, GKE, res.Name)
+	assert.Equal(t, ProbeVersion, res.Source)
+	assert.Equal(t, Identity{ClusterName: "c1", Region: "us-central1-a", Account: "proj-1", Source: IdentityMetadata}, res.Identity)
+
+	// EC2 without instance tags in the metadata: the region and nothing else
+	aws := func(context.Context) (*MetadataResult, error) {
+		return &MetadataResult{Value: "aws", Identity: Identity{Region: "us-east-1"}}, nil
+	}
+	res = Detect(context.Background(), Probes{Version: version("v1.33.5-eks-113cf36"), Metadata: aws})
+	assert.Equal(t, EKS, res.Name)
+	assert.Equal(t, Identity{Region: "us-east-1", Source: IdentityMetadata}, res.Identity)
+
+	// a self-managed cluster in a cloud is not named after the instance
+	res = Detect(context.Background(), Probes{Version: version("v1.33.4+k3s1"), Metadata: md})
+	assert.Equal(t, K3s, res.Name)
+	assert.Equal(t, Identity{}, res.Identity)
 }
