@@ -26,8 +26,13 @@ type AixPort struct {
 	State         string
 }
 
-// AIX writes the protocol as tcp/tcp4/tcp6/udp/udp4/udp6. A bare tcp/udp means
-// IPv4 (AIX only omits the digit on the v4 rows of some releases).
+// AIX writes the protocol as tcp/tcp4/tcp6/udp/udp4/udp6. tcp4 and udp4 are
+// IPv4 sockets and tcp6 and udp6 IPv6 sockets that take IPv6 only. A bare tcp
+// or udp is an IPv6 socket that takes IPv4 as well: on AIX 7.3 httpd's *.80
+// and portmap's *.111 answer on both ::1 and 127.0.0.1, where the tcp4
+// listeners refuse ::1. Bound to the wildcard it is a dual-stack listener,
+// which Linux reports as tcp6 on [::]; bound to an IPv4 address it takes that
+// address only.
 var reAixProto = regexp.MustCompile(`^(tcp|udp)([46])?$`)
 
 // ParseAixNetstat reads the "Active Internet connections" section of AIX
@@ -70,6 +75,9 @@ func ParseAixNetstat(r io.Reader) ([]AixPort, error) {
 			continue
 		}
 
+		if proto == "tcp" || proto == "udp" {
+			proto += aixBareSocketFamily(fields[protoIdx+3])
+		}
 		v6 := strings.HasSuffix(proto, "6")
 		localAddr, localPort := splitDottedEndpoint(fields[protoIdx+3], v6)
 		remoteAddr, remotePort := splitDottedEndpoint(fields[protoIdx+4], v6)
@@ -95,8 +103,9 @@ func ParseAixNetstat(r io.Reader) ([]AixPort, error) {
 	return res, nil
 }
 
-// findAixProto locates the protocol column in a netstat row and normalises the
-// protocol to an address family suffix. The column is found by pattern rather
+// findAixProto locates the protocol column in a netstat row and returns the
+// protocol as written; a bare tcp or udp gets its family from the local
+// endpoint (see aixBareSocketFamily). The column is found by pattern rather
 // than by index because `netstat -Aan` prefixes every row with a PCB address
 // while `netstat -an` does not.
 //
@@ -109,15 +118,23 @@ func findAixProto(fields []string) (int, string, bool) {
 			continue
 		}
 
-		proto := m[1]
-		if m[2] == "" {
-			proto += "4"
-		} else {
-			proto += m[2]
-		}
-		return i, proto, true
+		return i, m[1] + m[2], true
 	}
 	return 0, "", false
+}
+
+// aixBareSocketFamily returns the address family suffix of a bare tcp or udp
+// row from its local endpoint: 6 for the wildcard, which takes both families,
+// and for an IPv6 address, 4 for an IPv4 address.
+func aixBareSocketFamily(local string) string {
+	addr := local
+	if i := strings.LastIndex(local, "."); i >= 0 {
+		addr = local[:i]
+	}
+	if addr == "*" || strings.Contains(addr, ":") {
+		return "6"
+	}
+	return "4"
 }
 
 // splitDottedEndpoint splits a BSD-style `address.port` endpoint, the form both

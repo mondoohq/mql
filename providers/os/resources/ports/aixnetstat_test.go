@@ -37,9 +37,10 @@ func TestParseAixNetstat(t *testing.T) {
 		assert.Equal(t, int64(0), p.RemotePort)
 	})
 
-	t.Run("bare tcp is treated as v4", func(t *testing.T) {
+	t.Run("bare tcp on the wildcard is a dual-stack v6 listener", func(t *testing.T) {
 		p := byIdx(1)
-		assert.Equal(t, "tcp4", p.Protocol)
+		assert.Equal(t, "tcp6", p.Protocol)
+		assert.Equal(t, "[::]", p.LocalAddress)
 		assert.Equal(t, int64(23), p.LocalPort)
 	})
 
@@ -176,4 +177,39 @@ func TestParseAixNetstatEdgeCases(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, p)
 	})
+}
+
+// testdata/aix73_netstat_an.txt is netstat -an on AIX 7.3 TL4 SP2. A bare tcp
+// or udp row is an IPv6 socket that takes IPv4 too: httpd's *.80 and
+// portmap's *.111 answered on both ::1 and 127.0.0.1 there, while the tcp4
+// listeners on *.25 and *.47123 refused ::1.
+func TestParseAixNetstatBareSockets(t *testing.T) {
+	data, err := os.Open("./testdata/aix73_netstat_an.txt")
+	require.NoError(t, err)
+	defer data.Close()
+
+	ports, err := ParseAixNetstat(data)
+	require.NoError(t, err)
+
+	find := func(proto string, port int64, addr string) *AixPort {
+		for i := range ports {
+			if ports[i].Protocol == proto && ports[i].LocalPort == port && ports[i].LocalAddress == addr {
+				return &ports[i]
+			}
+		}
+		return nil
+	}
+
+	// tcp *.111 LISTEN
+	assert.NotNil(t, find("tcp6", 111, "[::]"))
+	assert.Nil(t, find("tcp4", 111, "0.0.0.0"))
+	// tcp4 *.25 LISTEN stays v4
+	assert.NotNil(t, find("tcp4", 25, "0.0.0.0"))
+	// udp *.2049
+	assert.NotNil(t, find("udp6", 2049, "[::]"))
+	// udp 192.168.234.39.123: bound to an IPv4 address, it takes IPv4 only
+	assert.NotNil(t, find("udp4", 123, "192.168.234.39"))
+	// sshd listens twice, v6 only and v4
+	assert.NotNil(t, find("tcp6", 22, "[::]"))
+	assert.NotNil(t, find("tcp4", 22, "0.0.0.0"))
 }
