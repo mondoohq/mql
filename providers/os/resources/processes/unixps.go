@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,8 @@ var (
 	LINUX_PS_REGEX = regexp.MustCompile(`^\s*([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ].*)?$`)
 	UNIX_PS_REGEX  = regexp.MustCompile(`^\s*([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ].*)$`)
 	AIX_PS_REGEX   = regexp.MustCompile(`^\s*([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ].*)$`)
+	// the same columns with the state (S) before the command
+	AIX_PS_STATE_REGEX = regexp.MustCompile(`^\s*([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ]+)\s+([^ ].*)$`)
 
 	// "lrwx------ 1 0 0 64 Dec  6 13:56 /proc/1/fd/12 -> socket:[37364]"
 	reFindSockets = regexp.MustCompile(
@@ -170,6 +173,7 @@ func ParseUnixPsResult(input io.Reader) ([]*ProcessEntry, error) {
 
 func ParseAixPsResult(input io.Reader) ([]*ProcessEntry, error) {
 	processes := []*ProcessEntry{}
+	re := AIX_PS_REGEX
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -178,17 +182,21 @@ func ParseAixPsResult(input io.Reader) ([]*ProcessEntry, error) {
 			continue
 		}
 
-		m := AIX_PS_REGEX.FindStringSubmatch(line)
-		if len(m) != 9 {
+		// The header says whether the state column (S) was asked for.
+		if fields := strings.Fields(line); len(fields) > 0 && fields[0] == "PID" {
+			if slices.Contains(fields, "S") {
+				re = AIX_PS_STATE_REGEX
+			}
+			continue
+		}
+
+		m := re.FindStringSubmatch(line)
+		if m == nil {
 			if strings.Contains(line, "<idle>") || strings.Contains(line, "<kproc>") {
 				// skip idle and kernel processes
 				continue
 			}
 			return nil, &ErrorParsingPs{Line: line}
-		}
-		if m[1] == "PID" {
-			// header
-			continue
 		}
 
 		pid, err := strconv.ParseInt(m[1], 10, 64)
@@ -202,7 +210,7 @@ func ParseAixPsResult(input io.Reader) ([]*ProcessEntry, error) {
 			continue
 		}
 
-		// PID  %CPU  %MEM   VSZ     TT        TIME UID COMMAND
+		// PID  %CPU  %MEM   VSZ     TT        TIME UID [S] COMMAND
 		p := &ProcessEntry{
 			Pid:     pid,
 			CPU:     m[2],
@@ -211,7 +219,10 @@ func ParseAixPsResult(input io.Reader) ([]*ProcessEntry, error) {
 			Tty:     m[5],
 			Time:    m[6],
 			Uid:     uid,
-			Command: m[8],
+			Command: m[len(m)-1],
+		}
+		if len(m) == 10 {
+			p.Stat = m[8]
 		}
 		processes = append(processes, p)
 	}
@@ -332,7 +343,7 @@ func (upm *UnixProcessManager) runList() ([]*OSProcess, error) {
 		}
 	case upm.platform.Name == "aix":
 		// special case for aix since it does not understand x
-		stdout, err := upm.runPs("ps -A -o pid,pcpu,pmem,vsz,tty,time,uid,args")
+		stdout, err := upm.runPs("ps -A -o pid,pcpu,pmem,vsz,tty,time,uid,state,args")
 		if err != nil {
 			return nil, err
 		}
@@ -359,6 +370,7 @@ func (upm *UnixProcessManager) runList() ([]*OSProcess, error) {
 
 	isFreeBSD := upm.platform.Name == "freebsd"
 	isSolaris := upm.platform.Name == "solaris"
+	isAix := upm.platform.Name == "aix"
 	var comms map[int64]string
 	if isFreeBSD {
 		comms = upm.freebsdComms()
@@ -368,6 +380,9 @@ func (upm *UnixProcessManager) runList() ([]*OSProcess, error) {
 		p := entries[i].ToOSProcess()
 		if isSolaris {
 			p.State = solarisProcessState(entries[i].Stat)
+		}
+		if isAix {
+			p.State = aixProcessState(entries[i].Stat)
 		}
 		if isFreeBSD {
 			p.State = freebsdProcessState(entries[i].Stat)
@@ -445,6 +460,30 @@ func freebsdProcessState(stat string) string {
 		return ""
 	}
 	if name, ok := freebsdRunStates[stat[0]]; ok {
+		return stat[:1] + " (" + name + ")"
+	}
+	return stat[:1]
+}
+
+// aixRunStates names the state letter of AIX ps -o state, as documented in
+// ps(1). AIX reports a runnable and a sleeping process alike as active.
+var aixRunStates = map[byte]string{
+	'A': "active",      // running, runnable or sleeping
+	'I': "idle",        // being created
+	'O': "nonexistent", // its process table slot is free
+	'T': "stopped",     // stopped by a signal or traced
+	'W': "swapped",     // swapped out
+	'Z': "zombie",      // dead, not yet reaped
+}
+
+// aixProcessState turns the AIX ps state letter into the "<letter> (<name>)"
+// form Linux reports, for example "A (active)". An undocumented letter is
+// kept as is, and an empty value stays empty.
+func aixProcessState(stat string) string {
+	if stat == "" {
+		return ""
+	}
+	if name, ok := aixRunStates[stat[0]]; ok {
 		return stat[:1] + " (" + name + ")"
 	}
 	return stat[:1]
