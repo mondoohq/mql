@@ -260,6 +260,26 @@ private oci.identity.domain @defaults("name type state") {
   //
   // Null when the domain uses the service default.
   userPrincipalSessionTokenMaxExpiry() int
+  // Whether every user must have a primary email address
+  primaryEmailRequired() bool
+  // Whether users can set a recovery email address
+  userAllowedToSetRecoveryEmail() bool
+  // Whether end users can change their own password in My Profile
+  endUsersCanChangePassword() bool
+  // Whether end users can change their own security settings in My Profile
+  endUsersCanUpdateSecuritySettings() bool
+  // Whether end users can manage their own capabilities, such as API keys and auth tokens, in My Profile
+  endUsersCanManageCapabilities() bool
+  // Factors users can recover their account with, for example email or sms
+  accountRecoveryFactors() []string
+  // Incorrect recovery attempts before the account is locked
+  accountRecoveryMaxIncorrectAttempts() int
+  // How long an account stays locked after too many incorrect recovery attempts, in minutes
+  accountRecoveryLockoutDuration() int
+  // Dynamic resource groups, which grant resources such as instances the permissions of a group
+  dynamicResourceGroups() []oci.identity.domain.dynamicResourceGroup
+  // Social identity providers users can sign in with, such as Google or Facebook
+  socialIdentityProviders() []oci.identity.domain.socialIdentityProvider
   // Domain lifecycle state (CREATING, ACTIVE, DELETING, INACTIVE, FAILED)
   state string
   // Domain creation time
@@ -431,6 +451,8 @@ private oci.identity.domain.user @defaults("userName active mfaStatus") {
   // one inherited through nesting, which is what decides whether removing the
   // user from a group actually revokes the access it grants.
   groupMemberships() []oci.identity.domain.user.groupMembership
+  // API keys, auth tokens, customer secret keys, OAuth 2.0 client credentials, SMTP credentials, and database credentials of the user
+  credentials() []oci.identity.domain.user.credential
   // When the account was created
   created time
 }
@@ -13271,4 +13293,76 @@ private oci.network.crossConnectGroup @defaults("name macsecState") {
   freeformTags map[string]string
   // Defined tags for governance and cost tracking
   definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) identity domain user credential
+//
+// A credential of an identity domain user: an API key, auth token, customer
+// secret key, OAuth 2.0 client credential, SMTP credential, or database
+// credential, with its status, creation time, and expiry. Use it to find
+// credentials older than a rotation period or that never expire. Secret values
+// are never read.
+private oci.identity.domain.user.credential @defaults("type name status created") {
+  // Credential ID within the domain
+  id string
+  // Credential OCID
+  ocid string
+  // Credential type: apiKey, authToken, customerSecretKey, oauth2ClientCredential, smtpCredential, or dbCredential
+  type string
+  // Credential name or description
+  name string
+  // Status: ACTIVE or INACTIVE; empty for API keys
+  status string
+  // Fingerprint of an API key's public key; empty for other types
+  fingerprint string
+  // Creation time
+  created time
+  // Expiry time; null when the credential does not expire
+  expiresOn time
+}
+
+// Oracle Cloud Infrastructure (OCI) identity domain dynamic resource group
+//
+// A group whose members are resources, such as instances or functions, that
+// match its rule, so IAM policies can grant those resources permissions. A
+// broad `matchingRule` grants every matching resource the group's access.
+private oci.identity.domain.dynamicResourceGroup @defaults("displayName matchingRule") {
+  // Group ID within the domain
+  id string
+  // Group OCID
+  ocid string
+  // Group display name
+  displayName string
+  // Group description
+  description string
+  // Rule selecting the member resources, for example ALL {instance.compartment.id = 'ocid1...'}
+  matchingRule string
+  // Creation time
+  created time
+}
+
+// Oracle Cloud Infrastructure (OCI) identity domain social identity provider
+//
+// A social identity provider, such as Google or Facebook, that users of the
+// domain can sign in with, with whether it is enabled, shown on the sign-in
+// page, allowed to register new users, and allowed to link existing accounts.
+private oci.identity.domain.socialIdentityProvider @defaults("name serviceProviderName enabled") {
+  // Provider ID within the domain
+  id string
+  // Provider name
+  name string
+  // Social service the provider signs in with, for example Google or Facebook
+  serviceProviderName string
+  // Whether the provider is enabled
+  enabled bool
+  // Whether the provider is shown on the sign-in page
+  showOnLogin bool
+  // Whether users who sign in with the provider are registered automatically
+  registrationEnabled bool
+  // Whether users can link the provider's account to an existing account
+  accountLinkingEnabled bool
+  // Whether users are provisioned just in time on first sign-in
+  jitProvisioningEnabled bool
+  // Status, for example created or deleted
+  status string
 }

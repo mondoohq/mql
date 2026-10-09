@@ -204,6 +204,10 @@ type mqlOciIdentityDomainInternal struct {
 	// The domain's settings record, read once and shared by the fields that
 	// report parts of it.
 	settings ociRetryLazy[*identitydomains.Setting]
+
+	// The identity and account recovery settings, read once each.
+	identitySetting ociRetryLazy[*identitydomains.IdentitySetting]
+	recovery        ociRetryLazy[*identitydomains.AccountRecoverySetting]
 }
 
 func (o *mqlOciIdentityDomain) id() (string, error) {
