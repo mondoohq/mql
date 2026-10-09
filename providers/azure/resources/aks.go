@@ -100,6 +100,10 @@ func initAzureSubscriptionAksServiceCluster(runtime *plugin.Runtime, args map[st
 		}
 	}
 
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionAksServiceCluster, id); filtered != nil {
+		return args, filtered, nil
+	}
+
 	return nil, nil, errors.New("azure aks cluster does not exist")
 }
 
@@ -246,7 +250,7 @@ func (a *mqlAzureSubscriptionAksService) clusters() ([]any, error) {
 		if err != nil {
 			if isAzureNotConfigured(err) {
 				log.Warn().Err(err).Msg("could not list azure clusters, returning partial results")
-				return res, nil
+				return keepTagMatches(a.MqlRuntime, res), nil
 			}
 			return nil, err
 		}
@@ -475,7 +479,7 @@ func (a *mqlAzureSubscriptionAksService) clusters() ([]any, error) {
 			res = append(res, mqlCluster)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionAksServiceCluster) azureKeyVaultKmsKey() (*mqlAzureSubscriptionKeyVaultServiceKey, error) {

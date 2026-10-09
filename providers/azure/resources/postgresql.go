@@ -413,7 +413,7 @@ func (a *mqlAzureSubscriptionPostgreSqlService) flexibleServers() ([]any, error)
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionPostgreSqlServiceServer) databases() ([]any, error) {
@@ -805,6 +805,10 @@ func initAzureSubscriptionPostgreSqlServiceFlexibleServer(runtime *plugin.Runtim
 		if vm.Id.Data == id {
 			return args, vm, nil
 		}
+	}
+
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionPostgreSqlServiceFlexibleServer, id); filtered != nil {
+		return args, filtered, nil
 	}
 
 	return nil, nil, errors.New("azure postgresql flexible server does not exist")

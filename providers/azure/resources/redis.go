@@ -136,7 +136,7 @@ func (a *mqlAzureSubscriptionCacheService) redis() ([]any, error) {
 		}
 	}
 
-	return caches, nil
+	return keepTagMatches(a.MqlRuntime, caches), nil
 }
 
 // redactedRedisConfiguration copies a cache's Redis configuration with the

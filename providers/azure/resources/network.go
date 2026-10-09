@@ -113,7 +113,7 @@ func (a *mqlAzureSubscriptionNetworkService) securityGroups() ([]any, error) {
 			res = append(res, mqlAzure)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionNetworkService) watchers() ([]any, error) {
@@ -1107,7 +1107,7 @@ func (a *mqlAzureSubscriptionNetworkService) firewalls() ([]any, error) {
 			res = append(res, mqlFw)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 // nestedResourceID extracts a nested ARM reference's id from a resource's
@@ -1570,7 +1570,7 @@ func (a *mqlAzureSubscriptionNetworkService) virtualNetworks() ([]any, error) {
 			res = append(res, mqlVn)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func initAzureSubscriptionNetworkServiceVirtualNetwork(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -1612,6 +1612,10 @@ func initAzureSubscriptionNetworkServiceVirtualNetwork(runtime *plugin.Runtime, 
 		if vnet.Id.Data == id {
 			return args, vnet, nil
 		}
+	}
+
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionNetworkServiceVirtualNetwork, id); filtered != nil {
+		return args, filtered, nil
 	}
 
 	return nil, nil, errors.New("azure virtual network does not exist")
@@ -2088,7 +2092,7 @@ func (a *mqlAzureSubscriptionNetworkService) applicationGateways() ([]any, error
 			res = append(res, mqlAg)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionNetworkServiceWafConfig) id() (string, error) {
@@ -6106,6 +6110,10 @@ func initAzureSubscriptionNetworkServiceSecurityGroup(runtime *plugin.Runtime, a
 		if secGrp.Id.Data == id {
 			return args, secGrp, nil
 		}
+	}
+
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionNetworkServiceSecurityGroup, id); filtered != nil {
+		return args, filtered, nil
 	}
 
 	return nil, nil, errors.New("azure network security group does not exist")

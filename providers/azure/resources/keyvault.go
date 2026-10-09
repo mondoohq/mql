@@ -199,7 +199,7 @@ func (a *mqlAzureSubscriptionKeyVaultService) vaults() ([]any, error) {
 			res = append(res, mqlVault)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 // vaultToMql builds a vault resource from a full ARM Vault record and primes
@@ -1905,6 +1905,10 @@ func initAzureSubscriptionKeyVaultServiceManagedHsm(runtime *plugin.Runtime, arg
 		}
 	}
 
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionKeyVaultServiceManagedHsm, id); filtered != nil {
+		return args, filtered, nil
+	}
+
 	return nil, nil, errors.New("azure managed hsm does not exist")
 }
 
@@ -2050,7 +2054,7 @@ func (a *mqlAzureSubscriptionKeyVaultService) managedHsms() ([]any, error) {
 			var respErr *azcore.ResponseError
 			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
 				log.Warn().Err(err).Msg("could not list managed HSMs due to access denied")
-				return res, nil
+				return keepTagMatches(a.MqlRuntime, res), nil
 			}
 			return nil, err
 		}
@@ -2157,7 +2161,7 @@ func (a *mqlAzureSubscriptionKeyVaultService) managedHsms() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 // roleAssignments returns the effective Microsoft Entra role assignments at the

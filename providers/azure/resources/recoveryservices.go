@@ -101,6 +101,10 @@ func initAzureSubscriptionRecoveryServicesServiceVault(runtime *plugin.Runtime, 
 		}
 	}
 
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionRecoveryServicesServiceVault, id); filtered != nil {
+		return args, filtered, nil
+	}
+
 	return nil, nil, errors.New("azure recovery services vault does not exist")
 }
 
@@ -145,7 +149,7 @@ func (a *mqlAzureSubscriptionRecoveryServicesService) vaults() ([]any, error) {
 			res = append(res, mqlVault)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 // deletedVaults lists soft-deleted Recovery Services vaults awaiting purge.

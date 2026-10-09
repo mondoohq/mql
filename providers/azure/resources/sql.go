@@ -242,7 +242,7 @@ func (a *mqlAzureSubscriptionSqlService) servers() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionSqlServiceServer) databases() ([]any, error) {
@@ -1041,6 +1041,10 @@ func initAzureSubscriptionSqlServiceServer(runtime *plugin.Runtime, args map[str
 		if vm.Id.Data == id {
 			return args, vm, nil
 		}
+	}
+
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionSqlServiceServer, id); filtered != nil {
+		return args, filtered, nil
 	}
 
 	return nil, nil, errors.New("azure sql database server does not exist")

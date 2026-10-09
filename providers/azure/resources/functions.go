@@ -101,7 +101,7 @@ func (a *mqlAzureSubscriptionFunctionsService) functionApps() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 // functionAppSiteToMql converts a Web App ARM site (already known to be a

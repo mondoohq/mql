@@ -76,7 +76,7 @@ func (a *mqlAzureSubscriptionSynapseService) workspaces() ([]any, error) {
 			var respErr *azcore.ResponseError
 			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
 				log.Warn().Err(err).Msg("could not list synapse workspaces due to access denied")
-				return res, nil
+				return keepTagMatches(a.MqlRuntime, res), nil
 			}
 			return nil, err
 		}
@@ -219,7 +219,7 @@ func (a *mqlAzureSubscriptionSynapseService) workspaces() ([]any, error) {
 			res = append(res, workspaceRes)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionSynapseServiceWorkspace) id() (string, error) {
@@ -313,6 +313,10 @@ func initAzureSubscriptionSynapseServiceWorkspace(runtime *plugin.Runtime, args 
 		if ws.Id.Data == id {
 			return args, ws, nil
 		}
+	}
+
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionSynapseServiceWorkspace, id); filtered != nil {
+		return args, filtered, nil
 	}
 
 	return nil, nil, errors.New("azure synapse workspace does not exist")

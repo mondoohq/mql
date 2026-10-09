@@ -50,7 +50,11 @@ func (a *mqlAzureSubscriptionCosmosDbService) accounts() ([]any, error) {
 	ctx := context.Background()
 	subId := a.SubscriptionId.Data
 
-	return fetchCosmosDBAccounts(ctx, a.MqlRuntime, conn, subId)
+	res, err := fetchCosmosDBAccounts(ctx, a.MqlRuntime, conn, subId)
+	if err != nil {
+		return nil, err
+	}
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionCosmosDbService) mongoClusters() ([]any, error) {

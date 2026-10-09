@@ -171,7 +171,7 @@ func (a *mqlAzureSubscriptionStorageService) accounts() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionStorageServiceAccount) containers() ([]any, error) {
@@ -1279,6 +1279,10 @@ func initAzureSubscriptionStorageServiceAccount(runtime *plugin.Runtime, args ma
 		}
 	}
 
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionStorageServiceAccount, id); filtered != nil {
+		return args, filtered, nil
+	}
+
 	return nil, nil, errors.New("azure storage account does not exist")
 }
 
@@ -1316,17 +1320,42 @@ func initAzureSubscriptionStorageServiceAccountContainer(runtime *plugin.Runtime
 	if !ok {
 		return nil, nil, errors.New("id must be a non-nil string value")
 	}
-	for _, entry := range accs.Data {
-		storageAcc := entry.(*mqlAzureSubscriptionStorageServiceAccount)
+	findIn := func(storageAcc *mqlAzureSubscriptionStorageServiceAccount) (plugin.Resource, error) {
 		containers := storageAcc.GetContainers()
 		if containers.Error != nil {
-			return nil, nil, containers.Error
+			return nil, containers.Error
 		}
 		for _, c := range containers.Data {
 			container := c.(*mqlAzureSubscriptionStorageServiceAccountContainer)
 			if container.Id.Data == id {
-				return args, container, nil
+				return container, nil
 			}
+		}
+		return nil, nil
+	}
+	for _, entry := range accs.Data {
+		container, err := findIn(entry.(*mqlAzureSubscriptionStorageServiceAccount))
+		if err != nil {
+			return nil, nil, err
+		}
+		if container != nil {
+			return args, container, nil
+		}
+	}
+
+	// A tag filter may have left the container's account out of the list. Only
+	// the account the container id names is worth listing containers for.
+	for _, r := range tagFilteredOutOfType(runtime, ResourceAzureSubscriptionStorageServiceAccount) {
+		storageAcc := r.(*mqlAzureSubscriptionStorageServiceAccount)
+		if !strings.HasPrefix(strings.ToLower(id), strings.ToLower(storageAcc.Id.Data)+"/") {
+			continue
+		}
+		container, err := findIn(storageAcc)
+		if err != nil {
+			return nil, nil, err
+		}
+		if container != nil {
+			return args, container, nil
 		}
 	}
 

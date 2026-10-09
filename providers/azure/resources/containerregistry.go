@@ -120,6 +120,10 @@ func initAzureSubscriptionContainerRegistryServiceRegistry(runtime *plugin.Runti
 		}
 	}
 
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionContainerRegistryServiceRegistry, id); filtered != nil {
+		return args, filtered, nil
+	}
+
 	return nil, nil, errors.New("azure container registry does not exist")
 }
 
@@ -156,7 +160,7 @@ func (a *mqlAzureSubscriptionContainerRegistryService) registries() ([]any, erro
 			res = append(res, mqlReg)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func createRegistryResource(runtime *plugin.Runtime, reg *armcontainerregistry.Registry) (*mqlAzureSubscriptionContainerRegistryServiceRegistry, error) {

@@ -127,7 +127,7 @@ func (a *mqlAzureSubscriptionComputeService) vms() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func vmToMql(runtime *plugin.Runtime, vm compute.VirtualMachine) (*mqlAzureSubscriptionComputeServiceVm, error) {

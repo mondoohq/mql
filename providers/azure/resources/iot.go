@@ -113,6 +113,10 @@ func initAzureSubscriptionIotServiceIotHub(runtime *plugin.Runtime, args map[str
 		}
 	}
 
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionIotServiceIotHub, id); filtered != nil {
+		return args, filtered, nil
+	}
+
 	return nil, nil, fmt.Errorf("azure iot hub does not exist")
 }
 
@@ -242,5 +246,5 @@ func (a *mqlAzureSubscriptionIotService) iotHubs() ([]any, error) {
 			res = append(res, mqlHub)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }

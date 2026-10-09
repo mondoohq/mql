@@ -504,6 +504,10 @@ func initAzureSubscriptionWebServiceAppsite(runtime *plugin.Runtime, args map[st
 		}
 	}
 
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionWebServiceAppsite, id); filtered != nil {
+		return args, filtered, nil
+	}
+
 	return nil, nil, errors.New("azure app service app does not exist")
 }
 
@@ -608,7 +612,7 @@ func (a *mqlAzureSubscriptionWebService) apps() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 // runtimeSettingsForPreferredOs picks the runtime settings matching a stack's

@@ -331,7 +331,7 @@ func (a *mqlAzureSubscriptionMySqlService) flexibleServers() ([]any, error) {
 			res = append(res, mqlAzureDbServer)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionMySqlServiceFlexibleServer) sslEnforcement() (bool, error) {
@@ -980,6 +980,10 @@ func initAzureSubscriptionMySqlServiceFlexibleServer(runtime *plugin.Runtime, ar
 		if vm.Id.Data == id {
 			return args, vm, nil
 		}
+	}
+
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionMySqlServiceFlexibleServer, id); filtered != nil {
+		return args, filtered, nil
 	}
 
 	return nil, nil, errors.New("azure mysql flexible server does not exist")

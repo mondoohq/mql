@@ -516,10 +516,14 @@ func (a *mqlAzureSubscriptionServiceFabricServiceClusterDiagnosticsStorageAccoun
 
 	for _, entry := range accounts.Data {
 		account, ok := entry.(*mqlAzureSubscriptionStorageServiceAccount)
-		if !ok {
-			continue
+		if ok && account.Name.Data == a.cacheStorageAccountName {
+			return account, nil
 		}
-		if account.Name.Data == a.cacheStorageAccountName {
+	}
+	// A tag filter may have left the account out of the list.
+	for _, entry := range tagFilteredOutOfType(a.MqlRuntime, ResourceAzureSubscriptionStorageServiceAccount) {
+		account, ok := entry.(*mqlAzureSubscriptionStorageServiceAccount)
+		if ok && account.Name.Data == a.cacheStorageAccountName {
 			return account, nil
 		}
 	}

@@ -711,7 +711,7 @@ func (a *mqlAzureSubscriptionContainerAppService) containerApps() ([]any, error)
 		if err != nil {
 			if isAzureNotConfigured(err) {
 				log.Warn().Err(err).Msg("could not list azure containerApps, returning partial results")
-				return res, nil
+				return keepTagMatches(a.MqlRuntime, res), nil
 			}
 			return nil, err
 		}
@@ -726,7 +726,7 @@ func (a *mqlAzureSubscriptionContainerAppService) containerApps() ([]any, error)
 			res = append(res, mqlApp)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func acaContainerAppToMQL(runtime *plugin.Runtime, entry *apps.ContainerApp) (plugin.Resource, error) {

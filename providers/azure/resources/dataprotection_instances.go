@@ -326,11 +326,15 @@ func (a *mqlAzureSubscriptionDataProtectionServiceBackupVaultBackupInstance) sto
 		return nil, accounts.Error
 	}
 	account, found := findByID[*mqlAzureSubscriptionStorageServiceAccount](accounts.Data, datasourceID)
-	if !found {
-		a.StorageAccount.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
+	if found {
+		return account, nil
 	}
-	return account, nil
+	// A tag filter may have left the account out of the list.
+	if filtered, ok := tagFilteredOut(a.MqlRuntime, ResourceAzureSubscriptionStorageServiceAccount, datasourceID).(*mqlAzureSubscriptionStorageServiceAccount); ok {
+		return filtered, nil
+	}
+	a.StorageAccount.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
 }
 
 // resourceGuardArgs builds the Resource Guard args.

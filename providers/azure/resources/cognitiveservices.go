@@ -78,7 +78,7 @@ func (a *mqlAzureSubscriptionCognitiveServicesService) accounts() ([]any, error)
 			var respErr *azcore.ResponseError
 			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
 				log.Warn().Err(err).Msg("could not list cognitive services accounts due to access denied")
-				return res, nil
+				return keepTagMatches(a.MqlRuntime, res), nil
 			}
 			return nil, err
 		}
@@ -93,7 +93,7 @@ func (a *mqlAzureSubscriptionCognitiveServicesService) accounts() ([]any, error)
 			res = append(res, mqlAccount)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func cognitiveServicesAccountToMql(runtime *plugin.Runtime, account *armcognitiveservices.Account) (*mqlAzureSubscriptionCognitiveServicesServiceAccount, error) {

@@ -110,6 +110,11 @@ func initFromServiceList[S azureListService](
 		}
 	}
 
+	// A tag filter may have left it out of the list it was read from.
+	if filtered := tagFilteredOut(runtime, resourceName, id); filtered != nil {
+		return args, filtered, nil
+	}
+
 	// Deliberately an error rather than falling through with (args, nil, nil):
 	// that would have the runtime build the resource from the id alone, leaving
 	// every other field unset rather than null, which reaches the client as an

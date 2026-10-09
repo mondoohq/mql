@@ -79,6 +79,10 @@ func initAzureSubscriptionBatchServiceAccount(runtime *plugin.Runtime, args map[
 		}
 	}
 
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionBatchServiceAccount, id); filtered != nil {
+		return args, filtered, nil
+	}
+
 	return nil, nil, errors.New("azure batch account does not exist")
 }
 
@@ -103,7 +107,7 @@ func (a *mqlAzureSubscriptionBatchService) accounts() ([]any, error) {
 		if err != nil {
 			if isAzureNotConfigured(err) {
 				log.Warn().Err(err).Msg("could not list azure accounts, returning partial results")
-				return res, nil
+				return keepTagMatches(a.MqlRuntime, res), nil
 			}
 			return nil, err
 		}
@@ -121,7 +125,7 @@ func (a *mqlAzureSubscriptionBatchService) accounts() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func createBatchAccountRawData(account *armbatch.Account) (map[string]*llx.RawData, error) {

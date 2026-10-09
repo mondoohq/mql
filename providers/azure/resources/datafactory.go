@@ -71,7 +71,7 @@ func (a *mqlAzureSubscriptionDataFactoryService) factories() ([]any, error) {
 			var respErr *azcore.ResponseError
 			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
 				log.Warn().Err(err).Msg("could not list data factories due to access denied")
-				return res, nil
+				return keepTagMatches(a.MqlRuntime, res), nil
 			}
 			return nil, err
 		}
@@ -175,7 +175,7 @@ func (a *mqlAzureSubscriptionDataFactoryService) factories() ([]any, error) {
 			res = append(res, factoryRes)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionDataFactoryServiceFactory) id() (string, error) {
@@ -255,6 +255,10 @@ func initAzureSubscriptionDataFactoryServiceFactory(runtime *plugin.Runtime, arg
 		if factory.Id.Data == id {
 			return args, factory, nil
 		}
+	}
+
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionDataFactoryServiceFactory, id); filtered != nil {
+		return args, filtered, nil
 	}
 
 	return nil, nil, errors.New("azure data factory does not exist")
