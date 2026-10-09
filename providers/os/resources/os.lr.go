@@ -19915,6 +19915,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"agentskills.skill.directory": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAgentskillsSkill).GetDirectory()).ToDataRes(types.String)
 	},
+	"agentskills.skill.archive": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetArchive()).ToDataRes(types.String)
+	},
 	"agentskills.skill.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAgentskillsSkill).GetName()).ToDataRes(types.String)
 	},
@@ -19941,6 +19944,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"agentskills.skill.content": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAgentskillsSkill).GetContent()).ToDataRes(types.String)
+	},
+	"agentskills.skill.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetSize()).ToDataRes(types.Int)
+	},
+	"agentskills.skill.lines": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetLines()).ToDataRes(types.Int)
+	},
+	"agentskills.skill.references": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetReferences()).ToDataRes(types.Array(types.String))
+	},
+	"agentskills.skill.missingReferences": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentskillsSkill).GetMissingReferences()).ToDataRes(types.Array(types.String))
 	},
 	"agentskills.skill.sha256": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAgentskillsSkill).GetSha256()).ToDataRes(types.String)
@@ -44732,6 +44747,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAgentskillsSkill).Directory, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"agentskills.skill.archive": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Archive, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"agentskills.skill.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAgentskillsSkill).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -44766,6 +44785,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"agentskills.skill.content": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAgentskillsSkill).Content, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.lines": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).Lines, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.references": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).References, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"agentskills.skill.missingReferences": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentskillsSkill).MissingReferences, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"agentskills.skill.sha256": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -115684,20 +115719,25 @@ type mqlAgentskillsSkill struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAgentskillsSkillInternal it will be used here
-	Path          plugin.TValue[string]
-	Directory     plugin.TValue[string]
-	Name          plugin.TValue[string]
-	Description   plugin.TValue[string]
-	License       plugin.TValue[string]
-	Compatibility plugin.TValue[string]
-	Metadata      plugin.TValue[any]
-	AllowedTools  plugin.TValue[[]any]
-	Frontmatter   plugin.TValue[any]
-	Body          plugin.TValue[string]
-	Content       plugin.TValue[string]
-	Sha256        plugin.TValue[string]
-	Files         plugin.TValue[[]any]
-	Errors        plugin.TValue[[]any]
+	Path              plugin.TValue[string]
+	Directory         plugin.TValue[string]
+	Archive           plugin.TValue[string]
+	Name              plugin.TValue[string]
+	Description       plugin.TValue[string]
+	License           plugin.TValue[string]
+	Compatibility     plugin.TValue[string]
+	Metadata          plugin.TValue[any]
+	AllowedTools      plugin.TValue[[]any]
+	Frontmatter       plugin.TValue[any]
+	Body              plugin.TValue[string]
+	Content           plugin.TValue[string]
+	Size              plugin.TValue[int64]
+	Lines             plugin.TValue[int64]
+	References        plugin.TValue[[]any]
+	MissingReferences plugin.TValue[[]any]
+	Sha256            plugin.TValue[string]
+	Files             plugin.TValue[[]any]
+	Errors            plugin.TValue[[]any]
 }
 
 // createAgentskillsSkill creates a new instance of this resource
@@ -115745,6 +115785,10 @@ func (c *mqlAgentskillsSkill) GetDirectory() *plugin.TValue[string] {
 	return &c.Directory
 }
 
+func (c *mqlAgentskillsSkill) GetArchive() *plugin.TValue[string] {
+	return &c.Archive
+}
+
 func (c *mqlAgentskillsSkill) GetName() *plugin.TValue[string] {
 	return &c.Name
 }
@@ -115779,6 +115823,22 @@ func (c *mqlAgentskillsSkill) GetBody() *plugin.TValue[string] {
 
 func (c *mqlAgentskillsSkill) GetContent() *plugin.TValue[string] {
 	return &c.Content
+}
+
+func (c *mqlAgentskillsSkill) GetSize() *plugin.TValue[int64] {
+	return &c.Size
+}
+
+func (c *mqlAgentskillsSkill) GetLines() *plugin.TValue[int64] {
+	return &c.Lines
+}
+
+func (c *mqlAgentskillsSkill) GetReferences() *plugin.TValue[[]any] {
+	return &c.References
+}
+
+func (c *mqlAgentskillsSkill) GetMissingReferences() *plugin.TValue[[]any] {
+	return &c.MissingReferences
 }
 
 func (c *mqlAgentskillsSkill) GetSha256() *plugin.TValue[string] {

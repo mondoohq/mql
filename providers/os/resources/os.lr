@@ -23530,6 +23530,9 @@ agentskills @defaults("path") @maturity("preview") {
   // Directory searched for skills
   path string
   // Skills found under the directory, one per SKILL.md file
+  //
+  // Includes the skills inside `.skill` packages, zip archives of skill directories,
+  // found under the directory.
   skills() []agentskills.skill
 }
 
@@ -23543,9 +23546,16 @@ agentskills @defaults("path") @maturity("preview") {
 // the definition.
 private agentskills.skill @defaults("name path") @maturity("preview") {
   // Path to the SKILL.md file
+  //
+  // For a skill read from a `.skill` package, the archive path followed by the path of
+  // SKILL.md inside it.
   path string
   // Name of the directory that contains SKILL.md
   directory string
+  // Path of the `.skill` package the skill was read from
+  //
+  // Empty for a skill read from a directory.
+  archive string
   // Skill name
   //
   // Frontmatter `name` field. The specification requires 1-64 lowercase letters, digits,
@@ -23587,18 +23597,37 @@ private agentskills.skill @defaults("name path") @maturity("preview") {
   body string
   // Full content of the SKILL.md file
   content string
+  // Size of the SKILL.md file in bytes
+  size int
+  // Number of lines in the body
+  //
+  // The specification recommends keeping SKILL.md under 500 lines and moving detail into
+  // referenced files.
+  lines int
+  // Bundled files the body refers to
+  //
+  // Paths relative to the skill directory: the targets of Markdown links and images that
+  // are not URLs, anchors, or absolute paths, and paths under `scripts/`, `references/`,
+  // and `assets/` written in the text.
+  references []string
+  // References that do not resolve to a file in the skill
+  //
+  // Referenced paths that do not exist in the skill directory or package, or that point
+  // outside it. A skill installed without its bundled files lists them here.
+  missingReferences []string
   // SHA-256 hash of the SKILL.md content
   sha256() string
   // Files bundled with the skill
   //
   // Every file in the skill directory other than SKILL.md, such as those under `scripts`,
-  // `references`, and `assets`.
+  // `references`, and `assets`. Empty for a skill read from a `.skill` package.
   files() []file
-  // Problems reading the frontmatter
+  // Problems reading the skill
   //
   // Empty when the frontmatter parses and its specified fields have the right types.
   // Otherwise one message per problem, for example a missing or unterminated frontmatter
-  // block, invalid YAML, or a `name` that is not a string.
+  // block, invalid YAML, a `name` that is not a string, a reference that points outside
+  // the skill, or a `.skill` package that cannot be read.
   errors []string
 }
 
