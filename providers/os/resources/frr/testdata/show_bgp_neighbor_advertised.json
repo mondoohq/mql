@@ -1,0 +1,37 @@
+{
+  "bgpTableVersion": 12,
+  "bgpLocalRouterId": "192.0.2.30",
+  "defaultLocPrf": 100,
+  "localAS": 65100,
+  "routes": {
+    "192.0.2.30/32": [
+      {
+        "valid": true,
+        "bestpath": true,
+        "network": "192.0.2.30/32",
+        "prefixLen": 32,
+        "path": "",
+        "origin": "IGP",
+        "metric": 0,
+        "weight": 32768,
+        "nexthops": [{"ip": "0.0.0.0", "afi": "ipv4", "used": true}],
+        "community": {"string": "65100:200", "list": ["65100:200"]}
+      }
+    ],
+    "10.100.0.0/16": [
+      {
+        "valid": true,
+        "bestpath": true,
+        "network": "10.100.0.0/16",
+        "prefixLen": 16,
+        "path": "65000",
+        "origin": "Incomplete",
+        "locPrf": 100,
+        "nexthops": [{"ip": "192.0.2.1", "afi": "ipv4", "used": true}],
+        "extendedCommunity": {"string": "RT:65100:5000"}
+      }
+    ]
+  },
+  "totalPrefixCounter": 2,
+  "filteredPrefixCounter": 1
+}
