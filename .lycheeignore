@@ -1,0 +1,9 @@
+# URLs excluded from link checking (regular expressions, one per line)
+^https://wiki\.jenkins\.io/display/JENKINS/Building\+a\+software\+project
+^https://platform\.openai\.com/
+^https://console\.mistral\.ai
+^https://nmap\.org/
+^https://docs\.ansible\.com/
+^https://docs\.aws\.amazon\.com/
+^https://(docs\.)?cloud\.google\.com/.*substitute-variable-values
+^https://serverfault\.com/

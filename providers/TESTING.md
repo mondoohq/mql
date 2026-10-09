@@ -137,9 +137,7 @@ Understanding eapi
 https://arista.my.site.com/AristaCommunity/s/article/arista-eapi-101
 
 expose api (requires port forwarding)
-<!-- markdown-link-check-disable -->
 http://localhost:8080/explorer.html
-<!-- markdown-link-check-enable -->
 
 arista user manual
 https://www.arista.com/en/um-eos

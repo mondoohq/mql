@@ -5,9 +5,7 @@
 3. load cert from live http connection
 
 https://go.dev/src/crypto/x509/root_linux.go
-<!-- markdown-link-check-disable -->
 https://serverfault.com/questions/62496/ssl-certificate-location-on-unix-linux
-<!-- markdown-link-check-enable-->
 https://github.com/genkiroid/cert
 https://github.com/grantae/certinfo
 https://github.com/google/certificate-transparency-go
