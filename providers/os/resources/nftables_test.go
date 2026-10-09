@@ -565,6 +565,11 @@ func TestNftTextElements(t *testing.T) {
 	require.NoError(t, json.Unmarshal(nftTextElements(`{ "a,b" : accept, 192.0.2.1 counter packets 0 bytes 0, 192.0.2.2 comment "x, y" }`), &elems))
 	assert.Equal(t, []string{`"a,b" : accept`, "192.0.2.1", "192.0.2.2"}, elems)
 
+	// nft 0.8.2 and 0.9.0 print a map element's attributes after the key,
+	// before the value.
+	require.NoError(t, json.Unmarshal(nftTextElements(`{ 192.0.2.1 timeout 10m expires 9m59s997ms : accept, 192.0.2.2 comment "why" : drop }`), &elems))
+	assert.Equal(t, []string{"192.0.2.1 : accept", "192.0.2.2 : drop"}, elems)
+
 	assert.Equal(t, "null", string(nftTextElements("{ }")))
 }
 
