@@ -164,7 +164,10 @@ func jlsInt(v any) *int64 {
 func (j *mqlJails) list() ([]any, error) {
 	conn := j.MqlRuntime.Connection.(shared.Connection)
 	if pf := conn.Asset().GetPlatform(); pf == nil || pf.Name != "freebsd" {
-		return nil, errors.New("jails resource is only supported on FreeBSD")
+		return nil, llx.NotApplicable(errors.New("jails are only available on FreeBSD"))
+	}
+	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return nil, llx.NotApplicable(errors.New("jails need a running system, and this connection cannot run commands"))
 	}
 
 	cmd, err := runSbinCommand(j.MqlRuntime, jlsCommand)
