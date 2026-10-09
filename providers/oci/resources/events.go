@@ -22,7 +22,7 @@ func (o *mqlOciEvents) id() (string, error) {
 func (o *mqlOciEvents) rules() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	return ociCollect(o.MqlRuntime, ociScopeTenancyRoot,
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
 		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
 			log.Debug().Msgf("calling oci with region %s", region)
 
@@ -32,7 +32,7 @@ func (o *mqlOciEvents) rules() ([]any, error) {
 			}
 
 			var res []any
-			rules, err := o.getEventRulesForRegion(ctx, svc, conn.TenantID())
+			rules, err := o.getEventRulesForRegion(ctx, svc, compartmentID)
 			if err != nil {
 				return nil, err
 			}

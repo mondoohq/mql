@@ -12,7 +12,6 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
 	"go.mondoo.com/mql/providers/oci/connection"
 	"go.mondoo.com/mql/types"
 )
@@ -21,44 +20,18 @@ func (o *mqlOciAiGenerativeAi) id() (string, error) {
 	return "oci.ai.generativeAi", nil
 }
 
-func (o *mqlOciAiGenerativeAi) compartmentID() string {
-	return o.MqlRuntime.Connection.(*connection.OciConnection).TenantID()
-}
-
 // listRegional runs fetch against the Generative AI API in every subscribed
-// region concurrently and flattens the results. Regions where Generative AI is
-// not available are skipped (see ociRegionServiceUnavailable).
-func (o *mqlOciAiGenerativeAi) listRegional(fetch func(svc *generativeai.GenerativeAiClient, region string) ([]any, error)) ([]any, error) {
+// region and every admitted compartment (see ociListRegionalAI). Base models
+// come back from every compartment asked and are deduplicated there.
+func (o *mqlOciAiGenerativeAi) listRegional(fetch func(svc *generativeai.GenerativeAiClient, region string, compartmentID string) ([]any, error)) ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	regions, err := ociRegionsFor(o.MqlRuntime)
-	if err != nil {
-		return nil, err
-	}
-
-	tasks := make([]*jobpool.Job, 0, len(regions))
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return nil, errors.New("invalid region type")
+	return ociListRegionalAI(o.MqlRuntime, func(region string, compartmentID string) ([]any, error) {
+		svc, err := conn.GenerativeAiClient(region)
+		if err != nil {
+			return nil, err
 		}
-		regionID := regionResource.Id.Data
-		tasks = append(tasks, jobpool.NewJob(func() (jobpool.JobResult, error) {
-			svc, err := conn.GenerativeAiClient(regionID)
-			if err != nil {
-				return nil, err
-			}
-			items, err := fetch(svc, regionID)
-			if err != nil {
-				if ociRegionServiceUnavailable(err) {
-					return jobpool.JobResult([]any{}), nil
-				}
-				return nil, err
-			}
-			return jobpool.JobResult(items), nil
-		}))
-	}
-
-	return ociRunRegionPool(tasks)
+		return fetch(svc, region, compartmentID)
+	})
 }
 
 // ----- dedicated AI clusters -----
@@ -67,11 +40,11 @@ func (o *mqlOciAiGenerativeAi) dedicatedAiClusters() ([]any, error) {
 	return o.listRegional(o.fetchDedicatedAiClusters)
 }
 
-func (o *mqlOciAiGenerativeAi) fetchDedicatedAiClusters(svc *generativeai.GenerativeAiClient, _ string) ([]any, error) {
+func (o *mqlOciAiGenerativeAi) fetchDedicatedAiClusters(svc *generativeai.GenerativeAiClient, _ string, compartmentID string) ([]any, error) {
 	ctx := context.Background()
 	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeai.DedicatedAiClusterSummary, *string, error) {
 		resp, err := svc.ListDedicatedAiClusters(ctx, generativeai.ListDedicatedAiClustersRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: common.String(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
@@ -132,11 +105,11 @@ func (o *mqlOciAiGenerativeAi) models() ([]any, error) {
 	return o.listRegional(o.fetchModels)
 }
 
-func (o *mqlOciAiGenerativeAi) fetchModels(svc *generativeai.GenerativeAiClient, _ string) ([]any, error) {
+func (o *mqlOciAiGenerativeAi) fetchModels(svc *generativeai.GenerativeAiClient, _ string, compartmentID string) ([]any, error) {
 	ctx := context.Background()
 	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeai.ModelSummary, *string, error) {
 		resp, err := svc.ListModels(ctx, generativeai.ListModelsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: common.String(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
@@ -215,11 +188,11 @@ func (o *mqlOciAiGenerativeAi) endpoints() ([]any, error) {
 	return o.listRegional(o.fetchEndpoints)
 }
 
-func (o *mqlOciAiGenerativeAi) fetchEndpoints(svc *generativeai.GenerativeAiClient, region string) ([]any, error) {
+func (o *mqlOciAiGenerativeAi) fetchEndpoints(svc *generativeai.GenerativeAiClient, region string, compartmentID string) ([]any, error) {
 	ctx := context.Background()
 	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeai.EndpointSummary, *string, error) {
 		resp, err := svc.ListEndpoints(ctx, generativeai.ListEndpointsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: common.String(compartmentID),
 			Page:          page,
 		})
 		if err != nil {

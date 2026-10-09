@@ -155,9 +155,16 @@ func (o *mqlOciOnsTopic) subscriptions() ([]any, error) {
 	topicId := o.Id.Data
 	ctx := context.Background()
 
+	// Subscriptions are listed in the topic's compartment, not the tenancy
+	// root, which held none for a topic created in a child compartment.
+	compartmentID := o.cacheCompartmentID
+	if compartmentID == "" {
+		compartmentID = conn.TenantID()
+	}
+
 	subs, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]ons.SubscriptionSummary, *string, error) {
 		request := ons.ListSubscriptionsRequest{
-			CompartmentId: common.String(conn.TenantID()),
+			CompartmentId: common.String(compartmentID),
 			TopicId:       common.String(topicId),
 			Page:          page,
 		}

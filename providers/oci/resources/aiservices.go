@@ -15,50 +15,36 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
 	"go.mondoo.com/mql/providers/oci/connection"
 	"go.mondoo.com/mql/types"
 )
 
-// ociListRegionalAI runs fetch against a single-purpose AI service in every
-// subscribed region concurrently and flattens the results. Regions where the
-// service is not available are skipped (see ociRegionServiceUnavailable).
-func ociListRegionalAI(runtime *plugin.Runtime, fetch func(region string) ([]any, error)) ([]any, error) {
-	regions, err := ociRegionsFor(runtime)
+// ociListRegionalAI runs fetch against an AI service in every subscribed
+// region and every compartment the filters admit, and flattens the results.
+// The AI list APIs answer for one compartment, so asking only the tenancy root
+// missed every project and model in a child compartment. Regions where the
+// service is not available and compartments the caller cannot read are
+// skipped, as in ociCollect.
+func ociListRegionalAI(runtime *plugin.Runtime, fetch func(region string, compartmentID string) ([]any, error)) ([]any, error) {
+	items, err := ociCollect(runtime, ociScopeAllCompartments, func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+		return fetch(region, compartmentID)
+	})
 	if err != nil {
 		return nil, err
 	}
-	tasks := make([]*jobpool.Job, 0, len(regions))
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return nil, errors.New("invalid region type")
-		}
-		regionID := regionResource.Id.Data
-		tasks = append(tasks, jobpool.NewJob(func() (jobpool.JobResult, error) {
-			items, err := fetch(regionID)
-			if err != nil {
-				if ociRegionServiceUnavailable(err) {
-					return jobpool.JobResult([]any{}), nil
-				}
-				return nil, err
-			}
-			return jobpool.JobResult(items), nil
-		}))
-	}
-	return ociRunRegionPool(tasks)
+	return ociDedupeByID(items), nil
 }
 
 // ociListRegionalAIClient adds typed per-region client creation to
 // ociListRegionalAI: it builds the client with factory and hands it to fetch,
 // so each call site only supplies the list-and-map logic.
-func ociListRegionalAIClient[C any](runtime *plugin.Runtime, factory func(region string) (C, error), fetch func(svc C) ([]any, error)) ([]any, error) {
-	return ociListRegionalAI(runtime, func(region string) ([]any, error) {
+func ociListRegionalAIClient[C any](runtime *plugin.Runtime, factory func(region string) (C, error), fetch func(svc C, compartmentID string) ([]any, error)) ([]any, error) {
+	return ociListRegionalAI(runtime, func(region string, compartmentID string) ([]any, error) {
 		svc, err := factory(region)
 		if err != nil {
 			return nil, err
 		}
-		return fetch(svc)
+		return fetch(svc, compartmentID)
 	})
 }
 
@@ -98,10 +84,10 @@ func (o *mqlOciAiLanguage) id() (string, error) { return "oci.ai.language", nil 
 
 func (o *mqlOciAiLanguage) projects() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	return ociListRegionalAIClient(o.MqlRuntime, conn.AILanguageClient, func(svc *ailanguage.AIServiceLanguageClient) ([]any, error) {
+	return ociListRegionalAIClient(o.MqlRuntime, conn.AILanguageClient, func(svc *ailanguage.AIServiceLanguageClient, compartmentID string) ([]any, error) {
 		items, err := ociPaginate(context.Background(), func(ctx context.Context, page *string) ([]ailanguage.ProjectSummary, *string, error) {
 			resp, err := svc.ListProjects(ctx, ailanguage.ListProjectsRequest{
-				CompartmentId: common.String(conn.TenantID()), Page: page,
+				CompartmentId: common.String(compartmentID), Page: page,
 			})
 			if err != nil {
 				return nil, nil, err
@@ -136,10 +122,10 @@ func (o *mqlOciAiLanguage) projects() ([]any, error) {
 
 func (o *mqlOciAiLanguage) models() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	return ociListRegionalAIClient(o.MqlRuntime, conn.AILanguageClient, func(svc *ailanguage.AIServiceLanguageClient) ([]any, error) {
+	return ociListRegionalAIClient(o.MqlRuntime, conn.AILanguageClient, func(svc *ailanguage.AIServiceLanguageClient, compartmentID string) ([]any, error) {
 		items, err := ociPaginate(context.Background(), func(ctx context.Context, page *string) ([]ailanguage.ModelSummary, *string, error) {
 			resp, err := svc.ListModels(ctx, ailanguage.ListModelsRequest{
-				CompartmentId: common.String(conn.TenantID()), Page: page,
+				CompartmentId: common.String(compartmentID), Page: page,
 			})
 			if err != nil {
 				return nil, nil, err
@@ -182,10 +168,10 @@ func (o *mqlOciAiLanguage) models() ([]any, error) {
 
 func (o *mqlOciAiLanguage) endpoints() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	return ociListRegionalAIClient(o.MqlRuntime, conn.AILanguageClient, func(svc *ailanguage.AIServiceLanguageClient) ([]any, error) {
+	return ociListRegionalAIClient(o.MqlRuntime, conn.AILanguageClient, func(svc *ailanguage.AIServiceLanguageClient, compartmentID string) ([]any, error) {
 		items, err := ociPaginate(context.Background(), func(ctx context.Context, page *string) ([]ailanguage.EndpointSummary, *string, error) {
 			resp, err := svc.ListEndpoints(ctx, ailanguage.ListEndpointsRequest{
-				CompartmentId: common.String(conn.TenantID()), Page: page,
+				CompartmentId: common.String(compartmentID), Page: page,
 			})
 			if err != nil {
 				return nil, nil, err
@@ -307,10 +293,10 @@ func (o *mqlOciAiVision) id() (string, error) { return "oci.ai.vision", nil }
 
 func (o *mqlOciAiVision) projects() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	return ociListRegionalAIClient(o.MqlRuntime, conn.AIVisionClient, func(svc *aivision.AIServiceVisionClient) ([]any, error) {
+	return ociListRegionalAIClient(o.MqlRuntime, conn.AIVisionClient, func(svc *aivision.AIServiceVisionClient, compartmentID string) ([]any, error) {
 		items, err := ociPaginate(context.Background(), func(ctx context.Context, page *string) ([]aivision.ProjectSummary, *string, error) {
 			resp, err := svc.ListProjects(ctx, aivision.ListProjectsRequest{
-				CompartmentId: common.String(conn.TenantID()), Page: page,
+				CompartmentId: common.String(compartmentID), Page: page,
 			})
 			if err != nil {
 				return nil, nil, err
@@ -344,10 +330,10 @@ func (o *mqlOciAiVision) projects() ([]any, error) {
 
 func (o *mqlOciAiVision) models() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	return ociListRegionalAIClient(o.MqlRuntime, conn.AIVisionClient, func(svc *aivision.AIServiceVisionClient) ([]any, error) {
+	return ociListRegionalAIClient(o.MqlRuntime, conn.AIVisionClient, func(svc *aivision.AIServiceVisionClient, compartmentID string) ([]any, error) {
 		items, err := ociPaginate(context.Background(), func(ctx context.Context, page *string) ([]aivision.ModelSummary, *string, error) {
 			resp, err := svc.ListModels(ctx, aivision.ListModelsRequest{
-				CompartmentId: common.String(conn.TenantID()), Page: page,
+				CompartmentId: common.String(compartmentID), Page: page,
 			})
 			if err != nil {
 				return nil, nil, err
@@ -432,10 +418,10 @@ func (o *mqlOciAiSpeech) id() (string, error) { return "oci.ai.speech", nil }
 
 func (o *mqlOciAiSpeech) customizations() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	return ociListRegionalAIClient(o.MqlRuntime, conn.AISpeechClient, func(svc *aispeech.AIServiceSpeechClient) ([]any, error) {
+	return ociListRegionalAIClient(o.MqlRuntime, conn.AISpeechClient, func(svc *aispeech.AIServiceSpeechClient, compartmentID string) ([]any, error) {
 		items, err := ociPaginate(context.Background(), func(ctx context.Context, page *string) ([]aispeech.CustomizationSummary, *string, error) {
 			resp, err := svc.ListCustomizations(ctx, aispeech.ListCustomizationsRequest{
-				CompartmentId: common.String(conn.TenantID()), Page: page,
+				CompartmentId: common.String(compartmentID), Page: page,
 			})
 			if err != nil {
 				return nil, nil, err
@@ -488,10 +474,10 @@ func (o *mqlOciAiDocument) id() (string, error) { return "oci.ai.document", nil 
 
 func (o *mqlOciAiDocument) projects() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	return ociListRegionalAIClient(o.MqlRuntime, conn.AIDocumentClient, func(svc *aidocument.AIServiceDocumentClient) ([]any, error) {
+	return ociListRegionalAIClient(o.MqlRuntime, conn.AIDocumentClient, func(svc *aidocument.AIServiceDocumentClient, compartmentID string) ([]any, error) {
 		items, err := ociPaginate(context.Background(), func(ctx context.Context, page *string) ([]aidocument.ProjectSummary, *string, error) {
 			resp, err := svc.ListProjects(ctx, aidocument.ListProjectsRequest{
-				CompartmentId: common.String(conn.TenantID()), Page: page,
+				CompartmentId: common.String(compartmentID), Page: page,
 			})
 			if err != nil {
 				return nil, nil, err
@@ -526,10 +512,10 @@ func (o *mqlOciAiDocument) projects() ([]any, error) {
 
 func (o *mqlOciAiDocument) models() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	return ociListRegionalAIClient(o.MqlRuntime, conn.AIDocumentClient, func(svc *aidocument.AIServiceDocumentClient) ([]any, error) {
+	return ociListRegionalAIClient(o.MqlRuntime, conn.AIDocumentClient, func(svc *aidocument.AIServiceDocumentClient, compartmentID string) ([]any, error) {
 		items, err := ociPaginate(context.Background(), func(ctx context.Context, page *string) ([]aidocument.ModelSummary, *string, error) {
 			resp, err := svc.ListModels(ctx, aidocument.ListModelsRequest{
-				CompartmentId: common.String(conn.TenantID()), Page: page,
+				CompartmentId: common.String(compartmentID), Page: page,
 			})
 			if err != nil {
 				return nil, nil, err

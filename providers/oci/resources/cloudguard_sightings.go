@@ -63,8 +63,15 @@ func (o *mqlOciCloudGuardSightingImpactedResource) compartment() (*mqlOciCompart
 	return resolveOciCompartment(o.MqlRuntime, o.cacheCompartmentID, &o.Compartment)
 }
 
-// sightings lists the activity Cloud Guard has correlated across the tenancy.
+// sightings is one subtree call for the whole tenancy, narrowed to the
+// compartments the filters admit.
 func (o *mqlOciCloudGuard) sightings() ([]any, error) {
+	items, err := o.listSightings()
+	return ociKeepAdmitted(o.MqlRuntime, items, err)
+}
+
+// listSightings lists the activity Cloud Guard has correlated across the tenancy.
+func (o *mqlOciCloudGuard) listSightings() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
 	serviceRegion, err := o.getServiceRegion()

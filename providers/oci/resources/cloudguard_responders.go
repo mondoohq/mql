@@ -86,11 +86,18 @@ func (o *mqlOciCloudGuardResponderRecipe) compartment() (*mqlOciCompartment, err
 	return resolveOciCompartment(o.MqlRuntime, o.cacheCompartmentID, &o.Compartment)
 }
 
-// responderRecipes lists the remediation recipes defined in the tenancy.
+// responderRecipes is one subtree call for the whole tenancy, narrowed to the
+// compartments the filters admit.
+func (o *mqlOciCloudGuard) responderRecipes() ([]any, error) {
+	items, err := o.listResponderRecipes()
+	return ociKeepAdmitted(o.MqlRuntime, items, err)
+}
+
+// listResponderRecipes lists the remediation recipes defined in the tenancy.
 //
 // An empty result is a real and important answer: it means Cloud Guard can
 // detect problems but has nothing configured to act on them.
-func (o *mqlOciCloudGuard) responderRecipes() ([]any, error) {
+func (o *mqlOciCloudGuard) listResponderRecipes() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
 	serviceRegion, err := o.getServiceRegion()

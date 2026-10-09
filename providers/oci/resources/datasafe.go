@@ -144,7 +144,14 @@ func (o *mqlOciDataSafe) configurations() ([]any, error) {
 // targetDatabases — per-region ListTargetDatabases
 // ============================================================================
 
+// targetDatabases is one subtree call for the whole tenancy, narrowed to the
+// compartments the filters admit.
 func (o *mqlOciDataSafe) targetDatabases() ([]any, error) {
+	items, err := o.listTargetDatabases()
+	return ociKeepAdmitted(o.MqlRuntime, items, err)
+}
+
+func (o *mqlOciDataSafe) listTargetDatabases() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 	regions, err := o.regionsList()
 	if err != nil {
@@ -212,7 +219,14 @@ func (o *mqlOciDataSafe) targetDatabases() ([]any, error) {
 // securityAssessments — per-region ListSecurityAssessments
 // ============================================================================
 
+// securityAssessments is one subtree call for the whole tenancy, narrowed to the
+// compartments the filters admit.
 func (o *mqlOciDataSafe) securityAssessments() ([]any, error) {
+	items, err := o.listSecurityAssessments()
+	return ociKeepAdmitted(o.MqlRuntime, items, err)
+}
+
+func (o *mqlOciDataSafe) listSecurityAssessments() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 	regions, err := o.regionsList()
 	if err != nil {
@@ -278,7 +292,14 @@ func (o *mqlOciDataSafe) securityAssessments() ([]any, error) {
 // userAssessments — per-region ListUserAssessments
 // ============================================================================
 
+// userAssessments is one subtree call for the whole tenancy, narrowed to the
+// compartments the filters admit.
 func (o *mqlOciDataSafe) userAssessments() ([]any, error) {
+	items, err := o.listUserAssessments()
+	return ociKeepAdmitted(o.MqlRuntime, items, err)
+}
+
+func (o *mqlOciDataSafe) listUserAssessments() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 	regions, err := o.regionsList()
 	if err != nil {
@@ -344,7 +365,14 @@ func (o *mqlOciDataSafe) userAssessments() ([]any, error) {
 // sensitiveDataModels — per-region ListSensitiveDataModels
 // ============================================================================
 
+// sensitiveDataModels is one subtree call for the whole tenancy, narrowed to the
+// compartments the filters admit.
 func (o *mqlOciDataSafe) sensitiveDataModels() ([]any, error) {
+	items, err := o.listSensitiveDataModels()
+	return ociKeepAdmitted(o.MqlRuntime, items, err)
+}
+
+func (o *mqlOciDataSafe) listSensitiveDataModels() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 	regions, err := o.regionsList()
 	if err != nil {
@@ -409,7 +437,14 @@ func (o *mqlOciDataSafe) sensitiveDataModels() ([]any, error) {
 // sensitiveTypes — per-region ListSensitiveTypes
 // ============================================================================
 
+// sensitiveTypes is one subtree call for the whole tenancy, narrowed to the
+// compartments the filters admit.
 func (o *mqlOciDataSafe) sensitiveTypes() ([]any, error) {
+	items, err := o.listSensitiveTypes()
+	return ociKeepAdmitted(o.MqlRuntime, items, err)
+}
+
+func (o *mqlOciDataSafe) listSensitiveTypes() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 	regions, err := o.regionsList()
 	if err != nil {
@@ -474,7 +509,14 @@ func (o *mqlOciDataSafe) sensitiveTypes() ([]any, error) {
 // maskingPolicies — per-region ListMaskingPolicies
 // ============================================================================
 
+// maskingPolicies is one subtree call for the whole tenancy, narrowed to the
+// compartments the filters admit.
 func (o *mqlOciDataSafe) maskingPolicies() ([]any, error) {
+	items, err := o.listMaskingPolicies()
+	return ociKeepAdmitted(o.MqlRuntime, items, err)
+}
+
+func (o *mqlOciDataSafe) listMaskingPolicies() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 	regions, err := o.regionsList()
 	if err != nil {

@@ -181,7 +181,14 @@ func (o *mqlOciCloudGuard) selfManageResources() (bool, error) {
 	return boolValue(cfg.SelfManageResources), nil
 }
 
+// targets is one subtree call for the whole tenancy, narrowed to the
+// compartments the filters admit.
 func (o *mqlOciCloudGuard) targets() ([]any, error) {
+	items, err := o.listTargets()
+	return ociKeepAdmitted(o.MqlRuntime, items, err)
+}
+
+func (o *mqlOciCloudGuard) listTargets() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
 	serviceRegion, err := o.getServiceRegion()
@@ -250,7 +257,14 @@ func (o *mqlOciCloudGuard) targets() ([]any, error) {
 	return res, nil
 }
 
-// problems lists the findings Cloud Guard has raised.
+// problems is one subtree call for the whole tenancy, narrowed to the
+// compartments the filters admit.
+func (o *mqlOciCloudGuard) problems() ([]any, error) {
+	items, err := o.listProblems()
+	return ociKeepAdmitted(o.MqlRuntime, items, err)
+}
+
+// listProblems lists the findings Cloud Guard has raised.
 //
 // Leaving the request's filters unset does not mean "everything": the service
 // applies its own defaults, narrowing the result to problems whose lifecycle
@@ -263,7 +277,7 @@ func (o *mqlOciCloudGuard) targets() ([]any, error) {
 // only or also want the RESOLVED and DISMISSED history, and that history is
 // the point - a dismissed-but-unfixed finding should be distinguishable from
 // one that never existed, which a 30-day cutoff quietly prevents.
-func (o *mqlOciCloudGuard) problems() ([]any, error) {
+func (o *mqlOciCloudGuard) listProblems() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
 	serviceRegion, err := o.getServiceRegion()
@@ -508,7 +522,14 @@ func (o *mqlOciCloudGuardDetectorRecipe) rules() ([]any, error) {
 	return res, nil
 }
 
+// detectorRecipes is one subtree call for the whole tenancy, narrowed to the
+// compartments the filters admit.
 func (o *mqlOciCloudGuard) detectorRecipes() ([]any, error) {
+	items, err := o.listDetectorRecipes()
+	return ociKeepAdmitted(o.MqlRuntime, items, err)
+}
+
+func (o *mqlOciCloudGuard) listDetectorRecipes() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
 	serviceRegion, err := o.getServiceRegion()
@@ -577,7 +598,14 @@ type mqlOciCloudGuardDetectorRecipeInternal struct {
 	ociCompartmentRef
 }
 
+// securityZones is one subtree call for the whole tenancy, narrowed to the
+// compartments the filters admit.
 func (o *mqlOciCloudGuard) securityZones() ([]any, error) {
+	items, err := o.listSecurityZones()
+	return ociKeepAdmitted(o.MqlRuntime, items, err)
+}
+
+func (o *mqlOciCloudGuard) listSecurityZones() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
 	serviceRegion, err := o.getServiceRegion()
@@ -653,24 +681,43 @@ func (o *mqlOciCloudGuard) securityZoneRecipes() ([]any, error) {
 		return nil, err
 	}
 
-	ctx := context.Background()
-	recipes, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]cloudguard.SecurityRecipeSummary, *string, error) {
-		response, err := client.ListSecurityRecipes(ctx, cloudguard.ListSecurityRecipesRequest{
-			CompartmentId: common.String(conn.TenantID()),
-			Page:          page,
+	// Security recipes have no subtree flag, and a custom recipe can sit in
+	// any compartment, so every compartment is asked, in Cloud Guard's
+	// reporting region only.
+	items, err := ociCollectGlobal(o.MqlRuntime, func(ctx context.Context, compartmentID string) ([]any, error) {
+		recipes, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]cloudguard.SecurityRecipeSummary, *string, error) {
+			response, err := client.ListSecurityRecipes(ctx, cloudguard.ListSecurityRecipesRequest{
+				CompartmentId: common.String(compartmentID),
+				Page:          page,
+			})
+			if err != nil {
+				return nil, nil, err
+			}
+			return response.Items, response.OpcNextPage, nil
 		})
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		return response.Items, response.OpcNextPage, nil
+		out := make([]any, 0, len(recipes))
+		for i := range recipes {
+			out = append(out, recipes[i])
+		}
+		return out, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	res := make([]any, 0, len(recipes))
-	for i := range recipes {
-		recipe := recipes[i]
+	res := make([]any, 0, len(items))
+	seen := map[string]bool{}
+	for i := range items {
+		recipe := items[i].(cloudguard.SecurityRecipeSummary)
+		// Oracle-managed recipes may be answered from more than one compartment.
+		id := stringValue(recipe.Id)
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
 
 		var created *time.Time
 		if recipe.TimeCreated != nil {

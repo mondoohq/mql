@@ -99,13 +99,12 @@ func (o *mqlOciIdentity) domains() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Narrowed by the compartment filters, like every other compartment
+	// fan-out: a scan of one compartment must not report the others' domains.
+	compartmentIDs := conn.Filters.SelectCompartments(compartments)
 
-	jobs := make([]*jobpool.Job, 0, len(compartments))
-	for i := range compartments {
-		compartmentID := stringValue(compartments[i].Id)
-		if compartmentID == "" {
-			continue
-		}
+	jobs := make([]*jobpool.Job, 0, len(compartmentIDs))
+	for _, compartmentID := range compartmentIDs {
 
 		jobs = append(jobs, jobpool.NewJob(func() (jobpool.JobResult, error) {
 			summaries, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]identity.DomainSummary, *string, error) {

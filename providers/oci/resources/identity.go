@@ -483,10 +483,15 @@ func (o *mqlOciIdentityGroup) id() (string, error) {
 	return "oci.identity.group/" + o.Id.Data, nil
 }
 
+// policies lists the IAM policies of every compartment the filters admit. A
+// policy can be attached to any compartment, and ListPolicies answers for
+// one, so asking only the tenancy root missed every policy attached lower in
+// the tree. IAM is global, so there is no region dimension.
 func (o *mqlOciIdentity) policies() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-
-	return ociRunRegionPool(o.getPolicies(conn))
+	return ociCollectGlobal(o.MqlRuntime, func(ctx context.Context, compartmentID string) ([]any, error) {
+		return o.policiesIn(ctx, conn, compartmentID)
+	})
 }
 
 func (s *mqlOciIdentity) listPolicies(ctx context.Context, identityClient identity.IdentityClient, compartmentID string) ([]identity.Policy, error) {
@@ -509,21 +514,15 @@ func (s *mqlOciIdentity) listPolicies(ctx context.Context, identityClient identi
 	return policies, nil
 }
 
-func (o *mqlOciIdentity) getPolicies(conn *connection.OciConnection) []*jobpool.Job {
-	ctx := context.Background()
-	// IAM is a global service: every regional identity endpoint serves the same
-	// tenancy-wide set, so fanning out over regions returned each policy once per
-	// subscribed region. CreateResource hands back the cached instance for a
-	// repeated __id, so the slice held N copies of one pointer and the counts
-	// (and anything filtering them) were inflated N-fold.
-	f := func() (jobpool.JobResult, error) {
+func (o *mqlOciIdentity) policiesIn(ctx context.Context, conn *connection.OciConnection, compartmentID string) ([]any, error) {
+	{
 		svc, err := conn.IdentityClient()
 		if err != nil {
 			return nil, err
 		}
 
 		var res []any
-		policies, err := o.listPolicies(ctx, svc, conn.TenantID())
+		policies, err := o.listPolicies(ctx, svc, compartmentID)
 		if err != nil {
 			return nil, err
 		}
@@ -562,9 +561,8 @@ func (o *mqlOciIdentity) getPolicies(conn *connection.OciConnection) []*jobpool.
 			res = append(res, mqlInstance)
 		}
 
-		return jobpool.JobResult(res), nil
+		return res, nil
 	}
-	return []*jobpool.Job{jobpool.NewJob(f)}
 }
 
 func (o *mqlOciIdentityPolicy) id() (string, error) {

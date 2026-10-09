@@ -50,15 +50,22 @@ func TestCompartmentScopedListersUseTheirCompartment(t *testing.T) {
 					return true
 				}
 				ident, ok := call.Fun.(*ast.Ident)
-				if !ok || ident.Name != "ociCollect" || len(call.Args) < 3 {
-					return true
-				}
-				scope, ok := call.Args[1].(*ast.Ident)
-				if !ok || scope.Name != "ociScopeAllCompartments" {
-					return true
-				}
-				lambda, ok := call.Args[2].(*ast.FuncLit)
 				if !ok {
+					return true
+				}
+				var lambda *ast.FuncLit
+				switch {
+				case ident.Name == "ociCollect" && len(call.Args) >= 3:
+					scope, ok := call.Args[1].(*ast.Ident)
+					if !ok || scope.Name != "ociScopeAllCompartments" {
+						return true
+					}
+					lambda, _ = call.Args[2].(*ast.FuncLit)
+				case ident.Name == "ociCollectGlobal" && len(call.Args) >= 2:
+					// Always a compartment fan-out.
+					lambda, _ = call.Args[1].(*ast.FuncLit)
+				}
+				if lambda == nil {
 					return true
 				}
 

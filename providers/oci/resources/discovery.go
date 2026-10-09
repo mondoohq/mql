@@ -181,10 +181,8 @@ var ociDiscoveryTargets = []ociDiscoveryTarget{
 				// qualifies them - so use namespace/name to match the __id.
 				id: b.Namespace.Data + "/" + b.Name.Data, name: b.Name.Data,
 				compartment: b.cacheCompartmentID, region: regionKey,
-				// Tags on a bucket require an extra GetBucket call. Surface
-				// empty labels rather than paying N round-trips at discovery
-				// time just to populate them.
-				labels: map[string]string{},
+				// Listed with the bucket (fields=tags), so no GetBucket.
+				labels: tagsToLabels(b.GetFreeformTags().Data),
 			}, true
 		},
 	},

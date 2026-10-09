@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/oracle/oci-go-sdk/v65/identity"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
@@ -59,9 +60,25 @@ const (
 	// compartment beneath it.
 	//
 	// Needed because most OCI list APIs have no `compartmentIdInSubtree` flag.
-	// The few services that do offer one (Cloud Guard, Data Safe, Logging,
-	// Monitoring) set it on the request instead and stay on the root scope.
+	// The few services that do offer one (Cloud Guard, Data Safe, Monitoring)
+	// set it on the request and use ociScopeSubtree instead.
 	ociScopeAllCompartments
+
+	// ociScopeSubtree asks the tenancy root once per region, for a request
+	// that sets its own compartmentIdInSubtree flag and so answers for the
+	// whole tree.
+	//
+	// The root is asked even when a compartment filter excludes it, because
+	// the filter selects where resources live, not where the question is
+	// asked: under ociScopeTenancyRoot a filter naming one child compartment
+	// skipped the call and returned nothing at all. The lister has to drop
+	// the items of compartments the filter does not admit itself, with
+	// ociCompartmentAdmitter, since only it can read an item's compartment.
+	//
+	// Logging documents such a flag too but ignores it (a log group in a
+	// child compartment is not returned from the root), so it uses
+	// ociScopeAllCompartments.
+	ociScopeSubtree
 )
 
 // ociListerConcurrency bounds how many (region, compartment) list calls run at
@@ -149,6 +166,9 @@ func ociRegionIDs(regions []any) ([]string, error) {
 func (s ociScope) compartmentIDs(ctx context.Context, conn *connection.OciConnection) ([]string, error) {
 	if s == ociScopeTenancyRoot {
 		return conn.SelectTenancyRoot(ctx), nil
+	}
+	if s == ociScopeSubtree {
+		return []string{conn.TenantID()}, nil
 	}
 
 	compartments, err := conn.GetCompartments(ctx)
@@ -305,4 +325,89 @@ func ociJoinCompartmentJobs(jobs []*jobpool.Job, concurrency int) ([]any, error)
 	}
 
 	return res, nil
+}
+
+// ociCompartmentAdmitter returns whether the compartment filters admit a
+// compartment, for listers that receive resources of many compartments from
+// one call (ociScopeSubtree). Without a compartment filter every compartment
+// is admitted and the tree is not read.
+func ociCompartmentAdmitter(ctx context.Context, conn *connection.OciConnection) (func(compartmentID string) bool, error) {
+	if !conn.Filters.HasCompartments() {
+		return func(string) bool { return true }, nil
+	}
+	compartments, err := conn.GetCompartments(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ociAdmitted(conn.Filters, compartments), nil
+}
+
+// ociAdmitted is the set of compartments the filters admit, as a predicate.
+func ociAdmitted(filters connection.DiscoveryFilters, compartments []identity.Compartment) func(compartmentID string) bool {
+	admitted := map[string]bool{}
+	for _, id := range filters.SelectCompartments(compartments) {
+		admitted[id] = true
+	}
+	return func(compartmentID string) bool { return admitted[compartmentID] }
+}
+
+// ociGlobalLister lists resources of a global (home region) service inside
+// one compartment.
+type ociGlobalLister func(ctx context.Context, compartmentID string) ([]any, error)
+
+// ociCollectGlobal fans a lister out over every compartment the filters
+// admit, without a region dimension: for identity-plane resources such as
+// policies that live in any compartment but are served the same from every
+// region, so a region fan-out would return each one once per region.
+func ociCollectGlobal(runtime *plugin.Runtime, list ociGlobalLister) ([]any, error) {
+	conn := runtime.Connection.(*connection.OciConnection)
+	ctx := context.Background()
+	compartmentIDs, err := ociScopeAllCompartments.compartmentIDs(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+	jobs := make([]*jobpool.Job, 0, len(compartmentIDs))
+	for _, compartmentID := range compartmentIDs {
+		jobs = append(jobs, jobpool.NewJob(func() (jobpool.JobResult, error) {
+			items, err := list(ctx, compartmentID)
+			if err != nil {
+				return nil, err
+			}
+			return jobpool.JobResult(items), nil
+		}))
+	}
+	return ociJoinCompartmentJobs(jobs, ociScopeAllCompartments.concurrency())
+}
+
+// ociKeepAdmitted drops the resources of compartments the compartment filters
+// do not admit, from a collection one subtree call returned for the whole
+// tenancy (ociScopeSubtree, or a lister that sets the subtree flag itself). A
+// resource that does not record its compartment is kept: dropping it would
+// hide a resource on the strength of a filter nobody could apply to it.
+func ociKeepAdmitted(runtime *plugin.Runtime, items []any, err error) ([]any, error) {
+	if err != nil {
+		return nil, err
+	}
+	conn := runtime.Connection.(*connection.OciConnection)
+	if !conn.Filters.HasCompartments() {
+		return items, nil
+	}
+	admit, err := ociCompartmentAdmitter(context.Background(), conn)
+	if err != nil {
+		return nil, err
+	}
+	return ociFilterAdmitted(items, admit), nil
+}
+
+// ociFilterAdmitted keeps the items whose compartment is admitted, and those
+// that do not record one.
+func ociFilterAdmitted(items []any, admit func(compartmentID string) bool) []any {
+	out := make([]any, 0, len(items))
+	for _, item := range items {
+		if g, ok := item.(ociCompartmentGetter); ok && !admit(g.compartmentIDValue()) {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
 }

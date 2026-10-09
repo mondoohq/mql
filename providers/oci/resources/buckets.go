@@ -14,8 +14,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
 	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (e *mqlOciObjectStorage) id() (string, error) {
@@ -55,65 +55,41 @@ func (o *mqlOciObjectStorage) namespace() (string, error) {
 func (o *mqlOciObjectStorage) buckets() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	// fetch regions
 	regions, err := ociRegionsFor(o.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
+	regionsByID, err := ociRegionsByID(regions)
+	if err != nil {
+		return nil, err
+	}
 
-	// fetch buckets
 	namespace, err := o.namespace()
 	if err != nil {
 		return nil, err
 	}
 
-	return ociRunRegionPool(o.getBuckets(conn, namespace, regions))
-}
+	// Buckets live in any compartment, and ListBuckets answers for one.
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci with region %s", region)
 
-func (o *mqlOciObjectStorage) getBucketsForRegion(ctx context.Context, objectStorageClient *objectstorage.ObjectStorageClient, compartmentID string, namespace string) ([]objectstorage.BucketSummary, error) {
-	entries, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]objectstorage.BucketSummary, *string, error) {
-		request := objectstorage.ListBucketsRequest{
-			NamespaceName: common.String(namespace),
-			CompartmentId: common.String(compartmentID),
-			Page:          page,
-		}
+			regionResource, ok := regionsByID[region]
+			if !ok {
+				return nil, errors.New("no oci.region resource for region " + region)
+			}
 
-		response, err := objectStorageClient.ListBuckets(ctx, request)
-		if err != nil {
-			return nil, nil, err
-		}
-		return response.Items, response.OpcNextPage, nil
-	})
-	if err != nil {
-		return nil, err
-	}
+			svc, err := conn.ObjectStorageClient(region)
+			if err != nil {
+				return nil, err
+			}
 
-	return entries, nil
-}
-
-func (o *mqlOciObjectStorage) getBuckets(conn *connection.OciConnection, namespace string, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci with region %s", regionResource.Id.Data)
-
-			svc, err := conn.ObjectStorageClient(regionResource.Id.Data)
+			buckets, err := o.getBucketsForRegion(ctx, svc, compartmentID, namespace)
 			if err != nil {
 				return nil, err
 			}
 
 			var res []any
-			buckets, err := o.getBucketsForRegion(ctx, svc, conn.TenantID(), namespace)
-			if err != nil {
-				return nil, err
-			}
-
 			for i := range buckets {
 				bucket := buckets[i]
 
@@ -132,18 +108,43 @@ func (o *mqlOciObjectStorage) getBuckets(conn *connection.OciConnection, namespa
 					"name":      llx.StringDataPtr(bucket.Name),
 					"region":    llx.ResourceData(regionResource, "oci.region"),
 					"created":   llx.TimeDataPtr(created),
+					// Listed with the bucket, so no GetBucket is needed for them.
+					"freeformTags": llx.MapData(strMapToAny(bucket.FreeformTags), types.String),
+					"definedTags":  llx.MapData(definedTagsToAny(bucket.DefinedTags), types.Any),
 				})
 				if err != nil {
 					return nil, err
 				}
 				res = append(res, mqlInstance)
 			}
+			return res, nil
+		})
+}
 
-			return jobpool.JobResult(res), nil
+// getBucketsForRegion lists a compartment's buckets with their tags.
+// ListBuckets returns tags only when they are asked for: without them every
+// bucket failed a tag filter, and the bucket assets carried no labels.
+func (o *mqlOciObjectStorage) getBucketsForRegion(ctx context.Context, objectStorageClient *objectstorage.ObjectStorageClient, compartmentID string, namespace string) ([]objectstorage.BucketSummary, error) {
+	fields := []objectstorage.ListBucketsFieldsEnum{objectstorage.ListBucketsFieldsTags}
+	entries, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]objectstorage.BucketSummary, *string, error) {
+		request := objectstorage.ListBucketsRequest{
+			NamespaceName: common.String(namespace),
+			CompartmentId: common.String(compartmentID),
+			Fields:        fields,
+			Page:          page,
 		}
-		tasks = append(tasks, jobpool.NewJob(f))
+
+		response, err := objectStorageClient.ListBuckets(ctx, request)
+		if err != nil {
+			return nil, nil, err
+		}
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return tasks
+
+	return entries, nil
 }
 
 type mqlOciObjectStorageBucketInternal struct {

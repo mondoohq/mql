@@ -44,6 +44,15 @@ func (c *ociCompartmentRef) setCompartmentID(id string) {
 	c.cacheCompartmentID = id
 }
 
+func (c *ociCompartmentRef) compartmentIDValue() string {
+	return c.cacheCompartmentID
+}
+
+// ociCompartmentGetter reads the compartment a resource was listed from.
+type ociCompartmentGetter interface {
+	compartmentIDValue() string
+}
+
 // ociCompartmentSetter is satisfied by every resource embedding
 // ociCompartmentRef, which lets createOciResourceInCompartment stash the OCID
 // without knowing the concrete resource type.

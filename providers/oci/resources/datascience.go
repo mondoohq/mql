@@ -12,7 +12,6 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
 	"go.mondoo.com/mql/providers/oci/connection"
 	"go.mondoo.com/mql/types"
 )
@@ -22,43 +21,16 @@ func (o *mqlOciAiDataScience) id() (string, error) {
 }
 
 // listRegional runs fetch against the Data Science API in every subscribed
-// region concurrently and flattens the results. Regions where Data Science is
-// not available are skipped (see ociRegionServiceUnavailable).
-func (o *mqlOciAiDataScience) listRegional(fetch func(svc *datascience.DataScienceClient) ([]any, error)) ([]any, error) {
+// region and every admitted compartment (see ociListRegionalAI).
+func (o *mqlOciAiDataScience) listRegional(fetch func(svc *datascience.DataScienceClient, compartmentID string) ([]any, error)) ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	regions, err := ociRegionsFor(o.MqlRuntime)
-	if err != nil {
-		return nil, err
-	}
-
-	tasks := make([]*jobpool.Job, 0, len(regions))
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return nil, errors.New("invalid region type")
+	return ociListRegionalAI(o.MqlRuntime, func(region string, compartmentID string) ([]any, error) {
+		svc, err := conn.DataScienceClient(region)
+		if err != nil {
+			return nil, err
 		}
-		regionID := regionResource.Id.Data
-		tasks = append(tasks, jobpool.NewJob(func() (jobpool.JobResult, error) {
-			svc, err := conn.DataScienceClient(regionID)
-			if err != nil {
-				return nil, err
-			}
-			items, err := fetch(svc)
-			if err != nil {
-				if ociRegionServiceUnavailable(err) {
-					return jobpool.JobResult([]any{}), nil
-				}
-				return nil, err
-			}
-			return jobpool.JobResult(items), nil
-		}))
-	}
-
-	return ociRunRegionPool(tasks)
-}
-
-func (o *mqlOciAiDataScience) compartmentID() string {
-	return o.MqlRuntime.Connection.(*connection.OciConnection).TenantID()
+		return fetch(svc, compartmentID)
+	})
 }
 
 // ----- projects -----
@@ -67,11 +39,11 @@ func (o *mqlOciAiDataScience) projects() ([]any, error) {
 	return o.listRegional(o.fetchProjects)
 }
 
-func (o *mqlOciAiDataScience) fetchProjects(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchProjects(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
 	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.ProjectSummary, *string, error) {
 		resp, err := svc.ListProjects(ctx, datascience.ListProjectsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: common.String(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
@@ -123,11 +95,11 @@ func (o *mqlOciAiDataScience) notebookSessions() ([]any, error) {
 	return o.listRegional(o.fetchNotebookSessions)
 }
 
-func (o *mqlOciAiDataScience) fetchNotebookSessions(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchNotebookSessions(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
 	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.NotebookSessionSummary, *string, error) {
 		resp, err := svc.ListNotebookSessions(ctx, datascience.ListNotebookSessionsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: common.String(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
@@ -225,11 +197,11 @@ func (o *mqlOciAiDataScience) models() ([]any, error) {
 	return o.listRegional(o.fetchModels)
 }
 
-func (o *mqlOciAiDataScience) fetchModels(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchModels(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
 	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.ModelSummary, *string, error) {
 		resp, err := svc.ListModels(ctx, datascience.ListModelsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: common.String(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
@@ -314,11 +286,11 @@ func (o *mqlOciAiDataScience) modelVersionSets() ([]any, error) {
 	return o.listRegional(o.fetchModelVersionSets)
 }
 
-func (o *mqlOciAiDataScience) fetchModelVersionSets(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchModelVersionSets(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
 	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.ModelVersionSetSummary, *string, error) {
 		resp, err := svc.ListModelVersionSets(ctx, datascience.ListModelVersionSetsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: common.String(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
@@ -382,11 +354,11 @@ func (o *mqlOciAiDataScience) modelDeployments() ([]any, error) {
 	return o.listRegional(o.fetchModelDeployments)
 }
 
-func (o *mqlOciAiDataScience) fetchModelDeployments(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchModelDeployments(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
 	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.ModelDeploymentSummary, *string, error) {
 		resp, err := svc.ListModelDeployments(ctx, datascience.ListModelDeploymentsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: common.String(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
@@ -462,11 +434,11 @@ func (o *mqlOciAiDataScience) jobs() ([]any, error) {
 	return o.listRegional(o.fetchJobs)
 }
 
-func (o *mqlOciAiDataScience) fetchJobs(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchJobs(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
 	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.JobSummary, *string, error) {
 		resp, err := svc.ListJobs(ctx, datascience.ListJobsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: common.String(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
@@ -528,11 +500,11 @@ func (o *mqlOciAiDataScience) pipelines() ([]any, error) {
 	return o.listRegional(o.fetchPipelines)
 }
 
-func (o *mqlOciAiDataScience) fetchPipelines(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchPipelines(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
 	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.PipelineSummary, *string, error) {
 		resp, err := svc.ListPipelines(ctx, datascience.ListPipelinesRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: common.String(compartmentID),
 			Page:          page,
 		})
 		if err != nil {

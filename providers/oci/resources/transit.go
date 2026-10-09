@@ -241,9 +241,11 @@ func (o *mqlOciNetworkDrg) remotePeeringConnections() ([]any, error) {
 	}
 	ctx := context.Background()
 
+	// Listed in the DRG's compartment, where its peering connections are
+	// created, rather than the tenancy root.
 	rpcs, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]core.RemotePeeringConnection, *string, error) {
 		response, err := svc.ListRemotePeeringConnections(ctx, core.ListRemotePeeringConnectionsRequest{
-			CompartmentId: common.String(conn.TenantID()),
+			CompartmentId: common.String(o.drgCompartment(conn.TenantID())),
 			DrgId:         common.String(o.Id.Data),
 			Page:          page,
 		})

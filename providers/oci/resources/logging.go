@@ -25,7 +25,10 @@ func (o *mqlOciLogging) id() (string, error) {
 func (o *mqlOciLogging) logGroups() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	return ociCollect(o.MqlRuntime, ociScopeTenancyRoot,
+	// Every compartment, not the root with the subtree flag: the Logging API
+	// documents isCompartmentIdInSubtree but ignores it, so a log group in a
+	// child compartment never came back from the root.
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
 		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
 			log.Debug().Msgf("calling oci logging with region %s", region)
 
@@ -35,7 +38,7 @@ func (o *mqlOciLogging) logGroups() ([]any, error) {
 			}
 
 			var res []any
-			logGroups, err := o.getLogGroupsForRegion(ctx, svc, conn.TenantID())
+			logGroups, err := o.getLogGroupsForRegion(ctx, svc, compartmentID)
 			if err != nil {
 				return nil, err
 			}
@@ -73,9 +76,8 @@ func (o *mqlOciLogging) logGroups() ([]any, error) {
 func (o *mqlOciLogging) getLogGroupsForRegion(ctx context.Context, client *logging.LoggingManagementClient, compartmentID string) ([]logging.LogGroupSummary, error) {
 	entries, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]logging.LogGroupSummary, *string, error) {
 		request := logging.ListLogGroupsRequest{
-			CompartmentId:            common.String(compartmentID),
-			IsCompartmentIdInSubtree: common.Bool(true),
-			Page:                     page,
+			CompartmentId: common.String(compartmentID),
+			Page:          page,
 		}
 
 		response, err := client.ListLogGroups(ctx, request)

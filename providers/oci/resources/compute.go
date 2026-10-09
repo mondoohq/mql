@@ -542,7 +542,9 @@ func (o *mqlOciCompute) images() ([]any, error) {
 		return nil, err
 	}
 
-	return ociCollect(o.MqlRuntime, ociScopeTenancyRoot,
+	// Platform images are returned from every compartment that is asked,
+	// so they would repeat once per compartment.
+	items, err := ociCollect(o.MqlRuntime, ociScopeAllCompartments,
 		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
 			log.Debug().Msgf("calling oci with region %s", region)
 
@@ -557,7 +559,7 @@ func (o *mqlOciCompute) images() ([]any, error) {
 			}
 
 			var res []any
-			images, err := o.getComputeImagesForRegion(ctx, svc, conn.TenantID())
+			images, err := o.getComputeImagesForRegion(ctx, svc, compartmentID)
 			if err != nil {
 				return nil, err
 			}
@@ -597,6 +599,10 @@ func (o *mqlOciCompute) images() ([]any, error) {
 
 			return res, nil
 		})
+	if err != nil {
+		return nil, err
+	}
+	return ociDedupeByID(items), nil
 }
 
 func (o *mqlOciCompute) getComputeImagesForRegion(ctx context.Context, computeClient *core.ComputeClient, compartmentID string) ([]core.Image, error) {
@@ -630,7 +636,7 @@ func (o *mqlOciComputeImage) id() (string, error) {
 func (o *mqlOciCompute) blockVolumes() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	return ociCollect(o.MqlRuntime, ociScopeTenancyRoot,
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
 		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
 			log.Debug().Msgf("calling oci with region %s", region)
 
@@ -640,7 +646,7 @@ func (o *mqlOciCompute) blockVolumes() ([]any, error) {
 			}
 
 			var res []any
-			volumes, err := o.getBlockVolumesForRegion(ctx, svc, conn.TenantID())
+			volumes, err := o.getBlockVolumesForRegion(ctx, svc, compartmentID)
 			if err != nil {
 				return nil, err
 			}
@@ -736,7 +742,7 @@ func (o *mqlOciComputeBlockVolume) kmsKey() (*mqlOciKmsKey, error) {
 func (o *mqlOciCompute) bootVolumes() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	return ociCollect(o.MqlRuntime, ociScopeTenancyRoot,
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
 		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
 			log.Debug().Msgf("calling oci with region %s", region)
 
@@ -746,7 +752,7 @@ func (o *mqlOciCompute) bootVolumes() ([]any, error) {
 			}
 
 			var res []any
-			bootVols, err := o.getBootVolumesForRegion(ctx, svc, conn.TenantID())
+			bootVols, err := o.getBootVolumesForRegion(ctx, svc, compartmentID)
 			if err != nil {
 				return nil, err
 			}

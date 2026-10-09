@@ -22,9 +22,14 @@ func (o *mqlOciMonitoring) id() (string, error) {
 func (o *mqlOciMonitoring) alarms() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	return ociCollect(o.MqlRuntime, ociScopeTenancyRoot,
+	return ociCollect(o.MqlRuntime, ociScopeSubtree,
 		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
 			log.Debug().Msgf("calling oci monitoring with region %s", region)
+
+			admit, err := ociCompartmentAdmitter(ctx, conn)
+			if err != nil {
+				return nil, err
+			}
 
 			svc, err := conn.MonitoringClient(region)
 			if err != nil {
@@ -51,6 +56,9 @@ func (o *mqlOciMonitoring) alarms() ([]any, error) {
 			var res []any
 			for i := range alarms {
 				alarm := alarms[i]
+				if !admit(stringValue(alarm.CompartmentId)) {
+					continue
+				}
 
 				destinations := make([]any, 0, len(alarm.Destinations))
 				for _, d := range alarm.Destinations {
