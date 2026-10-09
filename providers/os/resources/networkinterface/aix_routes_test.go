@@ -78,3 +78,17 @@ func TestAixIPv4Destination(t *testing.T) {
 		assert.Equal(t, want, aixIPv4Destination(in), in)
 	}
 }
+
+func TestAixIPv6Destination(t *testing.T) {
+	for in, want := range map[string]string{
+		"default":     "::/0",
+		"::1%1":       "::1/128",
+		"fe80::/64":   "fe80::/64",
+		"ff01::%1/16": "ff01::/16",
+		"fe80::/129":  "",
+		"fe80::/x":    "",
+		"link#3":      "",
+	} {
+		assert.Equal(t, want, aixIPv6Destination(in), in)
+	}
+}

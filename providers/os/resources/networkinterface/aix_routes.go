@@ -189,6 +189,9 @@ func aixIPv6Destination(dest string) string {
 	if !hasPrefix {
 		return addr + "/128"
 	}
+	if n, err := strconv.Atoi(prefix); err != nil || n < 0 || n > 128 {
+		return ""
+	}
 	return addr + "/" + prefix
 }
 
