@@ -177,8 +177,9 @@ func ParseAixPsResult(input io.Reader) ([]*ProcessEntry, error) {
 	scanner := bufio.NewScanner(input)
 	for scanner.Scan() {
 		line := scanner.Text()
-		// skip defunct processes
-		if strings.Contains(line, "defunct") {
+		// skip zombies, which AIX prints as <defunct> with their other
+		// columns blank
+		if strings.Contains(line, "<defunct>") {
 			continue
 		}
 

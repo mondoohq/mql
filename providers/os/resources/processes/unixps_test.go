@@ -269,3 +269,13 @@ func TestAixProcessManagerState(t *testing.T) {
 	assert.Equal(t, "/etc/init", init.Command)
 	assert.Equal(t, "A (active)", init.State)
 }
+
+func TestAixPSProcessParserKeepsCommandsNamedDefunct(t *testing.T) {
+	input := "     PID  %CPU  %MEM   VSZ     TT        TIME   UID S COMMAND\n" +
+		" 1638710                             00:00:00       Z <defunct>\n" +
+		" 4242424   0.0   0.0   512      -    00:00:00     0 A /usr/local/bin/cleanup_defunct_users.sh\n"
+	procs, err := processes.ParseAixPsResult(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, procs, 1)
+	assert.Equal(t, "/usr/local/bin/cleanup_defunct_users.sh", procs[0].Command)
+}
