@@ -20,8 +20,10 @@ import (
 )
 
 // sudoersPaths lists the sudoers file paths to check per platform.
-// Most systems use /etc/sudoers. BSD variants and AIX install sudo via
-// package managers to non-default prefixes, so /etc/sudoers does not exist.
+// Most systems use /etc/sudoers. BSD variants install sudo via package
+// managers to non-default prefixes, so /etc/sudoers does not exist. The AIX
+// Toolbox sudo reads /etc/sudoers (`sudo -V` on 1.9.17 says "Sudoers path:
+// /etc/sudoers"); older AIX Toolbox builds used /opt/freeware/etc/sudoers.
 const defaultSudoersFile = "/etc/sudoers"
 
 var sudoersPaths = map[string][]string{
@@ -29,7 +31,7 @@ var sudoersPaths = map[string][]string{
 	"dragonflybsd": {"/usr/local/etc/sudoers"},
 	"openbsd":      {"/usr/local/etc/sudoers"},
 	"netbsd":       {"/usr/pkg/etc/sudoers"},
-	"aix":          {"/opt/freeware/etc/sudoers"},
+	"aix":          {"/etc/sudoers", "/opt/freeware/etc/sudoers"},
 }
 
 func initSudoers(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {

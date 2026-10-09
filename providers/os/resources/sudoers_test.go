@@ -24,7 +24,7 @@ func TestSudoersPathsForPlatform(t *testing.T) {
 		{"dragonflybsd", []string{"/usr/local/etc/sudoers"}},
 		{"openbsd", []string{"/usr/local/etc/sudoers"}},
 		{"netbsd", []string{"/usr/pkg/etc/sudoers"}},
-		{"aix", []string{"/opt/freeware/etc/sudoers"}},
+		{"aix", []string{"/etc/sudoers", "/opt/freeware/etc/sudoers"}},
 		{"debian", []string{"/etc/sudoers"}},
 		{"ubuntu", []string{"/etc/sudoers"}},
 		{"redhat", []string{"/etc/sudoers"}},
