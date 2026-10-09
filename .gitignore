@@ -36,3 +36,6 @@ settings.local.json
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 .worktrees/
+
+# Local findings of the xgrep scanner, which embed the checkout path.
+.xgrep/

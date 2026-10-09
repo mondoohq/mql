@@ -13198,7 +13198,8 @@ private oci.network.drgRouteDistribution.statement @defaults("priority action ma
 // A VTAP that mirrors the traffic of a source (a VNIC, subnet, load balancer,
 // or database) to a target, keyed by its OCID, through a capture filter. An
 // unexpected VTAP copies traffic out of a network, so `isVtapEnabled`,
-// `targetType`, and `targetIp` show where mirrored traffic goes.
+// `targetVnic`, `targetNetworkLoadBalancer`, and `targetIp` show where
+// mirrored traffic goes.
 private oci.network.vtap @defaults("name isVtapEnabled sourceType targetType") {
   // VTAP OCID
   id string
@@ -13212,14 +13213,34 @@ private oci.network.vtap @defaults("name isVtapEnabled sourceType targetType") {
   state string
   // Whether the VTAP is mirroring traffic
   isVtapEnabled bool
-  // Kind of source mirrored, for example VNIC, SUBNET, LOAD_BALANCER, DB_SYSTEM, or AUTONOMOUS_DATA_WAREHOUSE
+  // Kind of source mirrored, for example VNIC, SUBNET, LOAD_BALANCER, DB_SYSTEM, EXADATA_VM_CLUSTER, AUTONOMOUS_DATA_WAREHOUSE, or NETWORK_FIREWALL
   sourceType string
   // OCID of the mirrored source
+  //
+  // Kept beside the typed source accessors for the source types the provider does not model, such as EXADATA_VM_CLUSTER.
   sourceId string
+  // Mirrored VNIC; null unless sourceType is VNIC
+  sourceVnic() oci.compute.vnic
+  // Mirrored subnet; null unless sourceType is SUBNET
+  sourceSubnet() oci.network.subnet
+  // Mirrored load balancer; null unless sourceType is LOAD_BALANCER
+  sourceLoadBalancer() oci.loadBalancer.loadBalancer
+  // Mirrored DB system; null unless sourceType is DB_SYSTEM
+  sourceDbSystem() oci.database.dbSystem
+  // Mirrored Autonomous Database; null unless sourceType is AUTONOMOUS_DATA_WAREHOUSE
+  sourceAutonomousDatabase() oci.database.autonomousDatabase
+  // Mirrored network firewall; null unless sourceType is NETWORK_FIREWALL
+  sourceNetworkFirewall() oci.networkFirewall.firewall
   // Kind of target the mirrored traffic is sent to: VNIC, NETWORK_LOAD_BALANCER, or IP_ADDRESS
   targetType string
   // OCID of the target; empty for an IP_ADDRESS target
+  //
+  // Kept beside the typed target accessors; an IP_ADDRESS target is reported in targetIp.
   targetId string
+  // VNIC the mirrored traffic is sent to; null unless targetType is VNIC
+  targetVnic() oci.compute.vnic
+  // Network load balancer the mirrored traffic is sent to; null unless targetType is NETWORK_LOAD_BALANCER
+  targetNetworkLoadBalancer() oci.networkLoadBalancer.loadBalancer
   // IP address the mirrored traffic is sent to
   targetIp string
   // Mirrored traffic: DEFAULT (all packets) or PRIORITY

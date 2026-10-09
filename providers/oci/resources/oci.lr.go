@@ -13396,11 +13396,35 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.network.vtap.sourceId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciNetworkVtap).GetSourceId()).ToDataRes(types.String)
 	},
+	"oci.network.vtap.sourceVnic": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciNetworkVtap).GetSourceVnic()).ToDataRes(types.Resource("oci.compute.vnic"))
+	},
+	"oci.network.vtap.sourceSubnet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciNetworkVtap).GetSourceSubnet()).ToDataRes(types.Resource("oci.network.subnet"))
+	},
+	"oci.network.vtap.sourceLoadBalancer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciNetworkVtap).GetSourceLoadBalancer()).ToDataRes(types.Resource("oci.loadBalancer.loadBalancer"))
+	},
+	"oci.network.vtap.sourceDbSystem": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciNetworkVtap).GetSourceDbSystem()).ToDataRes(types.Resource("oci.database.dbSystem"))
+	},
+	"oci.network.vtap.sourceAutonomousDatabase": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciNetworkVtap).GetSourceAutonomousDatabase()).ToDataRes(types.Resource("oci.database.autonomousDatabase"))
+	},
+	"oci.network.vtap.sourceNetworkFirewall": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciNetworkVtap).GetSourceNetworkFirewall()).ToDataRes(types.Resource("oci.networkFirewall.firewall"))
+	},
 	"oci.network.vtap.targetType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciNetworkVtap).GetTargetType()).ToDataRes(types.String)
 	},
 	"oci.network.vtap.targetId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciNetworkVtap).GetTargetId()).ToDataRes(types.String)
+	},
+	"oci.network.vtap.targetVnic": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciNetworkVtap).GetTargetVnic()).ToDataRes(types.Resource("oci.compute.vnic"))
+	},
+	"oci.network.vtap.targetNetworkLoadBalancer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciNetworkVtap).GetTargetNetworkLoadBalancer()).ToDataRes(types.Resource("oci.networkLoadBalancer.loadBalancer"))
 	},
 	"oci.network.vtap.targetIp": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciNetworkVtap).GetTargetIp()).ToDataRes(types.String)
@@ -30504,12 +30528,44 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciNetworkVtap).SourceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"oci.network.vtap.sourceVnic": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciNetworkVtap).SourceVnic, ok = plugin.RawToTValue[*mqlOciComputeVnic](v.Value, v.Error)
+		return
+	},
+	"oci.network.vtap.sourceSubnet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciNetworkVtap).SourceSubnet, ok = plugin.RawToTValue[*mqlOciNetworkSubnet](v.Value, v.Error)
+		return
+	},
+	"oci.network.vtap.sourceLoadBalancer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciNetworkVtap).SourceLoadBalancer, ok = plugin.RawToTValue[*mqlOciLoadBalancerLoadBalancer](v.Value, v.Error)
+		return
+	},
+	"oci.network.vtap.sourceDbSystem": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciNetworkVtap).SourceDbSystem, ok = plugin.RawToTValue[*mqlOciDatabaseDbSystem](v.Value, v.Error)
+		return
+	},
+	"oci.network.vtap.sourceAutonomousDatabase": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciNetworkVtap).SourceAutonomousDatabase, ok = plugin.RawToTValue[*mqlOciDatabaseAutonomousDatabase](v.Value, v.Error)
+		return
+	},
+	"oci.network.vtap.sourceNetworkFirewall": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciNetworkVtap).SourceNetworkFirewall, ok = plugin.RawToTValue[*mqlOciNetworkFirewallFirewall](v.Value, v.Error)
+		return
+	},
 	"oci.network.vtap.targetType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciNetworkVtap).TargetType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"oci.network.vtap.targetId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciNetworkVtap).TargetId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.network.vtap.targetVnic": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciNetworkVtap).TargetVnic, ok = plugin.RawToTValue[*mqlOciComputeVnic](v.Value, v.Error)
+		return
+	},
+	"oci.network.vtap.targetNetworkLoadBalancer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciNetworkVtap).TargetNetworkLoadBalancer, ok = plugin.RawToTValue[*mqlOciNetworkLoadBalancerLoadBalancer](v.Value, v.Error)
 		return
 	},
 	"oci.network.vtap.targetIp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -73971,24 +74027,32 @@ type mqlOciNetworkVtap struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlOciNetworkVtapInternal
-	Id                    plugin.TValue[string]
-	Name                  plugin.TValue[string]
-	Compartment           plugin.TValue[*mqlOciCompartment]
-	Vcn                   plugin.TValue[*mqlOciNetworkVcn]
-	State                 plugin.TValue[string]
-	IsVtapEnabled         plugin.TValue[bool]
-	SourceType            plugin.TValue[string]
-	SourceId              plugin.TValue[string]
-	TargetType            plugin.TValue[string]
-	TargetId              plugin.TValue[string]
-	TargetIp              plugin.TValue[string]
-	TrafficMode           plugin.TValue[string]
-	EncapsulationProtocol plugin.TValue[string]
-	MaxPacketSize         plugin.TValue[int64]
-	CaptureFilter         plugin.TValue[*mqlOciNetworkCaptureFilter]
-	Created               plugin.TValue[*time.Time]
-	FreeformTags          plugin.TValue[map[string]any]
-	DefinedTags           plugin.TValue[map[string]any]
+	Id                        plugin.TValue[string]
+	Name                      plugin.TValue[string]
+	Compartment               plugin.TValue[*mqlOciCompartment]
+	Vcn                       plugin.TValue[*mqlOciNetworkVcn]
+	State                     plugin.TValue[string]
+	IsVtapEnabled             plugin.TValue[bool]
+	SourceType                plugin.TValue[string]
+	SourceId                  plugin.TValue[string]
+	SourceVnic                plugin.TValue[*mqlOciComputeVnic]
+	SourceSubnet              plugin.TValue[*mqlOciNetworkSubnet]
+	SourceLoadBalancer        plugin.TValue[*mqlOciLoadBalancerLoadBalancer]
+	SourceDbSystem            plugin.TValue[*mqlOciDatabaseDbSystem]
+	SourceAutonomousDatabase  plugin.TValue[*mqlOciDatabaseAutonomousDatabase]
+	SourceNetworkFirewall     plugin.TValue[*mqlOciNetworkFirewallFirewall]
+	TargetType                plugin.TValue[string]
+	TargetId                  plugin.TValue[string]
+	TargetVnic                plugin.TValue[*mqlOciComputeVnic]
+	TargetNetworkLoadBalancer plugin.TValue[*mqlOciNetworkLoadBalancerLoadBalancer]
+	TargetIp                  plugin.TValue[string]
+	TrafficMode               plugin.TValue[string]
+	EncapsulationProtocol     plugin.TValue[string]
+	MaxPacketSize             plugin.TValue[int64]
+	CaptureFilter             plugin.TValue[*mqlOciNetworkCaptureFilter]
+	Created                   plugin.TValue[*time.Time]
+	FreeformTags              plugin.TValue[map[string]any]
+	DefinedTags               plugin.TValue[map[string]any]
 }
 
 // createOciNetworkVtap creates a new instance of this resource
@@ -74084,12 +74148,140 @@ func (c *mqlOciNetworkVtap) GetSourceId() *plugin.TValue[string] {
 	return &c.SourceId
 }
 
+func (c *mqlOciNetworkVtap) GetSourceVnic() *plugin.TValue[*mqlOciComputeVnic] {
+	return plugin.GetOrCompute[*mqlOciComputeVnic](&c.SourceVnic, func() (*mqlOciComputeVnic, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.network.vtap", c.__id, "sourceVnic")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciComputeVnic), nil
+			}
+		}
+
+		return c.sourceVnic()
+	})
+}
+
+func (c *mqlOciNetworkVtap) GetSourceSubnet() *plugin.TValue[*mqlOciNetworkSubnet] {
+	return plugin.GetOrCompute[*mqlOciNetworkSubnet](&c.SourceSubnet, func() (*mqlOciNetworkSubnet, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.network.vtap", c.__id, "sourceSubnet")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciNetworkSubnet), nil
+			}
+		}
+
+		return c.sourceSubnet()
+	})
+}
+
+func (c *mqlOciNetworkVtap) GetSourceLoadBalancer() *plugin.TValue[*mqlOciLoadBalancerLoadBalancer] {
+	return plugin.GetOrCompute[*mqlOciLoadBalancerLoadBalancer](&c.SourceLoadBalancer, func() (*mqlOciLoadBalancerLoadBalancer, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.network.vtap", c.__id, "sourceLoadBalancer")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciLoadBalancerLoadBalancer), nil
+			}
+		}
+
+		return c.sourceLoadBalancer()
+	})
+}
+
+func (c *mqlOciNetworkVtap) GetSourceDbSystem() *plugin.TValue[*mqlOciDatabaseDbSystem] {
+	return plugin.GetOrCompute[*mqlOciDatabaseDbSystem](&c.SourceDbSystem, func() (*mqlOciDatabaseDbSystem, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.network.vtap", c.__id, "sourceDbSystem")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciDatabaseDbSystem), nil
+			}
+		}
+
+		return c.sourceDbSystem()
+	})
+}
+
+func (c *mqlOciNetworkVtap) GetSourceAutonomousDatabase() *plugin.TValue[*mqlOciDatabaseAutonomousDatabase] {
+	return plugin.GetOrCompute[*mqlOciDatabaseAutonomousDatabase](&c.SourceAutonomousDatabase, func() (*mqlOciDatabaseAutonomousDatabase, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.network.vtap", c.__id, "sourceAutonomousDatabase")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciDatabaseAutonomousDatabase), nil
+			}
+		}
+
+		return c.sourceAutonomousDatabase()
+	})
+}
+
+func (c *mqlOciNetworkVtap) GetSourceNetworkFirewall() *plugin.TValue[*mqlOciNetworkFirewallFirewall] {
+	return plugin.GetOrCompute[*mqlOciNetworkFirewallFirewall](&c.SourceNetworkFirewall, func() (*mqlOciNetworkFirewallFirewall, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.network.vtap", c.__id, "sourceNetworkFirewall")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciNetworkFirewallFirewall), nil
+			}
+		}
+
+		return c.sourceNetworkFirewall()
+	})
+}
+
 func (c *mqlOciNetworkVtap) GetTargetType() *plugin.TValue[string] {
 	return &c.TargetType
 }
 
 func (c *mqlOciNetworkVtap) GetTargetId() *plugin.TValue[string] {
 	return &c.TargetId
+}
+
+func (c *mqlOciNetworkVtap) GetTargetVnic() *plugin.TValue[*mqlOciComputeVnic] {
+	return plugin.GetOrCompute[*mqlOciComputeVnic](&c.TargetVnic, func() (*mqlOciComputeVnic, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.network.vtap", c.__id, "targetVnic")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciComputeVnic), nil
+			}
+		}
+
+		return c.targetVnic()
+	})
+}
+
+func (c *mqlOciNetworkVtap) GetTargetNetworkLoadBalancer() *plugin.TValue[*mqlOciNetworkLoadBalancerLoadBalancer] {
+	return plugin.GetOrCompute[*mqlOciNetworkLoadBalancerLoadBalancer](&c.TargetNetworkLoadBalancer, func() (*mqlOciNetworkLoadBalancerLoadBalancer, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.network.vtap", c.__id, "targetNetworkLoadBalancer")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciNetworkLoadBalancerLoadBalancer), nil
+			}
+		}
+
+		return c.targetNetworkLoadBalancer()
+	})
 }
 
 func (c *mqlOciNetworkVtap) GetTargetIp() *plugin.TValue[string] {

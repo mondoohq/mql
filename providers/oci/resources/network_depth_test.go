@@ -107,3 +107,9 @@ func TestChildrenOf(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []any{a}, got)
 }
+
+func TestVtapRefID(t *testing.T) {
+	assert.Equal(t, "ocid1.subnet.oc1..s", vtapRefID("SUBNET", "SUBNET", "ocid1.subnet.oc1..s"))
+	assert.Equal(t, "", vtapRefID("SUBNET", "VNIC", "ocid1.subnet.oc1..s"), "an accessor of another kind reads null")
+	assert.Equal(t, "", vtapRefID("VNIC", "VNIC", ""), "no id is no reference")
+}

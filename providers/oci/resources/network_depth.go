@@ -763,3 +763,67 @@ func (o *mqlOciNetworkCrossConnect) crossConnectGroup() (*mqlOciNetworkCrossConn
 	}
 	return ociListedRef(n.GetCrossConnectGroups(), o.CrossConnectGroupId.Data, &o.CrossConnectGroup)
 }
+
+// vtapRefID is the OCID of a VTAP's source or target when it is of the kind
+// an accessor resolves, and empty otherwise, so every other accessor reads
+// null.
+func vtapRefID(actualType, wantType, id string) string {
+	if actualType != wantType {
+		return ""
+	}
+	return ocidOrEmpty(id)
+}
+
+func (o *mqlOciNetworkVtap) sourceVnic() (*mqlOciComputeVnic, error) {
+	return resolveRef(o.MqlRuntime, "oci.compute.vnic", vtapRefID(o.SourceType.Data, "VNIC", o.SourceId.Data), &o.SourceVnic)
+}
+
+func (o *mqlOciNetworkVtap) sourceSubnet() (*mqlOciNetworkSubnet, error) {
+	n, err := ociNetworkService(o.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	return ociListedRef(n.GetSubnets(), vtapRefID(o.SourceType.Data, "SUBNET", o.SourceId.Data), &o.SourceSubnet)
+}
+
+func (o *mqlOciNetworkVtap) sourceLoadBalancer() (*mqlOciLoadBalancerLoadBalancer, error) {
+	return resolveRef(o.MqlRuntime, "oci.loadBalancer.loadBalancer", vtapRefID(o.SourceType.Data, "LOAD_BALANCER", o.SourceId.Data), &o.SourceLoadBalancer)
+}
+
+func (o *mqlOciNetworkVtap) sourceDbSystem() (*mqlOciDatabaseDbSystem, error) {
+	return resolveRef(o.MqlRuntime, "oci.database.dbSystem", vtapRefID(o.SourceType.Data, "DB_SYSTEM", o.SourceId.Data), &o.SourceDbSystem)
+}
+
+func (o *mqlOciNetworkVtap) sourceAutonomousDatabase() (*mqlOciDatabaseAutonomousDatabase, error) {
+	return resolveRef(o.MqlRuntime, "oci.database.autonomousDatabase", vtapRefID(o.SourceType.Data, "AUTONOMOUS_DATA_WAREHOUSE", o.SourceId.Data), &o.SourceAutonomousDatabase)
+}
+
+func (o *mqlOciNetworkVtap) sourceNetworkFirewall() (*mqlOciNetworkFirewallFirewall, error) {
+	id := vtapRefID(o.SourceType.Data, "NETWORK_FIREWALL", o.SourceId.Data)
+	if id == "" {
+		o.SourceNetworkFirewall.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	svc, err := CreateResource(o.MqlRuntime, "oci.networkFirewall", nil)
+	if err != nil {
+		return nil, err
+	}
+	return ociListedRef(svc.(*mqlOciNetworkFirewall).GetFirewalls(), id, &o.SourceNetworkFirewall)
+}
+
+func (o *mqlOciNetworkVtap) targetVnic() (*mqlOciComputeVnic, error) {
+	return resolveRef(o.MqlRuntime, "oci.compute.vnic", vtapRefID(o.TargetType.Data, "VNIC", o.TargetId.Data), &o.TargetVnic)
+}
+
+func (o *mqlOciNetworkVtap) targetNetworkLoadBalancer() (*mqlOciNetworkLoadBalancerLoadBalancer, error) {
+	id := vtapRefID(o.TargetType.Data, "NETWORK_LOAD_BALANCER", o.TargetId.Data)
+	if id == "" {
+		o.TargetNetworkLoadBalancer.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	svc, err := CreateResource(o.MqlRuntime, "oci.networkLoadBalancer", nil)
+	if err != nil {
+		return nil, err
+	}
+	return ociListedRef(svc.(*mqlOciNetworkLoadBalancer).GetLoadBalancers(), id, &o.TargetNetworkLoadBalancer)
+}
