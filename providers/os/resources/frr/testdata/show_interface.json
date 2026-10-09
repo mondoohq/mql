@@ -1,0 +1,29 @@
+{
+  "swp1": {
+    "administrativeStatus": "up",
+    "operationalStatus": "up",
+    "linkDowns": 0,
+    "linkUps": 1,
+    "vrfName": "default",
+    "ifIndex": 3,
+    "mtu": 9216,
+    "speed": 25000,
+    "flags": "<UP,BROADCAST,RUNNING,MULTICAST>",
+    "type": "Ethernet",
+    "hardwareAddress": "aa:bb:cc:00:00:03",
+    "ipAddresses": [{"address": "192.0.2.30/31", "unnumbered": false}]
+  },
+  "vlan100": {
+    "administrativeStatus": "up",
+    "operationalStatus": "down",
+    "linkDowns": 7,
+    "linkUps": 7,
+    "vrfName": "cluster",
+    "ifIndex": 11,
+    "mtu": 9000,
+    "protocolDown": true,
+    "type": "Ethernet",
+    "hardwareAddress": "aa:bb:cc:00:00:0b",
+    "ipAddresses": [{"address": "10.100.0.1/24"}]
+  }
+}
