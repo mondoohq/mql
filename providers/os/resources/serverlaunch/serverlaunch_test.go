@@ -102,3 +102,18 @@ func TestImageArgv(t *testing.T) {
 	assert.Nil(t, ImageArgv([]string{"docker-entrypoint.sh"}, []string{"postgres"}, isHaproxy, "haproxy"))
 	assert.Nil(t, ImageArgv(nil, nil, isHaproxy, "haproxy"))
 }
+
+func TestParsePs(t *testing.T) {
+	// AIX 7.3 ps -A -o pid= -o ppid= -o args=; an eight-digit pid fills its
+	// column, so nothing separates it from the margin
+	out := "       1        0 /etc/init\n" +
+		"12714428  5177764 sshd: /usr/sbin/sshd -D [listener] 0 of 10-100 startups\n" +
+		"23658780        1 /opt/freeware/sbin/httpd -k start\n" +
+		"\n" +
+		"  garbage line\n"
+	assert.Equal(t, []Process{
+		{Pid: 1, PPid: 0, Argv: []string{"/etc/init"}},
+		{Pid: 12714428, PPid: 5177764, Argv: []string{"sshd:", "/usr/sbin/sshd", "-D", "[listener]", "0", "of", "10-100", "startups"}},
+		{Pid: 23658780, PPid: 1, Argv: []string{"/opt/freeware/sbin/httpd", "-k", "start"}},
+	}, ParsePs(out))
+}

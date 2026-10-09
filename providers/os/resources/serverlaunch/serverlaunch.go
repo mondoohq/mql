@@ -32,6 +32,34 @@ func SplitCmdline(data []byte) []string {
 	return strings.Split(s, "\x00")
 }
 
+// PsCommand lists every process with its parent and command line, for a
+// system whose /proc has no command lines: AIX keeps the System V layout
+// (psinfo, status) and has no pgrep.
+const PsCommand = "ps -A -o pid= -o ppid= -o args="
+
+// ParsePs reads the output of PsCommand. ps joins the arguments with
+// spaces, so an argument that holds a space is split in two; the program and
+// the options a server is recognized by are not affected.
+func ParsePs(out string) []Process {
+	var procs []Process
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil {
+			continue
+		}
+		ppid, err := strconv.Atoi(fields[1])
+		if err != nil {
+			continue
+		}
+		procs = append(procs, Process{Pid: pid, PPid: ppid, Argv: fields[2:]})
+	}
+	return procs
+}
+
 // ParseStatPPid returns the parent pid from the content of /proc/<pid>/stat.
 // The second field, the program name in parentheses, may itself hold spaces
 // and parentheses, so the fields are counted from the last ")".

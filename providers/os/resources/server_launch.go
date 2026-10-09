@@ -97,10 +97,15 @@ func findServerLaunches(runtime *plugin.Runtime, spec serverLaunchSpec) []server
 // Where commands run, pgrep narrows the processes to read; where it cannot
 // run (no command support, or an image without procps), every /proc entry
 // is read. A process whose command line cannot be read is skipped: it may be
-// gone by now.
+// gone by now. A /proc without command lines (AIX) is not walked: ps lists
+// the processes instead, in one command rather than one read per process.
 func runningServerLaunches(runtime *plugin.Runtime, conn shared.Connection, afs *afero.Afero, spec serverLaunchSpec) []serverLaunch {
+	var procs []serverlaunch.Process
 	pids, listed := pgrepPids(runtime, conn, spec.Names)
-	if !listed {
+	switch {
+	case listed:
+		procs = procfsProcesses(afs, pids)
+	case hasProcfsCmdlines(afs):
 		entries, err := afs.ReadDir("/proc")
 		if err != nil {
 			return nil
@@ -108,23 +113,9 @@ func runningServerLaunches(runtime *plugin.Runtime, conn shared.Connection, afs 
 		for _, e := range entries {
 			pids = append(pids, e.Name())
 		}
-	}
-
-	var procs []serverlaunch.Process
-	for _, pid := range pids {
-		n, err := strconv.Atoi(pid)
-		if err != nil {
-			continue
-		}
-		raw, err := afs.ReadFile(path.Join("/proc", pid, "cmdline"))
-		if err != nil {
-			continue
-		}
-		p := serverlaunch.Process{Pid: n, Argv: serverlaunch.SplitCmdline(raw)}
-		if stat, err := afs.ReadFile(path.Join("/proc", pid, "stat")); err == nil {
-			p.PPid, _ = serverlaunch.ParseStatPPid(stat)
-		}
-		procs = append(procs, p)
+		procs = procfsProcesses(afs, pids)
+	default:
+		procs = psProcesses(runtime, conn)
 	}
 
 	masters := serverlaunch.Masters(procs, spec.isServer())
@@ -149,6 +140,56 @@ func runningServerLaunches(runtime *plugin.Runtime, conn shared.Connection, afs 
 		out = append(out, l)
 	}
 	return out
+}
+
+// procfsProcesses reads the command line and parent of each pid from /proc.
+func procfsProcesses(afs *afero.Afero, pids []string) []serverlaunch.Process {
+	var procs []serverlaunch.Process
+	for _, pid := range pids {
+		n, err := strconv.Atoi(pid)
+		if err != nil {
+			continue
+		}
+		raw, err := afs.ReadFile(path.Join("/proc", pid, "cmdline"))
+		if err != nil {
+			continue
+		}
+		p := serverlaunch.Process{Pid: n, Argv: serverlaunch.SplitCmdline(raw)}
+		if stat, err := afs.ReadFile(path.Join("/proc", pid, "stat")); err == nil {
+			p.PPid, _ = serverlaunch.ParseStatPPid(stat)
+		}
+		procs = append(procs, p)
+	}
+	return procs
+}
+
+// hasProcfsCmdlines reports whether /proc holds a command line per process,
+// as Linux does. pid 1 always runs.
+func hasProcfsCmdlines(afs *afero.Afero) bool {
+	_, err := afs.Stat("/proc/1/cmdline")
+	return err == nil
+}
+
+// psProcesses lists the processes with ps, where commands run.
+func psProcesses(runtime *plugin.Runtime, conn shared.Connection) []serverlaunch.Process {
+	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return nil
+	}
+	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+		"command": llx.StringData(serverlaunch.PsCommand),
+	})
+	if err != nil {
+		return nil
+	}
+	cmd := o.(*mqlCommand)
+	if exit := cmd.GetExitcode(); exit.Error != nil || exit.Data != 0 {
+		return nil
+	}
+	stdout := cmd.GetStdout()
+	if stdout.Error != nil {
+		return nil
+	}
+	return serverlaunch.ParsePs(stdout.Data)
 }
 
 // pgrepPids lists the processes named one of names. It reports false when

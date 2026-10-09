@@ -47,6 +47,8 @@ var apacheBinaries = []string{
 	// Homebrew, on Apple Silicon and Intel respectively.
 	"/opt/homebrew/bin/httpd",
 	"/usr/local/opt/httpd/bin/httpd",
+	// AIX Toolbox, with HTTPD_ROOT /opt/freeware/etc/httpd.
+	"/opt/freeware/sbin/httpd",
 }
 
 // apacheVersionCommands are tried as a fallback when the binary cannot be read.

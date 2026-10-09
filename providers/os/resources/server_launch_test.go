@@ -14,6 +14,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
 	"go.mondoo.com/mql/providers/os/connection/tar"
+	"go.mondoo.com/mql/providers/os/resources/serverlaunch"
 	"go.mondoo.com/mql/utils/syncx"
 )
 
@@ -207,4 +208,44 @@ func TestHaproxyConfigFollowsImage(t *testing.T) {
 	global := cfg.GetGlobal()
 	require.NoError(t, global.Error)
 	assert.Equal(t, int64(999), global.Data.GetMaxconn().Data)
+}
+
+// `ps -A -o pid= -o ppid= -o args=` on AIX 7.3 TL4 SP2 with the AIX Toolbox
+// httpd started by `apachectl -k start`, cut to init, a few daemons and
+// httpd's master (23658780) and workers.
+const aixPsWithHttpd = `       0        0 swapper
+       1        0 /etc/init
+ 5177764        1 /usr/sbin/srcmstr
+ 6095106        1 /usr/sbin/cron
+11403638 23658780 /opt/freeware/sbin/httpd -k start
+11600288 23658780 /opt/freeware/sbin/httpd -k start
+11665786 23658780 /opt/freeware/sbin/httpd -k start
+12714428  5177764 sshd: /usr/sbin/sshd -D [listener] 0 of 10-100 startups
+18153954 12714428 sshd-session: root [priv]
+20119876 23658780 /opt/freeware/sbin/httpd -k start
+21430742 23658780 /opt/freeware/sbin/httpd -k start
+23658780        1 /opt/freeware/sbin/httpd -k start
+`
+
+// AIX has no pgrep, and its /proc has no command lines (psinfo, status):
+// walking it read every pid and found nothing, at one round trip per pid.
+func TestFindServerLaunchesAix(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{Platform: &inventory.Platform{Name: "aix", Family: []string{"unix", "os"}}},
+		mock.WithData(&mock.TomlData{
+			Files: map[string]*mock.MockFileData{
+				"/proc/1/psinfo": {Path: "/proc/1/psinfo", Content: "x"},
+			},
+			Commands: map[string]*mock.Command{
+				"pgrep -x 'httpd'":     {Stderr: "ksh: pgrep:  not found", ExitStatus: 127},
+				serverlaunch.PsCommand: {Stdout: aixPsWithHttpd},
+			},
+		}))
+	require.NoError(t, err)
+	rt := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}, Connection: conn}
+
+	got := findServerLaunches(rt, serverLaunchSpec{Names: []string{"httpd"}})
+	require.Len(t, got, 1)
+	assert.Equal(t, serverLaunchProcess, got[0].Source)
+	assert.Equal(t, 23658780, got[0].Pid)
+	assert.Equal(t, []string{"/opt/freeware/sbin/httpd", "-k", "start"}, got[0].Argv)
 }
