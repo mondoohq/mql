@@ -235,9 +235,9 @@ func (p *mqlPf) file() (*mqlFile, error) {
 	return f.(*mqlFile), nil
 }
 
-// configPath finds the ruleset file PF loads at boot. Solaris is checked
-// before anything else: 11.4 ships an os-release and is detected into the
-// linux family.
+// configPath finds the ruleset file PF loads at boot. Solaris is matched by
+// platform name, never by family: 11.4 ships an os-release and is detected
+// into the linux family.
 func (p *mqlPf) configPath() (string, error) {
 	conn, err := p.conn()
 	if err != nil {
@@ -248,15 +248,15 @@ func (p *mqlPf) configPath() (string, error) {
 		return pfDefaultConfig, nil
 	}
 	canRun := conn.Capabilities().Has(shared.Capability_RunCommand)
-	switch {
-	case asset.Platform.Name == "solaris":
+	switch asset.Platform.Name {
+	case "solaris":
 		if canRun {
 			if path := p.commandOutput("/usr/bin/svcprop -p firewall/rules " + pfSolarisFirewallFMRI); path != "" {
 				return path, nil
 			}
 		}
 		return pfSolarisDefaultConfig, nil
-	case asset.Platform.Name == "freebsd":
+	case "freebsd":
 		if canRun {
 			if path := p.commandOutput("/usr/sbin/sysrc -n pf_rules"); path != "" {
 				return path, nil
