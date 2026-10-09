@@ -32,18 +32,20 @@ func initGcpProjectDnsServiceManagedzone(runtime *plugin.Runtime, args map[strin
 			args = make(map[string]*llx.RawData)
 		}
 		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
+			// Discovery ends a zone asset's platform id with the zone's numeric
+			// id, not its name, so that is what the asset is matched on.
+			args["id"] = llx.StringData(ids.name)
 			args["projectId"] = llx.StringData(ids.project)
 		} else {
 			return nil, nil, errors.New("no asset identifier found")
 		}
 	}
 
-	// The managed zone is matched by (name, projectId); without both we can't do
-	// the lookup. Return an error rather than dereferencing a nil arg (panic) or
-	// falling through to build a husk with unset fields.
-	if args["name"] == nil || args["projectId"] == nil {
-		return nil, nil, errors.New("gcp.project.dnsService.managedzone requires name and projectId")
+	// The managed zone is matched by (id or name, projectId); without both we
+	// can't do the lookup. Return an error rather than dereferencing a nil arg
+	// (panic) or falling through to build a husk with unset fields.
+	if (args["id"] == nil && args["name"] == nil) || args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.dnsService.managedzone requires id or name, and projectId")
 	}
 
 	// Create the parent DNS service and find the specific managed zone
@@ -59,21 +61,27 @@ func initGcpProjectDnsServiceManagedzone(runtime *plugin.Runtime, args map[strin
 		return nil, nil, managedzones.Error
 	}
 
-	// Find the matching managed zone. The asset identifier / lookup key is the
-	// zone name (getAssetIdentifier stores it in args["name"]), not the numeric
-	// zone id — so match on the name field.
+	// Match on the numeric id when there is one (a discovered zone asset),
+	// otherwise on the zone name.
+	byId, want := args["id"] != nil, args["name"]
+	if byId {
+		want = args["id"]
+	}
 	for _, mz := range managedzones.Data {
 		managedzone := mz.(*mqlGcpProjectDnsServiceManagedzone)
-		name := managedzone.GetName()
-		if name.Error != nil {
-			return nil, nil, name.Error
+		key := managedzone.GetName()
+		if byId {
+			key = managedzone.GetId()
+		}
+		if key.Error != nil {
+			return nil, nil, key.Error
 		}
 		projectId := managedzone.GetProjectId()
 		if projectId.Error != nil {
 			return nil, nil, projectId.Error
 		}
 
-		if name.Data == args["name"].Value && projectId.Data == args["projectId"].Value {
+		if key.Data == want.Value && projectId.Data == args["projectId"].Value {
 			return args, managedzone, nil
 		}
 	}
