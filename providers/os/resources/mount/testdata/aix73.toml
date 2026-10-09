@@ -1,0 +1,17 @@
+[commands."mount"]
+stdout = """  node       mounted        mounted over    vfs       date        options      
+-------- ---------------  ---------------  ------ ------------ --------------- 
+         /dev/hd4         /                jfs2   Oct 09 17:23 rw,log=/dev/hd8 
+         /dev/hd2         /usr             jfs2   Oct 09 17:23 rw,log=/dev/hd8 
+         /dev/hd9var      /var             jfs2   Oct 09 17:23 rw,log=/dev/hd8 
+         /dev/hd3         /tmp             jfs2   Oct 09 17:23 rw,log=/dev/hd8 
+         /dev/hd1         /home            jfs2   Oct 09 17:24 rw,log=/dev/hd8 
+         /dev/hd11admin   /admin           jfs2   Oct 09 17:24 rw,log=/dev/hd8 
+         /proc            /proc            procfs Oct 09 17:24 rw              
+         /dev/hd10opt     /opt             jfs2   Oct 09 17:24 rw,log=/dev/hd8 
+         /dev/livedump    /var/adm/ras/livedump jfs2   Oct 09 17:24 rw,log=/dev/hd8 
+         /dev/rep00       /usr/sys/inst.images jfs2   Oct 09 17:24 rw,log=INLINE   
+         /ahafs           /aha             ahafs  Oct 09 17:25 rw              
+         /dev/mqllv       /mqlfs           jfs2   Oct 09 17:27 rw,log=INLINE   
+         /dev/mqldatalv   /mqldata         jfs2   Oct 09 17:28 rw,log=INLINE   
+localhost /export/mqlro    /mnt/nfsmql      nfs3   Oct 09 17:39 ro,soft         """

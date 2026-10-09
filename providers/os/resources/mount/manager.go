@@ -43,6 +43,8 @@ func ResolveManager(conn shared.Connection) (OperatingSystemMountManager, error)
 	// family, so it is matched by name first.
 	if pf.Name == "solaris" {
 		mm = &SolarisMountManager{conn: conn}
+	} else if pf.Name == "aix" {
+		mm = &AixMountManager{conn: conn}
 	} else if pf.IsFamily("windows") {
 		mm = &WindowsMountManager{conn: conn}
 	} else if pf.IsFamily("linux") {
@@ -147,6 +149,32 @@ func (s *SolarisMountManager) List() ([]MountPoint, error) {
 	}
 
 	mounts := ParseSolarisMountCmd(cmd.Stdout)
+	// A running system always has a root mount, so an empty result means the
+	// output was not understood, not that nothing is mounted.
+	if len(mounts) == 0 {
+		return nil, errors.New("the mount command reported no mounts")
+	}
+	return mounts, nil
+}
+
+type AixMountManager struct {
+	conn shared.Connection
+}
+
+func (s *AixMountManager) Name() string {
+	return "AIX Mount Manager"
+}
+
+func (s *AixMountManager) List() ([]MountPoint, error) {
+	cmd, err := s.conn.RunCommand("mount")
+	if err != nil {
+		return nil, errors.Wrap(err, "could not run mount command")
+	}
+	if cmd.ExitStatus != 0 {
+		return nil, errors.Newf("the mount command exited with %d", cmd.ExitStatus)
+	}
+
+	mounts := ParseAixMountCmd(cmd.Stdout)
 	// A running system always has a root mount, so an empty result means the
 	// output was not understood, not that nothing is mounted.
 	if len(mounts) == 0 {

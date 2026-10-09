@@ -236,3 +236,40 @@ func TestMountSolarisParser(t *testing.T) {
 	// the epoch-dated root and the dated rest both parse
 	assert.NotNil(t, findMountpoint(entries, "/var/share"))
 }
+
+// testdata/aix73.toml is `mount` on AIX 7.3 TL4 with a JFS2 filesystem on a
+// second volume group and an NFS export mounted over loopback.
+func TestMountAixParser(t *testing.T) {
+	mock, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "aix", Family: []string{"unix", "os"}},
+	}, mock.WithPath("./testdata/aix73.toml"))
+	require.NoError(t, err)
+
+	f, err := mock.RunCommand("mount")
+	require.NoError(t, err)
+
+	entries := mount.ParseAixMountCmd(f.Stdout)
+	require.Equal(t, 14, len(entries))
+
+	root := findMountpoint(entries, "/")
+	require.NotNil(t, root)
+	assert.Equal(t, "/dev/hd4", root.Device)
+	assert.Equal(t, "jfs2", root.FSType)
+	assert.Equal(t, map[string]string{"rw": "", "log": "/dev/hd8"}, root.Options)
+
+	// a mount point long enough to push the later columns out of alignment
+	livedump := findMountpoint(entries, "/var/adm/ras/livedump")
+	require.NotNil(t, livedump)
+	assert.Equal(t, "/dev/livedump", livedump.Device)
+	assert.Equal(t, "jfs2", livedump.FSType)
+
+	nfs := findMountpoint(entries, "/mnt/nfsmql")
+	require.NotNil(t, nfs)
+	assert.Equal(t, "localhost:/export/mqlro", nfs.Device)
+	assert.Equal(t, "nfs3", nfs.FSType)
+	assert.Equal(t, map[string]string{"ro": "", "soft": ""}, nfs.Options)
+
+	procfs := findMountpoint(entries, "/proc")
+	require.NotNil(t, procfs)
+	assert.Equal(t, "procfs", procfs.FSType)
+}

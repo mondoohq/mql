@@ -29,6 +29,64 @@ var (
 	solarisMountEntry = regexp.MustCompile(`^(\S+) on (\S+) type (\S+) (.+) on (?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) .*$`)
 )
 
+// aixMountDate matches the month of the date column of AIX `mount`, which is
+// followed by the day and the time: Oct 09 10:23
+var (
+	aixMountMonth = regexp.MustCompile(`^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$`)
+	aixMountTime  = regexp.MustCompile(`^\d{1,2}:\d{2}$`)
+)
+
+// ParseAixMountCmd parses AIX `mount`, which prints a table:
+//
+//	  node       mounted        mounted over    vfs       date        options
+//	-------- ---------------  ---------------  ------ ------------ ---------------
+//	         /dev/hd4         /                jfs2   Oct 09 10:23 rw,log=/dev/hd8
+//	localhost /export/mqlro    /mnt/nfsmql      nfs3   Oct 09 10:39 ro,soft
+//
+// The node column is empty for a local mount and names the server of a remote
+// one. A long mount point pushes the later columns out of alignment, so rows
+// are split on whitespace and anchored on the date, which always takes three
+// fields. A remote device is reported as node:path, the way df writes it.
+func ParseAixMountCmd(r io.Reader) []MountPoint {
+	res := []MountPoint{}
+
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+
+		date := -1
+		for i := 2; i+2 < len(fields); i++ {
+			if aixMountMonth.MatchString(fields[i]) && aixMountTime.MatchString(fields[i+2]) {
+				date = i
+				break
+			}
+		}
+		// device, mount point and vfs come before the date
+		if date < 3 {
+			continue
+		}
+
+		head := fields[:date-1]
+		device := head[0]
+		mountPoint := strings.Join(head[1:], " ")
+		// a row with a node starts in the first column
+		if !strings.HasPrefix(line, " ") && len(head) > 2 {
+			device = head[0] + ":" + head[1]
+			mountPoint = strings.Join(head[2:], " ")
+		}
+
+		res = append(res, MountPoint{
+			Device:     device,
+			MountPoint: mountPoint,
+			FSType:     fields[date-1],
+			Options:    parseOptions(strings.Join(fields[date+3:], " ")),
+		})
+	}
+
+	return res
+}
+
 // ParseSolarisMountCmd parses Solaris `mount -v`. Plain `mount` on Solaris
 // writes the mount point first and leaves out the filesystem type, so -v is
 // the form that carries every column.

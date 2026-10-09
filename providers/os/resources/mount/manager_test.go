@@ -134,3 +134,19 @@ func TestManagerSolaris(t *testing.T) {
 
 	assert.Equal(t, 30, len(mounts))
 }
+
+// AIX is in the unix family, whose manager parses `<device> on <path> (...)`
+// lines. AIX `mount` prints a table instead, so the list came back empty.
+func TestManagerAix(t *testing.T) {
+	mock, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "aix", Family: []string{"unix", "os"}},
+	}, mock.WithPath("./testdata/aix73.toml"))
+	require.NoError(t, err)
+
+	mm, err := mount.ResolveManager(mock)
+	require.NoError(t, err)
+	mounts, err := mm.List()
+	require.NoError(t, err)
+
+	assert.Equal(t, 14, len(mounts))
+}
