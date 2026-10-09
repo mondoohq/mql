@@ -312,6 +312,8 @@ const (
 	ResourceSecbootImage                                  string = "secboot.image"
 	ResourceSysrc                                         string = "sysrc"
 	ResourceSysrcEntry                                    string = "sysrc.entry"
+	ResourceJails                                         string = "jails"
+	ResourceJail                                          string = "jail"
 	ResourceProcess                                       string = "process"
 	ResourceProcesses                                     string = "processes"
 	ResourcePort                                          string = "port"
@@ -1896,6 +1898,14 @@ func init() {
 		"sysrc.entry": {
 			// to override args, implement: initSysrcEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createSysrcEntry,
+		},
+		"jails": {
+			// to override args, implement: initJails(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createJails,
+		},
+		"jail": {
+			Init:   initJail,
+			Create: createJail,
 		},
 		"process": {
 			Init:   initProcess,
@@ -11458,6 +11468,63 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"sysrc.entry.file": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSysrcEntry).GetFile()).ToDataRes(types.String)
+	},
+	"jails.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJails).GetList()).ToDataRes(types.Array(types.Resource("jail")))
+	},
+	"jail.jid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetJid()).ToDataRes(types.Int)
+	},
+	"jail.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetName()).ToDataRes(types.String)
+	},
+	"jail.hostname": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetHostname()).ToDataRes(types.String)
+	},
+	"jail.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetPath()).ToDataRes(types.String)
+	},
+	"jail.osRelease": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetOsRelease()).ToDataRes(types.String)
+	},
+	"jail.securelevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetSecurelevel()).ToDataRes(types.Int)
+	},
+	"jail.enforceStatfs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetEnforceStatfs()).ToDataRes(types.Int)
+	},
+	"jail.childrenMax": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetChildrenMax()).ToDataRes(types.Int)
+	},
+	"jail.devfsRuleset": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetDevfsRuleset()).ToDataRes(types.Int)
+	},
+	"jail.persist": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetPersist()).ToDataRes(types.Bool)
+	},
+	"jail.vnet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetVnet()).ToDataRes(types.Bool)
+	},
+	"jail.ip4": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetIp4()).ToDataRes(types.String)
+	},
+	"jail.ip4Addresses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetIp4Addresses()).ToDataRes(types.Array(types.String))
+	},
+	"jail.ip6": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetIp6()).ToDataRes(types.String)
+	},
+	"jail.ip6Addresses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetIp6Addresses()).ToDataRes(types.Array(types.String))
+	},
+	"jail.allow": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetAllow()).ToDataRes(types.Array(types.String))
+	},
+	"jail.parameters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetParameters()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"jail.parent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJail).GetParent()).ToDataRes(types.Resource("jail"))
 	},
 	"process.pid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlProcess).GetPid()).ToDataRes(types.Int)
@@ -31634,6 +31701,90 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"sysrc.entry.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSysrcEntry).File, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jails.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJails).__id, ok = v.Value.(string)
+		return
+	},
+	"jails.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJails).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"jail.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).__id, ok = v.Value.(string)
+		return
+	},
+	"jail.jid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Jid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"jail.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jail.hostname": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Hostname, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jail.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jail.osRelease": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).OsRelease, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jail.securelevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Securelevel, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"jail.enforceStatfs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).EnforceStatfs, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"jail.childrenMax": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).ChildrenMax, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"jail.devfsRuleset": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).DevfsRuleset, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"jail.persist": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Persist, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"jail.vnet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Vnet, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"jail.ip4": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Ip4, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jail.ip4Addresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Ip4Addresses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"jail.ip6": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Ip6, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jail.ip6Addresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Ip6Addresses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"jail.allow": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Allow, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"jail.parameters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Parameters, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"jail.parent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJail).Parent, ok = plugin.RawToTValue[*mqlJail](v.Value, v.Error)
 		return
 	},
 	"process.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -77310,6 +77461,203 @@ func (c *mqlSysrcEntry) GetValue() *plugin.TValue[string] {
 
 func (c *mqlSysrcEntry) GetFile() *plugin.TValue[string] {
 	return &c.File
+}
+
+// mqlJails for the jails resource
+type mqlJails struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlJailsInternal it will be used here
+	List plugin.TValue[[]any]
+}
+
+// createJails creates a new instance of this resource
+func createJails(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlJails{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("jails", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlJails) MqlName() string {
+	return "jails"
+}
+
+func (c *mqlJails) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlJails) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("jails", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlJail for the jail resource
+type mqlJail struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlJailInternal
+	Jid           plugin.TValue[int64]
+	Name          plugin.TValue[string]
+	Hostname      plugin.TValue[string]
+	Path          plugin.TValue[string]
+	OsRelease     plugin.TValue[string]
+	Securelevel   plugin.TValue[int64]
+	EnforceStatfs plugin.TValue[int64]
+	ChildrenMax   plugin.TValue[int64]
+	DevfsRuleset  plugin.TValue[int64]
+	Persist       plugin.TValue[bool]
+	Vnet          plugin.TValue[bool]
+	Ip4           plugin.TValue[string]
+	Ip4Addresses  plugin.TValue[[]any]
+	Ip6           plugin.TValue[string]
+	Ip6Addresses  plugin.TValue[[]any]
+	Allow         plugin.TValue[[]any]
+	Parameters    plugin.TValue[map[string]any]
+	Parent        plugin.TValue[*mqlJail]
+}
+
+// createJail creates a new instance of this resource
+func createJail(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlJail{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("jail", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlJail) MqlName() string {
+	return "jail"
+}
+
+func (c *mqlJail) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlJail) GetJid() *plugin.TValue[int64] {
+	return &c.Jid
+}
+
+func (c *mqlJail) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlJail) GetHostname() *plugin.TValue[string] {
+	return &c.Hostname
+}
+
+func (c *mqlJail) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlJail) GetOsRelease() *plugin.TValue[string] {
+	return &c.OsRelease
+}
+
+func (c *mqlJail) GetSecurelevel() *plugin.TValue[int64] {
+	return &c.Securelevel
+}
+
+func (c *mqlJail) GetEnforceStatfs() *plugin.TValue[int64] {
+	return &c.EnforceStatfs
+}
+
+func (c *mqlJail) GetChildrenMax() *plugin.TValue[int64] {
+	return &c.ChildrenMax
+}
+
+func (c *mqlJail) GetDevfsRuleset() *plugin.TValue[int64] {
+	return &c.DevfsRuleset
+}
+
+func (c *mqlJail) GetPersist() *plugin.TValue[bool] {
+	return &c.Persist
+}
+
+func (c *mqlJail) GetVnet() *plugin.TValue[bool] {
+	return &c.Vnet
+}
+
+func (c *mqlJail) GetIp4() *plugin.TValue[string] {
+	return &c.Ip4
+}
+
+func (c *mqlJail) GetIp4Addresses() *plugin.TValue[[]any] {
+	return &c.Ip4Addresses
+}
+
+func (c *mqlJail) GetIp6() *plugin.TValue[string] {
+	return &c.Ip6
+}
+
+func (c *mqlJail) GetIp6Addresses() *plugin.TValue[[]any] {
+	return &c.Ip6Addresses
+}
+
+func (c *mqlJail) GetAllow() *plugin.TValue[[]any] {
+	return &c.Allow
+}
+
+func (c *mqlJail) GetParameters() *plugin.TValue[map[string]any] {
+	return &c.Parameters
+}
+
+func (c *mqlJail) GetParent() *plugin.TValue[*mqlJail] {
+	return plugin.GetOrCompute[*mqlJail](&c.Parent, func() (*mqlJail, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("jail", c.__id, "parent")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlJail), nil
+			}
+		}
+
+		return c.parent()
+	})
 }
 
 // mqlProcess for the process resource

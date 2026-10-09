@@ -10562,6 +10562,102 @@ private sysrc.entry @defaults("name value") {
   file string
 }
 
+// FreeBSD jails running on the host
+//
+// Every running jail on a FreeBSD host, one `jail` per jail, as `jls`
+// reports them. Each jail carries the parameters that bound what it can
+// reach: its network stack, securelevel, mount visibility, and the `allow`
+// permissions. For example `jails.where(allow.contains("raw_sockets"))` finds
+// jails that can craft raw packets, and `jails.all(enforceStatfs == 2)`
+// asserts that no jail can see mount points outside its own root.
+jails {
+  []jail
+}
+
+// FreeBSD jail
+//
+// A single running jail on a FreeBSD host. The `name` field selects the jail,
+// for example `jail(name: "web")`. A child jail's name carries its parent's
+// name as a prefix, such as `web.php`, and `parent` returns the jail that
+// created it.
+jail @defaults("name jid path") {
+  init(name string)
+  // Jail ID
+  //
+  // Numeric ID the kernel assigned when the jail was created. A jail gets a
+  // new ID each time it is restarted.
+  jid int
+  // Jail name
+  name string
+  // Hostname inside the jail
+  hostname string
+  // Root directory of the jail on the host
+  path string
+  // Operating system release the jail reports
+  //
+  // The value of `uname -r` inside the jail. It matches the host unless the
+  // jail sets `osrelease`, which is common when a jail runs an older userland.
+  osRelease string
+  // Securelevel of the jail
+  //
+  // The kern.securelevel inside the jail, from -1 (insecure) to 3 (network
+  // secure). A jail never runs below the host's securelevel.
+  securelevel int
+  // Mount point visibility (enforce_statfs)
+  //
+  // 0 lets the jail see every mount point on the host, 1 only those below the
+  // jail's root, and 2 (the default) only the jail's root mount.
+  enforceStatfs int
+  // Maximum number of child jails the jail may create
+  //
+  // 0 means the jail cannot create jails.
+  childrenMax int
+  // devfs ruleset applied to the jail's /dev
+  //
+  // 0 means no ruleset is enforced when devfs is mounted in the jail, which
+  // exposes every device node. Ruleset 4 (devfsrules_jail) is the usual
+  // restriction.
+  devfsRuleset int
+  // Whether the jail persists without any process in it
+  persist bool
+  // Whether the jail has its own virtual network stack (VNET)
+  //
+  // Null when the kernel is built without VIMAGE.
+  vnet bool
+  // IPv4 mode
+  //
+  // One of `inherit` (the jail uses every host address), `new` (restricted to
+  // ip4Addresses), or `disable` (no IPv4). Reports `new` whenever
+  // ip4Addresses is not empty.
+  ip4 string
+  // IPv4 addresses the jail is restricted to
+  ip4Addresses []string
+  // IPv6 mode
+  //
+  // One of `inherit` (the jail uses every host address), `new` (restricted to
+  // ip6Addresses), or `disable` (no IPv6). Reports `new` whenever
+  // ip6Addresses is not empty.
+  ip6 string
+  // IPv6 addresses the jail is restricted to
+  ip6Addresses []string
+  // Permissions granted to the jail
+  //
+  // The enabled `allow.*` parameters without their prefix, for example
+  // `raw_sockets`, `mount`, `mount.zfs`, `sysvipc`, or `set_hostname`. The set
+  // of available permissions depends on the kernel and its loaded modules.
+  allow []string
+  // Every jail parameter
+  //
+  // All parameters `jls -n` reports, keyed by parameter name, such as
+  // `allow.raw_sockets`, `host.hostuuid`, or `sysvshm`. Booleans read `true`
+  // or `false`, and address lists are comma-separated.
+  parameters map[string]string
+  // Parent jail
+  //
+  // The jail that created this jail. Null for a jail created on the host.
+  parent() jail
+}
+
 // Single process on the system
 //
 // Running process identified by its PID. Exposes the executable path, the
