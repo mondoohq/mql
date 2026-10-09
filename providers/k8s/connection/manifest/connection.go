@@ -256,6 +256,14 @@ func (c *Connection) manifestHash() (string, error) {
 		return hex.EncodeToString(h.Sum(nil)), nil
 	}
 
+	// A git repository is cloned into a fresh temporary directory on every
+	// scan, so its path would mint a new asset each time. Hash the repository
+	// URL instead.
+	if gitUrl := c.asset.Connections[0].Options[plugin.GitUrlOptionKey]; gitUrl != "" {
+		h.Write([]byte(trimGitPath(gitUrl)))
+		return hex.EncodeToString(h.Sum(nil)), nil
+	}
+
 	_, err := os.Stat(c.manifestFile)
 	if err != nil {
 		return "", errors.Wrap(err, "could not determine platform identifier for "+c.manifestFile)
