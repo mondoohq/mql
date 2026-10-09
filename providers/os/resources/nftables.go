@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +22,11 @@ import (
 // nftRuleset is the top-level JSON envelope from `nft -j list ruleset`.
 type nftRuleset struct {
 	Nftables []nftObject `json:"nftables"`
+
+	// textVersion is set when the ruleset was read from the text output of
+	// an nft release that cannot list it as JSON. Text output carries no
+	// structured rule expressions, so rules are not available.
+	textVersion string
 }
 
 // nftObject represents one element in the nftables array.
@@ -48,6 +54,9 @@ type nftTable struct {
 	Name   string          `json:"name"`
 	Handle int64           `json:"handle"`
 	Flags  json.RawMessage `json:"flags,omitempty"`
+
+	// noHandle is set when the text output printed no handle.
+	noHandle bool
 }
 
 // parseFlags normalizes nftables table flags from JSON.
@@ -76,6 +85,12 @@ type nftChain struct {
 	Hook   string `json:"hook,omitempty"`
 	Prio   int64  `json:"prio,omitempty"`
 	Policy string `json:"policy,omitempty"`
+
+	// noHandle is set when the text output printed no handle.
+	noHandle bool
+	// noPrio is set when the text output printed a priority that does not
+	// resolve to a number.
+	noPrio bool
 }
 
 type nftRule struct {
@@ -97,6 +112,9 @@ type nftSet struct {
 	Flags   json.RawMessage `json:"flags,omitempty"`
 	Elem    json.RawMessage `json:"elem,omitempty"`
 	Timeout int64           `json:"timeout,omitempty"`
+
+	// noHandle is set when the text output printed no handle.
+	noHandle bool
 }
 
 // parseKeyType extracts the key type from the "type" field.
@@ -235,6 +253,326 @@ func parseNftRuleset(data []byte) (*nftRuleset, error) {
 		}
 	}
 	return &ruleset, nil
+}
+
+// nftTextHeader matches the opening line of a table, chain, set, or map
+// block in `nft -a list ruleset` output, with the handle comment that nft
+// 0.9.0 prints and 0.8.x omits on table, chain, and set lines.
+var nftTextHeader = regexp.MustCompile(`^(table|chain|set|map)\s+(.+?)\s*\{(?:\s*# handle (\d+))?$`)
+
+// parseNftText reads the ruleset from the text output of
+// `nft -a -nn list ruleset`, for nft releases that cannot list it as JSON.
+// It yields tables, chains, sets, and maps. Rules are skipped, because the
+// text form of a rule cannot be turned into the expression list of the JSON
+// output without the full nft grammar.
+func parseNftText(out string) (*nftRuleset, error) {
+	ruleset := &nftRuleset{}
+	var (
+		table *nftTable
+		chain *nftChain
+		set   *nftSet
+		// skip counts the open braces of a block this parser does not read,
+		// such as a flowtable or a named counter.
+		skip int
+		// elems collects an `elements = { ... }` list that spans lines.
+		elems     strings.Builder
+		inElems   bool
+		setIsMap  bool
+		lineCount int
+	)
+
+	for _, raw := range strings.Split(out, "\n") {
+		lineCount++
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+
+		if skip > 0 {
+			skip += strings.Count(line, "{") - strings.Count(line, "}")
+			continue
+		}
+
+		if inElems {
+			elems.WriteString(" ")
+			elems.WriteString(line)
+			if nftTextClosesBrace(elems.String()) {
+				inElems = false
+				set.Elem = nftTextElements(elems.String())
+			}
+			continue
+		}
+
+		switch {
+		case set != nil:
+			if line == "}" {
+				obj := nftObject{Set: set}
+				if setIsMap {
+					obj = nftObject{Map: set}
+				}
+				ruleset.Nftables = append(ruleset.Nftables, obj)
+				set = nil
+				continue
+			}
+			key, val, _ := strings.Cut(line, " ")
+			val = strings.TrimSpace(val)
+			switch key {
+			case "type":
+				keyType, valueType, isMap := strings.Cut(val, " : ")
+				set.Type, _ = json.Marshal(strings.TrimSpace(keyType))
+				if isMap {
+					set.Map = strings.TrimSpace(valueType)
+				}
+			case "flags":
+				set.Flags = nftTextFlags(val)
+			case "timeout":
+				secs, err := parseNftTime(val)
+				if err != nil {
+					return nil, fmt.Errorf("line %d: set %s: %w", lineCount, set.Name, err)
+				}
+				set.Timeout = secs
+			case "elements":
+				elems.Reset()
+				elems.WriteString(strings.TrimSpace(strings.TrimPrefix(val, "=")))
+				if nftTextClosesBrace(elems.String()) {
+					set.Elem = nftTextElements(elems.String())
+				} else {
+					inElems = true
+				}
+			}
+
+		case chain != nil:
+			// A rule line never consists of a lone brace, so this closes the
+			// chain even when rules carry anonymous sets in braces.
+			if line == "}" {
+				ruleset.Nftables = append(ruleset.Nftables, nftObject{Chain: chain})
+				chain = nil
+				continue
+			}
+			if strings.HasPrefix(line, "type ") && chain.Type == "" {
+				nftTextBaseChain(chain, line)
+			}
+
+		case table != nil:
+			if line == "}" {
+				table = nil
+				continue
+			}
+			m := nftTextHeader.FindStringSubmatch(line)
+			if m == nil {
+				if v, ok := strings.CutPrefix(line, "flags "); ok {
+					table.Flags = nftTextFlags(v)
+					continue
+				}
+				if open := strings.Count(line, "{") - strings.Count(line, "}"); open > 0 {
+					skip = open
+				}
+				continue
+			}
+			handle, noHandle := nftTextHandle(m[3])
+			switch m[1] {
+			case "chain":
+				chain = &nftChain{Family: table.Family, Table: table.Name, Name: m[2], Handle: handle, noHandle: noHandle}
+			case "set", "map":
+				set = &nftSet{Family: table.Family, Table: table.Name, Name: m[2], Handle: handle, noHandle: noHandle}
+				setIsMap = m[1] == "map"
+			default:
+				return nil, fmt.Errorf("line %d: unexpected %q inside table %s", lineCount, line, table.Name)
+			}
+
+		default:
+			m := nftTextHeader.FindStringSubmatch(line)
+			if m == nil || m[1] != "table" {
+				return nil, fmt.Errorf("line %d: expected a table, got %q", lineCount, line)
+			}
+			family, name, ok := strings.Cut(m[2], " ")
+			if !ok {
+				return nil, fmt.Errorf("line %d: table without a family: %q", lineCount, line)
+			}
+			handle, noHandle := nftTextHandle(m[3])
+			table = &nftTable{Family: family, Name: strings.TrimSpace(name), Handle: handle, noHandle: noHandle}
+			ruleset.Nftables = append(ruleset.Nftables, nftObject{Table: table})
+		}
+	}
+
+	if table != nil || chain != nil || set != nil || skip > 0 || inElems {
+		return nil, errors.New("nft text output ended inside an open block")
+	}
+	return ruleset, nil
+}
+
+func nftTextHandle(s string) (handle int64, noHandle bool) {
+	if s == "" {
+		return 0, true
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, true
+	}
+	return n, false
+}
+
+// nftTextFlags reads a comma-separated flags line ("interval,timeout") into
+// the JSON form the flag parsers expect.
+func nftTextFlags(s string) json.RawMessage {
+	var flags []string
+	for _, f := range strings.Split(s, ",") {
+		if f = strings.TrimSpace(f); f != "" {
+			flags = append(flags, f)
+		}
+	}
+	b, _ := json.Marshal(flags)
+	return b
+}
+
+// nftTextBaseChain reads the line that makes a chain a base chain:
+// "type filter hook input priority 0; policy drop;". A netdev chain names
+// its device as well: "type filter hook ingress device eth0 priority 0;".
+func nftTextBaseChain(chain *nftChain, line string) {
+	fields := strings.Fields(strings.ReplaceAll(line, ";", " "))
+	for i := 0; i+1 < len(fields); i++ {
+		val := fields[i+1]
+		switch fields[i] {
+		case "type":
+			chain.Type = val
+		case "hook":
+			chain.Hook = val
+		case "policy":
+			chain.Policy = val
+		case "priority":
+			prio, err := strconv.ParseInt(val, 10, 64)
+			if err != nil {
+				chain.noPrio = true
+				continue
+			}
+			chain.Prio = prio
+		default:
+			continue
+		}
+		i++
+	}
+}
+
+// nftTextClosesBrace reports whether an elements list, starting at its
+// opening brace, has reached its closing brace outside a quoted string.
+func nftTextClosesBrace(s string) bool {
+	depth, quoted := 0, false
+	for _, r := range s {
+		switch {
+		case r == '"':
+			quoted = !quoted
+		case quoted:
+		case r == '{':
+			depth++
+		case r == '}':
+			depth--
+			if depth == 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// nftTextElementAttrs are the per-element attributes nft prints after an
+// element's value. The JSON path reports the value only.
+var nftTextElementAttrs = []string{" timeout ", " expires ", " counter ", " comment "}
+
+// nftTextElements reads "{ 10.0.0.0/8, 22 : accept, 192.0.2.99 timeout 10m }"
+// into the JSON element list that parseSetElements renders. Values keep the
+// text nft printed, which is the same string the JSON path renders for
+// prefixes, ranges, concatenations, and map entries.
+func nftTextElements(s string) json.RawMessage {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "{")
+	if i := strings.LastIndex(s, "}"); i >= 0 {
+		s = s[:i]
+	}
+
+	var elems []any
+	var cur strings.Builder
+	quoted := false
+	flush := func() {
+		if e := nftTextElement(cur.String()); e != "" {
+			elems = append(elems, e)
+		}
+		cur.Reset()
+	}
+	for _, r := range s {
+		if r == '"' {
+			quoted = !quoted
+		}
+		if r == ',' && !quoted {
+			flush()
+			continue
+		}
+		cur.WriteRune(r)
+	}
+	flush()
+
+	b, _ := json.Marshal(elems)
+	return b
+}
+
+func nftTextElement(e string) string {
+	e = strings.Join(strings.Fields(e), " ")
+	key, val, isMap := strings.Cut(e, " : ")
+	for _, attr := range nftTextElementAttrs {
+		if i := strings.Index(key+" ", attr); i >= 0 {
+			key = key[:i]
+		}
+	}
+	if isMap {
+		return key + " : " + val
+	}
+	return key
+}
+
+// nftTimeUnits are the units of an nft time value ("1d2h30m10s500ms"),
+// longest suffix first so "ms" is not read as minutes.
+var nftTimeUnits = []struct {
+	suffix string
+	millis int64
+}{
+	{"ms", 1},
+	{"d", 24 * 60 * 60 * 1000},
+	{"h", 60 * 60 * 1000},
+	{"m", 60 * 1000},
+	{"s", 1000},
+}
+
+// parseNftTime reads an nft time value into whole seconds, the unit of the
+// JSON timeout field.
+func parseNftTime(s string) (int64, error) {
+	if s == "" {
+		return 0, errors.New("empty nft time")
+	}
+	rest := s
+	var millis int64
+	for rest != "" {
+		i := strings.IndexFunc(rest, func(r rune) bool { return r < '0' || r > '9' })
+		if i <= 0 {
+			return 0, fmt.Errorf("cannot read nft time %q", s)
+		}
+		n, err := strconv.ParseInt(rest[:i], 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("cannot read nft time %q", s)
+		}
+		rest = rest[i:]
+		found := false
+		for _, u := range nftTimeUnits {
+			if strings.HasPrefix(rest, u.suffix) {
+				millis += n * u.millis
+				rest = rest[len(u.suffix):]
+				found = true
+				break
+			}
+		}
+		if !found {
+			return 0, fmt.Errorf("cannot read nft time %q", s)
+		}
+	}
+	return millis / 1000, nil
 }
 
 // convertJSONNumbers recursively walks a value decoded with UseNumber()
@@ -425,17 +763,22 @@ func (n *mqlNftables) fetchRuleset() (*nftRuleset, error) {
 	}
 
 	// Older nft either rejects -j or crashes on it, so check the version first
-	// and report what is needed instead of the raw nft failure.
+	// and read the text output instead.
 	version, err := n.fetchVersion()
 	if err != nil {
 		return nil, err
 	}
-	if supported, ok := nftVersionSupportsJSON(version); ok && !supported {
-		return nil, nftUnsupportedVersionError(version)
+	command := "nft -j list ruleset"
+	supported, ok := nftVersionSupportsJSON(version)
+	textOnly := ok && !supported
+	if textOnly {
+		// -nn prints ports as numbers, as the JSON output does, instead of
+		// service names.
+		command = "nft -a -nn list ruleset"
 	}
 
 	o, err := CreateResource(n.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("nft -j list ruleset"),
+		"command": llx.StringData(command),
 	})
 	if err != nil {
 		return nil, err
@@ -445,9 +788,18 @@ func (n *mqlNftables) fetchRuleset() (*nftRuleset, error) {
 		return nil, fmt.Errorf("nft command failed (exit %d): %s", exit.Data, cmd.Stderr.Data)
 	}
 
-	ruleset, err := parseNftRuleset([]byte(cmd.Stdout.Data))
-	if err != nil {
-		return nil, err
+	var ruleset *nftRuleset
+	if textOnly {
+		ruleset, err = parseNftText(cmd.Stdout.Data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse nft %s ruleset text: %w", version, err)
+		}
+		ruleset.textVersion = version
+	} else {
+		ruleset, err = parseNftRuleset([]byte(cmd.Stdout.Data))
+		if err != nil {
+			return nil, err
+		}
 	}
 	if !ruleset.hasTables() {
 		if err := n.checkEmptyRulesetReadable(); err != nil {
@@ -518,9 +870,34 @@ func (r *nftRuleset) hasTables() bool {
 	return false
 }
 
-func nftUnsupportedVersionError(version string) error {
-	return fmt.Errorf("nft %s cannot list the ruleset as JSON; reading nftables tables, chains, rules, and sets requires nft %d.%d.%d or later",
+// nftRulesUnavailableError is the error on every rules field of a ruleset
+// read from text. An empty list would let a check such as
+// `nftables.rules.none(...)` pass without any rule having been read.
+func nftRulesUnavailableError(version string) error {
+	return fmt.Errorf("nft %s cannot list the ruleset as JSON; reading nftables rules requires nft %d.%d.%d or later",
 		version, nftMinJSONVersion[0], nftMinJSONVersion[1], nftMinJSONVersion[2])
+}
+
+// rulesData returns the rules of one chain, or of a whole table when chain is
+// empty, as the value of a rules field.
+func (r *nftRuleset) rulesData(runtime *plugin.Runtime, family, table, chain string) (*llx.RawData, error) {
+	ruleType := types.Array(types.Resource("nftables.rule"))
+	if r.textVersion != "" {
+		return &llx.RawData{Type: ruleType, Error: nftRulesUnavailableError(r.textVersion)}, nil
+	}
+	rules, err := nftCollectRules(runtime, r, family, table, chain)
+	if err != nil {
+		return nil, err
+	}
+	return llx.ArrayData(rules, types.Resource("nftables.rule")), nil
+}
+
+// nftHandleData is a handle as a field value, null when nft printed none.
+func nftHandleData(handle int64, noHandle bool) *llx.RawData {
+	if noHandle {
+		return llx.NilData
+	}
+	return llx.IntData(handle)
 }
 
 func (n *mqlNftables) version() (string, error) {
@@ -557,9 +934,14 @@ func (n *mqlNftables) tables() ([]any, error) {
 			}
 			ch := o.Chain
 
-			chainRules, err := nftCollectRules(n.MqlRuntime, ruleset, t.Family, t.Name, ch.Name)
+			chainRules, err := ruleset.rulesData(n.MqlRuntime, t.Family, t.Name, ch.Name)
 			if err != nil {
 				return nil, err
+			}
+
+			prio := llx.IntData(ch.Prio)
+			if ch.noPrio {
+				prio = llx.NilData
 			}
 
 			isBase := ch.Type != ""
@@ -567,13 +949,13 @@ func (n *mqlNftables) tables() ([]any, error) {
 				"family":      llx.StringData(ch.Family),
 				"table":       llx.StringData(ch.Table),
 				"name":        llx.StringData(ch.Name),
-				"handle":      llx.IntData(ch.Handle),
+				"handle":      nftHandleData(ch.Handle, ch.noHandle),
 				"type":        llx.StringData(ch.Type),
 				"hook":        llx.StringData(ch.Hook),
-				"prio":        llx.IntData(ch.Prio),
+				"prio":        prio,
 				"policy":      llx.StringData(ch.Policy),
 				"isBaseChain": llx.BoolData(isBase),
-				"rules":       llx.ArrayData(chainRules, types.Resource("nftables.rule")),
+				"rules":       chainRules,
 			})
 			if err != nil {
 				return nil, err
@@ -582,7 +964,7 @@ func (n *mqlNftables) tables() ([]any, error) {
 		}
 
 		// Collect all rules for this table across all chains
-		tableRules, err := nftCollectRules(n.MqlRuntime, ruleset, t.Family, t.Name, "")
+		tableRules, err := ruleset.rulesData(n.MqlRuntime, t.Family, t.Name, "")
 		if err != nil {
 			return nil, err
 		}
@@ -596,10 +978,10 @@ func (n *mqlNftables) tables() ([]any, error) {
 		tableRes, err := CreateResource(n.MqlRuntime, "nftables.table", map[string]*llx.RawData{
 			"family": llx.StringData(t.Family),
 			"name":   llx.StringData(t.Name),
-			"handle": llx.IntData(t.Handle),
+			"handle": nftHandleData(t.Handle, t.noHandle),
 			"flags":  llx.ArrayData(flags, types.String),
 			"chains": llx.ArrayData(chains, types.Resource("nftables.chain")),
-			"rules":  llx.ArrayData(tableRules, types.Resource("nftables.rule")),
+			"rules":  tableRules,
 			"sets":   llx.ArrayData(tableSets, types.Resource("nftables.set")),
 		})
 		if err != nil {
@@ -744,7 +1126,7 @@ func nftCreateSetResource(runtime *plugin.Runtime, s *nftSet) (any, error) {
 		"family":    llx.StringData(s.Family),
 		"table":     llx.StringData(s.Table),
 		"name":      llx.StringData(s.Name),
-		"handle":    llx.IntData(s.Handle),
+		"handle":    nftHandleData(s.Handle, s.noHandle),
 		"keyType":   llx.StringData(keyType),
 		"valueType": llx.StringData(valueType),
 		"flags":     llx.ArrayData(flags, types.String),

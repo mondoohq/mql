@@ -1,0 +1,54 @@
+table inet mqlsweep {
+	set blocked {
+		type ipv4_addr
+		flags interval
+		elements = { 10.0.0.0/8, 172.16.0.0/16,
+			     172.20.0.0/16, 192.0.2.1,
+			     198.51.100.10-198.51.100.20, 203.0.113.0/28,
+			     203.0.113.64/28, 203.0.113.128/28,
+			     203.0.113.192/28 }
+	}
+
+	set ports {
+		type inet_service
+		elements = { 22, 80, 443 }
+	}
+
+	set pairs {
+		type ipv4_addr . inet_service
+		elements = { 192.0.2.10 . 22 }
+	}
+
+	set dyn {
+		type ipv4_addr
+		timeout 1h30m
+		elements = { 192.0.2.99 timeout 10m expires 9m59s }
+	}
+
+	map portmap {
+		type inet_service : verdict
+		elements = { 22 : accept, 8080 : jump probe, 9001 : drop }
+	}
+
+	chain probe {
+		tcp dport 9999 counter packets 0 bytes 0 accept comment "mqlsweep" # handle 9
+	}
+
+	chain input {
+		type filter hook input priority 0; policy drop;
+		iif "lo" accept # handle 10
+		tcp dport @ports accept # handle 11
+		jump probe # handle 12
+	}
+
+	chain pre {
+		type nat hook prerouting priority -100; policy accept;
+	}
+}
+table ip dormantt {
+	flags dormant
+
+	chain c {
+		type filter hook output priority 10; policy accept;
+	}
+}

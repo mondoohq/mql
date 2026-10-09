@@ -9959,7 +9959,9 @@ iptables.entry {
 // `chains` (across all tables), `rules` (across all chains), and named `sets`.
 // nftables is the modern replacement for iptables, so audit it on current
 // distributions to confirm chains have restrictive policies and expected
-// rules.
+// rules. nft releases older than 0.9.1 cannot list the ruleset as JSON; on
+// those hosts tables, chains, and sets are read from the text listing and
+// every `rules` field returns an error.
 nftables @defaults("tables") {
   // nft version string (e.g., "1.0.2")
   version() string
@@ -9988,12 +9990,17 @@ private nftables.table @defaults("family name") {
   // Table name
   name string
   // Table handle number
+  //
+  // Null on nft releases older than 0.9.0, which print no table handle.
   handle int
   // Table flags (e.g., dormant, owner, persist)
   flags []string
   // Chains in this table
   chains []nftables.chain
   // Rules in this table across all chains
+  //
+  // An error on nft releases older than 0.9.1, which cannot list rules as
+  // JSON.
   rules []nftables.rule
   // Named sets in this table
   sets []nftables.set
@@ -10018,6 +10025,8 @@ private nftables.chain @defaults("family table name") {
   // Chain name
   name string
   // Chain handle number
+  //
+  // Null on nft releases older than 0.9.0, which print no chain handle.
   handle int
   // Chain type (filter, route, nat) - only for base chains
   type string
@@ -10030,6 +10039,9 @@ private nftables.chain @defaults("family table name") {
   // Whether this is a base chain (has type, hook, and priority)
   isBaseChain bool
   // Rules in this chain
+  //
+  // An error on nft releases older than 0.9.1, which cannot list rules as
+  // JSON.
   rules []nftables.rule
 }
 
@@ -10079,6 +10091,8 @@ private nftables.set @defaults("family table name") {
   // Set name
   name string
   // Set handle number
+  //
+  // Null on nft releases older than 0.9.0, which print no set handle.
   handle int
   // Element data type (e.g., "ipv4_addr", "inet_service", "ether_addr")
   keyType string

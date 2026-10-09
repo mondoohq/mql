@@ -1,0 +1,72 @@
+table inet mqlsweep { # handle 1
+	set blocked { # handle 4
+		type ipv4_addr
+		flags interval
+		elements = { 10.0.0.0/8, 172.16.0.0/16,
+			     172.20.0.0/16, 192.0.2.1,
+			     198.51.100.10-198.51.100.20, 203.0.113.0/28,
+			     203.0.113.64/28, 203.0.113.128/28,
+			     203.0.113.192/28 }
+	}
+
+	set ports { # handle 5
+		type inet_service
+		elements = { 22, 80, 443 }
+	}
+
+	set pairs { # handle 6
+		type ipv4_addr . inet_service
+		elements = { 192.0.2.10 . 22 }
+	}
+
+	set dyn { # handle 7
+		type ipv4_addr
+		timeout 1h30m
+		elements = { 192.0.2.99 timeout 10m expires 9m59s997ms }
+	}
+
+	map portmap { # handle 8
+		type inet_service : verdict
+		elements = { 22 : accept, 8080 : jump probe, 9001 : drop }
+	}
+
+	chain probe { # handle 1
+		tcp dport 9999 counter packets 0 bytes 0 accept comment "mqlsweep" # handle 9
+	}
+
+	chain input { # handle 2
+		type filter hook input priority 0; policy drop;
+		iif "lo" accept # handle 10
+		tcp dport @ports accept # handle 11
+		jump probe # handle 12
+	}
+
+	chain pre { # handle 3
+		type nat hook prerouting priority -100; policy accept;
+	}
+}
+table ip dormantt { # handle 2
+	flags dormant
+
+	chain c { # handle 1
+		type filter hook output priority 10; policy accept;
+	}
+}
+table ip filter { # handle 3
+	chain INPUT { # handle 1
+		type filter hook input priority 0; policy accept;
+		meta l4proto 6 tcp dport 25 counter packets 0 bytes 0 accept # handle 4
+		counter packets 0 bytes 0 jump MQL # handle 6
+	}
+
+	chain FORWARD { # handle 2
+		type filter hook forward priority 0; policy accept;
+	}
+
+	chain OUTPUT { # handle 3
+		type filter hook output priority 0; policy accept;
+	}
+
+	chain MQL { # handle 5
+	}
+}
