@@ -19,9 +19,9 @@ const (
 var (
 	// <dnsprefix>-<hash>.hcp.<region>.azmk8s.io and
 	// <name>.privatelink.<region>.azmk8s.io
-	aksHost = regexp.MustCompile(`\.(?:hcp|privatelink)\.([a-z0-9]+)\.azmk8s\.io$`)
+	aksHost = regexp.MustCompile(`^[a-z0-9.-]+\.(?:hcp|privatelink)\.([a-z0-9]+)\.azmk8s\.io$`)
 	// <id>.<shard>.<region>.eks.amazonaws.com(.cn)
-	eksHost = regexp.MustCompile(`\.([a-z]{2}(?:-[a-z]+)+-\d)\.eks\.amazonaws\.com(?:\.cn)?$`)
+	eksHost = regexp.MustCompile(`^[a-z0-9.-]+\.([a-z]{2}(?:-[a-z]+)+-\d)\.eks\.amazonaws\.com(?:\.cn)?$`)
 	// arn:<partition>:eks:<region>:<account>:cluster/<name>, the cluster entry
 	// `aws eks update-kubeconfig` writes
 	eksARN = regexp.MustCompile(`^arn:aws[a-z-]*:eks:([a-z0-9-]+):(\d{12}):cluster/(.+)$`)
