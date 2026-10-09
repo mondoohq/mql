@@ -27,6 +27,12 @@ var SolarisCertFiles = []string{
 	"/etc/ssl/cacert.pem",                // OmniOS
 }
 
+// The bundle Go's crypto/x509 reads on AIX. AIX installs every root as a
+// file of its own next to it in /var/ssl/certs, with hash links to each.
+var AixCertFiles = []string{
+	"/var/ssl/certs/ca-bundle.crt",
+}
+
 var LinuxCertFiles = []string{
 	"/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Gentoo etc.
 	"/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora/RHEL 6
@@ -62,6 +68,8 @@ func initOsRootCertificates(runtime *plugin.Runtime, args map[string]*llx.RawDat
 		paths = LinuxCertFiles
 	} else if platform.IsFamily("bsd") {
 		paths = BsdCertFiles
+	} else if platform.Name == "aix" {
+		paths = AixCertFiles
 	} else {
 		return nil, nil, errors.New("root certificates are not supported on this platform: " + platform.Name + " " + platform.Version)
 	}

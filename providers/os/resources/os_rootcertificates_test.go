@@ -127,3 +127,21 @@ func TestOsRootCertificates_Solaris(t *testing.T) {
 
 	assert.Equal(t, []string{"/etc/certs/ca-certificates.crt"}, initedPaths(t, runtime))
 }
+
+// AIX keeps no bundle under any Linux or BSD path: os.rootCertificates
+// errored with "not supported on this platform".
+func TestOsRootCertificates_Aix(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:    "aix",
+			Version: "7.3",
+			Family:  []string{"unix", "os"},
+		},
+	}, mock.WithData(&mock.TomlData{Files: map[string]*mock.MockFileData{
+		"/var/ssl/certs/ca-bundle.crt": bundleFile(0o644),
+	}}))
+	require.NoError(t, err)
+	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+
+	assert.Equal(t, []string{"/var/ssl/certs/ca-bundle.crt"}, initedPaths(t, runtime))
+}
