@@ -311,8 +311,8 @@ func TestPrinter_Assessment(t *testing.T) {
 			strings.Join([]string{
 				"[failed] [].none()",
 				"  actual:   [",
-				"    0: user name=\"christopher\" gid=1000 uid=1001 ",
-				"    1: user name=\"chris\" gid=1000 uid=1000 ",
+				"    0: user name=\"chris\" gid=1000 uid=1000 ",
+				"    1: user name=\"christopher\" gid=1000 uid=1001 ",
 				"  ]",
 				"",
 			}, "\n"),
