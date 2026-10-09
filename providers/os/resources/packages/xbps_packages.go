@@ -100,16 +100,26 @@ func ParseXbpsPkgdb(pf *inventory.Platform, r io.Reader) ([]Package, error) {
 		entry := db[name]
 		// The top level of the database is not packages alone: xbps keeps a
 		// bookkeeping entry, _XBPS_ALTERNATIVES_, right beside them, and it is
-		// a dict like they are. Skipping on the absence of a pkgname rather
+		// a dict like they are. Skipping on the absence of a pkgver rather
 		// than on that one name means a bookkeeping key added later is skipped
 		// too, instead of becoming a package with no name and no version.
-		if entry.PkgName == "" {
+		//
+		// pkgname is not that signal: an entry can lack it. On a void-glibc
+		// container, the linux6.12 kernel installed with xbps-install carried
+		// pkgver, sourcepkg and state but no pkgname, so the kernel was left
+		// out of the inventory. The key the database files it under is the
+		// package name.
+		if entry.PkgVer == "" {
 			continue
+		}
+		pkgName := entry.PkgName
+		if pkgName == "" {
+			pkgName = name
 		}
 
 		pkg := Package{
-			Name:        entry.PkgName,
-			Version:     xbpsVersion(entry.PkgName, entry.PkgVer),
+			Name:        pkgName,
+			Version:     xbpsVersion(pkgName, entry.PkgVer),
 			Arch:        entry.Architecture,
 			Description: entry.ShortDesc,
 			License:     entry.License,

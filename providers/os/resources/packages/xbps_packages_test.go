@@ -205,3 +205,49 @@ func TestXbpsUpdateCheck(t *testing.T) {
 	err = packages.XbpsUpdateCheck(selfUpdate, strings.NewReader(synced))
 	require.ErrorIs(t, err, packages.ErrUpdateCheckFailed)
 }
+
+// An entry can carry no pkgname. The linux6.12 kernel installed with
+// xbps-install on a void-glibc container was recorded this way (pkgdb-0.38,
+// install and remove scripts omitted), so it has to be named by its key.
+func TestParseXbpsPkgdbEntryWithoutPkgname(t *testing.T) {
+	db := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>_XBPS_ALTERNATIVES_</key>
+	<dict>
+		<key>sh</key>
+		<array>
+			<string>dash</string>
+		</array>
+	</dict>
+	<key>linux6.12</key>
+	<dict>
+		<key>architecture</key>
+		<string>aarch64</string>
+		<key>install-date</key>
+		<string>2026-10-09 05:25 UTC</string>
+		<key>license</key>
+		<string>GPL-2.0-only</string>
+		<key>pkgver</key>
+		<string>linux6.12-6.12.112_1</string>
+		<key>preserve</key>
+		<true/>
+		<key>short_desc</key>
+		<string>Linux kernel and modules (6.12 series)</string>
+		<key>sourcepkg</key>
+		<string>linux6.12</string>
+		<key>state</key>
+		<string>installed</string>
+	</dict>
+</dict>
+</plist>`
+
+	pkgs, err := packages.ParseXbpsPkgdb(voidPlatform(), strings.NewReader(db))
+	require.NoError(t, err)
+	require.Len(t, pkgs, 1, "the kernel is a package, the alternatives entry is not")
+	assert.Equal(t, "linux6.12", pkgs[0].Name)
+	assert.Equal(t, "6.12.112_1", pkgs[0].Version)
+	assert.Equal(t, "aarch64", pkgs[0].Arch)
+	assert.Equal(t, "installed", pkgs[0].Status)
+}
