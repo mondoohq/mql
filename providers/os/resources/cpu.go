@@ -320,6 +320,13 @@ func getCpuInfoAIX(conn shared.Connection) (*cpuInfo, error) {
 			switch k {
 			case "Processor Type":
 				info.Model = v
+			case "Processor Clock Speed":
+				// 2450 MHz
+				if mhz, unit, ok := strings.Cut(v, " "); ok && unit == "MHz" {
+					if n, err := strconv.ParseInt(mhz, 10, 64); err == nil {
+						info.MaxClockSpeed = n
+					}
+				}
 			}
 		}
 	}

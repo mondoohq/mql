@@ -179,6 +179,7 @@ func TestGetCpuInfoAIX(t *testing.T) {
 	assert.Equal(t, int64(1), info.ProcessorCount)
 	// 12 physical cores from lsdev, not 48 logical from prtconf
 	assert.Equal(t, int64(12), info.Cores)
+	assert.Equal(t, int64(3800), info.MaxClockSpeed)
 }
 
 func TestGetCpuInfoSolaris(t *testing.T) {
