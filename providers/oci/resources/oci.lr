@@ -1250,6 +1250,16 @@ oci.compute {
   blockVolumes() []oci.compute.blockVolume
   // Boot volumes
   bootVolumes() []oci.compute.bootVolume
+  // Volume attachments of instances in all compartments
+  volumeAttachments() []oci.compute.volumeAttachment
+  // Block volume backup policies: Oracle-defined (gold, silver, bronze) and custom ones
+  volumeBackupPolicies() []oci.compute.volumeBackupPolicy
+  // Block volume backups in all compartments
+  volumeBackups() []oci.compute.volumeBackup
+  // Boot volume backups in all compartments
+  bootVolumeBackups() []oci.compute.bootVolumeBackup
+  // Volume groups in all compartments
+  volumeGroups() []oci.compute.volumeGroup
 }
 
 // OCI network internet-exposure breakdown
@@ -1453,6 +1463,8 @@ private oci.compute.instance @defaults("name") {
   sourceDetails @maturity("deprecated") dict
   // Boot volume the instance was launched from, when launched from an existing boot volume
   bootVolume() oci.compute.bootVolume
+  // Block volumes attached to the instance, with how each is attached
+  volumeAttachments() []oci.compute.volumeAttachment
   // Image and boot volume the instance was created from at launch
   //
   // Null when the instance was launched from an existing boot volume, in
@@ -1802,6 +1814,14 @@ private oci.compute.blockVolume @defaults("name") {
   sourceVolume() oci.compute.blockVolume
   // OCID of the volume backup this volume was restored from, when restored from a backup
   sourceVolumeBackupId string
+  // Backup policy assigned to the volume; null when the volume is not backed up on a schedule
+  backupPolicy() oci.compute.volumeBackupPolicy
+  // Backups of the volume
+  backups() []oci.compute.volumeBackup
+  // Volume group the volume belongs to; null when it belongs to none
+  volumeGroup() oci.compute.volumeGroup
+  // Attachments of the volume to instances
+  attachments() []oci.compute.volumeAttachment
   // Block volume creation time
   created time
   // Free-form tags for resource management
@@ -1843,6 +1863,12 @@ private oci.compute.bootVolume @defaults("name") {
   state string
   // KMS key for volume encryption
   kmsKey() oci.kms.key
+  // Backup policy assigned to the boot volume; null when it is not backed up on a schedule
+  backupPolicy() oci.compute.volumeBackupPolicy
+  // Backups of the boot volume
+  backups() []oci.compute.bootVolumeBackup
+  // Volume group the boot volume belongs to; null when it belongs to none
+  volumeGroup() oci.compute.volumeGroup
   // Boot volume creation time
   created time
   // Free-form tags for resource management
@@ -12746,4 +12772,217 @@ private oci.osManagementHub.managedInstance @defaults("name status osFamily") {
   created() time
   // When the managed instance was last updated
   timeUpdated() time
+}
+
+// Oracle Cloud Infrastructure (OCI) volume attachment
+//
+// An attachment of a block volume to a Compute instance, keyed by its OCID,
+// with the attachment type (iscsi, paravirtualized, emulated), whether it is
+// read-only or shareable, in-transit encryption, and CHAP and multipath
+// settings. Use it to verify that every attached volume encrypts its data in
+// transit. The CHAP secret is never read.
+private oci.compute.volumeAttachment @defaults("name attachmentType state") {
+  // Volume attachment OCID
+  id string
+  // Volume attachment display name
+  name string
+  // Compartment containing the attachment
+  compartment() oci.compartment
+  // Attachment type: iscsi, paravirtualized, or emulated
+  attachmentType string
+  // Lifecycle state: ATTACHING, ATTACHED, DETACHING, or DETACHED
+  state string
+  // Availability domain of the instance
+  availabilityDomain string
+  // Device path the volume is attached at, for example /dev/oracleoci/oraclevdb
+  device string
+  // Whether the volume is attached read-only
+  isReadOnly bool
+  // Whether the volume can be attached to more than one instance
+  isShareable bool
+  // Whether paravirtualized in-transit encryption is enabled between the instance and the volume
+  isPvEncryptionInTransitEnabled bool
+  // In-transit encryption type of an iSCSI attachment: NONE or BM_ENCRYPTION_IN_TRANSIT; empty for other attachment types
+  encryptionInTransitType string
+  // Whether the iSCSI attachment authenticates with CHAP; false for other attachment types
+  chapEnabled bool
+  // Whether the attachment is multipath
+  isMultipath bool
+  // Whether the volume was created when the instance was launched
+  isVolumeCreatedDuringLaunch bool
+  // Attachment creation time
+  created time
+  // Instance the volume is attached to
+  instance() oci.compute.instance
+  // Attached block volume
+  volume() oci.compute.blockVolume
+}
+
+// Oracle Cloud Infrastructure (OCI) volume backup policy
+//
+// A schedule of block and boot volume backups, keyed by its OCID: one of
+// Oracle's predefined policies (gold, silver, bronze) or a custom one, with
+// its schedules, their retention, and the region backups are copied to. Use
+// it to verify that volumes are backed up and that backups are kept long
+// enough and copied out of the region.
+private oci.compute.volumeBackupPolicy @defaults("name") {
+  // Backup policy OCID
+  id string
+  // Backup policy display name
+  name string
+  // Compartment containing the policy; null for Oracle's predefined policies
+  compartment() oci.compartment
+  // Whether this is one of Oracle's predefined policies
+  isOracleDefined bool
+  // Region backups are copied to; empty when they are not copied
+  destinationRegion string
+  // Backup schedules
+  schedules() []oci.compute.volumeBackupPolicy.schedule
+  // Policy creation time
+  created time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) volume backup schedule
+private oci.compute.volumeBackupPolicy.schedule @defaults("backupType period retentionDays") {
+  // Backup type: FULL or INCREMENTAL
+  backupType string
+  // How often a backup is taken: ONE_HOUR, ONE_DAY, ONE_WEEK, ONE_MONTH, or ONE_YEAR
+  period string
+  // How long backups are kept, in days
+  retentionDays int
+  // Hour of the day the backup is taken, 0 to 23; null when not set
+  hourOfDay int
+  // Day of the week the backup is taken, for example MONDAY; empty when not set
+  dayOfWeek string
+  // Day of the month the backup is taken; null when not set
+  dayOfMonth int
+  // Month the backup is taken, for example JANUARY; empty when not set
+  month string
+  // Time zone of the schedule: UTC or REGIONAL_DATA_CENTER_TIME
+  timeZone string
+  // Whether backups made by the schedule cannot be deleted
+  isPreventDeletionEnabled bool
+  // Whether the retention of backups made by the schedule is locked
+  isRetentionLockEnabled bool
+}
+
+// Oracle Cloud Infrastructure (OCI) block volume backup
+//
+// A backup of a block volume, keyed by its OCID, with its type (full or
+// incremental), whether it was taken manually or by a policy, its size, the
+// KMS key protecting it, when it expires, and deletion and retention locks.
+private oci.compute.volumeBackup @defaults("name type sourceType state") {
+  // Backup OCID
+  id string
+  // Backup display name
+  name string
+  // Compartment containing the backup
+  compartment() oci.compartment
+  // Backup type: FULL or INCREMENTAL
+  type string
+  // How the backup was taken: MANUAL or SCHEDULED
+  sourceType string
+  // Lifecycle state, for example AVAILABLE
+  state string
+  // Size of the backed-up volume in GBs
+  sizeInGBs int
+  // Storage the backup uses that no other backup shares, in GBs
+  uniqueSizeInGBs int
+  // KMS key encrypting the backup; null when Oracle manages the key
+  kmsKey() oci.kms.key
+  // Backed-up block volume; null when it no longer exists
+  volume() oci.compute.blockVolume
+  // Time the backup expires; null when it does not expire
+  expirationTime time
+  // Time the backup's retention lock expires; null without a retention lock
+  retentionExpiresAt time
+  // Whether the backup cannot be deleted
+  isPreventDeletionEnabled bool
+  // Whether the backup's retention is locked
+  isRetentionLockEnabled bool
+  // Backup creation time
+  created time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) boot volume backup
+//
+// A backup of a boot volume, keyed by its OCID, with its type (full or
+// incremental), whether it was taken manually or by a policy, its size, the
+// KMS key protecting it, when it expires, and deletion and retention locks.
+private oci.compute.bootVolumeBackup @defaults("name type sourceType state") {
+  // Backup OCID
+  id string
+  // Backup display name
+  name string
+  // Compartment containing the backup
+  compartment() oci.compartment
+  // Backup type: FULL or INCREMENTAL
+  type string
+  // How the backup was taken: MANUAL or SCHEDULED
+  sourceType string
+  // Lifecycle state, for example AVAILABLE
+  state string
+  // Size of the backed-up boot volume in GBs
+  sizeInGBs int
+  // Storage the backup uses that no other backup shares, in GBs
+  uniqueSizeInGBs int
+  // KMS key encrypting the backup; null when Oracle manages the key
+  kmsKey() oci.kms.key
+  // Backed-up boot volume; null when it no longer exists
+  bootVolume() oci.compute.bootVolume
+  // Time the backup expires; null when it does not expire
+  expirationTime time
+  // Time the backup's retention lock expires; null without a retention lock
+  retentionExpiresAt time
+  // Whether the backup cannot be deleted
+  isPreventDeletionEnabled bool
+  // Whether the backup's retention is locked
+  isRetentionLockEnabled bool
+  // Backup creation time
+  created time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) volume group
+//
+// A group of block and boot volumes backed up and cloned together, keyed by
+// its OCID, with its member volumes and its backup policy.
+private oci.compute.volumeGroup @defaults("name state") {
+  // Volume group OCID
+  id string
+  // Volume group display name
+  name string
+  // Compartment containing the volume group
+  compartment() oci.compartment
+  // Availability domain of the volume group
+  availabilityDomain string
+  // Lifecycle state, for example AVAILABLE
+  state string
+  // Total size of the group's volumes in GBs
+  sizeInGBs int
+  // Whether a cloned group's data has finished copying from the source
+  isHydrated bool
+  // Block volumes in the group
+  blockVolumes() []oci.compute.blockVolume
+  // Boot volumes in the group
+  bootVolumes() []oci.compute.bootVolume
+  // Backup policy assigned to the group; null when the group is not backed up on a schedule
+  backupPolicy() oci.compute.volumeBackupPolicy
+  // Volume group creation time
+  created time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
 }

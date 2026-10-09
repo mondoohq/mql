@@ -688,6 +688,8 @@ func (o *mqlOciCompute) blockVolumes() ([]any, error) {
 				mqlBV := mqlInstance.(*mqlOciComputeBlockVolume)
 				mqlBV.cacheKmsKeyID = stringValue(vol.KmsKeyId)
 				mqlBV.cacheSourceVolumeID = sourceVolumeID
+				mqlBV.cacheRegion = region
+				mqlBV.cacheVolumeGroupID = stringValue(vol.VolumeGroupId)
 				res = append(res, mqlBV)
 			}
 
@@ -719,6 +721,8 @@ type mqlOciComputeBlockVolumeInternal struct {
 	ociCompartmentRef
 	cacheKmsKeyID       string
 	cacheSourceVolumeID string
+	cacheRegion         string
+	cacheVolumeGroupID  string
 }
 
 func (o *mqlOciComputeBlockVolume) id() (string, error) {
@@ -792,6 +796,8 @@ func (o *mqlOciCompute) bootVolumes() ([]any, error) {
 				mqlBV.cacheImageID = stringValue(bv.ImageId)
 				mqlBV.cacheKmsKeyID = stringValue(bv.KmsKeyId)
 				mqlBV.cacheSourceBootVolumeID = sourceBootVolumeID
+				mqlBV.cacheRegion = region
+				mqlBV.cacheVolumeGroupID = stringValue(bv.VolumeGroupId)
 				res = append(res, mqlBV)
 			}
 
@@ -824,6 +830,8 @@ type mqlOciComputeBootVolumeInternal struct {
 	cacheImageID            string
 	cacheKmsKeyID           string
 	cacheSourceBootVolumeID string
+	cacheRegion             string
+	cacheVolumeGroupID      string
 }
 
 func (o *mqlOciComputeBootVolume) id() (string, error) {

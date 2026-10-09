@@ -334,6 +334,12 @@ const (
 	ResourceOciLockboxAccessRequest                                            string = "oci.lockbox.accessRequest"
 	ResourceOciOsManagementHub                                                 string = "oci.osManagementHub"
 	ResourceOciOsManagementHubManagedInstance                                  string = "oci.osManagementHub.managedInstance"
+	ResourceOciComputeVolumeAttachment                                         string = "oci.compute.volumeAttachment"
+	ResourceOciComputeVolumeBackupPolicy                                       string = "oci.compute.volumeBackupPolicy"
+	ResourceOciComputeVolumeBackupPolicySchedule                               string = "oci.compute.volumeBackupPolicy.schedule"
+	ResourceOciComputeVolumeBackup                                             string = "oci.compute.volumeBackup"
+	ResourceOciComputeBootVolumeBackup                                         string = "oci.compute.bootVolumeBackup"
+	ResourceOciComputeVolumeGroup                                              string = "oci.compute.volumeGroup"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -1612,6 +1618,30 @@ func init() {
 			// to override args, implement: initOciOsManagementHubManagedInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createOciOsManagementHubManagedInstance,
 		},
+		"oci.compute.volumeAttachment": {
+			// to override args, implement: initOciComputeVolumeAttachment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createOciComputeVolumeAttachment,
+		},
+		"oci.compute.volumeBackupPolicy": {
+			Init:   initOciComputeVolumeBackupPolicy,
+			Create: createOciComputeVolumeBackupPolicy,
+		},
+		"oci.compute.volumeBackupPolicy.schedule": {
+			// to override args, implement: initOciComputeVolumeBackupPolicySchedule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createOciComputeVolumeBackupPolicySchedule,
+		},
+		"oci.compute.volumeBackup": {
+			// to override args, implement: initOciComputeVolumeBackup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createOciComputeVolumeBackup,
+		},
+		"oci.compute.bootVolumeBackup": {
+			// to override args, implement: initOciComputeBootVolumeBackup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createOciComputeBootVolumeBackup,
+		},
+		"oci.compute.volumeGroup": {
+			// to override args, implement: initOciComputeVolumeGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createOciComputeVolumeGroup,
+		},
 	}
 }
 
@@ -2805,6 +2835,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.compute.bootVolumes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciCompute).GetBootVolumes()).ToDataRes(types.Array(types.Resource("oci.compute.bootVolume")))
 	},
+	"oci.compute.volumeAttachments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciCompute).GetVolumeAttachments()).ToDataRes(types.Array(types.Resource("oci.compute.volumeAttachment")))
+	},
+	"oci.compute.volumeBackupPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciCompute).GetVolumeBackupPolicies()).ToDataRes(types.Array(types.Resource("oci.compute.volumeBackupPolicy")))
+	},
+	"oci.compute.volumeBackups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciCompute).GetVolumeBackups()).ToDataRes(types.Array(types.Resource("oci.compute.volumeBackup")))
+	},
+	"oci.compute.bootVolumeBackups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciCompute).GetBootVolumeBackups()).ToDataRes(types.Array(types.Resource("oci.compute.bootVolumeBackup")))
+	},
+	"oci.compute.volumeGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciCompute).GetVolumeGroups()).ToDataRes(types.Array(types.Resource("oci.compute.volumeGroup")))
+	},
 	"oci.network.exposure.internetReachable": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciNetworkExposure).GetInternetReachable()).ToDataRes(types.Bool)
 	},
@@ -2912,6 +2957,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.compute.instance.bootVolume": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciComputeInstance).GetBootVolume()).ToDataRes(types.Resource("oci.compute.bootVolume"))
+	},
+	"oci.compute.instance.volumeAttachments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeInstance).GetVolumeAttachments()).ToDataRes(types.Array(types.Resource("oci.compute.volumeAttachment")))
 	},
 	"oci.compute.instance.bootSource": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciComputeInstance).GetBootSource()).ToDataRes(types.Resource("oci.compute.imageSource"))
@@ -3183,6 +3231,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.compute.blockVolume.sourceVolumeBackupId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciComputeBlockVolume).GetSourceVolumeBackupId()).ToDataRes(types.String)
 	},
+	"oci.compute.blockVolume.backupPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBlockVolume).GetBackupPolicy()).ToDataRes(types.Resource("oci.compute.volumeBackupPolicy"))
+	},
+	"oci.compute.blockVolume.backups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBlockVolume).GetBackups()).ToDataRes(types.Array(types.Resource("oci.compute.volumeBackup")))
+	},
+	"oci.compute.blockVolume.volumeGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBlockVolume).GetVolumeGroup()).ToDataRes(types.Resource("oci.compute.volumeGroup"))
+	},
+	"oci.compute.blockVolume.attachments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBlockVolume).GetAttachments()).ToDataRes(types.Array(types.Resource("oci.compute.volumeAttachment")))
+	},
 	"oci.compute.blockVolume.created": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciComputeBlockVolume).GetCreated()).ToDataRes(types.Time)
 	},
@@ -3224,6 +3284,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.compute.bootVolume.kmsKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciComputeBootVolume).GetKmsKey()).ToDataRes(types.Resource("oci.kms.key"))
+	},
+	"oci.compute.bootVolume.backupPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolume).GetBackupPolicy()).ToDataRes(types.Resource("oci.compute.volumeBackupPolicy"))
+	},
+	"oci.compute.bootVolume.backups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolume).GetBackups()).ToDataRes(types.Array(types.Resource("oci.compute.bootVolumeBackup")))
+	},
+	"oci.compute.bootVolume.volumeGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolume).GetVolumeGroup()).ToDataRes(types.Resource("oci.compute.volumeGroup"))
 	},
 	"oci.compute.bootVolume.created": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciComputeBootVolume).GetCreated()).ToDataRes(types.Time)
@@ -12717,6 +12786,255 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.osManagementHub.managedInstance.timeUpdated": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciOsManagementHubManagedInstance).GetTimeUpdated()).ToDataRes(types.Time)
 	},
+	"oci.compute.volumeAttachment.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetId()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeAttachment.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetName()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeAttachment.compartment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetCompartment()).ToDataRes(types.Resource("oci.compartment"))
+	},
+	"oci.compute.volumeAttachment.attachmentType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetAttachmentType()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeAttachment.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetState()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeAttachment.availabilityDomain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetAvailabilityDomain()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeAttachment.device": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetDevice()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeAttachment.isReadOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetIsReadOnly()).ToDataRes(types.Bool)
+	},
+	"oci.compute.volumeAttachment.isShareable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetIsShareable()).ToDataRes(types.Bool)
+	},
+	"oci.compute.volumeAttachment.isPvEncryptionInTransitEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetIsPvEncryptionInTransitEnabled()).ToDataRes(types.Bool)
+	},
+	"oci.compute.volumeAttachment.encryptionInTransitType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetEncryptionInTransitType()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeAttachment.chapEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetChapEnabled()).ToDataRes(types.Bool)
+	},
+	"oci.compute.volumeAttachment.isMultipath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetIsMultipath()).ToDataRes(types.Bool)
+	},
+	"oci.compute.volumeAttachment.isVolumeCreatedDuringLaunch": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetIsVolumeCreatedDuringLaunch()).ToDataRes(types.Bool)
+	},
+	"oci.compute.volumeAttachment.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetCreated()).ToDataRes(types.Time)
+	},
+	"oci.compute.volumeAttachment.instance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetInstance()).ToDataRes(types.Resource("oci.compute.instance"))
+	},
+	"oci.compute.volumeAttachment.volume": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetVolume()).ToDataRes(types.Resource("oci.compute.blockVolume"))
+	},
+	"oci.compute.volumeBackupPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicy).GetId()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeBackupPolicy.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicy).GetName()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeBackupPolicy.compartment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicy).GetCompartment()).ToDataRes(types.Resource("oci.compartment"))
+	},
+	"oci.compute.volumeBackupPolicy.isOracleDefined": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicy).GetIsOracleDefined()).ToDataRes(types.Bool)
+	},
+	"oci.compute.volumeBackupPolicy.destinationRegion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicy).GetDestinationRegion()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeBackupPolicy.schedules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicy).GetSchedules()).ToDataRes(types.Array(types.Resource("oci.compute.volumeBackupPolicy.schedule")))
+	},
+	"oci.compute.volumeBackupPolicy.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicy).GetCreated()).ToDataRes(types.Time)
+	},
+	"oci.compute.volumeBackupPolicy.freeformTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicy).GetFreeformTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"oci.compute.volumeBackupPolicy.definedTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicy).GetDefinedTags()).ToDataRes(types.Map(types.String, types.Map(types.String, types.String)))
+	},
+	"oci.compute.volumeBackupPolicy.schedule.backupType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicySchedule).GetBackupType()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeBackupPolicy.schedule.period": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicySchedule).GetPeriod()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeBackupPolicy.schedule.retentionDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicySchedule).GetRetentionDays()).ToDataRes(types.Int)
+	},
+	"oci.compute.volumeBackupPolicy.schedule.hourOfDay": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicySchedule).GetHourOfDay()).ToDataRes(types.Int)
+	},
+	"oci.compute.volumeBackupPolicy.schedule.dayOfWeek": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicySchedule).GetDayOfWeek()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeBackupPolicy.schedule.dayOfMonth": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicySchedule).GetDayOfMonth()).ToDataRes(types.Int)
+	},
+	"oci.compute.volumeBackupPolicy.schedule.month": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicySchedule).GetMonth()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeBackupPolicy.schedule.timeZone": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicySchedule).GetTimeZone()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeBackupPolicy.schedule.isPreventDeletionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicySchedule).GetIsPreventDeletionEnabled()).ToDataRes(types.Bool)
+	},
+	"oci.compute.volumeBackupPolicy.schedule.isRetentionLockEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackupPolicySchedule).GetIsRetentionLockEnabled()).ToDataRes(types.Bool)
+	},
+	"oci.compute.volumeBackup.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetId()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeBackup.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetName()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeBackup.compartment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetCompartment()).ToDataRes(types.Resource("oci.compartment"))
+	},
+	"oci.compute.volumeBackup.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetType()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeBackup.sourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetSourceType()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeBackup.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetState()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeBackup.sizeInGBs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetSizeInGBs()).ToDataRes(types.Int)
+	},
+	"oci.compute.volumeBackup.uniqueSizeInGBs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetUniqueSizeInGBs()).ToDataRes(types.Int)
+	},
+	"oci.compute.volumeBackup.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetKmsKey()).ToDataRes(types.Resource("oci.kms.key"))
+	},
+	"oci.compute.volumeBackup.volume": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetVolume()).ToDataRes(types.Resource("oci.compute.blockVolume"))
+	},
+	"oci.compute.volumeBackup.expirationTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetExpirationTime()).ToDataRes(types.Time)
+	},
+	"oci.compute.volumeBackup.retentionExpiresAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetRetentionExpiresAt()).ToDataRes(types.Time)
+	},
+	"oci.compute.volumeBackup.isPreventDeletionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetIsPreventDeletionEnabled()).ToDataRes(types.Bool)
+	},
+	"oci.compute.volumeBackup.isRetentionLockEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetIsRetentionLockEnabled()).ToDataRes(types.Bool)
+	},
+	"oci.compute.volumeBackup.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetCreated()).ToDataRes(types.Time)
+	},
+	"oci.compute.volumeBackup.freeformTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetFreeformTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"oci.compute.volumeBackup.definedTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeBackup).GetDefinedTags()).ToDataRes(types.Map(types.String, types.Map(types.String, types.String)))
+	},
+	"oci.compute.bootVolumeBackup.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetId()).ToDataRes(types.String)
+	},
+	"oci.compute.bootVolumeBackup.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetName()).ToDataRes(types.String)
+	},
+	"oci.compute.bootVolumeBackup.compartment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetCompartment()).ToDataRes(types.Resource("oci.compartment"))
+	},
+	"oci.compute.bootVolumeBackup.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetType()).ToDataRes(types.String)
+	},
+	"oci.compute.bootVolumeBackup.sourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetSourceType()).ToDataRes(types.String)
+	},
+	"oci.compute.bootVolumeBackup.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetState()).ToDataRes(types.String)
+	},
+	"oci.compute.bootVolumeBackup.sizeInGBs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetSizeInGBs()).ToDataRes(types.Int)
+	},
+	"oci.compute.bootVolumeBackup.uniqueSizeInGBs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetUniqueSizeInGBs()).ToDataRes(types.Int)
+	},
+	"oci.compute.bootVolumeBackup.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetKmsKey()).ToDataRes(types.Resource("oci.kms.key"))
+	},
+	"oci.compute.bootVolumeBackup.bootVolume": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetBootVolume()).ToDataRes(types.Resource("oci.compute.bootVolume"))
+	},
+	"oci.compute.bootVolumeBackup.expirationTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetExpirationTime()).ToDataRes(types.Time)
+	},
+	"oci.compute.bootVolumeBackup.retentionExpiresAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetRetentionExpiresAt()).ToDataRes(types.Time)
+	},
+	"oci.compute.bootVolumeBackup.isPreventDeletionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetIsPreventDeletionEnabled()).ToDataRes(types.Bool)
+	},
+	"oci.compute.bootVolumeBackup.isRetentionLockEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetIsRetentionLockEnabled()).ToDataRes(types.Bool)
+	},
+	"oci.compute.bootVolumeBackup.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetCreated()).ToDataRes(types.Time)
+	},
+	"oci.compute.bootVolumeBackup.freeformTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetFreeformTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"oci.compute.bootVolumeBackup.definedTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeBootVolumeBackup).GetDefinedTags()).ToDataRes(types.Map(types.String, types.Map(types.String, types.String)))
+	},
+	"oci.compute.volumeGroup.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeGroup).GetId()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeGroup.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeGroup).GetName()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeGroup.compartment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeGroup).GetCompartment()).ToDataRes(types.Resource("oci.compartment"))
+	},
+	"oci.compute.volumeGroup.availabilityDomain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeGroup).GetAvailabilityDomain()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeGroup.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeGroup).GetState()).ToDataRes(types.String)
+	},
+	"oci.compute.volumeGroup.sizeInGBs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeGroup).GetSizeInGBs()).ToDataRes(types.Int)
+	},
+	"oci.compute.volumeGroup.isHydrated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeGroup).GetIsHydrated()).ToDataRes(types.Bool)
+	},
+	"oci.compute.volumeGroup.blockVolumes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeGroup).GetBlockVolumes()).ToDataRes(types.Array(types.Resource("oci.compute.blockVolume")))
+	},
+	"oci.compute.volumeGroup.bootVolumes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeGroup).GetBootVolumes()).ToDataRes(types.Array(types.Resource("oci.compute.bootVolume")))
+	},
+	"oci.compute.volumeGroup.backupPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeGroup).GetBackupPolicy()).ToDataRes(types.Resource("oci.compute.volumeBackupPolicy"))
+	},
+	"oci.compute.volumeGroup.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeGroup).GetCreated()).ToDataRes(types.Time)
+	},
+	"oci.compute.volumeGroup.freeformTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeGroup).GetFreeformTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"oci.compute.volumeGroup.definedTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeGroup).GetDefinedTags()).ToDataRes(types.Map(types.String, types.Map(types.String, types.String)))
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -14361,6 +14679,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciCompute).BootVolumes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"oci.compute.volumeAttachments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciCompute).VolumeAttachments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciCompute).VolumeBackupPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciCompute).VolumeBackups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciCompute).BootVolumeBackups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciCompute).VolumeGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"oci.network.exposure.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciNetworkExposure).__id, ok = v.Value.(string)
 		return
@@ -14511,6 +14849,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.compute.instance.bootVolume": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciComputeInstance).BootVolume, ok = plugin.RawToTValue[*mqlOciComputeBootVolume](v.Value, v.Error)
+		return
+	},
+	"oci.compute.instance.volumeAttachments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeInstance).VolumeAttachments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"oci.compute.instance.bootSource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -14901,6 +15243,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciComputeBlockVolume).SourceVolumeBackupId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"oci.compute.blockVolume.backupPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBlockVolume).BackupPolicy, ok = plugin.RawToTValue[*mqlOciComputeVolumeBackupPolicy](v.Value, v.Error)
+		return
+	},
+	"oci.compute.blockVolume.backups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBlockVolume).Backups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.blockVolume.volumeGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBlockVolume).VolumeGroup, ok = plugin.RawToTValue[*mqlOciComputeVolumeGroup](v.Value, v.Error)
+		return
+	},
+	"oci.compute.blockVolume.attachments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBlockVolume).Attachments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"oci.compute.blockVolume.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciComputeBlockVolume).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
@@ -14959,6 +15317,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.compute.bootVolume.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciComputeBootVolume).KmsKey, ok = plugin.RawToTValue[*mqlOciKmsKey](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolume.backupPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolume).BackupPolicy, ok = plugin.RawToTValue[*mqlOciComputeVolumeBackupPolicy](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolume.backups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolume).Backups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolume.volumeGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolume).VolumeGroup, ok = plugin.RawToTValue[*mqlOciComputeVolumeGroup](v.Value, v.Error)
 		return
 	},
 	"oci.compute.bootVolume.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -28713,6 +29083,362 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciOsManagementHubManagedInstance).TimeUpdated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"oci.compute.volumeAttachment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).__id, ok = v.Value.(string)
+		return
+	},
+	"oci.compute.volumeAttachment.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.compartment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).Compartment, ok = plugin.RawToTValue[*mqlOciCompartment](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.attachmentType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).AttachmentType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.availabilityDomain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).AvailabilityDomain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.device": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).Device, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.isReadOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).IsReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.isShareable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).IsShareable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.isPvEncryptionInTransitEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).IsPvEncryptionInTransitEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.encryptionInTransitType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).EncryptionInTransitType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.chapEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).ChapEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.isMultipath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).IsMultipath, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.isVolumeCreatedDuringLaunch": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).IsVolumeCreatedDuringLaunch, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.instance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).Instance, ok = plugin.RawToTValue[*mqlOciComputeInstance](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeAttachment.volume": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).Volume, ok = plugin.RawToTValue[*mqlOciComputeBlockVolume](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicy).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.compartment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicy).Compartment, ok = plugin.RawToTValue[*mqlOciCompartment](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.isOracleDefined": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicy).IsOracleDefined, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.destinationRegion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicy).DestinationRegion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.schedules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicy).Schedules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicy).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.freeformTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicy).FreeformTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.definedTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicy).DefinedTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.schedule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicySchedule).__id, ok = v.Value.(string)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.schedule.backupType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicySchedule).BackupType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.schedule.period": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicySchedule).Period, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.schedule.retentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicySchedule).RetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.schedule.hourOfDay": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicySchedule).HourOfDay, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.schedule.dayOfWeek": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicySchedule).DayOfWeek, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.schedule.dayOfMonth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicySchedule).DayOfMonth, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.schedule.month": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicySchedule).Month, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.schedule.timeZone": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicySchedule).TimeZone, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.schedule.isPreventDeletionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicySchedule).IsPreventDeletionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackupPolicy.schedule.isRetentionLockEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackupPolicySchedule).IsRetentionLockEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).__id, ok = v.Value.(string)
+		return
+	},
+	"oci.compute.volumeBackup.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.compartment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).Compartment, ok = plugin.RawToTValue[*mqlOciCompartment](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.sourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).SourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.sizeInGBs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).SizeInGBs, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.uniqueSizeInGBs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).UniqueSizeInGBs, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).KmsKey, ok = plugin.RawToTValue[*mqlOciKmsKey](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.volume": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).Volume, ok = plugin.RawToTValue[*mqlOciComputeBlockVolume](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.expirationTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).ExpirationTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.retentionExpiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).RetentionExpiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.isPreventDeletionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).IsPreventDeletionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.isRetentionLockEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).IsRetentionLockEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.freeformTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).FreeformTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeBackup.definedTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeBackup).DefinedTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).__id, ok = v.Value.(string)
+		return
+	},
+	"oci.compute.bootVolumeBackup.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.compartment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).Compartment, ok = plugin.RawToTValue[*mqlOciCompartment](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.sourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).SourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.sizeInGBs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).SizeInGBs, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.uniqueSizeInGBs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).UniqueSizeInGBs, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).KmsKey, ok = plugin.RawToTValue[*mqlOciKmsKey](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.bootVolume": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).BootVolume, ok = plugin.RawToTValue[*mqlOciComputeBootVolume](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.expirationTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).ExpirationTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.retentionExpiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).RetentionExpiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.isPreventDeletionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).IsPreventDeletionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.isRetentionLockEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).IsRetentionLockEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.freeformTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).FreeformTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.bootVolumeBackup.definedTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeBootVolumeBackup).DefinedTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).__id, ok = v.Value.(string)
+		return
+	},
+	"oci.compute.volumeGroup.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroup.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroup.compartment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).Compartment, ok = plugin.RawToTValue[*mqlOciCompartment](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroup.availabilityDomain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).AvailabilityDomain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroup.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroup.sizeInGBs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).SizeInGBs, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroup.isHydrated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).IsHydrated, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroup.blockVolumes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).BlockVolumes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroup.bootVolumes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).BootVolumes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroup.backupPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).BackupPolicy, ok = plugin.RawToTValue[*mqlOciComputeVolumeBackupPolicy](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroup.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroup.freeformTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).FreeformTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.compute.volumeGroup.definedTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeGroup).DefinedTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -32597,10 +33323,15 @@ type mqlOciCompute struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlOciComputeInternal it will be used here
-	Instances    plugin.TValue[[]any]
-	Images       plugin.TValue[[]any]
-	BlockVolumes plugin.TValue[[]any]
-	BootVolumes  plugin.TValue[[]any]
+	Instances            plugin.TValue[[]any]
+	Images               plugin.TValue[[]any]
+	BlockVolumes         plugin.TValue[[]any]
+	BootVolumes          plugin.TValue[[]any]
+	VolumeAttachments    plugin.TValue[[]any]
+	VolumeBackupPolicies plugin.TValue[[]any]
+	VolumeBackups        plugin.TValue[[]any]
+	BootVolumeBackups    plugin.TValue[[]any]
+	VolumeGroups         plugin.TValue[[]any]
 }
 
 // createOciCompute creates a new instance of this resource
@@ -32701,6 +33432,86 @@ func (c *mqlOciCompute) GetBootVolumes() *plugin.TValue[[]any] {
 		}
 
 		return c.bootVolumes()
+	})
+}
+
+func (c *mqlOciCompute) GetVolumeAttachments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.VolumeAttachments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute", c.__id, "volumeAttachments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.volumeAttachments()
+	})
+}
+
+func (c *mqlOciCompute) GetVolumeBackupPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.VolumeBackupPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute", c.__id, "volumeBackupPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.volumeBackupPolicies()
+	})
+}
+
+func (c *mqlOciCompute) GetVolumeBackups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.VolumeBackups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute", c.__id, "volumeBackups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.volumeBackups()
+	})
+}
+
+func (c *mqlOciCompute) GetBootVolumeBackups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BootVolumeBackups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute", c.__id, "bootVolumeBackups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.bootVolumeBackups()
+	})
+}
+
+func (c *mqlOciCompute) GetVolumeGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.VolumeGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute", c.__id, "volumeGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.volumeGroups()
 	})
 }
 
@@ -32852,6 +33663,7 @@ type mqlOciComputeInstance struct {
 	Sizing                       plugin.TValue[*mqlOciComputeInstanceSizing]
 	SourceDetails                plugin.TValue[any]
 	BootVolume                   plugin.TValue[*mqlOciComputeBootVolume]
+	VolumeAttachments            plugin.TValue[[]any]
 	BootSource                   plugin.TValue[*mqlOciComputeImageSource]
 	Metadata                     plugin.TValue[map[string]any]
 	ExtendedMetadata             plugin.TValue[any]
@@ -33067,6 +33879,22 @@ func (c *mqlOciComputeInstance) GetBootVolume() *plugin.TValue[*mqlOciComputeBoo
 		}
 
 		return c.bootVolume()
+	})
+}
+
+func (c *mqlOciComputeInstance) GetVolumeAttachments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.VolumeAttachments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.instance", c.__id, "volumeAttachments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.volumeAttachments()
 	})
 }
 
@@ -33908,6 +34736,10 @@ type mqlOciComputeBlockVolume struct {
 	IsAutoTuneEnabled    plugin.TValue[bool]
 	SourceVolume         plugin.TValue[*mqlOciComputeBlockVolume]
 	SourceVolumeBackupId plugin.TValue[string]
+	BackupPolicy         plugin.TValue[*mqlOciComputeVolumeBackupPolicy]
+	Backups              plugin.TValue[[]any]
+	VolumeGroup          plugin.TValue[*mqlOciComputeVolumeGroup]
+	Attachments          plugin.TValue[[]any]
 	Created              plugin.TValue[*time.Time]
 	FreeformTags         plugin.TValue[map[string]any]
 	DefinedTags          plugin.TValue[map[string]any]
@@ -34035,6 +34867,70 @@ func (c *mqlOciComputeBlockVolume) GetSourceVolumeBackupId() *plugin.TValue[stri
 	return &c.SourceVolumeBackupId
 }
 
+func (c *mqlOciComputeBlockVolume) GetBackupPolicy() *plugin.TValue[*mqlOciComputeVolumeBackupPolicy] {
+	return plugin.GetOrCompute[*mqlOciComputeVolumeBackupPolicy](&c.BackupPolicy, func() (*mqlOciComputeVolumeBackupPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.blockVolume", c.__id, "backupPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciComputeVolumeBackupPolicy), nil
+			}
+		}
+
+		return c.backupPolicy()
+	})
+}
+
+func (c *mqlOciComputeBlockVolume) GetBackups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Backups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.blockVolume", c.__id, "backups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.backups()
+	})
+}
+
+func (c *mqlOciComputeBlockVolume) GetVolumeGroup() *plugin.TValue[*mqlOciComputeVolumeGroup] {
+	return plugin.GetOrCompute[*mqlOciComputeVolumeGroup](&c.VolumeGroup, func() (*mqlOciComputeVolumeGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.blockVolume", c.__id, "volumeGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciComputeVolumeGroup), nil
+			}
+		}
+
+		return c.volumeGroup()
+	})
+}
+
+func (c *mqlOciComputeBlockVolume) GetAttachments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Attachments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.blockVolume", c.__id, "attachments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.attachments()
+	})
+}
+
 func (c *mqlOciComputeBlockVolume) GetCreated() *plugin.TValue[*time.Time] {
 	return &c.Created
 }
@@ -34066,6 +34962,9 @@ type mqlOciComputeBootVolume struct {
 	SourceBootVolumeBackupId plugin.TValue[string]
 	State                    plugin.TValue[string]
 	KmsKey                   plugin.TValue[*mqlOciKmsKey]
+	BackupPolicy             plugin.TValue[*mqlOciComputeVolumeBackupPolicy]
+	Backups                  plugin.TValue[[]any]
+	VolumeGroup              plugin.TValue[*mqlOciComputeVolumeGroup]
 	Created                  plugin.TValue[*time.Time]
 	FreeformTags             plugin.TValue[map[string]any]
 	DefinedTags              plugin.TValue[map[string]any]
@@ -34194,6 +35093,54 @@ func (c *mqlOciComputeBootVolume) GetKmsKey() *plugin.TValue[*mqlOciKmsKey] {
 		}
 
 		return c.kmsKey()
+	})
+}
+
+func (c *mqlOciComputeBootVolume) GetBackupPolicy() *plugin.TValue[*mqlOciComputeVolumeBackupPolicy] {
+	return plugin.GetOrCompute[*mqlOciComputeVolumeBackupPolicy](&c.BackupPolicy, func() (*mqlOciComputeVolumeBackupPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.bootVolume", c.__id, "backupPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciComputeVolumeBackupPolicy), nil
+			}
+		}
+
+		return c.backupPolicy()
+	})
+}
+
+func (c *mqlOciComputeBootVolume) GetBackups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Backups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.bootVolume", c.__id, "backups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.backups()
+	})
+}
+
+func (c *mqlOciComputeBootVolume) GetVolumeGroup() *plugin.TValue[*mqlOciComputeVolumeGroup] {
+	return plugin.GetOrCompute[*mqlOciComputeVolumeGroup](&c.VolumeGroup, func() (*mqlOciComputeVolumeGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.bootVolume", c.__id, "volumeGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciComputeVolumeGroup), nil
+			}
+		}
+
+		return c.volumeGroup()
 	})
 }
 
@@ -69552,4 +70499,858 @@ func (c *mqlOciOsManagementHubManagedInstance) GetTimeUpdated() *plugin.TValue[*
 	return plugin.GetOrCompute[*time.Time](&c.TimeUpdated, func() (*time.Time, error) {
 		return c.timeUpdated()
 	})
+}
+
+// mqlOciComputeVolumeAttachment for the oci.compute.volumeAttachment resource
+type mqlOciComputeVolumeAttachment struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlOciComputeVolumeAttachmentInternal
+	Id                             plugin.TValue[string]
+	Name                           plugin.TValue[string]
+	Compartment                    plugin.TValue[*mqlOciCompartment]
+	AttachmentType                 plugin.TValue[string]
+	State                          plugin.TValue[string]
+	AvailabilityDomain             plugin.TValue[string]
+	Device                         plugin.TValue[string]
+	IsReadOnly                     plugin.TValue[bool]
+	IsShareable                    plugin.TValue[bool]
+	IsPvEncryptionInTransitEnabled plugin.TValue[bool]
+	EncryptionInTransitType        plugin.TValue[string]
+	ChapEnabled                    plugin.TValue[bool]
+	IsMultipath                    plugin.TValue[bool]
+	IsVolumeCreatedDuringLaunch    plugin.TValue[bool]
+	Created                        plugin.TValue[*time.Time]
+	Instance                       plugin.TValue[*mqlOciComputeInstance]
+	Volume                         plugin.TValue[*mqlOciComputeBlockVolume]
+}
+
+// createOciComputeVolumeAttachment creates a new instance of this resource
+func createOciComputeVolumeAttachment(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOciComputeVolumeAttachment{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("oci.compute.volumeAttachment", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOciComputeVolumeAttachment) MqlName() string {
+	return "oci.compute.volumeAttachment"
+}
+
+func (c *mqlOciComputeVolumeAttachment) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetCompartment() *plugin.TValue[*mqlOciCompartment] {
+	return plugin.GetOrCompute[*mqlOciCompartment](&c.Compartment, func() (*mqlOciCompartment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.volumeAttachment", c.__id, "compartment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciCompartment), nil
+			}
+		}
+
+		return c.compartment()
+	})
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetAttachmentType() *plugin.TValue[string] {
+	return &c.AttachmentType
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetAvailabilityDomain() *plugin.TValue[string] {
+	return &c.AvailabilityDomain
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetDevice() *plugin.TValue[string] {
+	return &c.Device
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetIsReadOnly() *plugin.TValue[bool] {
+	return &c.IsReadOnly
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetIsShareable() *plugin.TValue[bool] {
+	return &c.IsShareable
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetIsPvEncryptionInTransitEnabled() *plugin.TValue[bool] {
+	return &c.IsPvEncryptionInTransitEnabled
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetEncryptionInTransitType() *plugin.TValue[string] {
+	return &c.EncryptionInTransitType
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetChapEnabled() *plugin.TValue[bool] {
+	return &c.ChapEnabled
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetIsMultipath() *plugin.TValue[bool] {
+	return &c.IsMultipath
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetIsVolumeCreatedDuringLaunch() *plugin.TValue[bool] {
+	return &c.IsVolumeCreatedDuringLaunch
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetInstance() *plugin.TValue[*mqlOciComputeInstance] {
+	return plugin.GetOrCompute[*mqlOciComputeInstance](&c.Instance, func() (*mqlOciComputeInstance, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.volumeAttachment", c.__id, "instance")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciComputeInstance), nil
+			}
+		}
+
+		return c.instance()
+	})
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetVolume() *plugin.TValue[*mqlOciComputeBlockVolume] {
+	return plugin.GetOrCompute[*mqlOciComputeBlockVolume](&c.Volume, func() (*mqlOciComputeBlockVolume, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.volumeAttachment", c.__id, "volume")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciComputeBlockVolume), nil
+			}
+		}
+
+		return c.volume()
+	})
+}
+
+// mqlOciComputeVolumeBackupPolicy for the oci.compute.volumeBackupPolicy resource
+type mqlOciComputeVolumeBackupPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlOciComputeVolumeBackupPolicyInternal
+	Id                plugin.TValue[string]
+	Name              plugin.TValue[string]
+	Compartment       plugin.TValue[*mqlOciCompartment]
+	IsOracleDefined   plugin.TValue[bool]
+	DestinationRegion plugin.TValue[string]
+	Schedules         plugin.TValue[[]any]
+	Created           plugin.TValue[*time.Time]
+	FreeformTags      plugin.TValue[map[string]any]
+	DefinedTags       plugin.TValue[map[string]any]
+}
+
+// createOciComputeVolumeBackupPolicy creates a new instance of this resource
+func createOciComputeVolumeBackupPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOciComputeVolumeBackupPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("oci.compute.volumeBackupPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOciComputeVolumeBackupPolicy) MqlName() string {
+	return "oci.compute.volumeBackupPolicy"
+}
+
+func (c *mqlOciComputeVolumeBackupPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOciComputeVolumeBackupPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlOciComputeVolumeBackupPolicy) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlOciComputeVolumeBackupPolicy) GetCompartment() *plugin.TValue[*mqlOciCompartment] {
+	return plugin.GetOrCompute[*mqlOciCompartment](&c.Compartment, func() (*mqlOciCompartment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.volumeBackupPolicy", c.__id, "compartment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciCompartment), nil
+			}
+		}
+
+		return c.compartment()
+	})
+}
+
+func (c *mqlOciComputeVolumeBackupPolicy) GetIsOracleDefined() *plugin.TValue[bool] {
+	return &c.IsOracleDefined
+}
+
+func (c *mqlOciComputeVolumeBackupPolicy) GetDestinationRegion() *plugin.TValue[string] {
+	return &c.DestinationRegion
+}
+
+func (c *mqlOciComputeVolumeBackupPolicy) GetSchedules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Schedules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.volumeBackupPolicy", c.__id, "schedules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.schedules()
+	})
+}
+
+func (c *mqlOciComputeVolumeBackupPolicy) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlOciComputeVolumeBackupPolicy) GetFreeformTags() *plugin.TValue[map[string]any] {
+	return &c.FreeformTags
+}
+
+func (c *mqlOciComputeVolumeBackupPolicy) GetDefinedTags() *plugin.TValue[map[string]any] {
+	return &c.DefinedTags
+}
+
+// mqlOciComputeVolumeBackupPolicySchedule for the oci.compute.volumeBackupPolicy.schedule resource
+type mqlOciComputeVolumeBackupPolicySchedule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlOciComputeVolumeBackupPolicyScheduleInternal it will be used here
+	BackupType               plugin.TValue[string]
+	Period                   plugin.TValue[string]
+	RetentionDays            plugin.TValue[int64]
+	HourOfDay                plugin.TValue[int64]
+	DayOfWeek                plugin.TValue[string]
+	DayOfMonth               plugin.TValue[int64]
+	Month                    plugin.TValue[string]
+	TimeZone                 plugin.TValue[string]
+	IsPreventDeletionEnabled plugin.TValue[bool]
+	IsRetentionLockEnabled   plugin.TValue[bool]
+}
+
+// createOciComputeVolumeBackupPolicySchedule creates a new instance of this resource
+func createOciComputeVolumeBackupPolicySchedule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOciComputeVolumeBackupPolicySchedule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("oci.compute.volumeBackupPolicy.schedule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOciComputeVolumeBackupPolicySchedule) MqlName() string {
+	return "oci.compute.volumeBackupPolicy.schedule"
+}
+
+func (c *mqlOciComputeVolumeBackupPolicySchedule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOciComputeVolumeBackupPolicySchedule) GetBackupType() *plugin.TValue[string] {
+	return &c.BackupType
+}
+
+func (c *mqlOciComputeVolumeBackupPolicySchedule) GetPeriod() *plugin.TValue[string] {
+	return &c.Period
+}
+
+func (c *mqlOciComputeVolumeBackupPolicySchedule) GetRetentionDays() *plugin.TValue[int64] {
+	return &c.RetentionDays
+}
+
+func (c *mqlOciComputeVolumeBackupPolicySchedule) GetHourOfDay() *plugin.TValue[int64] {
+	return &c.HourOfDay
+}
+
+func (c *mqlOciComputeVolumeBackupPolicySchedule) GetDayOfWeek() *plugin.TValue[string] {
+	return &c.DayOfWeek
+}
+
+func (c *mqlOciComputeVolumeBackupPolicySchedule) GetDayOfMonth() *plugin.TValue[int64] {
+	return &c.DayOfMonth
+}
+
+func (c *mqlOciComputeVolumeBackupPolicySchedule) GetMonth() *plugin.TValue[string] {
+	return &c.Month
+}
+
+func (c *mqlOciComputeVolumeBackupPolicySchedule) GetTimeZone() *plugin.TValue[string] {
+	return &c.TimeZone
+}
+
+func (c *mqlOciComputeVolumeBackupPolicySchedule) GetIsPreventDeletionEnabled() *plugin.TValue[bool] {
+	return &c.IsPreventDeletionEnabled
+}
+
+func (c *mqlOciComputeVolumeBackupPolicySchedule) GetIsRetentionLockEnabled() *plugin.TValue[bool] {
+	return &c.IsRetentionLockEnabled
+}
+
+// mqlOciComputeVolumeBackup for the oci.compute.volumeBackup resource
+type mqlOciComputeVolumeBackup struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlOciComputeVolumeBackupInternal
+	Id                       plugin.TValue[string]
+	Name                     plugin.TValue[string]
+	Compartment              plugin.TValue[*mqlOciCompartment]
+	Type                     plugin.TValue[string]
+	SourceType               plugin.TValue[string]
+	State                    plugin.TValue[string]
+	SizeInGBs                plugin.TValue[int64]
+	UniqueSizeInGBs          plugin.TValue[int64]
+	KmsKey                   plugin.TValue[*mqlOciKmsKey]
+	Volume                   plugin.TValue[*mqlOciComputeBlockVolume]
+	ExpirationTime           plugin.TValue[*time.Time]
+	RetentionExpiresAt       plugin.TValue[*time.Time]
+	IsPreventDeletionEnabled plugin.TValue[bool]
+	IsRetentionLockEnabled   plugin.TValue[bool]
+	Created                  plugin.TValue[*time.Time]
+	FreeformTags             plugin.TValue[map[string]any]
+	DefinedTags              plugin.TValue[map[string]any]
+}
+
+// createOciComputeVolumeBackup creates a new instance of this resource
+func createOciComputeVolumeBackup(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOciComputeVolumeBackup{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("oci.compute.volumeBackup", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOciComputeVolumeBackup) MqlName() string {
+	return "oci.compute.volumeBackup"
+}
+
+func (c *mqlOciComputeVolumeBackup) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOciComputeVolumeBackup) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlOciComputeVolumeBackup) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlOciComputeVolumeBackup) GetCompartment() *plugin.TValue[*mqlOciCompartment] {
+	return plugin.GetOrCompute[*mqlOciCompartment](&c.Compartment, func() (*mqlOciCompartment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.volumeBackup", c.__id, "compartment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciCompartment), nil
+			}
+		}
+
+		return c.compartment()
+	})
+}
+
+func (c *mqlOciComputeVolumeBackup) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlOciComputeVolumeBackup) GetSourceType() *plugin.TValue[string] {
+	return &c.SourceType
+}
+
+func (c *mqlOciComputeVolumeBackup) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlOciComputeVolumeBackup) GetSizeInGBs() *plugin.TValue[int64] {
+	return &c.SizeInGBs
+}
+
+func (c *mqlOciComputeVolumeBackup) GetUniqueSizeInGBs() *plugin.TValue[int64] {
+	return &c.UniqueSizeInGBs
+}
+
+func (c *mqlOciComputeVolumeBackup) GetKmsKey() *plugin.TValue[*mqlOciKmsKey] {
+	return plugin.GetOrCompute[*mqlOciKmsKey](&c.KmsKey, func() (*mqlOciKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.volumeBackup", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+func (c *mqlOciComputeVolumeBackup) GetVolume() *plugin.TValue[*mqlOciComputeBlockVolume] {
+	return plugin.GetOrCompute[*mqlOciComputeBlockVolume](&c.Volume, func() (*mqlOciComputeBlockVolume, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.volumeBackup", c.__id, "volume")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciComputeBlockVolume), nil
+			}
+		}
+
+		return c.volume()
+	})
+}
+
+func (c *mqlOciComputeVolumeBackup) GetExpirationTime() *plugin.TValue[*time.Time] {
+	return &c.ExpirationTime
+}
+
+func (c *mqlOciComputeVolumeBackup) GetRetentionExpiresAt() *plugin.TValue[*time.Time] {
+	return &c.RetentionExpiresAt
+}
+
+func (c *mqlOciComputeVolumeBackup) GetIsPreventDeletionEnabled() *plugin.TValue[bool] {
+	return &c.IsPreventDeletionEnabled
+}
+
+func (c *mqlOciComputeVolumeBackup) GetIsRetentionLockEnabled() *plugin.TValue[bool] {
+	return &c.IsRetentionLockEnabled
+}
+
+func (c *mqlOciComputeVolumeBackup) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlOciComputeVolumeBackup) GetFreeformTags() *plugin.TValue[map[string]any] {
+	return &c.FreeformTags
+}
+
+func (c *mqlOciComputeVolumeBackup) GetDefinedTags() *plugin.TValue[map[string]any] {
+	return &c.DefinedTags
+}
+
+// mqlOciComputeBootVolumeBackup for the oci.compute.bootVolumeBackup resource
+type mqlOciComputeBootVolumeBackup struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlOciComputeBootVolumeBackupInternal
+	Id                       plugin.TValue[string]
+	Name                     plugin.TValue[string]
+	Compartment              plugin.TValue[*mqlOciCompartment]
+	Type                     plugin.TValue[string]
+	SourceType               plugin.TValue[string]
+	State                    plugin.TValue[string]
+	SizeInGBs                plugin.TValue[int64]
+	UniqueSizeInGBs          plugin.TValue[int64]
+	KmsKey                   plugin.TValue[*mqlOciKmsKey]
+	BootVolume               plugin.TValue[*mqlOciComputeBootVolume]
+	ExpirationTime           plugin.TValue[*time.Time]
+	RetentionExpiresAt       plugin.TValue[*time.Time]
+	IsPreventDeletionEnabled plugin.TValue[bool]
+	IsRetentionLockEnabled   plugin.TValue[bool]
+	Created                  plugin.TValue[*time.Time]
+	FreeformTags             plugin.TValue[map[string]any]
+	DefinedTags              plugin.TValue[map[string]any]
+}
+
+// createOciComputeBootVolumeBackup creates a new instance of this resource
+func createOciComputeBootVolumeBackup(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOciComputeBootVolumeBackup{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("oci.compute.bootVolumeBackup", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOciComputeBootVolumeBackup) MqlName() string {
+	return "oci.compute.bootVolumeBackup"
+}
+
+func (c *mqlOciComputeBootVolumeBackup) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetCompartment() *plugin.TValue[*mqlOciCompartment] {
+	return plugin.GetOrCompute[*mqlOciCompartment](&c.Compartment, func() (*mqlOciCompartment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.bootVolumeBackup", c.__id, "compartment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciCompartment), nil
+			}
+		}
+
+		return c.compartment()
+	})
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetSourceType() *plugin.TValue[string] {
+	return &c.SourceType
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetSizeInGBs() *plugin.TValue[int64] {
+	return &c.SizeInGBs
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetUniqueSizeInGBs() *plugin.TValue[int64] {
+	return &c.UniqueSizeInGBs
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetKmsKey() *plugin.TValue[*mqlOciKmsKey] {
+	return plugin.GetOrCompute[*mqlOciKmsKey](&c.KmsKey, func() (*mqlOciKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.bootVolumeBackup", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetBootVolume() *plugin.TValue[*mqlOciComputeBootVolume] {
+	return plugin.GetOrCompute[*mqlOciComputeBootVolume](&c.BootVolume, func() (*mqlOciComputeBootVolume, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.bootVolumeBackup", c.__id, "bootVolume")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciComputeBootVolume), nil
+			}
+		}
+
+		return c.bootVolume()
+	})
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetExpirationTime() *plugin.TValue[*time.Time] {
+	return &c.ExpirationTime
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetRetentionExpiresAt() *plugin.TValue[*time.Time] {
+	return &c.RetentionExpiresAt
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetIsPreventDeletionEnabled() *plugin.TValue[bool] {
+	return &c.IsPreventDeletionEnabled
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetIsRetentionLockEnabled() *plugin.TValue[bool] {
+	return &c.IsRetentionLockEnabled
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetFreeformTags() *plugin.TValue[map[string]any] {
+	return &c.FreeformTags
+}
+
+func (c *mqlOciComputeBootVolumeBackup) GetDefinedTags() *plugin.TValue[map[string]any] {
+	return &c.DefinedTags
+}
+
+// mqlOciComputeVolumeGroup for the oci.compute.volumeGroup resource
+type mqlOciComputeVolumeGroup struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlOciComputeVolumeGroupInternal
+	Id                 plugin.TValue[string]
+	Name               plugin.TValue[string]
+	Compartment        plugin.TValue[*mqlOciCompartment]
+	AvailabilityDomain plugin.TValue[string]
+	State              plugin.TValue[string]
+	SizeInGBs          plugin.TValue[int64]
+	IsHydrated         plugin.TValue[bool]
+	BlockVolumes       plugin.TValue[[]any]
+	BootVolumes        plugin.TValue[[]any]
+	BackupPolicy       plugin.TValue[*mqlOciComputeVolumeBackupPolicy]
+	Created            plugin.TValue[*time.Time]
+	FreeformTags       plugin.TValue[map[string]any]
+	DefinedTags        plugin.TValue[map[string]any]
+}
+
+// createOciComputeVolumeGroup creates a new instance of this resource
+func createOciComputeVolumeGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOciComputeVolumeGroup{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("oci.compute.volumeGroup", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOciComputeVolumeGroup) MqlName() string {
+	return "oci.compute.volumeGroup"
+}
+
+func (c *mqlOciComputeVolumeGroup) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOciComputeVolumeGroup) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlOciComputeVolumeGroup) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlOciComputeVolumeGroup) GetCompartment() *plugin.TValue[*mqlOciCompartment] {
+	return plugin.GetOrCompute[*mqlOciCompartment](&c.Compartment, func() (*mqlOciCompartment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.volumeGroup", c.__id, "compartment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciCompartment), nil
+			}
+		}
+
+		return c.compartment()
+	})
+}
+
+func (c *mqlOciComputeVolumeGroup) GetAvailabilityDomain() *plugin.TValue[string] {
+	return &c.AvailabilityDomain
+}
+
+func (c *mqlOciComputeVolumeGroup) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlOciComputeVolumeGroup) GetSizeInGBs() *plugin.TValue[int64] {
+	return &c.SizeInGBs
+}
+
+func (c *mqlOciComputeVolumeGroup) GetIsHydrated() *plugin.TValue[bool] {
+	return &c.IsHydrated
+}
+
+func (c *mqlOciComputeVolumeGroup) GetBlockVolumes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BlockVolumes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.volumeGroup", c.__id, "blockVolumes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.blockVolumes()
+	})
+}
+
+func (c *mqlOciComputeVolumeGroup) GetBootVolumes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BootVolumes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.volumeGroup", c.__id, "bootVolumes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.bootVolumes()
+	})
+}
+
+func (c *mqlOciComputeVolumeGroup) GetBackupPolicy() *plugin.TValue[*mqlOciComputeVolumeBackupPolicy] {
+	return plugin.GetOrCompute[*mqlOciComputeVolumeBackupPolicy](&c.BackupPolicy, func() (*mqlOciComputeVolumeBackupPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.compute.volumeGroup", c.__id, "backupPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciComputeVolumeBackupPolicy), nil
+			}
+		}
+
+		return c.backupPolicy()
+	})
+}
+
+func (c *mqlOciComputeVolumeGroup) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlOciComputeVolumeGroup) GetFreeformTags() *plugin.TValue[map[string]any] {
+	return &c.FreeformTags
+}
+
+func (c *mqlOciComputeVolumeGroup) GetDefinedTags() *plugin.TValue[map[string]any] {
+	return &c.DefinedTags
 }
