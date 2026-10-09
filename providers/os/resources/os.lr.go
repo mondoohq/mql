@@ -304,6 +304,9 @@ const (
 	ResourceFirewalld                                     string = "firewalld"
 	ResourceFirewalldZone                                 string = "firewalld.zone"
 	ResourceFirewalldRichrule                             string = "firewalld.richrule"
+	ResourcePf                                            string = "pf"
+	ResourcePfRule                                        string = "pf.rule"
+	ResourcePfTable                                       string = "pf.table"
 	ResourceFstab                                         string = "fstab"
 	ResourceFstabEntry                                    string = "fstab.entry"
 	ResourceGrubConfig                                    string = "grub.config"
@@ -1864,6 +1867,18 @@ func init() {
 		"firewalld.richrule": {
 			// to override args, implement: initFirewalldRichrule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createFirewalldRichrule,
+		},
+		"pf": {
+			// to override args, implement: initPf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPf,
+		},
+		"pf.rule": {
+			// to override args, implement: initPfRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPfRule,
+		},
+		"pf.table": {
+			// to override args, implement: initPfTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPfTable,
 		},
 		"fstab": {
 			Init:   initFstab,
@@ -11293,6 +11308,75 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"firewalld.richrule.action": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlFirewalldRichrule).GetAction()).ToDataRes(types.String)
+	},
+	"pf.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPf).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"pf.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPf).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"pf.rules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPf).GetRules()).ToDataRes(types.Array(types.Resource("pf.rule")))
+	},
+	"pf.tables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPf).GetTables()).ToDataRes(types.Array(types.Resource("pf.table")))
+	},
+	"pf.skipInterfaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPf).GetSkipInterfaces()).ToDataRes(types.Array(types.String))
+	},
+	"pf.rule.raw": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetRaw()).ToDataRes(types.String)
+	},
+	"pf.rule.action": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetAction()).ToDataRes(types.String)
+	},
+	"pf.rule.blockPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetBlockPolicy()).ToDataRes(types.String)
+	},
+	"pf.rule.direction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetDirection()).ToDataRes(types.String)
+	},
+	"pf.rule.quick": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetQuick()).ToDataRes(types.Bool)
+	},
+	"pf.rule.log": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetLog()).ToDataRes(types.Bool)
+	},
+	"pf.rule.interface": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetInterface()).ToDataRes(types.String)
+	},
+	"pf.rule.addressFamily": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetAddressFamily()).ToDataRes(types.String)
+	},
+	"pf.rule.protocol": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetProtocol()).ToDataRes(types.String)
+	},
+	"pf.rule.from": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetFrom()).ToDataRes(types.String)
+	},
+	"pf.rule.fromPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetFromPort()).ToDataRes(types.String)
+	},
+	"pf.rule.to": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetTo()).ToDataRes(types.String)
+	},
+	"pf.rule.toPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetToPort()).ToDataRes(types.String)
+	},
+	"pf.rule.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetState()).ToDataRes(types.String)
+	},
+	"pf.rule.label": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetLabel()).ToDataRes(types.String)
+	},
+	"pf.rule.anchor": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfRule).GetAnchor()).ToDataRes(types.String)
+	},
+	"pf.table.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfTable).GetName()).ToDataRes(types.String)
+	},
+	"pf.table.addresses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPfTable).GetAddresses()).ToDataRes(types.Array(types.String))
 	},
 	"fstab.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlFstab).GetPath()).ToDataRes(types.String)
@@ -31382,6 +31466,110 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"firewalld.richrule.action": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlFirewalldRichrule).Action, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPf).__id, ok = v.Value.(string)
+		return
+	},
+	"pf.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPf).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"pf.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPf).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"pf.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPf).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"pf.tables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPf).Tables, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"pf.skipInterfaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPf).SkipInterfaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"pf.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).__id, ok = v.Value.(string)
+		return
+	},
+	"pf.rule.raw": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).Raw, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.rule.action": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).Action, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.rule.blockPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).BlockPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.rule.direction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).Direction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.rule.quick": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).Quick, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"pf.rule.log": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).Log, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"pf.rule.interface": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).Interface, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.rule.addressFamily": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).AddressFamily, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.rule.protocol": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).Protocol, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.rule.from": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).From, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.rule.fromPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).FromPort, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.rule.to": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).To, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.rule.toPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).ToPort, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.rule.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.rule.label": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).Label, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.rule.anchor": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfRule).Anchor, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.table.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfTable).__id, ok = v.Value.(string)
+		return
+	},
+	"pf.table.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfTable).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pf.table.addresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPfTable).Addresses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"fstab.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -76573,6 +76761,285 @@ func (c *mqlFirewalldRichrule) GetDestinationInverted() *plugin.TValue[bool] {
 
 func (c *mqlFirewalldRichrule) GetAction() *plugin.TValue[string] {
 	return &c.Action
+}
+
+// mqlPf for the pf resource
+type mqlPf struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlPfInternal
+	Enabled        plugin.TValue[bool]
+	File           plugin.TValue[*mqlFile]
+	Rules          plugin.TValue[[]any]
+	Tables         plugin.TValue[[]any]
+	SkipInterfaces plugin.TValue[[]any]
+}
+
+// createPf creates a new instance of this resource
+func createPf(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPf{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("pf", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPf) MqlName() string {
+	return "pf"
+}
+
+func (c *mqlPf) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPf) GetEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Enabled, func() (bool, error) {
+		return c.enabled()
+	})
+}
+
+func (c *mqlPf) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("pf", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.file()
+	})
+}
+
+func (c *mqlPf) GetRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Rules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("pf", c.__id, "rules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.rules()
+	})
+}
+
+func (c *mqlPf) GetTables() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tables, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("pf", c.__id, "tables")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tables()
+	})
+}
+
+func (c *mqlPf) GetSkipInterfaces() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SkipInterfaces, func() ([]any, error) {
+		return c.skipInterfaces()
+	})
+}
+
+// mqlPfRule for the pf.rule resource
+type mqlPfRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlPfRuleInternal it will be used here
+	Raw           plugin.TValue[string]
+	Action        plugin.TValue[string]
+	BlockPolicy   plugin.TValue[string]
+	Direction     plugin.TValue[string]
+	Quick         plugin.TValue[bool]
+	Log           plugin.TValue[bool]
+	Interface     plugin.TValue[string]
+	AddressFamily plugin.TValue[string]
+	Protocol      plugin.TValue[string]
+	From          plugin.TValue[string]
+	FromPort      plugin.TValue[string]
+	To            plugin.TValue[string]
+	ToPort        plugin.TValue[string]
+	State         plugin.TValue[string]
+	Label         plugin.TValue[string]
+	Anchor        plugin.TValue[string]
+}
+
+// createPfRule creates a new instance of this resource
+func createPfRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPfRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("pf.rule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPfRule) MqlName() string {
+	return "pf.rule"
+}
+
+func (c *mqlPfRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPfRule) GetRaw() *plugin.TValue[string] {
+	return &c.Raw
+}
+
+func (c *mqlPfRule) GetAction() *plugin.TValue[string] {
+	return &c.Action
+}
+
+func (c *mqlPfRule) GetBlockPolicy() *plugin.TValue[string] {
+	return &c.BlockPolicy
+}
+
+func (c *mqlPfRule) GetDirection() *plugin.TValue[string] {
+	return &c.Direction
+}
+
+func (c *mqlPfRule) GetQuick() *plugin.TValue[bool] {
+	return &c.Quick
+}
+
+func (c *mqlPfRule) GetLog() *plugin.TValue[bool] {
+	return &c.Log
+}
+
+func (c *mqlPfRule) GetInterface() *plugin.TValue[string] {
+	return &c.Interface
+}
+
+func (c *mqlPfRule) GetAddressFamily() *plugin.TValue[string] {
+	return &c.AddressFamily
+}
+
+func (c *mqlPfRule) GetProtocol() *plugin.TValue[string] {
+	return &c.Protocol
+}
+
+func (c *mqlPfRule) GetFrom() *plugin.TValue[string] {
+	return &c.From
+}
+
+func (c *mqlPfRule) GetFromPort() *plugin.TValue[string] {
+	return &c.FromPort
+}
+
+func (c *mqlPfRule) GetTo() *plugin.TValue[string] {
+	return &c.To
+}
+
+func (c *mqlPfRule) GetToPort() *plugin.TValue[string] {
+	return &c.ToPort
+}
+
+func (c *mqlPfRule) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlPfRule) GetLabel() *plugin.TValue[string] {
+	return &c.Label
+}
+
+func (c *mqlPfRule) GetAnchor() *plugin.TValue[string] {
+	return &c.Anchor
+}
+
+// mqlPfTable for the pf.table resource
+type mqlPfTable struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlPfTableInternal
+	Name      plugin.TValue[string]
+	Addresses plugin.TValue[[]any]
+}
+
+// createPfTable creates a new instance of this resource
+func createPfTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPfTable{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("pf.table", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPfTable) MqlName() string {
+	return "pf.table"
+}
+
+func (c *mqlPfTable) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPfTable) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlPfTable) GetAddresses() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Addresses, func() ([]any, error) {
+		return c.addresses()
+	})
 }
 
 // mqlFstab for the fstab resource

@@ -1,0 +1,24 @@
+Status: Disabled                              Debug: Urgent
+
+State Table                          Total             Rate
+  current entries                        0               
+  searches                               0            0.0/s
+  inserts                                0            0.0/s
+  removals                               0            0.0/s
+Counters
+  match                                  0            0.0/s
+  bad-offset                             0            0.0/s
+  fragment                               0            0.0/s
+  short                                  0            0.0/s
+  normalize                              0            0.0/s
+  memory                                 0            0.0/s
+  bad-timestamp                          0            0.0/s
+  congestion                             0            0.0/s
+  ip-option                              0            0.0/s
+  proto-cksum                            0            0.0/s
+  state-mismatch                         0            0.0/s
+  state-insert                           0            0.0/s
+  state-limit                            0            0.0/s
+  src-limit                              0            0.0/s
+  synproxy                               0            0.0/s
+  map-failed                             0            0.0/s

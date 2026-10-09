@@ -1,0 +1,5 @@
+No ALTQ support in kernel
+ALTQ related functions disabled
+all
+lo0 (skip)
+net0

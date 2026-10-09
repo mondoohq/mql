@@ -10277,6 +10277,108 @@ private firewalld.richrule @defaults("family rule") {
   action string
 }
 
+// PF packet filter
+//
+// The PF firewall that FreeBSD, OpenBSD, macOS, and Oracle Solaris 11.4
+// (as the svc:/network/firewall:default service) control with pfctl. Check
+// `enabled` to confirm PF is filtering, then audit the loaded `rules` in
+// evaluation order, for example that a rule blocks by default and that no
+// quick pass rule opens port 22 to any source. `tables` lists the address
+// tables the rules can reference, `skipInterfaces` the interfaces PF does
+// not filter at all, and `file` the configuration PF loads at boot.
+// Reading the running state needs root; without it, every field except
+// `file` fails with a permission error.
+pf @defaults("enabled") {
+  // Whether PF is enabled
+  //
+  // False on a host without pfctl, and on FreeBSD while the pf kernel
+  // module is not loaded.
+  enabled() bool
+  // Configuration file PF loads at boot
+  //
+  // On Solaris, the file the firewall/rules property of
+  // svc:/network/firewall:default names, /etc/firewall/pf.conf by default.
+  // On FreeBSD, the pf_rules setting of rc.conf, /etc/pf.conf by default.
+  // /etc/pf.conf elsewhere. The loaded ruleset can differ from this file
+  // until it is reloaded.
+  file() file
+  // Rules of the loaded main ruleset, in evaluation order
+  //
+  // As `pfctl -s rules` prints them: a rule written with lists is expanded
+  // into one rule per element, and the rules inside anchors are not listed.
+  rules() []pf.rule
+  // Address tables of the loaded main ruleset
+  tables() []pf.table
+  // Interfaces PF does not filter, set with `set skip on`
+  skipInterfaces() []string
+}
+
+// Rule of the loaded PF ruleset
+//
+// A single rule as pfctl prints it, broken into the `action`, how a block
+// rule blocks (`blockPolicy`), `direction`, `quick` and `log` flags, the
+// `interface`, `addressFamily`, and `protocol` it applies to, the `from`
+// and `to` addresses with their ports, the `state` it keeps, and its
+// `label`. `raw` holds the full rule text.
+private pf.rule @defaults("raw") {
+  // Rule as pfctl prints it
+  raw string
+  // Action: pass, block, match, scrub, anchor, or another rule keyword
+  action string
+  // How a block rule blocks: drop, return, return-rst, return-icmp, or return-icmp6
+  //
+  // Empty for other actions, and for a block rule that follows the
+  // ruleset's default block policy without naming one.
+  blockPolicy string
+  // Direction: in, out, or empty for both
+  direction string
+  // Whether a match on this rule ends evaluation
+  quick bool
+  // Whether matching packets are logged
+  log bool
+  // Interface or interface group after `on`, empty for all interfaces
+  //
+  // Prefixed with "! " when negated, for example "! lo0".
+  interface string
+  // Address family: inet, inet6, or empty for both
+  addressFamily string
+  // Protocol, for example tcp or udp, empty for all protocols
+  protocol string
+  // Source address, for example "any", "<trusted>", or "! 192.0.2.0/24"
+  from string
+  // Source port, empty when the rule matches any port
+  //
+  // Port names are resolved to numbers through /etc/services, and an
+  // equality match is the bare number, so `port = ssh` reads "22". Other
+  // matches keep their operator: "!= 22", "> 1024", "6000:6010".
+  fromPort string
+  // Destination address, for example "any", "(em0)", or "self"
+  to string
+  // Destination port, empty when the rule matches any port
+  //
+  // Port names are resolved to numbers through /etc/services, and an
+  // equality match is the bare number, so `port = ssh` reads "22". Other
+  // matches keep their operator: "!= 22", "> 1024", "6000:6010".
+  toPort string
+  // State tracking of a pass rule: keep state, modulate state, synproxy state, or no state
+  //
+  // A pass rule keeps state unless it says no state, so a pass rule that
+  // names none reads "keep state". Empty for other actions.
+  state string
+  // Rule label, empty when none is set
+  label string
+  // Anchor name of an anchor rule, empty for other rules
+  anchor string
+}
+
+// Address table of the loaded PF ruleset
+private pf.table @defaults("name") {
+  // Table name, referenced in rules as <name>
+  name string
+  // Addresses and networks in the table
+  addresses() []string
+}
+
 // fstab persistent mount table
 //
 // Filesystem mount table (/etc/fstab) that defines which devices are
