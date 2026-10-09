@@ -88,6 +88,9 @@ func Hypervisor(conn shared.Connection, pf *inventory.Platform) (hypervisor stri
 	if pf.Name == "freebsd" {
 		return hype.detectFreebsdHypervisor()
 	}
+	if pf.Name == "aix" {
+		return hype.detectAixHypervisor()
+	}
 	if pf.IsFamily(inventory.FAMILY_WINDOWS) && conn.Capabilities().Has(shared.Capability_File) {
 		return hype.detectWindowsHypervisor()
 	}
