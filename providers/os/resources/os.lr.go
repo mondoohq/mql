@@ -617,6 +617,11 @@ const (
 	ResourceZfsPool                                       string = "zfs.pool"
 	ResourceZfsPoolVdev                                   string = "zfs.pool.vdev"
 	ResourceZfsDataset                                    string = "zfs.dataset"
+	ResourceSolarisZones                                  string = "solaris.zones"
+	ResourceSolarisZone                                   string = "solaris.zone"
+	ResourceSolarisZoneNetwork                            string = "solaris.zone.network"
+	ResourceSolarisZoneFilesystem                         string = "solaris.zone.filesystem"
+	ResourceSolarisZoneDevice                             string = "solaris.zone.device"
 	ResourceAi                                            string = "ai"
 	ResourceAiModel                                       string = "ai.model"
 	ResourceOllamaConfig                                  string = "ollama.config"
@@ -3116,6 +3121,26 @@ func init() {
 		"zfs.dataset": {
 			Init:   initZfsDataset,
 			Create: createZfsDataset,
+		},
+		"solaris.zones": {
+			// to override args, implement: initSolarisZones(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSolarisZones,
+		},
+		"solaris.zone": {
+			Init:   initSolarisZone,
+			Create: createSolarisZone,
+		},
+		"solaris.zone.network": {
+			// to override args, implement: initSolarisZoneNetwork(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSolarisZoneNetwork,
+		},
+		"solaris.zone.filesystem": {
+			// to override args, implement: initSolarisZoneFilesystem(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSolarisZoneFilesystem,
+		},
+		"solaris.zone.device": {
+			// to override args, implement: initSolarisZoneDevice(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSolarisZoneDevice,
 		},
 		"ai": {
 			// to override args, implement: initAi(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -17956,6 +17981,138 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"zfs.dataset.snapshots": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlZfsDataset).GetSnapshots()).ToDataRes(types.Array(types.Resource("zfs.dataset")))
+	},
+	"solaris.zones.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZones).GetList()).ToDataRes(types.Array(types.Resource("solaris.zone")))
+	},
+	"solaris.zone.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetName()).ToDataRes(types.String)
+	},
+	"solaris.zone.zoneId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetZoneId()).ToDataRes(types.Int)
+	},
+	"solaris.zone.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetState()).ToDataRes(types.String)
+	},
+	"solaris.zone.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetPath()).ToDataRes(types.String)
+	},
+	"solaris.zone.uuid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetUuid()).ToDataRes(types.String)
+	},
+	"solaris.zone.brand": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetBrand()).ToDataRes(types.String)
+	},
+	"solaris.zone.ipType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetIpType()).ToDataRes(types.String)
+	},
+	"solaris.zone.autoboot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetAutoboot()).ToDataRes(types.Bool)
+	},
+	"solaris.zone.bootargs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetBootargs()).ToDataRes(types.String)
+	},
+	"solaris.zone.limitpriv": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetLimitpriv()).ToDataRes(types.Array(types.String))
+	},
+	"solaris.zone.fileMacProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetFileMacProfile()).ToDataRes(types.String)
+	},
+	"solaris.zone.fsAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetFsAllowed()).ToDataRes(types.Array(types.String))
+	},
+	"solaris.zone.schedulingClass": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetSchedulingClass()).ToDataRes(types.String)
+	},
+	"solaris.zone.hostid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetHostid()).ToDataRes(types.String)
+	},
+	"solaris.zone.datasets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetDatasets()).ToDataRes(types.Array(types.Resource("zfs.dataset")))
+	},
+	"solaris.zone.networks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetNetworks()).ToDataRes(types.Array(types.Resource("solaris.zone.network")))
+	},
+	"solaris.zone.filesystems": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetFilesystems()).ToDataRes(types.Array(types.Resource("solaris.zone.filesystem")))
+	},
+	"solaris.zone.devices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetDevices()).ToDataRes(types.Array(types.Resource("solaris.zone.device")))
+	},
+	"solaris.zone.memoryCapBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetMemoryCapBytes()).ToDataRes(types.Int)
+	},
+	"solaris.zone.swapCapBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetSwapCapBytes()).ToDataRes(types.Int)
+	},
+	"solaris.zone.lockedMemoryCapBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetLockedMemoryCapBytes()).ToDataRes(types.Int)
+	},
+	"solaris.zone.cpuCap": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetCpuCap()).ToDataRes(types.Float)
+	},
+	"solaris.zone.dedicatedCpus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetDedicatedCpus()).ToDataRes(types.String)
+	},
+	"solaris.zone.maxLwps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetMaxLwps()).ToDataRes(types.Int)
+	},
+	"solaris.zone.maxProcesses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZone).GetMaxProcesses()).ToDataRes(types.Int)
+	},
+	"solaris.zone.network.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneNetwork).GetType()).ToDataRes(types.String)
+	},
+	"solaris.zone.network.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneNetwork).GetName()).ToDataRes(types.String)
+	},
+	"solaris.zone.network.lowerLink": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneNetwork).GetLowerLink()).ToDataRes(types.String)
+	},
+	"solaris.zone.network.address": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneNetwork).GetAddress()).ToDataRes(types.String)
+	},
+	"solaris.zone.network.allowedAddresses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneNetwork).GetAllowedAddresses()).ToDataRes(types.Array(types.String))
+	},
+	"solaris.zone.network.defrouter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneNetwork).GetDefrouter()).ToDataRes(types.Array(types.String))
+	},
+	"solaris.zone.network.linkProtection": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneNetwork).GetLinkProtection()).ToDataRes(types.Array(types.String))
+	},
+	"solaris.zone.network.macAddress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneNetwork).GetMacAddress()).ToDataRes(types.String)
+	},
+	"solaris.zone.network.vlanId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneNetwork).GetVlanId()).ToDataRes(types.Int)
+	},
+	"solaris.zone.network.properties": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneNetwork).GetProperties()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"solaris.zone.filesystem.dir": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneFilesystem).GetDir()).ToDataRes(types.String)
+	},
+	"solaris.zone.filesystem.special": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneFilesystem).GetSpecial()).ToDataRes(types.String)
+	},
+	"solaris.zone.filesystem.raw": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneFilesystem).GetRaw()).ToDataRes(types.String)
+	},
+	"solaris.zone.filesystem.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneFilesystem).GetType()).ToDataRes(types.String)
+	},
+	"solaris.zone.filesystem.options": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneFilesystem).GetOptions()).ToDataRes(types.Array(types.String))
+	},
+	"solaris.zone.device.match": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneDevice).GetMatch()).ToDataRes(types.String)
+	},
+	"solaris.zone.device.allowPartition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneDevice).GetAllowPartition()).ToDataRes(types.Bool)
+	},
+	"solaris.zone.device.allowRawIo": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSolarisZoneDevice).GetAllowRawIo()).ToDataRes(types.Bool)
 	},
 	"ai.models": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAi).GetModels()).ToDataRes(types.Array(types.Resource("ai.model")))
@@ -41518,6 +41675,202 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"zfs.dataset.snapshots": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlZfsDataset).Snapshots, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"solaris.zones.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZones).__id, ok = v.Value.(string)
+		return
+	},
+	"solaris.zones.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZones).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).__id, ok = v.Value.(string)
+		return
+	},
+	"solaris.zone.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.zoneId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).ZoneId, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.uuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).Uuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.brand": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).Brand, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.ipType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).IpType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.autoboot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).Autoboot, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.bootargs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).Bootargs, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.limitpriv": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).Limitpriv, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.fileMacProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).FileMacProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.fsAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).FsAllowed, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.schedulingClass": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).SchedulingClass, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.hostid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).Hostid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.datasets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).Datasets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.networks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).Networks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.filesystems": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).Filesystems, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.devices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).Devices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.memoryCapBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).MemoryCapBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.swapCapBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).SwapCapBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.lockedMemoryCapBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).LockedMemoryCapBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.cpuCap": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).CpuCap, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.dedicatedCpus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).DedicatedCpus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.maxLwps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).MaxLwps, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.maxProcesses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZone).MaxProcesses, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.network.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneNetwork).__id, ok = v.Value.(string)
+		return
+	},
+	"solaris.zone.network.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneNetwork).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.network.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneNetwork).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.network.lowerLink": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneNetwork).LowerLink, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.network.address": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneNetwork).Address, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.network.allowedAddresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneNetwork).AllowedAddresses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.network.defrouter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneNetwork).Defrouter, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.network.linkProtection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneNetwork).LinkProtection, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.network.macAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneNetwork).MacAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.network.vlanId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneNetwork).VlanId, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.network.properties": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneNetwork).Properties, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.filesystem.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneFilesystem).__id, ok = v.Value.(string)
+		return
+	},
+	"solaris.zone.filesystem.dir": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneFilesystem).Dir, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.filesystem.special": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneFilesystem).Special, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.filesystem.raw": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneFilesystem).Raw, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.filesystem.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneFilesystem).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.filesystem.options": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneFilesystem).Options, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.device.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneDevice).__id, ok = v.Value.(string)
+		return
+	},
+	"solaris.zone.device.match": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneDevice).Match, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.device.allowPartition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneDevice).AllowPartition, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"solaris.zone.device.allowRawIo": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSolarisZoneDevice).AllowRawIo, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"ai.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -106225,6 +106578,519 @@ func (c *mqlZfsDataset) GetSnapshots() *plugin.TValue[[]any] {
 
 		return c.snapshots()
 	})
+}
+
+// mqlSolarisZones for the solaris.zones resource
+type mqlSolarisZones struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlSolarisZonesInternal it will be used here
+	List plugin.TValue[[]any]
+}
+
+// createSolarisZones creates a new instance of this resource
+func createSolarisZones(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSolarisZones{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("solaris.zones", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSolarisZones) MqlName() string {
+	return "solaris.zones"
+}
+
+func (c *mqlSolarisZones) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSolarisZones) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("solaris.zones", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlSolarisZone for the solaris.zone resource
+type mqlSolarisZone struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlSolarisZoneInternal
+	Name                 plugin.TValue[string]
+	ZoneId               plugin.TValue[int64]
+	State                plugin.TValue[string]
+	Path                 plugin.TValue[string]
+	Uuid                 plugin.TValue[string]
+	Brand                plugin.TValue[string]
+	IpType               plugin.TValue[string]
+	Autoboot             plugin.TValue[bool]
+	Bootargs             plugin.TValue[string]
+	Limitpriv            plugin.TValue[[]any]
+	FileMacProfile       plugin.TValue[string]
+	FsAllowed            plugin.TValue[[]any]
+	SchedulingClass      plugin.TValue[string]
+	Hostid               plugin.TValue[string]
+	Datasets             plugin.TValue[[]any]
+	Networks             plugin.TValue[[]any]
+	Filesystems          plugin.TValue[[]any]
+	Devices              plugin.TValue[[]any]
+	MemoryCapBytes       plugin.TValue[int64]
+	SwapCapBytes         plugin.TValue[int64]
+	LockedMemoryCapBytes plugin.TValue[int64]
+	CpuCap               plugin.TValue[float64]
+	DedicatedCpus        plugin.TValue[string]
+	MaxLwps              plugin.TValue[int64]
+	MaxProcesses         plugin.TValue[int64]
+}
+
+// createSolarisZone creates a new instance of this resource
+func createSolarisZone(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSolarisZone{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("solaris.zone", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSolarisZone) MqlName() string {
+	return "solaris.zone"
+}
+
+func (c *mqlSolarisZone) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSolarisZone) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlSolarisZone) GetZoneId() *plugin.TValue[int64] {
+	return &c.ZoneId
+}
+
+func (c *mqlSolarisZone) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlSolarisZone) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlSolarisZone) GetUuid() *plugin.TValue[string] {
+	return &c.Uuid
+}
+
+func (c *mqlSolarisZone) GetBrand() *plugin.TValue[string] {
+	return &c.Brand
+}
+
+func (c *mqlSolarisZone) GetIpType() *plugin.TValue[string] {
+	return &c.IpType
+}
+
+func (c *mqlSolarisZone) GetAutoboot() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Autoboot, func() (bool, error) {
+		return c.autoboot()
+	})
+}
+
+func (c *mqlSolarisZone) GetBootargs() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Bootargs, func() (string, error) {
+		return c.bootargs()
+	})
+}
+
+func (c *mqlSolarisZone) GetLimitpriv() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Limitpriv, func() ([]any, error) {
+		return c.limitpriv()
+	})
+}
+
+func (c *mqlSolarisZone) GetFileMacProfile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.FileMacProfile, func() (string, error) {
+		return c.fileMacProfile()
+	})
+}
+
+func (c *mqlSolarisZone) GetFsAllowed() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.FsAllowed, func() ([]any, error) {
+		return c.fsAllowed()
+	})
+}
+
+func (c *mqlSolarisZone) GetSchedulingClass() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SchedulingClass, func() (string, error) {
+		return c.schedulingClass()
+	})
+}
+
+func (c *mqlSolarisZone) GetHostid() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Hostid, func() (string, error) {
+		return c.hostid()
+	})
+}
+
+func (c *mqlSolarisZone) GetDatasets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Datasets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("solaris.zone", c.__id, "datasets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.datasets()
+	})
+}
+
+func (c *mqlSolarisZone) GetNetworks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Networks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("solaris.zone", c.__id, "networks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networks()
+	})
+}
+
+func (c *mqlSolarisZone) GetFilesystems() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Filesystems, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("solaris.zone", c.__id, "filesystems")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.filesystems()
+	})
+}
+
+func (c *mqlSolarisZone) GetDevices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Devices, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("solaris.zone", c.__id, "devices")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.devices()
+	})
+}
+
+func (c *mqlSolarisZone) GetMemoryCapBytes() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MemoryCapBytes, func() (int64, error) {
+		return c.memoryCapBytes()
+	})
+}
+
+func (c *mqlSolarisZone) GetSwapCapBytes() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.SwapCapBytes, func() (int64, error) {
+		return c.swapCapBytes()
+	})
+}
+
+func (c *mqlSolarisZone) GetLockedMemoryCapBytes() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.LockedMemoryCapBytes, func() (int64, error) {
+		return c.lockedMemoryCapBytes()
+	})
+}
+
+func (c *mqlSolarisZone) GetCpuCap() *plugin.TValue[float64] {
+	return plugin.GetOrCompute[float64](&c.CpuCap, func() (float64, error) {
+		return c.cpuCap()
+	})
+}
+
+func (c *mqlSolarisZone) GetDedicatedCpus() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DedicatedCpus, func() (string, error) {
+		return c.dedicatedCpus()
+	})
+}
+
+func (c *mqlSolarisZone) GetMaxLwps() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxLwps, func() (int64, error) {
+		return c.maxLwps()
+	})
+}
+
+func (c *mqlSolarisZone) GetMaxProcesses() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxProcesses, func() (int64, error) {
+		return c.maxProcesses()
+	})
+}
+
+// mqlSolarisZoneNetwork for the solaris.zone.network resource
+type mqlSolarisZoneNetwork struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlSolarisZoneNetworkInternal it will be used here
+	Type             plugin.TValue[string]
+	Name             plugin.TValue[string]
+	LowerLink        plugin.TValue[string]
+	Address          plugin.TValue[string]
+	AllowedAddresses plugin.TValue[[]any]
+	Defrouter        plugin.TValue[[]any]
+	LinkProtection   plugin.TValue[[]any]
+	MacAddress       plugin.TValue[string]
+	VlanId           plugin.TValue[int64]
+	Properties       plugin.TValue[map[string]any]
+}
+
+// createSolarisZoneNetwork creates a new instance of this resource
+func createSolarisZoneNetwork(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSolarisZoneNetwork{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("solaris.zone.network", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSolarisZoneNetwork) MqlName() string {
+	return "solaris.zone.network"
+}
+
+func (c *mqlSolarisZoneNetwork) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSolarisZoneNetwork) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlSolarisZoneNetwork) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlSolarisZoneNetwork) GetLowerLink() *plugin.TValue[string] {
+	return &c.LowerLink
+}
+
+func (c *mqlSolarisZoneNetwork) GetAddress() *plugin.TValue[string] {
+	return &c.Address
+}
+
+func (c *mqlSolarisZoneNetwork) GetAllowedAddresses() *plugin.TValue[[]any] {
+	return &c.AllowedAddresses
+}
+
+func (c *mqlSolarisZoneNetwork) GetDefrouter() *plugin.TValue[[]any] {
+	return &c.Defrouter
+}
+
+func (c *mqlSolarisZoneNetwork) GetLinkProtection() *plugin.TValue[[]any] {
+	return &c.LinkProtection
+}
+
+func (c *mqlSolarisZoneNetwork) GetMacAddress() *plugin.TValue[string] {
+	return &c.MacAddress
+}
+
+func (c *mqlSolarisZoneNetwork) GetVlanId() *plugin.TValue[int64] {
+	return &c.VlanId
+}
+
+func (c *mqlSolarisZoneNetwork) GetProperties() *plugin.TValue[map[string]any] {
+	return &c.Properties
+}
+
+// mqlSolarisZoneFilesystem for the solaris.zone.filesystem resource
+type mqlSolarisZoneFilesystem struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlSolarisZoneFilesystemInternal it will be used here
+	Dir     plugin.TValue[string]
+	Special plugin.TValue[string]
+	Raw     plugin.TValue[string]
+	Type    plugin.TValue[string]
+	Options plugin.TValue[[]any]
+}
+
+// createSolarisZoneFilesystem creates a new instance of this resource
+func createSolarisZoneFilesystem(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSolarisZoneFilesystem{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("solaris.zone.filesystem", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSolarisZoneFilesystem) MqlName() string {
+	return "solaris.zone.filesystem"
+}
+
+func (c *mqlSolarisZoneFilesystem) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSolarisZoneFilesystem) GetDir() *plugin.TValue[string] {
+	return &c.Dir
+}
+
+func (c *mqlSolarisZoneFilesystem) GetSpecial() *plugin.TValue[string] {
+	return &c.Special
+}
+
+func (c *mqlSolarisZoneFilesystem) GetRaw() *plugin.TValue[string] {
+	return &c.Raw
+}
+
+func (c *mqlSolarisZoneFilesystem) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlSolarisZoneFilesystem) GetOptions() *plugin.TValue[[]any] {
+	return &c.Options
+}
+
+// mqlSolarisZoneDevice for the solaris.zone.device resource
+type mqlSolarisZoneDevice struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlSolarisZoneDeviceInternal it will be used here
+	Match          plugin.TValue[string]
+	AllowPartition plugin.TValue[bool]
+	AllowRawIo     plugin.TValue[bool]
+}
+
+// createSolarisZoneDevice creates a new instance of this resource
+func createSolarisZoneDevice(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSolarisZoneDevice{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("solaris.zone.device", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSolarisZoneDevice) MqlName() string {
+	return "solaris.zone.device"
+}
+
+func (c *mqlSolarisZoneDevice) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSolarisZoneDevice) GetMatch() *plugin.TValue[string] {
+	return &c.Match
+}
+
+func (c *mqlSolarisZoneDevice) GetAllowPartition() *plugin.TValue[bool] {
+	return &c.AllowPartition
+}
+
+func (c *mqlSolarisZoneDevice) GetAllowRawIo() *plugin.TValue[bool] {
+	return &c.AllowRawIo
 }
 
 // mqlAi for the ai resource

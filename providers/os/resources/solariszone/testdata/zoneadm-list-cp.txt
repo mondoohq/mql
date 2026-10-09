@@ -1,0 +1,5 @@
+0:global:running:/::solaris:shared:-:none::
+2:mqlzrun:running:/system/zones/mqlzrun:995317db-0855-41f7-8d10-b973dc33561e:solaris:excl:-:none::
+-:mqlzexcl:configured:/system/zones/mqlzexcl::solaris:excl:-:fixed-configuration::
+-:mqlzshared:configured:/system/zones/mqlzshared::solaris:shared:-:::
+-:mqlzded:configured:/system/zones/mqlzded::solaris:excl:-:::

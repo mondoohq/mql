@@ -1,0 +1,55 @@
+zonename: mqlzded
+description: 
+zonepath: /system/zones/mqlzded
+brand: solaris
+autoboot: false
+autoshutdown: shutdown
+bootargs: 
+file-mac-profile: 
+pool: 
+limitpriv: 
+scheduling-class: 
+ip-type: exclusive
+hostid: 
+tenant: 
+fs-allowed: 
+[max-lwps: 3000]
+anet:
+	linkname: net0
+	lower-link: auto
+	allowed-address: 
+	configure-allowed-address: true
+	defrouter: 
+	allowed-dhcp-cids: 
+	link-protection: mac-nospoof
+	mac-address: auto
+	auto-mac-address: 
+	mac-prefix: 
+	mac-slot: 
+	vlan-id: 
+	priority: 
+	rxrings: 
+	txrings: 
+	mtu: 
+	maxbw: 
+	bwshare: 
+	rxfanout: 
+	vsi-typeid: 
+	vsi-vers: 
+	vsi-mgrid: 
+	etsbw-lcl: 
+	cos: 
+	pkey: 
+	linkmode: 
+	evs: 
+	vport: 
+	ring-group: auto
+	autopush: 
+dedicated-cpu:
+	ncpus: 1-2
+	cpus: 
+	cores: 
+	sockets: 
+rctl:
+	name: zone.max-lwps
+	value: (priv=privileged,limit=3000,action=deny)

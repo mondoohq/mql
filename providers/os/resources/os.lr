@@ -20122,6 +20122,175 @@ zfs.dataset @defaults("name type usedBytes") {
   snapshots() []zfs.dataset
 }
 
+// Solaris zones on the host
+//
+// Every zone `zoneadm list -cp` reports on Oracle Solaris and illumos
+// systems, including the global zone and zones that are configured or
+// installed but not running. Inside a non-global zone the list holds only
+// that zone. Empty on a system without zones.
+solaris.zones {
+  []solaris.zone
+}
+
+// Solaris zone
+//
+// One Oracle Solaris or illumos zone: its state, brand, IP type, and the
+// configuration `zonecfg` holds for it, which sets the zone's isolation
+// boundary. Audit `limitpriv` for privileges beyond the default set,
+// `fileMacProfile` for an immutable zone, `ipType` for a zone that manages
+// its own network stack, and `datasets`, `filesystems` and `devices` for
+// what the global zone passes in. The `name` field selects the zone, for
+// example `solaris.zone(name: "web1")`. The global zone has almost no
+// zonecfg configuration, so most configuration fields are null for it.
+// Configuration is only readable from the global zone: inside a non-global
+// zone the configuration fields report an error.
+solaris.zone @defaults("name state brand ipType") {
+  init(name string)
+  // Zone name
+  name string
+  // Numeric zone ID
+  //
+  // Null when the zone is not running.
+  zoneId int
+  // Zone state
+  //
+  // One of configured, incomplete, unavailable, installed, ready, mounted,
+  // running, shutting_down, or down.
+  state string
+  // Path to the zone's root (zonepath)
+  path string
+  // Zone UUID
+  //
+  // Empty for a zone that has not been installed.
+  uuid string
+  // Zone brand, for example solaris, solaris-kz, solaris10, ipkg, or lx
+  brand string
+  // IP type, shared or exclusive
+  //
+  // An exclusive-IP zone has its own IP stack and configures its own
+  // interfaces, routes, and IP filter rules. A shared-IP zone uses the
+  // global zone's stack.
+  ipType string
+  // Whether the zone boots when the global zone boots (autoboot)
+  autoboot() bool
+  // Arguments passed to the zone's boot (bootargs)
+  bootargs() string
+  // Privilege set the zone is limited to (limitpriv)
+  //
+  // Entries as configured, for example `default` and `proc_priocntl`, or
+  // `-net_icmpaccess` for a privilege taken away. Empty when unset, which
+  // limits the zone to the default privilege set.
+  limitpriv() []string
+  // Mandatory write access profile that makes the zone immutable (file-mac-profile)
+  //
+  // One of none, strict, fixed-configuration, flexible-configuration, or
+  // dynamic-zones. Empty when unset, which leaves the zone's root writable.
+  fileMacProfile() string
+  // Additional file system types the zone may mount (fs-allowed)
+  fsAllowed() []string
+  // Default scheduling class of the zone's processes (scheduling-class)
+  schedulingClass() string
+  // Host ID the zone reports instead of the global zone's (hostid)
+  hostid() string
+  // ZFS datasets delegated to the zone
+  //
+  // The zone administers these datasets itself: it can create child
+  // datasets, set their properties, and take snapshots.
+  datasets() []zfs.dataset
+  // Network resources configured for the zone (anet and net)
+  networks() []solaris.zone.network
+  // File systems the global zone mounts into the zone (fs)
+  filesystems() []solaris.zone.filesystem
+  // Devices the global zone passes into the zone (device)
+  devices() []solaris.zone.device
+  // Physical memory cap in bytes (capped-memory physical)
+  //
+  // Null when the zone has no physical memory cap.
+  memoryCapBytes() int
+  // Swap cap in bytes (capped-memory swap)
+  //
+  // Null when the zone has no swap cap.
+  swapCapBytes() int
+  // Locked memory cap in bytes (capped-memory locked)
+  //
+  // Null when the zone has no locked memory cap.
+  lockedMemoryCapBytes() int
+  // CPU cap in CPUs (capped-cpu ncpus)
+  //
+  // For example 1.5 for one and a half CPUs. Null when the zone has no CPU cap.
+  cpuCap() float
+  // CPUs dedicated to the zone (dedicated-cpu ncpus)
+  //
+  // A count such as 2, or a range such as 1-4. Empty when the zone has no
+  // dedicated CPUs.
+  dedicatedCpus() string
+  // Maximum number of lightweight processes (zone.max-lwps)
+  //
+  // Null when unset.
+  maxLwps() int
+  // Maximum number of processes (zone.max-processes)
+  //
+  // Null when unset.
+  maxProcesses() int
+}
+
+// Network resource of a Solaris zone
+private solaris.zone.network @defaults("type name lowerLink") {
+  // Resource type: anet for a link created for the zone, net for an existing link
+  type string
+  // Data link name: the anet linkname, or the net physical link
+  name string
+  // Link the anet is created over (lower-link)
+  lowerLink string
+  // IP address the global zone configures for a shared-IP zone (address)
+  address string
+  // Addresses the zone may use on the link (allowed-address)
+  allowedAddresses []string
+  // Default routers (defrouter)
+  defrouter []string
+  // Link protection types enforced on the link (link-protection)
+  //
+  // For example mac-nospoof, ip-nospoof, dhcp-nospoof, or restricted. An
+  // anet that does not set it reports mac-nospoof, its default.
+  linkProtection []string
+  // MAC address setting (mac-address), for example auto, random, factory, or an address
+  macAddress string
+  // VLAN ID (vlan-id)
+  //
+  // Null when the link is not a VLAN.
+  vlanId int
+  // Every property of the network resource that has a value, defaults included
+  properties map[string]string
+}
+
+// File system mounted into a Solaris zone
+private solaris.zone.filesystem @defaults("dir special type") {
+  // Mount point inside the zone (dir)
+  dir string
+  // Source in the global zone (special)
+  special string
+  // Raw device to check before mounting (raw)
+  raw string
+  // File system type, for example lofs, zfs, or ufs
+  type string
+  // Mount options, for example ro, nodevices, or nosetuid
+  options []string
+}
+
+// Device passed into a Solaris zone
+private solaris.zone.device @defaults("match") {
+  // Device path pattern (match)
+  match string
+  // Whether the zone may partition the device (allow-partition)
+  //
+  // False when unset, which is the zonecfg default.
+  allowPartition bool
+  // Whether the zone may send raw I/O to the device (allow-raw-io)
+  //
+  // False when unset, which is the zonecfg default.
+  allowRawIo bool
+}
+
 // AI Model Cache
 //
 // Locally cached AI models discovered from tools such as Ollama, Hugging
