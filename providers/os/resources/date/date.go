@@ -12,8 +12,14 @@ import (
 )
 
 type Result struct {
-	Time     *time.Time
+	Time *time.Time
+	// Timezone is the IANA name of the system's zone.
 	Timezone string
+	// WindowsTimezone is the zone ID Windows reports, nil on other platforms.
+	WindowsTimezone *string
+	// UTCOffset is the offset from UTC in seconds east, in effect when the
+	// time was read. Nil when it could not be determined.
+	UTCOffset *int64
 }
 
 type Date interface {

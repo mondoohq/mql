@@ -470,3 +470,64 @@ func TestTimezoneFromFS_EtcTimezoneOutsideZoneinfoIsNotConfirmed(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Asia/Tokyo", tz)
 }
+
+func TestParseUTCOffset(t *testing.T) {
+	valid := map[string]int64{
+		"+0000\n": 0,
+		"+0200":   7200,
+		"-0500":   -18000,
+		"+0530":   19800,
+		"+0545":   20700,
+		"-0330":   -12600,
+		"+1345":   49500,
+		"+05:30":  19800,
+	}
+	for in, want := range valid {
+		got, ok := parseUTCOffset(in)
+		assert.True(t, ok, in)
+		assert.Equal(t, want, got, in)
+	}
+	// "%z" is what a date without %z support prints back
+	for _, in := range []string{"", "%z", "z", "CEST", "0200", "+02", "+2500", "+0260", "+-100", "+02000"} {
+		_, ok := parseUTCOffset(in)
+		assert.False(t, ok, in)
+	}
+}
+
+func TestLocalize(t *testing.T) {
+	utc := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+
+	t.Run("offset from the zone when the system reported none", func(t *testing.T) {
+		lt, off := localize(&utc, "Europe/Berlin", nil)
+		require.NotNil(t, off)
+		assert.Equal(t, int64(7200), *off)
+		assert.Equal(t, "2026-07-01T14:00:00+02:00", lt.Format(time.RFC3339))
+	})
+
+	t.Run("reported offset is kept", func(t *testing.T) {
+		reported := int64(3600)
+		_, off := localize(&utc, "Europe/Berlin", &reported)
+		require.NotNil(t, off)
+		assert.Equal(t, int64(3600), *off)
+	})
+
+	t.Run("no zone and no reported offset is null, not zero", func(t *testing.T) {
+		lt, off := localize(&utc, "", nil)
+		assert.Nil(t, off)
+		assert.Equal(t, utc, *lt)
+	})
+
+	t.Run("unknown zone is shown at the reported offset", func(t *testing.T) {
+		reported := int64(-18000)
+		lt, off := localize(&utc, "XYZ", &reported)
+		require.NotNil(t, off)
+		assert.Equal(t, "2026-07-01T07:00:00-05:00", lt.Format(time.RFC3339))
+	})
+
+	t.Run("no time still gives the zone's offset", func(t *testing.T) {
+		lt, off := localize(nil, "Asia/Kolkata", nil)
+		assert.Nil(t, lt)
+		require.NotNil(t, off)
+		assert.Equal(t, int64(19800), *off)
+	})
+}

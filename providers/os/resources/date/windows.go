@@ -14,12 +14,16 @@ import (
 )
 
 type windowsDateResult struct {
-	DateTime string `json:"DateTime"`
-	Timezone string `json:"Timezone"`
+	DateTime  string `json:"DateTime"`
+	Timezone  string `json:"Timezone"`
+	UtcOffset *int64 `json:"UtcOffset"`
 }
 
-// PowerShell command that returns both the current UTC time and the system timezone ID.
-const windowsDateCmd = `@{DateTime=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ');Timezone=(Get-TimeZone).Id} | ConvertTo-Json`
+// PowerShell command that returns the current UTC time, the system time zone
+// ID, and the zone's offset from UTC in seconds at this moment (DST included).
+// The time is formatted with the invariant culture, since a custom format's
+// ':' is otherwise the current culture's time separator.
+const windowsDateCmd = `$tz=[System.TimeZoneInfo]::Local;@{DateTime=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ',[System.Globalization.CultureInfo]::InvariantCulture);Timezone=$tz.Id;UtcOffset=[int64]$tz.GetUtcOffset([DateTime]::UtcNow).TotalSeconds} | ConvertTo-Json`
 
 type Windows struct {
 	conn shared.Connection
@@ -34,7 +38,7 @@ func (w *Windows) Get() (*Result, error) {
 		return &Result{Timezone: "UTC"}, nil
 	}
 
-	cmd, err := w.conn.RunCommand(powershell.Wrap(windowsDateCmd))
+	cmd, err := w.conn.RunCommand(powershell.Encode(windowsDateCmd))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get system date: %w", err)
 	}
@@ -58,19 +62,22 @@ func (w *Windows) parse(r io.Reader) (*Result, error) {
 		return nil, fmt.Errorf("failed to parse datetime %q: %w", res.DateTime, err)
 	}
 
-	// Windows returns IANA-compatible timezone IDs on modern systems
-	loc, err := time.LoadLocation(res.Timezone)
-	if err != nil {
-		// Fall back to returning UTC time with the Windows timezone ID
-		return &Result{
-			Time:     &t,
-			Timezone: res.Timezone,
-		}, nil
+	// Windows reports its own zone IDs ("W. Europe Standard Time"), not IANA
+	// names. CLDR maps them; an ID it does not know is kept as is.
+	tz := res.Timezone
+	if iana, ok := WindowsZoneToIANA(tz); ok {
+		tz = iana
+	}
+	var windowsTZ *string
+	if res.Timezone != "" {
+		windowsTZ = &res.Timezone
 	}
 
-	locT := t.In(loc)
+	lt, offset := localize(&t, tz, res.UtcOffset)
 	return &Result{
-		Time:     &locT,
-		Timezone: res.Timezone,
+		Time:            lt,
+		Timezone:        tz,
+		WindowsTimezone: windowsTZ,
+		UTCOffset:       offset,
 	}, nil
 }
