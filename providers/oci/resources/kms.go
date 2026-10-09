@@ -97,6 +97,9 @@ func (o *mqlOciKms) getVaultsForRegion(ctx context.Context, client *keymanagemen
 type mqlOciKmsVaultInternal struct {
 	ociCompartmentRef
 	cacheRegion string
+
+	// The vault's detail record, read once for the fields the listing lacks.
+	detail ociRetryLazy[*keymanagement.Vault]
 }
 
 func initOciKmsVault(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {

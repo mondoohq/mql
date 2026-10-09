@@ -251,6 +251,7 @@ func (o *mqlOciCloudGuard) listTargets() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		mqlInstance.(*mqlOciCloudGuardTarget).cacheRegion = serviceRegion
 		res = append(res, mqlInstance)
 	}
 
@@ -906,6 +907,10 @@ type mqlOciCloudGuardSecurityPolicyInternal struct {
 
 type mqlOciCloudGuardTargetInternal struct {
 	ociCompartmentRef
+	cacheRegion string
+
+	// The target's detail record, which alone carries its recipes.
+	detail ociRetryLazy[*cloudguard.Target]
 }
 
 // newDetectorConfigurations builds the setting resources for one detector rule.

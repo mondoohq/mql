@@ -3169,6 +3169,16 @@ private oci.kms.vault @defaults("name") {
   managementEndpoint string
   // Keys in the vault
   keys() []oci.kms.key
+  // Whether this vault is the primary of a replicated vault; false for a replica
+  isPrimary() bool
+  // Whether the vault can be replicated to another region
+  isVaultReplicable() bool
+  // Cross-region replicas of the vault
+  replicas() []oci.kms.vault.replica
+  // Endpoint URL of the external key manager an EXTERNAL vault holds its keys in; empty for other vault types
+  externalVaultEndpointUrl() string
+  // Vendor of the external key manager, for example Thales; empty for other vault types
+  externalKeyManagerVendor() string
   // Creation time
   created time
   // Free-form tags for resource management
@@ -3366,6 +3376,10 @@ private oci.objectStorage.bucket {
   retentionRules() []oci.objectStorage.retentionRule
   // Pre-authenticated requests granting credential-free access to the bucket or its objects
   preauthenticatedRequests() []oci.objectStorage.preauthenticatedRequest
+  // Object lifecycle rules that archive or delete objects, previous versions, or incomplete uploads
+  lifecycleRules() []oci.objectStorage.bucket.lifecycleRule
+  // Replication policies copying the bucket's objects to buckets in other regions
+  replicationPolicies() []oci.objectStorage.bucket.replicationPolicy
 }
 
 // Oracle Cloud Infrastructure (OCI) Object Storage pre-authenticated request
@@ -4037,6 +4051,8 @@ oci.cloudGuard {
   responderRecipes() []oci.cloudGuard.responderRecipe
   // Sightings, the correlated activity Cloud Guard has observed across the tenancy
   sightings() []oci.cloudGuard.sighting
+  // Managed lists of CIDR blocks, users, groups, regions, and other values that detector rules include or exclude
+  managedLists() []oci.cloudGuard.managedList
 }
 
 // Oracle Cloud Infrastructure (OCI) Cloud Guard target
@@ -4055,6 +4071,12 @@ private oci.cloudGuard.target @defaults("name") {
   state string
   // Number of detector recipes attached to the target
   recipeCount int
+  // Detector recipes the target applies
+  detectorRecipes() []oci.cloudGuard.detectorRecipe
+  // Responder recipes the target applies
+  responderRecipes() []oci.cloudGuard.responderRecipe
+  // Compartments that inherit the target's monitoring
+  inheritedByCompartments() []oci.compartment
   // Target creation time
   created time
   // Free-form tags for resource management
@@ -4950,6 +4972,8 @@ private oci.bastion.instance @defaults("name") {
   maxSessionTtlInSeconds() int
   // Maximum number of concurrent sessions
   maxSessionsAllowed() int
+  // Sessions of the bastion, active and past
+  sessions() []oci.bastion.session
   // Fixed private IP addresses the bastion connects from
   //
   // The jump-host addresses that appear as the source of bastion traffic, for
@@ -13365,4 +13389,116 @@ private oci.identity.domain.socialIdentityProvider @defaults("name serviceProvid
   jitProvisioningEnabled bool
   // Status, for example created or deleted
   status string
+}
+
+// Oracle Cloud Infrastructure (OCI) Object Storage lifecycle rule
+private oci.objectStorage.bucket.lifecycleRule @defaults("name action target timeAmount timeUnit isEnabled") {
+  // Rule name
+  name string
+  // Action: ARCHIVE, INFREQUENT_ACCESS, DELETE, or ABORT
+  action string
+  // What the rule applies to: objects, previous-object-versions, or multipart-uploads
+  target string
+  // Age after which the action applies
+  timeAmount int
+  // Unit of timeAmount: DAYS or YEARS
+  timeUnit string
+  // Whether the rule is enabled
+  isEnabled bool
+  // Object name prefixes the rule is limited to; empty applies it to every object
+  inclusionPrefixes []string
+}
+
+// Oracle Cloud Infrastructure (OCI) Object Storage replication policy
+private oci.objectStorage.bucket.replicationPolicy @defaults("name destinationRegion destinationBucketName status") {
+  // Replication policy ID
+  id string
+  // Replication policy name
+  name string
+  // Region of the destination bucket
+  destinationRegion string
+  // Name of the destination bucket
+  destinationBucketName string
+  // Replication status: ACTIVE or CLIENT_ERROR
+  status string
+  // Reason for a CLIENT_ERROR status
+  statusMessage string
+  // Time the policy was created
+  created time
+  // Time up to which objects have been replicated
+  lastSync time
+}
+
+// Oracle Cloud Infrastructure (OCI) vault replica
+private oci.kms.vault.replica @defaults("region status") {
+  // Region of the replica
+  region string
+  // Replica status, for example CREATED
+  status string
+  // Crypto endpoint of the replica
+  cryptoEndpoint string
+  // Management endpoint of the replica
+  managementEndpoint string
+}
+
+// Oracle Cloud Infrastructure (OCI) Cloud Guard managed list
+//
+// A list of values, such as CIDR blocks, users, groups, or regions, that
+// detector rules use to include or exclude findings, keyed by its OCID. An
+// entry here can silence a detector, so `listItems` shows what is trusted.
+// Lists provided by Oracle have `feedProvider` ORACLE and cannot be edited.
+private oci.cloudGuard.managedList @defaults("name listType feedProvider") {
+  // Managed list OCID
+  id string
+  // Managed list display name
+  name string
+  // Managed list description
+  description string
+  // Compartment containing the list
+  compartment() oci.compartment
+  // Type of the values, for example CIDR_BLOCK, USERS, GROUPS, IPV4ADDRESS, or REGION
+  listType string
+  // Who provides the list: ORACLE or CUSTOMER
+  feedProvider string
+  // Values in the list
+  listItems []string
+  // Whether the list can be edited
+  isEditable bool
+  // Lifecycle state, for example ACTIVE
+  state string
+  // Creation time
+  created time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) Bastion session
+//
+// A session of a bastion, keyed by its OCID: managed SSH to an instance, port
+// forwarding to a private IP address and port, or dynamic port forwarding
+// (a SOCKS proxy into the target subnet), with its target, operating system
+// user, time to live, and state.
+private oci.bastion.session @defaults("name sessionType state") {
+  // Session OCID
+  id string
+  // Session display name
+  name string
+  // Session type: MANAGED_SSH, PORT_FORWARDING, or DYNAMIC_PORT_FORWARDING
+  sessionType string
+  // Lifecycle state: CREATING, ACTIVE, DELETING, DELETED, or FAILED
+  state string
+  // Time to live of the session in seconds
+  ttlInSeconds int
+  // Instance the session connects to; null when the target is an IP address or the session is dynamic port forwarding
+  targetInstance() oci.compute.instance
+  // Private IP address the session connects to
+  targetPrivateIp string
+  // Port the session connects to; null for dynamic port forwarding
+  targetPort int
+  // Operating system user of a managed SSH session; empty for other session types
+  targetUser string
+  // Creation time
+  created time
 }
