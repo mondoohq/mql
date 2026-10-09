@@ -39,10 +39,16 @@ func NewHostConnection(id uint32, asset *inventory.Asset, conf *inventory.Config
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
-	if conf.Insecure {
-		transport.TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: true,
-		}
+	// A scanner has to read servers that only speak TLS 1.0/1.1 or offer only
+	// RSA-key-exchange and CBC suites (an Apache 2.2 / OpenSSL 0.9.8 stack): Go's
+	// client defaults refuse them since Go 1.22, so http.get on such a server failed
+	// with "server selected unsupported protocol version" and every header check
+	// errored. The server still picks the version and suite, so a modern server
+	// negotiates what it would anyway; TLS 1.3 ignores the suite list.
+	transport.TLSClientConfig = &tls.Config{
+		MinVersion:         tls.VersionTLS10,
+		CipherSuites:       allCipherSuites(),
+		InsecureSkipVerify: conf.Insecure, //nolint:gosec // only when the user asked for --insecure
 	}
 
 	var followRedirects bool
@@ -85,4 +91,18 @@ func (p *HostConnection) Client(followRedirects bool) *http.Client {
 		}
 	}
 	return c
+}
+
+// allCipherSuites returns every TLS 1.0-1.2 cipher suite Go implements, including
+// the ones it considers insecure, so the client can still complete a handshake
+// with a legacy server and report what it serves.
+func allCipherSuites() []uint16 {
+	suites := make([]uint16, 0, 32)
+	for _, cs := range tls.CipherSuites() {
+		suites = append(suites, cs.ID)
+	}
+	for _, cs := range tls.InsecureCipherSuites() {
+		suites = append(suites, cs.ID)
+	}
+	return suites
 }
