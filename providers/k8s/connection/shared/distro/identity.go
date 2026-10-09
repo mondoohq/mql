@@ -12,8 +12,8 @@ import (
 const (
 	IdentityKubeconfig  = "kubeconfig"
 	IdentityCertificate = "certificate"
-	IdentityMetadata   = "metadata"
-	IdentityNodes      = "nodes"
+	IdentityMetadata    = "metadata"
+	IdentityNodes       = "nodes"
 )
 
 var (

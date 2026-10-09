@@ -115,7 +115,7 @@ func metadataServer(t *testing.T, routes map[string]string, header [2]string) *h
 
 func TestCloudMetadataGKE(t *testing.T) {
 	srv := metadataServer(t, map[string]string{
-		"/computeMetadata/v1/project/project-id":                  "my-project",
+		"/computeMetadata/v1/project/project-id":                   "my-project",
 		"/computeMetadata/v1/instance/attributes/cluster-name":     "cep-gke-pass",
 		"/computeMetadata/v1/instance/attributes/cluster-location": "us-central1-a",
 	}, [2]string{"Metadata-Flavor", "Google"})
@@ -143,7 +143,7 @@ func TestCloudMetadataAKS(t *testing.T) {
 
 func TestCloudMetadataAWSWithoutTags(t *testing.T) {
 	srv := metadataServer(t, map[string]string{
-		"PUT /latest/api/token":               "token",
+		"PUT /latest/api/token":              "token",
 		"/latest/meta-data/placement/region": "us-east-1",
 	}, [2]string{"X-aws-ec2-metadata-token", "token"})
 	defer srv.Close()
