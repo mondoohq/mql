@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
@@ -62,16 +63,16 @@ func TestSplitPathList(t *testing.T) {
 	}
 }
 
-// photonInstalled builds the value kernel.installed hands to os.rebootpending
+// kernelsInstalled builds the value kernel.installed hands to os.rebootpending
 // from the JSON mql prints for `kernel { installed }`.
-func photonInstalled(t *testing.T, raw string) *plugin.TValue[[]any] {
+func kernelsInstalled(t *testing.T, raw string) *plugin.TValue[[]any] {
 	t.Helper()
 	var data []any
 	require.NoError(t, json.Unmarshal([]byte(raw), &data))
 	return &plugin.TValue[[]any]{Data: data, State: plugin.StateIsSet}
 }
 
-func TestPhotonRebootPending(t *testing.T) {
+func TestKernelPackagesRebootPending(t *testing.T) {
 	tests := []struct {
 		name      string
 		installed string
@@ -125,11 +126,62 @@ func TestPhotonRebootPending(t *testing.T) {
 				`{"name":"linux-esx","running":true,"version":"6.12.111-1.ph5-esx"}]`,
 			expected: false,
 		},
+		{
+			// Arch: pacman upgrades linux in place, so the booted release no
+			// longer matches any package.
+			name: "arch kernel upgraded in place",
+			installed: `[{"name":"linux","running":false,"version":"7.2.9.arch1-1"},` +
+				`{"name":"linux-lts","running":false,"version":"6.18.55-1"}]`,
+			expected: true,
+		},
+		{
+			name: "arch running linux-lts while linux was upgraded",
+			installed: `[{"name":"linux","running":false,"version":"7.2.9.arch1-1"},` +
+				`{"name":"linux-lts","running":true,"version":"6.18.55-1"}]`,
+			expected: false,
+		},
+		{
+			// Void: xbps upgrades a series package in place.
+			name:      "void series package upgraded past the running kernel",
+			installed: `[{"name":"linux6.12","running":false,"version":"6.12.113_1"}]`,
+			expected:  true,
+		},
+		{
+			name: "void running series current, newer series installed",
+			installed: `[{"name":"linux6.12","running":true,"version":"6.12.112_1"},` +
+				`{"name":"linux6.18","running":false,"version":"6.18.55_1"}]`,
+			expected: false,
+		},
+		{
+			// Mageia installs kernel-<flavor> side by side.
+			name: "mageia newer kernel of the running flavor",
+			installed: `[{"name":"kernel-desktop","running":true,"version":"6.6.141-1.mga9"},` +
+				`{"name":"kernel-desktop","running":false,"version":"6.6.150-1.mga9"}]`,
+			expected: true,
+		},
+		{
+			name: "mageia other flavor at the same version",
+			installed: `[{"name":"kernel-desktop","running":true,"version":"6.6.141-1.mga9"},` +
+				`{"name":"kernel-server","running":false,"version":"6.6.141-1.mga9"}]`,
+			expected: false,
+		},
+		{
+			name: "azurelinux newer kernel of the running line",
+			installed: `[{"name":"kernel","running":true,"version":"6.6.150.1-1.azl3"},` +
+				`{"name":"kernel","running":false,"version":"6.6.157.1-1.azl3"}]`,
+			expected: true,
+		},
+		{
+			name: "azurelinux kernel-hwe beside the running kernel",
+			installed: `[{"name":"kernel","running":true,"version":"6.6.157.1-1.azl3"},` +
+				`{"name":"kernel-hwe","running":false,"version":"6.18.48.1-1.azl3"}]`,
+			expected: false,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := photonRebootPending(photonInstalled(t, tc.installed))
+			got, err := kernelPackagesRebootPending(kernelsInstalled(t, tc.installed))
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, got)
 		})
@@ -137,7 +189,18 @@ func TestPhotonRebootPending(t *testing.T) {
 
 	t.Run("kernel.installed error is returned", func(t *testing.T) {
 		installed := &plugin.TValue[[]any]{Error: errors.New("boom"), State: plugin.StateIsSet}
-		_, err := photonRebootPending(installed)
+		_, err := kernelPackagesRebootPending(installed)
 		assert.EqualError(t, err, "boom")
 	})
+}
+
+func TestRebootPendingFromKernelPackages(t *testing.T) {
+	for _, name := range []string{"photon", "azurelinux", "mariner", "mageia", "arch", "endeavouros", "void"} {
+		assert.True(t, rebootPendingFromKernelPackages(&inventory.Platform{Name: name}), name)
+	}
+	// Manjaro, SteamOS and CachyOS are in the arch family but name their
+	// kernels differently; ALT has no kernel filter.
+	for _, name := range []string{"manjaro", "steamos", "cachyos", "altlinux", "redhat", "ubuntu"} {
+		assert.False(t, rebootPendingFromKernelPackages(&inventory.Platform{Name: name}), name)
+	}
 }

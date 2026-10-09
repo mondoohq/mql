@@ -1212,6 +1212,47 @@ func TestKernelFilters(t *testing.T) {
 			runningKernel: "6.6.141-desktop-1.mga9",
 			wantOK:        false,
 		},
+
+		// --- void ---
+		// void-glibc container after `xbps-install linux linux-lts`:
+		// /usr/lib/modules holds 6.12.112_1 and 6.18.55_1.
+		{
+			name:          "void: the series package of the running kernel is marked running",
+			filter:        voidKernelVersion,
+			pkg:           kernelPackage{Name: "linux6.12", Version: "6.12.112_1"},
+			runningKernel: "6.12.112_1",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux6.12", Version: "6.12.112_1", Running: true},
+		},
+		{
+			name:          "void: another series is a kernel, not running",
+			filter:        voidKernelVersion,
+			pkg:           kernelPackage{Name: "linux6.18", Version: "6.18.55_1"},
+			runningKernel: "6.12.112_1",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux6.18", Version: "6.18.55_1", Running: false},
+		},
+		{
+			name:          "void: the linux metapackage is not a kernel",
+			filter:        voidKernelVersion,
+			pkg:           kernelPackage{Name: "linux", Version: "6.18_1"},
+			runningKernel: "6.18.55_1",
+			wantOK:        false,
+		},
+		{
+			name:          "void: the linux-lts metapackage is not a kernel",
+			filter:        voidKernelVersion,
+			pkg:           kernelPackage{Name: "linux-lts", Version: "6.12_1"},
+			runningKernel: "6.12.112_1",
+			wantOK:        false,
+		},
+		{
+			name:          "void: a series headers package is not a kernel",
+			filter:        voidKernelVersion,
+			pkg:           kernelPackage{Name: "linux6.12-headers", Version: "6.12.112_1"},
+			runningKernel: "6.12.112_1",
+			wantOK:        false,
+		},
 	}
 
 	for _, tc := range cases {
@@ -1375,6 +1416,13 @@ func TestKernelFilterForPlatformPicksTheRightFilter(t *testing.T) {
 			platform:      &inventory.Platform{Name: "mageia", Family: []string{"linux", "unix", "os"}},
 			pkg:           kernelPackage{Name: "kernel-desktop", Version: "6.6.141-1.mga9", Arch: "x86_64"},
 			runningKernel: "6.6.141-desktop-1.mga9",
+		},
+		{
+			// void-glibc container after `xbps-install linux`
+			name:          "void",
+			platform:      &inventory.Platform{Name: "void", Family: []string{"linux", "unix", "os"}},
+			pkg:           kernelPackage{Name: "linux6.18", Version: "6.18.55_1"},
+			runningKernel: "6.18.55_1",
 		},
 		{
 			// Rocky Linux 9 EC2 instance: pinned so the redhat path is unchanged

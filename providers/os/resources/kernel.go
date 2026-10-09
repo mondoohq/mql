@@ -545,6 +545,33 @@ func archKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVe
 	}, true
 }
 
+// voidKernelPackage matches Void's kernel packages, one per series
+// ("linux6.12", "linux6.18"). The "linux" and "linux-lts" metapackages, the
+// -headers packages and linux-firmware only point at or sit beside them.
+var voidKernelPackage = regexp.MustCompile(`^linux[0-9]+\.[0-9]+$`)
+
+// voidKernelVersion reads an xbps kernel package. Its version is exactly the
+// release uname reports:
+//
+//	xbps-query -l | awk '{print $2}'   (void-glibc, after xbps-install linux linux-lts)
+//	linux-6.18_1
+//	linux-lts-6.12_1
+//	linux6.12-6.12.112_1
+//	linux6.18-6.18.55_1
+//	ls /usr/lib/modules
+//	6.12.112_1  6.18.55_1
+func voidKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool) {
+	if !voidKernelPackage.MatchString(pkg.Name) {
+		return KernelVersion{}, false
+	}
+
+	return KernelVersion{
+		Name:    pkg.Name,
+		Version: pkg.Version,
+		Running: runningKernelVersion != "" && pkg.Version == runningKernelVersion,
+	}, true
+}
+
 // alpineKernelPackages is the set of Alpine packages that carry a kernel.
 //
 // An allowlist, like archKernelPackages: every flavor ships a -dev package
@@ -649,6 +676,8 @@ func kernelFilterForPlatform(platform *inventory.Platform) (kernelFilter, bool) 
 		return archKernelVersion, true
 	case platform.Name == "alpine":
 		return alpineKernelVersion, true
+	case platform.Name == "void":
+		return voidKernelVersion, true
 	default:
 		return nil, false
 	}

@@ -45,15 +45,12 @@ func (p *mqlOs) rebootpending() (bool, error) {
 		return false, nil
 	}
 
-	// check photon
-
-	if asset.Platform.Name == "photon" {
-		// Photon: compare the installed kernel packages with the running kernel.
+	if rebootPendingFromKernelPackages(asset.Platform) {
 		k, err := CreateResource(p.MqlRuntime, "kernel", map[string]*llx.RawData{})
 		if err != nil {
 			return false, err
 		}
-		return photonRebootPending(k.(*mqlKernel).GetInstalled())
+		return kernelPackagesRebootPending(k.(*mqlKernel).GetInstalled())
 	}
 
 	// TODO: move more logic into MQL to leverage its cache
@@ -430,15 +427,12 @@ func (p *mqlOsBase) rebootpending() (bool, error) {
 		return false, nil
 	}
 
-	// check photon
-
-	if platform.Name == "photon" {
-		// Photon: compare the installed kernel packages with the running kernel.
+	if rebootPendingFromKernelPackages(platform) {
 		raw, err := CreateResource(p.MqlRuntime, "kernel", map[string]*llx.RawData{})
 		if err != nil {
 			return false, err
 		}
-		return photonRebootPending(raw.(*mqlKernel).GetInstalled())
+		return kernelPackagesRebootPending(raw.(*mqlKernel).GetInstalled())
 	}
 
 	// TODO: move more logic into MQL to leverage its cache
@@ -822,8 +816,24 @@ func (s *mqlOsLinux) apparmor() (*mqlApparmor, error) {
 	return res.(*mqlApparmor), nil
 }
 
-// photonRebootPending decides os.rebootpending on Photon OS from the value
-// of kernel.installed.
+// rebootPendingFromKernelPackages reports whether os.rebootpending is decided
+// from kernel.installed on this platform, by kernelPackagesRebootPending.
+// These are the platforms with no reboot marker of their own whose kernel
+// packages kernel.installed knows how to match with the running kernel.
+//
+// From the arch family only Arch and EndeavourOS, which ship Arch's kernel
+// packages: Manjaro, SteamOS and CachyOS name theirs differently, so
+// kernel.installed would find none and the answer would be a confident false.
+func rebootPendingFromKernelPackages(pf *inventory.Platform) bool {
+	switch pf.Name {
+	case "photon", "azurelinux", "mariner", "mageia", "arch", "endeavouros", "void":
+		return true
+	}
+	return false
+}
+
+// kernelPackagesRebootPending decides os.rebootpending from the value of
+// kernel.installed.
 //
 // It decodes the list itself (installed.Data), not the TValue wrapper around
 // it: the wrapper marshals to a JSON object, which can never decode into
@@ -831,18 +841,23 @@ func (s *mqlOsLinux) apparmor() (*mqlApparmor, error) {
 //
 // The answer is:
 //   - false when no kernel package is installed. That is the normal state of
-//     a Photon container, which runs the host's kernel; there is nothing on
-//     disk to boot into.
+//     a container, which runs the host's kernel; there is nothing on disk to
+//     boot into.
 //   - true when kernel packages are installed but none of them is the running
-//     kernel, which is what an in-place kernel upgrade leaves behind.
+//     kernel, which is what an in-place kernel upgrade leaves behind (pacman
+//     on Arch, xbps on Void, which keep one version per kernel package).
 //   - true when a package of the same name as the running kernel is at a
-//     newer version, for kernels installed side by side.
+//     newer version, for kernels installed side by side (rpm on Photon,
+//     Mageia and Azure Linux). Only the same name counts, so a second kernel
+//     line installed beside the running one (Mageia's kernel-server beside a
+//     running kernel-desktop, Azure Linux's kernel-hwe beside kernel) does
+//     not by itself make a reboot pending.
 //   - false otherwise.
 //
 // kernel.installed on Photon also lists linux-* packages that are not kernels
 // (linux-api-headers, linux-esx-devel). They never match the running kernel
 // and share no name with it, so they do not affect the answer.
-func photonRebootPending(installed *plugin.TValue[[]any]) (bool, error) {
+func kernelPackagesRebootPending(installed *plugin.TValue[[]any]) (bool, error) {
 	if installed.Error != nil {
 		return false, installed.Error
 	}
