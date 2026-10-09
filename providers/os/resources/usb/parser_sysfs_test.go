@@ -162,7 +162,7 @@ func TestParseLinuxSysfs_SkipsEntriesWithoutDescriptor(t *testing.T) {
 	assert.Empty(t, devices)
 }
 
-func TestFormatLinuxUSBSpeed(t *testing.T) {
+func TestFormatUSBSpeedMbps(t *testing.T) {
 	cases := map[string]string{
 		"":         "",
 		"1.5":      "1.5 Mbps (Low Speed)",
@@ -174,7 +174,7 @@ func TestFormatLinuxUSBSpeed(t *testing.T) {
 		"53.3-480": "53.3-480 Mbps",
 	}
 	for in, want := range cases {
-		assert.Equal(t, want, formatLinuxUSBSpeed(in), in)
+		assert.Equal(t, want, formatUSBSpeedMbps(in), in)
 	}
 }
 

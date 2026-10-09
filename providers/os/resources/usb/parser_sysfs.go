@@ -84,7 +84,7 @@ func readLinuxSysfsDevice(fs afero.Fs, devPath string, name string) (USBDevice, 
 		SerialNumber:  attr("serial"),
 		BusNumber:     attr("busnum"),
 		DeviceAddress: attr("devnum"),
-		USBSpeed:      formatLinuxUSBSpeed(attr("speed")),
+		USBSpeed:      formatUSBSpeedMbps(attr("speed")),
 	}
 
 	if class := attr("bDeviceClass"); class != "" {
@@ -121,28 +121,21 @@ func hexAttr(value string, width int) string {
 	return fmt.Sprintf("0x%0*x", width, v)
 }
 
-// formatLinuxBcdVersion formats a bcdDevice value ("0612") in the same
-// major.minor[.subminor] shape as the macOS parser. Every digit is a BCD
-// digit, so the major version is the high byte read as hex digits: "7200" is
-// 72.0, the release lsusb reports as 72.00.
+// formatLinuxBcdVersion formats a sysfs bcdDevice value ("0612"), which is
+// already written as hex digits, with formatBcdVersion: "7200" is 72.0, the
+// release lsusb reports as 72.00.
 func formatLinuxBcdVersion(bcd string) string {
 	v, err := strconv.ParseUint(bcd, 16, 16)
 	if err != nil {
 		return ""
 	}
-	major := (v >> 8) & 0xFF
-	minor := (v >> 4) & 0x0F
-	subminor := v & 0x0F
-	if subminor > 0 {
-		return fmt.Sprintf("%x.%d.%d", major, minor, subminor)
-	}
-	return fmt.Sprintf("%x.%d", major, minor)
+	return formatBcdVersion(v)
 }
 
-// formatLinuxUSBSpeed formats the sysfs speed attribute, which the kernel
-// reports in Mbit/s: "1.5", "12", "480", "5000", "10000" or "20000"
+// formatUSBSpeedMbps formats a speed in Mbit/s, the unit of the Linux sysfs
+// speed attribute: "1.5", "12", "480", "5000", "10000" or "20000"
 // (and "53.3-480" for wireless USB).
-func formatLinuxUSBSpeed(speed string) string {
+func formatUSBSpeedMbps(speed string) string {
 	switch speed {
 	case "":
 		return ""

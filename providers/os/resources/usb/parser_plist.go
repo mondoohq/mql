@@ -60,16 +60,13 @@ func ParseMacosIORegData(data any, devices *[]USBDevice) {
 	}
 }
 
+// isUSBDevice reports whether an IOUSB plane entry is a USB device. Every
+// device carries the IDs from its device descriptor. Host controllers
+// (AppleT8132USBXHCI, AppleUSBXHCITR, ...) sit in the same plane and have
+// "USB" in their class name, but no descriptor, so they are not devices.
 func isUSBDevice(entry map[string]any) bool {
-	// Check for properties that indicate this is a USB device
 	_, hasVendorID := entry["idVendor"]
 	_, hasProductID := entry["idProduct"]
-
-	// Also check the class name for USB indicators
-	if className, ok := entry["IOClass"].(string); ok {
-		return hasVendorID || hasProductID || strings.Contains(className, "USB")
-	}
-
 	return hasVendorID || hasProductID
 }
 
@@ -138,7 +135,7 @@ func extractDeviceInfo(entry map[string]any) USBDevice {
 	// Extract device version
 	if bcdDevice, ok := entry["bcdDevice"].(float64); ok {
 		device.BcdDevice = fmt.Sprintf("0x%04x", int(bcdDevice))
-		device.FormattedVersion = formatBcdVersion(int(bcdDevice))
+		device.FormattedVersion = formatBcdVersion(uint64(bcdDevice))
 	}
 
 	device.IsRemovable = isUSBDeviceRemovable(entry)
@@ -207,23 +204,25 @@ func GetUSBClassDescription(classCode string) string {
 	}
 }
 
-// Format USB speed based on the numeric value
+// formatUSBSpeed formats the IOKit USBSpeed property. It holds a
+// tIOUSBHostConnectionSpeed value (IOUSBHostFamilyDefinitions.h), not a rate:
+// 0 none, 1 full, 2 low, 3 high, 4 super, 5 super+, 6 super+ 2x2, 7 other.
 func formatUSBSpeed(speed int) string {
 	switch speed {
 	case 1:
-		return "1.5 Mbps (Low Speed)"
-	case 12:
-		return "12 Mbps (Full Speed)"
-	case 480:
-		return "480 Mbps (High Speed)"
-	case 5000:
-		return "5 Gbps (Super Speed)"
-	case 10000:
-		return "10 Gbps (Super Speed+)"
-	case 20000:
-		return "20 Gbps (Super Speed+ Gen 2x2)"
+		return formatUSBSpeedMbps("12")
+	case 2:
+		return formatUSBSpeedMbps("1.5")
+	case 3:
+		return formatUSBSpeedMbps("480")
+	case 4:
+		return formatUSBSpeedMbps("5000")
+	case 5:
+		return formatUSBSpeedMbps("10000")
+	case 6:
+		return formatUSBSpeedMbps("20000")
 	default:
-		return fmt.Sprintf("%d Mbps", speed)
+		return ""
 	}
 }
 
@@ -239,20 +238,16 @@ func isUSBDeviceRemovable(entry map[string]any) bool {
 	return true
 }
 
-// Format BCD (Binary Coded Decimal) version to human-readable format
-func formatBcdVersion(bcdVersion int) string {
-	// Extract major version (high byte)
+// formatBcdVersion formats a binary-coded decimal release number (bcdDevice)
+// as major.minor[.subminor]. Every nibble is a decimal digit, so the major
+// version is the high byte printed as hex digits: 0x1000 is 10.0, 0x5212 is
+// 52.1.2.
+func formatBcdVersion(bcdVersion uint64) string {
 	major := (bcdVersion >> 8) & 0xFF
-
-	// Extract minor version (upper nibble of low byte)
 	minor := (bcdVersion >> 4) & 0x0F
-
-	// Extract subminor version (lower nibble of low byte)
 	subminor := bcdVersion & 0x0F
-
-	// Format as version string
 	if subminor > 0 {
-		return fmt.Sprintf("%d.%d.%d", major, minor, subminor)
+		return fmt.Sprintf("%x.%d.%d", major, minor, subminor)
 	}
-	return fmt.Sprintf("%d.%d", major, minor)
+	return fmt.Sprintf("%x.%d", major, minor)
 }

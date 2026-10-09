@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>IOObjectClass</key>
+	<string>IORegistryEntry</string>
+	<key>IORegistryEntryChildren</key>
+	<array>
+		<dict>
+			<key>IOClass</key>
+			<string>AppleT8132USBXHCI</string>
+			<key>IOObjectClass</key>
+			<string>AppleT8132USBXHCI</string>
+			<key>IOProviderClass</key>
+			<string>AppleARMIODevice</string>
+			<key>IORegistryEntryLocation</key>
+			<string>01000000</string>
+			<key>IORegistryEntryName</key>
+			<string>AppleT8132USBXHCI</string>
+			<key>UsbHostControllerProtocolRevision</key>
+			<string>3.1</string>
+			<key>locationID</key>
+			<integer>16777216</integer>
+		</dict>
+		<dict>
+			<key>IOClass</key>
+			<string>AppleT8132USBXHCI</string>
+			<key>IOObjectClass</key>
+			<string>AppleT8132USBXHCI</string>
+			<key>IOProviderClass</key>
+			<string>AppleARMIODevice</string>
+			<key>IORegistryEntryLocation</key>
+			<string>02000000</string>
+			<key>IORegistryEntryName</key>
+			<string>AppleT8132USBXHCI</string>
+			<key>UsbHostControllerProtocolRevision</key>
+			<string>3.1</string>
+			<key>locationID</key>
+			<integer>33554432</integer>
+		</dict>
+		<dict>
+			<key>IOClass</key>
+			<string>AppleT8132USBXHCI</string>
+			<key>IOObjectClass</key>
+			<string>AppleT8132USBXHCI</string>
+			<key>IOProviderClass</key>
+			<string>AppleARMIODevice</string>
+			<key>IORegistryEntryLocation</key>
+			<string>00000000</string>
+			<key>IORegistryEntryName</key>
+			<string>AppleT8132USBXHCI</string>
+			<key>UsbHostControllerProtocolRevision</key>
+			<string>3.1</string>
+			<key>locationID</key>
+			<integer>0</integer>
+		</dict>
+	</array>
+	<key>IORegistryEntryID</key>
+	<integer>4294967552</integer>
+	<key>IORegistryEntryName</key>
+	<string>Root</string>
+</dict>
+</plist>
