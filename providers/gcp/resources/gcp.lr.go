@@ -3763,6 +3763,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.services": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProject).GetServices()).ToDataRes(types.Array(types.Resource("gcp.service")))
 	},
+	"gcp.project.enabledServices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProject).GetEnabledServices()).ToDataRes(types.Array(types.Resource("gcp.service")))
+	},
 	"gcp.project.recommendations": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProject).GetRecommendations()).ToDataRes(types.Array(types.Resource("gcp.recommendation")))
 	},
@@ -21502,6 +21505,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.services": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProject).Services, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.enabledServices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProject).EnabledServices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.recommendations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -48843,6 +48850,7 @@ type mqlGcpProject struct {
 	OrgPolicies                             plugin.TValue[[]any]
 	OrgPolicyConstraints                    plugin.TValue[[]any]
 	Services                                plugin.TValue[[]any]
+	EnabledServices                         plugin.TValue[[]any]
 	Recommendations                         plugin.TValue[[]any]
 	Insights                                plugin.TValue[[]any]
 	PrivilegedAccessManager                 plugin.TValue[*mqlGcpProjectPrivilegedAccessManagerService]
@@ -49142,6 +49150,22 @@ func (c *mqlGcpProject) GetServices() *plugin.TValue[[]any] {
 		}
 
 		return c.services()
+	})
+}
+
+func (c *mqlGcpProject) GetEnabledServices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EnabledServices, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project", c.__id, "enabledServices")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.enabledServices()
 	})
 }
 

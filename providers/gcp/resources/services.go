@@ -7,15 +7,19 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	serviceusage "cloud.google.com/go/serviceusage/apiv1"
 	"cloud.google.com/go/serviceusage/apiv1/serviceusagepb"
+	"github.com/googleapis/gax-go/v2"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/gcp/connection"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -83,6 +87,37 @@ func (g *mqlGcpProject) services() ([]any, error) {
 	return g.fetchServices("")
 }
 
+func (g *mqlGcpProject) enabledServices() ([]any, error) {
+	return g.loadEnabledServices()
+}
+
+// serviceUsageMaxRetries bounds how often a Service Usage call is retried after
+// a quota rejection.
+const serviceUsageMaxRetries = 5
+
+// serviceUsageQuotaRetryer retries Service Usage calls rejected with
+// ResourceExhausted. The list quota is counted per minute, so the backoff grows
+// to reach the next window, and the attempts are bounded so a project that is
+// over quota for good still answers with the error.
+type serviceUsageQuotaRetryer struct {
+	backoff  gax.Backoff
+	attempts int
+}
+
+func newServiceUsageQuotaRetryer() gax.Retryer {
+	return &serviceUsageQuotaRetryer{
+		backoff: gax.Backoff{Initial: 5 * time.Second, Max: 60 * time.Second, Multiplier: 2},
+	}
+}
+
+func (r *serviceUsageQuotaRetryer) Retry(err error) (time.Duration, bool) {
+	if status.Code(err) != codes.ResourceExhausted || r.attempts >= serviceUsageMaxRetries {
+		return 0, false
+	}
+	r.attempts++
+	return r.backoff.Pause(), true
+}
+
 // fetches the gcp services with a filter, e.g. "state:ENABLED"
 func (g *mqlGcpProject) fetchServices(filter string) ([]any, error) {
 	if g.Id.Error != nil {
@@ -103,18 +138,13 @@ func (g *mqlGcpProject) fetchServices(filter string) ([]any, error) {
 		log.Info().Err(err).Msg("could not create client")
 		return nil, err
 	}
-
-	// projects/123/services/serviceusage.googleapis.com
-	//service, err := c.GetService(ctx, &serviceusagepb.GetServiceRequest{
-	//	Name: name,
-	//})
-	//service.Config.Title
+	defer c.Close()
 
 	it := c.ListServices(ctx, &serviceusagepb.ListServicesRequest{
 		Parent:   `projects/` + projectId,
 		Filter:   filter,
 		PageSize: 200,
-	})
+	}, gax.WithRetry(newServiceUsageQuotaRetryer))
 
 	res := []any{}
 	for {
@@ -198,11 +228,12 @@ func initGcpService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	if err != nil {
 		return nil, nil, err
 	}
+	defer c.Close()
 
 	// name is constructed `projects/123/services/serviceusage.googleapis.com`
 	item, err := c.GetService(context.Background(), &serviceusagepb.GetServiceRequest{
 		Name: `projects/` + projectId + "/services/" + name,
-	})
+	}, gax.WithRetry(newServiceUsageQuotaRetryer))
 	if err != nil {
 		return nil, nil, err
 	}

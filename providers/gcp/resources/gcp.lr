@@ -1084,6 +1084,13 @@ gcp.project @defaults("name number") {
   orgPolicyConstraints() []gcp.orgPolicy.constraint
   // List of available and enabled services for the project
   services() []gcp.service
+  // Services enabled on the project
+  //
+  // Only the services whose state is ENABLED, for example
+  // `gcp.project.enabledServices.contains(name == "cloudasset.googleapis.com")`.
+  // Checks for whether an API is turned on read this list, which holds the
+  // project's few dozen enabled services rather than every available one.
+  enabledServices() []gcp.service
   // List of recommendations
   recommendations() []gcp.recommendation
   // Usage observations from the Recommender service, including unused-permission and ineffective-firewall-rule findings

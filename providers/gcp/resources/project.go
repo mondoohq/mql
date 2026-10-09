@@ -33,8 +33,9 @@ func (g *mqlGcpProjects) id() (string, error) {
 }
 
 type mqlGcpProjectInternal struct {
-	// serviceEnabled services
-	enabledServices     map[string]struct{}
+	// enabled services, shared by the enabledServices field and isServiceEnabled
+	enabledServiceList  []any
+	enabledServiceNames map[string]struct{}
 	enabledServicesOnce sync.Once
 	enabledServicesErr  error
 	iamPolicyOnce       sync.Once
@@ -607,25 +608,36 @@ func projectToMql(runtime *plugin.Runtime, p *cloudresourcemanager.Project) (*mq
 	return res.(*mqlGcpProject), nil
 }
 
-func (g *mqlGcpProject) getEnabledServices() (map[string]struct{}, error) {
+// loadEnabledServices lists the project's enabled services once. The
+// enabledServices field and every isServiceEnabled gate read the same listing,
+// so a scan pays for one filtered ListServices call per project.
+func (g *mqlGcpProject) loadEnabledServices() ([]any, error) {
 	g.enabledServicesOnce.Do(func() {
-		services := make(map[string]struct{})
-		enabledServices, err := g.fetchServices("state:ENABLED")
+		list, err := g.fetchServices("state:ENABLED")
 		if err != nil {
 			g.enabledServicesErr = err
 			return
 		}
 
-		for i := range enabledServices {
-			srv := enabledServices[i].(*mqlGcpService)
-			services[srv.Name.Data] = struct{}{}
+		names := make(map[string]struct{}, len(list))
+		for i := range list {
+			srv := list[i].(*mqlGcpService)
+			names[srv.Name.Data] = struct{}{}
 		}
-		// publish the fully-built map only after population so concurrent
+		// publish the fully-built values only after population so concurrent
 		// readers never observe a partially-filled map
-		g.enabledServices = services
+		g.enabledServiceList = list
+		g.enabledServiceNames = names
 	})
 
-	return g.enabledServices, g.enabledServicesErr
+	return g.enabledServiceList, g.enabledServicesErr
+}
+
+func (g *mqlGcpProject) getEnabledServices() (map[string]struct{}, error) {
+	if _, err := g.loadEnabledServices(); err != nil {
+		return nil, err
+	}
+	return g.enabledServiceNames, nil
 }
 
 // isServiceEnabled is an internal helper function to check if a service is serviceEnabled

@@ -3451,6 +3451,7 @@ gcp.project.effectiveOrgPolicy.enforced 13.34.2
 gcp.project.effectiveOrgPolicy.hasConditionalRules 13.37.1
 gcp.project.effectiveOrgPolicy.projectId 13.34.2
 gcp.project.effectiveOrgPolicy.spec 13.34.2
+gcp.project.enabledServices 14.4.4
 gcp.project.essentialContacts 9.0.0
 gcp.project.eventarc 13.6.1
 gcp.project.eventarcService 13.6.1
