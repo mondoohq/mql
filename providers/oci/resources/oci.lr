@@ -1925,6 +1925,18 @@ oci.network {
   virtualCircuits() []oci.network.virtualCircuit
   // FastConnect physical cross-connects
   crossConnects() []oci.network.crossConnect
+  // Cross-connect groups in all compartments, with their MACsec settings
+  crossConnectGroups() []oci.network.crossConnectGroup
+  // DHCP option sets in all compartments
+  dhcpOptionSets() []oci.network.dhcpOptionSet
+  // DRG route tables in all compartments
+  drgRouteTables() []oci.network.drgRouteTable
+  // DRG route distributions in all compartments
+  drgRouteDistributions() []oci.network.drgRouteDistribution
+  // Virtual test access points (traffic mirroring) in all compartments
+  vtaps() []oci.network.vtap
+  // Capture filters of VTAPs and flow logs in all compartments
+  captureFilters() []oci.network.captureFilter
 }
 
 // Oracle Cloud Infrastructure (OCI) public IP address
@@ -2027,8 +2039,10 @@ private oci.network.vcn @defaults("name") {
   // Each labelling as a row carrying its namespace, its definition and whether
   // that namespace enforces or only audits.
   appliedSecurityAttributes() []oci.securityAttributes.applied
-  // Default DHCP options OCID for the VCN
-  defaultDhcpOptionsId string
+  // Default DHCP options OCID
+  //
+  // Deprecated in favor of defaultDhcpOptionSet.
+  defaultDhcpOptionsId @maturity("deprecated") @replaced_by("oci.network.vcn.defaultDhcpOptionSet") string
   // Default route table OCID for the VCN
   //
   // Deprecated in favor of defaultRouteTable.
@@ -2074,6 +2088,12 @@ private oci.network.vcn @defaults("name") {
   natGateways() []oci.network.natGateway
   // VCN flow logs (OCI logs with service=flowlogs whose resource is this VCN)
   flowLogs() []oci.logging.log
+  // Default DHCP option set of the VCN
+  defaultDhcpOptionSet() oci.network.dhcpOptionSet
+  // DHCP option sets of the VCN
+  dhcpOptionSets() []oci.network.dhcpOptionSet
+  // Virtual test access points mirroring traffic of the VCN
+  vtaps() []oci.network.vtap
 }
 
 // Oracle Cloud Infrastructure (OCI) network subnet
@@ -2134,6 +2154,8 @@ private oci.network.subnet @defaults("name") {
   prohibitInternetIngress bool
   // Route table used by this subnet
   routeTable() oci.network.routeTable
+  // DHCP option set the subnet uses
+  dhcpOptionSet() oci.network.dhcpOptionSet
   // Security lists applied to the subnet
   securityLists() []oci.network.securityList
   // Subnet creation time
@@ -2484,6 +2506,10 @@ private oci.network.drg @defaults("name state") {
   attachments() []oci.network.drgAttachment
   // Remote peering connections hosted on the DRG
   remotePeeringConnections() []oci.network.remotePeeringConnection
+  // Route tables of the DRG
+  routeTables() []oci.network.drgRouteTable
+  // Route distributions of the DRG
+  routeDistributions() []oci.network.drgRouteDistribution
   // Free-form tags for resource management
   freeformTags map[string]string
   // Defined tags for governance and cost tracking
@@ -2524,6 +2550,8 @@ private oci.network.drgAttachment @defaults("name networkType state") {
   // CIDR ranges for traffic crossing this attachment. Null when the attachment
   // has no NAT policy.
   natPolicy() oci.network.drgNatPolicy
+  // DRG route table the attachment's traffic is routed with
+  drgRouteTable() oci.network.drgRouteTable
   // Whether original CIDRs are kept alongside translated ones
   //
   // By default only the translated CIDRs of the attachment's NAT rules are
@@ -2967,7 +2995,7 @@ private oci.network.virtualCircuit.crossConnectMapping @defaults("vlan customerB
 //
 // Physical port at a FastConnect location that carries the tenancy's dedicated
 // connectivity. `locationName` and `portName` identify the port,
-// `portSpeedShapeName` its bandwidth, and `crossConnectGroupId` the link
+// `portSpeedShapeName` its bandwidth, and `crossConnectGroup` the link
 // aggregation group when multiple cross-connects are bonded together.
 private oci.network.crossConnect @defaults("name state") {
   // Cross-connect OCID
@@ -2982,8 +3010,12 @@ private oci.network.crossConnect @defaults("name state") {
   portName string
   // Port speed shape name (e.g., 10 Gbps)
   portSpeedShapeName string
-  // OCID of the cross-connect group this cross-connect belongs to, when grouped for link aggregation
-  crossConnectGroupId string
+  // OCID of the cross-connect group
+  //
+  // Deprecated in favor of crossConnectGroup.
+  crossConnectGroupId @maturity("deprecated") @replaced_by("oci.network.crossConnect.crossConnectGroup") string
+  // Cross-connect group the cross-connect belongs to
+  crossConnectGroup() oci.network.crossConnectGroup
   // Lifecycle state (e.g., PENDING_CUSTOMER, PROVISIONING, PROVISIONED, INACTIVE, TERMINATING, TERMINATED)
   state string
   // Creation time
@@ -12980,6 +13012,260 @@ private oci.compute.volumeGroup @defaults("name state") {
   // Backup policy assigned to the group; null when the group is not backed up on a schedule
   backupPolicy() oci.compute.volumeBackupPolicy
   // Volume group creation time
+  created time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) DHCP option set
+//
+// The DHCP options a VCN's subnets hand out, keyed by its OCID: which DNS
+// resolver instances use (the VCN's Internet and VCN resolver or custom DNS
+// servers), the custom servers, and the search domains. Use it to find
+// subnets whose instances resolve names through servers outside OCI.
+private oci.network.dhcpOptionSet @defaults("name serverType") {
+  // DHCP option set OCID
+  id string
+  // DHCP option set display name
+  name string
+  // Compartment containing the option set
+  compartment() oci.compartment
+  // VCN the option set belongs to
+  vcn() oci.network.vcn
+  // Lifecycle state, for example AVAILABLE
+  state string
+  // DNS resolver type: VcnLocal, VcnLocalPlusInternet, or CustomDnsServer
+  serverType string
+  // Custom DNS servers; empty unless serverType is CustomDnsServer
+  customDnsServers []string
+  // Search domains appended to unqualified names
+  searchDomains []string
+  // How the search domain is set: NONE, SUBNET_DOMAIN, VCN_DOMAIN, or CUSTOM_DOMAIN
+  domainNameType string
+  // Option set creation time
+  created time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) DRG route table
+//
+// A route table of a dynamic routing gateway, keyed by its OCID, with its
+// static and dynamic rules, the route distribution it imports routes from,
+// and whether equal-cost multipath is enabled. Use it to review which
+// networks a DRG attachment can reach.
+private oci.network.drgRouteTable @defaults("name") {
+  // DRG route table OCID
+  id string
+  // DRG route table display name
+  name string
+  // Compartment containing the route table
+  compartment() oci.compartment
+  // DRG the route table belongs to
+  drg() oci.network.drg
+  // Lifecycle state, for example AVAILABLE
+  state string
+  // Whether equal-cost multipath routing is enabled
+  isEcmpEnabled bool
+  // Route distribution the table imports dynamic routes from; null when it imports none
+  importRouteDistribution() oci.network.drgRouteDistribution
+  // Static and dynamic route rules
+  rules() []oci.network.drgRouteTable.rule
+  // Route table creation time
+  created time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) DRG route rule
+private oci.network.drgRouteTable.rule @defaults("destination routeType nextHopDrgAttachment.name") {
+  // Route rule ID
+  id string
+  // Destination CIDR block
+  destination string
+  // Destination type, for example CIDR_BLOCK
+  destinationType string
+  // Route type: STATIC or DYNAMIC
+  routeType string
+  // Where a dynamic route was learned, for example IPSEC_TUNNEL or VIRTUAL_CIRCUIT; empty for static routes
+  routeProvenance string
+  // Whether the route conflicts with another and is not used
+  isConflict bool
+  // Whether matching traffic is dropped
+  isBlackhole bool
+  // DRG attachment traffic for the destination is sent to
+  nextHopDrgAttachment() oci.network.drgAttachment
+}
+
+// Oracle Cloud Infrastructure (OCI) DRG route distribution
+//
+// A set of ordered statements that decide which routes a dynamic routing
+// gateway imports into a route table or exports, keyed by its OCID. Each
+// statement accepts the routes of the attachments its match criteria select.
+private oci.network.drgRouteDistribution @defaults("name distributionType") {
+  // Route distribution OCID
+  id string
+  // Route distribution display name
+  name string
+  // Compartment containing the route distribution
+  compartment() oci.compartment
+  // DRG the route distribution belongs to
+  drg() oci.network.drg
+  // Distribution type: IMPORT or EXPORT
+  distributionType string
+  // Lifecycle state, for example AVAILABLE
+  state string
+  // Statements in priority order
+  statements() []oci.network.drgRouteDistribution.statement
+  // Route distribution creation time
+  created time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) DRG route distribution statement
+private oci.network.drgRouteDistribution.statement @defaults("priority action matchType") {
+  // Statement ID
+  id string
+  // Action: ACCEPT
+  action string
+  // Priority; lower numbers are evaluated first
+  priority int
+  // What the statement matches: DRG_ATTACHMENT_TYPE, DRG_ATTACHMENT_ID, or MATCH_ALL
+  matchType string
+  // Attachment type a DRG_ATTACHMENT_TYPE statement matches, for example VCN or IPSEC_TUNNEL
+  matchAttachmentType string
+  // DRG attachment a DRG_ATTACHMENT_ID statement matches; null for other match types
+  matchDrgAttachment() oci.network.drgAttachment
+}
+
+// Oracle Cloud Infrastructure (OCI) virtual test access point
+//
+// A VTAP that mirrors the traffic of a source (a VNIC, subnet, load balancer,
+// or database) to a target, keyed by its OCID, through a capture filter. An
+// unexpected VTAP copies traffic out of a network, so `isVtapEnabled`,
+// `targetType`, and `targetIp` show where mirrored traffic goes.
+private oci.network.vtap @defaults("name isVtapEnabled sourceType targetType") {
+  // VTAP OCID
+  id string
+  // VTAP display name
+  name string
+  // Compartment containing the VTAP
+  compartment() oci.compartment
+  // VCN the VTAP belongs to
+  vcn() oci.network.vcn
+  // Lifecycle state, for example AVAILABLE
+  state string
+  // Whether the VTAP is mirroring traffic
+  isVtapEnabled bool
+  // Kind of source mirrored, for example VNIC, SUBNET, LOAD_BALANCER, DB_SYSTEM, or AUTONOMOUS_DATA_WAREHOUSE
+  sourceType string
+  // OCID of the mirrored source
+  sourceId string
+  // Kind of target the mirrored traffic is sent to: VNIC, NETWORK_LOAD_BALANCER, or IP_ADDRESS
+  targetType string
+  // OCID of the target; empty for an IP_ADDRESS target
+  targetId string
+  // IP address the mirrored traffic is sent to
+  targetIp string
+  // Mirrored traffic: DEFAULT (all packets) or PRIORITY
+  trafficMode string
+  // Encapsulation protocol of mirrored traffic, for example VXLAN
+  encapsulationProtocol string
+  // Maximum size of a mirrored packet in bytes
+  maxPacketSize int
+  // Capture filter selecting the mirrored traffic
+  captureFilter() oci.network.captureFilter
+  // VTAP creation time
+  created time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) capture filter
+//
+// A set of rules selecting the traffic a VTAP mirrors or a flow log records,
+// keyed by its OCID, with the direction, action, CIDR blocks, and protocol of
+// each rule.
+private oci.network.captureFilter @defaults("name filterType") {
+  // Capture filter OCID
+  id string
+  // Capture filter display name
+  name string
+  // Compartment containing the capture filter
+  compartment() oci.compartment
+  // Filter type: VTAP or FLOWLOG
+  filterType string
+  // Lifecycle state, for example AVAILABLE
+  state string
+  // Rules in order
+  rules() []oci.network.captureFilter.rule
+  // Capture filter creation time
+  created time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) capture filter rule
+private oci.network.captureFilter.rule @defaults("action direction sourceCidr destinationCidr protocol") {
+  // Action: INCLUDE or EXCLUDE
+  action string
+  // Traffic direction of a VTAP rule: INGRESS or EGRESS; empty for flow log rules
+  direction string
+  // Source CIDR block; empty matches any
+  sourceCidr string
+  // Destination CIDR block; empty matches any
+  destinationCidr string
+  // IP protocol number, or all
+  protocol string
+  // Whether a flow log rule is enabled; true for VTAP rules
+  isEnabled bool
+  // Priority of a flow log rule; null for VTAP rules
+  priority int
+  // Sampling rate of a flow log rule, one in this many packets; null for VTAP rules
+  samplingRate int
+}
+
+// Oracle Cloud Infrastructure (OCI) cross-connect group
+//
+// A link aggregation group of FastConnect cross-connects, keyed by its OCID,
+// with its MACsec encryption state and cipher and whether unencrypted traffic
+// is still allowed, and its member cross-connects. Use it to verify that
+// dedicated links into OCI are encrypted.
+private oci.network.crossConnectGroup @defaults("name macsecState") {
+  // Cross-connect group OCID
+  id string
+  // Cross-connect group display name
+  name string
+  // Compartment containing the group
+  compartment() oci.compartment
+  // Lifecycle state, for example PROVISIONED
+  state string
+  // Reference name the customer gave the group
+  customerReferenceName string
+  // MACsec state: ENABLED or DISABLED; empty when MACsec is not configured
+  macsecState string
+  // MACsec encryption cipher, for example AES256_GCM_XPN
+  macsecEncryptionCipher string
+  // Whether unencrypted traffic is allowed while MACsec is enabled
+  macsecIsUnprotectedTrafficAllowed bool
+  // Minimum number of active links for the group to stay up
+  minimumLinks int
+  // Cross-connects in the group
+  crossConnects() []oci.network.crossConnect
+  // Group creation time
   created time
   // Free-form tags for resource management
   freeformTags map[string]string

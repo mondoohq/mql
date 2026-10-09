@@ -481,6 +481,7 @@ func (o *mqlOciNetwork) subnets() ([]any, error) {
 				mqlSub := mqlInstance.(*mqlOciNetworkSubnet)
 				mqlSub.cacheVcnID = stringValue(subnet.VcnId)
 				mqlSub.cacheRouteTableID = stringValue(subnet.RouteTableId)
+				mqlSub.cacheDhcpOptionsID = stringValue(subnet.DhcpOptionsId)
 				mqlSub.cacheSecurityListIDs = subnet.SecurityListIds
 				res = append(res, mqlSub)
 			}
@@ -494,6 +495,7 @@ type mqlOciNetworkSubnetInternal struct {
 	cacheVcnID           string
 	cacheRouteTableID    string
 	cacheSecurityListIDs []string
+	cacheDhcpOptionsID   string
 }
 
 func initOciNetworkSubnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {

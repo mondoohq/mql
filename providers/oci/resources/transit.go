@@ -230,6 +230,7 @@ func (o *mqlOciNetworkDrg) newDrgAttachment(att core.DrgAttachment) (*mqlOciNetw
 	mqlAtt.cacheIpsecConnectionID = ipsecConnID
 	mqlAtt.cacheVirtualCircuitID = virtualCircuitID
 	mqlAtt.cacheDrgNatPolicyID = stringValue(att.DrgNatPolicyId)
+	mqlAtt.cacheDrgRouteTableID = stringValue(att.DrgRouteTableId)
 	return mqlAtt, nil
 }
 
@@ -298,6 +299,7 @@ type mqlOciNetworkDrgAttachmentInternal struct {
 	cacheIpsecConnectionID string
 	cacheVirtualCircuitID  string
 	cacheDrgNatPolicyID    string
+	cacheDrgRouteTableID   string
 }
 
 func (o *mqlOciNetworkDrgAttachment) id() (string, error) {
