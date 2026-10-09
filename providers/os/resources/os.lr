@@ -23527,12 +23527,12 @@ private qwen.code.skill @defaults("name") @maturity("preview") {
 // repository against the specification or to inventory the skills in a checkout.
 agentskills @defaults("path") @maturity("preview") {
   init(path string)
-  // Directory searched for skills
+  // Directory searched for skills, or a `.skill` package
   path string
   // Skills found under the directory, one per SKILL.md file
   //
   // Includes the skills inside `.skill` packages, zip archives of skill directories,
-  // found under the directory.
+  // found under the directory. `path` may also be a single `.skill` package.
   skills() []agentskills.skill
 }
 

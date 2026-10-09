@@ -189,7 +189,16 @@ func TestFindAgentSkillsRootIsAFile(t *testing.T) {
 	mem := afero.NewMemMapFs()
 	writeAgentSkillFile(t, mem, "/repo/SKILL.md")
 	_, _, err := findAgentSkills(&afero.Afero{Fs: mem}, "/repo/SKILL.md")
-	assert.ErrorContains(t, err, "is not a directory")
+	assert.ErrorContains(t, err, "is not a directory or a .skill package")
+}
+
+func TestFindAgentSkillsRootIsAPackage(t *testing.T) {
+	mem := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(mem, "/dl/x.skill", []byte("x"), 0o644))
+	skills, packages, err := findAgentSkills(&afero.Afero{Fs: mem}, "/dl/x.skill")
+	require.NoError(t, err)
+	assert.Empty(t, skills)
+	assert.Equal(t, []string{"/dl/x.skill"}, packages)
 }
 
 func TestAgentSkillBundledFiles(t *testing.T) {

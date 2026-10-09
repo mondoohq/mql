@@ -182,7 +182,8 @@ func dictOrNil(m map[string]any) any {
 }
 
 // findAgentSkills returns the SKILL.md paths and the skill packages below
-// root, each in lexical order. A directory holding SKILL.md is a skill and is
+// root, each in lexical order. A root that is itself a package is returned as
+// the only package. A directory holding SKILL.md is a skill and is
 // not searched further: what is below it are the skill's bundled files.
 // Unreadable subdirectories are skipped; a missing or unreadable root is an
 // error.
@@ -195,7 +196,10 @@ func findAgentSkills(afs *afero.Afero, root string) (skills []string, packages [
 		return nil, nil, classifyFsError(err)
 	}
 	if !info.IsDir() {
-		return nil, nil, fmt.Errorf("agentskills path %q is not a directory", root)
+		if strings.HasSuffix(root, agentSkillPackageExt) {
+			return nil, []string{root}, nil
+		}
+		return nil, nil, fmt.Errorf("agentskills path %q is not a directory or a %s package", root, agentSkillPackageExt)
 	}
 
 	var walk func(dir string, depth int) error
