@@ -1,0 +1,13 @@
+#
+# reserved values
+#
+255	local
+254	main
+253	default
+0	unspec
+#
+# local
+#
+1005	cluster
+1006	vr.mgmt
+1007	t-blue
