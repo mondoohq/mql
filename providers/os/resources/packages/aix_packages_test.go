@@ -5,11 +5,13 @@ package packages
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestParseAixPackages(t *testing.T) {
@@ -53,4 +55,78 @@ func TestParseAixPackages(t *testing.T) {
 		Status: "COMMITTED|EFIXLOCKED",
 	}
 	assert.Contains(t, m, p)
+}
+
+// testdata/packages_aix73.txt is `lslpp -cl` from AIX 7.3 TL4 SP2, cut to the
+// rows of six filesets. Filesets with a root part are listed once per objrepos.
+func TestParseAixPackagesListsEachFilesetOnce(t *testing.T) {
+	f, err := os.Open("testdata/packages_aix73.txt")
+	require.NoError(t, err)
+	defer f.Close()
+
+	pf := &inventory.Platform{Name: "aix", Version: "7.3", Arch: "powerpc"}
+	m, err := parseAixPackages(pf, f)
+	require.NoError(t, err)
+
+	names := []string{}
+	for _, p := range m {
+		names = append(names, p.Name)
+	}
+	assert.ElementsMatch(t, []string{
+		"bos.adt.base", "bos.rte", "bos.rte.security", "openssh.base.server",
+		"X11.apps.msmit", "bos.terminfo.ibm.data",
+	}, names)
+}
+
+func TestParseAixPackagesProblemStateOfAnyPartWins(t *testing.T) {
+	out := "#Fileset:Level:PTF Id:State:Type:Description:EFIX Locked\n" +
+		"/usr/lib/objrepos:bos.rte:7.3.4.2::COMMITTED:I:Base Operating System Runtime:\n" +
+		"/etc/objrepos:bos.rte:7.3.4.2::BROKEN:I:Base Operating System Runtime:\n"
+	pf := &inventory.Platform{Name: "aix", Version: "7.3", Arch: "powerpc"}
+	m, err := parseAixPackages(pf, strings.NewReader(out))
+	require.NoError(t, err)
+	require.Len(t, m, 1)
+	assert.Equal(t, "BROKEN", m[0].Status)
+}
+
+func TestParseAixPackagesSkipsShortRows(t *testing.T) {
+	out := "#Fileset:Level:PTF Id:State:Type:Description:EFIX Locked\n" +
+		"\n" +
+		"/usr/lib/objrepos:bos.rte:7.3.4.2\n" +
+		"/usr/lib/objrepos:bos.mp64:7.3.4.2::COMMITTED:I:Base Operating System 64 bit Multiprocessor Runtime:\n"
+	pf := &inventory.Platform{Name: "aix", Version: "7.3", Arch: "powerpc"}
+	m, err := parseAixPackages(pf, strings.NewReader(out))
+	require.NoError(t, err)
+	require.Len(t, m, 1)
+	assert.Equal(t, "bos.mp64", m[0].Name)
+	assert.Equal(t, "Base Operating System 64 bit Multiprocessor Runtime", m[0].Description)
+}
+
+// The AIX Toolbox keeps an rpm database next to the installp object
+// repositories, so AIX resolves both managers when it is there.
+func TestResolveSystemPkgManagersAix(t *testing.T) {
+	newConn := func(files map[string]*mock.MockFileData) *mock.Connection {
+		conn, err := mock.New(0, &inventory.Asset{
+			Platform: &inventory.Platform{Name: "aix", Version: "7.3", Arch: "powerpc", Family: []string{"unix", "os"}},
+		}, mock.WithData(&mock.TomlData{Files: files}))
+		require.NoError(t, err)
+		return conn
+	}
+
+	t.Run("with the AIX Toolbox", func(t *testing.T) {
+		pms, err := ResolveSystemPkgManagers(newConn(map[string]*mock.MockFileData{
+			"/opt/freeware/packages": {Path: "/opt/freeware/packages", StatData: mock.FileInfo{IsDir: true, Mode: os.ModeDir | 0o755}},
+		}))
+		require.NoError(t, err)
+		require.Len(t, pms, 2)
+		assert.IsType(t, &AixPkgManager{}, pms[0])
+		assert.IsType(t, &RpmPkgManager{}, pms[1])
+	})
+
+	t.Run("without it", func(t *testing.T) {
+		pms, err := ResolveSystemPkgManagers(newConn(map[string]*mock.MockFileData{}))
+		require.NoError(t, err)
+		require.Len(t, pms, 1)
+		assert.IsType(t, &AixPkgManager{}, pms[0])
+	})
 }

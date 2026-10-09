@@ -258,6 +258,15 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 		pms = append(pms, &OpenBSDPkgManager{conn: conn})
 	case asset.Platform.Name == "aix":
 		pms = append(pms, &AixPkgManager{conn: conn, platform: asset.Platform})
+		// lslpp lists installp filesets only. The AIX Toolbox installs open
+		// source software (python3, sudo, openssl, dnf itself) as rpm
+		// packages into a database of its own.
+		for _, path := range aixRpmDbPaths {
+			if _, err := conn.FileSystem().Stat(path); err == nil {
+				pms = append(pms, &RpmPkgManager{conn: conn, platform: asset.Platform})
+				break
+			}
+		}
 	case asset.Platform.Name == "gentoo":
 		pms = append(pms, &GentooPkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.IsFamily("linux"):
