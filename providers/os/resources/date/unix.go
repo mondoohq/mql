@@ -86,7 +86,7 @@ func (u *Unix) Get() (*Result, error) {
 // It tries these approaches in order:
 //  1. readlink /etc/localtime → extract IANA name from symlink target
 //  2. Read /etc/timezone (Debian/Ubuntu)
-//  3. Parse TZ= from /etc/TIMEZONE (Solaris/AIX)
+//  3. Parse TZ= from /etc/TIMEZONE (Solaris) or /etc/environment (AIX)
 //  4. Match /etc/localtime contents against the system zoneinfo database
 func timezoneFromFS(fs afero.Fs) (string, error) {
 	// 1. Try readlink on /etc/localtime
@@ -112,15 +112,12 @@ func timezoneFromFS(fs afero.Fs) (string, error) {
 		}
 	}
 
-	// 3. Try /etc/TIMEZONE (Solaris/AIX) - look for TZ=<value>
-	if f, err := fs.Open("/etc/TIMEZONE"); err == nil {
-		defer f.Close()
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if tz, ok := strings.CutPrefix(line, "TZ="); ok && tz != "" {
-				return tz, nil
-			}
+	// 3. Try TZ=<value> in /etc/TIMEZONE (Solaris) and /etc/environment
+	// (AIX, which has neither /etc/localtime nor /etc/TIMEZONE; init reads
+	// the file into every login's environment).
+	for _, path := range []string{"/etc/TIMEZONE", "/etc/environment"} {
+		if tz := readTZAssignment(fs, path); tz != "" {
+			return tz, nil
 		}
 	}
 
@@ -130,6 +127,26 @@ func timezoneFromFS(fs afero.Fs) (string, error) {
 	}
 
 	return "", fmt.Errorf("could not detect timezone from filesystem")
+}
+
+// readTZAssignment returns the value of the TZ=<value> line in path, or ""
+// when the file is missing or sets no TZ.
+func readTZAssignment(fs afero.Fs, path string) string {
+	f, err := fs.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if tz, ok := strings.CutPrefix(line, "TZ="); ok {
+			if tz = strings.Trim(tz, `"'`); tz != "" {
+				return tz
+			}
+		}
+	}
+	return ""
 }
 
 // readEtcTimezone returns the zone name in /etc/timezone, or "" when the file

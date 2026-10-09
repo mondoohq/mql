@@ -148,13 +148,34 @@ func TestTimezoneFromFS_EtcTimezone(t *testing.T) {
 }
 
 func TestTimezoneFromFS_EtcTIMEZONE(t *testing.T) {
-	// Simulate a Solaris/AIX system with /etc/TIMEZONE
+	// Simulate a Solaris system with /etc/TIMEZONE
 	fs := afero.NewMemMapFs()
 	require.NoError(t, afero.WriteFile(fs, "/etc/TIMEZONE", []byte("# timezone config\nTZ=US/Eastern\n"), 0o644))
 
 	tz, err := timezoneFromFS(fs)
 	require.NoError(t, err)
 	assert.Equal(t, "US/Eastern", tz)
+}
+
+// /etc/environment on AIX 7.3 TL4 SP2 after `chtz Europe/Berlin`, without its
+// comment header. AIX has neither /etc/localtime nor /etc/TIMEZONE.
+const aixEtcEnvironment = `PATH=/usr/bin:/etc:/usr/sbin:/usr/ucb:/usr/bin/X11:/sbin:/usr/java8_64/jre/bin:/usr/java8_64/bin
+TZ=Europe/Berlin
+LANG=en_US
+LOCPATH=/usr/lib/nls/loc
+NLSPATH=/usr/lib/nls/msg/%L/%N:/usr/lib/nls/msg/%L/%N.cat:/usr/lib/nls/msg/%l.%c/%N:/usr/lib/nls/msg/%l.%c/%N.cat
+LC__FASTMSG=true
+ODMDIR=/etc/objrepos
+CLCMD_PASSTHRU=1
+`
+
+func TestTimezoneFromFS_AixEtcEnvironment(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/etc/environment", []byte(aixEtcEnvironment), 0o644))
+
+	tz, err := timezoneFromFS(fs)
+	require.NoError(t, err)
+	assert.Equal(t, "Europe/Berlin", tz)
 }
 
 func TestTimezoneFromFS_LocaltimeBinaryMatch(t *testing.T) {
