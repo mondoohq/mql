@@ -147,13 +147,6 @@ k8s @root {
   runtimeClasses() []k8s.runtimeclass
 }
 
-// Kubernetes API resource type
-//
-// Resource type the API server advertises through discovery, selected by its
-// plural name and kind. The group and version report the preferred API path,
-// namespaced indicates whether instances are scoped to a namespace, and
-// shortNames and categories list the kubectl aliases and groupings (such as
-// "all") the type belongs to.
 // Kubernetes distribution of the cluster
 //
 // Which distribution serves the cluster, such as aks, eks, gke or openshift,
@@ -194,6 +187,13 @@ k8s.distro @defaults("name source") {
   evidence() dict
 }
 
+// Kubernetes API resource type
+//
+// Resource type the API server advertises through discovery, selected by its
+// plural name and kind. The group and version report the preferred API path,
+// namespaced indicates whether instances are scoped to a namespace, and
+// shortNames and categories list the kubectl aliases and groupings (such as
+// "all") the type belongs to.
 private k8s.apiresource @defaults("name kind") {
   // Plural name of the resource
   name string

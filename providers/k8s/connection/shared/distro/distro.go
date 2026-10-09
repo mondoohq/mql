@@ -166,8 +166,8 @@ var hostSuffixes = []struct {
 	distro string
 }{
 	{".azmk8s.io", AKS},
-	{".eks.amazonaws.com", EKS},
 	{".eks.amazonaws.com.cn", EKS},
+	{".eks.amazonaws.com", EKS},
 	{".gke.goog", GKE},
 	{".aroapp.io", OpenShift},
 	{".openshiftapps.com", OpenShift},
