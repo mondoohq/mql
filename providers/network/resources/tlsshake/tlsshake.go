@@ -42,6 +42,11 @@ type ScanConfig struct {
 	// internal scan fields that users don't configure
 	version       string
 	ciphersFilter func(string) bool
+	// excludedIDs holds the 2-byte IDs of cipher suites this probe already
+	// negotiated; they are left out of the next ClientHello.
+	excludedIDs map[string]struct{}
+	// negotiatedID is the 2-byte ID of the suite the last ServerHello chose.
+	negotiatedID string
 }
 
 const DefaultTimeout = 2 * time.Second
@@ -168,18 +173,11 @@ func (s *Tester) Test(conf ScanConfig) error {
 				ciphersFilter: remainingCiphers,
 			}
 
-			for {
-				remaining, err := s.testTLS(s.proto, s.target, curConf)
-				if err != nil {
-					s.sync.Lock()
-					errs.Add(err)
-					s.sync.Unlock()
-					return
-				}
-
-				if remaining <= 0 {
-					break
-				}
+			if err := s.probeCiphers(curConf); err != nil {
+				s.sync.Lock()
+				errs.Add(err)
+				s.sync.Unlock()
+				return
 			}
 
 			if version == "tls1.2" || version == "tls1.3" {
@@ -227,6 +225,49 @@ func (s *Tester) Test(conf ScanConfig) error {
 	}
 
 	return resErr
+}
+
+// probeCiphers connects repeatedly with one TLS/SSL version, each time offering
+// the cipher suites not yet negotiated, until the server rejects the offer.
+//
+// Every round must shrink the offer: the suite the server picked is excluded
+// by its 2-byte ID. If the server picks a suite that was not offered, the next
+// offer is the same as the last one and another round can only repeat it, so
+// the probe stops. The number of rounds is also capped at the size of the
+// first offer, which is the most rounds a server can legitimately need.
+func (s *Tester) probeCiphers(conf *ScanConfig) error {
+	conf.excludedIDs = map[string]struct{}{}
+	prevRemaining := -1
+	maxRounds := -1
+
+	for round := 0; ; round++ {
+		conf.negotiatedID = ""
+		remaining, err := s.testTLS(s.proto, s.target, conf)
+		if err != nil {
+			return err
+		}
+		if remaining <= 0 {
+			return nil
+		}
+
+		if maxRounds < 0 {
+			// remaining is the offer size minus one
+			maxRounds = remaining + 1
+		}
+		if prevRemaining >= 0 && remaining >= prevRemaining {
+			s.addError("stopped probing " + conf.version + " ciphers: the server negotiated a cipher suite that was not offered")
+			return nil
+		}
+		if round+1 >= maxRounds {
+			s.addError("stopped probing " + conf.version + " ciphers after " + strconv.Itoa(maxRounds) + " handshakes")
+			return nil
+		}
+		prevRemaining = remaining
+
+		if conf.negotiatedID != "" {
+			conf.excludedIDs[conf.negotiatedID] = struct{}{}
+		}
+	}
 }
 
 // Attempts to connect to an endpoint with a given version and records
@@ -377,7 +418,9 @@ func (s *Tester) parseServerHello(data []byte, version string, conf *ScanConfig)
 	if idx+3 > len(data) {
 		return errors.New("malformed ServerHello (truncated before cipher suite)")
 	}
-	cipher, cipherOK := ALL_CIPHERS[string(data[idx:idx+2])]
+	cipherID := string(data[idx : idx+2])
+	cipher, cipherOK := negotiatedCipherName(conf.version, cipherID)
+	conf.negotiatedID = cipherID
 	idx += 2
 
 	// TLS 1.3 pretends to be TLS 1.2 in the preceding headers for
@@ -690,10 +733,31 @@ func (s *Tester) parseHello(conn net.Conn, conf *ScanConfig) (bool, error) {
 	return success, nil
 }
 
-func filterCipherMsg(org map[string]string, f func(cipher string) bool) ([]byte, int) {
+// negotiatedCipherName names the cipher suite a server picked, preferring the
+// table the offer for this version was built from. SSLv3 suites share their IDs
+// with TLS suites of a different name (0x000a is SSL_RSA_WITH_3DES_EDE_CBC_SHA
+// in SSLv3 and TLS_RSA_WITH_3DES_EDE_CBC_SHA in TLS), and the SSLv3 offer is
+// filtered by the SSLv3 names.
+func negotiatedCipherName(version string, id string) (string, bool) {
+	if version == "ssl3" {
+		if name, ok := SSL3_CIPHERS[id]; ok {
+			return name, true
+		}
+		if name, ok := SSL_FIPS_CIPHERS[id]; ok {
+			return name, true
+		}
+	}
+	name, ok := ALL_CIPHERS[id]
+	return name, ok
+}
+
+func filterCipherMsg(org map[string]string, f func(cipher string) bool, excludedIDs map[string]struct{}) ([]byte, int) {
 	var res bytes.Buffer
 	var n int
 	for k, v := range org {
+		if _, excluded := excludedIDs[k]; excluded {
+			continue
+		}
 		if f(v) {
 			res.WriteString(k)
 			n++
@@ -781,14 +845,14 @@ func (s *Tester) helloTLSMsg(conf *ScanConfig) ([]byte, int, error) {
 
 	switch conf.version {
 	case "ssl3":
-		regular, n1 := filterCipherMsg(SSL3_CIPHERS, conf.ciphersFilter)
-		fips, n2 := filterCipherMsg(SSL_FIPS_CIPHERS, conf.ciphersFilter)
+		regular, n1 := filterCipherMsg(SSL3_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
+		fips, n2 := filterCipherMsg(SSL_FIPS_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
 		ciphers = append(regular, fips...)
 		cipherCount = n1 + n2
 
 	case "tls1.0", "tls1.1", "tls1.2":
-		org, n1 := filterCipherMsg(TLS10_CIPHERS, conf.ciphersFilter)
-		tls, n2 := filterCipherMsg(TLS_CIPHERS, conf.ciphersFilter)
+		org, n1 := filterCipherMsg(TLS10_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
+		tls, n2 := filterCipherMsg(TLS_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
 		ciphers = append(org, tls...)
 		cipherCount = n1 + n2
 
@@ -800,9 +864,9 @@ func (s *Tester) helloTLSMsg(conf *ScanConfig) ([]byte, int, error) {
 		extensions.WriteString("\x00\x0a\x00\x0a\x00\x08\xfa\xfa\x00\x1d\x00\x17\x00\x18")
 
 	case "tls1.3":
-		org, n1 := filterCipherMsg(TLS10_CIPHERS, conf.ciphersFilter)
-		tls, n2 := filterCipherMsg(TLS_CIPHERS, conf.ciphersFilter)
-		tls13, n3 := filterCipherMsg(TLS13_CIPHERS, conf.ciphersFilter)
+		org, n1 := filterCipherMsg(TLS10_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
+		tls, n2 := filterCipherMsg(TLS_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
+		tls13, n3 := filterCipherMsg(TLS13_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
 		ciphers = append(org, tls...)
 		ciphers = append(ciphers, tls13...)
 		cipherCount = n1 + n2 + n3
