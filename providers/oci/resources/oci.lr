@@ -13233,7 +13233,7 @@ private oci.network.vtap @defaults("name isVtapEnabled sourceType targetType") {
   sourceNetworkFirewall() oci.networkFirewall.firewall
   // Kind of target the mirrored traffic is sent to: VNIC, NETWORK_LOAD_BALANCER, or IP_ADDRESS
   targetType string
-  // OCID of the target; empty for an IP_ADDRESS target
+  // OCID of the target; null for an IP_ADDRESS target
   //
   // Kept beside the typed target accessors; an IP_ADDRESS target is reported in targetIp.
   targetId string

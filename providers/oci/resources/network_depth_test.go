@@ -113,3 +113,15 @@ func TestVtapRefID(t *testing.T) {
 	assert.Equal(t, "", vtapRefID("SUBNET", "VNIC", "ocid1.subnet.oc1..s"), "an accessor of another kind reads null")
 	assert.Equal(t, "", vtapRefID("VNIC", "VNIC", ""), "no id is no reference")
 }
+
+func TestRowKey(t *testing.T) {
+	assert.Equal(t, "rule-1", rowKey("rule-1", 3), "an id keeps the key stable across listings")
+	assert.Equal(t, "#3", rowKey("", 3))
+	assert.NotEqual(t, rowKey("", 0), rowKey("", 1), "rows without an id get distinct keys")
+}
+
+func TestVtapArgsTargetIDNull(t *testing.T) {
+	args := vtapArgs(core.Vtap{Id: common.String("v"), TargetType: core.VtapTargetTypeIpAddress, TargetIp: common.String("10.0.0.9")})
+	assert.Nil(t, args["targetId"].Value, "an IP address target has no OCID")
+	assert.Equal(t, "10.0.0.9", args["targetIp"].Value)
+}

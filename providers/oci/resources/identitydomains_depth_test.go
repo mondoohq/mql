@@ -52,7 +52,7 @@ func TestOciScimUserFilter(t *testing.T) {
 }
 
 func TestSocialIdentityProviderArgsNeverReadsSecret(t *testing.T) {
-	args := socialIdentityProviderArgs("dom", identitydomains.SocialIdentityProvider{
+	args := socialIdentityProviderArgs("dom", 0, identitydomains.SocialIdentityProvider{
 		Id: common.String("p1"), Name: common.String("Google"), ConsumerSecret: common.String(secretValue),
 		Enabled: common.Bool(true), RegistrationEnabled: common.Bool(true),
 	})

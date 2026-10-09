@@ -37,6 +37,16 @@ func childrenOf[T any](list *plugin.TValue[[]any], parentID string, parentOf fun
 	return out, nil
 }
 
+// rowKey is the cache key suffix of a row in a listed collection: its id, or
+// its position when the API returns none, so rows without an id cannot
+// collapse into one cached resource.
+func rowKey(id string, index int) string {
+	if id != "" {
+		return id
+	}
+	return "#" + strconv.Itoa(index)
+}
+
 // ---- DHCP option sets ----
 
 type mqlOciNetworkDhcpOptionSetInternal struct {
@@ -269,7 +279,7 @@ func (o *mqlOciNetworkDrgRouteTable) rules() ([]any, error) {
 	out := make([]any, 0, len(rules))
 	for i := range rules {
 		args := drgRouteRuleArgs(rules[i])
-		args["__id"] = llx.StringData(o.Id.Data + "/rule/" + stringValue(rules[i].Id))
+		args["__id"] = llx.StringData(o.Id.Data + "/rule/" + rowKey(stringValue(rules[i].Id), i))
 		m, err := CreateResource(o.MqlRuntime, "oci.network.drgRouteTable.rule", args)
 		if err != nil {
 			return nil, err
@@ -451,7 +461,7 @@ func (o *mqlOciNetworkDrgRouteDistribution) statements() ([]any, error) {
 	out := make([]any, 0, len(stmts))
 	for i := range stmts {
 		args, attachmentID := drgDistributionStatementArgs(stmts[i])
-		args["__id"] = llx.StringData(o.Id.Data + "/statement/" + stringValue(stmts[i].Id))
+		args["__id"] = llx.StringData(o.Id.Data + "/statement/" + rowKey(stringValue(stmts[i].Id), i))
 		m, err := CreateResource(o.MqlRuntime, "oci.network.drgRouteDistribution.statement", args)
 		if err != nil {
 			return nil, err
@@ -544,7 +554,7 @@ func vtapArgs(v core.Vtap) map[string]*llx.RawData {
 		"sourceType":            llx.StringData(string(v.SourceType)),
 		"sourceId":              llx.StringDataPtr(v.SourceId),
 		"targetType":            llx.StringData(string(v.TargetType)),
-		"targetId":              llx.StringData(stringValue(v.TargetId)),
+		"targetId":              llx.StringDataPtr(v.TargetId),
 		"targetIp":              llx.StringData(stringValue(v.TargetIp)),
 		"trafficMode":           llx.StringData(string(v.TrafficMode)),
 		"encapsulationProtocol": llx.StringData(string(v.EncapsulationProtocol)),

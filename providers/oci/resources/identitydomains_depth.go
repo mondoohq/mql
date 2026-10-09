@@ -363,9 +363,9 @@ func (o *mqlOciIdentityDomainUser) credentials() ([]any, error) {
 		return nil, err
 	}
 	out := make([]any, 0, len(creds))
-	for _, c := range creds {
+	for i, c := range creds {
 		m, err := CreateResource(o.MqlRuntime, "oci.identity.domain.user.credential", map[string]*llx.RawData{
-			"__id":        llx.StringData(o.cacheDomain.Id.Data + "/" + c.typ + "/" + c.id),
+			"__id":        llx.StringData(o.cacheDomain.Id.Data + "/" + c.typ + "/" + rowKey(c.id, i)),
 			"id":          llx.StringData(c.id),
 			"ocid":        llx.StringData(c.ocid),
 			"type":        llx.StringData(c.typ),
@@ -401,9 +401,9 @@ func (o *mqlOciIdentityDomain) dynamicResourceGroups() ([]any, error) {
 		return nil, err
 	}
 	out := make([]any, 0, len(groups))
-	for _, g := range groups {
+	for i, g := range groups {
 		m, err := CreateResource(o.MqlRuntime, "oci.identity.domain.dynamicResourceGroup", map[string]*llx.RawData{
-			"__id":         llx.StringData(o.Id.Data + "/dynamicResourceGroup/" + stringValue(g.Id)),
+			"__id":         llx.StringData(o.Id.Data + "/dynamicResourceGroup/" + rowKey(stringValue(g.Id), i)),
 			"id":           llx.StringDataPtr(g.Id),
 			"ocid":         llx.StringData(stringValue(g.Ocid)),
 			"displayName":  llx.StringDataPtr(g.DisplayName),
@@ -435,8 +435,8 @@ func (o *mqlOciIdentityDomain) socialIdentityProviders() ([]any, error) {
 		return nil, err
 	}
 	out := make([]any, 0, len(providers))
-	for _, p := range providers {
-		m, err := CreateResource(o.MqlRuntime, "oci.identity.domain.socialIdentityProvider", socialIdentityProviderArgs(o.Id.Data, p))
+	for i, p := range providers {
+		m, err := CreateResource(o.MqlRuntime, "oci.identity.domain.socialIdentityProvider", socialIdentityProviderArgs(o.Id.Data, i, p))
 		if err != nil {
 			return nil, err
 		}
@@ -446,9 +446,9 @@ func (o *mqlOciIdentityDomain) socialIdentityProviders() ([]any, error) {
 }
 
 // socialIdentityProviderArgs maps a provider without its consumer secret.
-func socialIdentityProviderArgs(domainID string, p identitydomains.SocialIdentityProvider) map[string]*llx.RawData {
+func socialIdentityProviderArgs(domainID string, index int, p identitydomains.SocialIdentityProvider) map[string]*llx.RawData {
 	return map[string]*llx.RawData{
-		"__id":                   llx.StringData(domainID + "/socialIdentityProvider/" + stringValue(p.Id)),
+		"__id":                   llx.StringData(domainID + "/socialIdentityProvider/" + rowKey(stringValue(p.Id), index)),
 		"id":                     llx.StringDataPtr(p.Id),
 		"name":                   llx.StringDataPtr(p.Name),
 		"serviceProviderName":    llx.StringData(stringValue(p.ServiceProviderName)),

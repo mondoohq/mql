@@ -102,9 +102,9 @@ func (o *mqlOciObjectStorageBucket) replicationPolicies() ([]any, error) {
 		return nil, err
 	}
 	out := make([]any, 0, len(policies))
-	for _, p := range policies {
+	for i, p := range policies {
 		m, err := CreateResource(o.MqlRuntime, "oci.objectStorage.bucket.replicationPolicy", map[string]*llx.RawData{
-			"__id":                  llx.StringData(ociBucketCacheKey(o.Namespace.Data, o.Name.Data) + "/replication/" + stringValue(p.Id)),
+			"__id":                  llx.StringData(ociBucketCacheKey(o.Namespace.Data, o.Name.Data) + "/replication/" + rowKey(stringValue(p.Id), i)),
 			"id":                    llx.StringDataPtr(p.Id),
 			"name":                  llx.StringDataPtr(p.Name),
 			"destinationRegion":     llx.StringDataPtr(p.DestinationRegionName),
@@ -188,9 +188,9 @@ func (o *mqlOciKmsVault) replicas() ([]any, error) {
 		return nil, err
 	}
 	out := make([]any, 0, len(replicas))
-	for _, r := range replicas {
+	for i, r := range replicas {
 		m, err := CreateResource(o.MqlRuntime, "oci.kms.vault.replica", map[string]*llx.RawData{
-			"__id":               llx.StringData(o.Id.Data + "/replica/" + stringValue(r.Region)),
+			"__id":               llx.StringData(o.Id.Data + "/replica/" + rowKey(stringValue(r.Region), i)),
 			"region":             llx.StringDataPtr(r.Region),
 			"status":             llx.StringData(string(r.Status)),
 			"cryptoEndpoint":     llx.StringData(stringValue(r.CryptoEndpoint)),
