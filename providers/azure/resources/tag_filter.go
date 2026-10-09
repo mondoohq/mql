@@ -99,11 +99,9 @@ func tagFilteredOut(runtime *plugin.Runtime, resourceName, id string) plugin.Res
 func tagFilteredOutOfType(runtime *plugin.Runtime, resourceName string) []plugin.Resource {
 	prefix := resourceName + "\x00"
 	var res []plugin.Resource
-	tagFilteredOutIndexOf(runtime).entries.Range(func(key, value any) bool {
-		if k, ok := key.(string); ok && strings.HasPrefix(k, prefix) {
-			if r, ok := value.(plugin.Resource); ok {
-				res = append(res, r)
-			}
+	tagFilteredOutIndexOf(runtime).entries.Range(func(key string, value plugin.Resource) bool {
+		if strings.HasPrefix(key, prefix) {
+			res = append(res, value)
 		}
 		return true
 	})

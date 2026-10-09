@@ -21,3 +21,11 @@ func (r *Map[T]) Get(key string) (T, bool) {
 func (r *Map[T]) Set(key string, value T) {
 	r.Store(key, value)
 }
+
+// Range calls f for each key and value in the map, stopping when f returns
+// false. It shadows sync.Map's Range, which hands back untyped values.
+func (r *Map[T]) Range(f func(key string, value T) bool) {
+	r.Map.Range(func(k, v any) bool {
+		return f(k.(string), v.(T))
+	})
+}
