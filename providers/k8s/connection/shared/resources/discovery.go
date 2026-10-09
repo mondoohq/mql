@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/distro"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -68,6 +69,18 @@ type Discovery struct {
 	dynClient       dynamic.Interface
 	discoveryClient discovery.CachedDiscoveryInterface
 	ServerVersion   *version.Info
+
+	distroOnce sync.Once
+	distro     *distro.Result
+}
+
+// Distro returns the cluster's distribution, detected once per API server by
+// detect.
+func (d *Discovery) Distro(detect func() *distro.Result) *distro.Result {
+	d.distroOnce.Do(func() {
+		d.distro = detect()
+	})
+	return d.distro
 }
 
 func (d *Discovery) SupportedResourceTypes() (*ApiResourceIndex, error) {

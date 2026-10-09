@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/k8s/connection/shared"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/distro"
 	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
 	admissionv1 "k8s.io/api/admission/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
@@ -36,6 +38,10 @@ type Connection struct {
 	namespace          string
 	clientset          *kubernetes.Clientset
 	currentClusterName string
+	// kubeconfig is what the kubeconfig says about the cluster, nil in the
+	// cluster
+	kubeconfig *distro.Kubeconfig
+	inCluster  bool
 }
 
 func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.DiscoveryCache) (shared.Connection, error) {
@@ -66,7 +72,7 @@ func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.
 		contextName = asset.Connections[0].Options[shared.OPTION_CONTEXT]
 	}
 
-	config, err := buildConfigFromFlags("", kubeconfigPath, contextName)
+	config, inCluster, err := buildConfigFromFlags("", kubeconfigPath, contextName)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +80,14 @@ func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.
 	kubeConfig, err := (&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfigPath}).Load()
 	if err != nil {
 		return nil, err
+	}
+
+	// read the kubeconfig's cluster entry and credential plugin for the
+	// distribution detection before the helpers below replace the plugin
+	var kubeconfig *distro.Kubeconfig
+	if !inCluster {
+		kubelogin, _ := strconv.ParseBool(asset.Connections[0].Options[shared.OPTION_KUBELOGIN])
+		kubeconfig = kubeconfigInfo(kubeConfig, contextName, config, kubelogin)
 	}
 
 	err = attemptKubeloginAuthFlow(asset, config)
@@ -135,6 +149,8 @@ func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.
 		clientset:          clientset,
 		namespace:          asset.Connections[0].Options[shared.OPTION_NAMESPACE],
 		currentClusterName: currentClusterName,
+		kubeconfig:         kubeconfig,
+		inCluster:          inCluster,
 	}
 
 	return &res, nil
@@ -142,19 +158,21 @@ func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.
 
 // buildConfigFromFlags we rebuild clientcmd.BuildConfigFromFlags to make sure we do not log warnings for every
 // scan.
-func buildConfigFromFlags(masterUrl, kubeconfigPath string, context string) (*rest.Config, error) {
+// It also reports whether the config is the in-cluster one.
+func buildConfigFromFlags(masterUrl, kubeconfigPath string, context string) (*rest.Config, bool, error) {
 	// An in-cluster config has no contexts to choose from, so falling back to it
 	// would quietly ignore the requested one. Let the kubeconfig loader run and
 	// report that the context is missing instead.
 	if kubeconfigPath == "" && masterUrl == "" && context == "" {
 		kubeconfig, err := rest.InClusterConfig()
 		if err == nil {
-			return kubeconfig, nil
+			return kubeconfig, true, nil
 		}
 	}
-	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfigPath},
 		&clientcmd.ConfigOverrides{ClusterInfo: clientcmdapi.Cluster{Server: masterUrl}, CurrentContext: context}).ClientConfig()
+	return config, false, err
 }
 
 func (c *Connection) Runtime() string {
@@ -227,7 +245,12 @@ func (c *Connection) SupportedResourceTypes() (*resources.ApiResourceIndex, erro
 
 func (c *Connection) Platform() *inventory.Platform {
 	v := c.ServerVersion()
+	d := c.Distro()
 	return &inventory.Platform{
+		Metadata: map[string]string{
+			distro.MetadataDistribution:       d.Name,
+			distro.MetadataDistributionSource: d.Source,
+		},
 		Name:                  "k8s-cluster",
 		Build:                 v.BuildDate,
 		Version:               v.GitVersion,

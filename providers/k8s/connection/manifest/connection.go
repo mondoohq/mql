@@ -16,6 +16,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/k8s/connection/shared"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/distro"
 	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
 	"go.mondoo.com/mql/utils/urlx"
 	admissionv1 "k8s.io/api/admission/v1"
@@ -181,6 +182,11 @@ func (c *Connection) Close() {
 
 func (c *Connection) ServerVersion() *version.Info {
 	return nil
+}
+
+// Distro is unknown: there is no API server.
+func (c *Connection) Distro() *distro.Result {
+	return &distro.Result{Name: distro.Unknown, Evidence: map[string]distro.Evidence{}}
 }
 
 func (c *Connection) SupportedResourceTypes() (*resources.ApiResourceIndex, error) {

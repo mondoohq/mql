@@ -471,6 +471,14 @@ k8s.deviceclass.resourceVersion 13.9.2
 k8s.deviceclass.selectors 13.9.2
 k8s.deviceclass.selectsAllDevices 13.9.2
 k8s.deviceclass.uid 13.9.2
+k8s.distro 14.1.3
+k8s.distro.account 14.1.3
+k8s.distro.clusterName 14.1.3
+k8s.distro.evidence 14.1.3
+k8s.distro.identitySource 14.1.3
+k8s.distro.name 14.1.3
+k8s.distro.region 14.1.3
+k8s.distro.source 14.1.3
 k8s.egressNat 13.3.2
 k8s.egressNat.addresses 13.3.2
 k8s.egressNat.cidrs 13.3.2

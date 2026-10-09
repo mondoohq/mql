@@ -9,6 +9,7 @@ import (
 
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/distro"
 	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
 	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/core/v1"
@@ -44,6 +45,8 @@ type Connection interface {
 	// are provided, then all cluster resources are returned.
 	Resources(kind string, name string, namespace string) (*ResourceResult, error)
 	ServerVersion() *version.Info
+	// Distro returns the cluster's Kubernetes distribution, never nil
+	Distro() *distro.Result
 	SupportedResourceTypes() (*resources.ApiResourceIndex, error)
 	Platform() *inventory.Platform
 	Asset() *inventory.Asset

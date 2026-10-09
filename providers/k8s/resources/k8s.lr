@@ -154,6 +154,46 @@ k8s @root {
 // namespaced indicates whether instances are scoped to a namespace, and
 // shortNames and categories list the kubectl aliases and groupings (such as
 // "all") the type belongs to.
+// Kubernetes distribution of the cluster
+//
+// Which distribution serves the cluster, such as aks, eks, gke or openshift,
+// and the cluster's identity in its cloud. The name is detected from signals
+// that need no extra permission (the API server's version and certificate,
+// the API server URL, the advertised API groups), then from node labels when
+// nodes can be listed, the kubeconfig's credential plugin, and, inside the
+// cluster, the cloud metadata service. The first signal that names a
+// distribution decides; source names it and evidence lists what each signal
+// saw. Use it to scope a policy to one distribution, for example
+// `k8s.distro.name == "aks"`.
+k8s.distro @defaults("name source") {
+  // Distribution name
+  //
+  // One of aks, eks, eks-d, gke, openshift, k3s, rke2, k0s, kind, minikube, or
+  // unknown when no signal names one.
+  name() string
+  // Signal that decided the name
+  //
+  // One of version, certificate, host, apiGroups, nodes, auth, or metadata.
+  // Empty when the name is unknown.
+  source() string
+  // Cluster name in its cloud, empty when unknown
+  clusterName() string
+  // Cloud region of the cluster, or the GKE cluster's location, empty when unknown
+  region() string
+  // AWS account ID, GCP project ID, or Azure subscription ID, empty when unknown
+  account() string
+  // Where clusterName, region, and account came from
+  //
+  // One of kubeconfig, metadata, or nodes. Empty when none is known.
+  identitySource() string
+  // What each signal saw
+  //
+  // A dict keyed by signal name, each with the keys distro (the distribution
+  // it points to, if any), value (the observed value), and error (why the
+  // signal could not be read, for example a forbidden node list).
+  evidence() dict
+}
+
 private k8s.apiresource @defaults("name kind") {
   // Plural name of the resource
   name string

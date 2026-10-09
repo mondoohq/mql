@@ -15,6 +15,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/k8s/connection/shared"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/distro"
 	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
 	"go.mondoo.com/mql/types"
 	"go.mondoo.com/mql/utils/stringx"
@@ -113,18 +114,46 @@ func Discover(runtime *plugin.Runtime, features mql.Features) (*inventory.Invent
 	conn := runtime.Connection.(shared.Connection)
 	invConfig := conn.InventoryConfig()
 
+	var in *inventory.Inventory
+	var err error
 	// Check for staged discovery toggle
 	if _, ok := invConfig.Options[plugin.OptionStagedDiscovery]; ok {
 		// If a namespace is already set, we're in stage 2 (workload discovery
 		// for that namespace). Otherwise it's stage 1 (cluster + namespaces).
 		if nsName, ok := namespaceStageName(invConfig); ok {
-			return discoverNamespaceStage(runtime, conn, invConfig, features, nsName)
+			in, err = discoverNamespaceStage(runtime, conn, invConfig, features, nsName)
+		} else {
+			in, err = discoverClusterStage(runtime, conn, invConfig, features)
 		}
-		return discoverClusterStage(runtime, conn, invConfig, features)
+	} else {
+		// Legacy single-pass discovery (no toggle = old client)
+		in, err = discoverLegacy(runtime, conn, invConfig, features)
 	}
+	if err != nil {
+		return nil, err
+	}
+	addDistroMetadata(conn, in)
+	return in, nil
+}
 
-	// Legacy single-pass discovery (no toggle = old client)
-	return discoverLegacy(runtime, conn, invConfig, features)
+// addDistroMetadata records the cluster's distribution on every asset
+// discovered through the API, so that policies can select the cluster, its
+// namespaces and its workloads by it (asset.platformMetadata).
+func addDistroMetadata(conn shared.Connection, in *inventory.Inventory) {
+	if in == nil || in.Spec == nil || conn.Runtime() != "k8s-cluster" {
+		return
+	}
+	d := conn.Distro()
+	for _, a := range in.Spec.Assets {
+		if a == nil || a.Platform == nil {
+			continue
+		}
+		if a.Platform.Metadata == nil {
+			a.Platform.Metadata = map[string]string{}
+		}
+		a.Platform.Metadata[distro.MetadataDistribution] = d.Name
+		a.Platform.Metadata[distro.MetadataDistributionSource] = d.Source
+	}
 }
 
 // discoverLegacy is the original single-pass discovery that discovers the cluster,

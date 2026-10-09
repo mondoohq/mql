@@ -17,6 +17,7 @@ import (
 // The MQL type names exposed as public consts for ease of reference.
 const (
 	ResourceK8s                                          string = "k8s"
+	ResourceK8sDistro                                    string = "k8s.distro"
 	ResourceK8sApiresource                               string = "k8s.apiresource"
 	ResourceK8sNamespace                                 string = "k8s.namespace"
 	ResourceK8sNode                                      string = "k8s.node"
@@ -106,6 +107,10 @@ func init() {
 		"k8s": {
 			// to override args, implement: initK8s(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createK8s,
+		},
+		"k8s.distro": {
+			// to override args, implement: initK8sDistro(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createK8sDistro,
 		},
 		"k8s.apiresource": {
 			// to override args, implement: initK8sApiresource(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -671,6 +676,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"k8s.runtimeClasses": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8s).GetRuntimeClasses()).ToDataRes(types.Array(types.Resource("k8s.runtimeclass")))
+	},
+	"k8s.distro.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sDistro).GetName()).ToDataRes(types.String)
+	},
+	"k8s.distro.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sDistro).GetSource()).ToDataRes(types.String)
+	},
+	"k8s.distro.clusterName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sDistro).GetClusterName()).ToDataRes(types.String)
+	},
+	"k8s.distro.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sDistro).GetRegion()).ToDataRes(types.String)
+	},
+	"k8s.distro.account": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sDistro).GetAccount()).ToDataRes(types.String)
+	},
+	"k8s.distro.identitySource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sDistro).GetIdentitySource()).ToDataRes(types.String)
+	},
+	"k8s.distro.evidence": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sDistro).GetEvidence()).ToDataRes(types.Dict)
 	},
 	"k8s.apiresource.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sApiresource).GetName()).ToDataRes(types.String)
@@ -5994,6 +6020,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"k8s.runtimeClasses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8s).RuntimeClasses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.distro.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sDistro).__id, ok = v.Value.(string)
+		return
+	},
+	"k8s.distro.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sDistro).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.distro.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sDistro).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.distro.clusterName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sDistro).ClusterName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.distro.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sDistro).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.distro.account": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sDistro).Account, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.distro.identitySource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sDistro).IdentitySource, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.distro.evidence": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sDistro).Evidence, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
 	"k8s.apiresource.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -14120,6 +14178,99 @@ func (c *mqlK8s) GetRuntimeClasses() *plugin.TValue[[]any] {
 		}
 
 		return c.runtimeClasses()
+	})
+}
+
+// mqlK8sDistro for the k8s.distro resource
+type mqlK8sDistro struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlK8sDistroInternal it will be used here
+	Name           plugin.TValue[string]
+	Source         plugin.TValue[string]
+	ClusterName    plugin.TValue[string]
+	Region         plugin.TValue[string]
+	Account        plugin.TValue[string]
+	IdentitySource plugin.TValue[string]
+	Evidence       plugin.TValue[any]
+}
+
+// createK8sDistro creates a new instance of this resource
+func createK8sDistro(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlK8sDistro{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("k8s.distro", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlK8sDistro) MqlName() string {
+	return "k8s.distro"
+}
+
+func (c *mqlK8sDistro) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlK8sDistro) GetName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Name, func() (string, error) {
+		return c.name()
+	})
+}
+
+func (c *mqlK8sDistro) GetSource() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Source, func() (string, error) {
+		return c.source()
+	})
+}
+
+func (c *mqlK8sDistro) GetClusterName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ClusterName, func() (string, error) {
+		return c.clusterName()
+	})
+}
+
+func (c *mqlK8sDistro) GetRegion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Region, func() (string, error) {
+		return c.region()
+	})
+}
+
+func (c *mqlK8sDistro) GetAccount() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Account, func() (string, error) {
+		return c.account()
+	})
+}
+
+func (c *mqlK8sDistro) GetIdentitySource() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.IdentitySource, func() (string, error) {
+		return c.identitySource()
+	})
+}
+
+func (c *mqlK8sDistro) GetEvidence() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Evidence, func() (any, error) {
+		return c.evidence()
 	})
 }
 

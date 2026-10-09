@@ -64,7 +64,7 @@ func TestBuildConfigFromFlagsContext(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg, err := buildConfigFromFlags("", path, tt.context)
+			cfg, _, err := buildConfigFromFlags("", path, tt.context)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantServer, cfg.Host)
 		})
@@ -77,7 +77,7 @@ func TestBuildConfigFromFlagsContext(t *testing.T) {
 func TestBuildConfigFromFlagsUnknownContext(t *testing.T) {
 	path := writeKubeconfig(t)
 
-	_, err := buildConfigFromFlags("", path, "does-not-exist")
+	_, _, err := buildConfigFromFlags("", path, "does-not-exist")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does-not-exist")
 }

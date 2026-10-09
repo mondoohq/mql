@@ -17,6 +17,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	admissionconn "go.mondoo.com/mql/providers/k8s/connection/admission"
 	"go.mondoo.com/mql/providers/k8s/connection/shared"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/distro"
 	sharedres "go.mondoo.com/mql/providers/k8s/connection/shared/resources"
 	"go.mondoo.com/mql/utils/syncx"
 	admissionv1 "k8s.io/api/admission/v1"
@@ -100,6 +101,10 @@ func (c *namespaceDiscoveryConnection) Resources(kind string, name string, names
 
 func (c *namespaceDiscoveryConnection) ServerVersion() *version.Info {
 	return nil
+}
+
+func (c *namespaceDiscoveryConnection) Distro() *distro.Result {
+	return &distro.Result{Name: distro.Unknown}
 }
 
 func (c *namespaceDiscoveryConnection) SupportedResourceTypes() (*sharedres.ApiResourceIndex, error) {
