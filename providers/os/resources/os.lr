@@ -518,7 +518,8 @@ memory @defaults("total available") {
   // Installed memory minus what firmware and hardware reserve. On Windows,
   // TotalVisibleMemorySize of Win32_OperatingSystem. On Linux, MemTotal in
   // /proc/meminfo. On macOS, hw.memsize. On FreeBSD, hw.physmem. On NetBSD,
-  // hw.physmem64. On Solaris, the physmem page count.
+  // hw.physmem64. On Solaris, the physmem page count. On AIX, the size column
+  // of svmon -G.
   total() int
   // Physical memory available for new allocations without paging, in bytes
   //
@@ -527,14 +528,16 @@ memory @defaults("total available") {
   // zeroed, and standby pages). On Linux, MemAvailable, which kernels before
   // 3.14 do not report. On macOS, free, file-backed, and purgeable pages. On
   // FreeBSD, free and inactive pages. On NetBSD, free and cached file pages.
-  // On Solaris, the freemem page count.
+  // On Solaris, the freemem page count. On AIX, the available column of
+  // svmon -G (free memory plus file pages the system can reclaim).
   available() int
   // Committed virtual memory, in bytes
   //
   // Virtual memory the system has promised to back with physical memory or
   // swap. On Windows, the Memory\Committed Bytes performance counter. On
   // Linux, Committed_AS. On FreeBSD, vm.swap_reserved. On Solaris, the used
-  // total of swap -s (allocated plus reserved). Null on macOS and NetBSD.
+  // total of swap -s (allocated plus reserved). On AIX, the virtual column of
+  // svmon -G (working storage allocated). Null on macOS and NetBSD.
   committed() int
   // Maximum committed virtual memory, in bytes
   //
@@ -543,7 +546,7 @@ memory @defaults("total available") {
   // allowed to grow. On Linux, CommitLimit, which the kernel enforces only
   // with vm.overcommit_memory set to 2. On Solaris, the used plus available
   // totals of swap -s, a limit Solaris always enforces. Null on macOS,
-  // FreeBSD, and NetBSD.
+  // FreeBSD, NetBSD, and AIX, which allocates paging space late by default.
   commitLimit() int
 }
 

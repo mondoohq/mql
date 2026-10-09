@@ -508,3 +508,56 @@ func TestMemorySolarisInLinuxFamily(t *testing.T) {
 	require.NoError(t, limit.Error)
 	assert.Equal(t, int64(8277467136), limit.Data)
 }
+
+// svmon -G -O unit=KB recorded on AIX 7.3 TL4 SP2 (PowerVS s1022 LPAR,
+// 8 GB). lsattr -El sys0 -a realmem on the same host reported 8388608 KiB.
+const aixMemoryOutput = `Unit: KB
+--------------------------------------------------------------------------------------
+               size       inuse        free         pin     virtual  available   mmode
+memory      8388608     2756584     5632024     2177852     2308960    5809900     Ded
+pg space     524288       10900
+
+               work        pers        clnt       other
+pin         1543396           0       38104      596352
+in use      2308960           0      447624
+`
+
+func TestParseAixMemory(t *testing.T) {
+	info, err := parseAixMemory([]byte(aixMemoryOutput))
+	require.NoError(t, err)
+	require.NotNil(t, info.Total)
+	assert.Equal(t, int64(8589934592), *info.Total) // 8388608 KiB
+	require.NotNil(t, info.Available)
+	assert.Equal(t, int64(5949337600), *info.Available) // 5809900 KiB
+	require.NotNil(t, info.Committed)
+	assert.Equal(t, int64(2364375040), *info.Committed) // 2308960 KiB
+	assert.Nil(t, info.CommitLimit)
+}
+
+func TestParseAixMemoryMalformed(t *testing.T) {
+	for name, data := range map[string]string{
+		"empty":     "",
+		"no header": "memory      8388608     2756584\n",
+		"no row":    "               size       inuse\npg space     524288       10900\n",
+		"bad size":  "               size       inuse\nmemory      many     2756584\n",
+		"no size":   "               inuse       free\nmemory      2756584     5632024\n",
+	} {
+		_, err := parseAixMemory([]byte(data))
+		assert.Error(t, err, name)
+	}
+}
+
+func TestMemoryAix(t *testing.T) {
+	aix := &inventory.Platform{Name: "aix", Family: []string{"unix", "os"}}
+	m := newMemoryResource(t, newMemoryMockData(t, aix, &mock.TomlData{
+		Commands: map[string]*mock.Command{aixMemoryCommand: {Stdout: aixMemoryOutput}},
+	}))
+
+	total := m.GetTotal()
+	require.NoError(t, total.Error)
+	assert.Equal(t, int64(8589934592), total.Data)
+
+	limit := m.GetCommitLimit()
+	require.NoError(t, limit.Error)
+	assert.True(t, limit.IsNull())
+}

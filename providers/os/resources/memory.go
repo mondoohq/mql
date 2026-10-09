@@ -109,6 +109,12 @@ func readMemoryInfo(conn shared.Connection) (*memoryInfo, error) {
 			return nil, err
 		}
 		return parseNetbsdMemory(out)
+	case pf.Name == "aix":
+		out, err := runMemoryCommand(conn, aixMemoryCommand)
+		if err != nil {
+			return nil, err
+		}
+		return parseAixMemory(out)
 	case pf.IsFamily("linux"):
 		data, err := afero.ReadFile(conn.FileSystem(), "/proc/meminfo")
 		if err != nil {
@@ -334,6 +340,65 @@ func parseNetbsdMemory(data []byte) (*memoryInfo, error) {
 		info.Available = int64Ptr((free + file) * pageSize)
 	}
 	return info, nil
+}
+
+// aixMemoryCommand prints the global memory snapshot in KiB. svmon runs
+// without root.
+const aixMemoryCommand = "svmon -G -O unit=KB"
+
+// parseAixMemory reads the memory row of svmon -G:
+//
+//	               size       inuse        free         pin     virtual  available   mmode
+//	memory      8388608     2756584     5632024     2177852     2308960    5809900     Ded
+//
+// size is the real memory of the partition, available is free memory plus
+// file pages the system can reclaim at once, and virtual is the working
+// storage allocated in the system virtual space. AIX allocates paging space
+// late unless PSALLOC=early, so there is no commit limit to report. Columns
+// are read by their header name.
+func parseAixMemory(data []byte) (*memoryInfo, error) {
+	var header []string
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if fields[0] == "size" {
+			header = fields
+			continue
+		}
+		if fields[0] != "memory" || header == nil {
+			continue
+		}
+		values := fields[1:]
+		info := &memoryInfo{}
+		for i, name := range header {
+			if i >= len(values) {
+				break
+			}
+			var dst **int64
+			switch name {
+			case "size":
+				dst = &info.Total
+			case "available":
+				dst = &info.Available
+			case "virtual":
+				dst = &info.Committed
+			default:
+				continue
+			}
+			kib, err := strconv.ParseInt(values[i], 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("memory: failed to parse svmon %s %q: %w", name, values[i], err)
+			}
+			*dst = int64Ptr(kib * 1024)
+		}
+		if info.Total == nil {
+			return nil, errors.New("memory: svmon reported no memory size")
+		}
+		return info, nil
+	}
+	return nil, errors.New("memory: svmon printed no memory row")
 }
 
 // solarisMemoryCommand prints the page size, the physical and free page
