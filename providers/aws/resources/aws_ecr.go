@@ -185,6 +185,7 @@ func (a *mqlAwsEcr) privateRepositories() ([]any, error) {
 	return perRegion(conn, "ecr", func(ctx context.Context, region string) ([]any, error) {
 		svc := conn.Ecr(region)
 		res := []any{}
+		repos := []ecrtypes.Repository{}
 
 		// AWS caps repositoryNames at ECRDescribeRepositoriesNameLimit per request, so
 		// a larger filter is split into batches and each batch is described separately.
@@ -206,18 +207,97 @@ func (a *mqlAwsEcr) privateRepositories() ([]any, error) {
 				if err != nil {
 					return nil, err
 				}
-				for _, r := range repoResp.Repositories {
-					mqlRepoResource, err := buildEcrPrivateRepositoryResource(a.MqlRuntime, region, r)
-					if err != nil {
-						return nil, err
-					}
-					res = append(res, mqlRepoResource)
-				}
+				repos = append(repos, repoResp.Repositories...)
 			}
+		}
+
+		repos, tagsByArn := ecrRepositoriesMatchingTags(ctx, conn.Filters.General, repos,
+			func(r ecrtypes.Repository) string { return convert.ToValue(r.RepositoryArn) },
+			func(ctx context.Context, repoArn string) (map[string]string, error) {
+				return ecrPrivateRepositoryTags(ctx, svc, repoArn)
+			})
+		for _, r := range repos {
+			mqlRepoResource, err := buildEcrPrivateRepositoryResource(a.MqlRuntime, region, r, tagsByArn[convert.ToValue(r.RepositoryArn)])
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlRepoResource)
 		}
 
 		return res, nil
 	})
+}
+
+// ecrRepositoriesMatchingTags drops the repositories the general tag filter
+// rejects. DescribeRepositories returns no tags and ECR has no batch tags
+// endpoint, so each repository's tags are read concurrently, and only when a
+// tag filter is set.
+//
+// The returned map holds the tag sets that were actually read, keyed by ARN, so
+// the caller can seed them onto the resource. A repository whose tag read failed
+// is absent from it: its tags evaluate as empty for filtering (an include filter
+// drops it, an exclude filter keeps it), and its tags field stays unset so the
+// accessor reports the failure itself instead of "no tags".
+func ecrRepositoriesMatchingTags[R any](
+	ctx context.Context,
+	filters connection.GeneralDiscoveryFilters,
+	repos []R,
+	arnOf func(R) string,
+	fetch func(context.Context, string) (map[string]string, error),
+) ([]R, map[string]map[string]string) {
+	if !filters.HasTags() {
+		return repos, nil
+	}
+
+	arns := make([]string, 0, len(repos))
+	for _, r := range repos {
+		arns = append(arns, arnOf(r))
+	}
+	tagsByArn := fetchTagsConcurrently(ctx, arns, fetch)
+
+	kept := make([]R, 0, len(repos))
+	for _, r := range repos {
+		repoArn := arnOf(r)
+		if filters.IsFilteredOutByTags(tagsByArn[repoArn]) {
+			log.Debug().Str("repository", repoArn).Msg("excluding ecr repository due to tag filters")
+			continue
+		}
+		kept = append(kept, r)
+	}
+	return kept, tagsByArn
+}
+
+// ecrPrivateRepositoryTags reads a private repository's tags. Every error is
+// returned, including AccessDenied, so a refused read is never mistaken for an
+// empty tag set.
+func ecrPrivateRepositoryTags(ctx context.Context, svc *ecr.Client, repoArn string) (map[string]string, error) {
+	resp, err := svc.ListTagsForResource(ctx, &ecr.ListTagsForResourceInput{ResourceArn: &repoArn})
+	if err != nil {
+		return nil, err
+	}
+	tags := make(map[string]string, len(resp.Tags))
+	for _, t := range resp.Tags {
+		if t.Key != nil && t.Value != nil {
+			tags[*t.Key] = *t.Value
+		}
+	}
+	return tags, nil
+}
+
+// ecrPublicRepositoryTags reads a public repository's tags, returning every
+// error like ecrPrivateRepositoryTags.
+func ecrPublicRepositoryTags(ctx context.Context, svc *ecrpublic.Client, repoArn string) (map[string]string, error) {
+	resp, err := svc.ListTagsForResource(ctx, &ecrpublic.ListTagsForResourceInput{ResourceArn: &repoArn})
+	if err != nil {
+		return nil, err
+	}
+	tags := make(map[string]string, len(resp.Tags))
+	for _, t := range resp.Tags {
+		if t.Key != nil && t.Value != nil {
+			tags[*t.Key] = *t.Value
+		}
+	}
+	return tags, nil
 }
 
 func (a *mqlAwsEcrRepository) scanningFrequency() (string, error) {
@@ -660,8 +740,10 @@ func (a *mqlAwsEcr) publicRepositories() ([]any, error) {
 		return []any{}, nil
 	}
 
+	ctx := context.Background()
 	svc := conn.EcrPublic("us-east-1") // only supported for us-east-1
 	res := []any{}
+	repos := []ecrpublic_types.Repository{}
 
 	// AWS caps repositoryNames at ECRDescribeRepositoriesNameLimit per request, so
 	// a larger filter is split into batches and each batch is described separately.
@@ -683,25 +765,34 @@ func (a *mqlAwsEcr) publicRepositories() ([]any, error) {
 
 		paginator := ecrpublic.NewDescribeRepositoriesPaginator(svc, req)
 		for paginator.HasMorePages() {
-			repoResp, err := paginator.NextPage(context.TODO(), withEcrPublicDescribeRetries)
+			repoResp, err := paginator.NextPage(ctx, withEcrPublicDescribeRetries)
 			if err != nil {
 				return nil, err
 			}
-
-			for _, r := range repoResp.Repositories {
-				mqlRepoResource, err := buildEcrPublicRepositoryResource(a.MqlRuntime, r)
-				if err != nil {
-					return nil, err
-				}
-				res = append(res, mqlRepoResource)
-			}
+			repos = append(repos, repoResp.Repositories...)
 		}
+	}
+
+	repos, tagsByArn := ecrRepositoriesMatchingTags(ctx, conn.Filters.General, repos,
+		func(r ecrpublic_types.Repository) string { return convert.ToValue(r.RepositoryArn) },
+		func(ctx context.Context, repoArn string) (map[string]string, error) {
+			return ecrPublicRepositoryTags(ctx, svc, repoArn)
+		})
+	for _, r := range repos {
+		mqlRepoResource, err := buildEcrPublicRepositoryResource(a.MqlRuntime, r, tagsByArn[convert.ToValue(r.RepositoryArn)])
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlRepoResource)
 	}
 
 	return res, nil
 }
 
-func buildEcrPrivateRepositoryResource(runtime *plugin.Runtime, region string, r ecrtypes.Repository) (*mqlAwsEcrRepository, error) {
+// buildEcrPrivateRepositoryResource creates the repository resource. tags is the
+// repository's tag set when the lister already read it, nil otherwise; only a
+// set that was read is seeded, so an unread one stays with the tags accessor.
+func buildEcrPrivateRepositoryResource(runtime *plugin.Runtime, region string, r ecrtypes.Repository, tags map[string]string) (*mqlAwsEcrRepository, error) {
 	imageScanOnPush := false
 	if r.ImageScanningConfiguration != nil {
 		imageScanOnPush = r.ImageScanningConfiguration.ScanOnPush
@@ -712,19 +803,22 @@ func buildEcrPrivateRepositoryResource(runtime *plugin.Runtime, region string, r
 		encryptionType = string(r.EncryptionConfiguration.EncryptionType)
 		kmsKeyArn = r.EncryptionConfiguration.KmsKey
 	}
-	mqlRepoResource, err := CreateResource(runtime, ResourceAwsEcrRepository,
-		map[string]*llx.RawData{
-			"arn":                llx.StringDataPtr(r.RepositoryArn),
-			"name":               llx.StringDataPtr(r.RepositoryName),
-			"uri":                llx.StringDataPtr(r.RepositoryUri),
-			"registryId":         llx.StringDataPtr(r.RegistryId),
-			"public":             llx.BoolData(false),
-			"region":             llx.StringData(region),
-			"imageScanOnPush":    llx.BoolData(imageScanOnPush),
-			"imageTagMutability": llx.StringData(string(r.ImageTagMutability)),
-			"encryptionType":     llx.StringData(encryptionType),
-			"createdAt":          llx.TimeDataPtr(r.CreatedAt),
-		})
+	args := map[string]*llx.RawData{
+		"arn":                llx.StringDataPtr(r.RepositoryArn),
+		"name":               llx.StringDataPtr(r.RepositoryName),
+		"uri":                llx.StringDataPtr(r.RepositoryUri),
+		"registryId":         llx.StringDataPtr(r.RegistryId),
+		"public":             llx.BoolData(false),
+		"region":             llx.StringData(region),
+		"imageScanOnPush":    llx.BoolData(imageScanOnPush),
+		"imageTagMutability": llx.StringData(string(r.ImageTagMutability)),
+		"encryptionType":     llx.StringData(encryptionType),
+		"createdAt":          llx.TimeDataPtr(r.CreatedAt),
+	}
+	if tags != nil {
+		args["tags"] = llx.MapData(stringMapToAny(tags), types.String)
+	}
+	mqlRepoResource, err := CreateResource(runtime, ResourceAwsEcrRepository, args)
 	if err != nil {
 		return nil, err
 	}
@@ -733,26 +827,31 @@ func buildEcrPrivateRepositoryResource(runtime *plugin.Runtime, region string, r
 	return res, nil
 }
 
-func buildEcrPublicRepositoryResource(runtime *plugin.Runtime, r ecrpublic_types.Repository) (*mqlAwsEcrRepository, error) {
-	mqlRepoResource, err := CreateResource(runtime, ResourceAwsEcrRepository,
-		map[string]*llx.RawData{
-			"arn":        llx.StringDataPtr(r.RepositoryArn),
-			"name":       llx.StringDataPtr(r.RepositoryName),
-			"uri":        llx.StringDataPtr(r.RepositoryUri),
-			"registryId": llx.StringDataPtr(r.RegistryId),
-			"public":     llx.BoolData(true),
-			"region":     llx.StringData("us-east-1"),
-			// None of these three are returned by the public ECR API --
-			// ecrpublic's Repository carries only CreatedAt, RegistryId,
-			// RepositoryArn, RepositoryName and RepositoryUri. Nothing was
-			// read, so nothing is asserted: a fabricated value reads in a
-			// report exactly like a measured one, whichever way it happens to
-			// fall. Report them as unknown instead.
-			"imageScanOnPush":    llx.NilData,
-			"imageTagMutability": llx.NilData,
-			"encryptionType":     llx.NilData,
-			"createdAt":          llx.TimeDataPtr(r.CreatedAt),
-		})
+// buildEcrPublicRepositoryResource creates the public repository resource,
+// seeding tags like buildEcrPrivateRepositoryResource.
+func buildEcrPublicRepositoryResource(runtime *plugin.Runtime, r ecrpublic_types.Repository, tags map[string]string) (*mqlAwsEcrRepository, error) {
+	args := map[string]*llx.RawData{
+		"arn":        llx.StringDataPtr(r.RepositoryArn),
+		"name":       llx.StringDataPtr(r.RepositoryName),
+		"uri":        llx.StringDataPtr(r.RepositoryUri),
+		"registryId": llx.StringDataPtr(r.RegistryId),
+		"public":     llx.BoolData(true),
+		"region":     llx.StringData("us-east-1"),
+		// None of these three are returned by the public ECR API --
+		// ecrpublic's Repository carries only CreatedAt, RegistryId,
+		// RepositoryArn, RepositoryName and RepositoryUri. Nothing was
+		// read, so nothing is asserted: a fabricated value reads in a
+		// report exactly like a measured one, whichever way it happens to
+		// fall. Report them as unknown instead.
+		"imageScanOnPush":    llx.NilData,
+		"imageTagMutability": llx.NilData,
+		"encryptionType":     llx.NilData,
+		"createdAt":          llx.TimeDataPtr(r.CreatedAt),
+	}
+	if tags != nil {
+		args["tags"] = llx.MapData(stringMapToAny(tags), types.String)
+	}
+	mqlRepoResource, err := CreateResource(runtime, ResourceAwsEcrRepository, args)
 	if err != nil {
 		return nil, err
 	}
@@ -880,46 +979,23 @@ func (a *mqlAwsEcrRepository) architectures() ([]any, error) {
 func (a *mqlAwsEcrRepository) tags() (map[string]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	ctx := context.Background()
-	arnVal := a.Arn.Data
-	tags := make(map[string]any)
 
+	var tags map[string]string
+	var err error
 	if a.Public.Data {
 		// ECR Public repositories are tagged like any other resource, and
 		// managedBy and cloudformationStack are derived from those tags.
-		publicSvc := conn.EcrPublic("us-east-1") // only supported for us-east-1
-		resp, err := publicSvc.ListTagsForResource(ctx, &ecrpublic.ListTagsForResourceInput{
-			ResourceArn: &arnVal,
-		})
-		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return markTagsUnreadable(&a.Tags)
-			}
-			return nil, err
-		}
-		for _, t := range resp.Tags {
-			if t.Key != nil && t.Value != nil {
-				tags[*t.Key] = *t.Value
-			}
-		}
-		return tags, nil
+		tags, err = ecrPublicRepositoryTags(ctx, conn.EcrPublic("us-east-1"), a.Arn.Data) // only supported for us-east-1
+	} else {
+		tags, err = ecrPrivateRepositoryTags(ctx, conn.Ecr(a.Region.Data), a.Arn.Data)
 	}
-
-	svc := conn.Ecr(a.Region.Data)
-	resp, err := svc.ListTagsForResource(ctx, &ecr.ListTagsForResourceInput{
-		ResourceArn: &arnVal,
-	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
 			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
-	for _, t := range resp.Tags {
-		if t.Key != nil && t.Value != nil {
-			tags[*t.Key] = *t.Value
-		}
-	}
-	return tags, nil
+	return stringMapToAny(tags), nil
 }
 
 // ==================== ECR Image Scan Findings ====================
@@ -1159,7 +1235,7 @@ func initAwsEcrRepository(runtime *plugin.Runtime, args map[string]*llx.RawData)
 						return nil, nil, err
 					}
 				} else if len(resp.Repositories) > 0 {
-					r, err := buildEcrPublicRepositoryResource(runtime, resp.Repositories[0])
+					r, err := buildEcrPublicRepositoryResource(runtime, resp.Repositories[0], nil)
 					if err != nil {
 						return nil, nil, err
 					}
@@ -1177,7 +1253,7 @@ func initAwsEcrRepository(runtime *plugin.Runtime, args map[string]*llx.RawData)
 						return nil, nil, err
 					}
 				} else if len(resp.Repositories) > 0 {
-					r, err := buildEcrPrivateRepositoryResource(runtime, parsed.Region, resp.Repositories[0])
+					r, err := buildEcrPrivateRepositoryResource(runtime, parsed.Region, resp.Repositories[0], nil)
 					if err != nil {
 						return nil, nil, err
 					}

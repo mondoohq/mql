@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	nethttp "net/http"
@@ -17,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 func TestEcrImageArn(t *testing.T) {
@@ -337,5 +339,71 @@ func TestClassifyEcrPolicyError(t *testing.T) {
 
 	t.Run("a transport error is a failure, not an absent policy", func(t *testing.T) {
 		assert.Equal(t, ecrPolicyOutcomeFailed, classifyEcrPolicyError(errors.New("connection reset by peer"), false))
+	})
+}
+
+func TestEcrRepositoriesMatchingTags(t *testing.T) {
+	const (
+		tagged   = "arn:aws:ecr:us-east-1:000000000000:repository/tagged"
+		untagged = "arn:aws:ecr:us-east-1:000000000000:repository/untagged"
+		other    = "arn:aws:ecr:us-east-1:000000000000:repository/other"
+		denied   = "arn:aws:ecr:us-east-1:000000000000:repository/denied"
+	)
+	repos := []string{tagged, untagged, other, denied}
+	arnOf := func(r string) string { return r }
+	fetch := func(_ context.Context, repoArn string) (map[string]string, error) {
+		switch repoArn {
+		case tagged:
+			return map[string]string{"env": "test"}, nil
+		case other:
+			return map[string]string{"env": "prod"}, nil
+		case denied:
+			return nil, ecrDeniedErr()
+		}
+		return map[string]string{}, nil
+	}
+
+	t.Run("no tag filter keeps every repository without reading tags", func(t *testing.T) {
+		calls := 0
+		counting := func(ctx context.Context, repoArn string) (map[string]string, error) {
+			calls++
+			return fetch(ctx, repoArn)
+		}
+		kept, tagsByArn := ecrRepositoriesMatchingTags(context.Background(), connection.GeneralDiscoveryFilters{}, repos, arnOf, counting)
+		assert.Equal(t, repos, kept)
+		assert.Nil(t, tagsByArn)
+		assert.Zero(t, calls)
+	})
+
+	t.Run("include filter keeps only matching repositories", func(t *testing.T) {
+		filters := connection.GeneralDiscoveryFilters{Tags: map[string]string{"env": "test"}}
+		kept, tagsByArn := ecrRepositoriesMatchingTags(context.Background(), filters, repos, arnOf, fetch)
+		assert.Equal(t, []string{tagged}, kept)
+		assert.Equal(t, map[string]string{"env": "test"}, tagsByArn[tagged])
+	})
+
+	t.Run("include filter accepts any of a CSV value list", func(t *testing.T) {
+		filters := connection.GeneralDiscoveryFilters{Tags: map[string]string{"env": "test,prod"}}
+		kept, _ := ecrRepositoriesMatchingTags(context.Background(), filters, repos, arnOf, fetch)
+		assert.Equal(t, []string{tagged, other}, kept)
+	})
+
+	t.Run("exclude filter drops matching repositories and keeps unreadable ones", func(t *testing.T) {
+		filters := connection.GeneralDiscoveryFilters{ExcludeTags: map[string]string{"env": "test"}}
+		kept, _ := ecrRepositoriesMatchingTags(context.Background(), filters, repos, arnOf, fetch)
+		assert.Equal(t, []string{untagged, other, denied}, kept)
+	})
+
+	t.Run("only tag sets that were read are returned for seeding", func(t *testing.T) {
+		filters := connection.GeneralDiscoveryFilters{ExcludeTags: map[string]string{"env": "test"}}
+		_, tagsByArn := ecrRepositoriesMatchingTags(context.Background(), filters, repos, arnOf, fetch)
+
+		readEmpty, ok := tagsByArn[untagged]
+		assert.True(t, ok, "a repository read with no tags carries a measured empty set")
+		assert.Empty(t, readEmpty)
+		assert.NotNil(t, readEmpty, "a measured empty set must stay non-nil so it is seeded")
+
+		_, ok = tagsByArn[denied]
+		assert.False(t, ok, "a denied tag read must not be seeded as an empty tag set")
 	})
 }
