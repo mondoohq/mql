@@ -56,6 +56,9 @@ func parseAixPackages(pf *inventory.Platform, r io.Reader) ([]Package, error) {
 			qualifiers["efix"] = "locked"
 		}
 
+		// A fileset's parts share its level and PTF Id (on AIX 7.3 TL4 all
+		// 339 filesets listed twice agree on both), so name and level
+		// identify it.
 		key := record[1] + "@" + record[2]
 		if i, ok := seen[key]; ok {
 			if !aixHealthyState(record[4]) {
