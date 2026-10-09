@@ -181,7 +181,16 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 
 func (s *Service) detect(asset *inventory.Asset, conn *connection.ShodanConnection) error {
 	asset.Id = conn.Conf.Type
-	asset.Name = conn.Conf.Host
+	// Only name an asset that has no name: a caller who passed --asset-name (or
+	// named the asset in an inventory file) has already named it, and detection
+	// must not take that back. The account-level asset has no host to be named
+	// after, so it gets a readable default instead of "".
+	if asset.Name == "" {
+		asset.Name = conn.Conf.Host
+	}
+	if asset.Name == "" {
+		asset.Name = "Shodan"
+	}
 
 	platform, err := conn.PlatformInfo()
 	if err != nil {
