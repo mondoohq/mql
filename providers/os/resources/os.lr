@@ -6458,8 +6458,16 @@ service @defaults("name running enabled type") {
   // Whether the service is running
   running bool
   // Whether the service is enabled (start at boot)
+  //
+  // On AIX, a subsystem that /etc/inittab starts with startsrc, that an
+  // uncommented start line of /etc/rc.tcpip or /etc/rc.nfs starts, or whose
+  // subsystem or group an S script of /etc/rc.d/rc2.d starts. A start line
+  // that runs only under a condition (nfsd only with an /etc/exports) counts.
   enabled bool
   // Service type (e.g., simple, forking, oneshot, notify)
+  //
+  // On AIX, aix for a subsystem of the System Resource Controller and
+  // inittab for a daemon that init keeps running, such as cron.
   type string
   // Whether the service is masked (symlinked to /dev/null so it cannot start)
   masked bool

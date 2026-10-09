@@ -1,0 +1,75 @@
+Subsystem         Group            PID          Status 
+ syslogd          ras              5374382      active
+ sendmail         mail             5505452      active
+ portmap          portmap          5702066      active
+ snmpd            tcpip            5833142      active
+ hostmibd         tcpip            5898680      active
+ snmpmibd         tcpip            5964218      active
+ aixmibd          tcpip            4784394      active
+ aso                               4718948      active
+ biod             nfs              6422988      active
+ rpc.lockd        nfs              6029686      active
+ qdaemon          spooler          6488554      active
+ writesrv         spooler          6226384      active
+ clcomd           caa              6619448      active
+ pfcdaemon                         8192348      active
+ lldpd            tcpip            7274774      active
+ ecpvdpd          tcpip            11338078     active
+ ctrmc            rsct             12779780     active
+ mcproxy          rsct             13369774     active
+ IBM.ConfigRM     rsct_rm          11927950     active
+ IBM.HostRM       rsct_rm          8257936      active
+ IBM.DRM          rsct_rm          13828478     active
+ IBM.MgmtDomainRM rsct_rm          11993388     active
+ IBM.ServiceRM    rsct_rm          7405930      active
+ IBM.SoftwareRM   rsct_rm          13107458     active
+ mqltestd         mql              13173046     active
+ inetd            tcpip            20185570     active
+ nfsd             nfs              20709740     active
+ rpc.mountd       nfs              6816126      active
+ xntpd            tcpip            20578650     active
+ sshd             ssh              12714428     active
+ lpd              spooler                       inoperative
+ secldapclntd     secldap                       inoperative
+ cdpd             tcpip                         inoperative
+ keyserv          keyserv                       inoperative
+ ypbind           yp                            inoperative
+ gsclvmd                                        inoperative
+ cdromd                                         inoperative
+ ndpd-host        tcpip                         inoperative
+ ndpd-router      tcpip                         inoperative
+ netcd            netcd                         inoperative
+ automountd       autofs                        inoperative
+ nfsrgyd          nfs                           inoperative
+ gssd             nfs                           inoperative
+ cpsd             ike                           inoperative
+ tmd              ike                           inoperative
+ isakmpd                                        inoperative
+ ikev2d                                         inoperative
+ iked             ike                           inoperative
+ tftpd            tcpip                         inoperative
+ routed           tcpip                         inoperative
+ mrouted          tcpip                         inoperative
+ rsvpd            qos                           inoperative
+ policyd          qos                           inoperative
+ saslauthd        tcpip                         inoperative
+ pxed             tcpip                         inoperative
+ binld            tcpip                         inoperative
+ gated            tcpip                         inoperative
+ dhcpcd           tcpip                         inoperative
+ dhcpcd6          tcpip                         inoperative
+ dfpd             tcpip                         inoperative
+ clconfd          caa                           inoperative
+ ksys_vmmon                                     inoperative
+ nimsh            nimclient                     inoperative
+ nimhttp                                        inoperative
+ iptrace          tcpip                         inoperative
+ dhcpsd           tcpip                         inoperative
+ dhcpsdv6         tcpip                         inoperative
+ dhcprd           tcpip                         inoperative
+ dpid2            tcpip                         inoperative
+ rpc.statd        nfs                           inoperative
+ ctcas            rsct                          inoperative
+ IBM.ERRM         rsct_rm                       inoperative
+ IBM.AuditRM      rsct_rm                       inoperative
+ mqlstopped       mql                           inoperative
