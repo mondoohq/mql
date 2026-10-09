@@ -29,7 +29,11 @@ func shellSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, permission int64, search string, depth *int64, hasGNUFind bool) string {
+// BuildFilesFindCmd builds the find command of a files.find search.
+// noMaxDepth is set for a find without -maxdepth (AIX), which rejects the
+// option and prints nothing; the depth is then kept by pruning every path
+// below it, which POSIX find supports.
+func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, permission int64, search string, depth *int64, hasGNUFind bool, noMaxDepth bool) string {
 	var call strings.Builder
 
 	isLinkSearch := false
@@ -71,6 +75,14 @@ func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, pe
 		call.WriteString(" \\( -xtype l -prune -o -true \\)")
 	}
 
+	// -prune suppresses find's implicit -print, so the command ends with one.
+	pruneDepth := depth != nil && noMaxDepth
+	if pruneDepth {
+		call.WriteString(" -path ")
+		call.WriteString(shellSingleQuote(depthPrunePattern(from, *depth)))
+		call.WriteString(" -prune -o")
+	}
+
 	if fileType != "" {
 		t, ok := findTypes[fileType]
 		if ok {
@@ -99,15 +111,35 @@ func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, pe
 		call.WriteString(shellSingleQuote(search))
 	}
 
-	if depth != nil {
+	if depth != nil && !noMaxDepth {
 		call.WriteString(" -maxdepth ")
 		// -maxdepth takes a decimal level count, not an octal value.
 		call.WriteString(strconv.FormatInt(*depth, 10))
 	}
 
-	if pruneLinks {
+	if pruneLinks || pruneDepth {
 		// -prune suppresses find's implicit -print.
 		call.WriteString(" -print")
 	}
 	return call.String()
+}
+
+// depthPrunePattern returns the -path pattern of the paths more than depth
+// levels below from: from/?*/?* for depth 1. Glob characters in from are
+// escaped, so they match themselves.
+func depthPrunePattern(from string, depth int64) string {
+	base := strings.TrimRight(from, "/")
+	var escaped strings.Builder
+	for _, r := range base {
+		if strings.ContainsRune(`*?[]\`, r) {
+			escaped.WriteRune('\\')
+		}
+		escaped.WriteRune(r)
+	}
+	if depth < 0 {
+		depth = 0
+	}
+	// ?* rather than *: a component is never empty, and /* would match the
+	// root itself
+	return escaped.String() + strings.Repeat("/?*", int(depth)+1)
 }

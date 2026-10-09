@@ -142,7 +142,7 @@ func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
 		depth = &l.Depth.Data
 	}
 
-	callCmd := filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, l.hasGNUFind())
+	callCmd := filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, l.hasGNUFind(), l.findLacksMaxDepth())
 	rawCmd, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(callCmd),
 	})
@@ -180,6 +180,16 @@ func (l *mqlFilesFind) hasGNUFind() bool {
 	}
 	out := raw.(*mqlCommand).GetStdout()
 	return out.Error == nil && strings.Contains(out.Data, "GNU findutils")
+}
+
+// findLacksMaxDepth reports whether the target's find rejects -maxdepth, as
+// AIX find does ("find: bad option -maxdepth").
+func (l *mqlFilesFind) findLacksMaxDepth() bool {
+	conn, ok := l.MqlRuntime.Connection.(shared.Connection)
+	if !ok || conn.Asset() == nil || conn.Asset().Platform == nil {
+		return false
+	}
+	return conn.Asset().Platform.Name == "aix"
 }
 
 func (l *mqlFilesFind) windowsPowershellCmd() ([]string, error) {

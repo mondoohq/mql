@@ -21,6 +21,7 @@ func TestUnixFilesCmdGeneration(t *testing.T) {
 		Search      string
 		Depth       *int64
 		HasGNUFind  bool
+		NoMaxDepth  bool
 		ExpectedCmd string
 	}{
 		{
@@ -119,10 +120,33 @@ func TestUnixFilesCmdGeneration(t *testing.T) {
 			Depth:       ptrInt64(1),
 			ExpectedCmd: "find -L \"/etc\" -xdev \\( -xtype l -prune -o -true \\) -perm -0 -name '*.conf' -maxdepth 1 -print",
 		},
+		{
+			// AIX find has no -maxdepth ("find: bad option -maxdepth") and
+			// printed nothing; pruning below the depth is POSIX.
+			From:        "/etc",
+			Search:      "passwd",
+			Depth:       ptrInt64(1),
+			NoMaxDepth:  true,
+			ExpectedCmd: "find -L \"/etc\" -xdev -path '/etc/?*/?*' -prune -o -perm -0 -name 'passwd' -print",
+		},
+		{
+			From:        "/",
+			FileType:    "directory",
+			Depth:       ptrInt64(0),
+			NoMaxDepth:  true,
+			ExpectedCmd: "find -L \"/\" -xdev -path '/?*' -prune -o -type d -perm -0 -print",
+		},
+		{
+			// glob characters in the start path match themselves
+			From:        "/opt/a*b/",
+			Depth:       ptrInt64(2),
+			NoMaxDepth:  true,
+			ExpectedCmd: "find -L \"/opt/a*b/\" -xdev -path '/opt/a\\*b/?*/?*/?*' -prune -o -perm -0 -print",
+		},
 	}
 
 	for _, tt := range tests {
-		cmd := BuildFilesFindCmd(tt.From, tt.Xdev, tt.FileType, tt.Regex, tt.Permission, tt.Search, tt.Depth, tt.HasGNUFind)
+		cmd := BuildFilesFindCmd(tt.From, tt.Xdev, tt.FileType, tt.Regex, tt.Permission, tt.Search, tt.Depth, tt.HasGNUFind, tt.NoMaxDepth)
 		assert.Equal(t, tt.ExpectedCmd, cmd)
 	}
 }
