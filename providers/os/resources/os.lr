@@ -16,6 +16,7 @@ alias os.base.packages = packages
 alias os.base.service = service
 alias os.base.services = services
 alias os.unix.sshd = sshd
+alias os.base.agentinstructions = agentinstructions
 alias os.base.agentskills = agentskills
 alias os.base.ai = ai
 alias os.base.aider = aider
@@ -23600,6 +23601,47 @@ private agentskills.skill @defaults("name path") @maturity("preview") {
   // Otherwise one message per problem, for example a missing or unterminated frontmatter
   // block, invalid YAML, or a `name` that is not a string.
   errors []string
+}
+
+// AI agent instruction files under a directory
+//
+// Files that give AI coding agents standing instructions for a project, independent of
+// the agent that reads them. The `path` field selects the directory searched, for example
+// `agentinstructions(path: "/home/alice/src/app")`. Recognized at any depth: `AGENTS.md`,
+// `CLAUDE.md`, `CLAUDE.local.md`, `GEMINI.md`, `WARP.md`, `.cursorrules`, `.windsurfrules`,
+// `.clinerules`, `.github/copilot-instructions.md`, `.junie/guidelines.md`, and the rule
+// files under `.cursor/rules`, `.windsurf/rules`, `.clinerules`, `.kiro/steering`,
+// `.roo/rules`, `.trae/rules`, `.kilocode/rules`, `.augment/rules`, and
+// `.github/instructions`. `.git` and `node_modules` are not searched. Use it to inventory
+// or pin what a checkout tells the agents that work in it.
+agentinstructions @defaults("path") @maturity("preview") {
+  init(path string)
+  // Directory searched for instruction files
+  path string
+  // Instruction files found under the directory
+  files() []agentinstructions.file
+}
+
+// AI agent instruction file
+//
+// One file of standing instructions an AI coding agent loads for a project. `agent` names
+// the agent resource that reads it, and `sha256` pins its content against a baseline.
+private agentinstructions.file @defaults("path agent") @maturity("preview") {
+  // Path to the file
+  path string
+  // File name
+  name string
+  // Agent that reads the file
+  //
+  // Name of the agent resource that reads it, such as `claude.code`, `cursor`, or
+  // `github.copilot`. Empty for `AGENTS.md`, which many agents read.
+  agent string
+  // Full content of the file
+  content string
+  // Size of the file in bytes
+  size int
+  // SHA-256 hash of the content
+  sha256() string
 }
 
 // SR-IOV network devices

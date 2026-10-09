@@ -1,6 +1,16 @@
 # Copyright Mondoo, Inc. 2024, 2026
 # SPDX-License-Identifier: BUSL-1.1
 
+agentinstructions 14.18.2
+agentinstructions.file 14.18.2
+agentinstructions.file.agent 14.18.2
+agentinstructions.file.content 14.18.2
+agentinstructions.file.name 14.18.2
+agentinstructions.file.path 14.18.2
+agentinstructions.file.sha256 14.18.2
+agentinstructions.file.size 14.18.2
+agentinstructions.files 14.18.2
+agentinstructions.path 14.18.2
 agentskills 14.18.2
 agentskills.path 14.18.2
 agentskills.skill 14.18.2

@@ -707,6 +707,8 @@ const (
 	ResourceQwenCodeSkill                                 string = "qwen.code.skill"
 	ResourceAgentskills                                   string = "agentskills"
 	ResourceAgentskillsSkill                              string = "agentskills.skill"
+	ResourceAgentinstructions                             string = "agentinstructions"
+	ResourceAgentinstructionsFile                         string = "agentinstructions.file"
 	ResourceSriov                                         string = "sriov"
 	ResourceSriovPhysicalFunction                         string = "sriov.physicalFunction"
 	ResourceSriovVirtualFunction                          string = "sriov.virtualFunction"
@@ -3486,6 +3488,14 @@ func init() {
 		"agentskills.skill": {
 			// to override args, implement: initAgentskillsSkill(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAgentskillsSkill,
+		},
+		"agentinstructions": {
+			// to override args, implement: initAgentinstructions(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAgentinstructions,
+		},
+		"agentinstructions.file": {
+			// to override args, implement: initAgentinstructionsFile(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAgentinstructionsFile,
 		},
 		"sriov": {
 			// to override args, implement: initSriov(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -19950,6 +19960,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"agentskills.skill.errors": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAgentskillsSkill).GetErrors()).ToDataRes(types.Array(types.String))
+	},
+	"agentinstructions.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentinstructions).GetPath()).ToDataRes(types.String)
+	},
+	"agentinstructions.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentinstructions).GetFiles()).ToDataRes(types.Array(types.Resource("agentinstructions.file")))
+	},
+	"agentinstructions.file.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentinstructionsFile).GetPath()).ToDataRes(types.String)
+	},
+	"agentinstructions.file.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentinstructionsFile).GetName()).ToDataRes(types.String)
+	},
+	"agentinstructions.file.agent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentinstructionsFile).GetAgent()).ToDataRes(types.String)
+	},
+	"agentinstructions.file.content": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentinstructionsFile).GetContent()).ToDataRes(types.String)
+	},
+	"agentinstructions.file.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentinstructionsFile).GetSize()).ToDataRes(types.Int)
+	},
+	"agentinstructions.file.sha256": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAgentinstructionsFile).GetSha256()).ToDataRes(types.String)
 	},
 	"sriov.physicalFunctions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSriov).GetPhysicalFunctions()).ToDataRes(types.Array(types.Resource("sriov.physicalFunction")))
@@ -44778,6 +44812,46 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"agentskills.skill.errors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAgentskillsSkill).Errors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"agentinstructions.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentinstructions).__id, ok = v.Value.(string)
+		return
+	},
+	"agentinstructions.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentinstructions).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentinstructions.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentinstructions).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"agentinstructions.file.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentinstructionsFile).__id, ok = v.Value.(string)
+		return
+	},
+	"agentinstructions.file.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentinstructionsFile).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentinstructions.file.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentinstructionsFile).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentinstructions.file.agent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentinstructionsFile).Agent, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentinstructions.file.content": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentinstructionsFile).Content, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"agentinstructions.file.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentinstructionsFile).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"agentinstructions.file.sha256": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAgentinstructionsFile).Sha256, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"sriov.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -115805,6 +115879,148 @@ func (c *mqlAgentskillsSkill) GetFiles() *plugin.TValue[[]any] {
 
 func (c *mqlAgentskillsSkill) GetErrors() *plugin.TValue[[]any] {
 	return &c.Errors
+}
+
+// mqlAgentinstructions for the agentinstructions resource
+type mqlAgentinstructions struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAgentinstructionsInternal it will be used here
+	Path  plugin.TValue[string]
+	Files plugin.TValue[[]any]
+}
+
+// createAgentinstructions creates a new instance of this resource
+func createAgentinstructions(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAgentinstructions{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("agentinstructions", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAgentinstructions) MqlName() string {
+	return "agentinstructions"
+}
+
+func (c *mqlAgentinstructions) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAgentinstructions) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlAgentinstructions) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("agentinstructions", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.files()
+	})
+}
+
+// mqlAgentinstructionsFile for the agentinstructions.file resource
+type mqlAgentinstructionsFile struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAgentinstructionsFileInternal it will be used here
+	Path    plugin.TValue[string]
+	Name    plugin.TValue[string]
+	Agent   plugin.TValue[string]
+	Content plugin.TValue[string]
+	Size    plugin.TValue[int64]
+	Sha256  plugin.TValue[string]
+}
+
+// createAgentinstructionsFile creates a new instance of this resource
+func createAgentinstructionsFile(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAgentinstructionsFile{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("agentinstructions.file", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAgentinstructionsFile) MqlName() string {
+	return "agentinstructions.file"
+}
+
+func (c *mqlAgentinstructionsFile) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAgentinstructionsFile) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlAgentinstructionsFile) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAgentinstructionsFile) GetAgent() *plugin.TValue[string] {
+	return &c.Agent
+}
+
+func (c *mqlAgentinstructionsFile) GetContent() *plugin.TValue[string] {
+	return &c.Content
+}
+
+func (c *mqlAgentinstructionsFile) GetSize() *plugin.TValue[int64] {
+	return &c.Size
+}
+
+func (c *mqlAgentinstructionsFile) GetSha256() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Sha256, func() (string, error) {
+		return c.sha256()
+	})
 }
 
 // mqlSriov for the sriov resource
