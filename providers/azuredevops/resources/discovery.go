@@ -285,7 +285,7 @@ func terraformAsset(org string, r connection.ListedRepo, cred *vault.Credential)
 }
 
 // kubernetesAsset is the k8s child of a repository. It keeps the k8s
-// provider's own id, which hashes the temporary clone path.
+// provider's own id, which hashes the repository URL.
 func kubernetesAsset(r connection.ListedRepo, cred *vault.Credential) *inventory.Asset {
 	a := gitChild("k8s", r, cred)
 	a.Connections[0].Discover = &inventory.Discovery{Targets: []string{"auto"}}
