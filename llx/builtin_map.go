@@ -951,6 +951,15 @@ func dictValuesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 //	"All".where(_ == "All").length              ==>  3  (string)
 //	"All".where(_ == "All" || _ == "x").length  ==>  1  (list)
 //	"hello".contains(_ == "ll" || _ == "zz")    ==>  false (whole value)
+//
+// The quantifiers any, all, none and one always treat the string as a
+// one-element list, whatever the block's shape: they ask whether an entry
+// matches, and a string dict is the single-entry form of a list (as in JSON
+// documents that allow `"a"` for `["a"]`):
+//
+//	"kms:Decrypt".any(_ == "kms:Decrypt")  ==>  true
+//	"kms:Decrypt".any(_ == "kms")          ==>  false (no substring match)
+//	"kms:Decrypt".none(_ == "kms:Decrypt") ==>  false
 func _stringWhere(e *blockExecutor, src string, chunk *Chunk, ref uint64, inverted bool) (*RawData, uint64, error) {
 	arg1 := chunk.Function.Args[1]
 	fref, ok := arg1.RefV2()
@@ -972,7 +981,12 @@ func _stringWhere(e *blockExecutor, src string, chunk *Chunk, ref uint64, invert
 	// In any larger expression (`_ == "a" || _ == "b"`) each `==` would return
 	// the matched substring instead of a bool, and the boolean operators panic
 	// on it. Evaluate those against the string as a single dict value instead.
-	if !isStringSliceSearch(e.ctx.code, funBlock, fref) {
+	//
+	// A quantifier (any, all, none, one) compares entries, never substrings, so
+	// it always evaluates the string as a one-element list. Without this, the
+	// substring result reached `$any` as a string, which has no `$any`, so
+	// `"a".any(_ == "a")` failed and `"a".none(_ == "a")` passed.
+	if !isStringSliceSearch(e.ctx.code, funBlock, fref) || feedsQuantifier(e.ctx.code, ref) {
 		return _dictArrayWhere(e, []any{src}, chunk, ref, inverted)
 	}
 
@@ -1000,6 +1014,26 @@ func isStringSliceSearch(code *CodeV2, block *Block, fref uint64) bool {
 	}
 	_, err := BuiltinFunctionV2(types.StringSlice, c.Id)
 	return err == nil
+}
+
+// feedsQuantifier reports whether the where chunk at ref is the filter of a
+// quantifier: dict any, none, one and having compile to `where` and all to
+// `$whereNot`, each followed by a `$any`, `$all`, `$none` or `$one` chunk bound
+// to the filter's result. contains and a plain where are not quantifiers.
+func feedsQuantifier(code *CodeV2, ref uint64) bool {
+	block := code.Block(ref)
+	// chunk refs are 1-based, so the chunks after ref start at index uint32(ref)
+	for i := int(uint32(ref)); i < len(block.Chunks); i++ {
+		c := block.Chunks[i]
+		if c.Function == nil || c.Function.Binding != ref {
+			continue
+		}
+		switch c.Id {
+		case "$any", "$all", "$none", "$one":
+			return true
+		}
+	}
+	return false
 }
 
 // requires at least 1 entry in the list!
