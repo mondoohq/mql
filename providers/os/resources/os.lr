@@ -619,14 +619,56 @@ os @maturity("deprecated") @replaced_by("os.base") {
 
 // Operating system date and timezone information
 //
-// Current system clock time and the configured timezone string (e.g.,
-// "America/New_York", "UTC"). Used to verify that clocks are synchronized
-// and that the correct timezone is set.
+// Current system clock time, the configured `timezone` as an IANA name
+// (e.g., "America/New_York", "UTC") on every platform, its `utcOffset`, and
+// whether the clock is `synchronized` to a `timeSource`. On Windows the zone
+// ID Windows uses is kept in `windowsTimezone`. Used to verify that clocks are
+// synchronized and that the correct timezone is set, comparably across
+// platforms.
 os.date @defaults("time timezone") {
   // Current system time
   time() time
-  // System timezone (e.g., "America/New_York", "UTC")
+  // System timezone as an IANA name
+  //
+  // For example "America/New_York", "Europe/Berlin" or "UTC". On Windows the
+  // Windows zone ID is translated with the Unicode CLDR mapping (its default
+  // zone for each ID), so "W. Europe Standard Time" reads "Europe/Berlin" and
+  // "UTC" reads "Etc/UTC". A Windows zone ID that CLDR does not map is
+  // returned unchanged. Defaults to "UTC" when no timezone can be detected.
   timezone() string
+  // Windows time zone ID
+  //
+  // The ID Windows reports for the system's time zone, for example
+  // "W. Europe Standard Time" or "Pacific Standard Time". Null on other
+  // platforms and when it cannot be read.
+  windowsTimezone() string
+  // Offset from UTC in seconds
+  //
+  // Seconds east of UTC in effect when the time was read, daylight saving
+  // time included: 7200 for Europe/Berlin in summer, -18000 for
+  // America/New_York in winter, 19800 for Asia/Kolkata. Without a running
+  // system (container images, snapshots) it is the offset of `timezone` at
+  // the time of the scan. Null when it cannot be determined.
+  utcOffset() int
+  // Whether the system clock is synchronized to a time source
+  //
+  // On Linux, the clock state systemd reports (timedatectl), which covers
+  // any NTP daemon, or chronyd's state where systemd is not used. On
+  // Windows, the Windows Time service status (w32tm); false while the
+  // service is not running. Null where it cannot be read: on macOS, which
+  // reports it only to administrators, on other Unix systems, on Linux
+  // without timedatectl or chronyc, and without a running system.
+  synchronized() bool
+  // Time source the system clock follows
+  //
+  // The NTP server name or address, or reference clock, the clock is
+  // synchronized to: the server systemd-timesyncd selected, the source
+  // chronyd tracks, or the source of the Windows Time service, without its
+  // flags ("time.windows.com" for "time.windows.com,0x9"). On macOS, the
+  // network time server configured in /etc/ntp.conf. Null when the clock is
+  // not synchronized to an external source, or the source cannot be read
+  // (other Unix systems, ntpd on Linux, no running system).
+  timeSource() string
 }
 
 // Operating system update information

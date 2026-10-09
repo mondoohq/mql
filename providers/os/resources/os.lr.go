@@ -3911,6 +3911,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"os.date.timezone": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOsDate).GetTimezone()).ToDataRes(types.String)
 	},
+	"os.date.windowsTimezone": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOsDate).GetWindowsTimezone()).ToDataRes(types.String)
+	},
+	"os.date.utcOffset": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOsDate).GetUtcOffset()).ToDataRes(types.Int)
+	},
+	"os.date.synchronized": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOsDate).GetSynchronized()).ToDataRes(types.Bool)
+	},
+	"os.date.timeSource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOsDate).GetTimeSource()).ToDataRes(types.String)
+	},
 	"os.update.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOsUpdate).GetName()).ToDataRes(types.String)
 	},
@@ -20755,6 +20767,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"os.date.timezone": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOsDate).Timezone, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"os.date.windowsTimezone": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOsDate).WindowsTimezone, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"os.date.utcOffset": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOsDate).UtcOffset, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"os.date.synchronized": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOsDate).Synchronized, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"os.date.timeSource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOsDate).TimeSource, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"os.update.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -46868,8 +46896,12 @@ type mqlOsDate struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlOsDateInternal
-	Time     plugin.TValue[*time.Time]
-	Timezone plugin.TValue[string]
+	Time            plugin.TValue[*time.Time]
+	Timezone        plugin.TValue[string]
+	WindowsTimezone plugin.TValue[string]
+	UtcOffset       plugin.TValue[int64]
+	Synchronized    plugin.TValue[bool]
+	TimeSource      plugin.TValue[string]
 }
 
 // createOsDate creates a new instance of this resource
@@ -46918,6 +46950,30 @@ func (c *mqlOsDate) GetTime() *plugin.TValue[*time.Time] {
 func (c *mqlOsDate) GetTimezone() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Timezone, func() (string, error) {
 		return c.timezone()
+	})
+}
+
+func (c *mqlOsDate) GetWindowsTimezone() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.WindowsTimezone, func() (string, error) {
+		return c.windowsTimezone()
+	})
+}
+
+func (c *mqlOsDate) GetUtcOffset() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.UtcOffset, func() (int64, error) {
+		return c.utcOffset()
+	})
+}
+
+func (c *mqlOsDate) GetSynchronized() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Synchronized, func() (bool, error) {
+		return c.synchronized()
+	})
+}
+
+func (c *mqlOsDate) GetTimeSource() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TimeSource, func() (string, error) {
+		return c.timeSource()
 	})
 }
 

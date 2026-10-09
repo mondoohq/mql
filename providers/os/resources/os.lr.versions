@@ -3619,8 +3619,12 @@ os.base.updates 9.0.0
 os.base.uptime 9.0.0
 os.base.users 9.0.0
 os.date 13.2.6
+os.date.synchronized 14.19.1
 os.date.time 13.2.6
+os.date.timeSource 14.19.1
 os.date.timezone 13.2.6
+os.date.utcOffset 14.19.1
+os.date.windowsTimezone 14.19.1
 os.env 9.0.0
 os.hostname 9.0.0
 os.hypervisor 11.3.35
