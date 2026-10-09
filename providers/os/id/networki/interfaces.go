@@ -36,6 +36,9 @@ func Interfaces(conn shared.Connection, pf *inventory.Platform) ([]Interface, er
 	if pf.Name == "solaris" {
 		return n.detectSolarisInterfaces()
 	}
+	if pf.Name == "aix" {
+		return n.detectAixInterfaces()
+	}
 	if pf.IsFamily(inventory.FAMILY_LINUX) {
 		return n.detectLinuxInterfaces()
 	}

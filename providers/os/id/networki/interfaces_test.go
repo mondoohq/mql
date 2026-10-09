@@ -794,3 +794,50 @@ func TestInterfacesLinuxFlagsAgreeAcrossDetectors(t *testing.T) {
 	assert.Equal(t, "", sysfs["lo"].MACAddress)
 	assert.Equal(t, "06:ff:c3:69:b3:57", sysfs["eth0"].MACAddress)
 }
+
+// testdata/aix73.toml is ifconfig -a, netstat -in and netstat -rn on AIX 7.3
+// TL4 SP2 (PowerVS) with the alias address 192.0.2.10 on en0.
+func TestInterfacesAix(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/aix73.toml"))
+	require.NoError(t, err)
+	platform := &inventory.Platform{Name: "aix", Family: []string{"unix", "os"}}
+
+	interfaces, err := subject.Interfaces(conn, platform)
+	require.NoError(t, err)
+	assert.Len(t, interfaces, 3)
+
+	index := subject.FindInterface(interfaces, subject.Interface{Name: "en0"})
+	if assert.NotEqual(t, -1, index) {
+		en0 := interfaces[index]
+		assert.Equal(t, "fa:16:3e:5b:8a:c5", en0.MACAddress)
+		assert.Equal(t, 1450, en0.MTU)
+		if assert.NotNil(t, en0.Active) {
+			assert.True(t, *en0.Active)
+		}
+		assert.Contains(t, en0.Flags, "UP")
+
+		i4 := en0.FindIP(net.ParseIP("192.168.234.35"))
+		if assert.NotEqual(t, -1, i4) {
+			ipv4 := en0.IPAddresses[i4]
+			assert.Equal(t, "192.168.234.35/29", ipv4.CIDR)
+			assert.Equal(t, "192.168.234.39", ipv4.Broadcast)
+			assert.Equal(t, "192.168.234.33", ipv4.Gateway)
+		}
+		assert.NotEqual(t, -1, en0.FindIP(net.ParseIP("192.0.2.10")))
+	}
+
+	// octets without their leading zero: 82.de.e.65.c.1a
+	index = subject.FindInterface(interfaces, subject.Interface{Name: "en1"})
+	if assert.NotEqual(t, -1, index) {
+		en1 := interfaces[index]
+		assert.Equal(t, "82:de:0e:65:0c:1a", en1.MACAddress)
+		assert.NotEqual(t, -1, en1.FindIP(net.ParseIP("fe80::80de:eff:fe65:c1a")))
+	}
+
+	index = subject.FindInterface(interfaces, subject.Interface{Name: "lo0"})
+	if assert.NotEqual(t, -1, index) {
+		lo0 := interfaces[index]
+		assert.Equal(t, 16896, lo0.MTU)
+		assert.Equal(t, "", lo0.MACAddress)
+	}
+}

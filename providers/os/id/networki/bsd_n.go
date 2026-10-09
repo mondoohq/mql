@@ -42,8 +42,9 @@ func (n *neti) detectBSDInterfaces() ([]Interface, error) {
 
 // bsdIfconfigHeader matches the first line of an ifconfig stanza. NetBSD
 // prefixes the flags value with "0x"; the others use a bare hex/decimal
-// number. Both forms are accepted.
-var bsdIfconfigHeader = regexp.MustCompile(`^([a-zA-Z0-9._]+):\s+flags=(?:0x)?[0-9a-fA-F]+<([^>]*)>`)
+// number. Both forms are accepted, as is the second flags word AIX prints:
+// en0: flags=1e084863,81cc0<UP,BROADCAST,...>
+var bsdIfconfigHeader = regexp.MustCompile(`^([a-zA-Z0-9._]+):\s+flags=(?:0x)?[0-9a-fA-F]+(?:,[0-9a-fA-F]+)?<([^>]*)>`)
 
 func (n *neti) getBSDIfconfigInterfaces() (interfaces []Interface, err error) {
 	output, err := n.RunCommand("ifconfig -a")

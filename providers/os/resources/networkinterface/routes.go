@@ -58,6 +58,8 @@ func Routes(conn shared.Connection, pf *inventory.Platform) ([]Route, error) {
 	// family, so it is matched by name first.
 	case pf.Name == "solaris":
 		detector = &solarisRouteDetector{conn: conn, platform: pf}
+	case pf.Name == "aix":
+		detector = &aixRouteDetector{conn: conn, platform: pf}
 	case pf.IsFamily(inventory.FAMILY_LINUX):
 		detector = &linuxRouteDetector{conn: conn, platform: pf}
 	case pf.IsFamily(inventory.FAMILY_DARWIN):
