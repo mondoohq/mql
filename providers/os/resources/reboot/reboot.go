@@ -6,6 +6,7 @@ package reboot
 import (
 	"errors"
 
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 )
@@ -35,6 +36,11 @@ func New(conn shared.Connection) (Reboot, error) {
 		return &FreebsdReboot{conn: conn}, nil
 	case pf.IsFamily(inventory.FAMILY_WINDOWS):
 		return &WinReboot{conn: conn}, nil
+	// Apple reports a prepared update that waits on a restart only to an MDM
+	// server (the softwareupdate.install-state status item). Nothing on the Mac
+	// itself documents that state, so the question cannot be answered locally.
+	case pf.Name == "macos":
+		return nil, llx.NotApplicable(errors.New("macOS reports a pending restart only to an MDM server, it cannot be read from the system"))
 	default:
 		return nil, errors.New("your platform is not supported by reboot resource")
 	}

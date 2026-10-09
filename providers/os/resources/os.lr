@@ -750,6 +750,9 @@ os.base @root {
   // whenever `lastUpdate` is null.
   lastUpdateSource() string
   // Whether a reboot is pending
+  //
+  // An error on macOS, which reports a pending restart only to an MDM server.
+  // Scope a check with `asset.platform != "macos"` to skip it there.
   rebootpending() bool
   // Hostname for this OS
   hostname() string
