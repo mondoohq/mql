@@ -214,6 +214,19 @@ func fetchPrimaryAccountTags(awsAccount *mqlAwsAccount) map[string]string {
 	return mapStringInterfaceToStringString(t.Data)
 }
 
+// discoveryLabels returns a discovered resource's tags as its asset labels. A
+// resource whose tags cannot be read is still discovered, without labels.
+func discoveryLabels(tags *plugin.TValue[map[string]any], arn string) map[string]string {
+	if tags == nil {
+		return map[string]string{}
+	}
+	if tags.Error != nil {
+		log.Debug().Err(tags.Error).Str("arn", arn).Msg("could not read tags for the discovered asset's labels")
+		return map[string]string{}
+	}
+	return mapStringInterfaceToStringString(tags.Data)
+}
+
 func getDiscoveryTargets(config *inventory.Config) []string {
 	targets := config.GetDiscover().GetTargets()
 
@@ -528,13 +541,8 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 		for i := range fs.Data {
 			f := fs.Data[i].(*mqlAwsCloudtrailTrail)
 
-			tagsResult := f.GetTags()
-			if tagsResult.Error != nil {
-				log.Debug().Err(tagsResult.Error).Str("trail", f.Arn.Data).Msg("could not read cloudtrail trail tags for its labels")
-			}
-			tags := mapStringInterfaceToStringString(tagsResult.Data)
 			m := mqlObject{
-				name: f.Name.Data, labels: tags,
+				name: f.Name.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.Name.Data, service: "cloudtrail", objectType: "trail",
@@ -1094,7 +1102,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := ras.Data[i].(*mqlAwsKmsKey)
 
 			m := mqlObject{
-				name: f.Id.Data, labels: map[string]string{},
+				name: f.Id.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.Id.Data, service: "kms", objectType: "key",
@@ -1180,7 +1188,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := clusters.Data[i].(*mqlAwsElasticacheCluster)
 
 			m := mqlObject{
-				name: f.CacheClusterId.Data, labels: map[string]string{},
+				name: f.CacheClusterId.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.CacheClusterId.Data, service: "elasticache", objectType: "cluster",
@@ -1208,7 +1216,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := distributions.Data[i].(*mqlAwsCloudfrontDistribution)
 
 			m := mqlObject{
-				name: f.DomainName.Data, labels: map[string]string{},
+				name: f.DomainName.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: "global", arn: f.Arn.Data,
 					id: f.DomainName.Data, service: "cloudfront", objectType: "distribution",
@@ -1237,7 +1245,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 				name = f.Name.Data
 			}
 			m := mqlObject{
-				name: name, labels: map[string]string{},
+				name: name, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.ClusterIdentifier.Data, service: "neptune", objectType: "cluster",
@@ -1267,7 +1275,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 				continue
 			}
 			m := mqlObject{
-				name: f.Name.Data, labels: map[string]string{},
+				name: f.Name.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: region, arn: f.Arn.Data,
 					id: f.Id.Data, service: "emr", objectType: "cluster",
@@ -1292,7 +1300,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := cs.Data[i].(*mqlAwsDocumentdbCluster)
 
 			m := mqlObject{
-				name: f.Name.Data, labels: map[string]string{},
+				name: f.Name.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.ClusterIdentifier.Data, service: "documentdb", objectType: "cluster",
@@ -1566,7 +1574,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := clusters.Data[i].(*mqlAwsMemorydbCluster)
 
 			obj := mqlObject{
-				name: f.Name.Data, labels: map[string]string{},
+				name: f.Name.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.Name.Data, service: "memorydb", objectType: "cluster",
@@ -1617,7 +1625,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := pools.Data[i].(*mqlAwsCognitoUserPool)
 
 			obj := mqlObject{
-				name: f.Name.Data, labels: map[string]string{},
+				name: f.Name.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.Id.Data, service: "cognito", objectType: "userpool",
@@ -1642,7 +1650,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := servers.Data[i].(*mqlAwsTransferServer)
 
 			obj := mqlObject{
-				name: f.ServerId.Data, labels: map[string]string{},
+				name: f.ServerId.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.ServerId.Data, service: "transfer", objectType: "server",

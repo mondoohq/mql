@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"errors"
 	"maps"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestAllResolvedResources(t *testing.T) {
@@ -683,6 +685,48 @@ func TestMergeAccountTagsIntoLabels(t *testing.T) {
 		require.Equal(t, "web-01", got["Name"])
 		require.Equal(t, "team-a", got["Owner"])
 		require.Equal(t, "cc-42", got["CostCenter"])
+	})
+}
+
+func TestDiscoveryLabels(t *testing.T) {
+	t.Run("tags become labels", func(t *testing.T) {
+		tags := &plugin.TValue[map[string]any]{
+			Data:  map[string]any{"env": "test", "team": "platform"},
+			State: plugin.StateIsSet,
+		}
+
+		got := discoveryLabels(tags, "arn:aws:kms:us-east-1:123456789012:key/k")
+
+		require.Equal(t, map[string]string{"env": "test", "team": "platform"}, got)
+	})
+
+	t.Run("unreadable tags give no labels", func(t *testing.T) {
+		tags := &plugin.TValue[map[string]any]{
+			Data:  map[string]any{"env": "stale"},
+			Error: errors.New("AccessDeniedException"),
+			State: plugin.StateIsSet,
+		}
+
+		got := discoveryLabels(tags, "arn:aws:kms:us-east-1:123456789012:key/k")
+
+		require.NotNil(t, got)
+		require.Empty(t, got)
+	})
+
+	t.Run("untagged resource gives an empty map", func(t *testing.T) {
+		tags := &plugin.TValue[map[string]any]{State: plugin.StateIsSet | plugin.StateIsNull}
+
+		got := discoveryLabels(tags, "arn")
+
+		require.NotNil(t, got)
+		require.Empty(t, got)
+	})
+
+	t.Run("nil value gives an empty map", func(t *testing.T) {
+		got := discoveryLabels(nil, "arn")
+
+		require.NotNil(t, got)
+		require.Empty(t, got)
 	})
 }
 
