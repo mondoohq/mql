@@ -23604,16 +23604,19 @@ private agentskills.skill @defaults("name path") @maturity("preview") {
   // The specification recommends keeping SKILL.md under 500 lines and moving detail into
   // referenced files.
   lines int
-  // Bundled files the body refers to
+  // Files the body links to
   //
-  // Paths relative to the skill directory: the targets of Markdown links and images that
-  // are not URLs, anchors, or absolute paths, and paths under `scripts/`, `references/`,
-  // and `assets/` written in the text.
+  // Paths relative to the skill directory, from the targets of Markdown links and images
+  // that are not URLs, anchors, absolute paths, or placeholders. A `{baseDir}/` prefix is
+  // the skill directory. Links in code fences, and paths only mentioned in prose, are not
+  // included.
   references []string
-  // References that do not resolve to a file in the skill
+  // Linked files that do not exist
   //
-  // Referenced paths that do not exist in the skill directory or package, or that point
-  // outside it. A skill installed without its bundled files lists them here.
+  // References that do not resolve, relative to the skill directory or inside the
+  // package. A skill installed without its bundled files lists them here. A reference
+  // may leave the skill directory, as skills in a plugin link to sibling skills; it is
+  // missing only if the target does not exist.
   missingReferences []string
   // SHA-256 hash of the SKILL.md content
   sha256() string
@@ -23626,8 +23629,8 @@ private agentskills.skill @defaults("name path") @maturity("preview") {
   //
   // Empty when the frontmatter parses and its specified fields have the right types.
   // Otherwise one message per problem, for example a missing or unterminated frontmatter
-  // block, invalid YAML, a `name` that is not a string, a reference that points outside
-  // the skill, or a `.skill` package that cannot be read.
+  // block, invalid YAML, a `name` that is not a string, or a `.skill` package that
+  // cannot be read.
   errors []string
 }
 

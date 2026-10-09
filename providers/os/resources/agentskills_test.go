@@ -7,6 +7,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -207,21 +208,26 @@ func TestAgentSkillBundledFiles(t *testing.T) {
 func TestAgentSkillReferences(t *testing.T) {
 	body := strings.Join([]string{
 		"See [the guide](references/GUIDE.md) and ![logo](./assets/logo.png \"Logo\").",
-		"Read references/DESIGN.md before writing CSS.",
-		"Run `python scripts/extract.py input.pdf`.",
 		"Again: [guide](references/GUIDE.md#setup), [spaced](<references/my%20notes.md>).",
+		"A sibling skill: [use](../figma-use/SKILL.md). Base dir: [wf]({baseDir}/references/workflow.md).",
 		"Not files: [site](https://example.com/x.md), [mail](mailto:a@b.c), [top](#usage),",
-		"[abs](/etc/passwd), [home](~/x.md), [data](data:text/plain,hi).",
-		"Escapes: [up](../other/SKILL.md).",
-		"Not a spec dir: myscripts/run.sh, docs/scripts/x.sh.",
+		"[abs](/etc/passwd), [home](~/x.md), [data](data:text/plain,hi), [env](${CLAUDE_PLUGIN_ROOT}/x.md).",
+		"Prose only: Read references/DESIGN.md and run `python scripts/extract.py`.",
+		"```markdown",
+		"[Example](url) and [edit](edit_url)",
+		"```",
+		"~~~",
+		"[tilde](fenced.md)",
+		"~~~",
+		"After the fence: [last](assets/last.png)",
 	}, "\n")
 	assert.Equal(t, []string{
 		"references/GUIDE.md",
 		"assets/logo.png",
 		"references/my notes.md",
-		"../other/SKILL.md",
-		"references/DESIGN.md",
-		"scripts/extract.py",
+		"../figma-use/SKILL.md",
+		"references/workflow.md",
+		"assets/last.png",
 	}, agentSkillReferences(body))
 	assert.Empty(t, agentSkillReferences("# No references\nJust prose.\n"))
 }
@@ -347,15 +353,13 @@ func TestReadAgentSkillPackageProblems(t *testing.T) {
 
 func TestAgentSkillMissingReferences(t *testing.T) {
 	mem := afero.NewMemMapFs()
-	require.NoError(t, afero.WriteFile(mem, "/s/references/GUIDE.md", []byte("x"), 0o644))
-	require.NoError(t, afero.WriteFile(mem, "/other/SKILL.md", []byte("x"), 0o644)) // exists, but outside
+	require.NoError(t, afero.WriteFile(mem, "/p/skills/s/references/GUIDE.md", []byte("x"), 0o644))
+	require.NoError(t, afero.WriteFile(mem, "/p/skills/sibling/SKILL.md", []byte("x"), 0o644))
 	exists := func(rel string) bool {
-		_, err := mem.Stat("/s/" + rel)
+		_, err := mem.Stat(filepath.Join("/p/skills/s", rel))
 		return err == nil
 	}
 
-	missing, errs := agentSkillMissingReferences(
-		[]string{"references/GUIDE.md", "references/DESIGN.md", "../other/SKILL.md"}, exists)
-	assert.Equal(t, []string{"references/DESIGN.md", "../other/SKILL.md"}, missing)
-	assert.Equal(t, []string{"reference ../other/SKILL.md points outside the skill directory"}, errs)
+	assert.Equal(t, []string{"references/DESIGN.md", "../gone/SKILL.md"}, agentSkillMissingReferences(
+		[]string{"references/GUIDE.md", "references/DESIGN.md", "../sibling/SKILL.md", "../gone/SKILL.md"}, exists))
 }

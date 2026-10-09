@@ -120,8 +120,7 @@ func newAgentSkillResource(runtime *plugin.Runtime, src agentSkillSource) (plugi
 	errs := append(append([]string{}, src.errors...), skill.errors...)
 
 	refs := agentSkillReferences(skill.body)
-	missing, refErrs := agentSkillMissingReferences(refs, src.exists)
-	errs = append(errs, refErrs...)
+	missing := agentSkillMissingReferences(refs, src.exists)
 
 	return CreateResource(runtime, "agentskills.skill", map[string]*llx.RawData{
 		"__id":              llx.StringData("agentskills.skill/" + src.path),
@@ -432,30 +431,39 @@ func agentSkillBundledFiles(afs *afero.Afero, skillPath string) ([]string, error
 // [text](target) or [text](<target> "title").
 var agentSkillLinkRe = regexp.MustCompile(`\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)`)
 
-// agentSkillDirRefRe matches a path under one of the directories the
-// specification defines for bundled files, written as prose or code, such as
-// "Read references/REFERENCE.md" or `python scripts/extract.py`.
-var agentSkillDirRefRe = regexp.MustCompile("(?:^|[\\s\"'(`=:])(?:\\./)?((?:scripts|references|assets)/[^\\s\"'()`<>\\[\\]{}*]+)")
+// agentSkillBaseDir is the placeholder some agents replace with the skill's
+// directory, as in "{baseDir}/references/guide.md".
+const agentSkillBaseDir = "{baseDir}"
 
-// agentSkillReferences returns the relative paths the body of a SKILL.md
-// refers to, cleaned and in order of first appearance: Markdown link and image
-// targets that are not URLs, anchors, or absolute paths, and paths under
-// scripts/, references/, and assets/.
+// agentSkillReferences returns the bundled files the body of a SKILL.md links
+// to, cleaned and in order of first appearance: the targets of Markdown links
+// and images that are not URLs, anchors, absolute paths, or placeholders. Code
+// fences are skipped, since they hold examples rather than links. Paths only
+// mentioned in prose are not references: skills mention example paths far more
+// often than they rely on them.
 func agentSkillReferences(body string) []string {
 	var refs []string
 	seen := map[string]bool{}
-	add := func(raw string) {
-		ref, ok := cleanAgentSkillRef(raw)
-		if ok && !seen[ref] {
-			seen[ref] = true
-			refs = append(refs, ref)
+	fence := ""
+	for _, line := range strings.Split(body, "\n") {
+		trimmed := strings.TrimLeft(line, " \t")
+		if fence == "" && (strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~")) {
+			fence = trimmed[:3]
+			continue
 		}
-	}
-	for _, m := range agentSkillLinkRe.FindAllStringSubmatch(body, -1) {
-		add(m[1])
-	}
-	for _, m := range agentSkillDirRefRe.FindAllStringSubmatch(body, -1) {
-		add(strings.TrimRight(m[1], ".,;:!?"))
+		if fence != "" {
+			if strings.HasPrefix(trimmed, fence) {
+				fence = ""
+			}
+			continue
+		}
+		for _, m := range agentSkillLinkRe.FindAllStringSubmatch(line, -1) {
+			ref, ok := cleanAgentSkillRef(m[1])
+			if ok && !seen[ref] {
+				seen[ref] = true
+				refs = append(refs, ref)
+			}
+		}
 	}
 	return refs
 }
@@ -463,8 +471,14 @@ func agentSkillReferences(body string) []string {
 // cleanAgentSkillRef turns a link target into a slash-separated path relative
 // to the skill directory, or reports that it is not one.
 func cleanAgentSkillRef(raw string) (string, bool) {
+	raw = strings.TrimPrefix(raw, agentSkillBaseDir+"/")
 	if raw == "" || strings.HasPrefix(raw, "#") || strings.HasPrefix(raw, "/") ||
 		strings.HasPrefix(raw, "~") || strings.HasPrefix(raw, "\\") {
+		return "", false
+	}
+	// A placeholder the agent fills in, such as ${CLAUDE_PLUGIN_ROOT}/x or
+	// <skill-dir>/x, cannot be resolved here.
+	if strings.ContainsAny(raw, "{}$<>") {
 		return "", false
 	}
 	// Any scheme (https:, mailto:, data:, file:) is not a bundled file.
@@ -484,26 +498,18 @@ func cleanAgentSkillRef(raw string) (string, bool) {
 	return ref, true
 }
 
-// agentSkillMissingReferences returns the references that do not resolve
-// inside the skill, and an error for each one that points outside it.
-func agentSkillMissingReferences(refs []string, exists func(rel string) bool) (missing []string, errs []string) {
+// agentSkillMissingReferences returns the references that do not resolve. A
+// reference may leave the skill directory: skills in a plugin link to sibling
+// skills and plugin-level files, which resolve as long as the plugin is
+// installed whole.
+func agentSkillMissingReferences(refs []string, exists func(rel string) bool) []string {
+	var missing []string
 	for _, ref := range refs {
-		if agentSkillRefEscapes(ref) {
-			errs = append(errs, "reference "+ref+" points outside the skill directory")
-			missing = append(missing, ref)
-			continue
-		}
 		if !exists(ref) {
 			missing = append(missing, ref)
 		}
 	}
-	return missing, errs
-}
-
-// agentSkillRefEscapes reports whether a cleaned reference leaves the skill
-// directory.
-func agentSkillRefEscapes(ref string) bool {
-	return ref == ".." || strings.HasPrefix(ref, "../")
+	return missing
 }
 
 // countLines counts the lines of text; a trailing newline does not start
