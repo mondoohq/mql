@@ -146,7 +146,7 @@ func TestUnixFilesCmdGeneration(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		cmd := BuildFilesFindCmd(tt.From, tt.Xdev, tt.FileType, tt.Regex, tt.Permission, tt.Search, tt.Depth, tt.HasGNUFind, tt.NoMaxDepth)
+		cmd := BuildFilesFindCmd(tt.From, tt.Xdev, tt.FileType, tt.Regex, tt.Permission, tt.Search, tt.Depth, FindFlavor{GNU: tt.HasGNUFind, NoMaxDepth: tt.NoMaxDepth})
 		assert.Equal(t, tt.ExpectedCmd, cmd)
 	}
 }

@@ -29,11 +29,19 @@ func shellSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+// FindFlavor says what the target's find supports.
+type FindFlavor struct {
+	// GNU is GNU findutils, which has -xtype.
+	GNU bool
+	// NoMaxDepth is a find without -maxdepth (AIX), which rejects the option
+	// and prints nothing; the depth is then kept by pruning every path below
+	// it, which POSIX find supports.
+	NoMaxDepth bool
+}
+
 // BuildFilesFindCmd builds the find command of a files.find search.
-// noMaxDepth is set for a find without -maxdepth (AIX), which rejects the
-// option and prints nothing; the depth is then kept by pruning every path
-// below it, which POSIX find supports.
-func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, permission int64, search string, depth *int64, hasGNUFind bool, noMaxDepth bool) string {
+func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, permission int64, search string, depth *int64, flavor FindFlavor) string {
+	hasGNUFind, noMaxDepth := flavor.GNU, flavor.NoMaxDepth
 	var call strings.Builder
 
 	isLinkSearch := false

@@ -142,7 +142,7 @@ func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
 		depth = &l.Depth.Data
 	}
 
-	callCmd := filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, l.hasGNUFind(), l.findLacksMaxDepth())
+	callCmd := filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, filesfind.FindFlavor{GNU: l.hasGNUFind(), NoMaxDepth: l.findLacksMaxDepth()})
 	rawCmd, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(callCmd),
 	})

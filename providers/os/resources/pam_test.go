@@ -100,7 +100,7 @@ func TestPamConfPrefersPamDirOverPamConf(t *testing.T) {
 	// When /etc/pam.d exists, Linux-PAM ignores /etc/pam.conf entirely. Our
 	// parsing must do the same: only the pam.d files are read, and a service
 	// defined only in /etc/pam.conf must not appear.
-	findCmd := filesfind.BuildFilesFindCmd(defaultPamDir, false, "file", "", 0, "", nil, true, false)
+	findCmd := filesfind.BuildFilesFindCmd(defaultPamDir, false, "file", "", 0, "", nil, filesfind.FindFlavor{GNU: true})
 	conn, err := mock.New(0, &inventory.Asset{
 		Platform: &inventory.Platform{Name: "arch", Family: []string{"arch", "linux", "unix"}},
 	}, mock.WithData(&mock.TomlData{
@@ -398,7 +398,7 @@ func TestIsPamControlEnabled(t *testing.T) {
 func newPamDirRuntime(t *testing.T) *plugin.Runtime {
 	t.Helper()
 
-	findCmd := filesfind.BuildFilesFindCmd(defaultPamDir, false, "file", "", 0, "", nil, true, false)
+	findCmd := filesfind.BuildFilesFindCmd(defaultPamDir, false, "file", "", 0, "", nil, filesfind.FindFlavor{GNU: true})
 	conn, err := mock.New(0, &inventory.Asset{
 		Platform: &inventory.Platform{Name: "arch", Family: []string{"arch", "linux", "unix"}},
 	}, mock.WithData(&mock.TomlData{
@@ -506,7 +506,7 @@ func newPamVendorRuntime(t *testing.T, services map[string]string) *plugin.Runti
 	}
 	for dir, paths := range listings {
 		files[dir] = &mock.MockFileData{Path: dir, StatData: mock.FileInfo{Mode: os.ModeDir | 0o755}}
-		findCmd := filesfind.BuildFilesFindCmd(dir, false, "file", "", 0, "", nil, true, false)
+		findCmd := filesfind.BuildFilesFindCmd(dir, false, "file", "", 0, "", nil, filesfind.FindFlavor{GNU: true})
 		commands[findCmd] = &mock.Command{Stdout: strings.Join(paths, "\n") + "\n"}
 	}
 
