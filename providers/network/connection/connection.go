@@ -33,6 +33,7 @@ func NewHostConnection(id uint32, asset *inventory.Asset, conf *inventory.Config
 			KeepAlive: 30 * time.Second,
 			DualStack: true,
 		}).DialContext,
+		// HTTP/2 needs TLS 1.2+; against a TLS 1.0/1.1 server Go falls back to HTTP/1.1.
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
@@ -47,7 +48,7 @@ func NewHostConnection(id uint32, asset *inventory.Asset, conf *inventory.Config
 	// negotiates what it would anyway; TLS 1.3 ignores the suite list.
 	transport.TLSClientConfig = &tls.Config{
 		MinVersion:         tls.VersionTLS10,
-		CipherSuites:       allCipherSuites(),
+		CipherSuites:       legacyCipherSuites,
 		InsecureSkipVerify: conf.Insecure, //nolint:gosec // only when the user asked for --insecure
 	}
 
@@ -93,9 +94,11 @@ func (p *HostConnection) Client(followRedirects bool) *http.Client {
 	return c
 }
 
-// allCipherSuites returns every TLS 1.0-1.2 cipher suite Go implements, including
+// legacyCipherSuites is every TLS 1.0-1.2 cipher suite Go implements, including
 // the ones it considers insecure, so the client can still complete a handshake
-// with a legacy server and report what it serves.
+// with a legacy server and report what it serves. Computed once; never mutated.
+var legacyCipherSuites = allCipherSuites()
+
 func allCipherSuites() []uint16 {
 	suites := make([]uint16, 0, 32)
 	for _, cs := range tls.CipherSuites() {
