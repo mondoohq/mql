@@ -23,6 +23,11 @@ limitations under the License.
 // defaults that upstream keeps in dependency-heavy packages
 // (k8s.io/kubernetes/...) are inlined here so this package does not have to
 // depend on the full Kubernetes tree.
+//
+// scripts/kubelet-defaults-drift/baseline.json records the upstream sources
+// this file was last checked against. A weekly workflow
+// (kubelet-defaults-drift.yaml) opens an issue when a new release branch
+// appears or those sources change.
 package resources
 
 import (
@@ -79,7 +84,7 @@ const (
 	KubeletOOMScoreAdj int = -999
 )
 
-// https://github.com/kubernetes/kubernetes/blob/release-1.34/pkg/kubelet/apis/config/v1beta1/defaults_linux.go
+// https://github.com/kubernetes/kubernetes/blob/release-1.34/pkg/kubelet/eviction/defaults_linux.go
 // DefaultEvictionHard includes default options for hard eviction on Linux nodes.
 var DefaultEvictionHard = map[string]string{
 	"memory.available":   "100Mi",
