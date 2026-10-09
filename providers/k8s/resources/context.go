@@ -17,7 +17,7 @@ import (
 // and admission connections do not implement it, so resources scanned that way
 // carry no source context.
 type manifestSourceProvider interface {
-	ManifestSource() (content string, path string, positions map[string]shared.SourcePosition)
+	ManifestSource() (contents map[string]string, positions map[string]shared.SourcePosition)
 }
 
 func (r *mqlK8sContext) id() (string, error) {
@@ -35,14 +35,19 @@ func (r *mqlK8sContext) content(path string, rnge llx.Range) (string, error) {
 	if !ok {
 		return "", errors.New("k8s.context content is not available for this connection")
 	}
-	content, _, _ := ms.ManifestSource()
+	contents, _ := ms.ManifestSource()
+	content, ok := contents[path]
+	if !ok {
+		return "", errors.New("no manifest content for k8s.context path " + path)
+	}
 	return rnge.ExtractString(content, llx.DefaultExtractConfig), nil
 }
 
 // setK8sSourceContext populates a resource's `context` field with the manifest
 // location it was declared at. It is a no-op for connections without a source
-// manifest, and for resources not found in the manifest (e.g. synthesized
-// CRDs). The field is set directly via reflection because the ~40 annotated
+// manifest, for resources not found in the manifest (e.g. synthesized CRDs),
+// and for manifest content passed in directly, which has no file to point at.
+// The field is set directly via reflection because the ~40 annotated
 // resource types share no common concrete type; every @context-annotated
 // resource has an exported `Context` field of the same type.
 func setK8sSourceContext(runtime *plugin.Runtime, kt shared.Connection, obj metav1.Object, objT metav1.Type, res any) error {
@@ -50,20 +55,20 @@ func setK8sSourceContext(runtime *plugin.Runtime, kt shared.Connection, obj meta
 	if !ok {
 		return nil
 	}
-	content, path, positions := ms.ManifestSource()
+	contents, positions := ms.ManifestSource()
 	if len(positions) == 0 {
 		return nil
 	}
 	pos, ok := positions[objIdFromFields(objT.GetKind(), obj.GetNamespace(), obj.GetName())]
-	if !ok {
+	if !ok || pos.Path == "" {
 		return nil
 	}
 
 	rnge := llx.NewRange().AddLineRange(uint32(pos.StartLine), uint32(pos.EndLine))
 	ctxObj, err := CreateResource(runtime, "k8s.context", map[string]*llx.RawData{
-		"path":    llx.StringData(path),
+		"path":    llx.StringData(pos.Path),
 		"range":   llx.RangeData(rnge),
-		"content": llx.StringData(rnge.ExtractString(content, llx.DefaultExtractConfig)),
+		"content": llx.StringData(rnge.ExtractString(contents[pos.Path], llx.DefaultExtractConfig)),
 	})
 	if err != nil {
 		return err

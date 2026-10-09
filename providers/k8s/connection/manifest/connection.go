@@ -62,12 +62,13 @@ type Connection struct {
 	manifestContent []byte
 	closer          func()
 
-	// Raw manifest bytes retained for source context. Kept separate from
-	// manifestContent, which drives the stdin-vs-file platform-id hashing.
-	sourceRaw  []byte
-	posOnce    sync.Once
-	contentStr string
-	positions  map[string]shared.SourcePosition
+	// The manifest files as read, retained for source context. Kept separate
+	// from manifestContent, which drives the stdin-vs-file platform-id hashing.
+	// Content passed in directly is one entry without a path.
+	sources   []shared.ManifestFile
+	posOnce   sync.Once
+	contents  map[string]string
+	positions map[string]shared.SourcePosition
 }
 
 func NewGitConnection(id uint32, asset *inventory.Asset, opts ...Option) (shared.Connection, error) {
@@ -104,11 +105,13 @@ func NewConnection(id uint32, asset *inventory.Asset, opts ...Option) (shared.Co
 	if len(c.manifestContent) > 0 {
 		manifest = c.manifestContent
 		clusterName = "K8s Manifest"
+		c.sources = []shared.ManifestFile{{Content: c.manifestContent}}
 	} else if c.manifestFile != "" {
-		manifest, err = shared.LoadManifestFile(c.manifestFile)
+		c.sources, err = shared.LoadManifestFiles(c.manifestFile)
 		if err != nil {
 			return nil, err
 		}
+		manifest = shared.MergeManifests(c.sources)
 		// Prefer the git repo (org/repo) for a stable, human-friendly name,
 		// matching the Terraform static-analysis naming. The manifest path is a
 		// temporary clone directory (e.g. mql-git-clone3841…) when discovered
@@ -135,10 +138,6 @@ func NewConnection(id uint32, asset *inventory.Asset, opts ...Option) (shared.Co
 		}
 		asset.Labels[plugin.GitUrlOptionKey] = trimGitPath(gitPath)
 	}
-	// Retain the raw manifest so we can extract the source text a resource
-	// spans for file-context. In the file case the bytes were only local.
-	c.sourceRaw = manifest
-
 	c.ManifestParser, err = shared.NewManifestParser(manifest, c.namespace, "")
 	if err != nil {
 		return nil, err
@@ -158,16 +157,25 @@ func NewConnection(id uint32, asset *inventory.Asset, opts ...Option) (shared.Co
 	return c, nil
 }
 
-// ManifestSource returns the manifest text, the file path it was read from, and
+// ManifestSource returns the text of each manifest file keyed by its path, and
 // a per-resource source-position index keyed by object id (kind:namespace:name).
-// The index is built lazily on first use. Resources not present in the manifest
-// (e.g. synthesized CRDs) simply have no entry.
-func (c *Connection) ManifestSource() (string, string, map[string]shared.SourcePosition) {
+// Each position names the file the object was declared in, with lines counted
+// from the start of that file. The index is built lazily on first use.
+// Resources not present in the manifest (e.g. synthesized CRDs) simply have no
+// entry. An object declared in more than one file takes the position of the
+// last one read, as it did when the files were indexed as one stream.
+func (c *Connection) ManifestSource() (map[string]string, map[string]shared.SourcePosition) {
 	c.posOnce.Do(func() {
-		c.contentStr = string(c.sourceRaw)
-		c.positions = shared.BuildManifestPositionIndex(c.sourceRaw, c.manifestFile)
+		c.contents = make(map[string]string, len(c.sources))
+		c.positions = map[string]shared.SourcePosition{}
+		for _, src := range c.sources {
+			c.contents[src.Path] = string(src.Content)
+			for id, pos := range shared.BuildManifestPositionIndex(src.Content, src.Path) {
+				c.positions[id] = pos
+			}
+		}
 	})
-	return c.contentStr, c.manifestFile, c.positions
+	return c.contents, c.positions
 }
 
 func trimGitPath(gitPath string) string {
