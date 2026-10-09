@@ -138,3 +138,26 @@ func TestIdentityFromNodes(t *testing.T) {
 	assert.Equal(t, ProbeNodes, res.Source)
 	assert.Equal(t, Identity{Region: "westus3", Source: IdentityNodes}, res.Identity)
 }
+
+func TestIdentityThroughTunnel(t *testing.T) {
+	// the kubeconfig points at a local tunnel; the certificate names the
+	// private endpoint
+	res := Detect(context.Background(), Probes{
+		Version:     version("v1.35.8"),
+		Certificate: names("kubernetes", "cep6052fa91d3-zay8zrve.42a48b13-a6bf-4df0-b231-8faf5c1137d4.privatelink.eastus.azmk8s.io"),
+		Host:        "https://127.0.0.1:53182",
+		Kubeconfig:  &Kubeconfig{ClusterEntry: "cep-aks-pass"},
+	})
+	assert.Equal(t, AKS, res.Name)
+	assert.Equal(t, "eastus", res.Identity.Region)
+	assert.Equal(t, "cep-aks-pass", res.Identity.ClusterName)
+
+	res = Detect(context.Background(), Probes{
+		Version:     version("v1.33.5-eks-113cf36"),
+		Certificate: names("0123456789ABCDEF0123456789ABCDEF.gr7.eu-west-1.eks.amazonaws.com", "kubernetes"),
+		Host:        "https://127.0.0.1:53182",
+		Kubeconfig:  &Kubeconfig{ClusterEntry: "demo"},
+	})
+	assert.Equal(t, EKS, res.Name)
+	assert.Equal(t, Identity{Region: "eu-west-1", Source: IdentityCertificate}, res.Identity)
+}

@@ -184,7 +184,7 @@ k8s.distro @defaults("name source") {
   account() string
   // Where clusterName, region, and account came from
   //
-  // One of kubeconfig, metadata, or nodes. Empty when none is known.
+  // One of kubeconfig, certificate, metadata, or nodes. Empty when none is known.
   identitySource() string
   // What each signal saw
   //

@@ -393,6 +393,10 @@ func Detect(ctx context.Context, p Probes) *Result {
 		decide(ProbeMetadata, ev)
 	}
 
-	res.Identity = identify(res.Name, p.Host, p.Kubeconfig, nodes, md)
+	certName := ""
+	if ev, ok := res.Evidence[ProbeCertificate]; ok && ev.Distro != "" {
+		certName = ev.Value
+	}
+	res.Identity = identify(res.Name, p.Host, certName, p.Kubeconfig, nodes, md)
 	return res
 }

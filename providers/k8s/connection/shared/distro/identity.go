@@ -10,7 +10,8 @@ import (
 
 // Identity sources.
 const (
-	IdentityKubeconfig = "kubeconfig"
+	IdentityKubeconfig  = "kubeconfig"
+	IdentityCertificate = "certificate"
 	IdentityMetadata   = "metadata"
 	IdentityNodes      = "nodes"
 )
@@ -34,21 +35,35 @@ var (
 // kubeconfig only for a distribution the server itself confirmed, so a cluster
 // entry named like a managed cluster never makes one: the names in a kubeconfig
 // can be edited by hand.
-func identify(name, host string, k *Kubeconfig, nodes []Node, md *MetadataResult) Identity {
+//
+// The API server's name comes from the kubeconfig's server URL or, through a
+// tunnel or proxy, from the certificate the server presents.
+func identify(name, host, certName string, k *Kubeconfig, nodes []Node, md *MetadataResult) Identity {
 	var id Identity
 	h := strings.ToLower(hostname(host))
+	c := strings.TrimPrefix(strings.ToLower(certName), "*")
+	// match tries the server URL, then the certificate name
+	match := func(re *regexp.Regexp) ([]string, string) {
+		if m := re.FindStringSubmatch(h); m != nil {
+			return m, IdentityKubeconfig
+		}
+		if m := re.FindStringSubmatch(c); m != nil {
+			return m, IdentityCertificate
+		}
+		return nil, ""
+	}
 
 	switch name {
 	case AKS:
-		if m := aksHost.FindStringSubmatch(h); m != nil {
-			id.Region = m[1]
+		if m, src := match(aksHost); m != nil {
+			id.Region, id.Source = m[1], src
+		}
+		// `az aks get-credentials` names the cluster entry after the AKS
+		// resource; the DNS prefix in the host can be anything. An entry in
+		// another cloud's format was not written for this cluster.
+		if k != nil && k.ClusterEntry != "" && !eksARN.MatchString(k.ClusterEntry) && !gkeEntry.MatchString(k.ClusterEntry) {
+			id.ClusterName = k.ClusterEntry
 			id.Source = IdentityKubeconfig
-			// `az aks get-credentials` names the cluster entry after the AKS
-			// resource; the DNS prefix in the host can be anything.
-			// An entry in another cloud's format was not written by it.
-			if k != nil && k.ClusterEntry != "" && !eksARN.MatchString(k.ClusterEntry) && !gkeEntry.MatchString(k.ClusterEntry) {
-				id.ClusterName = k.ClusterEntry
-			}
 		}
 	case EKS:
 		if k != nil {
@@ -66,8 +81,11 @@ func identify(name, host string, k *Kubeconfig, nodes []Node, md *MetadataResult
 			}
 		}
 		if id.Region == "" {
-			if m := eksHost.FindStringSubmatch(h); m != nil {
-				id.Region, id.Source = m[1], IdentityKubeconfig
+			if m, src := match(eksHost); m != nil {
+				id.Region = m[1]
+				if id.Source == "" {
+					id.Source = src
+				}
 			}
 		}
 	case GKE:
