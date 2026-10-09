@@ -373,7 +373,11 @@ func (s *AixKernelManager) Info() (KernelInfo, error) {
 }
 
 func (s *AixKernelManager) Parameters() (map[string]string, error) {
-	return map[string]string{}, nil
+	cmd, err := s.conn.RunCommand(AixTunablesCommand)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not read kernel parameters")
+	}
+	return ParseAixTunables(cmd.Stdout)
 }
 
 func (s *AixKernelManager) Modules() ([]*KernelModule, error) {

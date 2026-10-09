@@ -7036,6 +7036,8 @@ kernel @defaults("info") {
   //
   // Live values only, as the kernel prints them. Use `sysctls` or
   // `kernel.parameter` for the value the configuration files set as well.
+  // On AIX, the tunables of no, vmo, ioo, schedo, raso and nfso, each named
+  // after its command (`no.tcp_keepidle`); only no and nfso run without root.
   // Those collapse whitespace in values (the tab in
   // `net.ipv4.ip_local_port_range` becomes a space), so the same parameter
   // can read differently here.
@@ -7079,7 +7081,9 @@ kernel @defaults("info") {
 // explicit assignment beats a glob, and `-name` excludes a parameter from
 // globs. Without systemd-sysctl, /etc/sysctl.conf is applied after the
 // sysctl.d files, as `sysctl --system` does. On BSD and macOS it is
-// /etc/sysctl.conf (and /etc/sysctl.conf.local on FreeBSD).
+// /etc/sysctl.conf (and /etc/sysctl.conf.local on FreeBSD). On AIX it is
+// /etc/tunables/nextboot, and a name is the command and the tunable,
+// `kernel.parameter("no.ipforwarding")`.
 kernel.parameter @defaults("name value configured") {
   init(name string)
 

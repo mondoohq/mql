@@ -111,7 +111,11 @@ func readSysctlConfig(runtime *plugin.Runtime, conn shared.Connection) (*kernel.
 		if err != nil {
 			return nil, err
 		}
-		err = config.Parse(f, path)
+		if conn.Asset().Platform.Name == "aix" {
+			err = config.ParseAixNextboot(f, path)
+		} else {
+			err = config.Parse(f, path)
+		}
 		f.Close()
 		if err != nil {
 			return nil, err
@@ -133,8 +137,10 @@ func sysctlConfigFiles(runtime *plugin.Runtime, conn shared.Connection) ([]strin
 	platform := conn.Asset().Platform
 
 	switch {
-	case platform.Name == "solaris" || platform.Name == "aix":
+	case platform.Name == "solaris":
 		return nil, nil
+	case platform.Name == "aix":
+		return existingRegularFiles(fs, kernel.AixNextbootFile), nil
 	case platform.IsFamily("linux"):
 		files, err := listConfDFiles(runtime, kernel.SysctlDirs)
 		if err != nil {
