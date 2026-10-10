@@ -490,6 +490,7 @@ const (
 	ResourceWindowsUpdateEntry                            string = "windows.update.entry"
 	ResourceWindowsUpdateConfig                           string = "windows.update.config"
 	ResourceWindowsUpdatePolicy                           string = "windows.update.policy"
+	ResourceWindowsHotpatch                               string = "windows.hotpatch"
 	ResourceWindowsServerFeature                          string = "windows.serverFeature"
 	ResourceWindowsOptionalFeature                        string = "windows.optionalFeature"
 	ResourceWindowsEventlog                               string = "windows.eventlog"
@@ -2636,6 +2637,10 @@ func init() {
 		"windows.update.policy": {
 			Init:   initWindowsUpdatePolicy,
 			Create: createWindowsUpdatePolicy,
+		},
+		"windows.hotpatch": {
+			// to override args, implement: initWindowsHotpatch(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsHotpatch,
 		},
 		"windows.serverFeature": {
 			Init:   initWindowsServerFeature,
@@ -15024,6 +15029,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"windows.update.policy.disablePauseUXAccess": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsUpdatePolicy).GetDisablePauseUXAccess()).ToDataRes(types.Bool)
+	},
+	"windows.hotpatch.eligible": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsHotpatch).GetEligible()).ToDataRes(types.Bool)
+	},
+	"windows.hotpatch.enrolled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsHotpatch).GetEnrolled()).ToDataRes(types.Bool)
+	},
+	"windows.hotpatch.enrollmentPackage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsHotpatch).GetEnrollmentPackage()).ToDataRes(types.String)
+	},
+	"windows.hotpatch.hotPatchTableSize": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsHotpatch).GetHotPatchTableSize()).ToDataRes(types.Int)
+	},
+	"windows.hotpatch.rebootlessUpdatesPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsHotpatch).GetRebootlessUpdatesPolicy()).ToDataRes(types.Bool)
+	},
+	"windows.hotpatch.vbsConfigured": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsHotpatch).GetVbsConfigured()).ToDataRes(types.Bool)
+	},
+	"windows.hotpatch.vbsRunning": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsHotpatch).GetVbsRunning()).ToDataRes(types.Bool)
 	},
 	"windows.serverFeature.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsServerFeature).GetPath()).ToDataRes(types.String)
@@ -37735,6 +37761,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"windows.update.policy.disablePauseUXAccess": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsUpdatePolicy).DisablePauseUXAccess, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.hotpatch.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsHotpatch).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.hotpatch.eligible": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsHotpatch).Eligible, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.hotpatch.enrolled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsHotpatch).Enrolled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.hotpatch.enrollmentPackage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsHotpatch).EnrollmentPackage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.hotpatch.hotPatchTableSize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsHotpatch).HotPatchTableSize, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"windows.hotpatch.rebootlessUpdatesPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsHotpatch).RebootlessUpdatesPolicy, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.hotpatch.vbsConfigured": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsHotpatch).VbsConfigured, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.hotpatch.vbsRunning": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsHotpatch).VbsRunning, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"windows.serverFeature.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -96111,6 +96169,99 @@ func (c *mqlWindowsUpdatePolicy) GetAllowOptionalContent() *plugin.TValue[int64]
 
 func (c *mqlWindowsUpdatePolicy) GetDisablePauseUXAccess() *plugin.TValue[bool] {
 	return &c.DisablePauseUXAccess
+}
+
+// mqlWindowsHotpatch for the windows.hotpatch resource
+type mqlWindowsHotpatch struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlWindowsHotpatchInternal
+	Eligible                plugin.TValue[bool]
+	Enrolled                plugin.TValue[bool]
+	EnrollmentPackage       plugin.TValue[string]
+	HotPatchTableSize       plugin.TValue[int64]
+	RebootlessUpdatesPolicy plugin.TValue[bool]
+	VbsConfigured           plugin.TValue[bool]
+	VbsRunning              plugin.TValue[bool]
+}
+
+// createWindowsHotpatch creates a new instance of this resource
+func createWindowsHotpatch(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsHotpatch{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.hotpatch", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsHotpatch) MqlName() string {
+	return "windows.hotpatch"
+}
+
+func (c *mqlWindowsHotpatch) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsHotpatch) GetEligible() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Eligible, func() (bool, error) {
+		return c.eligible()
+	})
+}
+
+func (c *mqlWindowsHotpatch) GetEnrolled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Enrolled, func() (bool, error) {
+		return c.enrolled()
+	})
+}
+
+func (c *mqlWindowsHotpatch) GetEnrollmentPackage() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.EnrollmentPackage, func() (string, error) {
+		return c.enrollmentPackage()
+	})
+}
+
+func (c *mqlWindowsHotpatch) GetHotPatchTableSize() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.HotPatchTableSize, func() (int64, error) {
+		return c.hotPatchTableSize()
+	})
+}
+
+func (c *mqlWindowsHotpatch) GetRebootlessUpdatesPolicy() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RebootlessUpdatesPolicy, func() (bool, error) {
+		return c.rebootlessUpdatesPolicy()
+	})
+}
+
+func (c *mqlWindowsHotpatch) GetVbsConfigured() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.VbsConfigured, func() (bool, error) {
+		return c.vbsConfigured()
+	})
+}
+
+func (c *mqlWindowsHotpatch) GetVbsRunning() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.VbsRunning, func() (bool, error) {
+		return c.vbsRunning()
+	})
 }
 
 // mqlWindowsServerFeature for the windows.serverFeature resource

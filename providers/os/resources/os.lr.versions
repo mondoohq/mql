@@ -5762,6 +5762,14 @@ windows.hotfix.hotfixId 9.0.1
 windows.hotfix.installedBy 9.0.1
 windows.hotfix.installedOn 9.0.1
 windows.hotfixes 9.0.1
+windows.hotpatch 14.19.3
+windows.hotpatch.eligible 14.19.3
+windows.hotpatch.enrolled 14.19.3
+windows.hotpatch.enrollmentPackage 14.19.3
+windows.hotpatch.hotPatchTableSize 14.19.3
+windows.hotpatch.rebootlessUpdatesPolicy 14.19.3
+windows.hotpatch.vbsConfigured 14.19.3
+windows.hotpatch.vbsRunning 14.19.3
 windows.logonSession 13.40.10
 windows.logonSession.accountDomain 13.40.10
 windows.logonSession.accountName 13.40.10

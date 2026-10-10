@@ -15508,6 +15508,72 @@ private windows.update.policy @defaults("automaticUpdatesEnabled noAutoUpdate sc
   disablePauseUXAccess bool
 }
 
+// Windows hotpatch
+//
+// Whether the host can apply Windows security updates without a reboot.
+// Hotpatch exists on Windows Server 2022 and later and on Windows 11 24H2 and
+// later clients. `eligible` says whether the OS, edition, build and
+// architecture allow hotpatch at all, and `enrolled` whether the host is set
+// up to receive hotpatches. On clients `enrolled` means configured: whether a
+// client actually receives hotpatches is decided by Microsoft's cloud from
+// the tenant's licenses, which nothing on the device shows, so an installed
+// hotpatch update is the stronger evidence. The registry values behind the
+// rule are exposed as well. Running state that only WMI can report, such as
+// `vbsRunning`, is null when it cannot be read, as in a scan of a disk image.
+windows.hotpatch @defaults("eligible enrolled") {
+  // Whether the OS, edition, build and architecture allow hotpatch
+  //
+  // True for Windows Server 2022 and later (build 20348 and later, including
+  // domain controllers) and for Windows 11 clients from build 26100.2033 on
+  // x64 or 26100.4929 on arm64 on an edition that can be enrolled (Pro,
+  // Pro for Workstations, Pro Education, Enterprise, Education, and IoT
+  // Enterprise, but not Home or SE). It says nothing about enrollment, and it
+  // matches the `windows.mondoo.com/hotpatch-eligible` platform label. Null
+  // when the product type or build is unknown.
+  eligible() bool
+  // Whether the host is set up to receive hotpatches
+  //
+  // False when the host is not `eligible`. On servers, true when the
+  // Hotpatch Enrollment Package is installed (`enrollmentPackage`),
+  // Virtualization-Based Security is configured (`vbsConfigured`), and
+  // `hotPatchTableSize` is non-zero. On clients, true when the
+  // AllowRebootlessUpdates policy is on (`rebootlessUpdatesPolicy`) and VBS is
+  // running (`vbsRunning`, or `vbsConfigured` when the running state cannot be
+  // read). On clients this means the device is configured for hotpatch, not
+  // that it receives hotpatches: Microsoft decides enrollment in its cloud
+  // from the tenant's licenses. Null when the product type or build is
+  // unknown.
+  enrolled() bool
+  // Name of the installed hotpatch enrollment package
+  //
+  // The Name value under HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Update\TargetingInfo\DynamicInstalled\Hotpatch.<arch>,
+  // which reads `Hotpatch Enrollment Package` on an enrolled server. Empty
+  // when the value is absent, which is normal on clients.
+  enrollmentPackage() string
+  // Size of the hotpatch table reserved by the memory manager
+  //
+  // HotPatchTableSize under HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management.
+  // Null when the value is absent.
+  hotPatchTableSize() int
+  // Whether the client hotpatch policy is on
+  //
+  // AllowRebootlessUpdates under HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Update,
+  // set by Intune or Windows Autopatch when the device is assigned a hotpatch
+  // quality update policy. Null on servers and when the value is absent.
+  rebootlessUpdatesPolicy() bool
+  // Whether Virtualization-Based Security is configured
+  //
+  // EnableVirtualizationBasedSecurity under HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard.
+  // VBS can run without this value. Null when the value is absent.
+  vbsConfigured() bool
+  // Whether Virtualization-Based Security is running
+  //
+  // True when Win32_DeviceGuard reports VirtualizationBasedSecurityStatus 2
+  // (enabled and running). Null when WMI cannot be queried, such as in a scan
+  // of a disk image or without an elevated session.
+  vbsRunning() bool
+}
+
 // Windows Server role, role service, or feature
 //
 // Installable Windows Server component reported by

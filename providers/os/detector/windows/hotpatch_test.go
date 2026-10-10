@@ -4,7 +4,6 @@
 package windows
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -104,13 +103,10 @@ func TestParseWinRegistryClientHotpatch(t *testing.T) {
 		})
 	}
 
-	t.Run("json round-trip keeps VBS running state", func(t *testing.T) {
-		in := WindowsClientHotpatch{AllowRebootlessUpdates: "1", EnableVirtualizationBasedSecurity: "1", VirtualizationBasedSecurityStatus: "2"}
-		b, err := json.Marshal(in)
+	t.Run("numeric JSON values are read like strings", func(t *testing.T) {
+		m, err := ParseWinRegistryClientHotpatch(strings.NewReader(`{"AllowRebootlessUpdates":1,"VirtualizationBasedSecurityStatus":2}`))
 		assert.Nil(t, err)
-		var out WindowsClientHotpatch
-		assert.Nil(t, json.Unmarshal(b, &out))
-		assert.Equal(t, in, out)
+		assert.True(t, m)
 	})
 }
 

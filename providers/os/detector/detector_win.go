@@ -4,7 +4,6 @@
 package detector
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -37,6 +36,7 @@ func runtimeWindowsDetector(pf *inventory.Platform, conn shared.Connection) (boo
 		}
 
 		pf.Labels[win.HotpatchLabel] = strconv.FormatBool(hotpatchEnabled)
+		setHotpatchEligibleLabel(pf)
 
 		detectIntuneDeviceID(pf, conn)
 		detectESU(pf, conn)
@@ -62,10 +62,21 @@ func runtimeWindowsDetector(pf *inventory.Platform, conn shared.Connection) (boo
 	pf.Labels["windows.mondoo.com/product-type"] = data.ProductType
 
 	correctForWindows11(pf)
+	setHotpatchEligibleLabel(pf)
 
 	detectIntuneDeviceID(pf, conn)
 	detectESU(pf, conn)
 	return true, nil
+}
+
+// setHotpatchEligibleLabel sets the hotpatch-eligible label whenever the
+// product type and build are known. It reports only whether the OS, edition,
+// build and architecture allow hotpatch, not whether the host is enrolled.
+func setHotpatchEligibleLabel(pf *inventory.Platform) {
+	if pf.Labels["windows.mondoo.com/product-type"] == "" || pf.Version == "" {
+		return
+	}
+	pf.Labels[win.HotpatchEligibleLabel] = strconv.FormatBool(win.HotpatchEligible(pf))
 }
 
 func platformFromWinCurrentVersion(pf *inventory.Platform, current *win.WindowsCurrentVersion) {
@@ -156,13 +167,7 @@ func staticWindowsDetector(pf *inventory.Platform, conn shared.Connection) (bool
 
 	platformFromWinCurrentVersion(pf, current)
 
-	var hotpatchEnabled bool
-	if pf.Labels["windows.mondoo.com/product-type"] == "1" {
-		hotpatchEnabled = staticClientHotpatch(rh)
-	} else {
-		hotpatchEnabled = staticServerHotpatch(rh, pf.Arch)
-	}
-	pf.Labels[win.HotpatchLabel] = strconv.FormatBool(hotpatchEnabled)
+	applyStaticHotpatch(pf, rh)
 
 	if win.IdentityDetectable(pf) {
 		applyIntuneInfo(pf, staticIntuneInfo(rh))
@@ -171,59 +176,19 @@ func staticWindowsDetector(pf *inventory.Platform, conn shared.Connection) (bool
 	return true, nil
 }
 
+// applyStaticHotpatch sets the hotpatch labels from loaded SOFTWARE and SYSTEM
+// hives. An offline scan cannot ask WMI for the VBS running state, so the
+// configured VBS value decides.
+func applyStaticHotpatch(pf *inventory.Platform, rh win.HiveReader) {
+	hotpatch := win.ReadStaticHotpatchState(rh, pf.Arch)
+	pf.Labels[win.HotpatchLabel] = strconv.FormatBool(hotpatch.Enrolled(win.IsClientOS(pf)))
+	setHotpatchEligibleLabel(pf)
+}
+
 // staticControlSet returns the SYSTEM hive's active control set key, such as
-// ControlSet001. CurrentControlSet exists only in the live registry, as a link
-// the kernel creates at boot; a SYSTEM hive loaded from a file has only the
-// numbered control sets and names the active one in Select\Current.
-// hiveValueReader is the part of the registry handler staticControlSet needs.
-type hiveValueReader interface {
-	GetRegistryItemValue(registryId string, path, key string) (registry.RegistryKeyItem, error)
-}
-
-func staticControlSet(rh hiveValueReader) string {
-	if v, err := rh.GetRegistryItemValue(registry.System, "Select", "Current"); err == nil && v.Value.Number > 0 && v.Value.Number < 1000 {
-		return fmt.Sprintf("ControlSet%03d", v.Value.Number)
-	}
-	return "ControlSet001"
-}
-
-// staticClientHotpatch checks AllowRebootlessUpdates + VBS from offline registry hives.
-func staticClientHotpatch(rh *registry.RegistryHandler) bool {
-	allowRebootless, err := rh.GetRegistryItemValue(registry.Software, "Microsoft\\PolicyManager\\current\\device\\Update", "AllowRebootlessUpdates")
-	if err == nil && allowRebootless.Value.String != "" {
-		log.Debug().Str("allowRebootlessUpdates", allowRebootless.Value.String).Msg("found AllowRebootlessUpdates")
-	}
-
-	enableVBS, err := rh.GetRegistryItemValue(registry.System, staticControlSet(rh)+"\\Control\\DeviceGuard", "EnableVirtualizationBasedSecurity")
-	if err == nil && enableVBS.Value.String != "" {
-		log.Debug().Str("enableVirtualizationBasedSecurity", enableVBS.Value.String).Msg("found enableVirtualizationBasedSecurity")
-	}
-
-	return allowRebootless.Value.String == "1" && enableVBS.Value.String == "1"
-}
-
-// staticServerHotpatch checks hotpatch enrollment package + VBS + HotPatchTableSize from offline registry hives.
-func staticServerHotpatch(rh *registry.RegistryHandler, arch string) bool {
-	platformArch := "amd64"
-	if arch != "" {
-		platformArch = strings.ToLower(arch)
-	}
-	hotpatchPackage, err := rh.GetRegistryItemValue(registry.Software, "Microsoft\\Windows NT\\CurrentVersion\\Update\\TargetingInfo\\DynamicInstalled\\Hotpatch."+platformArch, "Name")
-	if err == nil && hotpatchPackage.Value.String != "" {
-		log.Debug().Str("hotpatchPackage", hotpatchPackage.Value.String).Msg("found hotpatchPackage")
-	}
-
-	enableVBS, err := rh.GetRegistryItemValue(registry.System, staticControlSet(rh)+"\\Control\\DeviceGuard", "EnableVirtualizationBasedSecurity")
-	if err == nil && enableVBS.Value.String != "" {
-		log.Debug().Str("enableVirtualizationBasedSecurity", enableVBS.Value.String).Msg("found enableVirtualizationBasedSecurity")
-	}
-
-	hotPatchTableSize, err := rh.GetRegistryItemValue(registry.System, staticControlSet(rh)+"\\Control\\Session Manager\\Memory Management", "HotPatchTableSize")
-	if err == nil && hotPatchTableSize.Value.String != "" {
-		log.Debug().Str("hotPatchTableSize", hotPatchTableSize.Value.String).Msg("found hotPatchTableSize")
-	}
-
-	return hotpatchPackage.Value.String == win.HotpatchPackage && enableVBS.Value.String == "1" && hotPatchTableSize.Value.String != "0" && hotPatchTableSize.Value.String != ""
+// ControlSet001; see win.StaticControlSet.
+func staticControlSet(rh win.HiveValueReader) string {
+	return win.StaticControlSet(rh)
 }
 
 // detectIntuneDeviceID detects the Intune device ID for Windows client systems.

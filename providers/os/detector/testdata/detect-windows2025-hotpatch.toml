@@ -2,20 +2,22 @@
 stdout="""
 {
     "CurrentBuild":  "26100",
-    "UBR":  3000,
-    "InstallationType":  "Client",
-    "EditionID":  "Professional",
-    "ProductName":  "Windows 11 Pro",
+    "UBR":  4652,
+    "InstallationType":  "Server",
+    "EditionID":  "ServerDatacenter",
+    "ProductName":  "Windows Server 2025 Datacenter",
     "DisplayVersion":  "24H2",
     "Architecture":  "AMD64",
-    "ProductType":  "WinNT"
+    "ProductType":  "ServerNT"
 }
 """
 
 [commands."9a68779f67ef5a486a1d60fd8355e4f524f9419cb5b5baa1e9896011c32da75d"]
 stdout="""
 {
-    "AllowRebootlessUpdates":  "1",
+    "Name":  "Hotpatch Enrollment Package",
+    "HotPatchTableSize":  "4096",
+    "EnableVirtualizationBasedSecurity":  "1",
     "VirtualizationBasedSecurityStatus":  "2"
 }
 """
