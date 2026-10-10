@@ -102,7 +102,17 @@ func selectAzureCredential(conf *inventory.Config) (azcore.TokenCredential, erro
 	// held across the build, which is local -- constructing a credential
 	// contacts nothing -- so concurrent connects queue briefly rather than
 	// each building a chain of their own
+	//
+	// The Azure CLI signs in with the account and tenant that hold the
+	// connection's subscription (azauth.ChainedTokenOptions.Subscription).
+	// Under a tenant option every subscription is in that tenant, so they share
+	// a credential; without one, each subscription can be in another tenant,
+	// so it is part of the identity.
+	subscriptionId := conf.Options[OptionSubscriptionID]
 	identity := tenantId + "/" + clientId
+	if tenantId == "" {
+		identity += "/" + subscriptionId
+	}
 	credentialMu.Lock()
 	defer credentialMu.Unlock()
 	if cached, ok := credentialCache[identity]; ok {
@@ -132,6 +142,7 @@ func selectAzureCredential(conf *inventory.Config) (azcore.TokenCredential, erro
 	token, err := azauth.GetTokenFromCredential(cred, &azauth.ChainedTokenOptions{
 		TenantID:           tenantId,
 		ClientID:           clientId,
+		Subscription:       subscriptionId,
 		FederatedTokenFile: federatedTokenFile,
 		Methods:            methods,
 		Source:             "azure-connection",

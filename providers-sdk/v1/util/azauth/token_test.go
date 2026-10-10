@@ -223,3 +223,21 @@ func TestGuidedCredential_EnrichesErrors(t *testing.T) {
 		assert.Equal(t, "token", tk.Token)
 	})
 }
+
+func TestCliCredentialOptions(t *testing.T) {
+	tenant := "00000000-0000-0000-0000-000000000001"
+	sub := "00000000-0000-0000-0000-000000000002"
+
+	opts := cliCredentialOptions(&ChainedTokenOptions{TenantID: tenant})
+	assert.Equal(t, tenant, opts.TenantID, "--tenant-id reaches the CLI")
+	assert.Empty(t, opts.Subscription)
+	assert.Equal(t, []string{"*"}, opts.AdditionallyAllowedTenants)
+
+	opts = cliCredentialOptions(&ChainedTokenOptions{TenantID: tenant, Subscription: sub})
+	assert.Equal(t, sub, opts.Subscription, "the subscription selects the CLI account")
+	assert.Empty(t, opts.TenantID, "az does not accept --tenant with --subscription")
+
+	opts = cliCredentialOptions(&ChainedTokenOptions{})
+	assert.Empty(t, opts.TenantID, "nothing set keeps the CLI's defaults")
+	assert.Empty(t, opts.Subscription)
+}

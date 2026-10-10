@@ -164,6 +164,13 @@ type ChainedTokenOptions struct {
 	// to its own default, which for workload identity is AZURE_TENANT_ID.
 	TenantID string
 
+	// Subscription the Azure CLI signs in for: `az account get-access-token
+	// --subscription` takes the token from the account and tenant that hold
+	// it, which is the only way to reach a subscription of another account the
+	// CLI is logged in with. Only the CLI method reads it. When set, it is used
+	// instead of TenantID, as the CLI does not accept both.
+	Subscription string
+
 	// ClientID of the service principal to sign in as. Workload identity needs
 	// it and errors out without one; empty falls back to AZURE_CLIENT_ID.
 	ClientID string
@@ -258,13 +265,32 @@ func BuildChainedToken(opts ...TokenResolverFn) (*azidentity.ChainedTokenCredent
 	return azidentity.NewChainedTokenCredential(chain, nil)
 }
 
+// cliCredentialOptions requests the Azure CLI's token for the subscription
+// or tenant the caller scans. Without either, `az account get-access-token`
+// runs for the CLI's default account and tenant, and every subscription in
+// another tenant rejects that token with InvalidAuthenticationTokenTenant.
+// The subscription wins: az picks the account that holds it and that
+// account's tenant, also when the CLI is logged in with several accounts,
+// while --tenant asks the default account, which may not exist in that
+// tenant (AADSTS90072). az rejects --subscription and --tenant together.
+// Neither set keeps the CLI's defaults.
+func cliCredentialOptions(options *ChainedTokenOptions) *azidentity.AzureCLICredentialOptions {
+	opts := &azidentity.AzureCLICredentialOptions{AdditionallyAllowedTenants: []string{"*"}}
+	if options.Subscription != "" {
+		opts.Subscription = options.Subscription
+	} else {
+		opts.TenantID = options.TenantID
+	}
+	return opts
+}
+
 func GetDefaultChainedToken(options *ChainedTokenOptions) (*azidentity.ChainedTokenCredential, error) {
 	if options == nil {
 		options = &ChainedTokenOptions{}
 	}
 
 	resolvers := map[CredentialMethod]TokenResolverFn{
-		CredentialMethodCLI: WithCliCredentials(&azidentity.AzureCLICredentialOptions{AdditionallyAllowedTenants: []string{"*"}}),
+		CredentialMethodCLI: WithCliCredentials(cliCredentialOptions(options)),
 		CredentialMethodEnv: WithEnvCredentials(&azidentity.EnvironmentCredentialOptions{ClientOptions: options.ClientOptions}),
 		CredentialMethodManagedIdentity: WithRetryableManagedIdentityCredentials(5*time.Second, 3,
 			&azidentity.ManagedIdentityCredentialOptions{ClientOptions: options.ClientOptions}),

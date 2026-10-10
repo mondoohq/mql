@@ -370,3 +370,28 @@ func TestSubscriptionServesTheCachedRecord(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Production", *record.DisplayName)
 }
+
+// Without a tenant option, the Azure CLI signs in for each connection's
+// subscription, which can belong to another account and tenant, so a
+// subscription gets its own credential; the same subscription reuses it.
+func TestSelectAzureCredential_CachesPerSubscriptionWithoutTenant(t *testing.T) {
+	resetCredentialCache()
+	t.Setenv("AZURE_FEDERATED_TOKEN_FILE", "/tmp/x.jwt")
+
+	first, err := selectAzureCredential(&inventory.Config{
+		Options: map[string]string{"subscription-id": "sub-a"},
+	})
+	require.NoError(t, err)
+
+	second, err := selectAzureCredential(&inventory.Config{
+		Options: map[string]string{"subscription-id": "sub-b"},
+	})
+	require.NoError(t, err)
+	require.NotSame(t, first, second, "a subscription without a tenant option must get its own credential")
+
+	againA, err := selectAzureCredential(&inventory.Config{
+		Options: map[string]string{"subscription-id": "sub-a"},
+	})
+	require.NoError(t, err)
+	require.Same(t, first, againA)
+}
