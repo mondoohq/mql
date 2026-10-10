@@ -10,6 +10,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -240,4 +241,40 @@ func TestCliCredentialOptions(t *testing.T) {
 	opts = cliCredentialOptions(&ChainedTokenOptions{})
 	assert.Empty(t, opts.TenantID, "nothing set keeps the CLI's defaults")
 	assert.Empty(t, opts.Subscription)
+}
+
+type recordingCredential struct {
+	got policy.TokenRequestOptions
+}
+
+func (r *recordingCredential) GetToken(_ context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	r.got = opts
+	return azcore.AccessToken{Token: "t"}, nil
+}
+
+// A subscription-bound CLI credential drops the tenant a client names in its
+// token request (Key Vault's challenge does), since az accepts only one of
+// --subscription and --tenant.
+func TestSubscriptionCliCredential_DropsRequestTenant(t *testing.T) {
+	inner := &recordingCredential{}
+	cred := subscriptionCliCredential{inner: inner}
+	_, err := cred.GetToken(context.Background(), policy.TokenRequestOptions{
+		Scopes:   []string{"https://vault.azure.net/.default"},
+		TenantID: "00000000-0000-0000-0000-000000000001",
+	})
+	require.NoError(t, err)
+	assert.Empty(t, inner.got.TenantID)
+	assert.Equal(t, []string{"https://vault.azure.net/.default"}, inner.got.Scopes)
+}
+
+func TestWithSubscriptionCliCredentials(t *testing.T) {
+	cred, err := withSubscriptionCliCredentials(&azidentity.AzureCLICredentialOptions{Subscription: "00000000-0000-0000-0000-000000000002"})()
+	require.NoError(t, err)
+	_, ok := cred.(subscriptionCliCredential)
+	assert.True(t, ok, "a subscription wraps the CLI credential")
+
+	cred, err = withSubscriptionCliCredentials(&azidentity.AzureCLICredentialOptions{TenantID: "00000000-0000-0000-0000-000000000001"})()
+	require.NoError(t, err)
+	_, ok = cred.(*azidentity.AzureCLICredential)
+	assert.True(t, ok, "without a subscription the CLI credential is used as is")
 }

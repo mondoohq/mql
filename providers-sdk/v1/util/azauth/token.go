@@ -217,6 +217,35 @@ func WithCliCredentials(opts *azidentity.AzureCLICredentialOptions) TokenResolve
 	}
 }
 
+// withSubscriptionCliCredentials is WithCliCredentials for a credential bound
+// to a subscription (cliCredentialOptions). Clients that discover their tenant
+// from an authentication challenge, such as Key Vault's, name it in each token
+// request, and azidentity passes it to az as --tenant next to --subscription,
+// which az rejects ("Please specify only one of subscription and tenant").
+// The subscription already selects the account and its tenant, so the
+// request's tenant is dropped.
+func withSubscriptionCliCredentials(opts *azidentity.AzureCLICredentialOptions) TokenResolverFn {
+	return func() (azcore.TokenCredential, error) {
+		cred, err := azidentity.NewAzureCLICredential(opts)
+		if err != nil {
+			return nil, err
+		}
+		if opts.Subscription == "" {
+			return cred, nil
+		}
+		return subscriptionCliCredential{inner: cred}, nil
+	}
+}
+
+type subscriptionCliCredential struct {
+	inner azcore.TokenCredential
+}
+
+func (c subscriptionCliCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	opts.TenantID = ""
+	return c.inner.GetToken(ctx, opts)
+}
+
 func WithEnvCredentials(opts *azidentity.EnvironmentCredentialOptions) TokenResolverFn {
 	return func() (azcore.TokenCredential, error) {
 		return azidentity.NewEnvironmentCredential(opts)
@@ -290,7 +319,7 @@ func GetDefaultChainedToken(options *ChainedTokenOptions) (*azidentity.ChainedTo
 	}
 
 	resolvers := map[CredentialMethod]TokenResolverFn{
-		CredentialMethodCLI: WithCliCredentials(cliCredentialOptions(options)),
+		CredentialMethodCLI: withSubscriptionCliCredentials(cliCredentialOptions(options)),
 		CredentialMethodEnv: WithEnvCredentials(&azidentity.EnvironmentCredentialOptions{ClientOptions: options.ClientOptions}),
 		CredentialMethodManagedIdentity: WithRetryableManagedIdentityCredentials(5*time.Second, 3,
 			&azidentity.ManagedIdentityCredentialOptions{ClientOptions: options.ClientOptions}),
