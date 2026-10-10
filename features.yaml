@@ -35,7 +35,7 @@ Features:
   idx: 5
   start: v7.0
   status: new
-- desc: Errors are treated as failures, see https://www.notion.so/mondoo/Errors-and-Scoring-5dc554348aad4118a1dbf35123368329
+- desc: Errors are treated as failures, see https://app.notion.com/p/mondoo/Errors-and-Scoring-5dc554348aad4118a1dbf35123368329
   end: v9.0
   id: ErrorsAsFailures
   idx: 6

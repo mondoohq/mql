@@ -108,7 +108,7 @@ func (c *VsphereConnection) EsxiVersion(moid string) (*EsxiSystemVersion, error)
 // Product : VMware ESXi
 // Update  : 0
 // Version : 6.7.0
-// see https://kb.vmware.com/s/article/2143832 for version and build number mapping
+// see https://knowledge.broadcom.com/external/article?legacyId=2143832 for version and build number mapping
 func esxiVersion(host *object.HostSystem) (*EsxiSystemVersion, error) {
 	ctx := context.Background()
 	e, err := esx.NewExecutor(ctx, host.Client(), host)
@@ -200,9 +200,9 @@ func (c *VsphereConnection) InstanceUUID() (string, error) {
 }
 
 // Identifier will only identify the connection
-// see https://blogs.vmware.com/vsphere/2012/02/uniquely-identifying-virtual-machines-in-vsphere-and-vcloud-part-1-overview.html
+// see https://web.archive.org/web/20250625103035/https://blogs.vmware.com/vsphere/2012/02/uniquely-identifying-virtual-machines-in-vsphere-and-vcloud-part-1-overview.html
 // To match the vm with the guest, we would need to extract the vm uuid from bios
-// https://kb.vmware.com/s/article/1009458
+// https://web.archive.org/web/20240422231644/https://kb.vmware.com/s/article/1009458
 // /usr/sbin/dmidecode | grep UUID https://communities.vmware.com/thread/420420
 // wmic bios get name,serialnumber,version  https://communities.vmware.com/thread/582729/
 func (c *VsphereConnection) Identifier() (string, error) {

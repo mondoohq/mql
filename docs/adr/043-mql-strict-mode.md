@@ -98,8 +98,8 @@ what this ADR resumes. The remaining pieces are narrow: a mode to switch on,
 resource field access wired to it, and an opt-in that lets each piece of content
 choose.
 
-[pr6633]: https://github.com/mondoohq/cnquery/pull/6633
-[pr7079]: https://github.com/mondoohq/cnquery/pull/7079
+[pr6633]: https://github.com/mondoohq/mql/pull/6633
+[pr7079]: https://github.com/mondoohq/mql/pull/7079
 ## Decision
 
 Introduce **strict mode**: a compile-time mode in which *producing* null is legal

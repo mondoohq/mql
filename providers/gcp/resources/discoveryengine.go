@@ -22,7 +22,7 @@ import (
 
 // discoveryEngineLocations lists the Discovery Engine multi-region locations.
 // Unlike Vertex AI, Discovery Engine resources live in these three locations
-// only. See https://cloud.google.com/generative-ai-app-builder/docs/locations
+// only. See https://docs.cloud.google.com/generative-ai-app-builder/docs/locations
 var discoveryEngineLocations = []string{"global", "us", "eu"}
 
 // defaultDiscoveryEngineCollection is the built-in collection that hosts data

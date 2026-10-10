@@ -554,7 +554,7 @@ type SystemdFSServiceManager struct {
 
 // systemdUnitSearchPath is the order in which systemd looks up unit files
 // We ignore anything in /run as fs scans should not represent a running system
-// https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Unit%20File%20Load%20Path
+// https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html#Unit%20File%20Load%20Path
 //
 // /lib/systemd/system is the last entry because it is the same directory as
 // /usr/lib/systemd/system wherever /lib is a symlink into /usr, which is every

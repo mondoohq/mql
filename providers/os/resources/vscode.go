@@ -22,7 +22,7 @@ import (
 // newVscodeExtensionPurl builds a vscode-extension PURL per the purl-spec
 // definition at:
 //
-//	https://github.com/package-url/purl-spec/blob/main/types-doc/vscode-extension-definition.md
+//	https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/vscode-extension-definition.md
 //
 // Format: pkg:vscode-extension/<publisher>/<name>@<version>
 // Empty publisher / name / version yields an empty string — callers that

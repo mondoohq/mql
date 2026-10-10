@@ -13,7 +13,7 @@ import (
 )
 
 // NewPackageUrl creates a Maven package URL for a given groupId, artifactId, and version.
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#maven
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/maven-definition.md
 func NewPackageUrl(groupId, artifactId, version string) string {
 	return packageurl.NewPackageURL(
 		packageurl.TypeMaven,

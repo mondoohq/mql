@@ -50,7 +50,7 @@ type insightType struct {
 // direction, since a global type queried only against zones returns nothing
 // forever with no error.
 //
-// https://cloud.google.com/recommender/docs/insights/insight-types
+// https://docs.cloud.google.com/recommender/docs/insights/insight-types
 var insightTypes = []insightType{
 	// Least-privilege and credential hygiene.
 	{"google.iam.policy.Insight", insightGlobal},

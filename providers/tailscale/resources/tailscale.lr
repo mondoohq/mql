@@ -279,7 +279,7 @@ tailscale.user @defaults("id displayName type") {
 // Tailscale tailnet ACL (access control list) policy
 //
 // The tailnet's parsed HuJSON ACL policy
-// (https://tailscale.com/kb/1018/acls), which governs which users and
+// (https://tailscale.com/docs/features/access-control/acls), which governs which users and
 // devices can reach which others. Auditing this policy surfaces
 // over-broad access rules, tag-owner assignments, Tailscale SSH grants,
 // device-posture requirements, and exit-node or subnet-route

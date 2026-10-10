@@ -256,7 +256,7 @@ message TypeMeta {
   // represents. Servers may infer this from the endpoint the client submits 
   // requests to. Cannot be updated. In CamelCase.
   // More info:
-  // https://github.com/kubernetes/community/blob/master/contributors/
+  // https://github.com/kubernetes/community/tree/main/contributors/
   // devel/sig-architecture/api-conventions.md#types-kinds
   // +optional
   string kind = 1;
@@ -265,7 +265,7 @@ message TypeMeta {
   // object. Servers should convert recognized schemas to the latest internal 
   // value, and may reject unrecognized values.
   // More info:
-  // https://github.com/kubernetes/community/blob/master/contributors/
+  // https://github.com/kubernetes/community/tree/main/contributors/
   // devel/sig-architecture/api-conventions.md#resources
   // +optional
   // protolint:disable:next FIELD_NAMES_LOWER_SNAKE_CASE
@@ -281,7 +281,9 @@ message ObjectMeta {
   // generation of an appropriate name automatically. Name is primarily intended
   // for creation idempotence and configuration definition.
   // Cannot be updated.
-  // More info: http://kubernetes.io/docs/user-guide/identifiers#names
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // names/#names
   // +optional
   string name = 1;
 
@@ -292,21 +294,27 @@ message ObjectMeta {
   //
   // Must be a DNS_LABEL.
   // Cannot be updated.
-  // More info: http://kubernetes.io/docs/user-guide/namespaces
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // namespaces/
   // +optional
   string namespace = 3;
 
   // Map of string keys and values that can be used to organize and categorize
   // (scope and select) objects. May match selectors of replication controllers
   // and services.
-  // More info: http://kubernetes.io/docs/user-guide/labels
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // labels/
   // +optional
   map<string, string> labels = 11;
 
   // Annotations is an unstructured key value map stored with a resource that \
   // may be set by external tools to store and retrieve arbitrary metadata. They
   // are not queryable and should be preserved when modifying objects.
-  // More info: http://kubernetes.io/docs/user-guide/annotations
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // annotations/
   // +optional
   map<string, string> annotations = 12;
 
@@ -353,16 +361,20 @@ message OwnerReference {
 
   // Kind of the referent.
   // More info:
-  // https://github.com/kubernetes/community/blob/master/contributors/
+  // https://github.com/kubernetes/community/tree/main/contributors/
   // devel/sig-architecture/api-conventions.md#types-kinds
   string kind = 1;
 
   // Name of the referent.
-  // More info: http://kubernetes.io/docs/user-guide/identifiers#names
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // names/#names
   string name = 3;
 
   // UID of the referent.
-  // More info: http://kubernetes.io/docs/user-guide/identifiers#uids
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // names/#uids
   string uid = 4;
 }
 
@@ -370,7 +382,7 @@ message OwnerReference {
 message Inventory {
   // Standard object's metadata.
   // More info:
-  // https://github.com/kubernetes/community/blob/master/contributors/
+  // https://github.com/kubernetes/community/tree/main/contributors/
   // devel/sig-architecture/api-conventions.md#metadata
   ObjectMeta metadata = 1;
 

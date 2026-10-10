@@ -553,7 +553,7 @@ func knownHostsCallback() (ssh.HostKeyCallback, error) {
 	// load default host keys
 	files := []string{
 		filepath.Join(home, ".ssh", "known_hosts"),
-		// see https://cloud.google.com/compute/docs/instances/connecting-to-instance
+		// see https://docs.cloud.google.com/compute/docs/connect/standard-ssh
 		// NOTE: content in that file is structured by compute.instanceid key
 		// TODO: we need to keep the instance information during the resolve step
 		filepath.Join(home, ".ssh", "google_compute_known_hosts"),

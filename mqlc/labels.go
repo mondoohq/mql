@@ -199,8 +199,8 @@ func isAccessor(s string) bool {
 	return reAccessor.MatchString(s)
 }
 
-// Unicode normalization and filtering, see http://blog.golang.org/normalization and
-// http://godoc.org/golang.org/x/text/unicode/norm for more details.
+// Unicode normalization and filtering, see https://go.dev/blog/normalization and
+// https://pkg.go.dev/golang.org/x/text/unicode/norm for more details.
 func stripCtlAndExtFromUnicode(str string) string {
 	// Almost every label is printable ASCII. NFKD leaves printable ASCII
 	// unchanged, because no ASCII rune has a compatibility decomposition, and

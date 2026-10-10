@@ -76,7 +76,7 @@ func newMqlRecommendation(runtime *plugin.Runtime, item *recommenderpb.Recommend
 	return res.(*mqlGcpRecommendation), nil
 }
 
-// https://cloud.google.com/recommender/docs/recommenders#recommenders
+// https://docs.cloud.google.com/recommender/docs/recommenders#recommenders
 var recommenders = []string{
 	"google.bigquery.capacityCommitments.Recommender",
 	"google.cloudsql.instance.IdleRecommender",

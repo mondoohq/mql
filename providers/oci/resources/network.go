@@ -283,7 +283,7 @@ type egressSecurityRule struct {
 	// Indicates if this is a stateless rule. No omitempty: a stateful rule
 	// must emit `stateless: false`, not drop the key entirely.
 	Stateless bool `json:"stateless"`
-	// Transport protocol, follows http://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
+	// Transport protocol, follows https://www.iana.org/assignments/protocol-numbers
 	Protocol string `json:"protocol,omitempty"`
 	// Range of allowed IP addresses
 	Destination string `json:"destination,omitempty"`
@@ -304,7 +304,7 @@ type ingressSecurityRule struct {
 	// Indicates if this is a stateless rule. No omitempty: a stateful rule
 	// must emit `stateless: false`, not drop the key entirely.
 	Stateless bool `json:"stateless"`
-	// Transport protocol, follows http://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
+	// Transport protocol, follows https://www.iana.org/assignments/protocol-numbers
 	Protocol string `json:"protocol,omitempty"`
 	// Range of allowed IP addresses
 	Source string `json:"source,omitempty"`

@@ -50,7 +50,7 @@ var (
 
 // newVersion function parses a string into a Version struct which can be compared
 //
-// The implementation is based on http://man.he.net/man5/deb-version
+// The implementation is based on https://man.he.net/man5/deb-version
 // on https://www.debian.org/doc/debian-policy/ch-controlfields.html#s-f-Version
 //
 // It uses the dpkg-1.17.25's algorithm  (lib/parsehelp.c)
@@ -140,7 +140,7 @@ func (p Parser) GetFixedIn(fixedIn string) (string, error) {
 
 // Compare function compares two Debian-like package version
 //
-// The implementation is based on http://man.he.net/man5/deb-version
+// The implementation is based on https://man.he.net/man5/deb-version
 // on https://www.debian.org/doc/debian-policy/ch-controlfields.html#s-f-Version
 //
 // It uses the dpkg-1.17.25's algorithm  (lib/version.c)

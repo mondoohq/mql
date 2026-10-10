@@ -10,7 +10,7 @@ import (
 	"go.mondoo.com/mql/providers/vcd/connection"
 )
 
-// https://developer.vmware.com/apis/1260/vmware-cloud-director/doc/doc/types/QueryResultNetworkPoolRecordType.html
+// https://developer.broadcom.com/xapis/vmware-cloud-director-api/latest/doc/types/QueryResultNetworkPoolRecordType.html
 func (v *mqlVcd) networkPools() ([]any, error) {
 	conn := v.MqlRuntime.Connection.(*connection.VcdConnection)
 	client := conn.Client()

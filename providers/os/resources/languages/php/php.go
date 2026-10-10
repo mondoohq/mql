@@ -13,7 +13,7 @@ import (
 )
 
 // NewPackageUrl creates a Composer package URL.
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#composer
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/composer-definition.md
 func NewPackageUrl(name string, version string) string {
 	// Composer names are "vendor/package"
 	namespace := ""

@@ -47,7 +47,7 @@ func (a *mqlAzureSubscription) resources() ([]any, error) {
 				continue
 			}
 			// NOTE: properties not not properly filled, therefore you would need to ask each individual resource:
-			// https://learn.microsoft.com/en-us/rest/api/resources/resources/getbyid
+			// https://learn.microsoft.com/en-us/rest/api/resources/resources/get-by-id
 			// In order to make it happen you need to support each individual type and their api version. Therefore
 			// we should not support that via the resource api but instead make sure those properties are properly
 			// exposed by the typed resources

@@ -16,41 +16,41 @@ import (
 type Playbook []*Play
 
 // Play is a collection of tasks to be executed
-// see https://docs.ansible.com/ansible/latest/reference_appendices/playbooks_keywords.html
+// see https://docs.ansible.com/projects/ansible/latest/reference_appendices/playbooks_keywords.html
 type Play struct {
 	// Name is the name of the play
 	Name string `yaml:"name,omitempty"`
 
 	// Hosts is a pattern that matches hosts
-	// see https://docs.ansible.com/ansible/latest/inventory_guide/intro_patterns.html
+	// see https://docs.ansible.com/projects/ansible/latest/inventory_guide/intro_patterns.html
 	Hosts any `yaml:"hosts"`
 
 	// RemoteUser sets the user to use for the connection
-	// see https://docs.ansible.com/ansible/latest/inventory_guide/connection_details.html
+	// see https://docs.ansible.com/projects/ansible/latest/inventory_guide/connection_details.html
 	RemoteUser string `yaml:"remote_user,omitempty"`
 
 	// Become sets to true to activate privilege escalation.
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
 	Become bool `yaml:"become,omitempty"`
 
 	// BecomeUser sets to user with desired privileges
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
 	BecomeUser string `yaml:"become_user,omitempty"`
 
 	// BecomeMethod overrides the default method of privilege escalation
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
 	BecomeMethod string `yaml:"become_method,omitempty"`
 
 	// BecomeFlags permits the use of specific flags
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
 	BecomeFlags string `yaml:"become_flags,omitempty"`
 
 	// Serial sets the batch size
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_strategies.html#setting-the-batch-size-with-serial
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_strategies.html#setting-the-batch-size-with-serial
 	Serial any `yaml:"serial,omitempty"` // Can be an integer or a string
 
 	// Playbook execution strategy
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_strategies.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_strategies.html
 	Strategy string `yaml:"strategy,omitempty"`
 
 	// MaxFailPercentage sets a maximum failure percentage. Ansible types this
@@ -58,58 +58,58 @@ type Play struct {
 	// (33.3) or a percent-suffixed string ("30%"). Decode it as any and
 	// normalize with MaxFailPercentageValue so one of those forms can't fail
 	// the whole playbook decode.
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_error_handling.html#maximum-failure-percentage
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_error_handling.html#maximum-failure-percentage
 	MaxFailPercentage any `yaml:"max_fail_percentage,omitempty"`
 
 	// IgnoreUnreachable sets to true to ignore unreachable hosts
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_error_handling.html#ignore-unreachable
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_error_handling.html#ignore-unreachable
 	IgnoreUnreachable bool `yaml:"ignore_unreachable,omitempty"`
 
 	// AnyErrorsFatal finishes the fatal task on all hosts in the current batch
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_error_handling.html#aborting-on-the-first-error-any-errors-fatal
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_error_handling.html#aborting-on-the-first-error-any-errors-fatal
 	AnyErrorsFatal bool `yaml:"any_errors_fatal,omitempty"`
 
 	// Vars are variables to be used in the play
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_variables.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_variables.html
 	Vars map[string]any `yaml:"vars,omitempty"`
 
 	// Tags scope which plays run with --tags / --skip-tags
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_tags.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_tags.html
 	Tags []string `yaml:"tags,omitempty"`
 
 	// Roles are a list of roles to be applied to the play. An entry is either a
 	// bare role name or a mapping with a `role` key plus application directives
 	// (when, tags, vars), so it is decoded as any and normalized by
 	// RoleApplications.
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_reuse_roles.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_reuse_roles.html
 	Roles []any `yaml:"roles,omitempty"`
 
 	// VarsFiles lists files of variables loaded into the play
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_variables.html#defining-variables-in-files
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_variables.html#defining-variables-in-files
 	VarsFiles []string `yaml:"vars_files,omitempty"`
 
 	// VarsPrompt defines variables prompted for interactively at runtime
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_prompts.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_prompts.html
 	VarsPrompt []map[string]any `yaml:"vars_prompt,omitempty"`
 
 	// Environment sets environment variables for all tasks in the play
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_environment.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_environment.html
 	Environment map[string]any `yaml:"environment,omitempty"`
 
 	// Collections lists the collection search order for unqualified module names
-	// see https://docs.ansible.com/ansible/latest/collections_guide/collections_using_playbooks.html
+	// see https://docs.ansible.com/projects/ansible/latest/collections_guide/collections_using_playbooks.html
 	Collections []string `yaml:"collections,omitempty"`
 
 	// PreTasks run before roles
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_reuse_roles.html#using-roles
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_reuse_roles.html#using-roles
 	PreTasks []*Task `yaml:"pre_tasks,omitempty"`
 
 	// Tasks are a list of tasks to be executed
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_intro.html#id4
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_intro.html#id4
 	Tasks []*Task `yaml:"tasks"`
 
 	// PostTasks run after roles and tasks
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_reuse_roles.html#using-roles
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_reuse_roles.html#using-roles
 	PostTasks []*Task `yaml:"post_tasks,omitempty"`
 
 	// Handlers are tasks that only run when notified
@@ -147,12 +147,12 @@ func (p *Play) MaxFailPercentageValue() int64 {
 // Tasks is a list of tasks to be executed
 type Tasks struct {
 	// Tasks are a list of tasks to be executed
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_intro.html#id4
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_intro.html#id4
 	Tasks []*Task `yaml:"tasks"`
 }
 
 // Task is a single task to be executed
-// see https://docs.ansible.com/ansible/latest/reference_appendices/playbooks_keywords.html#task
+// see https://docs.ansible.com/projects/ansible/latest/reference_appendices/playbooks_keywords.html#task
 type Task struct {
 	// Name is the name of the task
 	Name string `yaml:"name,omitempty"`
@@ -161,110 +161,110 @@ type Task struct {
 	Action map[string]any `yaml:",inline"` // Use inline to handle dynamic task modules
 
 	// Vars are variables to be used in the play
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_variables.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_variables.html
 	Vars map[string]any `yaml:"vars,omitempty"`
 
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_tags.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_tags.html
 	Tags []string `yaml:"tags,omitempty"`
 
 	// Register is a variable to store the result of the task
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_variables.html#registering-variables
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_variables.html#registering-variables
 	Register string `yaml:"register,omitempty"`
 
 	// Become sets to true to activate privilege escalation.
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
 	Become bool `yaml:"become,omitempty"`
 
 	// BecomeUser sets to user with desired privileges
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
 	BecomeUser string `yaml:"become_user,omitempty"`
 
 	// BecomeMethod overrides the default method of privilege escalation
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
 	BecomeMethod string `yaml:"become_method,omitempty"`
 
 	// BecomeFlags permits the use of specific flags
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_privilege_escalation.html#become
 	BecomeFlags string `yaml:"become_flags,omitempty"`
 
 	// DelegateTo delegates the task to a specific host
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_delegation.html#delegating-tasks
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_delegation.html#delegating-tasks
 	DelegateTo string `yaml:"delegate_to,omitempty"`
 
 	// Environment sets environment variables for the task
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_environment.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_environment.html
 	Environment map[string]any `yaml:"environment,omitempty"`
 
 	// NoLog hides sensitive task output from logs. Usually a boolean but
 	// Ansible also accepts a Jinja2 templated string, so it is decoded as any.
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_advanced_syntax.html#keep-secret-data
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_advanced_syntax.html#keep-secret-data
 	NoLog any `yaml:"no_log,omitempty"`
 
 	// IgnoreErrors continues the play even if the task fails. Usually a boolean
 	// but Ansible also accepts a Jinja2 templated string, so it is decoded as any.
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_error_handling.html#ignoring-failed-commands
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_error_handling.html#ignoring-failed-commands
 	IgnoreErrors any `yaml:"ignore_errors,omitempty"`
 
 	// RunOnce runs the task on only one host. Usually a boolean but Ansible
 	// also accepts a Jinja2 templated string, so it is decoded as any.
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_delegation.html#run-once
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_delegation.html#run-once
 	RunOnce any `yaml:"run_once,omitempty"`
 
 	// Conditional statement to execute the task
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_conditionals.html#basic-conditionals-with-when
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_conditionals.html#basic-conditionals-with-when
 	When string `yaml:"when,omitempty"`
 
 	// Failed condition
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_error_handling.html#defining-failure
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_error_handling.html#defining-failure
 	FailedWhen string `yaml:"failed_when,omitempty"`
 
 	// Changed condition
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_error_handling.html#defining-changed
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_error_handling.html#defining-changed
 	ChangedWhen string `yaml:"changed_when,omitempty"`
 
 	// Notify is a list of handlers to notify
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_handlers.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_handlers.html
 	Notify []string `yaml:"notify,omitempty"`
 
 	// Loop is the items the task iterates over
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_loops.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_loops.html
 	Loop any `yaml:"loop,omitempty"`
 
 	// LoopControl tunes loop behavior (loop_var, label, index_var, pause, etc.)
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_loops.html#limiting-loop-output-with-label
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_loops.html#limiting-loop-output-with-label
 	LoopControl map[string]any `yaml:"loop_control,omitempty"`
 
 	// Importing Playbooks
-	// see https://docs.ansible.com/ansible/2.9/user_guide/playbooks_reuse_includes.html
+	// see https://docs.ansible.com/projects/ansible/2.9/user_guide/playbooks_reuse_includes.html
 	ImportPlaybook string `yaml:"import_playbook,omitempty"`
 
 	// Include Playbooks
-	// see https://docs.ansible.com/ansible/2.9/user_guide/playbooks_reuse_includes.html
+	// see https://docs.ansible.com/projects/ansible/2.9/user_guide/playbooks_reuse_includes.html
 	IncludePlaybook string `yaml:"include_playbook,omitempty"`
 
 	// Import statements are pre-processed at the time playbooks are parsed
-	// see https://docs.ansible.com/ansible/2.9/user_guide/playbooks_reuse_includes.html
+	// see https://docs.ansible.com/projects/ansible/2.9/user_guide/playbooks_reuse_includes.html
 	ImportTasks string `yaml:"import_tasks,omitempty"`
 
 	// Include statements are processed at the time the play is executed
-	// see https://docs.ansible.com/ansible/2.9/user_guide/playbooks_reuse_includes.html
+	// see https://docs.ansible.com/projects/ansible/2.9/user_guide/playbooks_reuse_includes.html
 	IncludeTasks string `yaml:"include_tasks,omitempty"`
 
 	// Task grouping with blocks
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_blocks.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_blocks.html
 	Block []*Task `yaml:"block,omitempty"`
 
 	// Handle error in block
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_blocks.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_blocks.html
 	Rescue []*Task `yaml:"rescue,omitempty"`
 
 	// Always runs regardless of the results of the block
-	// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_blocks.html
+	// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_blocks.html
 	Always []*Task `yaml:"always,omitempty"`
 }
 
 // Handler is a task that only runs when notified
-// see https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_handlers.html
+// see https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_handlers.html
 type Handler struct {
 	// Name is the name of the handler
 	Name string `yaml:"name,omitempty"`

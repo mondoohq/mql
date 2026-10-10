@@ -25,7 +25,7 @@ import (
 
 // knownSpacesRegions enumerates the DigitalOcean regions that host
 // Spaces. The list grows when DO opens new regions — keep it in sync
-// with https://docs.digitalocean.com/products/platform/availability-matrix/
+// with https://docs.digitalocean.com/platform/regional-availability/
 var knownSpacesRegions = []string{
 	"nyc3", "sfo2", "sfo3", "ams3", "sgp1", "fra1", "syd1", "tor1", "blr1",
 }

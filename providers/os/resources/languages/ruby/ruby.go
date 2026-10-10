@@ -11,7 +11,7 @@ import (
 )
 
 // NewPackageUrl creates a Ruby gem package URL.
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#gem
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/gem-definition.md
 func NewPackageUrl(name string, version string) string {
 	return packageurl.NewPackageURL(
 		packageurl.TypeGem,

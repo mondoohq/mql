@@ -41,7 +41,7 @@ func isDockerClientSupported(path string) bool {
 	// This is incomplete. There are other things that are
 	// unsupported like tmpfs and paths the user mounted
 	// in the container.
-	// See https://docs.docker.com/engine/reference/commandline/cp/#corner-cases
+	// See https://docs.docker.com/reference/cli/docker/container/cp/#corner-cases
 	unsupported := []string{"/proc", "/dev", "/sys"}
 	for _, v := range unsupported {
 		if v == path || strings.HasPrefix(path, v) {

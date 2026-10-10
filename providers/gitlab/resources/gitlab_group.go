@@ -141,7 +141,7 @@ func (g *mqlGitlabGroup) memberRoles() ([]any, error) {
 }
 
 // init initializes the gitlab group with the arguments
-// see https://docs.gitlab.com/ee/api/groups.html#new-group
+// see https://docs.gitlab.com/api/groups/#create-a-group
 func initGitlabGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
@@ -275,7 +275,7 @@ func branchProtectionDefaultsToDict(d *gitlab.BranchProtectionDefaults) any {
 }
 
 // projects lists all projects that belong to a group
-// see https://docs.gitlab.com/ee/api/projects.html
+// see https://docs.gitlab.com/api/projects/
 func (g *mqlGitlabGroup) projects() ([]any, error) {
 	conn := g.MqlRuntime.Connection.(*connection.GitLabConnection)
 

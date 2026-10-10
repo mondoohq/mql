@@ -33,7 +33,7 @@ const (
 	// status: new
 	MQLAssetContext Feature = 5
 
-	// Errors are treated as failures, see https://www.notion.so/mondoo/Errors-and-Scoring-5dc554348aad4118a1dbf35123368329
+	// Errors are treated as failures, see https://app.notion.com/p/mondoo/Errors-and-Scoring-5dc554348aad4118a1dbf35123368329
 	// start:  v8.x
 	// end: v9.0
 	// status: sunset, we never really used this

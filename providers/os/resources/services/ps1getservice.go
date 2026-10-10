@@ -52,7 +52,7 @@ type WindowsService struct {
 // 6: Pause Pending
 // 7: Paused
 //
-// those are documented in https://msdn.microsoft.com/en-us/library/windows/desktop/ms685996(v=vs.85).aspx
+// those are documented in https://learn.microsoft.com/en-us/windows/win32/api/winsvc/ns-winsvc-service_status
 func (s WindowsService) State() State {
 	res := ServiceUnknown
 	switch s.Status {

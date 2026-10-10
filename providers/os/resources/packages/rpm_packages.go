@@ -226,7 +226,7 @@ func newRpmPackage(pf *inventory.Platform, name, version, arch, epoch, vendor, d
 	cpes, _ := cpe.NewPackage2Cpe(vendor, name, version, epoch, arch)
 	cpesWithoutEpoch := []string{}
 	if epoch != "" {
-		// I searched https://www.redhat.com/security/data/metrics/repository-to-cpe.json for the epoch
+		// I searched https://security.access.redhat.com/data/metrics/repository-to-cpe.json for the epoch
 		// and it seems that the epoch is not part of the CPE, so we need to add it without the epoch
 		cpesWithoutEpoch, _ = cpe.NewPackage2Cpe(vendor, name, version, "", arch)
 	}
@@ -329,7 +329,7 @@ func (rpm *RpmPkgManager) isStaticAnalysis() bool {
 	// the root problem is that the docker transport (for running containers) cannot easily get the exit code so
 	// we cannot always rely on that, a running photon container return non-zero exit code but it will be -1 on the system
 	// we probably cannot fix this easily, see dockers approach:
-	// https://docs.docker.com/engine/reference/commandline/attach/#get-the-exit-code-of-the-containers-command
+	// https://docs.docker.com/reference/cli/docker/container/attach/#get-the-exit-code-of-the-containers-command
 	if c != nil {
 		rpmCmdPath, err := io.ReadAll(c.Stdout)
 		if err != nil || len(rpmCmdPath) == 0 {

@@ -23,7 +23,7 @@ import (
 
 const (
 	// Microsoft Entra Tenant IDs for first party apps as defined in
-	// https://learn.microsoft.com/en-us/troubleshoot/azure/entra/entra-id/governance/verify-first-party-apps-sign-in
+	// https://learn.microsoft.com/en-us/troubleshoot/entra/entra-id/governance/verify-first-party-apps-sign-in
 	MicrosoftEntraTenantID = "f8cdef31-a31e-4b4a-93e4-5f571e91255a"
 	MicrosoftTenantID      = "72f988bf-86f1-41af-91ab-2d7cd011db47"
 )
@@ -857,7 +857,7 @@ func (a *mqlMicrosoftServiceprincipal) federatedIdentityCredentials() ([]any, er
 	return newMqlFederatedIdentityCredentials(a.MqlRuntime, a.Id.Data, creds)
 }
 
-// https://learn.microsoft.com/en-us/graph/api/serviceprincipal-list-appmanagementpolicies?view=graph-rest-1.0
+// https://learn.microsoft.com/en-us/graph/api/resources/appmanagementpolicy?view=graph-rest-1.0
 func (a *mqlMicrosoftServiceprincipal) appManagementPolicies() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
 	graphClient, err := conn.GraphClient()

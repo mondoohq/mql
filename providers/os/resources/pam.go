@@ -132,7 +132,7 @@ func (s *mqlPamConf) files() ([]any, error) {
 	// loads the first file named after the service, in pamServiceDirs order.
 	// We parse the same files PAM itself loads so audits reflect the
 	// effective configuration rather than shadowed or dead files.
-	// see http://www.linux-pam.org/Linux-PAM-html/sag-configuration.html
+	// see https://web.archive.org/web/20191231062425/http://www.linux-pam.org/Linux-PAM-html/sag-configuration.html
 	var res []any
 	seen := map[string]struct{}{}
 	anyDir := false

@@ -29,7 +29,7 @@ import (
 // https://github.com/erikberglund/Scripts/blob/master/snippets/macos_hardware.md
 //
 // results can be compared with dmidecode
-// http://cavaliercoder.com/blog/dmidecode-for-apple-osx.html
+// https://hotsrc.dev/blog/dmidecode-for-apple-osx.html
 type OSXSmbiosManager struct {
 	provider shared.Connection
 	platform *inventory.Platform

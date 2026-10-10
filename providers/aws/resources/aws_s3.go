@@ -868,7 +868,7 @@ func (a *mqlAwsS3Bucket) owner() (map[string]any, error) {
 	return res, nil
 }
 
-// see https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html
+// see https://docs.aws.amazon.com/AmazonS3/latest/userguide/acl-overview.html
 const (
 	s3AuthenticatedUsersGroup = "http://acs.amazonaws.com/groups/global/AuthenticatedUsers"
 	s3AllUsersGroup           = "http://acs.amazonaws.com/groups/global/AllUsers"

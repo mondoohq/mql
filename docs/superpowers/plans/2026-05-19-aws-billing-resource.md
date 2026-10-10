@@ -1066,7 +1066,7 @@ Design: `docs/superpowers/specs/2026-05-19-aws-billing-resource-design.md`
 - [ ] `mql run aws -c "aws.billing.budgets { name budgetType budgetLimit actualSpend forecastedSpend notifications }"` returns configured budgets
 - [ ] Same queries against a CE-disabled account return zero / empty without aborting the scan
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [Claude Code](https://claude.com/product/claude-code)
 EOF
 )"
 ```

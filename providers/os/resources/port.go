@@ -269,7 +269,7 @@ func portUser(user *mqlUser) *llx.RawData {
 }
 
 // parseProcNet parses the proc filesystem
-// See socket/address parsing: https://wiki.christophchamp.com/index.php?title=Unix_sockets
+// See socket/address parsing: http://wiki.christophchamp.com/index.php?title=Unix_sockets
 func (p *mqlPorts) parseProcNet(path string, protocol string, users map[int64]*mqlUser) ([]any, error) {
 	conn := p.MqlRuntime.Connection.(shared.Connection)
 	fs := conn.FileSystem()

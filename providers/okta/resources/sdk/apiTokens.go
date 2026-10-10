@@ -14,7 +14,7 @@ import (
 // ApiToken represents an Okta API token. Okta's golang SDK does not (yet) expose
 // the /api/v1/api-tokens endpoint, so we model the response shape ourselves.
 //
-// Reference: https://developer.okta.com/docs/reference/api/api-token/
+// Reference: https://developer.okta.com/docs/api/openapi/okta-management/management/tags/apitoken
 type ApiToken struct {
 	Id          string     `json:"id,omitempty"`
 	Name        string     `json:"name,omitempty"`

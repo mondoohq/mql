@@ -8,13 +8,13 @@ package yum
 // - read repo info from file system as is
 // - read variables from file system as is
 
-// https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/deployment_guide/sec-using_yum_variables
+// https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/6/html/deployment_guide/sec-using_yum_variables
 // /etc/yum.conf
 // /etc/yum.repos.d/*.repo
 
 // References:
 // - https://unix.stackexchange.com/questions/19701/yum-how-can-i-view-variables-like-releasever-basearch-yum0
-// - https://docs.centos.org/en-US/8-docs/managing-userspace-components/assembly_using-appstream/
+// - https://web.archive.org/web/20240303200817/https://docs.centos.org/en-US/8-docs/managing-userspace-components/assembly_using-appstream/
 
 import (
 	"bufio"

@@ -14,7 +14,7 @@ A full run — launch, configure, sweep every resource, tear down — takes abou
 
 ## Prerequisites
 
-- An AWS account subscribed to [MikroTik Cloud Hosted Router](https://aws.amazon.com/marketplace/pp?sku=blez4ywfw64kidgmc4v6vyjoa)
+- An AWS account subscribed to [MikroTik Cloud Hosted Router](https://aws.amazon.com/marketplace/pp/prodview-sf5gn6js6av54)
 - `terraform`, `aws` CLI, and a built provider (`make providers/build/mikrotik && make providers/install/mikrotik`)
 
 ### Licensing

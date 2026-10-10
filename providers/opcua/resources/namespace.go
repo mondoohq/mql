@@ -19,7 +19,7 @@ func (o *mqlOpcuaNamespace) id() (string, error) {
 	return "opcua.namespace/" + s, nil
 }
 
-// https://reference.opcfoundation.org/DI/v102/docs/11.2
+// https://reference.opcfoundation.org/specs/OPC-10000-100/11
 func (o *mqlOpcua) namespaces() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OpcuaConnection)
 	client := conn.Client()

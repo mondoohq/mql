@@ -41,7 +41,7 @@ try {
 ConvertTo-Json -Depth 3 -Compress @{ volumes = $v; mountPoints = $m }
 `
 
-// https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-volume
+// https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa394515(v=vs.85)
 var volumeDriveTypes = map[int64]string{
 	0: "Unknown",
 	1: "NoRootDirectory",

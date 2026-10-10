@@ -18,7 +18,7 @@ type MachineInfo struct {
 	Deployment     string
 }
 
-// https://www.freedesktop.org/software/systemd/man/machine-info.html
+// https://www.freedesktop.org/software/systemd/man/latest/machine-info.html
 // ParseMachineInfo parses the content of/etc /machine-info as specified for systemd
 func ParseMachineInfo(r io.Reader) (MachineInfo, error) {
 	res := MachineInfo{}

@@ -499,7 +499,7 @@ func newMqlMicrosoftPasswordCredential(runtime *plugin.Runtime, app models.Passw
 	return mqlResource.(*mqlMicrosoftPasswordCredential), nil
 }
 
-// https://learn.microsoft.com/en-us/graph/api/application-list-federatedidentitycredentials?view=graph-rest-1.0
+// https://learn.microsoft.com/en-us/graph/api/federatedidentitycredential-list?view=graph-rest-1.0
 func (a *mqlMicrosoftApplication) federatedIdentityCredentials() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
 	graphClient, err := conn.GraphClient()
@@ -549,7 +549,7 @@ func newMqlFederatedIdentityCredentials(runtime *plugin.Runtime, parentId string
 	return res, nil
 }
 
-// https://learn.microsoft.com/en-us/graph/api/application-list-appmanagementpolicies?view=graph-rest-1.0
+// https://learn.microsoft.com/en-us/graph/api/resources/appmanagementpolicy?view=graph-rest-1.0
 func (a *mqlMicrosoftApplication) appManagementPolicies() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
 	graphClient, err := conn.GraphClient()

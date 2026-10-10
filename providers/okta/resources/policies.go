@@ -18,7 +18,7 @@ import (
 	"go.mondoo.com/mql/providers/okta/resources/sdk"
 )
 
-// https://developer.okta.com/docs/reference/api/policy/#policy-object
+// https://developer.okta.com/docs/api/openapi/okta-management/management/tags/policy
 type PolicyType string
 
 const (

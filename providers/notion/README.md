@@ -25,7 +25,7 @@ without a Notion account.
 Provide an internal integration token with the `--token` flag or the
 `NOTION_TOKEN` environment variable.
 
-> Create a token at <https://www.notion.so/profile/integrations>. Internal
+> Create a token at <https://app.notion.com/profile/integrations>. Internal
 > integration secrets begin with `ntn_` (or `secret_` in older workspaces).
 
 ```shell

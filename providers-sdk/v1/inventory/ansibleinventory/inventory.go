@@ -119,7 +119,7 @@ type Host struct {
 	Labels     []string
 }
 
-// https://docs.ansible.com/ansible/latest/user_guide/intro_inventory.html
+// https://docs.ansible.com/projects/ansible/latest/user_guide/intro_inventory.html
 func (inventory *Inventory) List(groups ...string) []*Host {
 	if inventory == nil {
 		return nil
@@ -247,7 +247,7 @@ func (i *Inventory) ToV1Inventory() *inventory.Inventory {
 }
 
 // ansibleBackend maps an ansible connection to mondoo backend
-// https://docs.ansible.com/ansible/latest/plugins/connection.html
+// https://docs.ansible.com/projects/ansible/latest/plugins/connection.html
 // quickly get a list of available plugins via `ansible-doc -t connection -l`
 func ansibleBackend(connection string) string {
 	switch strings.TrimSpace(connection) {

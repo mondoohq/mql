@@ -2135,8 +2135,8 @@ var msSqlSpVersionRegex = regexp.MustCompile(`^(1[1-3])\.([1-4])\.(\d+)\.(\d+)$`
 // records in its build-versions tables and what MSRC publishes.
 //
 // Refs:
-//   - https://learn.microsoft.com/troubleshoot/sql/releases/sqlserver-2016/build-versions
-//   - https://learn.microsoft.com/troubleshoot/sql/releases/download-and-install-latest-updates
+//   - https://support.microsoft.com/en-us/servicing/sql/sql-server-2016/kb3177312-build-versions
+//   - https://support.microsoft.com/en-us/servicing/sql/kb321185-download-and-install-latest-updates
 func normalizeMsSqlVersion(version string) string {
 	m := msSqlSpVersionRegex.FindStringSubmatch(version)
 	if m == nil {

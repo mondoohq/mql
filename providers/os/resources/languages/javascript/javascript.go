@@ -54,7 +54,7 @@ func NewHashes(integrity string) []languages.PackageHash {
 }
 
 // NewPackageUrl creates a npm package url for a given package name and version
-// see https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#npm
+// see https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/npm-definition.md
 func NewPackageUrl(name string, version string) string {
 	namespace := ""
 	// ensure the name is according to the PURL spec

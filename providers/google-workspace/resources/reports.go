@@ -18,7 +18,7 @@ import (
 	reports "google.golang.org/api/admin/reports/v1"
 )
 
-// https://developers.google.com/admin-sdk/reports/reference/rest/v1/activities/list#ApplicationName
+// https://developers.google.com/workspace/admin/reports/reference/rest/v1/activities/list#ApplicationName
 const (
 	appAccessTransparency = "access_transparency"
 	appAdmin              = "admin"
