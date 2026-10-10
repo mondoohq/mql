@@ -59,8 +59,7 @@ func TestWindowsHotpatchServer(t *testing.T) {
 		assert.True(t, r.GetEligible().Data)
 		assert.False(t, r.GetEnrolled().Data)
 		assert.False(t, r.GetEnrolled().IsNull())
-		assert.Equal(t, "", r.GetEnrollmentPackage().Data)
-		assert.False(t, r.GetEnrollmentPackage().IsNull())
+		assert.True(t, r.GetEnrollmentPackage().IsNull(), "an absent package is null, like the other absent values")
 		assert.True(t, r.GetHotPatchTableSize().IsNull())
 		assert.True(t, r.GetVbsConfigured().IsNull())
 		assert.True(t, r.GetVbsRunning().IsNull(), "without a WMI answer the running state is null, not false")
@@ -91,7 +90,7 @@ func TestWindowsHotpatchClient(t *testing.T) {
 		assert.True(t, r.GetEnrolled().Data)
 		assert.True(t, r.GetRebootlessUpdatesPolicy().Data)
 		assert.True(t, r.GetVbsRunning().Data)
-		assert.Equal(t, "", r.GetEnrollmentPackage().Data)
+		assert.True(t, r.GetEnrollmentPackage().IsNull())
 		assert.True(t, r.GetHotPatchTableSize().IsNull())
 	})
 

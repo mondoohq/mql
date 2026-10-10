@@ -15546,7 +15546,7 @@ windows.hotpatch @defaults("eligible enrolled") {
   // Name of the installed hotpatch enrollment package
   //
   // The Name value under HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Update\TargetingInfo\DynamicInstalled\Hotpatch.<arch>,
-  // which reads `Hotpatch Enrollment Package` on an enrolled server. Empty
+  // which reads `Hotpatch Enrollment Package` on an enrolled server. Null
   // when the value is absent, which is normal on clients.
   enrollmentPackage() string
   // Size of the hotpatch table reserved by the memory manager

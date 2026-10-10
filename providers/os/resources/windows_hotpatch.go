@@ -119,6 +119,7 @@ func (w *mqlWindowsHotpatch) enrollmentPackage() (string, error) {
 		return "", err
 	}
 	if st.EnrollmentPackage == nil {
+		w.EnrollmentPackage.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return *st.EnrollmentPackage, nil
