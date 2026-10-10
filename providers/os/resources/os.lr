@@ -24124,3 +24124,41 @@ aix.security.user @defaults("name accountLocked login rlogin") {
   // Days before expiration that the user is warned (pwdwarntime)
   pwdwarntime int
 }
+
+// AIX login configuration
+//
+// Login settings from /etc/security/login.cfg: the `usw` stanza (valid
+// `shells`, `maxlogins`, `logintimeout`, `authType`, and the `pwdAlgorithm`
+// new passwords are hashed with) and the port defaults of the `default`
+// stanza (`herald`, `logindelay`, `logindisable`, `logininterval`,
+// `loginreenable`, `sakEnabled`). `stanzas` holds every stanza, the port
+// and authentication method stanzas included. A field is null when its
+// stanza does not set it. AIX only.
+aix.security.loginCfg @defaults("pwdAlgorithm maxlogins logintimeout") {
+  // The login.cfg file
+  file() file
+  // Every stanza of the file, keyed by stanza name
+  stanzas() map[string]dict
+  // Shells a user can be assigned (usw: shells)
+  shells() []string
+  // Maximum number of concurrent logins on the system (usw: maxlogins)
+  maxlogins() int
+  // Seconds a user has to type a password at login (usw: logintimeout)
+  logintimeout() int
+  // Authentication type, STD_AUTH or PAM_AUTH (usw: auth_type)
+  authType() string
+  // Algorithm new passwords are hashed with, such as ssha512 (usw: pwd_algorithm)
+  pwdAlgorithm() string
+  // Login banner shown on ports without their own (default: herald)
+  herald() string
+  // Seconds of delay added after each failed login on a port (default: logindelay)
+  logindelay() int
+  // Failed logins after which a port is disabled; 0 never disables (default: logindisable)
+  logindisable() int
+  // Seconds within which the logindisable failures must occur (default: logininterval)
+  logininterval() int
+  // Minutes after which a disabled port is enabled again; 0 keeps it disabled (default: loginreenable)
+  loginreenable() int
+  // Whether the secure attention key is enabled on ports (default: sak_enabled)
+  sakEnabled() bool
+}
