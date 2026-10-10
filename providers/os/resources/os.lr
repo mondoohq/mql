@@ -24218,3 +24218,35 @@ aix.security.limit @defaults("name core fsize") {
   // Hard limit on open file descriptors (nofiles_hard)
   nofilesHard int
 }
+
+// AIX password records
+//
+// The password record of every user in /etc/security/passwd: how the
+// password is stored, when it last changed, and its flags. The hash itself
+// is never read into a field. Reading the file requires root. AIX only.
+aix.security.passwd {
+  []aix.security.passwd.entry
+}
+
+// AIX password record of one user
+//
+// `state` says whether the user has a password hash, an empty password
+// (any password is accepted, or none), or `*` (password login is
+// disabled). `hashAlgorithm` names the scheme of a hash, such as ssha512,
+// ssha256 or smd5, and crypt for the legacy 13-character DES format.
+private aix.security.passwd.entry @defaults("name state hashAlgorithm") {
+  // User name
+  name string
+  // The local user
+  user() user
+  // How the password is stored: hashed, empty, disabled, or missing
+  //
+  // `missing` is a record without a password attribute.
+  state string
+  // Hashing scheme of the password, such as ssha512 or crypt; empty without a hash
+  hashAlgorithm string
+  // When the password was last changed (lastupdate); null when never recorded
+  lastUpdate time
+  // Password flags, such as ADMCHG, ADMIN and NOCHECK (flags)
+  flags []string
+}
