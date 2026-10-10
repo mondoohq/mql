@@ -21,7 +21,7 @@ import (
 
 // documentaiLocations lists the Document AI processing locations. Processors
 // are created in one of these two multi-regions.
-// See https://cloud.google.com/document-ai/docs/regions
+// See https://docs.cloud.google.com/document-ai/docs/regions
 var documentaiLocations = []string{"us", "eu"}
 
 // documentaiEndpoint returns the regional API endpoint for a location.

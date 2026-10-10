@@ -98,7 +98,7 @@ func (fs *fileStat) IsDir() bool  { return fs.Mode().IsDir() }
 
 func (fs *fileStat) isSymlink() bool {
 	// Use instructions described at
-	// https://blogs.msdn.microsoft.com/oldnewthing/20100212-00/?p=14963/
+	// https://devblogs.microsoft.com/oldnewthing/20100212-00/?p=14963
 	// to recognize whether it's a symlink.
 	if fs.FileAttributes&FILE_ATTRIBUTE_REPARSE_POINT == 0 {
 		return false

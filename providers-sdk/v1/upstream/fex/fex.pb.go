@@ -398,7 +398,7 @@ func (FindingDetail_Category) EnumDescriptor() ([]byte, []int) {
 
 // Protocol defines the protocol used in the connection. Decimals are
 // equivalent to the protocol numbers assigned by IANA. See
-// https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
+// https://www.iana.org/assignments/protocol-numbers
 type Connection_ConnectionProtocol int32
 
 const (

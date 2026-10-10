@@ -70,7 +70,7 @@ func (v *mqlVcdOrganization) settings() (any, error) {
 	return convert.JsonToDict(adminOrgClient.AdminOrg.OrgSettings)
 }
 
-// https://developer.vmware.com/apis/1260/vmware-cloud-director/doc/doc/types/OrgLdapSettingsType.html
+// https://developer.broadcom.com/xapis/vmware-cloud-director-api/latest/doc/types/OrgLdapSettingsType.html
 func (v *mqlVcdOrganization) ldapConfiguration() (*mqlVcdOrganizationLdapSettings, error) {
 	conn := v.MqlRuntime.Connection.(*connection.VcdConnection)
 	client := conn.Client()
@@ -121,7 +121,7 @@ func (v *mqlVcdOrganizationLdapSettings) id() (string, error) {
 	return "vcd.organization.ldapSettings/" + v.Id.Data, v.Id.Error
 }
 
-// https://developer.vmware.com/apis/1260/vmware-cloud-director/doc/doc/types/QueryResultAdminVMRecordType.html
+// https://developer.broadcom.com/xapis/vmware-cloud-director-api/latest/doc/types/QueryResultAdminVMRecordType.html
 func (v *mqlVcdOrganization) vms() ([]any, error) {
 	conn := v.MqlRuntime.Connection.(*connection.VcdConnection)
 	client := conn.Client()
@@ -199,7 +199,7 @@ func (v *mqlVcdVm) id() (string, error) {
 	return "vcd.vm/" + v.Name.Data, v.Name.Error
 }
 
-// https://developer.vmware.com/apis/72/vmware-cloud-director/doc/doc/types/OrganizationRightsType.html
+// https://developer.broadcom.com/xapis/vmware-cloud-director-api/latest/doc/types/OrganizationRightsType.html
 func (v *mqlVcdOrganization) rights() ([]any, error) {
 	conn := v.MqlRuntime.Connection.(*connection.VcdConnection)
 	client := conn.Client()
@@ -246,7 +246,7 @@ func (v *mqlVcdRight) id() (string, error) {
 	return "vcd.right/" + v.Name.Data, v.Name.Error
 }
 
-// see https://developer.vmware.com/apis/1260/vmware-cloud-director/doc/doc//types/AdminVdcType.html
+// see https://developer.broadcom.com/xapis/vmware-cloud-director-api/latest/doc/types/AdminVdcType.html
 func (v *mqlVcdOrganization) vdcs() ([]any, error) {
 	conn := v.MqlRuntime.Connection.(*connection.VcdConnection)
 	client := conn.Client()
@@ -353,7 +353,7 @@ func (v *mqlVcdVdcGroup) id() (string, error) {
 	return "vcd.vdcGroup/" + v.Name.Data, v.Name.Error
 }
 
-// https://developer.vmware.com/apis/1260/vmware-cloud-director/doc/doc//types/RoleType.html
+// https://developer.broadcom.com/xapis/vmware-cloud-director-api/latest/doc/types/RoleType.html
 func (v *mqlVcdOrganization) roles() ([]any, error) {
 	conn := v.MqlRuntime.Connection.(*connection.VcdConnection)
 	client := conn.Client()

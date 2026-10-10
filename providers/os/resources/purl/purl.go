@@ -41,7 +41,7 @@ type PackageURL struct {
 }
 
 // NewQualifiers creates a new Qualifiers slice from a map of key/value pairs.
-// see https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst for more information
+// see https://github.com/package-url/purl-spec/blob/main/docs/types/types-overview.md for more information
 func NewQualifiers(qualifier map[string]string) packageurl.Qualifiers {
 	// Create a slice for the keys to sort them
 	keys := make([]string, 0, len(qualifier))
@@ -68,7 +68,7 @@ func NewQualifiers(qualifier map[string]string) packageurl.Qualifiers {
 // NewPackageURL creates a new package url for a given platform, name, version, and type.
 //
 // For more information, see:
-// https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst
+// https://github.com/package-url/purl-spec/blob/main/docs/types/types-overview.md
 func NewPackageURL(pf *inventory.Platform, t Type, name, version string, modifiers ...Modifier) *PackageURL {
 	purl := &PackageURL{
 		Type:     t,

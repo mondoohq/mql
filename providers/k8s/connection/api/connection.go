@@ -382,7 +382,7 @@ func (c *Connection) Namespace(name string) (*v1.Namespace, error) {
 	if err != nil {
 		return nil, err
 	}
-	// needed because of https://github.com/kubernetes/client-go/issues/861
+	// needed because of https://web.archive.org/web/20201009041002/https://github.com/kubernetes/client-go/issues/861
 	ns.SetGroupVersionKind(v1.SchemeGroupVersion.WithKind("Namespace"))
 	return ns, err
 }
@@ -393,7 +393,7 @@ func (c *Connection) Namespaces() ([]v1.Namespace, error) {
 	if err != nil {
 		return nil, err
 	}
-	// needed because of https://github.com/kubernetes/client-go/issues/861
+	// needed because of https://web.archive.org/web/20201009041002/https://github.com/kubernetes/client-go/issues/861
 	for i := range list.Items {
 		list.Items[i].SetGroupVersionKind(v1.SchemeGroupVersion.WithKind("Namespace"))
 	}

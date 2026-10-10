@@ -363,8 +363,8 @@ func (esxi *Esxi) VmknicIp(interfacename string, netstack string, ipprotocol str
 }
 
 // (Get-EsxCli).network.ip.interface.tag.get('vmk0')
-// see https://blogs.vmware.com/vsphere/2012/12/tagging-vmkernel-traffic-types-using-esxcli-5-1.html
-// see https://kb.vmware.com/s/article/65184
+// see https://web.archive.org/web/20250426164614/https://blogs.vmware.com/vsphere/2012/12/tagging-vmkernel-traffic-types-using-esxcli-5-1.html
+// see https://knowledge.broadcom.com/external/article?legacyId=65184
 func (esxi *Esxi) VmknicTags(interfacename string) ([]string, error) {
 	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
 	if err != nil {

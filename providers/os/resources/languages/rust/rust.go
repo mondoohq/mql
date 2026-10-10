@@ -11,7 +11,7 @@ import (
 )
 
 // NewPackageUrl creates a Cargo package URL for a given crate name and version.
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#cargo
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/cargo-definition.md
 func NewPackageUrl(name string, version string) string {
 	return packageurl.NewPackageURL(
 		packageurl.TypeCargo,

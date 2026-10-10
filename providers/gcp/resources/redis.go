@@ -218,7 +218,7 @@ func (g *mqlGcpProjectRedisServiceInstance) id() (string, error) {
 //
 // https://www.googleapis.com/auth/cloud-platform
 //
-// Docs https://cloud.google.com/memorystore/docs/redis/reference/rest/v1/projects.locations/list#authorization-scopes
+// Docs https://docs.cloud.google.com/memorystore/docs/redis/reference/rest/v1/projects.locations/list#authorization-scopes
 func (g *mqlGcpProjectRedisService) instances() ([]any, error) {
 	// when the service is not enabled, we return nil
 	enabled, err := g.isEnabled()

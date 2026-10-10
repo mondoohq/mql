@@ -5,7 +5,7 @@ package execruntime
 
 const GITHUB = "github"
 
-// https://docs.github.com/en/actions/learn-github-actions/environment-variables#default-environment-variables
+// https://docs.github.com/en/actions/reference/workflows-and-actions/variables#default-environment-variables
 var githubEnv = &RuntimeEnv{
 	Id:        GITHUB,
 	Name:      "GitHub Actions",

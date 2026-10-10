@@ -607,7 +607,7 @@ private gcp.project.redisService.instance @defaults("name") {
   state string
   // Additional information about the current status of this instance, if available
   statusMessage string
-  // Redis configuration parameters, according to http://redis.io/topics/config
+  // Redis configuration parameters, according to https://redis.io/docs/latest/operate/oss_and_stack/management/config/
   redisConfigs map[string]string
   // Redis memory size in GiB
   memorySizeGb int

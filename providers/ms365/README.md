@@ -20,7 +20,7 @@ Also it's recommended that you use certificate based authentication with this pr
 brew install --cask powershell
 ```
 ### Linux
-Please refer to the [documentation](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-linux) based on your distribution.
+Please refer to the [documentation](https://learn.microsoft.com/en-us/powershell/scripting/install/linux-overview) based on your distribution.
 
 ## Authentication
 You will need to provide your app's client and tenant id as well certificate.

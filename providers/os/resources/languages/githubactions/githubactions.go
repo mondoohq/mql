@@ -11,7 +11,7 @@ import (
 )
 
 // NewPackageUrl creates a GitHub Actions package URL.
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#github
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/github-definition.md
 func NewPackageUrl(owner, repo, ref string) string {
 	return packageurl.NewPackageURL(
 		"github",

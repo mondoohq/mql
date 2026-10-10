@@ -16871,7 +16871,7 @@ private aws.route53.domain @defaults("domainName autoRenew transferLock") {
 // endpoints, and decision tree that Route 53 uses when this policy is
 // applied to a hosted zone through a `trafficPolicyInstance`. The
 // `document` field carries the raw policy JSON in the format documented at
-// https://docs.aws.amazon.com/Route53/latest/APIReference/api-policies-traffic-policy-document-format.html.
+// https://web.archive.org/web/20260512171648/https://docs.aws.amazon.com/Route53/latest/APIReference/api-policies-traffic-policy-document-format.html.
 // Listing returns the latest version of each policy; use `version` to
 // distinguish versions when the same `id` has multiple revisions.
 private aws.route53.trafficPolicy @defaults("id name version type") {

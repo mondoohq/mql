@@ -1138,7 +1138,7 @@ type TypeMeta struct {
 	// represents. Servers may infer this from the endpoint the client submits
 	// requests to. Cannot be updated. In CamelCase.
 	// More info:
-	// https://github.com/kubernetes/community/blob/master/contributors/
+	// https://github.com/kubernetes/community/tree/main/contributors/
 	// devel/sig-architecture/api-conventions.md#types-kinds
 	// +optional
 	Kind string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
@@ -1146,7 +1146,7 @@ type TypeMeta struct {
 	// object. Servers should convert recognized schemas to the latest internal
 	// value, and may reject unrecognized values.
 	// More info:
-	// https://github.com/kubernetes/community/blob/master/contributors/
+	// https://github.com/kubernetes/community/tree/main/contributors/
 	// devel/sig-architecture/api-conventions.md#resources
 	// +optional
 	// protolint:disable:next FIELD_NAMES_LOWER_SNAKE_CASE
@@ -1209,7 +1209,7 @@ type ObjectMeta struct {
 	// generation of an appropriate name automatically. Name is primarily intended
 	// for creation idempotence and configuration definition.
 	// Cannot be updated.
-	// More info: http://kubernetes.io/docs/user-guide/identifiers#names
+	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
 	// +optional
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// Namespace defines the space within which each name must be unique. An empty
@@ -1219,19 +1219,19 @@ type ObjectMeta struct {
 	//
 	// Must be a DNS_LABEL.
 	// Cannot be updated.
-	// More info: http://kubernetes.io/docs/user-guide/namespaces
+	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
 	// +optional
 	Namespace string `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// Map of string keys and values that can be used to organize and categorize
 	// (scope and select) objects. May match selectors of replication controllers
 	// and services.
-	// More info: http://kubernetes.io/docs/user-guide/labels
+	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
 	// +optional
 	Labels map[string]string `protobuf:"bytes,11,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Annotations is an unstructured key value map stored with a resource that \
 	// may be set by external tools to store and retrieve arbitrary metadata. They
 	// are not queryable and should be preserved when modifying objects.
-	// More info: http://kubernetes.io/docs/user-guide/annotations
+	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
 	// +optional
 	Annotations map[string]string `protobuf:"bytes,12,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// List of objects depended by this object. If ALL objects in the list have
@@ -1390,14 +1390,14 @@ type OwnerReference struct {
 	ApiVersion string `protobuf:"bytes,5,opt,name=apiVersion,proto3" json:"apiVersion,omitempty"`
 	// Kind of the referent.
 	// More info:
-	// https://github.com/kubernetes/community/blob/master/contributors/
+	// https://github.com/kubernetes/community/tree/main/contributors/
 	// devel/sig-architecture/api-conventions.md#types-kinds
 	Kind string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
 	// Name of the referent.
-	// More info: http://kubernetes.io/docs/user-guide/identifiers#names
+	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	// UID of the referent.
-	// More info: http://kubernetes.io/docs/user-guide/identifiers#uids
+	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
 	Uid           string `protobuf:"bytes,4,opt,name=uid,proto3" json:"uid,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1466,7 +1466,7 @@ type Inventory struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Standard object's metadata.
 	// More info:
-	// https://github.com/kubernetes/community/blob/master/contributors/
+	// https://github.com/kubernetes/community/tree/main/contributors/
 	// devel/sig-architecture/api-conventions.md#metadata
 	Metadata *ObjectMeta `protobuf:"bytes,1,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	// Specification of the desired behavior of the Inventory.

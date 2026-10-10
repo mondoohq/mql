@@ -15,7 +15,7 @@ separate admin key for organization management.
 
 ### Option 1: API Key
 
-Create an API key in the [Claude Console](https://console.anthropic.com/) under
+Create an API key in the [Claude Console](https://platform.claude.com/) under
 Settings > API Keys. Use a **read-only** key for least-privilege access.
 
 ```bash
@@ -269,7 +269,7 @@ WIF environment variables.
 `ANTHROPIC_ADMIN_API_KEY`.
 
 **"401 Unauthorized"** — The API key is invalid or revoked. Verify it in the
-[Claude Console](https://console.anthropic.com/) under Settings > API Keys.
+[Claude Console](https://platform.claude.com/) under Settings > API Keys.
 
 **"403 Forbidden"** — The key lacks permission for the requested resource. Admin
 endpoints require an admin key; standard endpoints require a workspace-scoped

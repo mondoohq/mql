@@ -9,7 +9,7 @@ import (
 )
 
 // NewPackageUrl creates a Conan package URL for a given package name and version.
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#conan
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/conan-definition.md
 func NewPackageUrl(name string, version string) string {
 	return NewConanPackageUrl(ConanCoordinate{Name: name, Version: version})
 }

@@ -4,11 +4,11 @@
 package client
 
 // Specifications
-// https://www.intel.com/content/www/us/en/servers/ipmi/ipmi-technical-resources.html
+// https://web.archive.org/web/20210423164216/https://www.intel.com/content/www/us/en/servers/ipmi/ipmi-technical-resources.html
 //
 // Commonly used commands
-// https://www.thomas-krenn.com/de/tkmag/wp-content/uploads/2017/08/ipmitool-cheat-sheet-v1.0.pdf
-// https://community.pivotal.io/s/article/How-to-work-on-IPMI-and-IPMITOOL?language=en_US
+// https://web.archive.org/web/20241130020608/https://www.thomas-krenn.com/de/tkmag/wp-content/uploads/2017/08/ipmitool-cheat-sheet-v1.0.pdf
+// https://web.archive.org/web/20191106135326/https://community.pivotal.io/s/article/How-to-work-on-IPMI-and-IPMITOOL
 
 import (
 	"errors"

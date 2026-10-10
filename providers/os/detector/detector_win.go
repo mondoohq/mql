@@ -19,7 +19,7 @@ import (
 func runtimeWindowsDetector(pf *inventory.Platform, conn shared.Connection) (bool, error) {
 	// most systems support wmi, but windows on arm does not ship with wmic, therefore we are trying to use windows
 	// builds from registry key first. If that fails, we try to use wmi
-	// see https://techcommunity.microsoft.com/t5/windows-it-pro-blog/wmi-command-line-wmic-utility-deprecation-next-steps/ba-p/4039242
+	// see https://techcommunity.microsoft.com/blog/windows-itpro-blog/wmi-command-line-wmic-utility-deprecation-next-steps/4039242
 
 	if pf.Labels == nil {
 		pf.Labels = map[string]string{}

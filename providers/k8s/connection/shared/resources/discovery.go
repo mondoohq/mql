@@ -21,7 +21,7 @@ import (
 	"k8s.io/client-go/discovery/cached/disk"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
-	_ "k8s.io/client-go/plugin/pkg/client/auth" // https://github.com/kubernetes/client-go/issues/242
+	_ "k8s.io/client-go/plugin/pkg/client/auth" // https://web.archive.org/web/20250501223852/https://github.com/kubernetes/client-go/issues/242
 	"k8s.io/client-go/rest"
 )
 

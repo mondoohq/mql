@@ -82,7 +82,7 @@ func (p *booleanField) UnmarshalJSON(data []byte) error {
 }
 
 // packageJsonPeople represents the author of the package
-// https://docs.npmjs.com/cli/v10/configuring-npm/package-json#people-fields-author-contributors
+// https://docs.npmjs.com/cli/v10/configuring-npm/package-json/#people-fields-author-contributors
 type packageJsonPeople struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`

@@ -52,7 +52,7 @@ func (a *mqlMicrosoftPolicies) identitySecurityDefaultsEnforcementPolicy() (any,
 	return convert.JsonToDict(newIdentitySecurityDefaultsEnforcementPolicy(policy))
 }
 
-// https://learn.microsoft.com/en-us/azure/active-directory/manage-apps/configure-user-consent?tabs=azure-powershell
+// https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/configure-user-consent?tabs=azure-powershell
 // https://learn.microsoft.com/en-us/graph/api/permissiongrantpolicy-list?view=graph-rest-1.0&tabs=http
 func (a *mqlMicrosoftPolicies) permissionGrantPolicies() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)

@@ -61,7 +61,7 @@ func New(serverURL string, token string, opts ...Option) *Vault {
 
 type Vault struct {
 	// Token is the access token the Vault client uses to talk to the server.
-	// See https://www.vaultproject.io/docs/concepts/tokens.html for more
+	// See https://developer.hashicorp.com/vault/docs/concepts/tokens for more
 	// information.
 	Token string
 	// Mount is the path the KV v2 secrets engine is mounted at, without
@@ -104,7 +104,7 @@ func validKey(key string) error {
 	return nil
 }
 
-// https://learn.hashicorp.com/tutorials/vault/versioned-kv?in=vault/secrets-management#step-2-write-secrets
+// https://developer.hashicorp.com/vault/tutorials/secrets-management/versioned-kv#write-secrets
 func (v *Vault) Get(ctx context.Context, id *vault.SecretID) (*vault.Secret, error) {
 	log.Debug().Str("secret", id.Key).Msg("gather secret from hashicorp-vault")
 	c, err := v.client()

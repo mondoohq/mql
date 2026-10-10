@@ -22,7 +22,7 @@ import (
 //
 // References:
 // https://learn.microsoft.com/en-us/windows/win32/api/iwscapi/
-// https://social.msdn.microsoft.com/Forums/en-US/8da083a9-59bf-4e93-9f1b-209a2c5b9c72/how-to-use-wscapidll-in-c-for-getting-details-about-antivirus-softwares?forum=csharpgeneral
+// https://web.archive.org/web/20201128030749/https://social.msdn.microsoft.com/Forums/en-US/8da083a9-59bf-4e93-9f1b-209a2c5b9c72/how-to-use-wscapidll-in-c-for-getting-details-about-antivirus-softwares?forum=csharpgeneral
 // https://social.msdn.microsoft.com/Forums/vstudio/en-US/8da083a9-59bf-4e93-9f1b-209a2c5b9c72/how-to-use-wscapidll-in-c-for-getting-details-about-antivirus-softwares?forum=csharpgeneral
 
 const windowsSecurityProducts = `
@@ -119,7 +119,7 @@ type productState struct {
 }
 
 // product state is encoded in a 4-byte, the last byte is not used
-// https://community.idera.com/database-tools/powershell/powertips/b/tips/posts/identifying-antivirus-engine-state
+// https://web.archive.org/web/20200928123510/https://community.idera.com/database-tools/powershell/powertips/b/tips/posts/identifying-antivirus-engine-state
 
 func parseProductState(state uint32) productState {
 	res := productState{}

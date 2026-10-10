@@ -21,7 +21,7 @@ import (
 // enable the metadata service either when creating a VPC instance or by updating the VPC
 // instance after creation.
 //
-// https://cloud.ibm.com/apidocs/vpc-metadata#get-instance
+// https://cloud.ibm.com/docs/apis/vpc-metadata/latest
 //
 
 const identityURLPath = "/metadata/v1/instance?version=2025-05-20"

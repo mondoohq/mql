@@ -11,7 +11,7 @@ import (
 )
 
 // NewPackageUrl creates a Dart/Flutter pub package URL.
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#pub
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/pub-definition.md
 func NewPackageUrl(name string, version string) string {
 	return packageurl.NewPackageURL(
 		"pub",

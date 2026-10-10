@@ -28,7 +28,7 @@ import (
 // vertexaiRegions lists the known Vertex AI regions to iterate when listing resources.
 // TODO: Replace with a dynamic location listing API call when available to avoid
 // missing resources in newly added GCP regions. Last updated: 2026-03.
-// See: https://cloud.google.com/vertex-ai/docs/general/locations
+// See: https://docs.cloud.google.com/gemini-enterprise-agent-platform/machine-learning/general/locations
 var vertexaiRegions = []string{
 	"us-central1",
 	"us-east1",

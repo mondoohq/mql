@@ -557,7 +557,7 @@ mql shell dropbox
 ## References
 
 - [Dropbox Business API Reference](https://www.dropbox.com/developers/documentation/http/teams)
-- [DBX Team Administration Guide](https://developers.dropbox.com/dbx-team-administration-guide)
+- [DBX Team Administration Guide](https://docs.dropboxapi.com/dropbox-api/docs/team-administration)
 - [dropbox-sdk-go-unofficial (v6)](https://github.com/dropbox/dropbox-sdk-go-unofficial) — hosted under the `dropbox` GitHub org, generated from the official Stone API spec (rung 1 of the client-selection ladder)
 - [Dropbox App Console (scoped team apps)](https://www.dropbox.com/developers/apps)
 - [`callensm/dropbox` Terraform provider](https://registry.terraform.io/providers/callensm/dropbox/latest/docs) — checked for rung-2 harmonization; independently maintained, personal-Dropbox scope, not a mainstream vendor Business provider, so not applicable here

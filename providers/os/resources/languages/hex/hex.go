@@ -10,7 +10,7 @@ import (
 )
 
 // NewPackageUrl creates a Hex package URL (shared by Elixir and Erlang).
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#hex
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/hex-definition.md
 func NewPackageUrl(name string, version string) string {
 	return packageurl.NewPackageURL(
 		"hex",

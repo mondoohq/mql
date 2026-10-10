@@ -28,7 +28,7 @@ func (s *mqlSlackConversations) listChannels(excludeArchived bool, types ...stri
 
 	list := []any{}
 
-	// https://api.slack.com/methods/conversations.list
+	// https://docs.slack.dev/reference/methods/conversations.list/
 	// scopes: channels:read, groups:read, im:read, mpim:read
 	opts := &slack.GetConversationsParameters{
 		Limit:           999, // use maximum, must be lower than 1000

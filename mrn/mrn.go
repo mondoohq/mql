@@ -85,7 +85,7 @@ func isValidResourceID(id string) bool {
 }
 
 // MRN follows Google's Design for resource names
-// see https://cloud.google.com/apis/design/resource_names
+// see https://google.aip.dev/122
 type MRN struct {
 	ServiceName          string
 	RelativeResourceName string

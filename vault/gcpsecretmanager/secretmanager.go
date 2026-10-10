@@ -15,8 +15,8 @@ import (
 	"go.mondoo.com/mql/utils/multierr"
 )
 
-// https://cloud.google.com/secret-manager
-// https://cloud.google.com/secret-manager/docs/reference/libraries#client-libraries-install-go
+// https://cloud.google.com/security/products/secret-manager
+// https://docs.cloud.google.com/secret-manager/docs/reference/libraries#client-libraries-install-go
 func New(projectID string) *Vault {
 	return &Vault{
 		projectID: projectID,

@@ -110,7 +110,7 @@ func ParseWinRegistryClientHotpatch(r io.Reader) (bool, error) {
 //   - https://learn.microsoft.com/microsoft-365/business-premium/microsoft-365-business-faqs (Business Premium includes Windows for business)
 //   - https://learn.microsoft.com/windows/deployment/windows-subscription-activation#how-it-works (only Enterprise E3/E5 steps Pro up to Enterprise)
 //   - https://learn.microsoft.com/en-us/intune/device-updates/windows/manage-quality-updates#prerequisites (quality update policies support Pro, Pro Education, Enterprise, Education)
-//   - https://learn.microsoft.com/en-us/windows/client-management/hotpatch (technical preconditions: build, UBR, VBS, ARM64 CHPE)
+//   - https://learn.microsoft.com/en-us/windows/deployment/windows-autopatch/manage/windows-autopatch-hotpatch-updates (technical preconditions: build, UBR, VBS, ARM64 CHPE)
 func hotpatchSupported(pf *inventory.Platform) bool {
 	buildNumber, err := strconv.Atoi(pf.Version)
 	if err != nil {
@@ -206,7 +206,7 @@ func ParseWinRegistryHotpatch(r io.Reader) (bool, error) {
 
 // https://learn.microsoft.com/en-us/windows-server/get-started/hotpatch
 // https://learn.microsoft.com/en-us/windows-server/get-started/enable-hotpatch-azure-edition
-// https://learn.microsoft.com/en-us/windows/client-management/hotpatch
+// https://learn.microsoft.com/en-us/windows/deployment/windows-autopatch/manage/windows-autopatch-hotpatch-updates
 
 // powershellGetWindowsClientHotpatch queries the client-specific AllowRebootlessUpdates policy and VBS.
 // VBS is read as its running state from Win32_DeviceGuard; the registry

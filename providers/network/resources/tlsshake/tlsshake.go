@@ -1178,7 +1178,7 @@ const (
 )
 
 // NAMED_GROUPS maps TLS named group IDs to their human-readable names.
-// https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-8
+// https://www.iana.org/assignments/tls-parameters#tls-parameters-8
 var NAMED_GROUPS = map[string]string{
 	"\x00\x17": "secp256r1",
 	"\x00\x18": "secp384r1",

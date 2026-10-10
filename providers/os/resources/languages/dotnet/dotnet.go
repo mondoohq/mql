@@ -11,7 +11,7 @@ import (
 )
 
 // NewPackageUrl creates a NuGet package URL.
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#nuget
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/nuget-definition.md
 func NewPackageUrl(name string, version string) string {
 	return packageurl.NewPackageURL(
 		packageurl.TypeNuget,

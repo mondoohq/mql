@@ -30,7 +30,7 @@ import (
 // to Cloud SQL, Spanner, or an Omni region needs no dataset at all. A project
 // with no datasets therefore reported nothing at all while the API held both.
 //
-// Sourced from https://cloud.google.com/bigquery/docs/locations. It needs
+// Sourced from https://docs.cloud.google.com/bigquery/docs/locations. It needs
 // updating as Google adds locations, and a location missing from here is
 // invisible rather than reported, which is why the list lives in one place with
 // this note attached to it.

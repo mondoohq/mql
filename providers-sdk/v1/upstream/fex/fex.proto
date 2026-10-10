@@ -512,7 +512,7 @@ message RegistryKey {
 message Connection {
   // Protocol defines the protocol used in the connection. Decimals are
   // equivalent to the protocol numbers assigned by IANA. See
-  // https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
+  // https://www.iana.org/assignments/protocol-numbers
   enum ConnectionProtocol {
     // Unspecified protocol, does not correspond to any real protocol.
     UNSPECIFIED = 0;

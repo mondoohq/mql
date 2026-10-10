@@ -20018,7 +20018,7 @@ private vscode.extension @defaults("editor name version") {
   //
   // Package URL identifying the extension in the form
   // pkg:vscode-extension/<publisher>/<name>@<version>, per
-  // https://github.com/package-url/purl-spec/blob/main/types-doc/vscode-extension-definition.md
+  // https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/vscode-extension-definition.md
   purl() string
 }
 
@@ -21094,7 +21094,7 @@ private claude.code.mcpServer @defaults("name") @maturity("preview") {
 // Library/Application Support/Claude on macOS, and .config/Claude elsewhere,
 // under the user's home; pass configPath to target another one. Useful for
 // auditing which local tools and services the desktop assistant can reach.
-// URL: https://claude.ai/download
+// URL: https://claude.com/download
 claude.desktop @defaults("configPath") @maturity("preview") {
   init(configPath? string)
   // Path to the Claude desktop configuration directory
@@ -21367,7 +21367,7 @@ private openai.codex.repo @defaults("name branch") @maturity("preview") {
 // assistant, and any installed skills, along with the package that
 // installed the editor and the runtime it executes in. Useful for
 // auditing what tools and instructions govern the AI assistant.
-// URL: https://www.cursor.com/
+// URL: https://cursor.com/
 cursor @defaults("configPath") @maturity("preview") {
   init(configPath? string)
   // Path to the Cursor configuration directory
@@ -21818,7 +21818,7 @@ private gemini.skill @defaults("name") @maturity("preview") {
 // through it are the global rules and memories that steer the assistant,
 // the configured MCP servers, and any installed skills, along with the
 // package that installed the editor and the runtime it executes in.
-// URL: https://windsurf.com/
+// URL: https://devin.ai/desktop
 windsurf @defaults("configPath") @maturity("preview") {
   init(configPath? string)
   // Path to the Windsurf configuration directory
@@ -22048,7 +22048,7 @@ private zed.repo @defaults("name branch") @maturity("preview") {
 // Roo Code AI coding agent installed on the host. Queryable through it are
 // the installed skills, along with the package that installed the tool and
 // the runtime it executes in.
-// URL: https://roocode.com/
+// URL: https://roomote.dev/
 roo @defaults("configPath") @maturity("preview") {
   init(configPath? string)
   // Path to the Roo Code configuration directory
@@ -22312,7 +22312,7 @@ private continuedev.skill @defaults("name") @maturity("preview") {
 // are scanned under the configuration directory (default .trae in the user's
 // home); pass configPath to target a non-default install. Auditing this
 // resource shows whether the agent is present and what skills extend it.
-// URL: https://trae.ai/
+// URL: https://www.trae.ai/
 trae @defaults("configPath") @maturity("preview") {
   init(configPath? string)
   // Path to the Trae configuration directory
@@ -22562,7 +22562,7 @@ private pi.skill @defaults("name") @maturity("preview") {
 // are scanned under the configuration directory (default .vibe in the user's
 // home); pass configPath to target a non-default install. Auditing this
 // resource shows whether the agent is present and what skills extend it.
-// URL: https://docs.mistral.ai/tools/vibe/
+// URL: https://docs.mistral.ai/vibe/code/overview
 mistral.vibe @defaults("configPath") @maturity("preview") {
   init(configPath? string)
   // Path to the Mistral Vibe configuration directory
@@ -22731,7 +22731,7 @@ private antigravity.skill @defaults("name") @maturity("preview") {
 // under the configuration directory (default .bob in the user's home); pass
 // configPath to target a non-default install. Auditing this resource shows
 // whether the agent is present and what skills extend it.
-// URL: https://www.ibm.com/products/bob
+// URL: https://bob.ibm.com/
 ibm.bob @defaults("configPath") @maturity("preview") {
   init(configPath? string)
   // Path to the Bob configuration directory
@@ -22942,7 +22942,7 @@ private openclaw.skill @defaults("name") @maturity("preview") {
 // .snowflake/cortex in the user's home); pass configPath to target a
 // non-default install. Auditing this resource shows whether the agent is
 // present and what skills extend it.
-// URL: https://www.snowflake.com/en/product/features/cortex-code/
+// URL: https://www.snowflake.com/en/product/snowflake-coco/
 snowflake.cortex @defaults("configPath") @maturity("preview") {
   init(configPath? string)
   // Path to the Cortex configuration directory
@@ -23026,7 +23026,7 @@ private snowflake.cortex.skill @defaults("name") @maturity("preview") {
 // the configuration directory (default .junie in the user's home); pass
 // configPath to target a non-default install. Auditing this resource shows
 // whether the agent is present and what skills extend it.
-// URL: https://www.jetbrains.com/junie/
+// URL: https://junie.jetbrains.com/
 junie @defaults("configPath") @maturity("preview") {
   init(configPath? string)
   // Path to the Junie configuration directory
@@ -23276,7 +23276,7 @@ private warp.skill @defaults("name") @maturity("preview") {
 // under the configuration directory (default .kilocode in the user's home);
 // pass configPath to target a non-default install. Auditing this resource
 // shows whether the agent is present and what skills extend it.
-// URL: https://kilocode.ai/
+// URL: https://kilo.ai/
 kilocode @defaults("configPath") @maturity("preview") {
   init(configPath? string)
   // Path to the Kilo Code configuration directory
@@ -23360,7 +23360,7 @@ private kilocode.skill @defaults("name") @maturity("preview") {
 // directory (default .openhands in the user's home); pass configPath to
 // target a non-default install. Auditing this resource shows whether the
 // agent is present and what skills extend it.
-// URL: https://www.all-hands.dev/
+// URL: https://www.openhands.dev/
 openhands @defaults("configPath") @maturity("preview") {
   init(configPath? string)
   // Path to the OpenHands configuration directory

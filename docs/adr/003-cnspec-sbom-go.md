@@ -120,7 +120,7 @@ Examples:
 - `pkg:golang/golang.org/x/sync@v0.3.0`
 - `pkg:golang/github.com/foo/bar/v2@v2.1.0`
 
-Per the [PURL spec for Go](https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#golang):
+Per the [PURL spec for Go](https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/golang-definition.md):
 - Type: `golang`
 - Namespace + name: the full module path (namespace is everything before the last `/` segment)
 - Version: the Go module version string

@@ -87,7 +87,7 @@ const (
 	STDERR byte = 2
 )
 
-// Format is defined in https://docs.docker.com/engine/api/v1.33/#operation/ContainerAttach
+// Format is defined in https://docs.docker.com/reference/api/engine/latest/#tag/Container/operation/ContainerAttach
 func (c *Command) transformHijack(docker io.Reader, stdout io.Writer, stderr io.Writer) {
 	header := make([]byte, 8)
 	for {

@@ -50,7 +50,7 @@ func NormalizeName(name string) string {
 
 func NewPackageUrl(name string, version string) string {
 	// ensure the name is according to the PURL spec
-	// see https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#pypi
+	// see https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/pypi-definition.md
 	name = NormalizeName(name)
 
 	return packageurl.NewPackageURL(

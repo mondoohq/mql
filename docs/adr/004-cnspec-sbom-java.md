@@ -145,7 +145,7 @@ Examples:
 - `pkg:maven/org.apache.commons/commons-lang3@3.12.0`
 - `pkg:maven/com.google.guava/guava@31.1-jre`
 
-Per the [PURL spec for Maven](https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#maven):
+Per the [PURL spec for Maven](https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/maven-definition.md):
 - Type: `maven`
 - Namespace: groupId
 - Name: artifactId
