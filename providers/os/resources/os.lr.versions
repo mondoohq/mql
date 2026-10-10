@@ -76,6 +76,12 @@ aider.hasApiKeys 14.0.1
 aider.model 14.0.1
 aider.package 14.0.1
 aider.runtime 14.0.1
+aix.audit 14.19.1
+aix.audit.binMode 14.19.1
+aix.audit.classes 14.19.1
+aix.audit.running 14.19.1
+aix.audit.streamMode 14.19.1
+aix.audit.users 14.19.1
 aix.device 14.19.1
 aix.device.attributes 14.19.1
 aix.device.name 14.19.1

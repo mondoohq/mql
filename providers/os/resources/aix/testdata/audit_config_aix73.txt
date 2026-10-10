@@ -1,0 +1,26 @@
+* /etc/security/audit/config of AIX 7.3 TL4 SP2, cut to the start, bin,
+* classes and users stanzas and two classes
+
+
+start:
+	binmode = on 
+	streammode = off 
+	ignorenonexistentity = no
+
+bin:
+	trail = /audit/trail
+	bin1 = /audit/bin1
+	bin2 = /audit/bin2
+	binsize = 10240
+	cmds = /etc/security/audit/bincmds
+	freespace = 65536
+	backuppath = /audit
+        backupsize = 0
+	bincompact = off
+
+classes:
+	general = USER_SU,PASSWORD_Change,FILE_Unlink,FILE_Link,FILE_Rename,FS_Chdir,FS_Chroot,PORT_Locked,PORT_Change,FS_Mkdir,FS_Rmdir
+	files = FILE_Open,FILE_Read,FILE_Write,FILE_Close,FILE_Link,FILE_Unlink,FILE_Rename,FILE_Owner,FILE_Mode,FILE_Acl,FILE_Privilege,DEV_Create,File_copy
+
+users:
+	root = general
