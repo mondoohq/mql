@@ -1,0 +1,37 @@
+* /etc/security/limits of AIX 7.3 TL4 SP2
+* without its comment header
+
+
+
+default:
+	fsize = -1     
+	core = 2097151
+	cpu = -1
+	data = -1    
+	rss = 65536
+	stack =	65536
+	nofiles = 2000
+
+root:
+	data = -1
+	fsize = -1
+
+daemon:
+
+bin:
+
+sys:
+
+adm:
+
+uucp:
+
+guest:
+
+nobody:
+
+lpd:
+
+esaadmin:
+	stack = 393216
+	stack_hard = 393216
