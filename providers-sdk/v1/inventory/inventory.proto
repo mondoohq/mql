@@ -281,7 +281,9 @@ message ObjectMeta {
   // generation of an appropriate name automatically. Name is primarily intended
   // for creation idempotence and configuration definition.
   // Cannot be updated.
-  // More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // names/#names
   // +optional
   string name = 1;
 
@@ -292,21 +294,27 @@ message ObjectMeta {
   //
   // Must be a DNS_LABEL.
   // Cannot be updated.
-  // More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // namespaces/
   // +optional
   string namespace = 3;
 
   // Map of string keys and values that can be used to organize and categorize
   // (scope and select) objects. May match selectors of replication controllers
   // and services.
-  // More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // labels/
   // +optional
   map<string, string> labels = 11;
 
   // Annotations is an unstructured key value map stored with a resource that \
   // may be set by external tools to store and retrieve arbitrary metadata. They
   // are not queryable and should be preserved when modifying objects.
-  // More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // annotations/
   // +optional
   map<string, string> annotations = 12;
 
@@ -358,11 +366,15 @@ message OwnerReference {
   string kind = 1;
 
   // Name of the referent.
-  // More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // names/#names
   string name = 3;
 
   // UID of the referent.
-  // More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // names/#uids
   string uid = 4;
 }
 

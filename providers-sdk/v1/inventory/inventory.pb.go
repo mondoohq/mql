@@ -1209,7 +1209,9 @@ type ObjectMeta struct {
 	// generation of an appropriate name automatically. Name is primarily intended
 	// for creation idempotence and configuration definition.
 	// Cannot be updated.
-	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+	// More info:
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/
+	// names/#names
 	// +optional
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// Namespace defines the space within which each name must be unique. An empty
@@ -1219,19 +1221,25 @@ type ObjectMeta struct {
 	//
 	// Must be a DNS_LABEL.
 	// Cannot be updated.
-	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+	// More info:
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/
+	// namespaces/
 	// +optional
 	Namespace string `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// Map of string keys and values that can be used to organize and categorize
 	// (scope and select) objects. May match selectors of replication controllers
 	// and services.
-	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+	// More info:
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/
+	// labels/
 	// +optional
 	Labels map[string]string `protobuf:"bytes,11,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Annotations is an unstructured key value map stored with a resource that \
 	// may be set by external tools to store and retrieve arbitrary metadata. They
 	// are not queryable and should be preserved when modifying objects.
-	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+	// More info:
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/
+	// annotations/
 	// +optional
 	Annotations map[string]string `protobuf:"bytes,12,rep,name=annotations,proto3" json:"annotations,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// List of objects depended by this object. If ALL objects in the list have
@@ -1394,10 +1402,14 @@ type OwnerReference struct {
 	// devel/sig-architecture/api-conventions.md#types-kinds
 	Kind string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
 	// Name of the referent.
-	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+	// More info:
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/
+	// names/#names
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	// UID of the referent.
-	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
+	// More info:
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/
+	// names/#uids
 	Uid           string `protobuf:"bytes,4,opt,name=uid,proto3" json:"uid,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
