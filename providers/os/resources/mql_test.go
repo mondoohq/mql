@@ -1213,7 +1213,6 @@ func TestResource_File_Permissions(t *testing.T) {
 		isFile          bool
 		isSymlink       bool
 
-		focus      bool
 		expectedID string
 	}{
 		{
@@ -1309,7 +1308,6 @@ func TestResource_File_Permissions(t *testing.T) {
 			otherExecutable: true,
 			isFile:          true,
 			sgid:            true,
-			focus:           true,
 			expectedID:      "-rwxr-sr-x",
 		},
 		{
@@ -1337,17 +1335,38 @@ func TestResource_File_Permissions(t *testing.T) {
 			otherExecutable: true,
 			isSymlink:       true,
 
-			expectedID: "lrwxr-xr-x",
+			expectedID: "lrwxr-xr-x -> ?",
+		},
+		{
+			mode:            0o755,
+			userReadable:    true,
+			userWriteable:   true,
+			userExecutable:  true,
+			groupReadable:   true,
+			groupExecutable: true,
+			otherReadable:   true,
+			otherExecutable: true,
+			isSymlink:       true,
+			isDir:           true,
+
+			expectedID: "lrwxr-xr-x -> d",
+		},
+		{
+			mode:            0o666,
+			userReadable:    true,
+			userWriteable:   true,
+			groupReadable:   true,
+			groupWriteable:  true,
+			otherReadable:   true,
+			otherWriteable:  true,
+
+			expectedID: "-rw-rw-rw- ?",
 		},
 	}
 
 	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
 
 	for _, tc := range testCases {
-		if !tc.focus {
-			continue
-		}
-
 		permRaw, err := resources.CreateResource(
 			runtime,
 			"file.permissions",
@@ -1372,6 +1391,53 @@ func TestResource_File_Permissions(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Equal(t, tc.expectedID, permRaw.MqlID())
+	}
+}
+
+// A symlink's permissions are "l" and its target's bits, so a symlink to a
+// directory and one to a file can print the same. They must stay two
+// resources: one shared resource answered isDirectory for both with the value
+// of whichever was read first, and a check reading /usr/sbin -> bin changed
+// its result between scans of one machine.
+func TestResource_File_Permissions_SymlinkTargets(t *testing.T) {
+	type permissions interface {
+		plugin.Resource
+		GetIsDirectory() *plugin.TValue[bool]
+		GetString() *plugin.TValue[string]
+	}
+	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+	symlink := func(isDir bool) permissions {
+		res, err := resources.CreateResource(runtime, "file.permissions", map[string]*llx.RawData{
+			"mode":             llx.IntData(0o755),
+			"user_readable":    llx.BoolData(true),
+			"user_writeable":   llx.BoolData(true),
+			"user_executable":  llx.BoolData(true),
+			"group_readable":   llx.BoolData(true),
+			"group_writeable":  llx.BoolData(false),
+			"group_executable": llx.BoolData(true),
+			"other_readable":   llx.BoolData(true),
+			"other_writeable":  llx.BoolData(false),
+			"other_executable": llx.BoolData(true),
+			"suid":             llx.BoolData(false),
+			"sgid":             llx.BoolData(false),
+			"sticky":           llx.BoolData(false),
+			"isDirectory":      llx.BoolData(isDir),
+			"isFile":           llx.BoolData(!isDir),
+			"isSymlink":        llx.BoolData(true),
+		})
+		require.NoError(t, err)
+		return res.(permissions)
+	}
+
+	toFile := symlink(false)
+	toDir := symlink(true)
+	require.NotEqual(t, toFile.MqlID(), toDir.MqlID())
+	require.False(t, toFile.GetIsDirectory().Data)
+	require.True(t, toDir.GetIsDirectory().Data)
+	for _, p := range []permissions{toFile, toDir} {
+		s := p.GetString()
+		require.NoError(t, s.Error)
+		require.Equal(t, "lrwxr-xr-x", s.Data)
 	}
 }
 
