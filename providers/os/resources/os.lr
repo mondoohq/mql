@@ -24288,3 +24288,46 @@ aix.trustedExecution @defaults("enabled stopUntrusted") {
   // Directories of the trusted library path (TLP)
   trustedLibraryPath() []string
 }
+
+// AIX file systems
+//
+// The file system definitions of /etc/filesystems, one per mount point:
+// what is mounted there, when, and with which options. Unlike `mount`,
+// this covers file systems that are not mounted right now and NFS mounts
+// made at boot. AIX only.
+aix.filesystems {
+  []aix.filesystem
+}
+
+// AIX file system definition
+//
+// One /etc/filesystems stanza. `mountAtBoot` is the stanza's mount
+// attribute: true or automatic mounts the file system at boot, false only
+// on request, readonly at boot without writes. An attribute the stanza
+// does not set is null. The `mountPoint` field selects the stanza, for
+// example `aix.filesystem(mountPoint: "/tmp")`.
+aix.filesystem @defaults("mountPoint vfs dev mountAtBoot") {
+  init(mountPoint string)
+  // Mount point, the stanza name
+  mountPoint string
+  // Device or remote path (dev)
+  dev string
+  // File system type, such as jfs2, nfs or procfs (vfs)
+  vfs string
+  // When the file system is mounted (mount)
+  mountAtBoot string
+  // Host a remote file system is mounted from (nodename)
+  nodename string
+  // Mount options (options)
+  options []string
+  // Log device of a journaled file system (log)
+  log string
+  // Whether fsck checks the file system (check)
+  check string
+  // Mount group the file system belongs to (type)
+  type string
+  // Whether accounting is enabled for the file system (account)
+  account bool
+  // Every attribute of the stanza
+  attributes map[string]string
+}
