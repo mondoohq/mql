@@ -725,6 +725,8 @@ const (
 	ResourceAixSecurityUsers                              string = "aix.security.users"
 	ResourceAixSecurityUser                               string = "aix.security.user"
 	ResourceAixSecurityLoginCfg                           string = "aix.security.loginCfg"
+	ResourceAixSecurityLimits                             string = "aix.security.limits"
+	ResourceAixSecurityLimit                              string = "aix.security.limit"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -3566,6 +3568,14 @@ func init() {
 		"aix.security.loginCfg": {
 			// to override args, implement: initAixSecurityLoginCfg(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAixSecurityLoginCfg,
+		},
+		"aix.security.limits": {
+			// to override args, implement: initAixSecurityLimits(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAixSecurityLimits,
+		},
+		"aix.security.limit": {
+			Init:   initAixSecurityLimit,
+			Create: createAixSecurityLimit,
 		},
 	}
 }
@@ -20437,6 +20447,63 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aix.security.loginCfg.sakEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAixSecurityLoginCfg).GetSakEnabled()).ToDataRes(types.Bool)
+	},
+	"aix.security.limits.defaults": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimits).GetDefaults()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aix.security.limits.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimits).GetList()).ToDataRes(types.Array(types.Resource("aix.security.limit")))
+	},
+	"aix.security.limit.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetName()).ToDataRes(types.String)
+	},
+	"aix.security.limit.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetUser()).ToDataRes(types.Resource("user"))
+	},
+	"aix.security.limit.attributes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetAttributes()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aix.security.limit.fsize": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetFsize()).ToDataRes(types.Int)
+	},
+	"aix.security.limit.fsizeHard": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetFsizeHard()).ToDataRes(types.Int)
+	},
+	"aix.security.limit.core": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetCore()).ToDataRes(types.Int)
+	},
+	"aix.security.limit.coreHard": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetCoreHard()).ToDataRes(types.Int)
+	},
+	"aix.security.limit.cpu": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetCpu()).ToDataRes(types.Int)
+	},
+	"aix.security.limit.cpuHard": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetCpuHard()).ToDataRes(types.Int)
+	},
+	"aix.security.limit.data": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetData()).ToDataRes(types.Int)
+	},
+	"aix.security.limit.dataHard": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetDataHard()).ToDataRes(types.Int)
+	},
+	"aix.security.limit.stack": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetStack()).ToDataRes(types.Int)
+	},
+	"aix.security.limit.stackHard": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetStackHard()).ToDataRes(types.Int)
+	},
+	"aix.security.limit.rss": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetRss()).ToDataRes(types.Int)
+	},
+	"aix.security.limit.rssHard": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetRssHard()).ToDataRes(types.Int)
+	},
+	"aix.security.limit.nofiles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetNofiles()).ToDataRes(types.Int)
+	},
+	"aix.security.limit.nofilesHard": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLimit).GetNofilesHard()).ToDataRes(types.Int)
 	},
 }
 
@@ -45684,6 +45751,90 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aix.security.loginCfg.sakEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAixSecurityLoginCfg).SakEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.security.limits.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimits).__id, ok = v.Value.(string)
+		return
+	},
+	"aix.security.limits.defaults": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimits).Defaults, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aix.security.limits.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimits).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).__id, ok = v.Value.(string)
+		return
+	},
+	"aix.security.limit.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).User, ok = plugin.RawToTValue[*mqlUser](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.attributes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).Attributes, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.fsize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).Fsize, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.fsizeHard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).FsizeHard, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.core": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).Core, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.coreHard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).CoreHard, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.cpu": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).Cpu, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.cpuHard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).CpuHard, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.data": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).Data, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.dataHard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).DataHard, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.stack": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).Stack, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.stackHard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).StackHard, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.rss": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).Rss, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.rssHard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).RssHard, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.nofiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).Nofiles, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.limit.nofilesHard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLimit).NofilesHard, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 }
@@ -118141,4 +118292,213 @@ func (c *mqlAixSecurityLoginCfg) GetSakEnabled() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.SakEnabled, func() (bool, error) {
 		return c.sakEnabled()
 	})
+}
+
+// mqlAixSecurityLimits for the aix.security.limits resource
+type mqlAixSecurityLimits struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAixSecurityLimitsInternal
+	Defaults plugin.TValue[map[string]any]
+	List     plugin.TValue[[]any]
+}
+
+// createAixSecurityLimits creates a new instance of this resource
+func createAixSecurityLimits(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAixSecurityLimits{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aix.security.limits", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAixSecurityLimits) MqlName() string {
+	return "aix.security.limits"
+}
+
+func (c *mqlAixSecurityLimits) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAixSecurityLimits) GetDefaults() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Defaults, func() (map[string]any, error) {
+		return c.defaults()
+	})
+}
+
+func (c *mqlAixSecurityLimits) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aix.security.limits", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlAixSecurityLimit for the aix.security.limit resource
+type mqlAixSecurityLimit struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAixSecurityLimitInternal it will be used here
+	Name        plugin.TValue[string]
+	User        plugin.TValue[*mqlUser]
+	Attributes  plugin.TValue[map[string]any]
+	Fsize       plugin.TValue[int64]
+	FsizeHard   plugin.TValue[int64]
+	Core        plugin.TValue[int64]
+	CoreHard    plugin.TValue[int64]
+	Cpu         plugin.TValue[int64]
+	CpuHard     plugin.TValue[int64]
+	Data        plugin.TValue[int64]
+	DataHard    plugin.TValue[int64]
+	Stack       plugin.TValue[int64]
+	StackHard   plugin.TValue[int64]
+	Rss         plugin.TValue[int64]
+	RssHard     plugin.TValue[int64]
+	Nofiles     plugin.TValue[int64]
+	NofilesHard plugin.TValue[int64]
+}
+
+// createAixSecurityLimit creates a new instance of this resource
+func createAixSecurityLimit(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAixSecurityLimit{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aix.security.limit", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAixSecurityLimit) MqlName() string {
+	return "aix.security.limit"
+}
+
+func (c *mqlAixSecurityLimit) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAixSecurityLimit) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAixSecurityLimit) GetUser() *plugin.TValue[*mqlUser] {
+	return plugin.GetOrCompute[*mqlUser](&c.User, func() (*mqlUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aix.security.limit", c.__id, "user")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlUser), nil
+			}
+		}
+
+		return c.user()
+	})
+}
+
+func (c *mqlAixSecurityLimit) GetAttributes() *plugin.TValue[map[string]any] {
+	return &c.Attributes
+}
+
+func (c *mqlAixSecurityLimit) GetFsize() *plugin.TValue[int64] {
+	return &c.Fsize
+}
+
+func (c *mqlAixSecurityLimit) GetFsizeHard() *plugin.TValue[int64] {
+	return &c.FsizeHard
+}
+
+func (c *mqlAixSecurityLimit) GetCore() *plugin.TValue[int64] {
+	return &c.Core
+}
+
+func (c *mqlAixSecurityLimit) GetCoreHard() *plugin.TValue[int64] {
+	return &c.CoreHard
+}
+
+func (c *mqlAixSecurityLimit) GetCpu() *plugin.TValue[int64] {
+	return &c.Cpu
+}
+
+func (c *mqlAixSecurityLimit) GetCpuHard() *plugin.TValue[int64] {
+	return &c.CpuHard
+}
+
+func (c *mqlAixSecurityLimit) GetData() *plugin.TValue[int64] {
+	return &c.Data
+}
+
+func (c *mqlAixSecurityLimit) GetDataHard() *plugin.TValue[int64] {
+	return &c.DataHard
+}
+
+func (c *mqlAixSecurityLimit) GetStack() *plugin.TValue[int64] {
+	return &c.Stack
+}
+
+func (c *mqlAixSecurityLimit) GetStackHard() *plugin.TValue[int64] {
+	return &c.StackHard
+}
+
+func (c *mqlAixSecurityLimit) GetRss() *plugin.TValue[int64] {
+	return &c.Rss
+}
+
+func (c *mqlAixSecurityLimit) GetRssHard() *plugin.TValue[int64] {
+	return &c.RssHard
+}
+
+func (c *mqlAixSecurityLimit) GetNofiles() *plugin.TValue[int64] {
+	return &c.Nofiles
+}
+
+func (c *mqlAixSecurityLimit) GetNofilesHard() *plugin.TValue[int64] {
+	return &c.NofilesHard
 }

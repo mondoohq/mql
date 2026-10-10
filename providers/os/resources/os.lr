@@ -24162,3 +24162,59 @@ aix.security.loginCfg @defaults("pwdAlgorithm maxlogins logintimeout") {
   // Whether the secure attention key is enabled on ports (default: sak_enabled)
   sakEnabled() bool
 }
+
+// AIX user resource limits
+//
+// Resource limits of every local user from /etc/security/limits, resolved
+// the way the system applies them: a user's stanza wins, and a limit it
+// leaves out is inherited from the `default` stanza. AIX only.
+aix.security.limits {
+  []aix.security.limit
+  // Limits of the default stanza, which every user inherits
+  defaults() map[string]string
+}
+
+// AIX resource limits of one user
+//
+// One user's effective soft and hard limits from /etc/security/limits.
+// File, core, data, stack and rss sizes are in 512-byte blocks and cpu in
+// seconds; -1 means unlimited. A field is null when neither the user's
+// stanza nor the default stanza sets it. The `name` field selects the
+// user, for example `aix.security.limit(name: "root")`.
+aix.security.limit @defaults("name core fsize") {
+  init(name string)
+  // User name
+  name string
+  // The local user
+  user() user
+  // Effective limits: the user's stanza merged over the default stanza
+  attributes map[string]string
+  // Soft limit on the size of a file, in 512-byte blocks (fsize)
+  fsize int
+  // Hard limit on the size of a file, in 512-byte blocks (fsize_hard)
+  fsizeHard int
+  // Soft limit on the size of a core file, in 512-byte blocks (core)
+  core int
+  // Hard limit on the size of a core file, in 512-byte blocks (core_hard)
+  coreHard int
+  // Soft limit on CPU time, in seconds (cpu)
+  cpu int
+  // Hard limit on CPU time, in seconds (cpu_hard)
+  cpuHard int
+  // Soft limit on the data segment, in 512-byte blocks (data)
+  data int
+  // Hard limit on the data segment, in 512-byte blocks (data_hard)
+  dataHard int
+  // Soft limit on the stack, in 512-byte blocks (stack)
+  stack int
+  // Hard limit on the stack, in 512-byte blocks (stack_hard)
+  stackHard int
+  // Soft limit on resident memory, in 512-byte blocks (rss)
+  rss int
+  // Hard limit on resident memory, in 512-byte blocks (rss_hard)
+  rssHard int
+  // Soft limit on open file descriptors (nofiles)
+  nofiles int
+  // Hard limit on open file descriptors (nofiles_hard)
+  nofilesHard int
+}
