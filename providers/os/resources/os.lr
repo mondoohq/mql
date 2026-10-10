@@ -24021,3 +24021,17 @@ private aix.inittab.entry @defaults("id action command") {
   // Whether the entry is active: its action is not off
   active bool
 }
+
+// AIX device
+//
+// One device of the AIX object data manager and its attributes, as
+// `lsattr -El` lists them. `sys0` holds system-wide settings such as
+// `fullcore`, `maxuproc` and `ncargs`. The `name` field selects the device,
+// for example `aix.device(name: "sys0").attributes["fullcore"]`. AIX only.
+aix.device @defaults("name") {
+  init(name string)
+  // Device name, such as sys0, en0 or hdisk0
+  name string
+  // Current attribute values
+  attributes() map[string]string
+}

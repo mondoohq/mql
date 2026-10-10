@@ -76,6 +76,9 @@ aider.hasApiKeys 14.0.1
 aider.model 14.0.1
 aider.package 14.0.1
 aider.runtime 14.0.1
+aix.device 14.19.1
+aix.device.attributes 14.19.1
+aix.device.name 14.19.1
 aix.inittab 14.19.1
 aix.inittab.entry 14.19.1
 aix.inittab.entry.action 14.19.1
