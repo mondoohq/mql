@@ -13,6 +13,7 @@ package resources_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -469,6 +470,48 @@ func TestDict_Methods_Contains(t *testing.T) {
 			Code:        p + "params['hello'].where(_ == empty)",
 			Expectation: []any{},
 		},
+		// any, all, none and one compare the whole string as a one-element
+		// list, also for a single `_ == x`: no substring match
+		{
+			Code:        p + "params['hello'].any(_ == 'hello')",
+			ResultIndex: 1,
+			Expectation: true,
+		},
+		{
+			Code:        p + "params['hello'].any(_ == 'll')",
+			ResultIndex: 1,
+			Expectation: false,
+		},
+		{
+			Code:        p + "params['hello'].none(_ == 'hello')",
+			ResultIndex: 1,
+			Expectation: false,
+		},
+		{
+			Code:        p + "params['hello'].none(_ == 'll')",
+			ResultIndex: 1,
+			Expectation: true,
+		},
+		{
+			Code:        p + "params['hello'].all(_ == 'hello')",
+			ResultIndex: 1,
+			Expectation: true,
+		},
+		{
+			Code:        p + "params['hello'].all(_ == 'll')",
+			ResultIndex: 1,
+			Expectation: false,
+		},
+		{
+			Code:        p + "params['hello'].one(_ == 'hello')",
+			ResultIndex: 1,
+			Expectation: true,
+		},
+		{
+			Code:        p + "params['hello'].one(_ == 'll')",
+			ResultIndex: 1,
+			Expectation: false,
+		},
 		{
 			Code:        p + "params['string-array'].contains('a')",
 			ResultIndex: 1,
@@ -532,6 +575,48 @@ func TestDict_Methods_Contains(t *testing.T) {
 			Code:        p + "params['string-array'].none(value == 'a')",
 			ResultIndex: 2,
 			Expectation: false,
+		},
+	})
+}
+
+// A JSON field that holds either a string or a list of strings, like the
+// Action and Resource of an IAM policy statement, must answer any, all and
+// none the same way for "a" as for ["a"].
+func TestDict_Methods_StringOrList(t *testing.T) {
+	const doc = `parse.json(content: '{"Statement": [` +
+		`{"Effect": "Allow", "Action": "kms:Decrypt", "Resource": "*"},` +
+		`{"Effect": "Allow", "Action": ["kms:Decrypt"], "Resource": ["*"]},` +
+		`{"Effect": "Allow", "Action": "s3:*", "Resource": "arn:aws:s3:::b/*"},` +
+		`{"Effect": "Allow", "Action": ["s3:*"], "Resource": ["arn:aws:s3:::b/*"]}` +
+		`]}').params["Statement"]`
+
+	x := testutils.InitTester(testutils.LinuxMock())
+	for i, shape := range []string{"string", "list"} {
+		kms := fmt.Sprintf("%s[%d]", doc, i)
+		s3 := fmt.Sprintf("%s[%d]", doc, i+2)
+		t.Run(shape, func(t *testing.T) {
+			x.TestSimple(t, []testutils.SimpleTest{
+				{Code: kms + `["Action"].any(_ == "kms:Decrypt")`, ResultIndex: 1, Expectation: true},
+				{Code: kms + `["Action"].none(_ == "kms:Decrypt")`, ResultIndex: 1, Expectation: false},
+				{Code: kms + `["Action"].all(_ == "kms:Decrypt")`, ResultIndex: 1, Expectation: true},
+				{Code: kms + `["Action"].any(_ == "kms")`, ResultIndex: 1, Expectation: false},
+				{Code: kms + `["Action"].any(_ == "kms:*" || _ == "kms:Decrypt")`, ResultIndex: 1, Expectation: true},
+				{Code: kms + `["Resource"].any(_ == "*")`, ResultIndex: 1, Expectation: true},
+				// "s3:*" contains "*" but is not "*"
+				{Code: s3 + `["Action"].any(_ == "*")`, ResultIndex: 1, Expectation: false},
+				{Code: s3 + `["Resource"].none(_ == "*")`, ResultIndex: 1, Expectation: true},
+			})
+		})
+	}
+
+	x.TestSimple(t, []testutils.SimpleTest{
+		{
+			Code:        doc + `.where(_["Action"].any(_ == "kms:Decrypt")).length`,
+			Expectation: int64(2),
+		},
+		{
+			Code:        doc + `.none(_["Effect"] == "Allow" && _["Action"].any(_ == "kms:Decrypt") && _["Resource"].any(_ == "*"))`,
+			ResultIndex: 1, Expectation: false,
 		},
 	})
 }
