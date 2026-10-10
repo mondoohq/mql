@@ -730,6 +730,8 @@ const (
 	ResourceAixSecurityPasswd                             string = "aix.security.passwd"
 	ResourceAixSecurityPasswdEntry                        string = "aix.security.passwd.entry"
 	ResourceAixTrustedExecution                           string = "aix.trustedExecution"
+	ResourceAixFilesystems                                string = "aix.filesystems"
+	ResourceAixFilesystem                                 string = "aix.filesystem"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -3591,6 +3593,14 @@ func init() {
 		"aix.trustedExecution": {
 			// to override args, implement: initAixTrustedExecution(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAixTrustedExecution,
+		},
+		"aix.filesystems": {
+			// to override args, implement: initAixFilesystems(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAixFilesystems,
+		},
+		"aix.filesystem": {
+			Init:   initAixFilesystem,
+			Create: createAixFilesystem,
 		},
 	}
 }
@@ -20579,6 +20589,42 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aix.trustedExecution.trustedLibraryPath": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAixTrustedExecution).GetTrustedLibraryPath()).ToDataRes(types.Array(types.String))
+	},
+	"aix.filesystems.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixFilesystems).GetList()).ToDataRes(types.Array(types.Resource("aix.filesystem")))
+	},
+	"aix.filesystem.mountPoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixFilesystem).GetMountPoint()).ToDataRes(types.String)
+	},
+	"aix.filesystem.dev": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixFilesystem).GetDev()).ToDataRes(types.String)
+	},
+	"aix.filesystem.vfs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixFilesystem).GetVfs()).ToDataRes(types.String)
+	},
+	"aix.filesystem.mountAtBoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixFilesystem).GetMountAtBoot()).ToDataRes(types.String)
+	},
+	"aix.filesystem.nodename": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixFilesystem).GetNodename()).ToDataRes(types.String)
+	},
+	"aix.filesystem.options": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixFilesystem).GetOptions()).ToDataRes(types.Array(types.String))
+	},
+	"aix.filesystem.log": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixFilesystem).GetLog()).ToDataRes(types.String)
+	},
+	"aix.filesystem.check": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixFilesystem).GetCheck()).ToDataRes(types.String)
+	},
+	"aix.filesystem.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixFilesystem).GetType()).ToDataRes(types.String)
+	},
+	"aix.filesystem.account": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixFilesystem).GetAccount()).ToDataRes(types.Bool)
+	},
+	"aix.filesystem.attributes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixFilesystem).GetAttributes()).ToDataRes(types.Map(types.String, types.String))
 	},
 }
 
@@ -46002,6 +46048,62 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aix.trustedExecution.trustedLibraryPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAixTrustedExecution).TrustedLibraryPath, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aix.filesystems.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystems).__id, ok = v.Value.(string)
+		return
+	},
+	"aix.filesystems.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystems).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aix.filesystem.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystem).__id, ok = v.Value.(string)
+		return
+	},
+	"aix.filesystem.mountPoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystem).MountPoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.filesystem.dev": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystem).Dev, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.filesystem.vfs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystem).Vfs, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.filesystem.mountAtBoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystem).MountAtBoot, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.filesystem.nodename": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystem).Nodename, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.filesystem.options": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystem).Options, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aix.filesystem.log": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystem).Log, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.filesystem.check": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystem).Check, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.filesystem.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystem).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.filesystem.account": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystem).Account, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.filesystem.attributes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixFilesystem).Attributes, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 }
@@ -118945,4 +119047,164 @@ func (c *mqlAixTrustedExecution) GetTrustedLibraryPath() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.TrustedLibraryPath, func() ([]any, error) {
 		return c.trustedLibraryPath()
 	})
+}
+
+// mqlAixFilesystems for the aix.filesystems resource
+type mqlAixFilesystems struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAixFilesystemsInternal it will be used here
+	List plugin.TValue[[]any]
+}
+
+// createAixFilesystems creates a new instance of this resource
+func createAixFilesystems(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAixFilesystems{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aix.filesystems", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAixFilesystems) MqlName() string {
+	return "aix.filesystems"
+}
+
+func (c *mqlAixFilesystems) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAixFilesystems) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aix.filesystems", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlAixFilesystem for the aix.filesystem resource
+type mqlAixFilesystem struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAixFilesystemInternal it will be used here
+	MountPoint  plugin.TValue[string]
+	Dev         plugin.TValue[string]
+	Vfs         plugin.TValue[string]
+	MountAtBoot plugin.TValue[string]
+	Nodename    plugin.TValue[string]
+	Options     plugin.TValue[[]any]
+	Log         plugin.TValue[string]
+	Check       plugin.TValue[string]
+	Type        plugin.TValue[string]
+	Account     plugin.TValue[bool]
+	Attributes  plugin.TValue[map[string]any]
+}
+
+// createAixFilesystem creates a new instance of this resource
+func createAixFilesystem(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAixFilesystem{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aix.filesystem", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAixFilesystem) MqlName() string {
+	return "aix.filesystem"
+}
+
+func (c *mqlAixFilesystem) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAixFilesystem) GetMountPoint() *plugin.TValue[string] {
+	return &c.MountPoint
+}
+
+func (c *mqlAixFilesystem) GetDev() *plugin.TValue[string] {
+	return &c.Dev
+}
+
+func (c *mqlAixFilesystem) GetVfs() *plugin.TValue[string] {
+	return &c.Vfs
+}
+
+func (c *mqlAixFilesystem) GetMountAtBoot() *plugin.TValue[string] {
+	return &c.MountAtBoot
+}
+
+func (c *mqlAixFilesystem) GetNodename() *plugin.TValue[string] {
+	return &c.Nodename
+}
+
+func (c *mqlAixFilesystem) GetOptions() *plugin.TValue[[]any] {
+	return &c.Options
+}
+
+func (c *mqlAixFilesystem) GetLog() *plugin.TValue[string] {
+	return &c.Log
+}
+
+func (c *mqlAixFilesystem) GetCheck() *plugin.TValue[string] {
+	return &c.Check
+}
+
+func (c *mqlAixFilesystem) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlAixFilesystem) GetAccount() *plugin.TValue[bool] {
+	return &c.Account
+}
+
+func (c *mqlAixFilesystem) GetAttributes() *plugin.TValue[map[string]any] {
+	return &c.Attributes
 }
