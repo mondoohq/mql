@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-a
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: web-a
+  template:
+    metadata:
+      labels:
+        app: web-a
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27

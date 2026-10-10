@@ -6,7 +6,6 @@ package shared
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -279,9 +278,38 @@ func ProjectNameFromPath(file string) string {
 	return name
 }
 
+// ManifestFile is one manifest file read from disk.
+type ManifestFile struct {
+	Path    string
+	Content []byte
+}
+
+// LoadManifestFile reads a manifest file, or every Kubernetes manifest in a
+// directory, and returns them as one multi-document stream.
 func LoadManifestFile(manifestFile string) ([]byte, error) {
+	files, err := LoadManifestFiles(manifestFile)
+	if err != nil {
+		return nil, err
+	}
+	return MergeManifests(files), nil
+}
+
+// MergeManifests joins manifest files into one multi-document stream, the way
+// `kubectl apply` reads several files.
+func MergeManifests(files []ManifestFile) []byte {
+	var buf bytes.Buffer
+	for _, f := range files {
+		buf.Write(f.Content)
+		buf.WriteString("\n---\n")
+	}
+	return buf.Bytes()
+}
+
+// LoadManifestFiles reads a manifest file, or every Kubernetes manifest in a
+// directory, keeping each file separate so a position within it can be
+// reported against the file it was read from.
+func LoadManifestFiles(manifestFile string) ([]ManifestFile, error) {
 	log.Debug().Str("filename", manifestFile).Msg("loading manifest file")
-	var input io.Reader
 
 	// return all resources from manifest
 	filenames := []string{}
@@ -345,10 +373,13 @@ func LoadManifestFile(manifestFile string) ([]byte, error) {
 		filenames = append(filenames, manifestFile)
 	}
 
-	input, err = resources.MergeManifestFiles(filenames)
-	if err != nil {
-		return nil, err
+	files := make([]ManifestFile, 0, len(filenames))
+	for _, filename := range filenames {
+		content, err := os.ReadFile(filename)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, ManifestFile{Path: filename, Content: content})
 	}
-
-	return io.ReadAll(input)
+	return files, nil
 }

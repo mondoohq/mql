@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-b
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: web-b
+  template:
+    metadata:
+      labels:
+        app: web-b
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27
