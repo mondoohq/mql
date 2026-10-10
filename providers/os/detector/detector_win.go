@@ -36,7 +36,6 @@ func runtimeWindowsDetector(pf *inventory.Platform, conn shared.Connection) (boo
 		}
 
 		pf.Labels[win.HotpatchLabel] = strconv.FormatBool(hotpatchEnabled)
-		setHotpatchEligibleLabel(pf)
 
 		detectIntuneDeviceID(pf, conn)
 		detectESU(pf, conn)
@@ -62,21 +61,10 @@ func runtimeWindowsDetector(pf *inventory.Platform, conn shared.Connection) (boo
 	pf.Labels["windows.mondoo.com/product-type"] = data.ProductType
 
 	correctForWindows11(pf)
-	setHotpatchEligibleLabel(pf)
 
 	detectIntuneDeviceID(pf, conn)
 	detectESU(pf, conn)
 	return true, nil
-}
-
-// setHotpatchEligibleLabel sets the hotpatch-eligible label whenever the
-// product type and build are known. It reports only whether the OS, edition,
-// build and architecture allow hotpatch, not whether the host is enrolled.
-func setHotpatchEligibleLabel(pf *inventory.Platform) {
-	if pf.Labels["windows.mondoo.com/product-type"] == "" || pf.Version == "" {
-		return
-	}
-	pf.Labels[win.HotpatchEligibleLabel] = strconv.FormatBool(win.HotpatchEligible(pf))
 }
 
 func platformFromWinCurrentVersion(pf *inventory.Platform, current *win.WindowsCurrentVersion) {
@@ -182,7 +170,6 @@ func staticWindowsDetector(pf *inventory.Platform, conn shared.Connection) (bool
 func applyStaticHotpatch(pf *inventory.Platform, rh win.HiveReader) {
 	hotpatch := win.ReadStaticHotpatchState(rh, pf.Arch)
 	pf.Labels[win.HotpatchLabel] = strconv.FormatBool(hotpatch.Enrolled(win.IsClientOS(pf)))
-	setHotpatchEligibleLabel(pf)
 }
 
 // staticControlSet returns the SYSTEM hive's active control set key, such as

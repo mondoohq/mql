@@ -32,11 +32,6 @@ const (
 	// receives hotpatches should look for an installed hotpatch update instead.
 	// On servers the value comes from the Hotpatch Enrollment Package check.
 	HotpatchLabel = "windows.mondoo.com/hotpatch"
-
-	// HotpatchEligibleLabel is the platform label that says whether the OS,
-	// edition, build and architecture allow hotpatch at all (see
-	// HotpatchEligible). It says nothing about enrollment or configuration.
-	HotpatchEligibleLabel = "windows.mondoo.com/hotpatch-eligible"
 )
 
 // Registry locations read for hotpatch. Software paths are relative to
@@ -215,7 +210,7 @@ func ParseWinRegistryHotpatch(r io.Reader) (bool, error) {
 }
 
 // HotpatchEligible reports whether the platform's OS, edition, build and
-// architecture allow hotpatch. It is the rule behind HotpatchEligibleLabel.
+// architecture allow hotpatch. It says nothing about enrollment.
 func HotpatchEligible(pf *inventory.Platform) bool {
 	return hotpatchSupported(pf)
 }

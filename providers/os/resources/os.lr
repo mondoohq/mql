@@ -15527,8 +15527,7 @@ windows.hotpatch @defaults("eligible enrolled") {
   // domain controllers) and for Windows 11 clients from build 26100.2033 on
   // x64 or 26100.4929 on arm64 on an edition that can be enrolled (Pro,
   // Pro for Workstations, Pro Education, Enterprise, Education, and IoT
-  // Enterprise, but not Home or SE). It says nothing about enrollment, and it
-  // matches the `windows.mondoo.com/hotpatch-eligible` platform label. Null
+  // Enterprise, but not Home or SE). It says nothing about enrollment. Null
   // when the product type or build is unknown.
   eligible() bool
   // Whether the host is set up to receive hotpatches

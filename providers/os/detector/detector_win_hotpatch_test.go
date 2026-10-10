@@ -5,6 +5,7 @@ package detector
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,10 +15,10 @@ import (
 	"go.mondoo.com/mql/providers/os/registry"
 )
 
-// TestWindowsHotpatchLabels covers the labels on the live detection path. The
-// eligible label follows OS, edition, build and architecture only; the
-// hotpatch label additionally needs enrollment (servers) or configuration
-// (clients).
+// TestWindowsHotpatchLabels covers the hotpatch label on the live detection
+// path, next to the eligibility rule: eligibility follows OS, edition, build
+// and architecture only; the label additionally needs enrollment (servers) or
+// configuration (clients).
 func TestWindowsHotpatchLabels(t *testing.T) {
 	cases := []struct {
 		fixture  string
@@ -37,7 +38,7 @@ func TestWindowsHotpatchLabels(t *testing.T) {
 		t.Run(tc.fixture, func(t *testing.T) {
 			di, err := detectPlatformFromMock("./testdata/" + tc.fixture)
 			require.NoError(t, err)
-			assert.Equal(t, tc.eligible, di.Labels[win.HotpatchEligibleLabel])
+			assert.Equal(t, tc.eligible, strconv.FormatBool(win.HotpatchEligible(di)))
 			assert.Equal(t, tc.hotpatch, di.Labels[win.HotpatchLabel])
 		})
 	}
@@ -62,7 +63,7 @@ func hiveDword(name, v string) registry.RegistryKeyItem {
 	return registry.RegistryKeyItem{Key: name, Value: registry.RegistryKeyValue{Kind: registry.DWORD, String: v}}
 }
 
-// TestStaticHotpatchLabels covers the labels on the offline detection path,
+// TestStaticHotpatchLabels covers the hotpatch label on the offline detection path,
 // where the VBS running state cannot be read and the configured value decides.
 func TestStaticHotpatchLabels(t *testing.T) {
 	sw := registry.Software + "|"
@@ -102,15 +103,9 @@ func TestStaticHotpatchLabels(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			applyStaticHotpatch(tc.pf, tc.hive)
-			assert.Equal(t, tc.eligible, tc.pf.Labels[win.HotpatchEligibleLabel])
+			assert.Equal(t, tc.eligible, strconv.FormatBool(win.HotpatchEligible(tc.pf)))
 			assert.Equal(t, tc.hotpatch, tc.pf.Labels[win.HotpatchLabel])
 		})
 	}
 
-	t.Run("no eligible label without a product type", func(t *testing.T) {
-		pf := &inventory.Platform{Version: "20348", Labels: map[string]string{}}
-		applyStaticHotpatch(pf, hotpatchHive{})
-		_, ok := pf.Labels[win.HotpatchEligibleLabel]
-		assert.False(t, ok)
-	})
 }
