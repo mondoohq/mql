@@ -6,14 +6,7 @@
 
 package windows
 
-import (
-	"go.mondoo.com/mql/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/providers/os/connection/shared"
-)
-
-func GetWindowsHotpatch(conn shared.Connection, pf *inventory.Platform) (bool, error) {
-	if !hotpatchSupported(pf) {
-		return false, nil
-	}
-	return powershellGetWindowsHotpatch(conn, pf)
+// nativeGetHotpatchState is only reached when the scanner runs on Windows.
+func nativeGetHotpatchState(arch string) *HotpatchState {
+	return &HotpatchState{}
 }
