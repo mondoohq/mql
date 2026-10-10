@@ -23993,3 +23993,31 @@ java.truststores {
   // Paths of the trust stores that were found
   paths() []string
 }
+
+// AIX init table
+//
+// The entries of /etc/inittab, which init runs at boot and keeps running:
+// the System Resource Controller, cron, the rc scripts and the console
+// getty, among others. AIX only.
+aix.inittab {
+  []aix.inittab.entry
+}
+
+// AIX init table entry
+//
+// One /etc/inittab entry, identified by `id`. `action` says how init runs
+// the command: respawn keeps it running, wait and once run it once, off
+// disables the entry. `runLevels` is empty for an entry that runs at every
+// level.
+private aix.inittab.entry @defaults("id action command") {
+  // Identifier of the entry
+  id string
+  // Run levels the entry applies to, such as 2 or 23456789
+  runLevels string
+  // How init runs the command: respawn, wait, once, boot, bootwait, sysinit, off, ...
+  action string
+  // Command init runs, without its trailing comment
+  command string
+  // Whether the entry is active: its action is not off
+  active bool
+}

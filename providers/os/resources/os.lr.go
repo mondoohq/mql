@@ -719,6 +719,8 @@ const (
 	ResourceJavaKeystore                                  string = "java.keystore"
 	ResourceJavaKeystoreEntry                             string = "java.keystore.entry"
 	ResourceJavaTruststores                               string = "java.truststores"
+	ResourceAixInittab                                    string = "aix.inittab"
+	ResourceAixInittabEntry                               string = "aix.inittab.entry"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -3536,6 +3538,14 @@ func init() {
 		"java.truststores": {
 			// to override args, implement: initJavaTruststores(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createJavaTruststores,
+		},
+		"aix.inittab": {
+			// to override args, implement: initAixInittab(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAixInittab,
+		},
+		"aix.inittab.entry": {
+			// to override args, implement: initAixInittabEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAixInittabEntry,
 		},
 	}
 }
@@ -20248,6 +20258,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"java.truststores.list": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJavaTruststores).GetList()).ToDataRes(types.Array(types.Resource("java.keystore")))
+	},
+	"aix.inittab.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixInittab).GetList()).ToDataRes(types.Array(types.Resource("aix.inittab.entry")))
+	},
+	"aix.inittab.entry.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixInittabEntry).GetId()).ToDataRes(types.String)
+	},
+	"aix.inittab.entry.runLevels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixInittabEntry).GetRunLevels()).ToDataRes(types.String)
+	},
+	"aix.inittab.entry.action": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixInittabEntry).GetAction()).ToDataRes(types.String)
+	},
+	"aix.inittab.entry.command": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixInittabEntry).GetCommand()).ToDataRes(types.String)
+	},
+	"aix.inittab.entry.active": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixInittabEntry).GetActive()).ToDataRes(types.Bool)
 	},
 }
 
@@ -45259,6 +45287,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"java.truststores.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlJavaTruststores).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aix.inittab.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixInittab).__id, ok = v.Value.(string)
+		return
+	},
+	"aix.inittab.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixInittab).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aix.inittab.entry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixInittabEntry).__id, ok = v.Value.(string)
+		return
+	},
+	"aix.inittab.entry.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixInittabEntry).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.inittab.entry.runLevels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixInittabEntry).RunLevels, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.inittab.entry.action": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixInittabEntry).Action, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.inittab.entry.command": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixInittabEntry).Command, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.inittab.entry.active": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixInittabEntry).Active, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 }
@@ -117116,4 +117176,129 @@ func (c *mqlJavaTruststores) GetList() *plugin.TValue[[]any] {
 
 		return c.list(vargPaths.Data)
 	})
+}
+
+// mqlAixInittab for the aix.inittab resource
+type mqlAixInittab struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAixInittabInternal it will be used here
+	List plugin.TValue[[]any]
+}
+
+// createAixInittab creates a new instance of this resource
+func createAixInittab(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAixInittab{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aix.inittab", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAixInittab) MqlName() string {
+	return "aix.inittab"
+}
+
+func (c *mqlAixInittab) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAixInittab) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aix.inittab", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlAixInittabEntry for the aix.inittab.entry resource
+type mqlAixInittabEntry struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAixInittabEntryInternal it will be used here
+	Id        plugin.TValue[string]
+	RunLevels plugin.TValue[string]
+	Action    plugin.TValue[string]
+	Command   plugin.TValue[string]
+	Active    plugin.TValue[bool]
+}
+
+// createAixInittabEntry creates a new instance of this resource
+func createAixInittabEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAixInittabEntry{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aix.inittab.entry", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAixInittabEntry) MqlName() string {
+	return "aix.inittab.entry"
+}
+
+func (c *mqlAixInittabEntry) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAixInittabEntry) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAixInittabEntry) GetRunLevels() *plugin.TValue[string] {
+	return &c.RunLevels
+}
+
+func (c *mqlAixInittabEntry) GetAction() *plugin.TValue[string] {
+	return &c.Action
+}
+
+func (c *mqlAixInittabEntry) GetCommand() *plugin.TValue[string] {
+	return &c.Command
+}
+
+func (c *mqlAixInittabEntry) GetActive() *plugin.TValue[bool] {
+	return &c.Active
 }

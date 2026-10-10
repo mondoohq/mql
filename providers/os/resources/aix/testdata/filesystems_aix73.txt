@@ -1,0 +1,108 @@
+* /etc/filesystems of AIX 7.3 TL4 SP2
+* without its comment header
+
+
+/:
+	dev		= /dev/hd4
+	vfs		= jfs2
+	log		= /dev/hd8
+	mount		= automatic
+	check		= false
+	type		= bootfs
+	vol		= root
+	free		= true
+
+/home:
+	dev       = /dev/hd1
+	vol       = "/home"
+	mount     = true
+	check     = true
+	free      = false
+	vfs	  = jfs2
+	log	  = /dev/hd8
+
+/usr:
+	dev		= /dev/hd2
+	vfs		= jfs2
+	log		= /dev/hd8
+	mount		= automatic
+	check		= false
+	type		= bootfs
+	vol		= /usr
+	free		= false
+
+/var:
+	dev		= /dev/hd9var
+	vfs		= jfs2
+	log		= /dev/hd8
+	mount		= automatic
+	check		= false
+	type		= bootfs
+	vol		= /var
+	free		= false
+
+/tmp:
+	dev		= /dev/hd3
+	vfs		= jfs2
+	log		= /dev/hd8
+	mount		= automatic
+	check		= false
+	vol		= /tmp
+	free		= false
+
+/admin:
+	dev       = /dev/hd11admin
+	vol       = "/admin"
+	mount     = true
+	check     = false
+	free      = false
+	vfs       = jfs2
+	log       = /dev/hd8
+
+/proc:
+	dev	  = /proc
+	vol	  = "/proc"
+	mount	  = true
+	check	  = false
+	free	  = false
+	vfs	  = procfs
+
+/opt:
+	dev		= /dev/hd10opt
+	vfs		= jfs2
+	log		= /dev/hd8
+	mount		= true
+	check		= true
+	vol		= /opt
+	free		= false
+
+/var/adm/ras/livedump:
+	dev		= /dev/livedump
+	vfs		= jfs2
+	log		= /dev/hd8
+	mount		= true
+	account		= false
+
+/usr/sys/inst.images:
+	dev		= /dev/rep00
+	vfs		= jfs2
+	log		= INLINE
+	mount		= true
+	options		= rw
+	account		= false
+
+/mqlfs:
+	dev		= /dev/mqllv
+	vfs		= jfs2
+	log		= INLINE
+	mount		= true
+	options		= rw
+	account		= false
+
+/mqldata:
+	dev		= /dev/mqldatalv
+	vfs		= jfs2
+	log		= INLINE
+	mount		= true
+	options		= rw
+	account		= false

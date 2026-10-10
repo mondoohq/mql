@@ -1,0 +1,143 @@
+* /etc/security/user of AIX 7.3 TL4 SP2
+* without its comment header
+
+
+default:
+	admin = false
+	login = true
+	su = true
+	daemon = true
+	rlogin = true
+	sugroups = ALL
+	admgroups =
+	ttys = ALL
+	auth1 = SYSTEM
+	auth2 = NONE
+	tpath = nosak
+	umask = 022
+	expires = 0
+	SYSTEM = "compat"
+	logintimes = 
+	pwdwarntime = 5
+	account_locked = false
+	loginretries = 0
+	histexpire = 52
+	histsize = 4
+	minage = 4
+	maxage = 13
+	maxexpired = 4
+	minalpha = 2
+	minloweralpha = 1
+	minupperalpha = 1
+	minother = 1
+	mindigit = 1
+	minspecialchar = 1
+	minlen = 10
+	mindiff = 0
+	maxrepeats = 8
+	dictionlist =
+	pwdchecks =
+	default_roles =
+
+root:
+	admin = true
+	SYSTEM = "compat"
+	registry = files
+	loginretries = 0
+	account_locked = false
+	 minlen = 15
+	admgroups = apache
+
+daemon:
+	admin = true
+	expires = 0101000070
+
+bin:
+	admin = true
+	expires = 0101000070
+
+sys:
+	admin = true
+	expires = 0101000070
+
+adm:
+	admin = true
+
+uucp:
+	admin = true
+	login = false
+	rlogin = false
+	su = true
+
+guest:
+
+nobody:
+	admin = true
+	expires = 0101000070
+
+lpd:
+	admin = true
+	expires = 0101000070
+
+sshd:
+	admin = false
+	account_locked = true
+	login = false
+	rlogin = false
+
+slotd:
+	admin = false
+
+invscout:
+	admin = true
+
+esaadmin:
+	admin = true
+	login = false
+	rlogin = false
+	umask = 22
+	registry = files
+	default_roles = SysConfig
+
+ragent:
+	admin = false
+	default_roles = RemoteUpdate
+
+snapp:
+	admin = false
+	rlogin = false
+	su = false
+	SYSTEM = "NONE"
+	login = true
+	ttys = /dev/tty0
+	registry = files
+	dce_export = false
+
+ipsec:
+	admin = false
+
+nuucp:
+	admin = false
+
+smmsp:
+	admin = false
+	su = false
+	login = false
+	rlogin = false
+
+mqluser1:
+	admin = false
+	maxage = 13
+	minlen = 12
+	loginretries = 5
+
+apache:
+	admin = false
+	login = false
+	rlogin = false
+
+mqllocked:
+	admin = false
+	account_locked = true
+	login = false
+	rlogin = false
