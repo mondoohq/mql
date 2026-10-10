@@ -145,3 +145,54 @@ func TestOsRootCertificates_Aix(t *testing.T) {
 
 	assert.Equal(t, []string{"/var/ssl/certs/ca-bundle.crt"}, initedPaths(t, runtime))
 }
+
+// AIX 7.1 ships no bundle: every root is a .crt in /var/ssl/certs, itself a
+// link into /opt/freeware/etc/ssl/certs, with an OpenSSL hash link to it.
+// The .crt entries are read, the hash links are not, so each root counts
+// once.
+func TestOsRootCertificates_AixWithoutBundle(t *testing.T) {
+	dir := &mock.MockFileData{Path: "/var/ssl/certs", StatData: mock.FileInfo{IsDir: true, Mode: os.ModeDir | 0o755}}
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "aix", Version: "7.1", Family: []string{"unix", "os"}},
+	}, mock.WithData(&mock.TomlData{Files: map[string]*mock.MockFileData{
+		"/var/ssl/certs": dir,
+		"/var/ssl/certs/GlobalSign_Root_CA_-_R3.crt": certAt("/var/ssl/certs/GlobalSign_Root_CA_-_R3.crt"),
+		"/var/ssl/certs/Entrust_Root_Certification_Authority_-_G2.crt": {
+			Path:     "/var/ssl/certs/Entrust_Root_Certification_Authority_-_G2.crt",
+			Content:  "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n",
+			StatData: mock.FileInfo{Mode: os.ModeSymlink | 0o777, Size: 60},
+		},
+		"/var/ssl/certs/062cdee6.0": {
+			Path:     "/var/ssl/certs/062cdee6.0",
+			StatData: mock.FileInfo{Mode: os.ModeSymlink | 0o777},
+		},
+	}}))
+	require.NoError(t, err)
+	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+
+	assert.ElementsMatch(t, []string{
+		"/var/ssl/certs/GlobalSign_Root_CA_-_R3.crt",
+		"/var/ssl/certs/Entrust_Root_Certification_Authority_-_G2.crt",
+	}, initedPaths(t, runtime))
+}
+
+// certAt is a certificate file the mock lists in its directory, which
+// needs the file's path.
+func certAt(p string) *mock.MockFileData {
+	f := bundleFile(0o644)
+	f.Path = p
+	return f
+}
+
+// With the bundle present, AIX 7.3 reads it alone, not the per-root files.
+func TestOsRootCertificates_AixBundleWins(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "aix", Version: "7.3", Family: []string{"unix", "os"}},
+	}, mock.WithData(&mock.TomlData{Files: map[string]*mock.MockFileData{
+		"/var/ssl/certs/ca-bundle.crt":               bundleFile(0o644),
+		"/var/ssl/certs/GlobalSign_Root_CA_-_R3.crt": bundleFile(0o644),
+	}}))
+	require.NoError(t, err)
+	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+	assert.Equal(t, []string{"/var/ssl/certs/ca-bundle.crt"}, initedPaths(t, runtime))
+}
