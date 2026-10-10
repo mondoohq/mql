@@ -5,6 +5,7 @@ package resources
 
 import (
 	"fmt"
+	"sync"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -15,26 +16,25 @@ import (
 const aixSecurityUserFile = "/etc/security/user"
 
 type mqlAixSecurityUsersInternal struct {
-	stanzas *aix.Stanzas
+	parseOnce sync.Once
+	parsed    *aix.Stanzas
+	parseErr  error
 }
 
 func (u *mqlAixSecurityUsers) id() (string, error) {
 	return "aix.security.users", nil
 }
 
+// load parses the file once; fields are computed concurrently.
 func (u *mqlAixSecurityUsers) load() (*aix.Stanzas, error) {
-	if u.stanzas != nil {
-		return u.stanzas, nil
-	}
-	if err := requireAix(u.MqlRuntime, "aix.security.users"); err != nil {
-		return nil, err
-	}
-	st, err := readAixStanzas(u.MqlRuntime, aixSecurityUserFile)
-	if err != nil {
-		return nil, err
-	}
-	u.stanzas = st
-	return st, nil
+	u.parseOnce.Do(func() {
+		if err := requireAix(u.MqlRuntime, "aix.security.users"); err != nil {
+			u.parseErr = err
+			return
+		}
+		u.parsed, u.parseErr = readAixStanzas(u.MqlRuntime, aixSecurityUserFile)
+	})
+	return u.parsed, u.parseErr
 }
 
 func (u *mqlAixSecurityUsers) defaults() (map[string]any, error) {
