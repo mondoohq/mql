@@ -12,12 +12,12 @@ stdout = "4.9.125-linuxkit"
   enoent = false
   content = "IBM:Cloud Compute Server 1.0:bx2-2x8"
 
-[commands."curl -H \"Metadata-Flavor: ibm\" -X PUT \"http://169.254.169.254/instance_identity/v1/token?version=2025-05-20\" -d '{}'"]
+[commands."curl --retry 3 --retry-delay 1 --connect-timeout 1 --retry-max-time 5 --max-time 10 --noproxy '*' -H \"Metadata-Flavor: ibm\" -X PUT \"http://169.254.169.254/instance_identity/v1/token?version=2025-05-20\" -d '{}'"]
 stdout = """
 {"access_token":"MYTOKEN","created_at":"2025-05-28T20:14:51.056Z","expires_at":"2025-05-28T20:19:51.056Z","expires_in":300}
 """
 
-[commands."curl -H \"Authorization: Bearer MYTOKEN\" -v http://169.254.169.254/metadata/v1/instance?version=2025-05-20"]
+[commands."curl --retry 3 --retry-delay 1 --connect-timeout 1 --retry-max-time 5 --max-time 10 --noproxy '*' -H \"Authorization: Bearer MYTOKEN\" -v http://169.254.169.254/metadata/v1/instance?version=2025-05-20"]
 stdout = """
 {
   "availability_policy": {
