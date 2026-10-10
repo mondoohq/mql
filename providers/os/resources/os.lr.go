@@ -724,6 +724,7 @@ const (
 	ResourceAixDevice                                     string = "aix.device"
 	ResourceAixSecurityUsers                              string = "aix.security.users"
 	ResourceAixSecurityUser                               string = "aix.security.user"
+	ResourceAixSecurityLoginCfg                           string = "aix.security.loginCfg"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -3561,6 +3562,10 @@ func init() {
 		"aix.security.user": {
 			Init:   initAixSecurityUser,
 			Create: createAixSecurityUser,
+		},
+		"aix.security.loginCfg": {
+			// to override args, implement: initAixSecurityLoginCfg(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAixSecurityLoginCfg,
 		},
 	}
 }
@@ -20393,6 +20398,45 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aix.security.user.pwdwarntime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAixSecurityUser).GetPwdwarntime()).ToDataRes(types.Int)
+	},
+	"aix.security.loginCfg.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLoginCfg).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"aix.security.loginCfg.stanzas": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLoginCfg).GetStanzas()).ToDataRes(types.Map(types.String, types.Dict))
+	},
+	"aix.security.loginCfg.shells": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLoginCfg).GetShells()).ToDataRes(types.Array(types.String))
+	},
+	"aix.security.loginCfg.maxlogins": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLoginCfg).GetMaxlogins()).ToDataRes(types.Int)
+	},
+	"aix.security.loginCfg.logintimeout": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLoginCfg).GetLogintimeout()).ToDataRes(types.Int)
+	},
+	"aix.security.loginCfg.authType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLoginCfg).GetAuthType()).ToDataRes(types.String)
+	},
+	"aix.security.loginCfg.pwdAlgorithm": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLoginCfg).GetPwdAlgorithm()).ToDataRes(types.String)
+	},
+	"aix.security.loginCfg.herald": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLoginCfg).GetHerald()).ToDataRes(types.String)
+	},
+	"aix.security.loginCfg.logindelay": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLoginCfg).GetLogindelay()).ToDataRes(types.Int)
+	},
+	"aix.security.loginCfg.logindisable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLoginCfg).GetLogindisable()).ToDataRes(types.Int)
+	},
+	"aix.security.loginCfg.logininterval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLoginCfg).GetLogininterval()).ToDataRes(types.Int)
+	},
+	"aix.security.loginCfg.loginreenable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLoginCfg).GetLoginreenable()).ToDataRes(types.Int)
+	},
+	"aix.security.loginCfg.sakEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityLoginCfg).GetSakEnabled()).ToDataRes(types.Bool)
 	},
 }
 
@@ -45584,6 +45628,62 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aix.security.user.pwdwarntime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAixSecurityUser).Pwdwarntime, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.loginCfg.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).__id, ok = v.Value.(string)
+		return
+	},
+	"aix.security.loginCfg.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"aix.security.loginCfg.stanzas": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).Stanzas, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aix.security.loginCfg.shells": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).Shells, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aix.security.loginCfg.maxlogins": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).Maxlogins, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.loginCfg.logintimeout": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).Logintimeout, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.loginCfg.authType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).AuthType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.security.loginCfg.pwdAlgorithm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).PwdAlgorithm, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.security.loginCfg.herald": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).Herald, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.security.loginCfg.logindelay": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).Logindelay, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.loginCfg.logindisable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).Logindisable, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.loginCfg.logininterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).Logininterval, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.loginCfg.loginreenable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).Loginreenable, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.loginCfg.sakEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityLoginCfg).SakEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 }
@@ -117896,4 +117996,149 @@ func (c *mqlAixSecurityUser) GetLoginretries() *plugin.TValue[int64] {
 
 func (c *mqlAixSecurityUser) GetPwdwarntime() *plugin.TValue[int64] {
 	return &c.Pwdwarntime
+}
+
+// mqlAixSecurityLoginCfg for the aix.security.loginCfg resource
+type mqlAixSecurityLoginCfg struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAixSecurityLoginCfgInternal
+	File          plugin.TValue[*mqlFile]
+	Stanzas       plugin.TValue[map[string]any]
+	Shells        plugin.TValue[[]any]
+	Maxlogins     plugin.TValue[int64]
+	Logintimeout  plugin.TValue[int64]
+	AuthType      plugin.TValue[string]
+	PwdAlgorithm  plugin.TValue[string]
+	Herald        plugin.TValue[string]
+	Logindelay    plugin.TValue[int64]
+	Logindisable  plugin.TValue[int64]
+	Logininterval plugin.TValue[int64]
+	Loginreenable plugin.TValue[int64]
+	SakEnabled    plugin.TValue[bool]
+}
+
+// createAixSecurityLoginCfg creates a new instance of this resource
+func createAixSecurityLoginCfg(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAixSecurityLoginCfg{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aix.security.loginCfg", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAixSecurityLoginCfg) MqlName() string {
+	return "aix.security.loginCfg"
+}
+
+func (c *mqlAixSecurityLoginCfg) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAixSecurityLoginCfg) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aix.security.loginCfg", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.file()
+	})
+}
+
+func (c *mqlAixSecurityLoginCfg) GetStanzas() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Stanzas, func() (map[string]any, error) {
+		return c.stanzas()
+	})
+}
+
+func (c *mqlAixSecurityLoginCfg) GetShells() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Shells, func() ([]any, error) {
+		return c.shells()
+	})
+}
+
+func (c *mqlAixSecurityLoginCfg) GetMaxlogins() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Maxlogins, func() (int64, error) {
+		return c.maxlogins()
+	})
+}
+
+func (c *mqlAixSecurityLoginCfg) GetLogintimeout() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Logintimeout, func() (int64, error) {
+		return c.logintimeout()
+	})
+}
+
+func (c *mqlAixSecurityLoginCfg) GetAuthType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AuthType, func() (string, error) {
+		return c.authType()
+	})
+}
+
+func (c *mqlAixSecurityLoginCfg) GetPwdAlgorithm() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.PwdAlgorithm, func() (string, error) {
+		return c.pwdAlgorithm()
+	})
+}
+
+func (c *mqlAixSecurityLoginCfg) GetHerald() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Herald, func() (string, error) {
+		return c.herald()
+	})
+}
+
+func (c *mqlAixSecurityLoginCfg) GetLogindelay() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Logindelay, func() (int64, error) {
+		return c.logindelay()
+	})
+}
+
+func (c *mqlAixSecurityLoginCfg) GetLogindisable() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Logindisable, func() (int64, error) {
+		return c.logindisable()
+	})
+}
+
+func (c *mqlAixSecurityLoginCfg) GetLogininterval() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Logininterval, func() (int64, error) {
+		return c.logininterval()
+	})
+}
+
+func (c *mqlAixSecurityLoginCfg) GetLoginreenable() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Loginreenable, func() (int64, error) {
+		return c.loginreenable()
+	})
+}
+
+func (c *mqlAixSecurityLoginCfg) GetSakEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SakEnabled, func() (bool, error) {
+		return c.sakEnabled()
+	})
 }

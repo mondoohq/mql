@@ -1,0 +1,23 @@
+* /etc/security/login.cfg of AIX 7.3 TL4 SP2
+* without its comment header
+
+
+default:
+	sak_enabled = false
+	logintimes = 
+	logindisable = 0
+	logininterval = 0
+	loginreenable = 0
+	logindelay = 0
+
+
+
+
+usw:
+	shells = /bin/sh,/bin/bsh,/bin/csh,/bin/ksh,/bin/tsh,/bin/ksh93,/bin/bash,/usr/bin/sh,/usr/bin/bsh,/usr/bin/csh,/usr/bin/ksh,/usr/bin/tsh,/usr/bin/ksh93,/usr/bin/bash,/usr/bin/rksh,/usr/bin/rksh93,/usr/sbin/uucp/uucico,/usr/sbin/snappd
+	maxlogins = 32767
+	logintimeout = 60
+	maxroles = 8
+	auth_type = STD_AUTH
+	pwd_algorithm = ssha256
+	unix_passwd_compat = true
