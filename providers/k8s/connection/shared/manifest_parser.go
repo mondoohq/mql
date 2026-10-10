@@ -46,7 +46,7 @@ func NewManifestParser(manifest []byte, namespace, selectedResourceID string) (M
 }
 
 func (t *ManifestParser) SupportedResourceTypes() (*resources.ApiResourceIndex, error) {
-	return resources.NewApiResourceIndex(), nil
+	return t.resourceIndex()
 }
 
 func (t *ManifestParser) Namespace(name string) (*v1.Namespace, error) {
