@@ -116,6 +116,7 @@ To learn about Mondoo Platform, read the [Mondoo Platform docs](https://mondoo.c
 | Azure DevOps organizations    | `azuredevops org`          | `mql shell azuredevops org ORG_NAME --token PAT`                                                                                                |
 | Azure DevOps repositories     | `azuredevops repo`         | `mql shell azuredevops repo ORG_NAME/PROJECT/REPO --token PAT`                                                                                  |
 | Bitwarden organizations       | `bitwarden`                | `mql shell bitwarden --client-id CLIENT_ID --client-secret CLIENT_SECRET`                                                                       |
+| CircleCI organizations        | `circleci`                 | `mql shell circleci --token TOKEN`                                                                                                              |
 | Cisco network devices         | `nd-ssh`                   | `mql shell nd-ssh admin@DEVICE_IP --password PASSWORD`                                                                                          |
 | Cisco Catalyst Center         | `ciscocatalyst`            | `mql shell ciscocatalyst --host HOST --user USER --password PASSWORD`                                                                           |
 | ClickHouse Cloud organization | `clickhousecloud`          | `mql shell clickhousecloud --organization-id ORG_ID --api-key KEY_ID --ask-secret`                                                              |
