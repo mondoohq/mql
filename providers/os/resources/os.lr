@@ -24250,3 +24250,41 @@ private aix.security.passwd.entry @defaults("name state hashAlgorithm") {
   // Password flags, such as ADMCHG, ADMIN and NOCHECK (flags)
   flags []string
 }
+
+// AIX Trusted Execution
+//
+// The Trusted Execution policy as `trustchk -p` reports it: whether TE is
+// enabled, which checks run (`checkExecutables`, `checkSharedLibraries`,
+// `checkScripts`, `checkKernelExtensions`), what happens to a file that
+// fails them (`stopUntrusted`, `stopOnCheckFail`), and the trusted execution
+// and library paths. Reading it requires root. AIX only.
+aix.trustedExecution @defaults("enabled stopUntrusted") {
+  // Whether Trusted Execution is enabled (TE)
+  enabled() bool
+  // Whether signatures are verified (SIG_VER)
+  signatureVerification() bool
+  // Whether executables are checked before they run (CHKEXEC)
+  checkExecutables() bool
+  // Whether shared libraries are checked before they load (CHKSHLIB)
+  checkSharedLibraries() bool
+  // Whether shell scripts are checked before they run (CHKSCRIPT)
+  checkScripts() bool
+  // Whether kernel extensions are checked before they load (CHKKERNEXT)
+  checkKernelExtensions() bool
+  // Whether untrusted files are stopped from running (STOP_UNTRUSTD)
+  //
+  // One of on, off or trojan, as trustchk reports it in lower case.
+  stopUntrusted() string
+  // Whether a file that fails its check is stopped from running (STOP_ON_CHKFAIL)
+  stopOnCheckFail() bool
+  // Whether the TE policies are locked against changes until reboot (LOCK_KERN_POLICIES)
+  lockKernelPolicies() bool
+  // Whether the trusted execution path is enforced (TEP)
+  trustedExecutionPathEnabled() bool
+  // Directories of the trusted execution path (TEP)
+  trustedExecutionPath() []string
+  // Whether the trusted library path is enforced (TLP)
+  trustedLibraryPathEnabled() bool
+  // Directories of the trusted library path (TLP)
+  trustedLibraryPath() []string
+}
