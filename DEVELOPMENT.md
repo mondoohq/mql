@@ -261,6 +261,7 @@ use (
    ./mql/providers/ipinfo
    ./mql/providers/ipmi
    ./mql/providers/iru
+   ./mql/providers/jenkins
    ./mql/providers/jumpcloud
    ./mql/providers/k8s
    ./mql/providers/keycloak
