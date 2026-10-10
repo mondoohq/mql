@@ -29,6 +29,12 @@ extend-exclude = [
 gost = "gost"
 # AIDE attributes: ANF (allow new file) and ARF (allow removed file).
 anf = "anf"
+# w32tm prints "syncd" in its stratum descriptions ("syncd by (S)NTP").
+syncd = "syncd"
+# Windows time zone ID "FLE Standard Time" (Finland, Lithuania, Estonia).
+fle = "fle"
+# German label in a localized w32tm test fixture.
+referenz = "referenz"
 # MikroTik RouterOS (and the go-routeros SDK package name).
 routeros = "routeros"
 aks = "aks"

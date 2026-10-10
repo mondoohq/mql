@@ -32,17 +32,24 @@ func (t *mqlSystemdTimesyncd) active() (bool, error) {
 // "NTP synchronized". Both are backed by the org.freedesktop.timedate1
 // NTPSynchronized property that `timedatectl show` exposes on newer systemd.
 func parseTimedatectlStatusSynchronized(stdout string) bool {
+	synced, _ := lookupTimedatectlStatusSynchronized(stdout)
+	return synced
+}
+
+// lookupTimedatectlStatusSynchronized is parseTimedatectlStatusSynchronized
+// that also reports whether the output had the line at all.
+func lookupTimedatectlStatusSynchronized(stdout string) (synchronized bool, found bool) {
 	for _, line := range strings.Split(stdout, "\n") {
-		key, value, found := strings.Cut(line, ":")
-		if !found {
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
 			continue
 		}
 		switch strings.TrimSpace(key) {
 		case "System clock synchronized", "NTP synchronized":
-			return strings.EqualFold(strings.TrimSpace(value), "yes")
+			return strings.EqualFold(strings.TrimSpace(value), "yes"), true
 		}
 	}
-	return false
+	return false, false
 }
 
 // timesyncProperties holds what systemd-timesyncd reports about itself over
