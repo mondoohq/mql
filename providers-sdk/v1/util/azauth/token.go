@@ -164,6 +164,13 @@ type ChainedTokenOptions struct {
 	// to its own default, which for workload identity is AZURE_TENANT_ID.
 	TenantID string
 
+	// Subscription the Azure CLI signs in for: `az account get-access-token
+	// --subscription` takes the token from the account and tenant that hold
+	// it, which is the only way to reach a subscription of another account the
+	// CLI is logged in with. Only the CLI method reads it. When set, it is used
+	// instead of TenantID, as the CLI does not accept both.
+	Subscription string
+
 	// ClientID of the service principal to sign in as. Workload identity needs
 	// it and errors out without one; empty falls back to AZURE_CLIENT_ID.
 	ClientID string
@@ -208,6 +215,35 @@ func WithCliCredentials(opts *azidentity.AzureCLICredentialOptions) TokenResolve
 	return func() (azcore.TokenCredential, error) {
 		return azidentity.NewAzureCLICredential(opts)
 	}
+}
+
+// withSubscriptionCliCredentials is WithCliCredentials for a credential bound
+// to a subscription (cliCredentialOptions). Clients that discover their tenant
+// from an authentication challenge, such as Key Vault's, name it in each token
+// request, and azidentity passes it to az as --tenant next to --subscription,
+// which az rejects ("Please specify only one of subscription and tenant").
+// The subscription already selects the account and its tenant, so the
+// request's tenant is dropped.
+func withSubscriptionCliCredentials(opts *azidentity.AzureCLICredentialOptions) TokenResolverFn {
+	return func() (azcore.TokenCredential, error) {
+		cred, err := azidentity.NewAzureCLICredential(opts)
+		if err != nil {
+			return nil, err
+		}
+		if opts.Subscription == "" {
+			return cred, nil
+		}
+		return subscriptionCliCredential{inner: cred}, nil
+	}
+}
+
+type subscriptionCliCredential struct {
+	inner azcore.TokenCredential
+}
+
+func (c subscriptionCliCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	opts.TenantID = ""
+	return c.inner.GetToken(ctx, opts)
 }
 
 func WithEnvCredentials(opts *azidentity.EnvironmentCredentialOptions) TokenResolverFn {
@@ -258,13 +294,32 @@ func BuildChainedToken(opts ...TokenResolverFn) (*azidentity.ChainedTokenCredent
 	return azidentity.NewChainedTokenCredential(chain, nil)
 }
 
+// cliCredentialOptions requests the Azure CLI's token for the subscription
+// or tenant the caller scans. Without either, `az account get-access-token`
+// runs for the CLI's default account and tenant, and every subscription in
+// another tenant rejects that token with InvalidAuthenticationTokenTenant.
+// The subscription wins: az picks the account that holds it and that
+// account's tenant, also when the CLI is logged in with several accounts,
+// while --tenant asks the default account, which may not exist in that
+// tenant (AADSTS90072). az rejects --subscription and --tenant together.
+// Neither set keeps the CLI's defaults.
+func cliCredentialOptions(options *ChainedTokenOptions) *azidentity.AzureCLICredentialOptions {
+	opts := &azidentity.AzureCLICredentialOptions{AdditionallyAllowedTenants: []string{"*"}}
+	if options.Subscription != "" {
+		opts.Subscription = options.Subscription
+	} else {
+		opts.TenantID = options.TenantID
+	}
+	return opts
+}
+
 func GetDefaultChainedToken(options *ChainedTokenOptions) (*azidentity.ChainedTokenCredential, error) {
 	if options == nil {
 		options = &ChainedTokenOptions{}
 	}
 
 	resolvers := map[CredentialMethod]TokenResolverFn{
-		CredentialMethodCLI: WithCliCredentials(&azidentity.AzureCLICredentialOptions{AdditionallyAllowedTenants: []string{"*"}}),
+		CredentialMethodCLI: withSubscriptionCliCredentials(cliCredentialOptions(options)),
 		CredentialMethodEnv: WithEnvCredentials(&azidentity.EnvironmentCredentialOptions{ClientOptions: options.ClientOptions}),
 		CredentialMethodManagedIdentity: WithRetryableManagedIdentityCredentials(5*time.Second, 3,
 			&azidentity.ManagedIdentityCredentialOptions{ClientOptions: options.ClientOptions}),
