@@ -1,0 +1,41 @@
+: entries of /etc/inittab on AIX 7.3 TL4 SP2
+init:2:initdefault:
+brc::sysinit:/sbin/rc.boot 3 >/dev/console 2>&1 # Phase 3 of system boot
+powerfail::powerfail:/etc/rc.powerfail 2>&1 | /usr/bin/alog -tboot > /dev/console # Power Failure Detection
+tunables:23456789:wait:/usr/sbin/tunrestore -R > /dev/console 2>&1 # Set tunables
+securityboot:2:bootwait:/etc/rc.security.boot > /dev/console 2>&1
+rc:23456789:wait:/etc/rc 2>&1 | /usr/bin/alog -tboot > /dev/console # Multi-User checks
+srcmstr:23456789:respawn:/usr/sbin/srcmstr # System Resource Controller
+rctcpip:23456789:wait:/etc/rc.tcpip > /dev/console 2>&1 # Start TCP/IP daemons
+aso:23456789:once:/usr/bin/startsrc -s aso
+rcnfs:23456789:wait:/etc/rc.nfs > /dev/console 2>&1 # Start NFS Daemons
+fbcheck:23456789:wait:/usr/sbin/fbcheck 2>&1 | /usr/bin/alog -tboot > /dev/console # run /etc/firstboot
+cron:23456789:respawn:/usr/sbin/cron
+clusterconf:23456789:once:/usr/sbin/clusterconf
+piobe:2:wait:/usr/lib/lpd/pioinit_cp >/dev/null 2>&1  # pb cleanup
+cons:0123456789:respawn:/usr/sbin/getty /dev/console
+qdaemon:23456789:wait:/usr/bin/startsrc -sqdaemon
+writesrv:23456789:wait:/usr/bin/startsrc -swritesrv
+uprintfd:23456789:respawn:/usr/sbin/uprintfd
+shdaemon:2:off:/usr/sbin/shdaemon >/dev/console 2>&1 # High availability daemon
+trustedboot:2:wait:/etc/rc.trustedboot > /dev/console 2>&1 # Get trusted log and start TCSD
+l2:2:wait:/etc/rc.d/rc 2 
+l3:3:wait:/etc/rc.d/rc 3 
+l4:4:wait:/etc/rc.d/rc 4 
+l5:5:wait:/etc/rc.d/rc 5 
+l6:6:wait:/etc/rc.d/rc 6 
+l7:7:wait:/etc/rc.d/rc 7 
+l8:8:wait:/etc/rc.d/rc 8 
+l9:9:wait:/etc/rc.d/rc 9 
+rcwpars:2:once:/etc/rc.wpars > /dev/console 2>&1 # Corrals autostart
+logsymp:2:once:/usr/lib/ras/logsymptom # for system dumps
+pfcdaemon:2:once:/usr/bin/startsrc -s pfcdaemon  > /dev/null 2>&1
+diagd:2:once:/usr/lpp/diagnostics/bin/diagd >/dev/console 2>&1
+artex:2:wait:/usr/sbin/artexset -q -c -R /etc/security/artex/config/master_profile.xml > /dev/console 2>&1
+rcvnet:23456789:wait:/etc/rc.vnet> /dev/console 2>&1 # Start lldp/ecpvdp daemons
+xmdaily:2:once:/usr/bin/topasrec -L -s 300 -R 1 -r 6 -o /var/perf/daily/ -ypersistent=1 2>&1 >/dev/null #Start local binary recording
+perfstat:2:once:/usr/lib/perf/libperfstat_updt_dictionary >/dev/console 2>&1
+mbuf_resize:23456789:once:/usr/sbin/tunrestore -D 2>&1 >/dev/console # LMT buffer resize
+clcomd:23456789:once:/usr/bin/startsrc -s clcomd
+ha_star:h2:once:/etc/rc.ha_star >/dev/console 2>&1
+ctrmc:2:once:/usr/bin/startsrc -s ctrmc > /var/ct/ctrmc-inittab.err 2>&1

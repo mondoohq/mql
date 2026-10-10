@@ -76,6 +76,14 @@ aider.hasApiKeys 14.0.1
 aider.model 14.0.1
 aider.package 14.0.1
 aider.runtime 14.0.1
+aix.inittab 14.19.1
+aix.inittab.entry 14.19.1
+aix.inittab.entry.action 14.19.1
+aix.inittab.entry.active 14.19.1
+aix.inittab.entry.command 14.19.1
+aix.inittab.entry.id 14.19.1
+aix.inittab.entry.runLevels 14.19.1
+aix.inittab.list 14.19.1
 antigravity 13.13.1
 antigravity.configPath 13.13.1
 antigravity.package 13.31.1

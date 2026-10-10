@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/aix"
 )
 
 // AixServiceManager lists the subsystems of the System Resource Controller
@@ -104,39 +105,8 @@ func parseLssrc(input io.Reader) []lssrcEntry {
 	return entries
 }
 
-// aixInittabEntry is one line of /etc/inittab: identifier, run levels,
-// action and command.
-type aixInittabEntry struct {
-	ID        string
-	RunLevels string
-	Action    string
-	Command   string
-}
-
-// parseAixInittab reads /etc/inittab. A line starting with a colon is a
-// comment, and so is everything after a # in the command.
-func parseAixInittab(r io.Reader) []aixInittabEntry {
-	var entries []aixInittabEntry
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || line[0] == ':' {
-			continue
-		}
-		parts := strings.SplitN(line, ":", 4)
-		if len(parts) != 4 {
-			continue
-		}
-		command, _, _ := strings.Cut(parts[3], "#")
-		entries = append(entries, aixInittabEntry{
-			ID:        parts[0],
-			RunLevels: parts[1],
-			Action:    parts[2],
-			Command:   strings.TrimSpace(command),
-		})
-	}
-	return entries
-}
+// aixInittabEntry is one line of /etc/inittab.
+type aixInittabEntry = aix.InittabEntry
 
 func readAixInittab(fs afero.Fs) []aixInittabEntry {
 	f, err := fs.Open("/etc/inittab")
@@ -144,7 +114,9 @@ func readAixInittab(fs afero.Fs) []aixInittabEntry {
 		return nil
 	}
 	defer f.Close()
-	return parseAixInittab(f)
+	// a partial table still names what it read; boot state is best effort
+	entries, _ := aix.ParseInittab(f)
+	return entries
 }
 
 // aixBootEntries returns the inittab entries init runs when it boots into
