@@ -29,6 +29,7 @@ jobs:
         uses: mondoohq/actions/xgrep@c38cfdf99da709760f58ff35aa5608688657f2f7 # v13.3.0
         with:
           path: .
+          version: "0.79.0"
           output-file: results.sarif
           fail-on: "off" # report-only for now; surface findings without blocking PRs
       - name: Upload SARIF results
