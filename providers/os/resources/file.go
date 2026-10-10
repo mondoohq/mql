@@ -345,7 +345,30 @@ func (s *mqlFile) exists(path string) (bool, error) {
 	return exists, err
 }
 
+// id is the mode string, as ls prints it, plus the type of the file when the
+// mode string does not tell it: two files whose permissions share an ID share
+// one resource. A symlink's mode string is "l" and its target's permission
+// bits, so a symlink to a directory and a symlink to a file can have the same
+// one; without the target's type, whichever was read first answered
+// isDirectory and isFile for both.
 func (l *mqlFilePermissions) id() (string, error) {
+	res := l.modeString()
+	switch {
+	case l.IsSymlink.Data && l.IsDirectory.Data:
+		res += " -> d"
+	case l.IsSymlink.Data && l.IsFile.Data:
+		res += " -> -"
+	case l.IsSymlink.Data:
+		res += " -> ?"
+	case !l.IsDirectory.Data && !l.IsFile.Data:
+		// Neither a directory nor a regular file (a device, socket or pipe).
+		res += " ?"
+	}
+	return res, nil
+}
+
+// modeString is the permissions as ls prints them, such as "drwxr-xr-x".
+func (l *mqlFilePermissions) modeString() string {
 	res := []byte("----------")
 
 	if l.IsSymlink.Data {
@@ -405,11 +428,11 @@ func (l *mqlFilePermissions) id() (string, error) {
 		}
 	}
 
-	return string(res), nil
+	return string(res)
 }
 
 func (l *mqlFilePermissions) string() (string, error) {
-	return l.__id, nil
+	return l.modeString(), nil
 }
 
 func (r *mqlFileContext) id() (string, error) {
