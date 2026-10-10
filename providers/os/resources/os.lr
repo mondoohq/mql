@@ -24386,3 +24386,23 @@ private aix.ipsec.filter @defaults("version id action protocol destinationPort")
   // Rule description
   description string
 }
+
+// AIX auditing
+//
+// The audit subsystem: whether auditing runs (`running`, from `audit
+// query`), the collection modes of /etc/security/audit/config (`binMode`,
+// `streamMode`), the event `classes` it defines and the classes audited
+// per user (`users`). Reading whether auditing runs requires root. AIX
+// only.
+aix.audit @defaults("running binMode streamMode") {
+  // Whether auditing is running
+  running() bool
+  // Whether events are collected in bin mode (start: binmode)
+  binMode() bool
+  // Whether events are collected in stream mode (start: streammode)
+  streamMode() bool
+  // Audit classes and the events each one includes (classes stanza)
+  classes() map[string][]string
+  // Audit classes recorded per user (users stanza)
+  users() map[string][]string
+}
