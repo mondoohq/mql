@@ -721,6 +721,7 @@ const (
 	ResourceJavaTruststores                               string = "java.truststores"
 	ResourceAixInittab                                    string = "aix.inittab"
 	ResourceAixInittabEntry                               string = "aix.inittab.entry"
+	ResourceAixDevice                                     string = "aix.device"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -3546,6 +3547,10 @@ func init() {
 		"aix.inittab.entry": {
 			// to override args, implement: initAixInittabEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAixInittabEntry,
+		},
+		"aix.device": {
+			Init:   initAixDevice,
+			Create: createAixDevice,
 		},
 	}
 }
@@ -20276,6 +20281,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aix.inittab.entry.active": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAixInittabEntry).GetActive()).ToDataRes(types.Bool)
+	},
+	"aix.device.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixDevice).GetName()).ToDataRes(types.String)
+	},
+	"aix.device.attributes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixDevice).GetAttributes()).ToDataRes(types.Map(types.String, types.String))
 	},
 }
 
@@ -45319,6 +45330,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aix.inittab.entry.active": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAixInittabEntry).Active, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.device.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixDevice).__id, ok = v.Value.(string)
+		return
+	},
+	"aix.device.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixDevice).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.device.attributes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixDevice).Attributes, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 }
@@ -117301,4 +117324,60 @@ func (c *mqlAixInittabEntry) GetCommand() *plugin.TValue[string] {
 
 func (c *mqlAixInittabEntry) GetActive() *plugin.TValue[bool] {
 	return &c.Active
+}
+
+// mqlAixDevice for the aix.device resource
+type mqlAixDevice struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAixDeviceInternal it will be used here
+	Name       plugin.TValue[string]
+	Attributes plugin.TValue[map[string]any]
+}
+
+// createAixDevice creates a new instance of this resource
+func createAixDevice(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAixDevice{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aix.device", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAixDevice) MqlName() string {
+	return "aix.device"
+}
+
+func (c *mqlAixDevice) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAixDevice) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAixDevice) GetAttributes() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Attributes, func() (map[string]any, error) {
+		return c.attributes()
+	})
 }
