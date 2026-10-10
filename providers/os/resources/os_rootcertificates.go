@@ -5,6 +5,12 @@ package resources
 
 import (
 	"errors"
+	"os"
+	"path"
+	"regexp"
+	"strings"
+
+	"github.com/spf13/afero"
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
@@ -32,6 +38,16 @@ var SolarisCertFiles = []string{
 var AixCertFiles = []string{
 	"/var/ssl/certs/ca-bundle.crt",
 }
+
+// AixCertDirectory holds a file per root on AIX. AIX 7.1 ships no bundle,
+// only one .crt per root, itself a link into /opt/freeware/etc/ssl/certs,
+// and an OpenSSL hash link to each (02265526.0 -> Entrust_...crt), so it is
+// read when the bundle is missing, as Go's crypto/x509 does.
+const AixCertDirectory = "/var/ssl/certs"
+
+// opensslHashLink matches the subject-hash names c_rehash links certificates
+// under, such as 02265526.0.
+var opensslHashLink = regexp.MustCompile(`^[0-9a-f]{8}\.[0-9]+$`)
 
 var LinuxCertFiles = []string{
 	"/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Gentoo etc.
@@ -110,6 +126,14 @@ func initOsRootCertificates(runtime *plugin.Runtime, args map[string]*llx.RawDat
 
 		files = append(files, file)
 		break
+	}
+
+	if len(files) == 0 && platform.Name == "aix" {
+		dirFiles, err := aixCertDirectoryFiles(runtime, conn)
+		if err != nil {
+			return nil, nil, err
+		}
+		files = dirFiles
 	}
 
 	args["files"] = llx.ArrayData(files, types.Resource("file"))
@@ -215,4 +239,32 @@ func (p *mqlOsRootCertificates) list(contents []any) ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// aixCertDirectoryFiles returns the certificate files of AixCertDirectory.
+// A .crt may be a link itself (on AIX 7.1 every one is), which the file
+// resource follows; the hash links point at the .crt files and are left
+// out, so each root counts once.
+func aixCertDirectoryFiles(runtime *plugin.Runtime, conn shared.Connection) ([]any, error) {
+	entries, err := afero.ReadDir(conn.FileSystem(), AixCertDirectory)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []any{}, nil
+		}
+		return nil, err
+	}
+	files := []any{}
+	for _, e := range entries {
+		if e.IsDir() || opensslHashLink.MatchString(e.Name()) || !strings.HasSuffix(e.Name(), ".crt") {
+			continue
+		}
+		f, err := CreateResource(runtime, "file", map[string]*llx.RawData{
+			"path": llx.StringData(path.Join(AixCertDirectory, e.Name())),
+		})
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	return files, nil
 }
