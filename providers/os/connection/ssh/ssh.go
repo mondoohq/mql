@@ -71,6 +71,14 @@ type Connection struct {
 	openSession func() (*psSession, error)
 	// rawRunner replaces runRawCommand in tests
 	rawRunner func(command string) (*shared.Command, error)
+	// closers end what the connection set up besides the SSH client, such as
+	// an AWS SSM session that forwards the SSH port
+	closers []io.Closer
+	// reconnectMu lets one caller re-establish a failed connection while
+	// the others wait for it (reconnectAfter)
+	reconnectMu sync.Mutex
+	// reconnectHook replaces Close and Connect in reconnectAfter in tests
+	reconnectHook func() error
 }
 
 func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) (*Connection, error) {
@@ -206,16 +214,16 @@ func (c *Connection) runRawCommand(command string) (*shared.Command, error) {
 		res.Stats.Duration = time.Since(res.Stats.Start)
 	}()
 
-	session, err := c.SSHClient.NewSession()
+	client := c.currentClient()
+	session, err := client.NewSession()
 	if err != nil {
-		log.Debug().Msg("could not open new session, try to re-establish connection")
+		log.Debug().Err(err).Msg("could not open new session, try to re-establish connection")
 
-		c.Close()
-		if err = c.Connect(); err != nil {
+		if err = c.reconnectAfter(client); err != nil {
 			return nil, multierr.Wrap(err, "failed to open SSH session (reconnect failed)")
 		}
 
-		session, err = c.SSHClient.NewSession()
+		session, err = c.currentClient().NewSession()
 		if err != nil {
 			return nil, err
 		}
@@ -379,6 +387,44 @@ func (c *Connection) Close() {
 	if c.SSHClient != nil {
 		c.SSHClient.Close()
 	}
+	closeAll(c.closers)
+	c.closers = nil
+}
+
+// closeAll closes every closer and logs the ones that fail.
+func closeAll(closers []io.Closer) {
+	for _, c := range closers {
+		if err := c.Close(); err != nil {
+			log.Warn().Err(err).Msg("could not close a resource of the ssh connection")
+		}
+	}
+}
+
+// currentClient is the SSH client that commands use now. A reconnect replaces
+// it.
+func (c *Connection) currentClient() *ssh.Client {
+	c.reconnectMu.Lock()
+	defer c.reconnectMu.Unlock()
+	return c.SSHClient
+}
+
+// reconnectAfter re-establishes the connection after failed, the client a
+// command could not open a session on, failed. Commands run concurrently, so
+// several can see the same client fail: the first reconnects, and the others
+// use its new client. Each reconnect would otherwise close the client the
+// others just opened, and over an SSM session start a session of its own
+// whose closer the next one overwrites.
+func (c *Connection) reconnectAfter(failed *ssh.Client) error {
+	c.reconnectMu.Lock()
+	defer c.reconnectMu.Unlock()
+	if c.SSHClient != failed {
+		return nil
+	}
+	if c.reconnectHook != nil {
+		return c.reconnectHook()
+	}
+	c.Close()
+	return c.Connect()
 }
 
 // checks the connection config and set default values if not provided by the user
@@ -433,8 +479,9 @@ func (c *Connection) Connect() error {
 	}
 
 	// establish connection
-	conn, _, err := establishClientConnection(cc, hostkeyCallback)
+	conn, closers, err := establishClientConnection(cc, hostkeyCallback)
 	if err != nil {
+		closeAll(closers)
 		log.Debug().Err(err).Str("provider", "ssh").Str("host", cc.Host).Int32("port", cc.Port).Bool("insecure", cc.Insecure).Msg("could not establish ssh session")
 		if strings.ContainsAny(cc.Host, "[]") {
 			log.Info().Str("host", cc.Host).Int32("port", cc.Port).Msg("ensure proper []s when combining IPv6 with port numbers")
@@ -442,6 +489,7 @@ func (c *Connection) Connect() error {
 		return err
 	}
 	c.SSHClient = conn
+	c.closers = closers
 	c.HostKey = hostkey
 	c.serverVersion = string(conn.ServerVersion())
 	log.Debug().Str("provider", "ssh").Str("host", cc.Host).Int32("port", cc.Port).Str("server", c.serverVersion).Msg("ssh session established")
@@ -579,7 +627,7 @@ func establishClientConnection(pCfg *inventory.Config, hostKeyCallback ssh.HostK
 	}
 
 	if len(authMethods) == 0 {
-		return nil, nil, errors.New("no authentication method defined")
+		return nil, closer, errors.New("no authentication method defined")
 	}
 
 	// TODO: hack: we want to establish a proper connection per configured connection so that we could use multiple users
@@ -648,9 +696,15 @@ func serverSupportsHybridKEX(addr string) (bool, error) {
 
 // prepareConnection determines the auth methods required for a ssh connection and also prepares any other
 // pre-conditions for the connection like tunnelling the connection via AWS SSM session
-func prepareConnection(conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, error) {
+func prepareConnection(conf *inventory.Config) (_ []ssh.AuthMethod, _ []io.Closer, err error) {
 	auths := []ssh.AuthMethod{}
 	closer := []io.Closer{}
+	// a failure after an SSM session was opened must not leave it active
+	defer func() {
+		if err != nil {
+			closeAll(closer)
+		}
+	}()
 
 	// only one public auth method is allowed, therefore multiple keys need to be encapsulated into one auth method
 	sshSigners := []ssh.Signer{}
@@ -740,7 +794,7 @@ func prepareConnection(conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, e
 			}
 
 			// prepare websocket connection and bind it to a free local port
-			localIp := "localhost"
+			localIp := awsssmsession.LocalHost
 			remotePort := "22"
 			// NOTE: for SSM we always target the instance id
 			conf.Host = creds.InstanceId
@@ -752,6 +806,14 @@ func prepareConnection(conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, e
 			if err != nil {
 				return nil, nil, err
 			}
+			closer = append(closer, ssmConn)
+
+			// a reconnect opens a new session to the same instance; the host
+			// is the local end of this one from here on
+			if conf.Options == nil {
+				conf.Options = map[string]string{}
+			}
+			conf.Options["instance"] = creds.InstanceId
 
 			// update endpoint information for ssh to connect via local ssm proxy
 			// TODO: this has a side-effect, we may need extend the struct to include resolved connection data
@@ -769,7 +831,6 @@ func prepareConnection(conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, e
 				return nil, nil, multierr.Wrap(err, "could not read generated private key")
 			}
 			sshSigners = append(sshSigners, priv)
-			closer = append(closer, ssmConn)
 		case vault.CredentialType_aws_ec2_instance_connect:
 			log.Debug().Str("profile", conf.Options["profile"]).Str("region", conf.Options["region"]).Msg("using aws creds")
 
