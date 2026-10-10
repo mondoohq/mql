@@ -22048,7 +22048,7 @@ private zed.repo @defaults("name branch") @maturity("preview") {
 // Roo Code AI coding agent installed on the host. Queryable through it are
 // the installed skills, along with the package that installed the tool and
 // the runtime it executes in.
-// URL: https://roomote.dev/
+// URL: https://github.com/RooCodeInc/Roo-Code
 roo @defaults("configPath") @maturity("preview") {
   init(configPath? string)
   // Path to the Roo Code configuration directory
