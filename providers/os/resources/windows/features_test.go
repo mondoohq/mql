@@ -28,11 +28,11 @@ func TestWindowsFeatures(t *testing.T) {
 func TestWindowsFeatures_LocalizedQuotes(t *testing.T) {
 	assert.True(t, strings.HasPrefix(QUERY_FEATURES, "[Console]::OutputEncoding = [Text.Encoding]::UTF8"))
 
-	utf8 := `[{"Name":"RSAT-System-Insights","DisplayName":"System Insights-Modul für Windows PowerShell","Description":"Das Modul „System Insights“ für Windows PowerShell.","Installed":false,"InstallState":0,"FeatureType":"Feature","Path":"Remoteserver-Verwaltungstools\\System Insights-Modul für Windows PowerShell","DependsOn":[],"Parent":"RSAT-Feature-Tools","SubFeatures":[]}]`
+	utf8 := `[{"Name":"RSAT-System-Insights","DisplayName":"System Insights module for Windows PowerShell","Description":"The „System Insights“ module for Windows PowerShell.","Installed":false,"InstallState":0,"FeatureType":"Feature","Path":"Remote Server Administration Tools\\System Insights module for Windows PowerShell","DependsOn":[],"Parent":"RSAT-Feature-Tools","SubFeatures":[]}]`
 	items, err := ParseWindowsFeatures(strings.NewReader(utf8))
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	assert.Equal(t, "Das Modul „System Insights“ für Windows PowerShell.", items[0].Description)
+	assert.Equal(t, "The „System Insights“ module for Windows PowerShell.", items[0].Description)
 
 	bestFit := strings.NewReplacer("„", `"`, "“", `"`).Replace(utf8)
 	_, err = ParseWindowsFeatures(strings.NewReader(bestFit))
