@@ -729,6 +729,7 @@ const (
 	ResourceAixSecurityLimit                              string = "aix.security.limit"
 	ResourceAixSecurityPasswd                             string = "aix.security.passwd"
 	ResourceAixSecurityPasswdEntry                        string = "aix.security.passwd.entry"
+	ResourceAixTrustedExecution                           string = "aix.trustedExecution"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -3586,6 +3587,10 @@ func init() {
 		"aix.security.passwd.entry": {
 			// to override args, implement: initAixSecurityPasswdEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAixSecurityPasswdEntry,
+		},
+		"aix.trustedExecution": {
+			// to override args, implement: initAixTrustedExecution(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAixTrustedExecution,
 		},
 	}
 }
@@ -20535,6 +20540,45 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aix.security.passwd.entry.flags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAixSecurityPasswdEntry).GetFlags()).ToDataRes(types.Array(types.String))
+	},
+	"aix.trustedExecution.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixTrustedExecution).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"aix.trustedExecution.signatureVerification": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixTrustedExecution).GetSignatureVerification()).ToDataRes(types.Bool)
+	},
+	"aix.trustedExecution.checkExecutables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixTrustedExecution).GetCheckExecutables()).ToDataRes(types.Bool)
+	},
+	"aix.trustedExecution.checkSharedLibraries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixTrustedExecution).GetCheckSharedLibraries()).ToDataRes(types.Bool)
+	},
+	"aix.trustedExecution.checkScripts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixTrustedExecution).GetCheckScripts()).ToDataRes(types.Bool)
+	},
+	"aix.trustedExecution.checkKernelExtensions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixTrustedExecution).GetCheckKernelExtensions()).ToDataRes(types.Bool)
+	},
+	"aix.trustedExecution.stopUntrusted": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixTrustedExecution).GetStopUntrusted()).ToDataRes(types.String)
+	},
+	"aix.trustedExecution.stopOnCheckFail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixTrustedExecution).GetStopOnCheckFail()).ToDataRes(types.Bool)
+	},
+	"aix.trustedExecution.lockKernelPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixTrustedExecution).GetLockKernelPolicies()).ToDataRes(types.Bool)
+	},
+	"aix.trustedExecution.trustedExecutionPathEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixTrustedExecution).GetTrustedExecutionPathEnabled()).ToDataRes(types.Bool)
+	},
+	"aix.trustedExecution.trustedExecutionPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixTrustedExecution).GetTrustedExecutionPath()).ToDataRes(types.Array(types.String))
+	},
+	"aix.trustedExecution.trustedLibraryPathEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixTrustedExecution).GetTrustedLibraryPathEnabled()).ToDataRes(types.Bool)
+	},
+	"aix.trustedExecution.trustedLibraryPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixTrustedExecution).GetTrustedLibraryPath()).ToDataRes(types.Array(types.String))
 	},
 }
 
@@ -45902,6 +45946,62 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aix.security.passwd.entry.flags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAixSecurityPasswdEntry).Flags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aix.trustedExecution.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).__id, ok = v.Value.(string)
+		return
+	},
+	"aix.trustedExecution.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.trustedExecution.signatureVerification": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).SignatureVerification, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.trustedExecution.checkExecutables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).CheckExecutables, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.trustedExecution.checkSharedLibraries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).CheckSharedLibraries, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.trustedExecution.checkScripts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).CheckScripts, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.trustedExecution.checkKernelExtensions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).CheckKernelExtensions, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.trustedExecution.stopUntrusted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).StopUntrusted, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.trustedExecution.stopOnCheckFail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).StopOnCheckFail, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.trustedExecution.lockKernelPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).LockKernelPolicies, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.trustedExecution.trustedExecutionPathEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).TrustedExecutionPathEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.trustedExecution.trustedExecutionPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).TrustedExecutionPath, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aix.trustedExecution.trustedLibraryPathEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).TrustedLibraryPathEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.trustedExecution.trustedLibraryPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixTrustedExecution).TrustedLibraryPath, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 }
@@ -118710,4 +118810,139 @@ func (c *mqlAixSecurityPasswdEntry) GetLastUpdate() *plugin.TValue[*time.Time] {
 
 func (c *mqlAixSecurityPasswdEntry) GetFlags() *plugin.TValue[[]any] {
 	return &c.Flags
+}
+
+// mqlAixTrustedExecution for the aix.trustedExecution resource
+type mqlAixTrustedExecution struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAixTrustedExecutionInternal
+	Enabled                     plugin.TValue[bool]
+	SignatureVerification       plugin.TValue[bool]
+	CheckExecutables            plugin.TValue[bool]
+	CheckSharedLibraries        plugin.TValue[bool]
+	CheckScripts                plugin.TValue[bool]
+	CheckKernelExtensions       plugin.TValue[bool]
+	StopUntrusted               plugin.TValue[string]
+	StopOnCheckFail             plugin.TValue[bool]
+	LockKernelPolicies          plugin.TValue[bool]
+	TrustedExecutionPathEnabled plugin.TValue[bool]
+	TrustedExecutionPath        plugin.TValue[[]any]
+	TrustedLibraryPathEnabled   plugin.TValue[bool]
+	TrustedLibraryPath          plugin.TValue[[]any]
+}
+
+// createAixTrustedExecution creates a new instance of this resource
+func createAixTrustedExecution(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAixTrustedExecution{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aix.trustedExecution", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAixTrustedExecution) MqlName() string {
+	return "aix.trustedExecution"
+}
+
+func (c *mqlAixTrustedExecution) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAixTrustedExecution) GetEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Enabled, func() (bool, error) {
+		return c.enabled()
+	})
+}
+
+func (c *mqlAixTrustedExecution) GetSignatureVerification() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SignatureVerification, func() (bool, error) {
+		return c.signatureVerification()
+	})
+}
+
+func (c *mqlAixTrustedExecution) GetCheckExecutables() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CheckExecutables, func() (bool, error) {
+		return c.checkExecutables()
+	})
+}
+
+func (c *mqlAixTrustedExecution) GetCheckSharedLibraries() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CheckSharedLibraries, func() (bool, error) {
+		return c.checkSharedLibraries()
+	})
+}
+
+func (c *mqlAixTrustedExecution) GetCheckScripts() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CheckScripts, func() (bool, error) {
+		return c.checkScripts()
+	})
+}
+
+func (c *mqlAixTrustedExecution) GetCheckKernelExtensions() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CheckKernelExtensions, func() (bool, error) {
+		return c.checkKernelExtensions()
+	})
+}
+
+func (c *mqlAixTrustedExecution) GetStopUntrusted() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.StopUntrusted, func() (string, error) {
+		return c.stopUntrusted()
+	})
+}
+
+func (c *mqlAixTrustedExecution) GetStopOnCheckFail() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.StopOnCheckFail, func() (bool, error) {
+		return c.stopOnCheckFail()
+	})
+}
+
+func (c *mqlAixTrustedExecution) GetLockKernelPolicies() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.LockKernelPolicies, func() (bool, error) {
+		return c.lockKernelPolicies()
+	})
+}
+
+func (c *mqlAixTrustedExecution) GetTrustedExecutionPathEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.TrustedExecutionPathEnabled, func() (bool, error) {
+		return c.trustedExecutionPathEnabled()
+	})
+}
+
+func (c *mqlAixTrustedExecution) GetTrustedExecutionPath() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TrustedExecutionPath, func() ([]any, error) {
+		return c.trustedExecutionPath()
+	})
+}
+
+func (c *mqlAixTrustedExecution) GetTrustedLibraryPathEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.TrustedLibraryPathEnabled, func() (bool, error) {
+		return c.trustedLibraryPathEnabled()
+	})
+}
+
+func (c *mqlAixTrustedExecution) GetTrustedLibraryPath() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TrustedLibraryPath, func() ([]any, error) {
+		return c.trustedLibraryPath()
+	})
 }
