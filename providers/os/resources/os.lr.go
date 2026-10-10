@@ -722,6 +722,8 @@ const (
 	ResourceAixInittab                                    string = "aix.inittab"
 	ResourceAixInittabEntry                               string = "aix.inittab.entry"
 	ResourceAixDevice                                     string = "aix.device"
+	ResourceAixSecurityUsers                              string = "aix.security.users"
+	ResourceAixSecurityUser                               string = "aix.security.user"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -3551,6 +3553,14 @@ func init() {
 		"aix.device": {
 			Init:   initAixDevice,
 			Create: createAixDevice,
+		},
+		"aix.security.users": {
+			// to override args, implement: initAixSecurityUsers(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAixSecurityUsers,
+		},
+		"aix.security.user": {
+			Init:   initAixSecurityUser,
+			Create: createAixSecurityUser,
 		},
 	}
 }
@@ -20287,6 +20297,102 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aix.device.attributes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAixDevice).GetAttributes()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aix.security.users.defaults": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUsers).GetDefaults()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aix.security.users.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUsers).GetList()).ToDataRes(types.Array(types.Resource("aix.security.user")))
+	},
+	"aix.security.user.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetName()).ToDataRes(types.String)
+	},
+	"aix.security.user.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetUser()).ToDataRes(types.Resource("user"))
+	},
+	"aix.security.user.attributes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetAttributes()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aix.security.user.explicit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetExplicit()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aix.security.user.admin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetAdmin()).ToDataRes(types.Bool)
+	},
+	"aix.security.user.login": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetLogin()).ToDataRes(types.Bool)
+	},
+	"aix.security.user.rlogin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetRlogin()).ToDataRes(types.Bool)
+	},
+	"aix.security.user.su": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetSu()).ToDataRes(types.Bool)
+	},
+	"aix.security.user.sugroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetSugroups()).ToDataRes(types.Array(types.String))
+	},
+	"aix.security.user.accountLocked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetAccountLocked()).ToDataRes(types.Bool)
+	},
+	"aix.security.user.expires": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetExpires()).ToDataRes(types.String)
+	},
+	"aix.security.user.umask": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetUmask()).ToDataRes(types.String)
+	},
+	"aix.security.user.registry": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetRegistry()).ToDataRes(types.String)
+	},
+	"aix.security.user.authSystem": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetAuthSystem()).ToDataRes(types.String)
+	},
+	"aix.security.user.maxage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetMaxage()).ToDataRes(types.Int)
+	},
+	"aix.security.user.minage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetMinage()).ToDataRes(types.Int)
+	},
+	"aix.security.user.maxexpired": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetMaxexpired()).ToDataRes(types.Int)
+	},
+	"aix.security.user.minlen": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetMinlen()).ToDataRes(types.Int)
+	},
+	"aix.security.user.minalpha": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetMinalpha()).ToDataRes(types.Int)
+	},
+	"aix.security.user.minloweralpha": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetMinloweralpha()).ToDataRes(types.Int)
+	},
+	"aix.security.user.minupperalpha": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetMinupperalpha()).ToDataRes(types.Int)
+	},
+	"aix.security.user.minother": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetMinother()).ToDataRes(types.Int)
+	},
+	"aix.security.user.mindigit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetMindigit()).ToDataRes(types.Int)
+	},
+	"aix.security.user.minspecialchar": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetMinspecialchar()).ToDataRes(types.Int)
+	},
+	"aix.security.user.mindiff": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetMindiff()).ToDataRes(types.Int)
+	},
+	"aix.security.user.maxrepeats": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetMaxrepeats()).ToDataRes(types.Int)
+	},
+	"aix.security.user.histsize": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetHistsize()).ToDataRes(types.Int)
+	},
+	"aix.security.user.histexpire": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetHistexpire()).ToDataRes(types.Int)
+	},
+	"aix.security.user.loginretries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetLoginretries()).ToDataRes(types.Int)
+	},
+	"aix.security.user.pwdwarntime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAixSecurityUser).GetPwdwarntime()).ToDataRes(types.Int)
 	},
 }
 
@@ -45342,6 +45448,142 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aix.device.attributes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAixDevice).Attributes, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aix.security.users.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUsers).__id, ok = v.Value.(string)
+		return
+	},
+	"aix.security.users.defaults": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUsers).Defaults, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aix.security.users.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUsers).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).__id, ok = v.Value.(string)
+		return
+	},
+	"aix.security.user.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).User, ok = plugin.RawToTValue[*mqlUser](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.attributes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Attributes, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.explicit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Explicit, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.admin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Admin, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.login": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Login, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.rlogin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Rlogin, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.su": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Su, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.sugroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Sugroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.accountLocked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).AccountLocked, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.expires": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Expires, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.umask": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Umask, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.registry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Registry, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.authSystem": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).AuthSystem, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.maxage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Maxage, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.minage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Minage, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.maxexpired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Maxexpired, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.minlen": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Minlen, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.minalpha": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Minalpha, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.minloweralpha": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Minloweralpha, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.minupperalpha": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Minupperalpha, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.minother": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Minother, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.mindigit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Mindigit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.minspecialchar": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Minspecialchar, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.mindiff": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Mindiff, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.maxrepeats": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Maxrepeats, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.histsize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Histsize, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.histexpire": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Histexpire, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.loginretries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Loginretries, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aix.security.user.pwdwarntime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAixSecurityUser).Pwdwarntime, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 }
@@ -117380,4 +117622,278 @@ func (c *mqlAixDevice) GetAttributes() *plugin.TValue[map[string]any] {
 	return plugin.GetOrCompute[map[string]any](&c.Attributes, func() (map[string]any, error) {
 		return c.attributes()
 	})
+}
+
+// mqlAixSecurityUsers for the aix.security.users resource
+type mqlAixSecurityUsers struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAixSecurityUsersInternal
+	Defaults plugin.TValue[map[string]any]
+	List     plugin.TValue[[]any]
+}
+
+// createAixSecurityUsers creates a new instance of this resource
+func createAixSecurityUsers(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAixSecurityUsers{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aix.security.users", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAixSecurityUsers) MqlName() string {
+	return "aix.security.users"
+}
+
+func (c *mqlAixSecurityUsers) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAixSecurityUsers) GetDefaults() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Defaults, func() (map[string]any, error) {
+		return c.defaults()
+	})
+}
+
+func (c *mqlAixSecurityUsers) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aix.security.users", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlAixSecurityUser for the aix.security.user resource
+type mqlAixSecurityUser struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAixSecurityUserInternal it will be used here
+	Name           plugin.TValue[string]
+	User           plugin.TValue[*mqlUser]
+	Attributes     plugin.TValue[map[string]any]
+	Explicit       plugin.TValue[map[string]any]
+	Admin          plugin.TValue[bool]
+	Login          plugin.TValue[bool]
+	Rlogin         plugin.TValue[bool]
+	Su             plugin.TValue[bool]
+	Sugroups       plugin.TValue[[]any]
+	AccountLocked  plugin.TValue[bool]
+	Expires        plugin.TValue[string]
+	Umask          plugin.TValue[string]
+	Registry       plugin.TValue[string]
+	AuthSystem     plugin.TValue[string]
+	Maxage         plugin.TValue[int64]
+	Minage         plugin.TValue[int64]
+	Maxexpired     plugin.TValue[int64]
+	Minlen         plugin.TValue[int64]
+	Minalpha       plugin.TValue[int64]
+	Minloweralpha  plugin.TValue[int64]
+	Minupperalpha  plugin.TValue[int64]
+	Minother       plugin.TValue[int64]
+	Mindigit       plugin.TValue[int64]
+	Minspecialchar plugin.TValue[int64]
+	Mindiff        plugin.TValue[int64]
+	Maxrepeats     plugin.TValue[int64]
+	Histsize       plugin.TValue[int64]
+	Histexpire     plugin.TValue[int64]
+	Loginretries   plugin.TValue[int64]
+	Pwdwarntime    plugin.TValue[int64]
+}
+
+// createAixSecurityUser creates a new instance of this resource
+func createAixSecurityUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAixSecurityUser{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aix.security.user", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAixSecurityUser) MqlName() string {
+	return "aix.security.user"
+}
+
+func (c *mqlAixSecurityUser) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAixSecurityUser) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAixSecurityUser) GetUser() *plugin.TValue[*mqlUser] {
+	return plugin.GetOrCompute[*mqlUser](&c.User, func() (*mqlUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aix.security.user", c.__id, "user")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlUser), nil
+			}
+		}
+
+		return c.user()
+	})
+}
+
+func (c *mqlAixSecurityUser) GetAttributes() *plugin.TValue[map[string]any] {
+	return &c.Attributes
+}
+
+func (c *mqlAixSecurityUser) GetExplicit() *plugin.TValue[map[string]any] {
+	return &c.Explicit
+}
+
+func (c *mqlAixSecurityUser) GetAdmin() *plugin.TValue[bool] {
+	return &c.Admin
+}
+
+func (c *mqlAixSecurityUser) GetLogin() *plugin.TValue[bool] {
+	return &c.Login
+}
+
+func (c *mqlAixSecurityUser) GetRlogin() *plugin.TValue[bool] {
+	return &c.Rlogin
+}
+
+func (c *mqlAixSecurityUser) GetSu() *plugin.TValue[bool] {
+	return &c.Su
+}
+
+func (c *mqlAixSecurityUser) GetSugroups() *plugin.TValue[[]any] {
+	return &c.Sugroups
+}
+
+func (c *mqlAixSecurityUser) GetAccountLocked() *plugin.TValue[bool] {
+	return &c.AccountLocked
+}
+
+func (c *mqlAixSecurityUser) GetExpires() *plugin.TValue[string] {
+	return &c.Expires
+}
+
+func (c *mqlAixSecurityUser) GetUmask() *plugin.TValue[string] {
+	return &c.Umask
+}
+
+func (c *mqlAixSecurityUser) GetRegistry() *plugin.TValue[string] {
+	return &c.Registry
+}
+
+func (c *mqlAixSecurityUser) GetAuthSystem() *plugin.TValue[string] {
+	return &c.AuthSystem
+}
+
+func (c *mqlAixSecurityUser) GetMaxage() *plugin.TValue[int64] {
+	return &c.Maxage
+}
+
+func (c *mqlAixSecurityUser) GetMinage() *plugin.TValue[int64] {
+	return &c.Minage
+}
+
+func (c *mqlAixSecurityUser) GetMaxexpired() *plugin.TValue[int64] {
+	return &c.Maxexpired
+}
+
+func (c *mqlAixSecurityUser) GetMinlen() *plugin.TValue[int64] {
+	return &c.Minlen
+}
+
+func (c *mqlAixSecurityUser) GetMinalpha() *plugin.TValue[int64] {
+	return &c.Minalpha
+}
+
+func (c *mqlAixSecurityUser) GetMinloweralpha() *plugin.TValue[int64] {
+	return &c.Minloweralpha
+}
+
+func (c *mqlAixSecurityUser) GetMinupperalpha() *plugin.TValue[int64] {
+	return &c.Minupperalpha
+}
+
+func (c *mqlAixSecurityUser) GetMinother() *plugin.TValue[int64] {
+	return &c.Minother
+}
+
+func (c *mqlAixSecurityUser) GetMindigit() *plugin.TValue[int64] {
+	return &c.Mindigit
+}
+
+func (c *mqlAixSecurityUser) GetMinspecialchar() *plugin.TValue[int64] {
+	return &c.Minspecialchar
+}
+
+func (c *mqlAixSecurityUser) GetMindiff() *plugin.TValue[int64] {
+	return &c.Mindiff
+}
+
+func (c *mqlAixSecurityUser) GetMaxrepeats() *plugin.TValue[int64] {
+	return &c.Maxrepeats
+}
+
+func (c *mqlAixSecurityUser) GetHistsize() *plugin.TValue[int64] {
+	return &c.Histsize
+}
+
+func (c *mqlAixSecurityUser) GetHistexpire() *plugin.TValue[int64] {
+	return &c.Histexpire
+}
+
+func (c *mqlAixSecurityUser) GetLoginretries() *plugin.TValue[int64] {
+	return &c.Loginretries
+}
+
+func (c *mqlAixSecurityUser) GetPwdwarntime() *plugin.TValue[int64] {
+	return &c.Pwdwarntime
 }

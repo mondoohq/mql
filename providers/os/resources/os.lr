@@ -24035,3 +24035,92 @@ aix.device @defaults("name") {
   // Current attribute values
   attributes() map[string]string
 }
+
+// AIX user security attributes
+//
+// The security attributes of every local user from /etc/security/user,
+// resolved the way lsuser resolves them: a user's own stanza wins, and an
+// attribute it leaves out is inherited from the `default` stanza. Users
+// listed in /etc/passwd without a stanza of their own inherit every
+// attribute. `defaults` holds the default stanza itself. AIX only.
+aix.security.users {
+  []aix.security.user
+  // Attributes of the default stanza, which every user inherits
+  defaults() map[string]string
+}
+
+// AIX user security attributes of one user
+//
+// One user's effective attributes from /etc/security/user: login
+// restrictions (`login`, `rlogin`, `su`, `sugroups`, `accountLocked`) and
+// password rules (`maxage`, `minlen`, `histsize`, `loginretries`, ...). A
+// value comes from the user's stanza or, when that leaves it out, from the
+// default stanza; `explicit` holds only what the user's stanza sets. A
+// field is null when neither stanza sets it, in which case AIX applies its
+// built-in default. The `name` field selects the user,
+// for example `aix.security.user(name: "root")`.
+aix.security.user @defaults("name accountLocked login rlogin") {
+  init(name string)
+  // User name
+  name string
+  // The local user
+  user() user
+  // Effective attributes: the user's stanza merged over the default stanza
+  attributes map[string]string
+  // Attributes the user's own stanza sets
+  explicit map[string]string
+  // Whether the user is an administrative user (admin)
+  admin bool
+  // Whether the user can log in locally (login)
+  login bool
+  // Whether the user can log in remotely, through ssh or telnet (rlogin)
+  rlogin bool
+  // Whether other users can switch to this user with su (su)
+  su bool
+  // Groups whose members can switch to this user with su (sugroups)
+  //
+  // `ALL` allows every group; an entry prefixed with `!` denies a group.
+  sugroups []string
+  // Whether the account is locked (account_locked)
+  accountLocked bool
+  // Account expiration date as AIX writes it, MMDDhhmmyy, or 0 (expires)
+  expires string
+  // Default file creation mask, in octal (umask)
+  umask string
+  // Authentication registry, such as files or LDAP (registry)
+  registry string
+  // Authentication method grammar (SYSTEM)
+  authSystem string
+  // Weeks a password stays valid; 0 means it never expires (maxage)
+  maxage int
+  // Weeks before a password can be changed again (minage)
+  minage int
+  // Weeks after maxage during which an expired password can still be changed; -1 means no limit (maxexpired)
+  maxexpired int
+  // Minimum password length (minlen)
+  minlen int
+  // Minimum number of alphabetic characters in a password (minalpha)
+  minalpha int
+  // Minimum number of lowercase letters in a password (minloweralpha)
+  minloweralpha int
+  // Minimum number of uppercase letters in a password (minupperalpha)
+  minupperalpha int
+  // Minimum number of non-alphabetic characters in a password (minother)
+  minother int
+  // Minimum number of digits in a password (mindigit)
+  mindigit int
+  // Minimum number of special characters in a password (minspecialchar)
+  minspecialchar int
+  // Minimum number of characters that must differ from the old password (mindiff)
+  mindiff int
+  // Maximum number of times a character may repeat in a password (maxrepeats)
+  maxrepeats int
+  // Number of previous passwords that cannot be reused (histsize)
+  histsize int
+  // Weeks before a previous password can be reused (histexpire)
+  histexpire int
+  // Unsuccessful login attempts before the account is locked; 0 disables locking (loginretries)
+  loginretries int
+  // Days before expiration that the user is warned (pwdwarntime)
+  pwdwarntime int
+}
