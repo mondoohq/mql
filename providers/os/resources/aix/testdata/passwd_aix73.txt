@@ -1,0 +1,20 @@
+* the records of /etc/security/passwd of AIX 7.3 TL4 SP2, with placeholder hashes
+
+root:
+	password =
+
+daemon:
+	password = *
+
+mqluser1:
+	password = {ssha512}06$xxxxxxxxxxxxxxxx$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+	lastupdate = 1791571248
+	flags = ADMCHG
+
+legacy:
+	password = XXXXXXXXXXXXX
+	lastupdate = 1700000000
+	flags = ADMIN,NOCHECK
+
+nopass:
+	lastupdate = 1700000000

@@ -122,6 +122,15 @@ aix.security.loginCfg.pwdAlgorithm 14.19.1
 aix.security.loginCfg.sakEnabled 14.19.1
 aix.security.loginCfg.shells 14.19.1
 aix.security.loginCfg.stanzas 14.19.1
+aix.security.passwd 14.19.1
+aix.security.passwd.entry 14.19.1
+aix.security.passwd.entry.flags 14.19.1
+aix.security.passwd.entry.hashAlgorithm 14.19.1
+aix.security.passwd.entry.lastUpdate 14.19.1
+aix.security.passwd.entry.name 14.19.1
+aix.security.passwd.entry.state 14.19.1
+aix.security.passwd.entry.user 14.19.1
+aix.security.passwd.list 14.19.1
 aix.security.user 14.19.1
 aix.security.user.accountLocked 14.19.1
 aix.security.user.admin 14.19.1
