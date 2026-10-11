@@ -68,7 +68,9 @@ func TimeToDurationString(t time.Time) string {
 	days := hours / 24
 
 	var res strings.Builder
-	if days > 0 {
+	// Every part keeps the sign of the duration, so a negative one, such as the
+	// expiresIn of an expired certificate, prints its days too.
+	if days != 0 {
 		fmt.Fprintf(&res, "%d days ", days)
 	}
 	if hours%24 != 0 {
