@@ -722,6 +722,7 @@ databricks.warehouse.permissions 13.1.4
 databricks.warehouse.photonEnabled 13.0.0
 databricks.warehouse.serverlessEnabled 13.0.0
 databricks.warehouse.state 13.0.0
+databricks.warehouse.statementTimeoutSeconds 14.0.3
 databricks.warehouse.warehouseType 13.0.0
 databricks.warehouses 13.0.0
 databricks.workspace 13.0.0

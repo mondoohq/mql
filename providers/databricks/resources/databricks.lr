@@ -674,6 +674,14 @@ databricks.warehouse @defaults("name warehouseType state") {
   autoStopMinutes int
   // Login name of the user that created the warehouse
   creatorName string
+  // Statement timeout in seconds set on the warehouse
+  //
+  // Queries on the warehouse that run longer than this many seconds are
+  // canceled. A session-level STATEMENT_TIMEOUT overrides it. Null when the
+  // warehouse sets no timeout of its own, in which case the workspace
+  // STATEMENT_TIMEOUT SQL configuration parameter applies (172800 seconds
+  // unless an admin changed it).
+  statementTimeoutSeconds int
   // Workspace access control list of the warehouse
   permissions() []databricks.permission
 }
