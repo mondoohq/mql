@@ -11888,6 +11888,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.opensearch.domain.encryptionAtRestEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOpensearchDomain).GetEncryptionAtRestEnabled()).ToDataRes(types.Bool)
 	},
+	"aws.opensearch.domain.encryptionAtRestMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetEncryptionAtRestMode()).ToDataRes(types.String)
+	},
 	"aws.opensearch.domain.encryptionAtRestKmsKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOpensearchDomain).GetEncryptionAtRestKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
 	},
@@ -23884,6 +23887,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.lambda.eventSourceMapping.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLambdaEventSourceMapping).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.lambda.eventSourceMapping.sourceAccessTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLambdaEventSourceMapping).GetSourceAccessTypes()).ToDataRes(types.Array(types.String))
+	},
+	"aws.lambda.eventSourceMapping.secrets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLambdaEventSourceMapping).GetSecrets()).ToDataRes(types.Array(types.Resource("aws.secretsmanager.secret")))
+	},
+	"aws.lambda.eventSourceMapping.subnets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLambdaEventSourceMapping).GetSubnets()).ToDataRes(types.Array(types.Resource("aws.vpc.subnet")))
+	},
+	"aws.lambda.eventSourceMapping.securityGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLambdaEventSourceMapping).GetSecurityGroups()).ToDataRes(types.Array(types.Resource("aws.ec2.securitygroup")))
+	},
+	"aws.lambda.eventSourceMapping.selfManagedKafkaBootstrapServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLambdaEventSourceMapping).GetSelfManagedKafkaBootstrapServers()).ToDataRes(types.Array(types.String))
+	},
+	"aws.lambda.eventSourceMapping.kafkaConsumerGroupId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLambdaEventSourceMapping).GetKafkaConsumerGroupId()).ToDataRes(types.String)
 	},
 	"aws.lambda.function.alias.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLambdaFunctionAlias).GetArn()).ToDataRes(types.String)
@@ -48741,6 +48762,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsOpensearchDomain).EncryptionAtRestEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"aws.opensearch.domain.encryptionAtRestMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).EncryptionAtRestMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.opensearch.domain.encryptionAtRestKmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsOpensearchDomain).EncryptionAtRestKmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
 		return
@@ -66215,6 +66240,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.lambda.eventSourceMapping.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsLambdaEventSourceMapping).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.lambda.eventSourceMapping.sourceAccessTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLambdaEventSourceMapping).SourceAccessTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.lambda.eventSourceMapping.secrets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLambdaEventSourceMapping).Secrets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.lambda.eventSourceMapping.subnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLambdaEventSourceMapping).Subnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.lambda.eventSourceMapping.securityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLambdaEventSourceMapping).SecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.lambda.eventSourceMapping.selfManagedKafkaBootstrapServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLambdaEventSourceMapping).SelfManagedKafkaBootstrapServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.lambda.eventSourceMapping.kafkaConsumerGroupId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLambdaEventSourceMapping).KafkaConsumerGroupId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.lambda.function.alias.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -114770,6 +114819,7 @@ type mqlAwsOpensearchDomain struct {
 	EngineVersion                      plugin.TValue[string]
 	Endpoint                           plugin.TValue[string]
 	EncryptionAtRestEnabled            plugin.TValue[bool]
+	EncryptionAtRestMode               plugin.TValue[string]
 	EncryptionAtRestKmsKey             plugin.TValue[*mqlAwsKmsKey]
 	NodeToNodeEncryptionEnabled        plugin.TValue[bool]
 	DedicatedMasterEnabled             plugin.TValue[bool]
@@ -114904,6 +114954,10 @@ func (c *mqlAwsOpensearchDomain) GetEndpoint() *plugin.TValue[string] {
 
 func (c *mqlAwsOpensearchDomain) GetEncryptionAtRestEnabled() *plugin.TValue[bool] {
 	return &c.EncryptionAtRestEnabled
+}
+
+func (c *mqlAwsOpensearchDomain) GetEncryptionAtRestMode() *plugin.TValue[string] {
+	return &c.EncryptionAtRestMode
 }
 
 func (c *mqlAwsOpensearchDomain) GetEncryptionAtRestKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
@@ -159440,29 +159494,35 @@ type mqlAwsLambdaEventSourceMapping struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsLambdaEventSourceMappingInternal
-	Uuid                           plugin.TValue[string]
-	Arn                            plugin.TValue[string]
-	EventSourceArn                 plugin.TValue[string]
-	Function                       plugin.TValue[*mqlAwsLambdaFunction]
-	Region                         plugin.TValue[string]
-	State                          plugin.TValue[string]
-	StateTransitionReason          plugin.TValue[string]
-	BatchSize                      plugin.TValue[int64]
-	MaximumBatchingWindowInSeconds plugin.TValue[int64]
-	ParallelizationFactor          plugin.TValue[int64]
-	MaximumRetryAttempts           plugin.TValue[int64]
-	MaximumRecordAgeInSeconds      plugin.TValue[int64]
-	BisectBatchOnFunctionError     plugin.TValue[bool]
-	LastModified                   plugin.TValue[*time.Time]
-	LastProcessingResult           plugin.TValue[string]
-	Topics                         plugin.TValue[[]any]
-	Queues                         plugin.TValue[[]any]
-	TumblingWindowInSeconds        plugin.TValue[int64]
-	StartingPosition               plugin.TValue[string]
-	OnFailureDestinationArn        plugin.TValue[string]
-	FilterCriteria                 plugin.TValue[any]
-	MaximumConcurrency             plugin.TValue[int64]
-	Tags                           plugin.TValue[map[string]any]
+	Uuid                             plugin.TValue[string]
+	Arn                              plugin.TValue[string]
+	EventSourceArn                   plugin.TValue[string]
+	Function                         plugin.TValue[*mqlAwsLambdaFunction]
+	Region                           plugin.TValue[string]
+	State                            plugin.TValue[string]
+	StateTransitionReason            plugin.TValue[string]
+	BatchSize                        plugin.TValue[int64]
+	MaximumBatchingWindowInSeconds   plugin.TValue[int64]
+	ParallelizationFactor            plugin.TValue[int64]
+	MaximumRetryAttempts             plugin.TValue[int64]
+	MaximumRecordAgeInSeconds        plugin.TValue[int64]
+	BisectBatchOnFunctionError       plugin.TValue[bool]
+	LastModified                     plugin.TValue[*time.Time]
+	LastProcessingResult             plugin.TValue[string]
+	Topics                           plugin.TValue[[]any]
+	Queues                           plugin.TValue[[]any]
+	TumblingWindowInSeconds          plugin.TValue[int64]
+	StartingPosition                 plugin.TValue[string]
+	OnFailureDestinationArn          plugin.TValue[string]
+	FilterCriteria                   plugin.TValue[any]
+	MaximumConcurrency               plugin.TValue[int64]
+	Tags                             plugin.TValue[map[string]any]
+	SourceAccessTypes                plugin.TValue[[]any]
+	Secrets                          plugin.TValue[[]any]
+	Subnets                          plugin.TValue[[]any]
+	SecurityGroups                   plugin.TValue[[]any]
+	SelfManagedKafkaBootstrapServers plugin.TValue[[]any]
+	KafkaConsumerGroupId             plugin.TValue[string]
 }
 
 // createAwsLambdaEventSourceMapping creates a new instance of this resource
@@ -159608,6 +159668,66 @@ func (c *mqlAwsLambdaEventSourceMapping) GetTags() *plugin.TValue[map[string]any
 	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
 		return c.tags()
 	})
+}
+
+func (c *mqlAwsLambdaEventSourceMapping) GetSourceAccessTypes() *plugin.TValue[[]any] {
+	return &c.SourceAccessTypes
+}
+
+func (c *mqlAwsLambdaEventSourceMapping) GetSecrets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Secrets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.lambda.eventSourceMapping", c.__id, "secrets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.secrets()
+	})
+}
+
+func (c *mqlAwsLambdaEventSourceMapping) GetSubnets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Subnets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.lambda.eventSourceMapping", c.__id, "subnets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.subnets()
+	})
+}
+
+func (c *mqlAwsLambdaEventSourceMapping) GetSecurityGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SecurityGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.lambda.eventSourceMapping", c.__id, "securityGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.securityGroups()
+	})
+}
+
+func (c *mqlAwsLambdaEventSourceMapping) GetSelfManagedKafkaBootstrapServers() *plugin.TValue[[]any] {
+	return &c.SelfManagedKafkaBootstrapServers
+}
+
+func (c *mqlAwsLambdaEventSourceMapping) GetKafkaConsumerGroupId() *plugin.TValue[string] {
+	return &c.KafkaConsumerGroupId
 }
 
 // mqlAwsLambdaFunctionAlias for the aws.lambda.function.alias resource

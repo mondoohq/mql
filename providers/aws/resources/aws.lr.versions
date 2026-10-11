@@ -7168,6 +7168,7 @@ aws.lambda.eventSourceMapping.bisectBatchOnFunctionError 11.15.2
 aws.lambda.eventSourceMapping.eventSourceArn 11.15.2
 aws.lambda.eventSourceMapping.filterCriteria 11.15.2
 aws.lambda.eventSourceMapping.function 13.12.1
+aws.lambda.eventSourceMapping.kafkaConsumerGroupId 14.4.4
 aws.lambda.eventSourceMapping.lastModified 11.15.2
 aws.lambda.eventSourceMapping.lastProcessingResult 11.15.2
 aws.lambda.eventSourceMapping.maximumBatchingWindowInSeconds 11.15.2
@@ -7178,9 +7179,14 @@ aws.lambda.eventSourceMapping.onFailureDestinationArn 11.15.2
 aws.lambda.eventSourceMapping.parallelizationFactor 11.15.2
 aws.lambda.eventSourceMapping.queues 11.15.2
 aws.lambda.eventSourceMapping.region 11.15.2
+aws.lambda.eventSourceMapping.secrets 14.4.4
+aws.lambda.eventSourceMapping.securityGroups 14.4.4
+aws.lambda.eventSourceMapping.selfManagedKafkaBootstrapServers 14.4.4
+aws.lambda.eventSourceMapping.sourceAccessTypes 14.4.4
 aws.lambda.eventSourceMapping.startingPosition 11.15.2
 aws.lambda.eventSourceMapping.state 11.15.2
 aws.lambda.eventSourceMapping.stateTransitionReason 11.15.2
+aws.lambda.eventSourceMapping.subnets 14.4.4
 aws.lambda.eventSourceMapping.tags 14.3.3
 aws.lambda.eventSourceMapping.topics 11.15.2
 aws.lambda.eventSourceMapping.tumblingWindowInSeconds 11.15.2
@@ -8299,6 +8305,7 @@ aws.opensearch.domain.ebsVolumeSize 11.15.2
 aws.opensearch.domain.ebsVolumeType 11.15.2
 aws.opensearch.domain.encryptionAtRestEnabled 11.15.2
 aws.opensearch.domain.encryptionAtRestKmsKey 11.16.1
+aws.opensearch.domain.encryptionAtRestMode 14.4.4
 aws.opensearch.domain.endpoint 11.15.2
 aws.opensearch.domain.enforceHTTPS 11.15.2
 aws.opensearch.domain.engineVersion 11.15.2

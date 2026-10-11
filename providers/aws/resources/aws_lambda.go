@@ -1253,7 +1253,8 @@ func (a *mqlAwsLambda) getEventSourceMappings(conn *connection.AwsConnection) []
 // createEventSourceMappingResource creates an aws.lambda.eventSourceMapping resource from SDK data.
 // Shared between top-level listing and per-function listing to ensure cache reuse via UUID-based __id.
 func createEventSourceMappingResource(runtime *plugin.Runtime, esm lambdatypes.EventSourceMappingConfiguration, region string) (*mqlAwsLambdaEventSourceMapping, error) {
-	args, err := eventSourceMappingArgs(esm, region)
+	access := parseSourceAccessConfigurations(esm.SourceAccessConfigurations)
+	args, err := eventSourceMappingArgs(esm, region, access)
 	if err != nil {
 		return nil, err
 	}
@@ -1265,7 +1266,89 @@ func createEventSourceMappingResource(runtime *plugin.Runtime, esm lambdatypes.E
 	mqlEsm := res.(*mqlAwsLambdaEventSourceMapping)
 	mqlEsm.cacheFunctionArn = convert.ToValue(esm.FunctionArn)
 	mqlEsm.cacheArn = convert.ToValue(esm.EventSourceMappingArn)
+	mqlEsm.cacheSecretArns = access.secretArns
+	mqlEsm.cacheSubnetIds = access.subnetIds
+	mqlEsm.cacheSecurityGroupIds = access.securityGroupIds
 	return mqlEsm, nil
+}
+
+// esmSecretAccessTypes are the source access configuration types whose URI is
+// the ARN of a Secrets Manager secret. The OAUTHBEARER_SCOPE, _AUDIENCE,
+// _LOGICAL_CLUSTER and _IDENTITY_POOL types carry plain values, and IAM_AUTH
+// and IAM_OAUTHBEARER_AUTH carry no URI at all.
+var esmSecretAccessTypes = map[lambdatypes.SourceAccessType]bool{
+	lambdatypes.SourceAccessTypeBasicAuth:                true,
+	lambdatypes.SourceAccessTypeSaslScram256Auth:         true,
+	lambdatypes.SourceAccessTypeSaslScram512Auth:         true,
+	lambdatypes.SourceAccessTypeClientCertificateTlsAuth: true,
+	lambdatypes.SourceAccessTypeServerRootCaCertificate:  true,
+	lambdatypes.SourceAccessTypeOauthbearerAuth:          true,
+}
+
+// esmSourceAccess is an event source mapping's source access configuration
+// list, split by what each URI names.
+type esmSourceAccess struct {
+	types            []any
+	secretArns       []string
+	subnetIds        []string
+	securityGroupIds []string
+}
+
+// parseSourceAccessConfigurations splits the source access configurations
+// into their types and the secrets, subnets and security groups the URIs
+// name. Every type is kept, including ones this provider does not know yet;
+// a URI is only treated as a reference for a type known to carry one.
+func parseSourceAccessConfigurations(cfgs []lambdatypes.SourceAccessConfiguration) esmSourceAccess {
+	res := esmSourceAccess{types: []any{}}
+	seen := map[string]bool{}
+	add := func(list *[]string, kind string, uri string) {
+		key := kind + "\x00" + uri
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		*list = append(*list, uri)
+	}
+	for _, cfg := range cfgs {
+		if cfg.Type != "" {
+			res.types = append(res.types, string(cfg.Type))
+		}
+		uri := convert.ToValue(cfg.URI)
+		if uri == "" {
+			continue
+		}
+		switch {
+		case cfg.Type == lambdatypes.SourceAccessTypeVpcSubnet:
+			add(&res.subnetIds, "subnet", uri)
+		case cfg.Type == lambdatypes.SourceAccessTypeVpcSecurityGroup:
+			add(&res.securityGroupIds, "sg", uri)
+		case esmSecretAccessTypes[cfg.Type]:
+			add(&res.secretArns, "secret", uri)
+		}
+	}
+	return res
+}
+
+// selfManagedKafkaBootstrapServers reports the broker addresses of a
+// self-managed Kafka source, or null when the source is not one.
+func selfManagedKafkaBootstrapServers(src *lambdatypes.SelfManagedEventSource) *llx.RawData {
+	if src == nil {
+		return llx.NilData
+	}
+	servers := src.Endpoints[string(lambdatypes.EndPointTypeKafkaBootstrapServers)]
+	return llx.ArrayData(toInterfaceArr(servers), types.String)
+}
+
+// kafkaConsumerGroupId reports the consumer group from whichever Kafka
+// configuration the mapping carries.
+func kafkaConsumerGroupId(esm lambdatypes.EventSourceMappingConfiguration) *string {
+	if esm.SelfManagedKafkaEventSourceConfig != nil && esm.SelfManagedKafkaEventSourceConfig.ConsumerGroupId != nil {
+		return esm.SelfManagedKafkaEventSourceConfig.ConsumerGroupId
+	}
+	if esm.AmazonManagedKafkaEventSourceConfig != nil && esm.AmazonManagedKafkaEventSourceConfig.ConsumerGroupId != nil {
+		return esm.AmazonManagedKafkaEventSourceConfig.ConsumerGroupId
+	}
+	return nil
 }
 
 // eventSourceMappingArgs maps an SDK event source mapping into resource
@@ -1274,7 +1357,7 @@ func createEventSourceMappingResource(runtime *plugin.Runtime, esm lambdatypes.E
 // (2-1000), so reporting it would name a value that cannot exist. The -1
 // fallbacks on maximumRetryAttempts and maximumRecordAgeInSeconds are the
 // documented "retry forever" and "no maximum age" sentinels, not stand-ins.
-func eventSourceMappingArgs(esm lambdatypes.EventSourceMappingConfiguration, region string) (map[string]*llx.RawData, error) {
+func eventSourceMappingArgs(esm lambdatypes.EventSourceMappingConfiguration, region string, access esmSourceAccess) (map[string]*llx.RawData, error) {
 	var onFailureDestinationArn *string
 	if esm.DestinationConfig != nil && esm.DestinationConfig.OnFailure != nil {
 		onFailureDestinationArn = esm.DestinationConfig.OnFailure.Destination
@@ -1298,27 +1381,30 @@ func eventSourceMappingArgs(esm lambdatypes.EventSourceMappingConfiguration, reg
 	}
 
 	return map[string]*llx.RawData{
-		"__id":                           llx.StringDataPtr(esm.UUID),
-		"uuid":                           llx.StringDataPtr(esm.UUID),
-		"eventSourceArn":                 llx.StringDataPtr(esm.EventSourceArn),
-		"region":                         llx.StringData(region),
-		"state":                          llx.StringDataPtr(esm.State),
-		"stateTransitionReason":          llx.StringDataPtr(esm.StateTransitionReason),
-		"batchSize":                      llx.IntDataDefault(esm.BatchSize, 0),
-		"maximumBatchingWindowInSeconds": llx.IntDataDefault(esm.MaximumBatchingWindowInSeconds, 0),
-		"parallelizationFactor":          llx.IntDataPtr(esm.ParallelizationFactor),
-		"maximumRetryAttempts":           llx.IntDataDefault(esm.MaximumRetryAttempts, -1),
-		"maximumRecordAgeInSeconds":      llx.IntDataDefault(esm.MaximumRecordAgeInSeconds, -1),
-		"bisectBatchOnFunctionError":     llx.BoolDataPtr(esm.BisectBatchOnFunctionError),
-		"lastModified":                   llx.TimeDataPtr(esm.LastModified),
-		"lastProcessingResult":           llx.StringDataPtr(esm.LastProcessingResult),
-		"topics":                         llx.ArrayData(toInterfaceArr(esm.Topics), types.String),
-		"queues":                         llx.ArrayData(toInterfaceArr(esm.Queues), types.String),
-		"tumblingWindowInSeconds":        llx.IntDataPtr(esm.TumblingWindowInSeconds),
-		"startingPosition":               startingPosition,
-		"onFailureDestinationArn":        llx.StringDataPtr(onFailureDestinationArn),
-		"filterCriteria":                 llx.DictData(filterCriteria),
-		"maximumConcurrency":             llx.IntDataPtr(maximumConcurrency),
+		"__id":                             llx.StringDataPtr(esm.UUID),
+		"uuid":                             llx.StringDataPtr(esm.UUID),
+		"eventSourceArn":                   llx.StringDataPtr(esm.EventSourceArn),
+		"region":                           llx.StringData(region),
+		"state":                            llx.StringDataPtr(esm.State),
+		"stateTransitionReason":            llx.StringDataPtr(esm.StateTransitionReason),
+		"batchSize":                        llx.IntDataDefault(esm.BatchSize, 0),
+		"maximumBatchingWindowInSeconds":   llx.IntDataDefault(esm.MaximumBatchingWindowInSeconds, 0),
+		"parallelizationFactor":            llx.IntDataPtr(esm.ParallelizationFactor),
+		"maximumRetryAttempts":             llx.IntDataDefault(esm.MaximumRetryAttempts, -1),
+		"maximumRecordAgeInSeconds":        llx.IntDataDefault(esm.MaximumRecordAgeInSeconds, -1),
+		"bisectBatchOnFunctionError":       llx.BoolDataPtr(esm.BisectBatchOnFunctionError),
+		"lastModified":                     llx.TimeDataPtr(esm.LastModified),
+		"lastProcessingResult":             llx.StringDataPtr(esm.LastProcessingResult),
+		"topics":                           llx.ArrayData(toInterfaceArr(esm.Topics), types.String),
+		"queues":                           llx.ArrayData(toInterfaceArr(esm.Queues), types.String),
+		"tumblingWindowInSeconds":          llx.IntDataPtr(esm.TumblingWindowInSeconds),
+		"startingPosition":                 startingPosition,
+		"onFailureDestinationArn":          llx.StringDataPtr(onFailureDestinationArn),
+		"filterCriteria":                   llx.DictData(filterCriteria),
+		"maximumConcurrency":               llx.IntDataPtr(maximumConcurrency),
+		"sourceAccessTypes":                llx.ArrayData(access.types, types.String),
+		"selfManagedKafkaBootstrapServers": selfManagedKafkaBootstrapServers(esm.SelfManagedEventSource),
+		"kafkaConsumerGroupId":             llx.StringDataPtr(kafkaConsumerGroupId(esm)),
 	}, nil
 }
 
@@ -1359,6 +1445,51 @@ func (a *mqlAwsLambdaEventSourceMapping) function() (*mqlAwsLambdaFunction, erro
 		return nil, err
 	}
 	return res.(*mqlAwsLambdaFunction), nil
+}
+
+func (a *mqlAwsLambdaEventSourceMapping) secrets() ([]any, error) {
+	res := make([]any, 0, len(a.cacheSecretArns))
+	for _, secretArn := range a.cacheSecretArns {
+		mqlSecret, err := NewResource(a.MqlRuntime, ResourceAwsSecretsmanagerSecret,
+			map[string]*llx.RawData{"arn": llx.StringData(secretArn)})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlSecret)
+	}
+	return res, nil
+}
+
+func (a *mqlAwsLambdaEventSourceMapping) subnets() ([]any, error) {
+	if len(a.cacheSubnetIds) == 0 {
+		return []any{}, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	res := make([]any, 0, len(a.cacheSubnetIds))
+	for _, subnetId := range a.cacheSubnetIds {
+		subnetArn := fmt.Sprintf(subnetArnPattern, a.Region.Data, conn.AccountId(), subnetId)
+		mqlSubnet, err := NewResource(a.MqlRuntime, ResourceAwsVpcSubnet,
+			map[string]*llx.RawData{"arn": llx.StringData(subnetArn)})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlSubnet)
+	}
+	return res, nil
+}
+
+func (a *mqlAwsLambdaEventSourceMapping) securityGroups() ([]any, error) {
+	if len(a.cacheSecurityGroupIds) == 0 {
+		return []any{}, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	arns := make([]string, 0, len(a.cacheSecurityGroupIds))
+	for _, sgId := range a.cacheSecurityGroupIds {
+		arns = append(arns, fmt.Sprintf(securityGroupArnPattern, a.Region.Data, conn.AccountId(), sgId))
+	}
+	handler := securityGroupIdHandler{}
+	handler.setSecurityGroupArns(arns)
+	return handler.newSecurityGroupResources(a.MqlRuntime)
 }
 
 // ==================== Per-Function Event Source Mappings ====================
@@ -1923,6 +2054,9 @@ func (a *mqlAwsLambdaLayerVersion) id() (string, error) {
 
 type mqlAwsLambdaEventSourceMappingInternal struct {
 	lazyTags
-	cacheFunctionArn string
-	cacheArn         string
+	cacheFunctionArn      string
+	cacheArn              string
+	cacheSecretArns       []string
+	cacheSubnetIds        []string
+	cacheSecurityGroupIds []string
 }
