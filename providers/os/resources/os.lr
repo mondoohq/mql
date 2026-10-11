@@ -20746,10 +20746,11 @@ ollama.config @defaults("host listensOnAllInterfaces authEnabled") @maturity("pr
   port() int
   // Whether the API is bound to every interface
   //
-  // True when the bind address is unspecified (0.0.0.0 or ::), which puts the
-  // API on every network the host is attached to. Ollama binds the loopback
-  // interface by default, so this is always a deliberate change, and it is the
-  // one that turns the other exposure settings into a reachable surface.
+  // True when the bind address is unspecified (0.0.0.0, ::, or an empty host
+  // as in ":11434"), which puts the API on every network the host is attached
+  // to. Ollama binds the loopback interface by default, so this is always a
+  // deliberate change, and it is the one that turns the other exposure
+  // settings into a reachable surface.
   listensOnAllInterfaces() bool
   // Whether the API is addressed over TLS
   //
