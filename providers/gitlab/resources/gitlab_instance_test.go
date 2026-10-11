@@ -225,6 +225,115 @@ func TestSetInstanceSettingsPolicyArgsCoversEveryDecodedSetting(t *testing.T) {
 		"every setting decoded from the response has to reach the resource, or it is dead schema")
 }
 
+func TestInstanceSettingsPolicyDecodesRateLimits(t *testing.T) {
+	// Every group gets distinct numbers and alternating enabled flags, so a tag
+	// pointing at a neighbouring throttle fails instead of matching by accident.
+	payload := []byte(`{
+		"throttle_unauthenticated_api_enabled": true,
+		"throttle_unauthenticated_api_requests_per_period": 1000,
+		"throttle_unauthenticated_api_period_in_seconds": 60,
+		"throttle_authenticated_api_enabled": false,
+		"throttle_authenticated_api_requests_per_period": 1001,
+		"throttle_authenticated_api_period_in_seconds": 61,
+		"throttle_unauthenticated_web_enabled": true,
+		"throttle_unauthenticated_web_requests_per_period": 1002,
+		"throttle_unauthenticated_web_period_in_seconds": 62,
+		"throttle_authenticated_web_enabled": false,
+		"throttle_authenticated_web_requests_per_period": 1003,
+		"throttle_authenticated_web_period_in_seconds": 63,
+		"throttle_unauthenticated_git_http_enabled": true,
+		"throttle_unauthenticated_git_http_requests_per_period": 1004,
+		"throttle_unauthenticated_git_http_period_in_seconds": 64,
+		"throttle_authenticated_git_http_enabled": false,
+		"throttle_authenticated_git_http_requests_per_period": 1005,
+		"throttle_authenticated_git_http_period_in_seconds": 65,
+		"throttle_authenticated_mcp_enabled": true,
+		"throttle_authenticated_mcp_requests_per_period": 1006,
+		"throttle_authenticated_mcp_period_in_seconds": 66,
+		"throttle_protected_paths_enabled": false,
+		"throttle_protected_paths_requests_per_period": 1007,
+		"throttle_protected_paths_period_in_seconds": 67,
+		"raw_blob_request_limit": 300,
+		"raw_blob_request_limit_unauthenticated": 800,
+		"audit_events_api_limit": 200
+	}`)
+
+	policy := &instanceSettingsPolicy{}
+	require.NoError(t, json.Unmarshal(payload, policy))
+
+	require.NotNil(t, policy.ThrottleUnauthenticatedAPIEnabled)
+	assert.Equal(t, true, *policy.ThrottleUnauthenticatedAPIEnabled)
+	require.NotNil(t, policy.ThrottleUnauthenticatedAPIRequestsPerPeriod)
+	assert.EqualValues(t, 1000, *policy.ThrottleUnauthenticatedAPIRequestsPerPeriod)
+	require.NotNil(t, policy.ThrottleUnauthenticatedAPIPeriodInSeconds)
+	assert.EqualValues(t, 60, *policy.ThrottleUnauthenticatedAPIPeriodInSeconds)
+	require.NotNil(t, policy.ThrottleAuthenticatedAPIEnabled)
+	assert.Equal(t, false, *policy.ThrottleAuthenticatedAPIEnabled)
+	require.NotNil(t, policy.ThrottleAuthenticatedAPIRequestsPerPeriod)
+	assert.EqualValues(t, 1001, *policy.ThrottleAuthenticatedAPIRequestsPerPeriod)
+	require.NotNil(t, policy.ThrottleAuthenticatedAPIPeriodInSeconds)
+	assert.EqualValues(t, 61, *policy.ThrottleAuthenticatedAPIPeriodInSeconds)
+	require.NotNil(t, policy.ThrottleUnauthenticatedWebEnabled)
+	assert.Equal(t, true, *policy.ThrottleUnauthenticatedWebEnabled)
+	require.NotNil(t, policy.ThrottleUnauthenticatedWebRequestsPerPeriod)
+	assert.EqualValues(t, 1002, *policy.ThrottleUnauthenticatedWebRequestsPerPeriod)
+	require.NotNil(t, policy.ThrottleUnauthenticatedWebPeriodInSeconds)
+	assert.EqualValues(t, 62, *policy.ThrottleUnauthenticatedWebPeriodInSeconds)
+	require.NotNil(t, policy.ThrottleAuthenticatedWebEnabled)
+	assert.Equal(t, false, *policy.ThrottleAuthenticatedWebEnabled)
+	require.NotNil(t, policy.ThrottleAuthenticatedWebRequestsPerPeriod)
+	assert.EqualValues(t, 1003, *policy.ThrottleAuthenticatedWebRequestsPerPeriod)
+	require.NotNil(t, policy.ThrottleAuthenticatedWebPeriodInSeconds)
+	assert.EqualValues(t, 63, *policy.ThrottleAuthenticatedWebPeriodInSeconds)
+	require.NotNil(t, policy.ThrottleUnauthenticatedGitHTTPEnabled)
+	assert.Equal(t, true, *policy.ThrottleUnauthenticatedGitHTTPEnabled)
+	require.NotNil(t, policy.ThrottleUnauthenticatedGitHTTPRequestsPerPeriod)
+	assert.EqualValues(t, 1004, *policy.ThrottleUnauthenticatedGitHTTPRequestsPerPeriod)
+	require.NotNil(t, policy.ThrottleUnauthenticatedGitHTTPPeriodInSeconds)
+	assert.EqualValues(t, 64, *policy.ThrottleUnauthenticatedGitHTTPPeriodInSeconds)
+	require.NotNil(t, policy.ThrottleAuthenticatedGitHTTPEnabled)
+	assert.Equal(t, false, *policy.ThrottleAuthenticatedGitHTTPEnabled)
+	require.NotNil(t, policy.ThrottleAuthenticatedGitHTTPRequestsPerPeriod)
+	assert.EqualValues(t, 1005, *policy.ThrottleAuthenticatedGitHTTPRequestsPerPeriod)
+	require.NotNil(t, policy.ThrottleAuthenticatedGitHTTPPeriodInSeconds)
+	assert.EqualValues(t, 65, *policy.ThrottleAuthenticatedGitHTTPPeriodInSeconds)
+	require.NotNil(t, policy.ThrottleAuthenticatedMCPEnabled)
+	assert.Equal(t, true, *policy.ThrottleAuthenticatedMCPEnabled)
+	require.NotNil(t, policy.ThrottleAuthenticatedMCPRequestsPerPeriod)
+	assert.EqualValues(t, 1006, *policy.ThrottleAuthenticatedMCPRequestsPerPeriod)
+	require.NotNil(t, policy.ThrottleAuthenticatedMCPPeriodInSeconds)
+	assert.EqualValues(t, 66, *policy.ThrottleAuthenticatedMCPPeriodInSeconds)
+	require.NotNil(t, policy.ThrottleProtectedPathsEnabled)
+	assert.Equal(t, false, *policy.ThrottleProtectedPathsEnabled)
+	require.NotNil(t, policy.ThrottleProtectedPathsRequestsPerPeriod)
+	assert.EqualValues(t, 1007, *policy.ThrottleProtectedPathsRequestsPerPeriod)
+	require.NotNil(t, policy.ThrottleProtectedPathsPeriodInSeconds)
+	assert.EqualValues(t, 67, *policy.ThrottleProtectedPathsPeriodInSeconds)
+	require.NotNil(t, policy.RawBlobRequestLimit)
+	assert.EqualValues(t, 300, *policy.RawBlobRequestLimit)
+	require.NotNil(t, policy.RawBlobRequestLimitUnauthenticated)
+	assert.EqualValues(t, 800, *policy.RawBlobRequestLimitUnauthenticated)
+	require.NotNil(t, policy.AuditEventsAPILimit)
+	assert.EqualValues(t, 200, *policy.AuditEventsAPILimit)
+}
+
+func TestInstanceSettingsPolicyKeepsUnreportedRateLimitsNull(t *testing.T) {
+	// The Git HTTP throttles arrived in GitLab 17.0 and 18.1 and the MCP
+	// throttle in 19.5. An older instance omits them, and that must not read as
+	// "throttle switched off" or "limit 0".
+	policy := &instanceSettingsPolicy{}
+	require.NoError(t, json.Unmarshal([]byte(`{"id":1,"throttle_unauthenticated_api_enabled":false}`), policy))
+
+	require.NotNil(t, policy.ThrottleUnauthenticatedAPIEnabled)
+	assert.False(t, *policy.ThrottleUnauthenticatedAPIEnabled)
+	assert.Nil(t, policy.ThrottleAuthenticatedMCPEnabled)
+	assert.Nil(t, policy.ThrottleAuthenticatedMCPRequestsPerPeriod)
+	assert.Nil(t, policy.ThrottleUnauthenticatedGitHTTPEnabled)
+	assert.Nil(t, policy.ThrottleAuthenticatedGitHTTPPeriodInSeconds)
+	assert.Nil(t, policy.RawBlobRequestLimitUnauthenticated)
+	assert.Nil(t, policy.AuditEventsAPILimit)
+}
+
 func TestSetInstanceSettingsPolicyArgsCarriesReportedValues(t *testing.T) {
 	enabled, disabled := true, false
 	lifetime := int64(30)
@@ -240,6 +349,18 @@ func TestSetInstanceSettingsPolicyArgsCarriesReportedValues(t *testing.T) {
 	assert.Equal(t, false, args["enforceCiInboundJobTokenScopeEnabled"].Value)
 	assert.Equal(t, int64(30), args["maxPersonalAccessTokenLifetime"].Value)
 	assert.Nil(t, args["adminMode"].Value, "a neighbouring unreported setting stays null")
+
+	requests, period := int64(600), int64(60)
+	args = map[string]*llx.RawData{}
+	setInstanceSettingsPolicyArgs(args, &instanceSettingsPolicy{
+		ThrottleAuthenticatedMCPEnabled:           &enabled,
+		ThrottleAuthenticatedMCPRequestsPerPeriod: &requests,
+		ThrottleAuthenticatedMCPPeriodInSeconds:   &period,
+	})
+	assert.Equal(t, true, args["throttleAuthenticatedMcpEnabled"].Value)
+	assert.Equal(t, int64(600), args["throttleAuthenticatedMcpRequestsPerPeriod"].Value)
+	assert.Equal(t, int64(60), args["throttleAuthenticatedMcpPeriodInSeconds"].Value)
+	assert.Nil(t, args["throttleAuthenticatedApiEnabled"].Value, "a neighbouring unreported throttle stays null")
 }
 
 //

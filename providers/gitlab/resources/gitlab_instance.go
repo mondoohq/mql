@@ -75,6 +75,35 @@ type instanceSettingsPolicy struct {
 	// CI job token scope and package registry exposure
 	EnforceCIInboundJobTokenScopeEnabled   *bool `json:"enforce_ci_inbound_job_token_scope_enabled"`
 	PackageRegistryAllowAnyoneToPullOption *bool `json:"package_registry_allow_anyone_to_pull_option"`
+
+	// request rate limits and throttles
+	ThrottleUnauthenticatedAPIEnabled               *bool  `json:"throttle_unauthenticated_api_enabled"`
+	ThrottleUnauthenticatedAPIRequestsPerPeriod     *int64 `json:"throttle_unauthenticated_api_requests_per_period"`
+	ThrottleUnauthenticatedAPIPeriodInSeconds       *int64 `json:"throttle_unauthenticated_api_period_in_seconds"`
+	ThrottleAuthenticatedAPIEnabled                 *bool  `json:"throttle_authenticated_api_enabled"`
+	ThrottleAuthenticatedAPIRequestsPerPeriod       *int64 `json:"throttle_authenticated_api_requests_per_period"`
+	ThrottleAuthenticatedAPIPeriodInSeconds         *int64 `json:"throttle_authenticated_api_period_in_seconds"`
+	ThrottleUnauthenticatedWebEnabled               *bool  `json:"throttle_unauthenticated_web_enabled"`
+	ThrottleUnauthenticatedWebRequestsPerPeriod     *int64 `json:"throttle_unauthenticated_web_requests_per_period"`
+	ThrottleUnauthenticatedWebPeriodInSeconds       *int64 `json:"throttle_unauthenticated_web_period_in_seconds"`
+	ThrottleAuthenticatedWebEnabled                 *bool  `json:"throttle_authenticated_web_enabled"`
+	ThrottleAuthenticatedWebRequestsPerPeriod       *int64 `json:"throttle_authenticated_web_requests_per_period"`
+	ThrottleAuthenticatedWebPeriodInSeconds         *int64 `json:"throttle_authenticated_web_period_in_seconds"`
+	ThrottleUnauthenticatedGitHTTPEnabled           *bool  `json:"throttle_unauthenticated_git_http_enabled"`
+	ThrottleUnauthenticatedGitHTTPRequestsPerPeriod *int64 `json:"throttle_unauthenticated_git_http_requests_per_period"`
+	ThrottleUnauthenticatedGitHTTPPeriodInSeconds   *int64 `json:"throttle_unauthenticated_git_http_period_in_seconds"`
+	ThrottleAuthenticatedGitHTTPEnabled             *bool  `json:"throttle_authenticated_git_http_enabled"`
+	ThrottleAuthenticatedGitHTTPRequestsPerPeriod   *int64 `json:"throttle_authenticated_git_http_requests_per_period"`
+	ThrottleAuthenticatedGitHTTPPeriodInSeconds     *int64 `json:"throttle_authenticated_git_http_period_in_seconds"`
+	ThrottleAuthenticatedMCPEnabled                 *bool  `json:"throttle_authenticated_mcp_enabled"`
+	ThrottleAuthenticatedMCPRequestsPerPeriod       *int64 `json:"throttle_authenticated_mcp_requests_per_period"`
+	ThrottleAuthenticatedMCPPeriodInSeconds         *int64 `json:"throttle_authenticated_mcp_period_in_seconds"`
+	ThrottleProtectedPathsEnabled                   *bool  `json:"throttle_protected_paths_enabled"`
+	ThrottleProtectedPathsRequestsPerPeriod         *int64 `json:"throttle_protected_paths_requests_per_period"`
+	ThrottleProtectedPathsPeriodInSeconds           *int64 `json:"throttle_protected_paths_period_in_seconds"`
+	RawBlobRequestLimit                             *int64 `json:"raw_blob_request_limit"`
+	RawBlobRequestLimitUnauthenticated              *int64 `json:"raw_blob_request_limit_unauthenticated"`
+	AuditEventsAPILimit                             *int64 `json:"audit_events_api_limit"`
 }
 
 // getInstanceSettings fetches GET /application/settings once and returns both
@@ -134,6 +163,34 @@ func setInstanceSettingsPolicyArgs(args map[string]*llx.RawData, p *instanceSett
 
 	args["enforceCiInboundJobTokenScopeEnabled"] = llx.BoolDataPtr(p.EnforceCIInboundJobTokenScopeEnabled)
 	args["packageRegistryAllowAnyoneToPullOption"] = llx.BoolDataPtr(p.PackageRegistryAllowAnyoneToPullOption)
+
+	args["throttleUnauthenticatedApiEnabled"] = llx.BoolDataPtr(p.ThrottleUnauthenticatedAPIEnabled)
+	args["throttleUnauthenticatedApiRequestsPerPeriod"] = llx.IntDataPtr(p.ThrottleUnauthenticatedAPIRequestsPerPeriod)
+	args["throttleUnauthenticatedApiPeriodInSeconds"] = llx.IntDataPtr(p.ThrottleUnauthenticatedAPIPeriodInSeconds)
+	args["throttleAuthenticatedApiEnabled"] = llx.BoolDataPtr(p.ThrottleAuthenticatedAPIEnabled)
+	args["throttleAuthenticatedApiRequestsPerPeriod"] = llx.IntDataPtr(p.ThrottleAuthenticatedAPIRequestsPerPeriod)
+	args["throttleAuthenticatedApiPeriodInSeconds"] = llx.IntDataPtr(p.ThrottleAuthenticatedAPIPeriodInSeconds)
+	args["throttleUnauthenticatedWebEnabled"] = llx.BoolDataPtr(p.ThrottleUnauthenticatedWebEnabled)
+	args["throttleUnauthenticatedWebRequestsPerPeriod"] = llx.IntDataPtr(p.ThrottleUnauthenticatedWebRequestsPerPeriod)
+	args["throttleUnauthenticatedWebPeriodInSeconds"] = llx.IntDataPtr(p.ThrottleUnauthenticatedWebPeriodInSeconds)
+	args["throttleAuthenticatedWebEnabled"] = llx.BoolDataPtr(p.ThrottleAuthenticatedWebEnabled)
+	args["throttleAuthenticatedWebRequestsPerPeriod"] = llx.IntDataPtr(p.ThrottleAuthenticatedWebRequestsPerPeriod)
+	args["throttleAuthenticatedWebPeriodInSeconds"] = llx.IntDataPtr(p.ThrottleAuthenticatedWebPeriodInSeconds)
+	args["throttleUnauthenticatedGitHttpEnabled"] = llx.BoolDataPtr(p.ThrottleUnauthenticatedGitHTTPEnabled)
+	args["throttleUnauthenticatedGitHttpRequestsPerPeriod"] = llx.IntDataPtr(p.ThrottleUnauthenticatedGitHTTPRequestsPerPeriod)
+	args["throttleUnauthenticatedGitHttpPeriodInSeconds"] = llx.IntDataPtr(p.ThrottleUnauthenticatedGitHTTPPeriodInSeconds)
+	args["throttleAuthenticatedGitHttpEnabled"] = llx.BoolDataPtr(p.ThrottleAuthenticatedGitHTTPEnabled)
+	args["throttleAuthenticatedGitHttpRequestsPerPeriod"] = llx.IntDataPtr(p.ThrottleAuthenticatedGitHTTPRequestsPerPeriod)
+	args["throttleAuthenticatedGitHttpPeriodInSeconds"] = llx.IntDataPtr(p.ThrottleAuthenticatedGitHTTPPeriodInSeconds)
+	args["throttleAuthenticatedMcpEnabled"] = llx.BoolDataPtr(p.ThrottleAuthenticatedMCPEnabled)
+	args["throttleAuthenticatedMcpRequestsPerPeriod"] = llx.IntDataPtr(p.ThrottleAuthenticatedMCPRequestsPerPeriod)
+	args["throttleAuthenticatedMcpPeriodInSeconds"] = llx.IntDataPtr(p.ThrottleAuthenticatedMCPPeriodInSeconds)
+	args["throttleProtectedPathsEnabled"] = llx.BoolDataPtr(p.ThrottleProtectedPathsEnabled)
+	args["throttleProtectedPathsRequestsPerPeriod"] = llx.IntDataPtr(p.ThrottleProtectedPathsRequestsPerPeriod)
+	args["throttleProtectedPathsPeriodInSeconds"] = llx.IntDataPtr(p.ThrottleProtectedPathsPeriodInSeconds)
+	args["rawBlobRequestLimit"] = llx.IntDataPtr(p.RawBlobRequestLimit)
+	args["rawBlobRequestLimitUnauthenticated"] = llx.IntDataPtr(p.RawBlobRequestLimitUnauthenticated)
+	args["auditEventsApiLimit"] = llx.IntDataPtr(p.AuditEventsAPILimit)
 }
 
 //
