@@ -352,6 +352,13 @@ func (s *SystemDServiceManager) Get(name string) (*Service, error) {
 
 	lookupName := NormalizeServiceLookupName(name)
 	service, ok := services[lookupName]
+	if !ok && len(services) == 0 {
+		// systemd answers show with a record for any name, a not-found one
+		// included. No record at all means it did not answer: systemctl is
+		// installed but systemd is not the running init, as in a container.
+		// List reads the unit files without it.
+		return getServiceFromList(name, s.List)
+	}
 	if !ok || !service.Installed {
 		return nil, serviceNotFound(name)
 	}
@@ -628,12 +635,20 @@ func (s *SystemdFSServiceManager) List() ([]*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := s.addUnreachedServices(enabledUnits); err != nil {
+		return nil, err
+	}
 	services := make([]*Service, 0, len(enabledUnits))
+	// A unit reached under an alias as well (syslog.service for
+	// rsyslog.service) is one service. Which copy came first depended on
+	// map order, so an alias reached only through an ordering could hide
+	// that the unit is enabled.
+	byName := map[string]*Service{}
 	for _, v := range enabledUnits {
 		if v.uType != "service" {
 			continue
 		}
-		services = append(services, &Service{
+		svc := &Service{
 			Name:        v.name,
 			Type:        v.uType,
 			Description: v.description,
@@ -642,7 +657,17 @@ func (s *SystemdFSServiceManager) List() ([]*Service, error) {
 			Enabled:     !v.missing && v.isDep,
 			Masked:      v.masked,
 			Static:      !v.missing && !v.masked && !v.hasInstall,
-		})
+		}
+		if seen, ok := byName[v.name]; ok {
+			if !seen.Installed && svc.Installed {
+				*seen = *svc
+			} else if svc.Installed {
+				seen.Enabled = seen.Enabled || svc.Enabled
+			}
+			continue
+		}
+		byName[v.name] = svc
+		services = append(services, svc)
 	}
 	return services, nil
 }
@@ -663,6 +688,19 @@ func (s *SystemdFSServiceManager) traverse() (map[string]*unitInfo, error) {
 		critical: true,
 		unit:     "default.target",
 	})
+	// default.target ships with the systemd package. An image built without
+	// it (debian, ubuntu and kali base images) still carries the enablement
+	// symlinks packages create in <target>.wants, which is what
+	// `systemctl is-enabled` reads. Walk from those instead.
+	if !s.unitFileExists("default.target") {
+		seeds, err := s.targetWants()
+		if err != nil {
+			return nil, err
+		}
+		for _, seed := range seeds {
+			stack.push(stackEntry{critical: true, unit: seed})
+		}
+	}
 	for stack.len() > 0 {
 		u := stack.pop()
 		if l, ok := loadedUnits[u.unit]; ok {
@@ -712,6 +750,100 @@ func (s *SystemdFSServiceManager) traverse() (map[string]*unitInfo, error) {
 		loadedUnits[u.unit] = uInfo
 	}
 	return loadedUnits, nil
+}
+
+// unitFileExists reports whether a unit file of that name is on the search
+// path.
+func (s *SystemdFSServiceManager) unitFileExists(unitName string) bool {
+	for _, p := range systemdUnitSearchPath {
+		if _, err := s.Fs.Stat(path.Join(p, unitName)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// targetWants returns the units linked from every <name>.target.wants and
+// <name>.target.requires directory on the search path.
+func (s *SystemdFSServiceManager) targetWants() ([]string, error) {
+	var units []string
+	// findDeps reads every search path for a target, so a target with a
+	// .wants directory on two of them is asked once
+	seenTarget := map[string]bool{}
+	seenUnit := map[string]bool{}
+	for _, p := range systemdUnitSearchPath {
+		entries, err := afero.ReadDir(s.Fs, p)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			target, ok := strings.CutSuffix(e.Name(), ".wants")
+			if !ok {
+				target, ok = strings.CutSuffix(e.Name(), ".requires")
+			}
+			if !ok || !strings.HasSuffix(target, ".target") || seenTarget[target] {
+				continue
+			}
+			seenTarget[target] = true
+			deps, err := s.findDeps(target)
+			if err != nil {
+				return nil, err
+			}
+			for _, d := range deps {
+				if !seenUnit[d] {
+					seenUnit[d] = true
+					units = append(units, d)
+				}
+			}
+		}
+	}
+	return units, nil
+}
+
+// addUnreachedServices adds the service unit files on the search path that
+// the walk from default.target did not reach. They are installed but not
+// enabled: a disabled unit, or a static one nothing pulls in. An alias of a
+// unit that is already listed is skipped.
+func (s *SystemdFSServiceManager) addUnreachedServices(units map[string]*unitInfo) error {
+	known := map[string]bool{}
+	for _, u := range units {
+		known[u.name+"."+u.uType] = true
+	}
+	for _, p := range systemdUnitSearchPath {
+		entries, err := afero.ReadDir(s.Fs, p)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		for _, e := range entries {
+			unitName := e.Name()
+			if e.IsDir() || !strings.HasSuffix(unitName, ".service") {
+				continue
+			}
+			if _, ok := units[unitName]; ok {
+				continue
+			}
+			uInfo, err := s.findUnit(unitName)
+			if err != nil {
+				log.Debug().Err(err).Str("unit", unitName).Msg("could not read systemd unit file")
+				continue
+			}
+			if uInfo.missing || known[uInfo.name+"."+uInfo.uType] {
+				continue
+			}
+			known[uInfo.name+"."+uInfo.uType] = true
+			units[unitName] = uInfo
+		}
+	}
+	return nil
 }
 
 func (s *SystemdFSServiceManager) findUnit(unitName string) (*unitInfo, error) {
