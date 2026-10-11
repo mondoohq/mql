@@ -5968,6 +5968,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.storageService.bucket.softDeletePolicyEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectStorageServiceBucket).GetSoftDeletePolicyEnabled()).ToDataRes(types.Bool)
 	},
+	"gcp.project.storageService.bucket.hardDeletePauseEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectStorageServiceBucket).GetHardDeletePauseEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.storageService.bucket.hardDeletePauseEffectiveTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectStorageServiceBucket).GetHardDeletePauseEffectiveTime()).ToDataRes(types.Time)
+	},
 	"gcp.project.storageService.bucket.objectRetentionMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectStorageServiceBucket).GetObjectRetentionMode()).ToDataRes(types.String)
 	},
@@ -24605,6 +24611,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.storageService.bucket.softDeletePolicyEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectStorageServiceBucket).SoftDeletePolicyEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.storageService.bucket.hardDeletePauseEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectStorageServiceBucket).HardDeletePauseEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.storageService.bucket.hardDeletePauseEffectiveTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectStorageServiceBucket).HardDeletePauseEffectiveTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"gcp.project.storageService.bucket.objectRetentionMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -56562,6 +56576,8 @@ type mqlGcpProjectStorageServiceBucket struct {
 	SoftDeletePolicy                plugin.TValue[any]
 	SoftDeleteRetentionDuration     plugin.TValue[int64]
 	SoftDeletePolicyEnabled         plugin.TValue[bool]
+	HardDeletePauseEnabled          plugin.TValue[bool]
+	HardDeletePauseEffectiveTime    plugin.TValue[*time.Time]
 	ObjectRetentionMode             plugin.TValue[string]
 	Autoclass                       plugin.TValue[any]
 	Acl                             plugin.TValue[[]any]
@@ -56783,6 +56799,14 @@ func (c *mqlGcpProjectStorageServiceBucket) GetSoftDeletePolicyEnabled() *plugin
 	return plugin.GetOrCompute[bool](&c.SoftDeletePolicyEnabled, func() (bool, error) {
 		return c.softDeletePolicyEnabled()
 	})
+}
+
+func (c *mqlGcpProjectStorageServiceBucket) GetHardDeletePauseEnabled() *plugin.TValue[bool] {
+	return &c.HardDeletePauseEnabled
+}
+
+func (c *mqlGcpProjectStorageServiceBucket) GetHardDeletePauseEffectiveTime() *plugin.TValue[*time.Time] {
+	return &c.HardDeletePauseEffectiveTime
 }
 
 func (c *mqlGcpProjectStorageServiceBucket) GetObjectRetentionMode() *plugin.TValue[string] {

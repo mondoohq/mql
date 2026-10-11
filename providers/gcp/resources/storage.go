@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
@@ -164,6 +165,17 @@ func bucketSoftDeleteRetentionSeconds(sdp *storage.BucketSoftDeletePolicy) int64
 	return sdp.RetentionDurationSeconds
 }
 
+// bucketHardDeletePause returns whether hard deletion of soft-deleted objects
+// is paused and the time the pause became effective. An absent soft-delete
+// policy or pause block means hard deletes are not paused; the time is nil
+// when absent or unparseable.
+func bucketHardDeletePause(sdp *storage.BucketSoftDeletePolicy) (bool, *time.Time) {
+	if sdp == nil || sdp.HardDeletePause == nil {
+		return false, nil
+	}
+	return sdp.HardDeletePause.Enabled, parseTime(sdp.HardDeletePause.EffectiveTime)
+}
+
 // mqlBucketFromAPI converts a *storage.Bucket into a fully-populated mql
 // resource. Used by buckets() during a list and by init when resolving a
 // single bucket by name.
@@ -227,6 +239,7 @@ func mqlBucketFromAPI(runtime *plugin.Runtime, projectId string, bucket *storage
 	}
 
 	softDeleteTime := parseTime(bucket.SoftDeleteTime)
+	hardDeletePauseEnabled, hardDeletePauseEffectiveTime := bucketHardDeletePause(bucket.SoftDeletePolicy)
 
 	ipFilterConfig, err := newMqlBucketIpFilterConfig(runtime, "gcp.project.storageService.bucket/"+bucket.Id, bucket.IpFilter)
 	if err != nil {
@@ -254,28 +267,30 @@ func mqlBucketFromAPI(runtime *plugin.Runtime, projectId string, bucket *storage
 			storageLifecycleRulesToArrayInterface(runtime, bucket.Id, bucket.Lifecycle),
 			types.Resource("gcp.project.storageService.bucket.lifecycleRule"),
 		),
-		"defaultEventBasedHold":       llx.BoolData(bucket.DefaultEventBasedHold),
-		"rpo":                         llx.StringData(bucket.Rpo),
-		"satisfiesPZS":                llx.BoolData(bucket.SatisfiesPZS),
-		"satisfiesPZI":                llx.BoolData(bucket.SatisfiesPZI),
-		"versioningEnabled":           llx.BoolData(bucket.Versioning != nil && bucket.Versioning.Enabled),
-		"publicAccessPrevention":      llx.StringData(publicAccessPrevention),
-		"metageneration":              llx.IntData(bucket.Metageneration),
-		"uniformBucketLevelAccess":    llx.DictData(uniformBucketLevelAccess),
-		"softDeletePolicy":            llx.DictData(softDeletePolicy),
-		"softDeleteRetentionDuration": llx.IntData(bucketSoftDeleteRetentionSeconds(bucket.SoftDeletePolicy)),
-		"softDeleteTime":              llx.TimeDataPtr(softDeleteTime),
-		"objectRetentionMode":         llx.StringData(objectRetentionMode),
-		"autoclass":                   llx.DictData(autoclass),
-		"ipFilter":                    llx.DictData(ipFilter),
-		"ipFilterConfig":              ipFilterConfig,
-		"hierarchicalNamespace":       llx.DictData(hierarchicalNamespace),
-		"customPlacementConfig":       llx.DictData(customPlacementConfig),
-		"logging":                     llx.DictData(logging),
-		"cors":                        llx.ArrayData(cors, types.Dict),
-		"website":                     llx.DictData(website),
-		"billing":                     llx.DictData(billing),
-		"owner":                       llx.DictData(owner),
+		"defaultEventBasedHold":        llx.BoolData(bucket.DefaultEventBasedHold),
+		"rpo":                          llx.StringData(bucket.Rpo),
+		"satisfiesPZS":                 llx.BoolData(bucket.SatisfiesPZS),
+		"satisfiesPZI":                 llx.BoolData(bucket.SatisfiesPZI),
+		"versioningEnabled":            llx.BoolData(bucket.Versioning != nil && bucket.Versioning.Enabled),
+		"publicAccessPrevention":       llx.StringData(publicAccessPrevention),
+		"metageneration":               llx.IntData(bucket.Metageneration),
+		"uniformBucketLevelAccess":     llx.DictData(uniformBucketLevelAccess),
+		"softDeletePolicy":             llx.DictData(softDeletePolicy),
+		"softDeleteRetentionDuration":  llx.IntData(bucketSoftDeleteRetentionSeconds(bucket.SoftDeletePolicy)),
+		"softDeleteTime":               llx.TimeDataPtr(softDeleteTime),
+		"hardDeletePauseEnabled":       llx.BoolData(hardDeletePauseEnabled),
+		"hardDeletePauseEffectiveTime": llx.TimeDataPtr(hardDeletePauseEffectiveTime),
+		"objectRetentionMode":          llx.StringData(objectRetentionMode),
+		"autoclass":                    llx.DictData(autoclass),
+		"ipFilter":                     llx.DictData(ipFilter),
+		"ipFilterConfig":               ipFilterConfig,
+		"hierarchicalNamespace":        llx.DictData(hierarchicalNamespace),
+		"customPlacementConfig":        llx.DictData(customPlacementConfig),
+		"logging":                      llx.DictData(logging),
+		"cors":                         llx.ArrayData(cors, types.Dict),
+		"website":                      llx.DictData(website),
+		"billing":                      llx.DictData(billing),
+		"owner":                        llx.DictData(owner),
 	})
 	if err != nil {
 		return nil, err

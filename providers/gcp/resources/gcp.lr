@@ -3330,6 +3330,16 @@ private gcp.project.storageService.bucket @defaults("id") {
   softDeleteRetentionDuration int
   // Whether soft-delete is enabled (true when softDeletePolicy.retentionDurationSeconds > 0)
   softDeletePolicyEnabled() bool
+  // Whether hard deletion of soft-deleted objects is paused
+  //
+  // When true, soft-deleted objects in the bucket are not permanently deleted
+  // after the retention duration ends, until the pause is disabled. False when
+  // the bucket has no soft-delete policy or no hard delete pause configured.
+  hardDeletePauseEnabled bool
+  // Time the hard delete pause became effective
+  //
+  // Null when no hard delete pause is configured on the bucket.
+  hardDeletePauseEffectiveTime time
   // Object retention mode (Enabled or empty)
   objectRetentionMode string
   // Automatic storage class management (enabled, toggleTime, terminalStorageClass)
