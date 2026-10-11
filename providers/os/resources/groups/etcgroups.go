@@ -6,6 +6,7 @@ package groups
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -18,11 +19,20 @@ import (
 	"go.mondoo.com/mql/utils/multierr"
 )
 
+// maxLineBytes bounds a single /etc/group line, the same 16 MiB cap the
+// authorized_keys parser uses.
+const maxLineBytes = 16 << 20
+
 // a good description of this file is available at:
 // https://www.cyberciti.biz/faq/understanding-etcgroup-file/
 func ParseEtcGroup(input io.Reader) ([]*Group, error) {
 	var groups []*Group
 	scanner := bufio.NewScanner(input)
+	// glibc has no line limit for /etc/group; read lines up to maxLineBytes so
+	// a long entry does not end the scan early. The bound only keeps a
+	// pathological file from exhausting memory; a longer line fails the
+	// parse through scanner.Err below instead of truncating the list.
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -36,7 +46,10 @@ func ParseEtcGroup(input io.Reader) ([]*Group, error) {
 			// parse gid
 			gid, err := strconv.ParseInt(m[2], 10, 0)
 			if err != nil {
-				log.Error().Err(err).Str("group", m[0]).Msg("could not parse gid")
+				// glibc skips the line; reporting it with gid 0 would invent
+				// a second root group.
+				log.Error().Err(err).Str("group", m[0]).Msg("could not parse gid, skipping group")
+				continue
 			}
 
 			// extract usernames
@@ -55,6 +68,9 @@ func ParseEtcGroup(input io.Reader) ([]*Group, error) {
 		} else {
 			log.Warn().Str("line", line).Msg("cannot parse etc group entry")
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read group entries: %w", err)
 	}
 
 	return groups, nil
