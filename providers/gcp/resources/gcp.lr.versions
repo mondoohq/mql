@@ -5499,6 +5499,8 @@ gcp.project.storageService.bucket.defaultObjectAccessControl 13.37.1
 gcp.project.storageService.bucket.defaultObjectAcl 13.12.2
 gcp.project.storageService.bucket.dlpDataProfile 13.14.2
 gcp.project.storageService.bucket.encryption 11.0.57
+gcp.project.storageService.bucket.hardDeletePauseEffectiveTime 14.4.5
+gcp.project.storageService.bucket.hardDeletePauseEnabled 14.4.5
 gcp.project.storageService.bucket.hierarchicalNamespace 13.16.3
 gcp.project.storageService.bucket.iamConfiguration 9.0.0
 gcp.project.storageService.bucket.iamPolicy 9.0.0

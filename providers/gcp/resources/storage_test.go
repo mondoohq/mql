@@ -4,7 +4,9 @@
 package resources
 
 import (
+	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/api/storage/v1"
@@ -119,6 +121,60 @@ func TestBucketRetentionHelpers(t *testing.T) {
 	t.Run("values are returned", func(t *testing.T) {
 		assert.Equal(t, int64(86400), bucketRetentionPeriodSeconds(&storage.BucketRetentionPolicy{RetentionPeriod: 86400}))
 		assert.Equal(t, int64(604800), bucketSoftDeleteRetentionSeconds(&storage.BucketSoftDeletePolicy{RetentionDurationSeconds: 604800}))
+	})
+}
+
+func TestBucketHardDeletePause(t *testing.T) {
+	t.Run("absent soft-delete policy is not paused", func(t *testing.T) {
+		enabled, effective := bucketHardDeletePause(nil)
+		assert.False(t, enabled)
+		assert.Nil(t, effective)
+	})
+	t.Run("absent pause block is not paused", func(t *testing.T) {
+		enabled, effective := bucketHardDeletePause(&storage.BucketSoftDeletePolicy{RetentionDurationSeconds: 604800})
+		assert.False(t, enabled)
+		assert.Nil(t, effective)
+	})
+	t.Run("enabled pause with effective time", func(t *testing.T) {
+		enabled, effective := bucketHardDeletePause(&storage.BucketSoftDeletePolicy{
+			HardDeletePause: &storage.BucketSoftDeletePolicyHardDeletePause{
+				Enabled:       true,
+				EffectiveTime: "2026-09-01T12:30:00.123Z",
+			},
+		})
+		assert.True(t, enabled)
+		if assert.NotNil(t, effective) {
+			assert.Equal(t, time.Date(2026, 9, 1, 12, 30, 0, 123000000, time.UTC), effective.UTC())
+		}
+	})
+	t.Run("disabled pause keeps its effective time", func(t *testing.T) {
+		enabled, effective := bucketHardDeletePause(&storage.BucketSoftDeletePolicy{
+			HardDeletePause: &storage.BucketSoftDeletePolicyHardDeletePause{
+				Enabled:       false,
+				EffectiveTime: "2026-09-01T12:30:00Z",
+			},
+		})
+		assert.False(t, enabled)
+		if assert.NotNil(t, effective) {
+			assert.Equal(t, time.Date(2026, 9, 1, 12, 30, 0, 0, time.UTC), effective.UTC())
+		}
+	})
+	t.Run("empty or unparseable effective time is nil, not year 1", func(t *testing.T) {
+		for _, ts := range []string{"", "not-a-time"} {
+			enabled, effective := bucketHardDeletePause(&storage.BucketSoftDeletePolicy{
+				HardDeletePause: &storage.BucketSoftDeletePolicyHardDeletePause{Enabled: true, EffectiveTime: ts},
+			})
+			assert.True(t, enabled)
+			assert.Nil(t, effective, ts)
+		}
+	})
+	t.Run("decodes the API JSON shape", func(t *testing.T) {
+		var sdp storage.BucketSoftDeletePolicy
+		err := json.Unmarshal([]byte(`{"retentionDurationSeconds":"604800","hardDeletePause":{"enabled":true,"effectiveTime":"2026-09-01T12:30:00Z"}}`), &sdp)
+		assert.NoError(t, err)
+		enabled, effective := bucketHardDeletePause(&sdp)
+		assert.True(t, enabled)
+		assert.NotNil(t, effective)
 	})
 }
 

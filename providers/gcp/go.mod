@@ -18,7 +18,7 @@ require (
 	cloud.google.com/go/certificatemanager v1.16.0
 	cloud.google.com/go/cloudbuild v1.34.0
 	cloud.google.com/go/cloudtasks v1.20.0
-	cloud.google.com/go/compute v1.71.0
+	cloud.google.com/go/compute v1.72.0
 	cloud.google.com/go/container v1.55.0
 	cloud.google.com/go/containeranalysis v0.20.0
 	cloud.google.com/go/datastream v1.22.0
@@ -52,7 +52,7 @@ require (
 	cloud.google.com/go/security v1.28.0
 	cloud.google.com/go/securitycenter v1.47.0
 	cloud.google.com/go/serviceusage v1.16.0
-	cloud.google.com/go/spanner v1.95.1
+	cloud.google.com/go/spanner v1.96.1
 	github.com/aws/smithy-go v1.28.2
 	github.com/cockroachdb/errors v1.14.0
 	github.com/google/go-containerregistry v0.22.1
@@ -63,7 +63,7 @@ require (
 	go.mondoo.com/mql v0.0.0-20261006032124-4a88d2f13ca7
 	go.mondoo.com/ranger-rpc v0.8.1
 	golang.org/x/oauth2 v0.37.0
-	google.golang.org/api v0.300.0
+	google.golang.org/api v0.301.0
 	// Held back: cloud.google.com/go/accesscontextmanager v1.15.0 (the latest
 	// release) imports google.golang.org/genproto/googleapis/identity/
 	// accesscontextmanager/type, which go-genproto deleted in
@@ -112,7 +112,7 @@ require (
 
 require (
 	cloud.google.com/go v0.123.0 // indirect
-	cloud.google.com/go/auth v0.24.0 // indirect
+	cloud.google.com/go/auth v0.24.1-0.20261001053825-dbc26066f70a // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.3.0 // indirect
 	cloud.google.com/go/binaryauthorization v1.17.0
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
