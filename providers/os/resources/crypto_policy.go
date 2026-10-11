@@ -26,6 +26,7 @@ const cryptoPoliciesDir = "/etc/crypto-policies"
 type mqlCryptoPolicyInternal struct {
 	lock       sync.Mutex
 	policy     *cryptopolicies.Policy
+	policyErr  error
 	policyRead bool
 }
 
@@ -148,9 +149,13 @@ func (s *mqlCryptoPolicy) current() (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
-// applied reports what update-crypto-policies --is-applied does: the state
-// file names the configured policy, byte for byte, and was written no
-// earlier than the configuration file.
+// applied reports whether the back ends were generated for the configured
+// policy: the state file names the configured policy and was written no
+// earlier than the configuration file. update-crypto-policies --is-applied
+// compares the two files byte for byte instead, so a comment in the
+// configuration (`DEFAULT:NO-SHA1 # hardened`) makes it report a policy as
+// not applied after update-crypto-policies applied it; the parsed policies
+// are compared here.
 func (s *mqlCryptoPolicy) applied() (bool, error) {
 	fs, err := cryptoPolicyFs(s.MqlRuntime)
 	if err != nil {
@@ -168,15 +173,19 @@ func (s *mqlCryptoPolicy) applied() (bool, error) {
 	if err2 != nil {
 		return false, err2
 	}
+	configured := s.GetConfigured()
+	if configured.Error != nil {
+		return false, configured.Error
+	}
 	current, _, err := readOptional(fs, cryptopolicies.CurrentFile)
 	if err != nil {
 		return false, err
 	}
-	config, _, err := readOptional(fs, cryptopolicies.ConfigFile)
+	applied, err := cryptopolicies.ParseConfig(bytes.NewReader(current))
 	if err != nil {
 		return false, err
 	}
-	return !currentSt.ModTime().Before(configSt.ModTime()) && bytes.Equal(current, config), nil
+	return !currentSt.ModTime().Before(configSt.ModTime()) && applied.String() == configured.Data, nil
 }
 
 func (s *mqlCryptoPolicy) fips() (bool, error) {
@@ -192,37 +201,41 @@ func (s *mqlCryptoPolicy) fips() (bool, error) {
 	return err == nil && v > 0, nil
 }
 
-// loadPolicy parses the policy dump once; it is nil when there is none.
+// loadPolicy parses the policy dump once; it is nil when there is none. An
+// error is kept as well, so it is not read again for every field.
 func (s *mqlCryptoPolicy) loadPolicy() (*cryptopolicies.Policy, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	if s.policyRead {
-		return s.policy, nil
+	if !s.policyRead {
+		s.policy, s.policyErr = s.readPolicy()
+		s.policyRead = true
 	}
+	return s.policy, s.policyErr
+}
+
+func (s *mqlCryptoPolicy) readPolicy() (*cryptopolicies.Policy, error) {
 	fs, err := cryptoPolicyFs(s.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
 	data, ok, err := readOptional(fs, cryptopolicies.PolicyDumpFile)
+	if err != nil || !ok {
+		return nil, err
+	}
+	policy, err := cryptopolicies.ParsePolicy(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse %s: %w", cryptopolicies.PolicyDumpFile, err)
+	}
+	// The installed update-crypto-policies wrote the dump; its source says
+	// how scoped lines relate. Without it, assume the current form.
+	source, ok, err := readOptional(fs, cryptopolicies.LibraryFile)
 	if err != nil {
 		return nil, err
 	}
 	if ok {
-		if s.policy, err = cryptopolicies.ParsePolicy(bytes.NewReader(data)); err != nil {
-			return nil, fmt.Errorf("failed to parse %s: %w", cryptopolicies.PolicyDumpFile, err)
-		}
-		// The installed update-crypto-policies wrote the dump; its source
-		// says how scoped lines relate. Without it, assume the current form.
-		source, ok, err := readOptional(fs, cryptopolicies.LibraryFile)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			s.policy.RelativeToParent = cryptopolicies.DumpsRelativeToParent(string(source))
-		}
+		policy.RelativeToParent = cryptopolicies.DumpsRelativeToParent(string(source))
 	}
-	s.policyRead = true
-	return s.policy, nil
+	return policy, nil
 }
 
 func (s *mqlCryptoPolicy) settings() (map[string]any, error) {

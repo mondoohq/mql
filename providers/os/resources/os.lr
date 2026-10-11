@@ -11570,9 +11570,11 @@ cryptoPolicy {
   current() string
   // Whether the configured policy is applied
   //
-  // As `update-crypto-policies --is-applied` reports it: the policy the back
-  // ends were generated for is the configured one, and the configuration
-  // has not changed since. Null when either file is missing.
+  // The policy the back ends were generated for is the configured one, and
+  // the configuration has not changed since. Unlike
+  // `update-crypto-policies --is-applied`, which compares the two files
+  // byte for byte, a comment in /etc/crypto-policies/config does not make an
+  // applied policy count as not applied. Null when either file is missing.
   applied() bool
   // Whether the kernel runs in FIPS mode (/proc/sys/crypto/fips_enabled)
   fips() bool
