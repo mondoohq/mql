@@ -254,15 +254,17 @@ func lastInstalledRpm(runtime *plugin.Runtime, conn shared.Connection, pf *inven
 	// A host upgraded to dnf5 (Fedora 41 and later) keeps the rpm log dnf 4
 	// wrote before, and dnf5 records its own transactions only in its
 	// history. The newer of the two is the answer.
+	installedVersions := rpmInstalledVersions(list.Data)
+
 	var newest *updates.LastInstalledUpdate
 	if hasRpmLog {
-		newest, err = updates.LastInstalledRpm(conn.FileSystem(), isVendor)
+		newest, err = updates.LastInstalledRpm(conn.FileSystem(), isVendor, installedVersions)
 		if err != nil {
 			return nil, err
 		}
 	}
 	if hasDnf5 {
-		fromDnf5, err := updates.LastInstalledDnf5(conn, isVendor)
+		fromDnf5, err := updates.LastInstalledDnf5(conn, isVendor, installedVersions)
 		if err != nil {
 			return nil, err
 		}
@@ -300,6 +302,21 @@ func rpmVendorPackageMatcher(list []any) func(name string) bool {
 		}
 	}
 	return func(name string) bool { return vendorPackages[name] }
+}
+
+// rpmInstalledVersions returns a function that lists the versions of an rpm
+// package the database holds. Kernels are installed side by side, so a name
+// can have several.
+func rpmInstalledVersions(list []any) func(name string) []string {
+	versions := map[string][]string{}
+	for i := range list {
+		pkg, ok := list[i].(*mqlPackage)
+		if !ok || pkg.Format.Data != packages.RpmPkgFormat {
+			continue
+		}
+		versions[pkg.Name.Data] = append(versions[pkg.Name.Data], pkg.Version.Data)
+	}
+	return func(name string) []string { return versions[name] }
 }
 
 // rpmOSVendors returns the set of vendor strings the anchor packages carry on
