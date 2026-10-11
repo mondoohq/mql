@@ -42,6 +42,8 @@ func TestParseText(t *testing.T) {
 		{"just 'x'", "x"},
 		{"b'ab'", []any{int64(97), int64(98), int64(0)}},
 		{"objectpath '/org/x'", "/org/x"},
+		{"uint64 18446744073709551615", float64(18446744073709551615)},
+		{"uint64 9223372036854775807", int64(9223372036854775807)},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {
@@ -51,7 +53,7 @@ func TestParseText(t *testing.T) {
 		})
 	}
 
-	for _, bad := range []string{"", "'open", "[1, 2", "uint32", "900 seconds", "yes"} {
+	for _, bad := range []string{"", "'open", "[1, 2", "uint32", "900 seconds", "yes", `'\UFFFFFFFF'`} {
 		_, err := ParseText(bad)
 		assert.Error(t, err, bad)
 	}

@@ -108,6 +108,11 @@ func TestDecodeVariantTypes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(900), v)
 
+	// uint64 above MaxInt64 does not wrap to a negative number
+	v, err = DecodeVariant([]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0, 't'}, littleEndian)
+	require.NoError(t, err)
+	assert.Equal(t, float64(18446744073709551615), v)
+
 	// a{sv} {'a': <true>}: entry "a\0" + pad + variant (01 00 'b') + framing offset
 	entry := []byte{'a', 0, 0, 0, 0, 0, 0, 0, 1, 0, 'b', 2}
 	arr := append(append([]byte{}, entry...), byte(len(entry)))

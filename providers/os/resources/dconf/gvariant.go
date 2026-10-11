@@ -203,7 +203,7 @@ func decode(t *gvType, data []byte, order binary.ByteOrder) (any, error) {
 	case 'x':
 		return int64(order.Uint64(data)), nil
 	case 't':
-		return int64(order.Uint64(data)), nil
+		return uint64Value(order.Uint64(data)), nil
 	case 'd':
 		return math.Float64frombits(order.Uint64(data)), nil
 	case 's', 'o', 'g':
@@ -311,6 +311,16 @@ func decodeTuple(t *gvType, data []byte, order binary.ByteOrder) (any, error) {
 		start = end
 	}
 	return res, nil
+}
+
+// uint64Value returns a uint64 as an int64, or as a float64 when it does not
+// fit: MQL has no unsigned integer, and a wrapped value would compare as
+// negative.
+func uint64Value(u uint64) any {
+	if u > math.MaxInt64 {
+		return float64(u)
+	}
+	return int64(u)
 }
 
 func formatKey(v any) string {

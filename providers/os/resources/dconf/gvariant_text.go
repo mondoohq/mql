@@ -8,6 +8,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -186,18 +187,17 @@ func (p *textParser) number(t *gvType) (any, error) {
 		}
 		return f, nil
 	}
-	i, err := strconv.ParseInt(w, 0, 64)
-	if err != nil {
-		u, uerr := strconv.ParseUint(w, 0, 64)
-		if uerr != nil {
-			return nil, p.errorf("invalid number %q", w)
-		}
-		i = int64(u)
-	}
 	if t != nil && t.kind == 'b' {
 		return nil, p.errorf("a number is not a boolean")
 	}
-	return i, nil
+	if i, err := strconv.ParseInt(w, 0, 64); err == nil {
+		return i, nil
+	}
+	u, err := strconv.ParseUint(w, 0, 64)
+	if err != nil {
+		return nil, p.errorf("invalid number %q", w)
+	}
+	return uint64Value(u), nil
 }
 
 func (p *textParser) str() (any, error) {
@@ -240,7 +240,7 @@ func (p *textParser) str() (any, error) {
 					return nil, p.errorf("short unicode escape")
 				}
 				r, err := strconv.ParseUint(p.s[p.pos:p.pos+n], 16, 32)
-				if err != nil {
+				if err != nil || r > unicode.MaxRune {
 					return nil, p.errorf("invalid unicode escape")
 				}
 				p.pos += n
