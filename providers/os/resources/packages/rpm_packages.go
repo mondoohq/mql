@@ -26,6 +26,7 @@ import (
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
@@ -439,16 +440,36 @@ func (rpm *RpmPkgManager) runtimeList() ([]Package, error) {
 //
 // Exit status 100 means "updates are available" and 0 means "none"; any
 // other status is a failure, see parseRpmCheckUpdateResult.
-const rpmCheckUpdateCommand = "if command -v dnf >/dev/null 2>&1; then dnf -q check-update; else yum -q check-update; fi"
+//
+// A repository with skip_if_unavailable=1 that cannot be reached is dropped
+// from the check without a word: dnf -q prints the other repositories'
+// updates, nothing on stderr, and exits 100 (yum 3 exits 0). dnf5 skips by
+// default, so on Fedora every unreachable repository is dropped this way. The
+// packages that only the dropped repository updates read as up to date. With
+// StructuredErrors the check overrides the setting for every repository, so
+// an unreachable one fails it (exit 1) and the packages read an error. dnf 4,
+// dnf5 and yum 3 all accept the repository glob and 0.
+func rpmCheckUpdateCommand() string {
+	if !plugin.StructuredErrors() {
+		return "if command -v dnf >/dev/null 2>&1; then dnf -q check-update; else yum -q check-update; fi"
+	}
+	return "if command -v dnf >/dev/null 2>&1; then dnf -q --setopt='*.skip_if_unavailable=0' check-update; else yum -q --setopt='*.skip_if_unavailable=0' check-update; fi"
+}
 
 func (rpm *RpmPkgManager) runtimeAvailable() (map[string]PackageUpdate, error) {
-	cmd, err := rpm.conn.RunCommand(rpmCheckUpdateCommand)
+	cmd, err := rpm.conn.RunCommand(rpmCheckUpdateCommand())
 	if err != nil {
 		log.Debug().Err(err).Msg("mql[packages]> could not read rpm package updates")
 		return nil, fmt.Errorf("%w: %w", ErrUpdateCheckFailed, err)
 	}
 	return parseRpmCheckUpdateResult(cmd)
 }
+
+// rpmForcedSkipNotice is what yum 3 prints (untranslated) for each
+// repository it skips because it cannot read the repository's certificate:
+//
+//	Repo rhel-7-server-rhui-rpms forced skip_if_unavailable=True due to: /etc/pki/rhui/content-rhel7.key
+const rpmForcedSkipNotice = "forced skip_if_unavailable=True"
 
 // rpmCheckUpdateMaxErr caps how much of dnf's stderr goes into the error.
 const rpmCheckUpdateMaxErr = 512
@@ -460,19 +481,30 @@ const rpmCheckUpdateMaxErr = 512
 // to 10 the RHUI client certificate is unreadable, and a repository that
 // requires a signature it does not carry fails as root too. Reading that empty
 // stdout as "no updates" reported every package as up to date.
+//
+// yum 3 forces skip_if_unavailable on a repository whose client certificate
+// it cannot read (the RHUI repositories as non-root on RHEL 7), whatever
+// --setopt says, and still exits 0 or 100. The updates it printed are real
+// and are returned with the error.
 func parseRpmCheckUpdateResult(cmd *shared.Command) (map[string]PackageUpdate, error) {
-	switch cmd.ExitStatus {
-	case 0, 100:
-		return ParseRpmCheckUpdate(cmd.Stdout)
-	}
 	msg := ""
 	if cmd.Stderr != nil {
 		if b, err := io.ReadAll(io.LimitReader(cmd.Stderr, 64*1024)); err == nil {
 			msg = strings.TrimSpace(string(b))
 		}
 	}
+	skipped := strings.Contains(msg, rpmForcedSkipNotice)
 	if len(msg) > rpmCheckUpdateMaxErr {
 		msg = strings.ToValidUTF8(msg[:rpmCheckUpdateMaxErr], "") + "..."
+	}
+
+	switch cmd.ExitStatus {
+	case 0, 100:
+		updates, err := ParseRpmCheckUpdate(cmd.Stdout)
+		if err != nil || !skipped {
+			return updates, err
+		}
+		return updates, fmt.Errorf("%w: a repository was skipped: %s", ErrUpdateCheckFailed, msg)
 	}
 	if msg == "" {
 		return nil, fmt.Errorf("%w: check-update exited with status %d", ErrUpdateCheckFailed, cmd.ExitStatus)
