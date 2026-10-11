@@ -461,11 +461,11 @@ jobs:
               success|skipped)
                 ok=$((ok+1))
                 released="${released:+$released, }$label"
-                released_md="${released_md:+$released_md, }\`$label\`" ;;
+                released_md="${released_md:+$released_md\\n}\`$(esc "$label")\`" ;;
               "") ;;
               *)
                 bad=$((bad+1))
-                failed_md="${failed_md:+$failed_md, }\`$label\`" ;;
+                failed_md="${failed_md:+$failed_md\\n}\`$(esc "$label")\`" ;;
             esac
           done < planned.txt
 
@@ -500,16 +500,16 @@ jobs:
           elif [ "$bad" -gt 0 ]; then
             header=":x: Providers released - $ok of $planned, $bad failed"
             mention="<!here> "
-            detail="*Failed:*\n$(esc "$failed_md")"
+            detail="*Failed:*\n$failed_md"
             if [ -n "$released_md" ]; then
-              detail="$detail\n*Released:*\n$(esc "$released_md")"
+              detail="$detail\n*Released:*\n$released_md"
             fi
           else
             header=":rocket: Providers released - $ok of $planned"
             mention=""
             detail=":package: *stable* - this is what a default install gets"
             if [ -n "$released_md" ]; then
-              detail="*Released:*\n$(esc "$released_md")\n$detail"
+              detail="*Released:*\n$released_md\n$detail"
             fi
           fi
 
