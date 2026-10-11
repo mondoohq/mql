@@ -339,6 +339,8 @@ const (
 	ResourcePwquality                                     string = "pwquality"
 	ResourcePwqualitySettings                             string = "pwquality.settings"
 	ResourcePwqualityPamModule                            string = "pwquality.pamModule"
+	ResourceCryptoPolicy                                  string = "cryptoPolicy"
+	ResourceCryptoPolicyScope                             string = "cryptoPolicy.scope"
 	ResourceLimits                                        string = "limits"
 	ResourceLimitsEntry                                   string = "limits.entry"
 	ResourceSudo                                          string = "sudo"
@@ -2036,6 +2038,14 @@ func init() {
 		"pwquality.pamModule": {
 			// to override args, implement: initPwqualityPamModule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createPwqualityPamModule,
+		},
+		"cryptoPolicy": {
+			// to override args, implement: initCryptoPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCryptoPolicy,
+		},
+		"cryptoPolicy.scope": {
+			Init:   initCryptoPolicyScope,
+			Create: createCryptoPolicyScope,
 		},
 		"limits": {
 			Init:   initLimits,
@@ -12212,6 +12222,63 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"pwquality.pamModule.settings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPwqualityPamModule).GetSettings()).ToDataRes(types.Resource("pwquality.settings"))
+	},
+	"cryptoPolicy.installed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicy).GetInstalled()).ToDataRes(types.Bool)
+	},
+	"cryptoPolicy.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicy).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"cryptoPolicy.configured": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicy).GetConfigured()).ToDataRes(types.String)
+	},
+	"cryptoPolicy.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicy).GetName()).ToDataRes(types.String)
+	},
+	"cryptoPolicy.subpolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicy).GetSubpolicies()).ToDataRes(types.Array(types.String))
+	},
+	"cryptoPolicy.current": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicy).GetCurrent()).ToDataRes(types.String)
+	},
+	"cryptoPolicy.applied": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicy).GetApplied()).ToDataRes(types.Bool)
+	},
+	"cryptoPolicy.fips": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicy).GetFips()).ToDataRes(types.Bool)
+	},
+	"cryptoPolicy.settings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicy).GetSettings()).ToDataRes(types.Map(types.String, types.Dict))
+	},
+	"cryptoPolicy.scopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicy).GetScopes()).ToDataRes(types.Array(types.Resource("cryptoPolicy.scope")))
+	},
+	"cryptoPolicy.scope.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicyScope).GetName()).ToDataRes(types.String)
+	},
+	"cryptoPolicy.scope.settings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicyScope).GetSettings()).ToDataRes(types.Map(types.String, types.Dict))
+	},
+	"cryptoPolicy.scope.ciphers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicyScope).GetCiphers()).ToDataRes(types.Array(types.String))
+	},
+	"cryptoPolicy.scope.macs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicyScope).GetMacs()).ToDataRes(types.Array(types.String))
+	},
+	"cryptoPolicy.scope.hashes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicyScope).GetHashes()).ToDataRes(types.Array(types.String))
+	},
+	"cryptoPolicy.scope.signatures": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicyScope).GetSignatures()).ToDataRes(types.Array(types.String))
+	},
+	"cryptoPolicy.scope.keyExchanges": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicyScope).GetKeyExchanges()).ToDataRes(types.Array(types.String))
+	},
+	"cryptoPolicy.scope.groups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicyScope).GetGroups()).ToDataRes(types.Array(types.String))
+	},
+	"cryptoPolicy.scope.protocols": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCryptoPolicyScope).GetProtocols()).ToDataRes(types.Array(types.String))
 	},
 	"limits.files": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlLimits).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
@@ -33483,6 +33550,90 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"pwquality.pamModule.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPwqualityPamModule).Settings, ok = plugin.RawToTValue[*mqlPwqualitySettings](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"cryptoPolicy.installed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicy).Installed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicy).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.configured": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicy).Configured, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicy).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.subpolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicy).Subpolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.current": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicy).Current, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.applied": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicy).Applied, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.fips": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicy).Fips, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicy).Settings, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.scopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicy).Scopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.scope.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicyScope).__id, ok = v.Value.(string)
+		return
+	},
+	"cryptoPolicy.scope.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicyScope).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.scope.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicyScope).Settings, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.scope.ciphers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicyScope).Ciphers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.scope.macs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicyScope).Macs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.scope.hashes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicyScope).Hashes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.scope.signatures": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicyScope).Signatures, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.scope.keyExchanges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicyScope).KeyExchanges, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.scope.groups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicyScope).Groups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cryptoPolicy.scope.protocols": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCryptoPolicyScope).Protocols, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"limits.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -82192,6 +82343,234 @@ func (c *mqlPwqualityPamModule) GetArguments() *plugin.TValue[[]any] {
 
 func (c *mqlPwqualityPamModule) GetSettings() *plugin.TValue[*mqlPwqualitySettings] {
 	return &c.Settings
+}
+
+// mqlCryptoPolicy for the cryptoPolicy resource
+type mqlCryptoPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCryptoPolicyInternal
+	Installed   plugin.TValue[bool]
+	File        plugin.TValue[*mqlFile]
+	Configured  plugin.TValue[string]
+	Name        plugin.TValue[string]
+	Subpolicies plugin.TValue[[]any]
+	Current     plugin.TValue[string]
+	Applied     plugin.TValue[bool]
+	Fips        plugin.TValue[bool]
+	Settings    plugin.TValue[map[string]any]
+	Scopes      plugin.TValue[[]any]
+}
+
+// createCryptoPolicy creates a new instance of this resource
+func createCryptoPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCryptoPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cryptoPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCryptoPolicy) MqlName() string {
+	return "cryptoPolicy"
+}
+
+func (c *mqlCryptoPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCryptoPolicy) GetInstalled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Installed, func() (bool, error) {
+		return c.installed()
+	})
+}
+
+func (c *mqlCryptoPolicy) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cryptoPolicy", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.file()
+	})
+}
+
+func (c *mqlCryptoPolicy) GetConfigured() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Configured, func() (string, error) {
+		return c.configured()
+	})
+}
+
+func (c *mqlCryptoPolicy) GetName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Name, func() (string, error) {
+		vargConfigured := c.GetConfigured()
+		if vargConfigured.Error != nil {
+			return "", vargConfigured.Error
+		}
+
+		return c.name(vargConfigured.Data)
+	})
+}
+
+func (c *mqlCryptoPolicy) GetSubpolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Subpolicies, func() ([]any, error) {
+		vargConfigured := c.GetConfigured()
+		if vargConfigured.Error != nil {
+			return nil, vargConfigured.Error
+		}
+
+		return c.subpolicies(vargConfigured.Data)
+	})
+}
+
+func (c *mqlCryptoPolicy) GetCurrent() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Current, func() (string, error) {
+		return c.current()
+	})
+}
+
+func (c *mqlCryptoPolicy) GetApplied() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Applied, func() (bool, error) {
+		return c.applied()
+	})
+}
+
+func (c *mqlCryptoPolicy) GetFips() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Fips, func() (bool, error) {
+		return c.fips()
+	})
+}
+
+func (c *mqlCryptoPolicy) GetSettings() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Settings, func() (map[string]any, error) {
+		return c.settings()
+	})
+}
+
+func (c *mqlCryptoPolicy) GetScopes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Scopes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cryptoPolicy", c.__id, "scopes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.scopes()
+	})
+}
+
+// mqlCryptoPolicyScope for the cryptoPolicy.scope resource
+type mqlCryptoPolicyScope struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCryptoPolicyScopeInternal it will be used here
+	Name         plugin.TValue[string]
+	Settings     plugin.TValue[map[string]any]
+	Ciphers      plugin.TValue[[]any]
+	Macs         plugin.TValue[[]any]
+	Hashes       plugin.TValue[[]any]
+	Signatures   plugin.TValue[[]any]
+	KeyExchanges plugin.TValue[[]any]
+	Groups       plugin.TValue[[]any]
+	Protocols    plugin.TValue[[]any]
+}
+
+// createCryptoPolicyScope creates a new instance of this resource
+func createCryptoPolicyScope(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCryptoPolicyScope{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cryptoPolicy.scope", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCryptoPolicyScope) MqlName() string {
+	return "cryptoPolicy.scope"
+}
+
+func (c *mqlCryptoPolicyScope) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCryptoPolicyScope) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlCryptoPolicyScope) GetSettings() *plugin.TValue[map[string]any] {
+	return &c.Settings
+}
+
+func (c *mqlCryptoPolicyScope) GetCiphers() *plugin.TValue[[]any] {
+	return &c.Ciphers
+}
+
+func (c *mqlCryptoPolicyScope) GetMacs() *plugin.TValue[[]any] {
+	return &c.Macs
+}
+
+func (c *mqlCryptoPolicyScope) GetHashes() *plugin.TValue[[]any] {
+	return &c.Hashes
+}
+
+func (c *mqlCryptoPolicyScope) GetSignatures() *plugin.TValue[[]any] {
+	return &c.Signatures
+}
+
+func (c *mqlCryptoPolicyScope) GetKeyExchanges() *plugin.TValue[[]any] {
+	return &c.KeyExchanges
+}
+
+func (c *mqlCryptoPolicyScope) GetGroups() *plugin.TValue[[]any] {
+	return &c.Groups
+}
+
+func (c *mqlCryptoPolicyScope) GetProtocols() *plugin.TValue[[]any] {
+	return &c.Protocols
 }
 
 // mqlLimits for the limits resource
