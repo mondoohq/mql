@@ -4,7 +4,9 @@
 package resources
 
 import (
+	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -72,26 +74,76 @@ func parseAptConfigDump(out string) map[string]string {
 	return res
 }
 
-// aptBoolParam interprets an APT boolean option the way APT does
-// (StringToBool): yes/true/with/on/enable are true, no/false/without/off/
-// disable are false, case-insensitive, and a number is true unless 0. An
-// absent or unrecognized value is the option's default.
+// aptBoolParam interprets an APT boolean option the way APT's FindB does: an
+// absent or empty value is the option's default, anything else goes through
+// aptStringToBool.
 func aptBoolParam(params map[string]any, key string, def bool) bool {
 	v, ok := aptParam(params, key)
-	if !ok {
+	if !ok || strings.TrimSpace(v) == "" {
 		return def
 	}
-	s := strings.ToLower(strings.TrimSpace(v))
-	switch s {
-	case "yes", "true", "with", "on", "enable":
-		return true
+	return aptStringToBool(v, def)
+}
+
+// aptStringToBool is APT's StringToBool. A value that is entirely a number,
+// read the way C's strtol reads it with base 0 (0x hex, leading-zero octal),
+// is false for 0 and true for 1; any other number is not a boolean. Then
+// yes/true/with/on/enable are true and no/false/without/off/disable are
+// false, ignoring case. Everything else is the default: "2" is not true, and
+// "0x0" is false. Like APT, the value is not trimmed: strtol skips leading
+// whitespace, but "1 " and " yes" are not booleans.
+func aptStringToBool(text string, def bool) bool {
+	if n, ok := aptStrtol(text); ok && (n == 0 || n == 1) {
+		return n == 1
+	}
+	switch strings.ToLower(text) {
 	case "no", "false", "without", "off", "disable":
 		return false
-	}
-	if n, err := strconv.Atoi(s); err == nil {
-		return n != 0
+	case "yes", "true", "with", "on", "enable":
+		return true
 	}
 	return def
+}
+
+// aptStrtol parses s the way strtol(s, &end, 0) does when end must reach the
+// end of s, and truncates to a C int as StringToBool does. glibc 2.38 and
+// later also read a 0b binary prefix; that is left out, as older releases
+// treat it as no number.
+func aptStrtol(s string) (int32, bool) {
+	s = strings.TrimLeft(s, " \t\n\v\f\r")
+	neg := false
+	if s != "" && (s[0] == '+' || s[0] == '-') {
+		neg = s[0] == '-'
+		s = s[1:]
+	}
+	base := 10
+	switch {
+	case len(s) > 2 && (s[:2] == "0x" || s[:2] == "0X"):
+		base, s = 16, s[2:]
+	case len(s) > 1 && s[0] == '0':
+		base, s = 8, s[1:]
+	}
+	if s == "" {
+		return 0, false
+	}
+	u, err := strconv.ParseUint(s, base, 64)
+	if err != nil && !errors.Is(err, strconv.ErrRange) {
+		return 0, false
+	}
+	// strtol saturates at LONG_MAX and LONG_MIN
+	var v int64
+	switch {
+	case u > math.MaxInt64 || err != nil:
+		v = math.MaxInt64
+		if neg {
+			v = math.MinInt64
+		}
+	case neg:
+		v = -int64(u)
+	default:
+		v = int64(u)
+	}
+	return int32(v), true
 }
 
 // aptParam looks an option up the way APT does, ignoring case. apt-config dump
@@ -151,8 +203,15 @@ func (a *mqlAptConfig) checkDate(params map[string]any) (bool, error) {
 	return aptWeakestBool(params, "Acquire::Check-Date", true, false), nil
 }
 
+// installRecommends is true when apt-config dump has no APT::Install-Recommends:
+// APT's built-in configuration sets it. The resolver reads it with
+// FindB("APT::Install-Recommends", false), though, so a value that is not a
+// boolean ("2", "maybe", "") turns recommends off, as apt-get install shows.
 func (a *mqlAptConfig) installRecommends(params map[string]any) (bool, error) {
-	return aptBoolParam(params, "APT::Install-Recommends", true), nil
+	if _, ok := aptParam(params, "APT::Install-Recommends"); !ok {
+		return true, nil
+	}
+	return aptBoolParam(params, "APT::Install-Recommends", false), nil
 }
 
 func (a *mqlAptConfig) installSuggests(params map[string]any) (bool, error) {
