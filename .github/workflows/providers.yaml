@@ -471,8 +471,8 @@ jobs:
 
           # Past this many, name a count instead: a full release is 80+ providers.
           max_named=10
-          [ "$ok" -le "$max_named" ] || released_md="$ok providers, see the run"
-          [ "$bad" -le "$max_named" ] || failed_md="$bad providers, see the run"
+          [ "$ok" -le "$max_named" ] || released_md=$(esc "$ok providers, see the run")
+          [ "$bad" -le "$max_named" ] || failed_md=$(esc "$bad providers, see the run")
 
           # Before the trigger was narrowed to config.go, most runs touched
           # provider code without bumping a version, so the "nothing to
