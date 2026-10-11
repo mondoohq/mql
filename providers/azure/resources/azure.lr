@@ -5498,6 +5498,12 @@ azure.subscription.networkService.trafficManagerProfile @defaults("id name locat
   maxReturn int
   // Allowed endpoint record types (e.g., "DomainName", "IPv4Address", "IPv6Address")
   allowedEndpointRecordTypes []string
+  // DNS record type the profile is restricted to
+  //
+  // One of A, AAAA, or CNAME. When set, the profile accepts only endpoints
+  // that match this record type. Null when the profile accepts every
+  // endpoint type.
+  recordType string
   // DNS settings
   //
   // Deprecated in favor of dnsSettings, which carries the DNS name and
@@ -10505,7 +10511,11 @@ azure.subscription.keyVaultService.managedHsm @defaults("name location") {
   tags map[string]string
   // Managed HSM type
   type string
-  // SKU name (Standard_B1, Custom_B32, Custom_B6, Custom_C10, Custom_C42)
+  // SKU name
+  //
+  // One of Standard_B1, Standard_B1v2, Standard_B5v2, Standard_B10v2,
+  // Standard_B15v2, Standard_B20v2, Custom_B6, Custom_B32, Custom_C10, or
+  // Custom_C42.
   skuName string
   // HSM URI
   hsmUri string

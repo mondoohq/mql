@@ -9,7 +9,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12"
-	trafficmanager "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager"
+	trafficmanager "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager/v2"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -142,6 +142,16 @@ func trafficManagerEndpointEnabled(props *trafficmanager.EndpointProperties) boo
 	return props != nil && props.EndpointStatus != nil && *props.EndpointStatus == trafficmanager.EndpointStatusEnabled
 }
 
+// trafficManagerProfileRecordType returns the DNS record type the profile is
+// restricted to, or null when ARM returns none (the profile accepts every
+// endpoint type).
+func trafficManagerProfileRecordType(props *trafficmanager.ProfileProperties) *llx.RawData {
+	if props == nil || props.RecordType == nil {
+		return llx.NilData
+	}
+	return llx.StringData(string(*props.RecordType))
+}
+
 func azureTrafficManagerProfileToMql(runtime *plugin.Runtime, p *trafficmanager.Profile) (plugin.Resource, error) {
 	if p == nil {
 		return nil, nil
@@ -163,6 +173,7 @@ func azureTrafficManagerProfileToMql(runtime *plugin.Runtime, p *trafficmanager.
 		"trafficViewEnrollmentStatus": llx.StringDataPtr(nil),
 		"maxReturn":                   llx.IntDataDefault[int64](nil, 0),
 		"allowedEndpointRecordTypes":  llx.ArrayData([]any{}, types.String),
+		"recordType":                  llx.NilData,
 		"dnsConfig":                   llx.DictData(nil),
 		"dnsSettings":                 llx.NilData,
 		"monitorConfig":               llx.DictData(nil),
@@ -193,6 +204,7 @@ func azureTrafficManagerProfileToMql(runtime *plugin.Runtime, p *trafficmanager.
 		}
 	}
 	args["allowedEndpointRecordTypes"] = llx.ArrayData(recordTypes, types.String)
+	args["recordType"] = trafficManagerProfileRecordType(props)
 
 	dnsDict, err := convert.JsonToDict(props.DNSConfig)
 	if err != nil {

@@ -8271,6 +8271,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.networkService.trafficManagerProfile.allowedEndpointRecordTypes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceTrafficManagerProfile).GetAllowedEndpointRecordTypes()).ToDataRes(types.Array(types.String))
 	},
+	"azure.subscription.networkService.trafficManagerProfile.recordType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceTrafficManagerProfile).GetRecordType()).ToDataRes(types.String)
+	},
 	"azure.subscription.networkService.trafficManagerProfile.dnsConfig": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceTrafficManagerProfile).GetDnsConfig()).ToDataRes(types.Dict)
 	},
@@ -31774,6 +31777,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.networkService.trafficManagerProfile.allowedEndpointRecordTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceTrafficManagerProfile).AllowedEndpointRecordTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.trafficManagerProfile.recordType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceTrafficManagerProfile).RecordType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.networkService.trafficManagerProfile.dnsConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -72674,6 +72681,7 @@ type mqlAzureSubscriptionNetworkServiceTrafficManagerProfile struct {
 	TrafficViewEnrollmentStatus plugin.TValue[string]
 	MaxReturn                   plugin.TValue[int64]
 	AllowedEndpointRecordTypes  plugin.TValue[[]any]
+	RecordType                  plugin.TValue[string]
 	DnsConfig                   plugin.TValue[any]
 	DnsSettings                 plugin.TValue[*mqlAzureSubscriptionNetworkServiceTrafficManagerProfileDnsSettings]
 	MonitorConfig               plugin.TValue[any]
@@ -72760,6 +72768,10 @@ func (c *mqlAzureSubscriptionNetworkServiceTrafficManagerProfile) GetMaxReturn()
 
 func (c *mqlAzureSubscriptionNetworkServiceTrafficManagerProfile) GetAllowedEndpointRecordTypes() *plugin.TValue[[]any] {
 	return &c.AllowedEndpointRecordTypes
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceTrafficManagerProfile) GetRecordType() *plugin.TValue[string] {
+	return &c.RecordType
 }
 
 func (c *mqlAzureSubscriptionNetworkServiceTrafficManagerProfile) GetDnsConfig() *plugin.TValue[any] {
