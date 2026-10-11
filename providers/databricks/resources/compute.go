@@ -314,6 +314,39 @@ func (r *mqlDatabricksCluster) instanceProfile() (*mqlDatabricksInstanceProfile,
 	return newMqlDatabricksInstanceProfile(r.MqlRuntime, p)
 }
 
+// warehouseStatementTimeoutSeconds reports the warehouse's own statement
+// timeout, or null when it sets none. The API treats 0 as "no warehouse
+// timeout", so the workspace STATEMENT_TIMEOUT applies; reporting 0 would read
+// as "statements never time out".
+func warehouseStatementTimeoutSeconds(w sql.EndpointInfo) *llx.RawData {
+	if w.StatementTimeout <= 0 {
+		return llx.NilData
+	}
+	return llx.IntData(int64(w.StatementTimeout))
+}
+
+// warehouseFields maps one warehouse list record to its MQL fields.
+func warehouseFields(w sql.EndpointInfo) map[string]*llx.RawData {
+	channel := ""
+	if w.Channel != nil {
+		channel = string(w.Channel.Name)
+	}
+	return map[string]*llx.RawData{
+		"__id":                    llx.StringData("databricks.warehouse/" + w.Id),
+		"id":                      llx.StringData(w.Id),
+		"name":                    llx.StringData(w.Name),
+		"state":                   llx.StringData(string(w.State)),
+		"warehouseType":           llx.StringData(string(w.WarehouseType)),
+		"photonEnabled":           llx.BoolData(w.EnablePhoton),
+		"serverlessEnabled":       llx.BoolData(w.EnableServerlessCompute),
+		"channel":                 llx.StringData(channel),
+		"clusterSize":             llx.StringData(w.ClusterSize),
+		"autoStopMinutes":         llx.IntData(w.AutoStopMins),
+		"creatorName":             llx.StringData(w.CreatorName),
+		"statementTimeoutSeconds": warehouseStatementTimeoutSeconds(w),
+	}
+}
+
 func (r *mqlDatabricks) warehouses() ([]any, error) {
 	ws, err := workspaceClient(r.MqlRuntime)
 	if err != nil {
@@ -327,24 +360,7 @@ func (r *mqlDatabricks) warehouses() ([]any, error) {
 
 	out := []any{}
 	for i := range warehouses {
-		w := warehouses[i]
-		channel := ""
-		if w.Channel != nil {
-			channel = string(w.Channel.Name)
-		}
-		res, err := CreateResource(r.MqlRuntime, "databricks.warehouse", map[string]*llx.RawData{
-			"__id":              llx.StringData("databricks.warehouse/" + w.Id),
-			"id":                llx.StringData(w.Id),
-			"name":              llx.StringData(w.Name),
-			"state":             llx.StringData(string(w.State)),
-			"warehouseType":     llx.StringData(string(w.WarehouseType)),
-			"photonEnabled":     llx.BoolData(w.EnablePhoton),
-			"serverlessEnabled": llx.BoolData(w.EnableServerlessCompute),
-			"channel":           llx.StringData(channel),
-			"clusterSize":       llx.StringData(w.ClusterSize),
-			"autoStopMinutes":   llx.IntData(w.AutoStopMins),
-			"creatorName":       llx.StringData(w.CreatorName),
-		})
+		res, err := CreateResource(r.MqlRuntime, "databricks.warehouse", warehouseFields(warehouses[i]))
 		if err != nil {
 			return nil, err
 		}

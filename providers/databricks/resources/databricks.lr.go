@@ -982,6 +982,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"databricks.warehouse.creatorName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksWarehouse).GetCreatorName()).ToDataRes(types.String)
 	},
+	"databricks.warehouse.statementTimeoutSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksWarehouse).GetStatementTimeoutSeconds()).ToDataRes(types.Int)
+	},
 	"databricks.warehouse.permissions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksWarehouse).GetPermissions()).ToDataRes(types.Array(types.Resource("databricks.permission")))
 	},
@@ -3388,6 +3391,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"databricks.warehouse.creatorName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatabricksWarehouse).CreatorName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.warehouse.statementTimeoutSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksWarehouse).StatementTimeoutSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"databricks.warehouse.permissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -7968,17 +7975,18 @@ type mqlDatabricksWarehouse struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlDatabricksWarehouseInternal it will be used here
-	Id                plugin.TValue[string]
-	Name              plugin.TValue[string]
-	State             plugin.TValue[string]
-	WarehouseType     plugin.TValue[string]
-	PhotonEnabled     plugin.TValue[bool]
-	ServerlessEnabled plugin.TValue[bool]
-	Channel           plugin.TValue[string]
-	ClusterSize       plugin.TValue[string]
-	AutoStopMinutes   plugin.TValue[int64]
-	CreatorName       plugin.TValue[string]
-	Permissions       plugin.TValue[[]any]
+	Id                      plugin.TValue[string]
+	Name                    plugin.TValue[string]
+	State                   plugin.TValue[string]
+	WarehouseType           plugin.TValue[string]
+	PhotonEnabled           plugin.TValue[bool]
+	ServerlessEnabled       plugin.TValue[bool]
+	Channel                 plugin.TValue[string]
+	ClusterSize             plugin.TValue[string]
+	AutoStopMinutes         plugin.TValue[int64]
+	CreatorName             plugin.TValue[string]
+	StatementTimeoutSeconds plugin.TValue[int64]
+	Permissions             plugin.TValue[[]any]
 }
 
 // createDatabricksWarehouse creates a new instance of this resource
@@ -8051,6 +8059,10 @@ func (c *mqlDatabricksWarehouse) GetAutoStopMinutes() *plugin.TValue[int64] {
 
 func (c *mqlDatabricksWarehouse) GetCreatorName() *plugin.TValue[string] {
 	return &c.CreatorName
+}
+
+func (c *mqlDatabricksWarehouse) GetStatementTimeoutSeconds() *plugin.TValue[int64] {
+	return &c.StatementTimeoutSeconds
 }
 
 func (c *mqlDatabricksWarehouse) GetPermissions() *plugin.TValue[[]any] {
