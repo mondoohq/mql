@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -715,6 +716,25 @@ func nftLookupTable(runtime *plugin.Runtime, family, name string) (*mqlNftablesT
 	return raw.(*mqlNftablesTable), nil
 }
 
+// nftCommandError describes a failed nft run. A crashed nft prints nothing,
+// so name the signal: the local connection reports exit -1 for a process a
+// signal killed, and a shell reports 128 plus the signal number.
+func nftCommandError(exit int64, stderr string) error {
+	var what string
+	switch {
+	case exit == -1:
+		what = "nft was killed by a signal"
+	case exit > 128 && exit < 128+65:
+		what = fmt.Sprintf("nft was killed by signal %d (%s)", exit-128, syscall.Signal(exit-128))
+	default:
+		what = fmt.Sprintf("exit %d", exit)
+	}
+	if msg := strings.TrimSpace(stderr); msg != "" {
+		return fmt.Errorf("nft command failed (%s): %s", what, msg)
+	}
+	return fmt.Errorf("nft command failed (%s)", what)
+}
+
 // fetchVersion lazily runs `nft --version`, which works on every nft release,
 // unlike the JSON ruleset.
 func (n *mqlNftables) fetchVersion() (string, error) {
@@ -738,7 +758,7 @@ func (n *mqlNftables) fetchVersion() (string, error) {
 	}
 	cmd := o.(*mqlCommand)
 	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return "", fmt.Errorf("nft command failed (exit %d): %s", exit.Data, cmd.Stderr.Data)
+		return "", nftCommandError(exit.Data, cmd.Stderr.Data)
 	}
 	n.cacheVersion = parseNftVersion(cmd.Stdout.Data)
 	n.versionFetched = true
@@ -785,7 +805,7 @@ func (n *mqlNftables) fetchRuleset() (*nftRuleset, error) {
 	}
 	cmd := o.(*mqlCommand)
 	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, fmt.Errorf("nft command failed (exit %d): %s", exit.Data, cmd.Stderr.Data)
+		return nil, nftCommandError(exit.Data, cmd.Stderr.Data)
 	}
 
 	var ruleset *nftRuleset
