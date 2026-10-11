@@ -6570,6 +6570,13 @@ private aws.opensearch.domain @defaults("name engineVersion") {
   endpoint string
   // Whether encryption at rest is enabled
   encryptionAtRestEnabled bool
+  // Encryption at rest mode
+  //
+  // DISK for volume-level encryption (the default) or NATIVE for
+  // engine-native, index-level encryption, which requires OpenSearch 3.3 or
+  // later and cannot be changed back to DISK. Null when the API reports no
+  // mode for the domain.
+  encryptionAtRestMode string
   // KMS key used for encryption at rest
   encryptionAtRestKmsKey() aws.kms.key
   // Whether node-to-node encryption is enabled
@@ -8044,9 +8051,11 @@ private aws.guardduty.detector.feature @defaults("name status") {
   // Sub-feature configuration
   //
   // Per sub-feature enablement carried under a protection feature. Each entry
-  // has `Name` (the sub-feature: EKS_ADDON_MANAGEMENT,
-  // ECS_FARGATE_AGENT_MANAGEMENT, or EC2_AGENT_MANAGEMENT), `Status` (ENABLED
-  // or DISABLED), and `UpdatedAt` (time of last change).
+  // has `Name` (the sub-feature, such as EKS_ADDON_MANAGEMENT,
+  // ECS_FARGATE_AGENT_MANAGEMENT, EC2_AGENT_MANAGEMENT, or RDS_DATA_RISK),
+  // `Status` (ENABLED or DISABLED), `UpdatedAt` (time of last change), and
+  // `ManagedBy` (GUARDDUTY_POLICY when a GuardDuty policy manages the
+  // sub-feature).
   additionalConfiguration []dict
 }
 
@@ -19123,6 +19132,37 @@ private aws.lambda.eventSourceMapping @defaults("uuid eventSourceArn") {
   maximumConcurrency int
   // Tags assigned to the event source mapping
   tags() map[string]string
+  // Authentication, network, and virtual host settings for the event source
+  //
+  // The source access configuration types in the order the API reports them,
+  // for example BASIC_AUTH, SASL_SCRAM_256_AUTH, SASL_SCRAM_512_AUTH,
+  // CLIENT_CERTIFICATE_TLS_AUTH, SERVER_ROOT_CA_CERTIFICATE, OAUTHBEARER_AUTH,
+  // IAM_AUTH, IAM_OAUTHBEARER_AUTH, VPC_SUBNET, VPC_SECURITY_GROUP, or
+  // VIRTUAL_HOST. A type repeats once per configured value (one VPC_SUBNET
+  // per subnet). Empty for a source that needs none, such as SQS, and for a
+  // self-managed Kafka cluster that Lambda reaches without authentication.
+  sourceAccessTypes []string
+  // Secrets Manager secrets the mapping uses to connect to the source
+  //
+  // The secrets named by BASIC_AUTH, SASL_SCRAM_256_AUTH, SASL_SCRAM_512_AUTH,
+  // CLIENT_CERTIFICATE_TLS_AUTH, SERVER_ROOT_CA_CERTIFICATE, and
+  // OAUTHBEARER_AUTH source access configurations.
+  secrets() []aws.secretsmanager.secret
+  // VPC subnets Lambda uses to reach a self-managed Kafka cluster
+  subnets() []aws.vpc.subnet
+  // VPC security groups Lambda uses to reach a self-managed Kafka cluster
+  securityGroups() []aws.ec2.securitygroup
+  // Bootstrap servers of a self-managed Kafka cluster
+  //
+  // Broker addresses in `host:port` form. Null when the event source is not
+  // a self-managed Kafka cluster.
+  selfManagedKafkaBootstrapServers []string
+  // Kafka consumer group ID
+  //
+  // The consumer group the mapping joins on an Amazon MSK or self-managed
+  // Kafka cluster. Null when the API reports none, as for event sources
+  // other than Kafka.
+  kafkaConsumerGroupId string
 }
 
 // AWS Lambda function alias

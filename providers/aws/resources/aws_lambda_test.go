@@ -447,3 +447,121 @@ func TestRuntimeManagementArgs(t *testing.T) {
 		assert.Equal(t, "arn:aws:lambda:us-east-1::runtime:abc123", args["runtimeVersionArn"].Value)
 	})
 }
+
+// TestParseSourceAccessConfigurations pins how each source access type's URI
+// is read: secret-backed types name a secret, VPC types name a subnet or a
+// security group, and the OAuth value types and VIRTUAL_HOST name nothing
+// that is modeled, so their values must not be resolved as secrets.
+func TestParseSourceAccessConfigurations(t *testing.T) {
+	secret := "arn:aws:secretsmanager:us-east-1:123456789012:secret:kafka-AbCdEf"
+	cert := "arn:aws:secretsmanager:us-east-1:123456789012:secret:mtls-GhIjKl"
+	cfgs := []lambdatypes.SourceAccessConfiguration{
+		{Type: lambdatypes.SourceAccessTypeSaslScram512Auth, URI: aws.String(secret)},
+		{Type: lambdatypes.SourceAccessTypeClientCertificateTlsAuth, URI: aws.String(cert)},
+		{Type: lambdatypes.SourceAccessTypeVpcSubnet, URI: aws.String("subnet-0a1b2c3d")},
+		{Type: lambdatypes.SourceAccessTypeVpcSubnet, URI: aws.String("subnet-4e5f6a7b")},
+		{Type: lambdatypes.SourceAccessTypeVpcSecurityGroup, URI: aws.String("sg-0123456789abcdef0")},
+		{Type: lambdatypes.SourceAccessTypeOauthbearerScope, URI: aws.String("kafka.read")},
+		{Type: lambdatypes.SourceAccessTypeVirtualHost, URI: aws.String("/prod")},
+		{Type: lambdatypes.SourceAccessTypeIamAuth},
+	}
+
+	got := parseSourceAccessConfigurations(cfgs)
+
+	assert.Equal(t, []any{
+		"SASL_SCRAM_512_AUTH", "CLIENT_CERTIFICATE_TLS_AUTH", "VPC_SUBNET", "VPC_SUBNET",
+		"VPC_SECURITY_GROUP", "OAUTHBEARER_SCOPE", "VIRTUAL_HOST", "IAM_AUTH",
+	}, got.types)
+	assert.Equal(t, []string{secret, cert}, got.secretArns)
+	assert.Equal(t, []string{"subnet-0a1b2c3d", "subnet-4e5f6a7b"}, got.subnetIds)
+	assert.Equal(t, []string{"sg-0123456789abcdef0"}, got.securityGroupIds)
+}
+
+func TestParseSourceAccessConfigurationsEdgeCases(t *testing.T) {
+	t.Run("no configurations is an empty list, not null", func(t *testing.T) {
+		got := parseSourceAccessConfigurations(nil)
+		assert.Equal(t, []any{}, got.types)
+		assert.Empty(t, got.secretArns)
+		assert.Empty(t, got.subnetIds)
+		assert.Empty(t, got.securityGroupIds)
+	})
+
+	t.Run("a type this provider does not know is kept but not resolved", func(t *testing.T) {
+		got := parseSourceAccessConfigurations([]lambdatypes.SourceAccessConfiguration{
+			{Type: "FUTURE_AUTH", URI: aws.String("arn:aws:secretsmanager:us-east-1:123456789012:secret:x")},
+		})
+		assert.Equal(t, []any{"FUTURE_AUTH"}, got.types)
+		assert.Empty(t, got.secretArns)
+	})
+
+	t.Run("a secret named twice resolves once", func(t *testing.T) {
+		secret := "arn:aws:secretsmanager:us-east-1:123456789012:secret:shared"
+		got := parseSourceAccessConfigurations([]lambdatypes.SourceAccessConfiguration{
+			{Type: lambdatypes.SourceAccessTypeBasicAuth, URI: aws.String(secret)},
+			{Type: lambdatypes.SourceAccessTypeServerRootCaCertificate, URI: aws.String(secret)},
+		})
+		assert.Equal(t, []string{secret}, got.secretArns)
+	})
+
+	t.Run("a secret type with no URI names no secret", func(t *testing.T) {
+		got := parseSourceAccessConfigurations([]lambdatypes.SourceAccessConfiguration{
+			{Type: lambdatypes.SourceAccessTypeBasicAuth},
+		})
+		assert.Equal(t, []any{"BASIC_AUTH"}, got.types)
+		assert.Empty(t, got.secretArns)
+	})
+}
+
+// TestEventSourceMappingArgsKafka pins the Kafka fields: bootstrap servers and
+// consumer group for a self-managed cluster, the consumer group for MSK, and
+// null for both on a source that is not Kafka.
+func TestEventSourceMappingArgsKafka(t *testing.T) {
+	t.Run("self-managed Kafka", func(t *testing.T) {
+		esm := lambdatypes.EventSourceMappingConfiguration{
+			UUID: aws.String("11111111-2222-3333-4444-555555555555"),
+			SelfManagedEventSource: &lambdatypes.SelfManagedEventSource{
+				Endpoints: map[string][]string{
+					"KAFKA_BOOTSTRAP_SERVERS": {"b-1.example.com:9092", "b-2.example.com:9092"},
+				},
+			},
+			SelfManagedKafkaEventSourceConfig: &lambdatypes.SelfManagedKafkaEventSourceConfig{
+				ConsumerGroupId: aws.String("orders-consumer"),
+			},
+			SourceAccessConfigurations: []lambdatypes.SourceAccessConfiguration{
+				{Type: lambdatypes.SourceAccessTypeBasicAuth, URI: aws.String("arn:aws:secretsmanager:us-east-1:123456789012:secret:k")},
+			},
+		}
+		args, err := eventSourceMappingArgs(esm, "us-east-1")
+		require.NoError(t, err)
+		assert.Equal(t, []any{"b-1.example.com:9092", "b-2.example.com:9092"},
+			args["selfManagedKafkaBootstrapServers"].Value)
+		assert.Equal(t, "orders-consumer", args["kafkaConsumerGroupId"].Value)
+		assert.Equal(t, []any{"BASIC_AUTH"}, args["sourceAccessTypes"].Value)
+	})
+
+	t.Run("Amazon MSK", func(t *testing.T) {
+		esm := lambdatypes.EventSourceMappingConfiguration{
+			UUID:           aws.String("11111111-2222-3333-4444-555555555555"),
+			EventSourceArn: aws.String("arn:aws:kafka:us-east-1:123456789012:cluster/c/abc"),
+			AmazonManagedKafkaEventSourceConfig: &lambdatypes.AmazonManagedKafkaEventSourceConfig{
+				ConsumerGroupId: aws.String("msk-consumer"),
+			},
+		}
+		args, err := eventSourceMappingArgs(esm, "us-east-1")
+		require.NoError(t, err)
+		assert.True(t, rawDataIsNull(t, args, "selfManagedKafkaBootstrapServers"))
+		assert.Equal(t, "msk-consumer", args["kafkaConsumerGroupId"].Value)
+	})
+
+	t.Run("not Kafka", func(t *testing.T) {
+		esm := lambdatypes.EventSourceMappingConfiguration{
+			UUID:           aws.String("11111111-2222-3333-4444-555555555555"),
+			EventSourceArn: aws.String("arn:aws:sqs:us-east-1:123456789012:my-queue"),
+		}
+		args, err := eventSourceMappingArgs(esm, "us-east-1")
+		require.NoError(t, err)
+		assert.True(t, rawDataIsNull(t, args, "selfManagedKafkaBootstrapServers"))
+		assert.True(t, rawDataIsNull(t, args, "kafkaConsumerGroupId"))
+		assert.Equal(t, []any{}, args["sourceAccessTypes"].Value)
+	})
+}

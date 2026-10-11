@@ -214,9 +214,11 @@ func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID
 	// Encryption at rest options
 	var encryptionAtRestEnabled bool
 	var encryptionAtRestKmsKeyId string
+	var encryptionAtRestMode *string
 	if domain.EncryptionAtRestOptions != nil {
 		encryptionAtRestEnabled = convert.ToValue(domain.EncryptionAtRestOptions.Enabled)
 		encryptionAtRestKmsKeyId = convert.ToValue(domain.EncryptionAtRestOptions.KmsKeyId)
+		encryptionAtRestMode = nonEmptyEnum(domain.EncryptionAtRestOptions.EncryptionMode)
 	}
 
 	// Node-to-node encryption
@@ -399,6 +401,7 @@ func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID
 			"engineVersion":                      llx.StringDataPtr(domain.EngineVersion),
 			"endpoint":                           llx.StringData(endpoint),
 			"encryptionAtRestEnabled":            llx.BoolData(encryptionAtRestEnabled),
+			"encryptionAtRestMode":               llx.StringDataPtr(encryptionAtRestMode),
 			"nodeToNodeEncryptionEnabled":        llx.BoolData(nodeToNodeEncryptionEnabled),
 			"dedicatedMasterEnabled":             llx.BoolData(dedicatedMasterEnabled),
 			"dedicatedMasterType":                llx.StringData(dedicatedMasterType),
