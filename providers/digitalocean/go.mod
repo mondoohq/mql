@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.6
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.0
 	github.com/aws/smithy-go v1.28.2
-	github.com/digitalocean/godo v1.217.0
+	github.com/digitalocean/godo v1.223.0
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
 	go.mondoo.com/mql v0.0.0-20261006032124-4a88d2f13ca7

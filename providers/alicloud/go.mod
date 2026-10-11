@@ -7,7 +7,7 @@ go 1.26.8
 require (
 	github.com/alibabacloud-go/actiontrail-20200706/v3 v3.5.0
 	github.com/alibabacloud-go/alb-20200616/v2 v2.3.2
-	github.com/alibabacloud-go/cas-20200407/v4 v4.7.2
+	github.com/alibabacloud-go/cas-20200407/v4 v4.7.3
 	github.com/alibabacloud-go/cbn-20170912/v2 v2.4.4
 	github.com/alibabacloud-go/cloudapi-20160714/v5 v5.8.0
 	github.com/alibabacloud-go/cloudfw-20171207/v11 v11.1.0
@@ -21,7 +21,7 @@ require (
 	github.com/alibabacloud-go/ecs-20140526/v7 v7.11.5
 	github.com/alibabacloud-go/elasticsearch-20170613/v6 v6.4.0
 	github.com/alibabacloud-go/ess-20220222/v2 v2.13.3
-	github.com/alibabacloud-go/fc-20230330/v4 v4.8.2
+	github.com/alibabacloud-go/fc-20230330/v4 v4.8.3
 	github.com/alibabacloud-go/ims-20190815/v4 v4.4.2
 	github.com/alibabacloud-go/kms-20160120/v4 v4.3.0
 	github.com/alibabacloud-go/nas-20170626/v4 v4.7.3
@@ -32,7 +32,7 @@ require (
 	github.com/alibabacloud-go/ram-20150501/v2 v2.2.1
 	github.com/alibabacloud-go/rds-20140815/v16 v16.9.1
 	github.com/alibabacloud-go/resourcemanager-20200331/v3 v3.5.1
-	github.com/alibabacloud-go/sas-20181203/v10 v10.2.0
+	github.com/alibabacloud-go/sas-20181203/v10 v10.2.1
 	github.com/alibabacloud-go/slb-20140515/v4 v4.0.14
 	github.com/alibabacloud-go/sls-20201230/v6 v6.15.1
 	github.com/alibabacloud-go/sts-20150401/v2 v2.1.0

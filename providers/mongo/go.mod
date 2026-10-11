@@ -7,7 +7,7 @@ go 1.26.8
 require (
 	go.mondoo.com/mql v0.0.0-20261006032124-4a88d2f13ca7
 	go.mondoo.com/ranger-rpc v0.8.1
-	go.mongodb.org/mongo-driver/v2 v2.9.1
+	go.mongodb.org/mongo-driver/v2 v2.9.2
 )
 
 require go.opentelemetry.io/otel/log v1.47.0 // indirect
