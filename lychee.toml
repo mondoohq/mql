@@ -20,6 +20,14 @@ exclude_private = true
 # that block or rate-limit automated clients.
 accept = [200, 204, 206, 301, 302, 303, 307, 308, 406, 429]
 
+# Check GitHub file links on raw.githubusercontent.com. github.com throttles
+# automated requests for blob pages with 503 Service Unavailable (about one in
+# four in a row), whatever they accept, while the raw file answers 200, or 404
+# when the file is gone, so a broken link still fails.
+remap = [
+  '^https://github\.com/([^/]+/[^/]+)/blob/([^#?]+)([?#].*)?$ https://raw.githubusercontent.com/$1/$2',
+]
+
 # Retry configuration
 max_retries = 3
 retry_wait_time = 10
