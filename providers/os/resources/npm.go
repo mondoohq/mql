@@ -46,8 +46,11 @@ var defaultNpmPaths = []string{
 	"/Users/*/.npm-global/lib",
 	// Container app paths
 	"/app",
-	"/home/node/app",
+	"/home/*/app",
 	"/usr/src/app",
+	// Global packages of the Node versions nvm installs
+	"/root/.nvm/versions/node/*/lib",
+	"/home/*/.nvm/versions/node/*/lib",
 }
 
 func initNpmPackages(_ *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
