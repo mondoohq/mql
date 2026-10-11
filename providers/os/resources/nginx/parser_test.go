@@ -4,8 +4,10 @@
 package nginx
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	iofs "io/fs"
 	"strings"
 	"testing"
 
@@ -1149,4 +1151,34 @@ func TestParseQuotedBracesDoNotOpenBlock(t *testing.T) {
 	require.Len(t, directives, 2)
 	assert.Equal(t, []string{"$x", "{{{"}, directives[0].Args)
 	assert.Equal(t, []string{"$y", "}}}"}, directives[1].Args)
+}
+
+// nginx refuses to start when an included file cannot be read. The parse
+// carries on, but the refusal must stay recognisable so the resource can
+// report it instead of a configuration without that file.
+func TestParseFilesUnreadableIncludeKeepsCause(t *testing.T) {
+	fs := &memFS{files: map[string]string{
+		"/etc/nginx/nginx.conf":    "http {\n    include /etc/nginx/conf.d/*.conf;\n}\ninclude /etc/nginx/missing.conf;\n",
+		"/etc/nginx/conf.d/a.conf": "server { listen 80; }\n",
+	}}
+	open := func(path string) (io.ReadCloser, error) {
+		if path == "/etc/nginx/conf.d/sweep-http.conf" {
+			return nil, &iofs.PathError{Op: "open", Path: path, Err: iofs.ErrPermission}
+		}
+		return fs.open(path)
+	}
+	glob := memGlob{"/etc/nginx/conf.d/*.conf": {"/etc/nginx/conf.d/a.conf", "/etc/nginx/conf.d/sweep-http.conf"}}
+
+	cfg, err := ParseFiles("/etc/nginx/nginx.conf", open, glob.expand)
+	require.NoError(t, err)
+	require.Len(t, cfg.Errors, 2)
+
+	var refused []ParseError
+	for _, e := range cfg.Errors {
+		if errors.Is(e, iofs.ErrPermission) {
+			refused = append(refused, e)
+		}
+	}
+	require.Len(t, refused, 1)
+	assert.Contains(t, refused[0].Error(), "/etc/nginx/conf.d/sweep-http.conf")
 }

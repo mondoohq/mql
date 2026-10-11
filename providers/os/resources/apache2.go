@@ -798,6 +798,9 @@ func (s *mqlApache2Conf) parse(file *mqlFile) error {
 	if err == nil {
 		cfg, err = apache2.ParseWithGlobOptions(file.Path.Data, fileContent, globExpand, envvars, opts)
 	}
+	if err == nil {
+		err = includeRefusal(cfg.Unreadable)
+	}
 
 	if err != nil {
 		errState := plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
@@ -928,6 +931,19 @@ func apacheParamScalar(params map[string]any, name string) string {
 		return s
 	}
 	return ""
+}
+
+// includeRefusal turns the included files a parse was refused into an error.
+// httpd and nginx both fail to start when an included file cannot be read, so
+// a configuration parsed without it is not the one the server runs: a non-root
+// scan reported TraceEnable Off when a 0600 conf.d file turned it on. Returned
+// only with structured errors on (ADR 046), since v13 parsed on without the
+// file.
+func includeRefusal(refused []error) error {
+	if len(refused) == 0 || !plugin.StructuredErrors() {
+		return nil
+	}
+	return llx.Forbidden(errors.Join(refused...))
 }
 
 // loadEnvvars reads the platform's Apache envvars file (if any) via the

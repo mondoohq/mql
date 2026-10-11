@@ -53,7 +53,12 @@ type ParseError struct {
 	File string
 	Line int
 	Msg  string
+	// Err is the underlying error of a failed include, so a refused read
+	// (fs.ErrPermission) can be told apart from a syntax error.
+	Err error
 }
+
+func (e ParseError) Unwrap() error { return e.Err }
 
 func (e ParseError) Error() string {
 	if e.File != "" {
@@ -219,6 +224,7 @@ func expandIncludes(directives []Directive, prefix string, open OpenFunc, glob G
 					File: sourceFile,
 					Line: d.Line,
 					Msg:  fmt.Sprintf("glob %q: %v", pattern, err),
+					Err:  err,
 				})
 				continue
 			}
@@ -229,6 +235,7 @@ func expandIncludes(directives []Directive, prefix string, open OpenFunc, glob G
 						File: sourceFile,
 						Line: d.Line,
 						Msg:  err.Error(),
+						Err:  err,
 					})
 					continue
 				}
