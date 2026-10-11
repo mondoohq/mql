@@ -11630,6 +11630,100 @@ cryptoPolicy.scope @defaults("name") {
   protocols []string
 }
 
+// GNOME settings from dconf system databases
+//
+// What the dconf databases of the system provide to GSettings, read as dconf
+// reads them. A profile (/etc/dconf/profile/NAME, else
+// /usr/local/share/dconf/profile/NAME or /usr/share/dconf/profile/NAME) lists
+// databases in priority order: `user-db` (each user's own settings),
+// `system-db:NAME` (/etc/dconf/db/NAME), `file-db:PATH` and `service-db`.
+// System databases are compiled by `dconf update` from the keyfiles in
+// /etc/dconf/db/NAME.d and the lock files in its locks directory; GSettings
+// reads only the compiled files, so `dconf.database.upToDate` reports
+// keyfiles that were changed without running `dconf update`. Users get the
+// `user` profile unless DCONF_PROFILE names another; the login screen of GDM
+// uses the `gdm` profile.
+dconf {
+  // Profile files, by name; a name in /etc/dconf/profile hides the same name in the other directories
+  profiles() []dconf.profile
+  // System databases: each compiled database or keyfile directory in /etc/dconf/db
+  databases() []dconf.database
+}
+
+// dconf profile
+//
+// The databases a dconf profile reads, and the settings they provide.
+// `dconf.profile("user")` is the profile users get; without a profile file it
+// is dconf's built-in default, a single user database.
+dconf.profile @defaults("name") {
+  init(name string)
+  // Profile name, such as user or gdm
+  name string
+  // Profile file, null when no profile file of this name exists
+  file file
+  // Databases of the profile, in priority order (the first one wins)
+  databases []dconf.database
+  // Settings the profile's system and file databases provide, by key
+  //
+  // Keys are dconf paths, such as /org/gnome/desktop/session/idle-delay.
+  // Values are typed: uint32 900 is the number 900. A key's value comes
+  // from the first database that sets it, but when a database locks the key,
+  // from that database or one after it, as in dconf. Values in user databases
+  // are each user's own and are not included: a key that no database after
+  // the first one locks keeps this value only until a user changes it.
+  settings map[string]dict
+  // Keys users cannot change: those locked by a database after the first one
+  //
+  // A lock in the first database, normally the user's own, has no effect.
+  locks []string
+}
+
+// dconf database
+//
+// A database of a dconf profile. For a system database, `settings` and
+// `locks` are what the compiled database /etc/dconf/db/NAME holds, which is
+// what GSettings reads, and `keyfileSettings` and `keyfileLocks` what its
+// keyfile directory /etc/dconf/db/NAME.d sets, which `dconf update` compiles.
+dconf.database @defaults("type name") {
+  // Database type: user, system, file, or service
+  type string
+  // Database name, such as local or gdm; the path of a file database
+  name string
+  // Compiled database file; empty for user and service databases, which belong to each user
+  path string
+  // Whether the compiled database exists and can be read
+  //
+  // dconf ignores a database it cannot read, so its settings are empty.
+  exists bool
+  // Settings in the compiled database, by key
+  settings map[string]dict
+  // Keys the compiled database locks
+  locks []string
+  // Keyfiles in the keyfile directory, in the order dconf update applies them
+  //
+  // Every file in /etc/dconf/db/NAME.d whose name does not start with a
+  // dot, symbolic links to files included, sorted by name: a key set in
+  // several keyfiles takes the value of the last one. Empty for a database
+  // without a keyfile directory.
+  keyfiles []file
+  // Settings the keyfiles set, by key, as dconf update compiles them
+  //
+  // An error when a keyfile is not valid, which makes dconf update fail and
+  // keep the previous compiled database.
+  keyfileSettings map[string]dict
+  // Keys the lock files in /etc/dconf/db/NAME.d/locks lock
+  //
+  // Lines starting with /, as written; dconf update ignores other lines,
+  // including indented ones.
+  keyfileLocks []string
+  // Whether the compiled database holds what the keyfiles and lock files set
+  //
+  // False when the keyfiles or lock files changed after the last
+  // `dconf update`, or when a keyfile is not valid. Null for a database
+  // without a keyfile directory.
+  upToDate bool
+}
+
 // PAM resource limits configuration (limits.conf)
 //
 // Soft and hard caps on processes, open files, memory, and other per-user

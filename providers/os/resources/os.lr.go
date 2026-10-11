@@ -341,6 +341,9 @@ const (
 	ResourcePwqualityPamModule                            string = "pwquality.pamModule"
 	ResourceCryptoPolicy                                  string = "cryptoPolicy"
 	ResourceCryptoPolicyScope                             string = "cryptoPolicy.scope"
+	ResourceDconf                                         string = "dconf"
+	ResourceDconfProfile                                  string = "dconf.profile"
+	ResourceDconfDatabase                                 string = "dconf.database"
 	ResourceLimits                                        string = "limits"
 	ResourceLimitsEntry                                   string = "limits.entry"
 	ResourceSudo                                          string = "sudo"
@@ -2046,6 +2049,18 @@ func init() {
 		"cryptoPolicy.scope": {
 			Init:   initCryptoPolicyScope,
 			Create: createCryptoPolicyScope,
+		},
+		"dconf": {
+			// to override args, implement: initDconf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDconf,
+		},
+		"dconf.profile": {
+			Init:   initDconfProfile,
+			Create: createDconfProfile,
+		},
+		"dconf.database": {
+			// to override args, implement: initDconfDatabase(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDconfDatabase,
 		},
 		"limits": {
 			Init:   initLimits,
@@ -12279,6 +12294,57 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"cryptoPolicy.scope.protocols": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCryptoPolicyScope).GetProtocols()).ToDataRes(types.Array(types.String))
+	},
+	"dconf.profiles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconf).GetProfiles()).ToDataRes(types.Array(types.Resource("dconf.profile")))
+	},
+	"dconf.databases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconf).GetDatabases()).ToDataRes(types.Array(types.Resource("dconf.database")))
+	},
+	"dconf.profile.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfProfile).GetName()).ToDataRes(types.String)
+	},
+	"dconf.profile.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfProfile).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"dconf.profile.databases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfProfile).GetDatabases()).ToDataRes(types.Array(types.Resource("dconf.database")))
+	},
+	"dconf.profile.settings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfProfile).GetSettings()).ToDataRes(types.Map(types.String, types.Dict))
+	},
+	"dconf.profile.locks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfProfile).GetLocks()).ToDataRes(types.Array(types.String))
+	},
+	"dconf.database.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfDatabase).GetType()).ToDataRes(types.String)
+	},
+	"dconf.database.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfDatabase).GetName()).ToDataRes(types.String)
+	},
+	"dconf.database.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfDatabase).GetPath()).ToDataRes(types.String)
+	},
+	"dconf.database.exists": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfDatabase).GetExists()).ToDataRes(types.Bool)
+	},
+	"dconf.database.settings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfDatabase).GetSettings()).ToDataRes(types.Map(types.String, types.Dict))
+	},
+	"dconf.database.locks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfDatabase).GetLocks()).ToDataRes(types.Array(types.String))
+	},
+	"dconf.database.keyfiles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfDatabase).GetKeyfiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"dconf.database.keyfileSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfDatabase).GetKeyfileSettings()).ToDataRes(types.Map(types.String, types.Dict))
+	},
+	"dconf.database.keyfileLocks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfDatabase).GetKeyfileLocks()).ToDataRes(types.Array(types.String))
+	},
+	"dconf.database.upToDate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDconfDatabase).GetUpToDate()).ToDataRes(types.Bool)
 	},
 	"limits.files": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlLimits).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
@@ -33634,6 +33700,86 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"cryptoPolicy.scope.protocols": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCryptoPolicyScope).Protocols, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"dconf.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconf).__id, ok = v.Value.(string)
+		return
+	},
+	"dconf.profiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconf).Profiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"dconf.databases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconf).Databases, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"dconf.profile.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfProfile).__id, ok = v.Value.(string)
+		return
+	},
+	"dconf.profile.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfProfile).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dconf.profile.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfProfile).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"dconf.profile.databases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfProfile).Databases, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"dconf.profile.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfProfile).Settings, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"dconf.profile.locks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfProfile).Locks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"dconf.database.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfDatabase).__id, ok = v.Value.(string)
+		return
+	},
+	"dconf.database.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfDatabase).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dconf.database.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfDatabase).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dconf.database.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfDatabase).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dconf.database.exists": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfDatabase).Exists, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dconf.database.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfDatabase).Settings, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"dconf.database.locks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfDatabase).Locks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"dconf.database.keyfiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfDatabase).Keyfiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"dconf.database.keyfileSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfDatabase).KeyfileSettings, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"dconf.database.keyfileLocks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfDatabase).KeyfileLocks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"dconf.database.upToDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDconfDatabase).UpToDate, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"limits.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -82571,6 +82717,242 @@ func (c *mqlCryptoPolicyScope) GetGroups() *plugin.TValue[[]any] {
 
 func (c *mqlCryptoPolicyScope) GetProtocols() *plugin.TValue[[]any] {
 	return &c.Protocols
+}
+
+// mqlDconf for the dconf resource
+type mqlDconf struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDconfInternal it will be used here
+	Profiles  plugin.TValue[[]any]
+	Databases plugin.TValue[[]any]
+}
+
+// createDconf creates a new instance of this resource
+func createDconf(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDconf{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("dconf", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDconf) MqlName() string {
+	return "dconf"
+}
+
+func (c *mqlDconf) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDconf) GetProfiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Profiles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("dconf", c.__id, "profiles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.profiles()
+	})
+}
+
+func (c *mqlDconf) GetDatabases() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Databases, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("dconf", c.__id, "databases")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.databases()
+	})
+}
+
+// mqlDconfProfile for the dconf.profile resource
+type mqlDconfProfile struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDconfProfileInternal it will be used here
+	Name      plugin.TValue[string]
+	File      plugin.TValue[*mqlFile]
+	Databases plugin.TValue[[]any]
+	Settings  plugin.TValue[map[string]any]
+	Locks     plugin.TValue[[]any]
+}
+
+// createDconfProfile creates a new instance of this resource
+func createDconfProfile(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDconfProfile{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("dconf.profile", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDconfProfile) MqlName() string {
+	return "dconf.profile"
+}
+
+func (c *mqlDconfProfile) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDconfProfile) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDconfProfile) GetFile() *plugin.TValue[*mqlFile] {
+	return &c.File
+}
+
+func (c *mqlDconfProfile) GetDatabases() *plugin.TValue[[]any] {
+	return &c.Databases
+}
+
+func (c *mqlDconfProfile) GetSettings() *plugin.TValue[map[string]any] {
+	return &c.Settings
+}
+
+func (c *mqlDconfProfile) GetLocks() *plugin.TValue[[]any] {
+	return &c.Locks
+}
+
+// mqlDconfDatabase for the dconf.database resource
+type mqlDconfDatabase struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDconfDatabaseInternal
+	Type            plugin.TValue[string]
+	Name            plugin.TValue[string]
+	Path            plugin.TValue[string]
+	Exists          plugin.TValue[bool]
+	Settings        plugin.TValue[map[string]any]
+	Locks           plugin.TValue[[]any]
+	Keyfiles        plugin.TValue[[]any]
+	KeyfileSettings plugin.TValue[map[string]any]
+	KeyfileLocks    plugin.TValue[[]any]
+	UpToDate        plugin.TValue[bool]
+}
+
+// createDconfDatabase creates a new instance of this resource
+func createDconfDatabase(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDconfDatabase{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("dconf.database", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDconfDatabase) MqlName() string {
+	return "dconf.database"
+}
+
+func (c *mqlDconfDatabase) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDconfDatabase) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlDconfDatabase) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDconfDatabase) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlDconfDatabase) GetExists() *plugin.TValue[bool] {
+	return &c.Exists
+}
+
+func (c *mqlDconfDatabase) GetSettings() *plugin.TValue[map[string]any] {
+	return &c.Settings
+}
+
+func (c *mqlDconfDatabase) GetLocks() *plugin.TValue[[]any] {
+	return &c.Locks
+}
+
+func (c *mqlDconfDatabase) GetKeyfiles() *plugin.TValue[[]any] {
+	return &c.Keyfiles
+}
+
+func (c *mqlDconfDatabase) GetKeyfileSettings() *plugin.TValue[map[string]any] {
+	return &c.KeyfileSettings
+}
+
+func (c *mqlDconfDatabase) GetKeyfileLocks() *plugin.TValue[[]any] {
+	return &c.KeyfileLocks
+}
+
+func (c *mqlDconfDatabase) GetUpToDate() *plugin.TValue[bool] {
+	return &c.UpToDate
 }
 
 // mqlLimits for the limits resource
