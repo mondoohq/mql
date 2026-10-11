@@ -630,6 +630,87 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gitlab.settings.packageRegistryAllowAnyoneToPullOption": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabSettings).GetPackageRegistryAllowAnyoneToPullOption()).ToDataRes(types.Bool)
 	},
+	"gitlab.settings.throttleUnauthenticatedApiEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleUnauthenticatedApiEnabled()).ToDataRes(types.Bool)
+	},
+	"gitlab.settings.throttleUnauthenticatedApiRequestsPerPeriod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleUnauthenticatedApiRequestsPerPeriod()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleUnauthenticatedApiPeriodInSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleUnauthenticatedApiPeriodInSeconds()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleAuthenticatedApiEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleAuthenticatedApiEnabled()).ToDataRes(types.Bool)
+	},
+	"gitlab.settings.throttleAuthenticatedApiRequestsPerPeriod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleAuthenticatedApiRequestsPerPeriod()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleAuthenticatedApiPeriodInSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleAuthenticatedApiPeriodInSeconds()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleUnauthenticatedWebEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleUnauthenticatedWebEnabled()).ToDataRes(types.Bool)
+	},
+	"gitlab.settings.throttleUnauthenticatedWebRequestsPerPeriod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleUnauthenticatedWebRequestsPerPeriod()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleUnauthenticatedWebPeriodInSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleUnauthenticatedWebPeriodInSeconds()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleAuthenticatedWebEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleAuthenticatedWebEnabled()).ToDataRes(types.Bool)
+	},
+	"gitlab.settings.throttleAuthenticatedWebRequestsPerPeriod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleAuthenticatedWebRequestsPerPeriod()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleAuthenticatedWebPeriodInSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleAuthenticatedWebPeriodInSeconds()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleUnauthenticatedGitHttpEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleUnauthenticatedGitHttpEnabled()).ToDataRes(types.Bool)
+	},
+	"gitlab.settings.throttleUnauthenticatedGitHttpRequestsPerPeriod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleUnauthenticatedGitHttpRequestsPerPeriod()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleUnauthenticatedGitHttpPeriodInSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleUnauthenticatedGitHttpPeriodInSeconds()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleAuthenticatedGitHttpEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleAuthenticatedGitHttpEnabled()).ToDataRes(types.Bool)
+	},
+	"gitlab.settings.throttleAuthenticatedGitHttpRequestsPerPeriod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleAuthenticatedGitHttpRequestsPerPeriod()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleAuthenticatedGitHttpPeriodInSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleAuthenticatedGitHttpPeriodInSeconds()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleAuthenticatedMcpEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleAuthenticatedMcpEnabled()).ToDataRes(types.Bool)
+	},
+	"gitlab.settings.throttleAuthenticatedMcpRequestsPerPeriod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleAuthenticatedMcpRequestsPerPeriod()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleAuthenticatedMcpPeriodInSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleAuthenticatedMcpPeriodInSeconds()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleProtectedPathsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleProtectedPathsEnabled()).ToDataRes(types.Bool)
+	},
+	"gitlab.settings.throttleProtectedPathsRequestsPerPeriod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleProtectedPathsRequestsPerPeriod()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.throttleProtectedPathsPeriodInSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetThrottleProtectedPathsPeriodInSeconds()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.rawBlobRequestLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetRawBlobRequestLimit()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.rawBlobRequestLimitUnauthenticated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetRawBlobRequestLimitUnauthenticated()).ToDataRes(types.Int)
+	},
+	"gitlab.settings.auditEventsApiLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettings).GetAuditEventsApiLimit()).ToDataRes(types.Int)
+	},
 	"gitlab.settings.variables": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabSettings).GetVariables()).ToDataRes(types.Array(types.Resource("gitlab.settings.variable")))
 	},
@@ -3583,6 +3664,114 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gitlab.settings.packageRegistryAllowAnyoneToPullOption": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGitlabSettings).PackageRegistryAllowAnyoneToPullOption, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleUnauthenticatedApiEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleUnauthenticatedApiEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleUnauthenticatedApiRequestsPerPeriod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleUnauthenticatedApiRequestsPerPeriod, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleUnauthenticatedApiPeriodInSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleUnauthenticatedApiPeriodInSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleAuthenticatedApiEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleAuthenticatedApiEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleAuthenticatedApiRequestsPerPeriod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleAuthenticatedApiRequestsPerPeriod, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleAuthenticatedApiPeriodInSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleAuthenticatedApiPeriodInSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleUnauthenticatedWebEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleUnauthenticatedWebEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleUnauthenticatedWebRequestsPerPeriod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleUnauthenticatedWebRequestsPerPeriod, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleUnauthenticatedWebPeriodInSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleUnauthenticatedWebPeriodInSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleAuthenticatedWebEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleAuthenticatedWebEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleAuthenticatedWebRequestsPerPeriod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleAuthenticatedWebRequestsPerPeriod, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleAuthenticatedWebPeriodInSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleAuthenticatedWebPeriodInSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleUnauthenticatedGitHttpEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleUnauthenticatedGitHttpEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleUnauthenticatedGitHttpRequestsPerPeriod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleUnauthenticatedGitHttpRequestsPerPeriod, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleUnauthenticatedGitHttpPeriodInSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleUnauthenticatedGitHttpPeriodInSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleAuthenticatedGitHttpEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleAuthenticatedGitHttpEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleAuthenticatedGitHttpRequestsPerPeriod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleAuthenticatedGitHttpRequestsPerPeriod, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleAuthenticatedGitHttpPeriodInSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleAuthenticatedGitHttpPeriodInSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleAuthenticatedMcpEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleAuthenticatedMcpEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleAuthenticatedMcpRequestsPerPeriod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleAuthenticatedMcpRequestsPerPeriod, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleAuthenticatedMcpPeriodInSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleAuthenticatedMcpPeriodInSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleProtectedPathsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleProtectedPathsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleProtectedPathsRequestsPerPeriod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleProtectedPathsRequestsPerPeriod, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.throttleProtectedPathsPeriodInSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).ThrottleProtectedPathsPeriodInSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.rawBlobRequestLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).RawBlobRequestLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.rawBlobRequestLimitUnauthenticated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).RawBlobRequestLimitUnauthenticated, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.auditEventsApiLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettings).AuditEventsApiLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"gitlab.settings.variables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -7561,6 +7750,33 @@ type mqlGitlabSettings struct {
 	DeactivateDormantUsersPeriod                           plugin.TValue[int64]
 	EnforceCiInboundJobTokenScopeEnabled                   plugin.TValue[bool]
 	PackageRegistryAllowAnyoneToPullOption                 plugin.TValue[bool]
+	ThrottleUnauthenticatedApiEnabled                      plugin.TValue[bool]
+	ThrottleUnauthenticatedApiRequestsPerPeriod            plugin.TValue[int64]
+	ThrottleUnauthenticatedApiPeriodInSeconds              plugin.TValue[int64]
+	ThrottleAuthenticatedApiEnabled                        plugin.TValue[bool]
+	ThrottleAuthenticatedApiRequestsPerPeriod              plugin.TValue[int64]
+	ThrottleAuthenticatedApiPeriodInSeconds                plugin.TValue[int64]
+	ThrottleUnauthenticatedWebEnabled                      plugin.TValue[bool]
+	ThrottleUnauthenticatedWebRequestsPerPeriod            plugin.TValue[int64]
+	ThrottleUnauthenticatedWebPeriodInSeconds              plugin.TValue[int64]
+	ThrottleAuthenticatedWebEnabled                        plugin.TValue[bool]
+	ThrottleAuthenticatedWebRequestsPerPeriod              plugin.TValue[int64]
+	ThrottleAuthenticatedWebPeriodInSeconds                plugin.TValue[int64]
+	ThrottleUnauthenticatedGitHttpEnabled                  plugin.TValue[bool]
+	ThrottleUnauthenticatedGitHttpRequestsPerPeriod        plugin.TValue[int64]
+	ThrottleUnauthenticatedGitHttpPeriodInSeconds          plugin.TValue[int64]
+	ThrottleAuthenticatedGitHttpEnabled                    plugin.TValue[bool]
+	ThrottleAuthenticatedGitHttpRequestsPerPeriod          plugin.TValue[int64]
+	ThrottleAuthenticatedGitHttpPeriodInSeconds            plugin.TValue[int64]
+	ThrottleAuthenticatedMcpEnabled                        plugin.TValue[bool]
+	ThrottleAuthenticatedMcpRequestsPerPeriod              plugin.TValue[int64]
+	ThrottleAuthenticatedMcpPeriodInSeconds                plugin.TValue[int64]
+	ThrottleProtectedPathsEnabled                          plugin.TValue[bool]
+	ThrottleProtectedPathsRequestsPerPeriod                plugin.TValue[int64]
+	ThrottleProtectedPathsPeriodInSeconds                  plugin.TValue[int64]
+	RawBlobRequestLimit                                    plugin.TValue[int64]
+	RawBlobRequestLimitUnauthenticated                     plugin.TValue[int64]
+	AuditEventsApiLimit                                    plugin.TValue[int64]
 	Variables                                              plugin.TValue[[]any]
 	SystemHooks                                            plugin.TValue[[]any]
 	Applications                                           plugin.TValue[[]any]
@@ -7837,6 +8053,114 @@ func (c *mqlGitlabSettings) GetEnforceCiInboundJobTokenScopeEnabled() *plugin.TV
 
 func (c *mqlGitlabSettings) GetPackageRegistryAllowAnyoneToPullOption() *plugin.TValue[bool] {
 	return &c.PackageRegistryAllowAnyoneToPullOption
+}
+
+func (c *mqlGitlabSettings) GetThrottleUnauthenticatedApiEnabled() *plugin.TValue[bool] {
+	return &c.ThrottleUnauthenticatedApiEnabled
+}
+
+func (c *mqlGitlabSettings) GetThrottleUnauthenticatedApiRequestsPerPeriod() *plugin.TValue[int64] {
+	return &c.ThrottleUnauthenticatedApiRequestsPerPeriod
+}
+
+func (c *mqlGitlabSettings) GetThrottleUnauthenticatedApiPeriodInSeconds() *plugin.TValue[int64] {
+	return &c.ThrottleUnauthenticatedApiPeriodInSeconds
+}
+
+func (c *mqlGitlabSettings) GetThrottleAuthenticatedApiEnabled() *plugin.TValue[bool] {
+	return &c.ThrottleAuthenticatedApiEnabled
+}
+
+func (c *mqlGitlabSettings) GetThrottleAuthenticatedApiRequestsPerPeriod() *plugin.TValue[int64] {
+	return &c.ThrottleAuthenticatedApiRequestsPerPeriod
+}
+
+func (c *mqlGitlabSettings) GetThrottleAuthenticatedApiPeriodInSeconds() *plugin.TValue[int64] {
+	return &c.ThrottleAuthenticatedApiPeriodInSeconds
+}
+
+func (c *mqlGitlabSettings) GetThrottleUnauthenticatedWebEnabled() *plugin.TValue[bool] {
+	return &c.ThrottleUnauthenticatedWebEnabled
+}
+
+func (c *mqlGitlabSettings) GetThrottleUnauthenticatedWebRequestsPerPeriod() *plugin.TValue[int64] {
+	return &c.ThrottleUnauthenticatedWebRequestsPerPeriod
+}
+
+func (c *mqlGitlabSettings) GetThrottleUnauthenticatedWebPeriodInSeconds() *plugin.TValue[int64] {
+	return &c.ThrottleUnauthenticatedWebPeriodInSeconds
+}
+
+func (c *mqlGitlabSettings) GetThrottleAuthenticatedWebEnabled() *plugin.TValue[bool] {
+	return &c.ThrottleAuthenticatedWebEnabled
+}
+
+func (c *mqlGitlabSettings) GetThrottleAuthenticatedWebRequestsPerPeriod() *plugin.TValue[int64] {
+	return &c.ThrottleAuthenticatedWebRequestsPerPeriod
+}
+
+func (c *mqlGitlabSettings) GetThrottleAuthenticatedWebPeriodInSeconds() *plugin.TValue[int64] {
+	return &c.ThrottleAuthenticatedWebPeriodInSeconds
+}
+
+func (c *mqlGitlabSettings) GetThrottleUnauthenticatedGitHttpEnabled() *plugin.TValue[bool] {
+	return &c.ThrottleUnauthenticatedGitHttpEnabled
+}
+
+func (c *mqlGitlabSettings) GetThrottleUnauthenticatedGitHttpRequestsPerPeriod() *plugin.TValue[int64] {
+	return &c.ThrottleUnauthenticatedGitHttpRequestsPerPeriod
+}
+
+func (c *mqlGitlabSettings) GetThrottleUnauthenticatedGitHttpPeriodInSeconds() *plugin.TValue[int64] {
+	return &c.ThrottleUnauthenticatedGitHttpPeriodInSeconds
+}
+
+func (c *mqlGitlabSettings) GetThrottleAuthenticatedGitHttpEnabled() *plugin.TValue[bool] {
+	return &c.ThrottleAuthenticatedGitHttpEnabled
+}
+
+func (c *mqlGitlabSettings) GetThrottleAuthenticatedGitHttpRequestsPerPeriod() *plugin.TValue[int64] {
+	return &c.ThrottleAuthenticatedGitHttpRequestsPerPeriod
+}
+
+func (c *mqlGitlabSettings) GetThrottleAuthenticatedGitHttpPeriodInSeconds() *plugin.TValue[int64] {
+	return &c.ThrottleAuthenticatedGitHttpPeriodInSeconds
+}
+
+func (c *mqlGitlabSettings) GetThrottleAuthenticatedMcpEnabled() *plugin.TValue[bool] {
+	return &c.ThrottleAuthenticatedMcpEnabled
+}
+
+func (c *mqlGitlabSettings) GetThrottleAuthenticatedMcpRequestsPerPeriod() *plugin.TValue[int64] {
+	return &c.ThrottleAuthenticatedMcpRequestsPerPeriod
+}
+
+func (c *mqlGitlabSettings) GetThrottleAuthenticatedMcpPeriodInSeconds() *plugin.TValue[int64] {
+	return &c.ThrottleAuthenticatedMcpPeriodInSeconds
+}
+
+func (c *mqlGitlabSettings) GetThrottleProtectedPathsEnabled() *plugin.TValue[bool] {
+	return &c.ThrottleProtectedPathsEnabled
+}
+
+func (c *mqlGitlabSettings) GetThrottleProtectedPathsRequestsPerPeriod() *plugin.TValue[int64] {
+	return &c.ThrottleProtectedPathsRequestsPerPeriod
+}
+
+func (c *mqlGitlabSettings) GetThrottleProtectedPathsPeriodInSeconds() *plugin.TValue[int64] {
+	return &c.ThrottleProtectedPathsPeriodInSeconds
+}
+
+func (c *mqlGitlabSettings) GetRawBlobRequestLimit() *plugin.TValue[int64] {
+	return &c.RawBlobRequestLimit
+}
+
+func (c *mqlGitlabSettings) GetRawBlobRequestLimitUnauthenticated() *plugin.TValue[int64] {
+	return &c.RawBlobRequestLimitUnauthenticated
+}
+
+func (c *mqlGitlabSettings) GetAuditEventsApiLimit() *plugin.TValue[int64] {
+	return &c.AuditEventsApiLimit
 }
 
 func (c *mqlGitlabSettings) GetVariables() *plugin.TValue[[]any] {

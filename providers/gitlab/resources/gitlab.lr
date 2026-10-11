@@ -235,6 +235,131 @@ gitlab.settings @defaults("requireTwoFactorAuthentication") {
   // True lets a project make its published packages readable by anyone who can
   // reach the instance. Null on instances that do not report the setting.
   packageRegistryAllowAnyoneToPullOption bool
+  // Whether a rate limit is enforced on unauthenticated API requests
+  //
+  // Null on instances that do not report the setting.
+  throttleUnauthenticatedApiEnabled bool
+  // Maximum unauthenticated API requests allowed per IP address within one rate-limit period
+  //
+  // Takes effect only while throttleUnauthenticatedApiEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleUnauthenticatedApiRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for unauthenticated API requests
+  //
+  // Takes effect only while throttleUnauthenticatedApiEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleUnauthenticatedApiPeriodInSeconds int
+  // Whether a rate limit is enforced on authenticated API requests
+  //
+  // Null on instances that do not report the setting.
+  throttleAuthenticatedApiEnabled bool
+  // Maximum authenticated API requests allowed per user within one rate-limit period
+  //
+  // Takes effect only while throttleAuthenticatedApiEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedApiRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for authenticated API requests
+  //
+  // Takes effect only while throttleAuthenticatedApiEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedApiPeriodInSeconds int
+  // Whether a rate limit is enforced on unauthenticated web requests
+  //
+  // Null on instances that do not report the setting.
+  throttleUnauthenticatedWebEnabled bool
+  // Maximum unauthenticated web requests allowed per IP address within one rate-limit period
+  //
+  // Takes effect only while throttleUnauthenticatedWebEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleUnauthenticatedWebRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for unauthenticated web requests
+  //
+  // Takes effect only while throttleUnauthenticatedWebEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleUnauthenticatedWebPeriodInSeconds int
+  // Whether a rate limit is enforced on authenticated web requests
+  //
+  // Null on instances that do not report the setting.
+  throttleAuthenticatedWebEnabled bool
+  // Maximum authenticated web requests allowed per user within one rate-limit period
+  //
+  // Takes effect only while throttleAuthenticatedWebEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedWebRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for authenticated web requests
+  //
+  // Takes effect only while throttleAuthenticatedWebEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedWebPeriodInSeconds int
+  // Whether a rate limit is enforced on unauthenticated Git over HTTP requests
+  //
+  // Null on instances that do not report the setting.
+  throttleUnauthenticatedGitHttpEnabled bool
+  // Maximum unauthenticated Git over HTTP requests allowed per IP address within one rate-limit period
+  //
+  // Takes effect only while throttleUnauthenticatedGitHttpEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleUnauthenticatedGitHttpRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for unauthenticated Git over HTTP requests
+  //
+  // Takes effect only while throttleUnauthenticatedGitHttpEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleUnauthenticatedGitHttpPeriodInSeconds int
+  // Whether a rate limit is enforced on authenticated Git over HTTP requests
+  //
+  // Null on instances that do not report the setting.
+  throttleAuthenticatedGitHttpEnabled bool
+  // Maximum authenticated Git over HTTP requests allowed per user within one rate-limit period
+  //
+  // Takes effect only while throttleAuthenticatedGitHttpEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedGitHttpRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for authenticated Git over HTTP requests
+  //
+  // Takes effect only while throttleAuthenticatedGitHttpEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedGitHttpPeriodInSeconds int
+  // Whether a rate limit is enforced on authenticated requests to the MCP server endpoint (/api/v4/mcp)
+  //
+  // Null on instances that do not report the setting.
+  throttleAuthenticatedMcpEnabled bool
+  // Maximum authenticated requests to the MCP server endpoint (/api/v4/mcp) allowed per user within one rate-limit period
+  //
+  // Takes effect only while throttleAuthenticatedMcpEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedMcpRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for authenticated requests to the MCP server endpoint (/api/v4/mcp)
+  //
+  // Takes effect only while throttleAuthenticatedMcpEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedMcpPeriodInSeconds int
+  // Whether a rate limit is enforced on requests to protected paths such as sign-in, sign-up, and password reset
+  //
+  // Null on instances that do not report the setting.
+  throttleProtectedPathsEnabled bool
+  // Maximum requests to protected paths such as sign-in, sign-up, and password reset allowed per IP address within one rate-limit period
+  //
+  // Takes effect only while throttleProtectedPathsEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleProtectedPathsRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for requests to protected paths such as sign-in, sign-up, and password reset
+  //
+  // Takes effect only while throttleProtectedPathsEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleProtectedPathsPeriodInSeconds int
+  // Requests per minute allowed to each raw file path
+  //
+  // Zero disables the limit. Null on instances that do not report the setting.
+  rawBlobRequestLimit int
+  // Unauthenticated requests per minute allowed across all raw file paths in a project
+  //
+  // Null on instances that do not report the setting.
+  rawBlobRequestLimitUnauthenticated int
+  // Requests per minute each user may make to the instance audit events API
+  //
+  // Null on instances that do not report the setting.
+  auditEventsApiLimit int
+
   // CI/CD variables defined at instance scope
   variables() []gitlab.settings.variable
   // System hooks registered on the instance
