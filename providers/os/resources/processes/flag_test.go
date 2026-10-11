@@ -254,3 +254,67 @@ func TestParseFlagsEqualsValueKeepsNextWord(t *testing.T) {
 		})
 	}
 }
+
+// argv from /proc/<pid>/cmdline keeps an argument with spaces as one word,
+// where the space-joined command splits it (captured on RHEL 9).
+func TestParseArgv(t *testing.T) {
+	argv := []string{"python3", "-c", "import time; time.sleep(100000)", "--cfg=/etc/x.conf", "operand1", "-v", "2", "--name", "two words", "--opt=a b"}
+	fs := FlagSet{}
+	require.NoError(t, fs.ParseArgv(argv))
+	assert.Equal(t, map[string]string{
+		"c":        "import time; time.sleep(100000)",
+		"cfg":      "/etc/x.conf",
+		"operand1": "",
+		"v":        "2",
+		"name":     "two words",
+		"opt":      "a b",
+	}, fs.Map())
+}
+
+// A flag that carries its value after "=" leaves the next word an operand
+// (#11490), from argv too: systemd 25x's PID 1 on RHEL 10.
+func TestParseArgv_EqualsValue(t *testing.T) {
+	fs := FlagSet{}
+	require.NoError(t, fs.ParseArgv([]string{"/usr/lib/systemd/systemd", "--switched-root", "--system", "--deserialize=30"}))
+	assert.Equal(t, map[string]string{"switched-root": "", "system": "", "deserialize": "30"}, fs.Map())
+}
+
+// A process that rewrote its title into one string (sshd, nginx, postgres)
+// has no argv boundaries left; its title is split like the command was.
+func TestParseArgv_RewrittenTitle(t *testing.T) {
+	fs := FlagSet{}
+	require.NoError(t, fs.ParseArgv([]string{"sshd: /usr/sbin/sshd -D [listener] 0 of 200-300 startups"}))
+	assert.Equal(t, "[listener]", fs.Map()["d"]) // names are lowercased
+}
+
+func TestParseArgv_Empty(t *testing.T) {
+	fs := FlagSet{}
+	require.NoError(t, fs.ParseArgv(nil))
+	assert.Empty(t, fs.Map())
+}
+
+// agetty's unit passes `-o '-p -- \u'`: the value of -o starts with "-" but
+// is no flag, and the "--" inside it does not end the options. argv captured
+// on Ubuntu 24.04 (serial-getty@ttyS0 and getty@tty1).
+func TestParseArgv_DashValueWithSpaces(t *testing.T) {
+	fs := FlagSet{}
+	require.NoError(t, fs.ParseArgv([]string{"/sbin/agetty", "-o", "-p -- \\u", "--keep-baud", "115200,57600,38400,9600", "-", "vt220"}))
+	assert.Equal(t, map[string]string{
+		"o":         "-p -- \\u",
+		"keep-baud": "115200,57600,38400,9600",
+		"-":         "",
+		"vt220":     "",
+	}, fs.Map())
+
+	fs = FlagSet{}
+	require.NoError(t, fs.ParseArgv([]string{"/sbin/agetty", "-o", "-p -- \\u", "--noclear", "-", "linux"}))
+	assert.Equal(t, map[string]string{"o": "-p -- \\u", "noclear": "", "-": "", "linux": ""}, fs.Map())
+}
+
+// A "-" word with spaces where no flag precedes it is an operand, not a flag
+// named "p -- \u".
+func TestParseArgv_SpacedOperand(t *testing.T) {
+	fs := FlagSet{}
+	require.NoError(t, fs.ParseArgv([]string{"prog", "--x=1", "-p -- \\u"}))
+	assert.Equal(t, map[string]string{"x": "1", "-p -- \\u": ""}, fs.Map())
+}
