@@ -25,6 +25,7 @@ type GetItem struct {
 	Attributes        uint32      `json:"Attributes"`
 	Mode              string      `json:"Mode"`
 	BaseName          string      `json:"BaseName"`
+	LinkType          string      `json:"LinkType"`
 	VersionInfo       VersionInfo `json:"VersionInfo"`
 }
 

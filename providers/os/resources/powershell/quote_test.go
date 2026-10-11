@@ -24,6 +24,12 @@ func TestSingleQuote(t *testing.T) {
 		{"quote is doubled", `key's name`, `'key''s name'`},
 		{"quote plus terminator", `x';whoami;'`, `'x'';whoami;'''`},
 		{"double quote needs no escape", `say "hi"`, `'say "hi"'`},
+		// pwsh 7.6 printed "C:\x" then "INJECTED" for the unescaped form
+		{"right single quotation mark is doubled", "C:\\x\u2019;whoami;\u2019", "'C:\\x\u2019\u2019;whoami;\u2019\u2019'"},
+		{"left single quotation mark is doubled", "a\u2018b", "'a\u2018\u2018b'"},
+		{"low-9 quotation mark is doubled", "a\u201ab", "'a\u201a\u201ab'"},
+		{"reversed-9 quotation mark is doubled", "a\u201bb", "'a\u201b\u201bb'"},
+		{"double quotation marks need no escape", "a\u201cb\u201d", "'a\u201cb\u201d'"},
 	}
 
 	for _, test := range tests {
