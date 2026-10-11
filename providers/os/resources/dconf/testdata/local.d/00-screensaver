@@ -1,0 +1,7 @@
+# CIS screen lock
+[org/gnome/desktop/session]
+idle-delay=uint32 900
+
+[org/gnome/desktop/screensaver]
+lock-delay = uint32 5
+lock-enabled=true
