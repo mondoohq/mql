@@ -120,12 +120,22 @@ func (s *mqlCryptoPolicy) configured() (string, error) {
 	return cfg.String(), nil
 }
 
+// name and subpolicies are null when configured is: the generated getter
+// passes configured's null as an empty string.
 func (s *mqlCryptoPolicy) name(configured string) (string, error) {
+	if configured == "" {
+		s.Name.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
 	cfg, err := cryptopolicies.ParseConfig(strings.NewReader(configured))
 	return cfg.Policy, err
 }
 
 func (s *mqlCryptoPolicy) subpolicies(configured string) ([]any, error) {
+	if configured == "" {
+		s.Subpolicies.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
 	cfg, err := cryptopolicies.ParseConfig(strings.NewReader(configured))
 	if err != nil {
 		return nil, err
