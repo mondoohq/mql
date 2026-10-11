@@ -1421,10 +1421,11 @@ private oci.compute.instance @defaults("name") {
   //
   // Deprecated in favor of launchConfig, which reports the same settings as a
   // structure. Emulation and I/O settings chosen at launch. Keys:
-  // `bootVolumeType` and `remoteDataVolumeType` (ISCSI, SCSI, IDE, VFIO, or
-  // PARAVIRTUALIZED), `firmware` (BIOS or UEFI_64), `networkType` (E1000,
-  // VFIO, PARAVIRTUALIZED, or ACCELERATEDPV),
-  // `isPvEncryptionInTransitEnabled`, and `isConsistentVolumeNamingEnabled`.
+  // `bootVolumeType` and `remoteDataVolumeType` (ISCSI, SCSI, IDE, VFIO,
+  // PARAVIRTUALIZED, or NVME), `firmware` (BIOS or UEFI_64), `networkType`
+  // (E1000, VFIO, PARAVIRTUALIZED, or ACCELERATEDPV),
+  // `isEncryptionInTransitEnabled`, `isPvEncryptionInTransitEnabled`, and
+  // `isConsistentVolumeNamingEnabled`.
   launchOptions @maturity("deprecated") @replaced_by("oci.compute.instance.launchConfig") dict
   // Emulation and I/O settings chosen at launch
   //
@@ -1603,7 +1604,7 @@ private oci.compute.platformSecurity @defaults("secureBootEnabled measuredBootEn
 private oci.compute.launchConfig @defaults("firmware networkType pvEncryptionInTransitEnabled") {
   // Emulation type for the boot volume
   //
-  // One of ISCSI, SCSI, IDE, VFIO, or PARAVIRTUALIZED.
+  // One of ISCSI, SCSI, IDE, VFIO, PARAVIRTUALIZED, or NVME.
   bootVolumeType string
   // Firmware the instance boots with
   //
@@ -1616,13 +1617,20 @@ private oci.compute.launchConfig @defaults("firmware networkType pvEncryptionInT
   networkType string
   // Emulation type for remote data volumes
   //
-  // One of ISCSI, SCSI, IDE, VFIO, or PARAVIRTUALIZED.
+  // One of ISCSI, SCSI, IDE, VFIO, PARAVIRTUALIZED, or NVME.
   remoteDataVolumeType string
   // Whether paravirtualized volume traffic is encrypted in transit
   //
   // When false the data moving between the instance and its paravirtualized
   // block volumes crosses the virtual network unencrypted.
   pvEncryptionInTransitEnabled bool
+  // Whether data volume traffic is encrypted in transit
+  //
+  // Covers NVMe-attached volumes as well as paravirtualized ones. When false
+  // the data moving between the instance and its attached data volumes
+  // crosses the virtual network unencrypted. Null when OCI does not report
+  // it; read pvEncryptionInTransitEnabled for paravirtualized volumes then.
+  encryptionInTransitEnabled bool
   // Whether consistent volume naming is enabled
   consistentVolumeNamingEnabled bool
 }
@@ -12855,7 +12863,7 @@ private oci.osManagementHub.managedInstance @defaults("name status osFamily") {
 // Oracle Cloud Infrastructure (OCI) volume attachment
 //
 // An attachment of a block volume to a Compute instance, keyed by its OCID,
-// with the attachment type (iscsi, paravirtualized, emulated), whether it is
+// with the attachment type (iscsi, paravirtualized, emulated, nvme), whether it is
 // read-only or shareable, in-transit encryption, and CHAP and multipath
 // settings. Use it to verify that every attached volume encrypts its data in
 // transit. The CHAP secret is never read.
@@ -12866,7 +12874,7 @@ private oci.compute.volumeAttachment @defaults("name attachmentType state") {
   name string
   // Compartment containing the attachment
   compartment() oci.compartment
-  // Attachment type: iscsi, paravirtualized, or emulated
+  // Attachment type: iscsi, paravirtualized, emulated, or nvme
   attachmentType string
   // Lifecycle state: ATTACHING, ATTACHED, DETACHING, or DETACHED
   state string
@@ -12880,6 +12888,11 @@ private oci.compute.volumeAttachment @defaults("name attachmentType state") {
   isShareable bool
   // Whether paravirtualized in-transit encryption is enabled between the instance and the volume
   isPvEncryptionInTransitEnabled bool
+  // Whether in-transit encryption is enabled between the instance and the volume
+  //
+  // Covers NVMe attachments as well as paravirtualized ones. Null when OCI
+  // does not report it; read isPvEncryptionInTransitEnabled then.
+  isEncryptionInTransitEnabled bool
   // In-transit encryption type of an iSCSI attachment: NONE or BM_ENCRYPTION_IN_TRANSIT; empty for other attachment types
   encryptionInTransitType string
   // Whether the iSCSI attachment authenticates with CHAP; false for other attachment types

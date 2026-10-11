@@ -313,6 +313,7 @@ func (o *mqlOciComputeInstance) launchConfig() (*mqlOciComputeLaunchConfig, erro
 		"networkType":                   llx.StringData(string(lo.NetworkType)),
 		"remoteDataVolumeType":          llx.StringData(string(lo.RemoteDataVolumeType)),
 		"pvEncryptionInTransitEnabled":  llx.BoolDataPtr(lo.IsPvEncryptionInTransitEnabled),
+		"encryptionInTransitEnabled":    llx.BoolDataPtr(lo.IsEncryptionInTransitEnabled),
 		"consistentVolumeNamingEnabled": llx.BoolDataPtr(lo.IsConsistentVolumeNamingEnabled),
 	})
 	if err != nil {

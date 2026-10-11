@@ -1072,6 +1072,7 @@ oci.compute.instances 9.0.0
 oci.compute.launchConfig 13.21.1
 oci.compute.launchConfig.bootVolumeType 13.21.1
 oci.compute.launchConfig.consistentVolumeNamingEnabled 13.21.1
+oci.compute.launchConfig.encryptionInTransitEnabled 14.2.4
 oci.compute.launchConfig.firmware 13.21.1
 oci.compute.launchConfig.networkType 13.21.1
 oci.compute.launchConfig.pvEncryptionInTransitEnabled 13.21.1
@@ -1112,6 +1113,7 @@ oci.compute.volumeAttachment.device 14.2.3
 oci.compute.volumeAttachment.encryptionInTransitType 14.2.3
 oci.compute.volumeAttachment.id 14.2.3
 oci.compute.volumeAttachment.instance 14.2.3
+oci.compute.volumeAttachment.isEncryptionInTransitEnabled 14.2.4
 oci.compute.volumeAttachment.isMultipath 14.2.3
 oci.compute.volumeAttachment.isPvEncryptionInTransitEnabled 14.2.3
 oci.compute.volumeAttachment.isReadOnly 14.2.3
