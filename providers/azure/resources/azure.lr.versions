@@ -5448,6 +5448,7 @@ azure.subscription.networkService.trafficManagerProfile.monitorSettings.timeoutI
 azure.subscription.networkService.trafficManagerProfile.monitorSettings.toleratedNumberOfFailures 13.36.1
 azure.subscription.networkService.trafficManagerProfile.name 13.12.2
 azure.subscription.networkService.trafficManagerProfile.properties 13.12.2
+azure.subscription.networkService.trafficManagerProfile.recordType 14.3.7
 azure.subscription.networkService.trafficManagerProfile.status 13.25.1
 azure.subscription.networkService.trafficManagerProfile.tags 13.12.2
 azure.subscription.networkService.trafficManagerProfile.trafficRoutingMethod 13.12.2
