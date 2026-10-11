@@ -192,3 +192,26 @@ func BenchmarkNewPackage2Cpe(b *testing.B) {
 		_, _ = NewPackage2Cpe("red hat, inc.", "libfoo-dev", "2:1.2.3-2.el9", "", "x86_64")
 	}
 }
+
+// An rpm built with `Vendor: Vendör GmbH` (the g03-uni test package): WFNize
+// keeps printable ASCII only, so the umlaut was dropped and the vendor read
+// `vendr_gmbh`. CPE dictionaries spell such names transliterated.
+func TestNewPackage2CpeTransliteratesNonASCII(t *testing.T) {
+	cpes, err := NewPackage2Cpe("Vendör GmbH", "g03-uni", "1.0", "1", "x86_64")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"cpe:2.3:a:vendor_gmbh:g03-uni:1.0:1:*:*:*:*:x86_64:*"}, cpes)
+
+	cpes, err = NewPackage2Cpe("Straße Søftware Łódź", "naïve-café", "1.0", "", "")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"cpe:2.3:a:strasse_software_lodz:naive-cafe:1.0:*:*:*:*:*:*:*"}, cpes)
+
+	// a vendor with no ASCII spelling at all is unknown, not `_`, and a dropped
+	// word does not leave a stray `_` behind
+	cpes, err = NewPackage2Cpe("日本語 株式会社", "g03-cjk", "1.0", "", "")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"cpe:2.3:a:*:g03-cjk:1.0:*:*:*:*:*:*:*"}, cpes)
+
+	cpes, err = NewPackage2Cpe("株式会社 Example", "g03-cjk", "1.0", "", "")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"cpe:2.3:a:example:g03-cjk:1.0:*:*:*:*:*:*:*"}, cpes)
+}
