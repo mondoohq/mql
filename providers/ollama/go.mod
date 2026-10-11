@@ -5,7 +5,7 @@ replace go.mondoo.com/mql => ../..
 go 1.26.8
 
 require (
-	github.com/ollama/ollama v0.35.1
+	github.com/ollama/ollama v0.40.2
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
 	go.mondoo.com/mql v0.0.0-20261006032124-4a88d2f13ca7

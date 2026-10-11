@@ -5,14 +5,14 @@ replace go.mondoo.com/mql => ../..
 go 1.26.8
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.2
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.3
 	github.com/cockroachdb/errors v1.14.0
 	github.com/google/uuid v1.6.0
 	github.com/microsoft/kiota-abstractions-go v1.11.1
 	github.com/microsoft/kiota-authentication-azure-go v1.3.1
 	github.com/microsoft/kiota-serialization-json-go v1.1.4
 	github.com/microsoftgraph/msgraph-beta-sdk-go v0.166.0
-	github.com/microsoftgraph/msgraph-sdk-go v1.103.0
+	github.com/microsoftgraph/msgraph-sdk-go v1.104.0
 	github.com/microsoftgraph/msgraph-sdk-go-core v1.4.1
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1

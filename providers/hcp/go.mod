@@ -7,7 +7,7 @@ go 1.26.8
 require (
 	github.com/go-openapi/runtime v0.33.3
 	github.com/go-openapi/strfmt v0.27.3
-	github.com/hashicorp/hcp-sdk-go v0.175.0
+	github.com/hashicorp/hcp-sdk-go v0.176.0
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
 	go.mondoo.com/mql v0.0.0-20261006032124-4a88d2f13ca7

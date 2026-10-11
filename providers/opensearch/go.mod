@@ -5,7 +5,7 @@ replace go.mondoo.com/mql => ../..
 go 1.26.8
 
 require (
-	github.com/opensearch-project/opensearch-go/v5 v5.0.0
+	github.com/opensearch-project/opensearch-go/v5 v5.0.1
 	go.mondoo.com/mql v0.0.0-20261006032124-4a88d2f13ca7
 	go.mondoo.com/ranger-rpc v0.8.1
 )
