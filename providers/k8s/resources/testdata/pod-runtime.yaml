@@ -47,6 +47,42 @@ status:
     ready: true
     restartCount: 0
 ---
+# All pod status groups are exposed separately and retain absent optional values.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: status-groups-pod
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: nginx:1.25
+  initContainers:
+  - name: init
+    image: busybox:1.36
+  ephemeralContainers:
+  - name: debugger
+    image: busybox:1.36
+status:
+  containerStatuses:
+  - name: app
+    image: nginx:1.25
+    imageID: docker-pullable://nginx@sha256:1111111111111111111111111111111111111111111111111111111111111111
+    ready: true
+    restartCount: 0
+  initContainerStatuses:
+  - name: init
+    image: busybox:1.36
+    imageID: docker-pullable://busybox@sha256:2222222222222222222222222222222222222222222222222222222222222222
+    ready: true
+    restartCount: 0
+  ephemeralContainerStatuses:
+  - name: debugger
+    image: busybox:1.36
+    imageID: docker-pullable://busybox@sha256:3333333333333333333333333333333333333333333333333333333333333333
+    ready: true
+    restartCount: 0
+---
 # No status (e.g. a not-yet-scheduled pod): no running digests, no drift.
 apiVersion: v1
 kind: Pod
