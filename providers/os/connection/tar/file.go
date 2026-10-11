@@ -8,14 +8,16 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 )
 
 type File struct {
-	path   string
+	path string
+	// key is the archive path the file resolved to, with every link in the
+	// path followed. A directory reached through a symlink lists the children
+	// of key, not of path: the archive holds no entries under the link name.
+	key    string
 	header *tar.Header
 	Fs     *FS
 	reader io.Reader
@@ -41,7 +43,14 @@ func (f *File) Truncate(size int64) error {
 	return errors.New("not implemented")
 }
 
+// errIsDirectory is what reading a directory returns, as EISDIR does on a
+// live system.
+var errIsDirectory = errors.New("is a directory")
+
 func (f *File) Read(b []byte) (n int, err error) {
+	if f.header != nil && f.header.Typeflag == tar.TypeDir {
+		return 0, &os.PathError{Op: "read", Path: f.path, Err: errIsDirectory}
+	}
 	if f.reader == nil {
 		return 0, errors.New("no tar data available")
 	}
@@ -62,52 +71,69 @@ func (f *File) ReadAt(b []byte, off int64) (n int, err error) {
 	return ra.ReadAt(b, off)
 }
 
-func (f *File) Readdir(n int) ([]os.FileInfo, error) {
-	fi := []os.FileInfo{}
-	// search all child items
-	for k := range f.Fs.FileMap {
-		entry := f.Fs.FileMap[k].Name
-		if strings.HasPrefix(Abs(entry), f.path) {
-			fi = append(fi, f.Fs.FileMap[k].FileInfo())
+// children returns the direct children of the directory, by name, with the
+// archive entry for each. A child the archive has no entry for, a directory
+// that is only implied by the paths below it, maps to nil.
+func (f *File) children() map[string]*tar.Header {
+	dir := f.key
+	if dir == "" {
+		dir = Abs(f.path)
+	}
+	prefix := dir
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	res := map[string]*tar.Header{}
+	for k, h := range f.Fs.FileMap {
+		if !strings.HasPrefix(k, prefix) {
+			continue
 		}
+		rel := k[len(prefix):]
+		if rel == "" {
+			continue
+		}
+		if i := strings.IndexByte(rel, '/'); i >= 0 {
+			if _, ok := res[rel[:i]]; !ok {
+				res[rel[:i]] = nil
+			}
+			continue
+		}
+		res[rel] = h
+	}
+	return res
+}
+
+// Readdir returns the direct children of the directory, as lstat reports
+// them: a symlink child is reported as the link.
+func (f *File) Readdir(n int) ([]os.FileInfo, error) {
+	children := f.children()
+	names := make([]string, 0, len(children))
+	for name := range children {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	fi := make([]os.FileInfo, 0, len(names))
+	for _, name := range names {
+		h := children[name]
+		if h == nil {
+			h = &tar.Header{Name: name, Typeflag: tar.TypeDir, Mode: 0o755}
+		}
+		fi = append(fi, h.FileInfo())
 	}
 	return fi, nil
 }
 
-// Readdirnames returns the direct directories
+// Readdirnames returns the names of the direct children of the directory.
 func (f *File) Readdirnames(n int) ([]string, error) {
-	fi := []string{}
-	// search all child items
-	for k := range f.Fs.FileMap {
-		entry := f.Fs.FileMap[k].Name
-
-		if strings.HasPrefix(Abs(entry), f.path) {
-			// extract file name
-			rel, err := filepath.Rel(f.path, Abs(entry))
-			if err != nil {
-				return nil, err
-			}
-
-			// skip own path
-			if rel == "." {
-				continue
-			}
-
-			// we only look into the direct dependencies
-			entries := strings.Split(rel, string("/"))
-			if len(entries) > 1 {
-				rel = entries[0]
-			}
-
-			// log.Debug().Str("entry", Abs(entry)).Str("path", f.path).Str("rel", rel).Msg("rel")
-			fi = append(fi, rel)
-		}
+	children := f.children()
+	names := make([]string, 0, len(children))
+	for name := range children {
+		names = append(names, name)
 	}
-
-	// since we iterate over nested paths, we need to compact the list
-	sort.Strings(fi)
-	fi = slices.Compact(fi)
-	return fi, nil
+	sort.Strings(names)
+	return names, nil
 }
 
 func (f *File) Seek(offset int64, whence int) (int64, error) {

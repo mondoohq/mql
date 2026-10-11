@@ -124,3 +124,33 @@ func TestFetchFailureIsAnError(t *testing.T) {
 	assert.ErrorContains(t, c.Fetch(), "value is empty")
 	assert.ErrorContains(t, c.Fetch(), "value is empty", "the error stays")
 }
+
+// FileInfo reports links the way the local connection does: a link to a file
+// is a symlink with its target's size, a dangling link exists as a link, and a
+// link loop is an error rather than a missing file.
+func TestTarFileInfoSymlinkSemantics(t *testing.T) {
+	c := usrMergedImage(t)
+
+	fi, err := c.FileInfo("/etc/c3-links/tofile")
+	require.NoError(t, err)
+	assert.NotZero(t, fi.Mode.FileMode&os.ModeSymlink, "isSymlink")
+	assert.Equal(t, int64(6), fi.Size, "the target's size")
+
+	fi, err = c.FileInfo("/bin")
+	require.NoError(t, err)
+	assert.NotZero(t, fi.Mode.FileMode&os.ModeSymlink, "/bin is a symlink")
+	assert.True(t, fi.Mode.FileMode&os.ModeDir != 0, "to a directory")
+
+	fi, err = c.FileInfo("/etc/c3-links/broken")
+	require.NoError(t, err, "a dangling link exists, as on a live system")
+	assert.NotZero(t, fi.Mode.FileMode&os.ModeSymlink)
+
+	_, err = c.FileInfo("/etc/c3-links/loop1")
+	require.Error(t, err)
+	assert.False(t, os.IsNotExist(err), "a loop is an error, not a missing file: %v", err)
+
+	fi, err = c.FileInfo("/usr/bin/dash")
+	require.NoError(t, err)
+	assert.Zero(t, fi.Mode.FileMode&os.ModeSymlink)
+	assert.Equal(t, int64(11), fi.Size)
+}
