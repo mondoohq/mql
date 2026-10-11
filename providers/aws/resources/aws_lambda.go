@@ -1253,7 +1253,8 @@ func (a *mqlAwsLambda) getEventSourceMappings(conn *connection.AwsConnection) []
 // createEventSourceMappingResource creates an aws.lambda.eventSourceMapping resource from SDK data.
 // Shared between top-level listing and per-function listing to ensure cache reuse via UUID-based __id.
 func createEventSourceMappingResource(runtime *plugin.Runtime, esm lambdatypes.EventSourceMappingConfiguration, region string) (*mqlAwsLambdaEventSourceMapping, error) {
-	args, err := eventSourceMappingArgs(esm, region)
+	access := parseSourceAccessConfigurations(esm.SourceAccessConfigurations)
+	args, err := eventSourceMappingArgs(esm, region, access)
 	if err != nil {
 		return nil, err
 	}
@@ -1265,7 +1266,6 @@ func createEventSourceMappingResource(runtime *plugin.Runtime, esm lambdatypes.E
 	mqlEsm := res.(*mqlAwsLambdaEventSourceMapping)
 	mqlEsm.cacheFunctionArn = convert.ToValue(esm.FunctionArn)
 	mqlEsm.cacheArn = convert.ToValue(esm.EventSourceMappingArn)
-	access := parseSourceAccessConfigurations(esm.SourceAccessConfigurations)
 	mqlEsm.cacheSecretArns = access.secretArns
 	mqlEsm.cacheSubnetIds = access.subnetIds
 	mqlEsm.cacheSecurityGroupIds = access.securityGroupIds
@@ -1357,7 +1357,7 @@ func kafkaConsumerGroupId(esm lambdatypes.EventSourceMappingConfiguration) *stri
 // (2-1000), so reporting it would name a value that cannot exist. The -1
 // fallbacks on maximumRetryAttempts and maximumRecordAgeInSeconds are the
 // documented "retry forever" and "no maximum age" sentinels, not stand-ins.
-func eventSourceMappingArgs(esm lambdatypes.EventSourceMappingConfiguration, region string) (map[string]*llx.RawData, error) {
+func eventSourceMappingArgs(esm lambdatypes.EventSourceMappingConfiguration, region string, access esmSourceAccess) (map[string]*llx.RawData, error) {
 	var onFailureDestinationArn *string
 	if esm.DestinationConfig != nil && esm.DestinationConfig.OnFailure != nil {
 		onFailureDestinationArn = esm.DestinationConfig.OnFailure.Destination
@@ -1402,7 +1402,7 @@ func eventSourceMappingArgs(esm lambdatypes.EventSourceMappingConfiguration, reg
 		"onFailureDestinationArn":          llx.StringDataPtr(onFailureDestinationArn),
 		"filterCriteria":                   llx.DictData(filterCriteria),
 		"maximumConcurrency":               llx.IntDataPtr(maximumConcurrency),
-		"sourceAccessTypes":                llx.ArrayData(parseSourceAccessConfigurations(esm.SourceAccessConfigurations).types, types.String),
+		"sourceAccessTypes":                llx.ArrayData(access.types, types.String),
 		"selfManagedKafkaBootstrapServers": selfManagedKafkaBootstrapServers(esm.SelfManagedEventSource),
 		"kafkaConsumerGroupId":             llx.StringDataPtr(kafkaConsumerGroupId(esm)),
 	}, nil

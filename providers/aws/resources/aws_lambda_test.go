@@ -364,7 +364,7 @@ func TestEventSourceMappingArgsAbsentSettings(t *testing.T) {
 		BatchSize:             aws.Int32(10),
 	}
 
-	args, err := eventSourceMappingArgs(esm, "us-east-1")
+	args, err := eventSourceMappingArgs(esm, "us-east-1", parseSourceAccessConfigurations(esm.SourceAccessConfigurations))
 	require.NoError(t, err)
 
 	assert.True(t, rawDataIsNull(t, args, "parallelizationFactor"))
@@ -399,7 +399,7 @@ func TestEventSourceMappingArgsReportedSettings(t *testing.T) {
 		},
 	}
 
-	args, err := eventSourceMappingArgs(esm, "us-east-1")
+	args, err := eventSourceMappingArgs(esm, "us-east-1", parseSourceAccessConfigurations(esm.SourceAccessConfigurations))
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(4), args["parallelizationFactor"].Value)
@@ -418,7 +418,7 @@ func TestEventSourceMappingArgsZeroTumblingWindow(t *testing.T) {
 		TumblingWindowInSeconds: aws.Int32(0),
 	}
 
-	args, err := eventSourceMappingArgs(esm, "us-east-1")
+	args, err := eventSourceMappingArgs(esm, "us-east-1", parseSourceAccessConfigurations(esm.SourceAccessConfigurations))
 	require.NoError(t, err)
 
 	assert.False(t, rawDataIsNull(t, args, "tumblingWindowInSeconds"))
@@ -531,7 +531,7 @@ func TestEventSourceMappingArgsKafka(t *testing.T) {
 				{Type: lambdatypes.SourceAccessTypeBasicAuth, URI: aws.String("arn:aws:secretsmanager:us-east-1:123456789012:secret:k")},
 			},
 		}
-		args, err := eventSourceMappingArgs(esm, "us-east-1")
+		args, err := eventSourceMappingArgs(esm, "us-east-1", parseSourceAccessConfigurations(esm.SourceAccessConfigurations))
 		require.NoError(t, err)
 		assert.Equal(t, []any{"b-1.example.com:9092", "b-2.example.com:9092"},
 			args["selfManagedKafkaBootstrapServers"].Value)
@@ -547,7 +547,7 @@ func TestEventSourceMappingArgsKafka(t *testing.T) {
 				ConsumerGroupId: aws.String("msk-consumer"),
 			},
 		}
-		args, err := eventSourceMappingArgs(esm, "us-east-1")
+		args, err := eventSourceMappingArgs(esm, "us-east-1", parseSourceAccessConfigurations(esm.SourceAccessConfigurations))
 		require.NoError(t, err)
 		assert.True(t, rawDataIsNull(t, args, "selfManagedKafkaBootstrapServers"))
 		assert.Equal(t, "msk-consumer", args["kafkaConsumerGroupId"].Value)
@@ -558,7 +558,7 @@ func TestEventSourceMappingArgsKafka(t *testing.T) {
 			UUID:           aws.String("11111111-2222-3333-4444-555555555555"),
 			EventSourceArn: aws.String("arn:aws:sqs:us-east-1:123456789012:my-queue"),
 		}
-		args, err := eventSourceMappingArgs(esm, "us-east-1")
+		args, err := eventSourceMappingArgs(esm, "us-east-1", parseSourceAccessConfigurations(esm.SourceAccessConfigurations))
 		require.NoError(t, err)
 		assert.True(t, rawDataIsNull(t, args, "selfManagedKafkaBootstrapServers"))
 		assert.True(t, rawDataIsNull(t, args, "kafkaConsumerGroupId"))
