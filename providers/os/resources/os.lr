@@ -11439,6 +11439,106 @@ logindefs {
   params(content) map[string]string
 }
 
+// Password quality requirements of libpwquality (pwquality.conf)
+//
+// The requirements pam_pwquality checks a new password against, read as
+// libpwquality reads them: the `*.conf` drop-ins of
+// /etc/security/pwquality.conf.d in file name order, then
+// /etc/security/pwquality.conf, so the main file overrides the drop-ins. When
+// /etc/security/pwquality.conf does not exist, /usr/lib/security/pwquality.conf
+// is read in its place, and drop-ins in /usr/lib/security/pwquality.conf.d
+// apply unless /etc has one of the same name. libpwquality before 1.3 (RHEL 7,
+// Amazon Linux 2, SLES 12) reads no drop-ins and has other defaults (difok 5,
+// minlen 9, and a credit of 1 for each class). A line libpwquality rejects, such
+// as an unknown setting, ends the reading there, as in the library. The
+// arguments of a pam_pwquality line override these settings for its PAM
+// service: `pwquality.pam` lists every such line with the settings it applies.
+pwquality {
+  // Configuration files, in the order libpwquality reads them
+  //
+  // The files that exist, drop-ins first and the main file last. The last
+  // assignment of a setting wins.
+  files() []file
+  // Settings from the configuration files, with libpwquality's defaults for the rest
+  settings(files) pwquality.settings
+  // pam_pwquality lines in the PAM configuration, with the settings each applies
+  //
+  // Every `password` line that loads pam_pwquality, in each PAM service file
+  // (`pam.conf.entries`). A line's settings are those of the configuration
+  // files, or of the file its `conf=` argument names, with its arguments
+  // applied on top, as pam_pwquality does. Empty when no service uses
+  // pam_pwquality.
+  pam() []pwquality.pamModule
+}
+
+// Password quality settings of libpwquality
+//
+// The value libpwquality uses for each setting: the one set, raised or capped
+// as the library does (minlen is at least 6, minclass at most 4), or the
+// default of the installed libpwquality. The defaults below are those of 1.3
+// and later.
+private pwquality.settings {
+  // Settings as written, by lower-case name; a flag such as enforce_for_root has an empty value
+  params map[string]string
+  // Number of characters of the old password that must not be in the new one (`difok`, default 1)
+  difok int
+  // Minimum acceptable size of a new password (`minlen`, default 8, at least 6)
+  //
+  // Credits for character classes count towards the size unless they are
+  // negative or 0.
+  minlen int
+  // Credit for digits, or the minimum number of digits when negative (`dcredit`, default 0)
+  dcredit int
+  // Credit for uppercase letters, or their minimum number when negative (`ucredit`, default 0)
+  ucredit int
+  // Credit for lowercase letters, or their minimum number when negative (`lcredit`, default 0)
+  lcredit int
+  // Credit for other characters, or their minimum number when negative (`ocredit`, default 0)
+  ocredit int
+  // Minimum number of character classes the new password must have (`minclass`, default 0, at most 4)
+  minclass int
+  // Maximum number of consecutive identical characters, 0 to allow any (`maxrepeat`, default 0)
+  maxrepeat int
+  // Maximum number of consecutive characters of the same class, 0 to allow any (`maxclassrepeat`, default 0)
+  maxclassrepeat int
+  // Maximum length of monotonic character sequences such as 12345, 0 to allow any (`maxsequence`, default 0)
+  maxsequence int
+  // Whether words of the user's GECOS field are rejected (`gecoscheck`, default off)
+  gecoscheck bool
+  // Whether words of the cracklib dictionary are rejected (`dictcheck`, default on)
+  dictcheck bool
+  // Whether the user name, straight or reversed, is rejected (`usercheck`, default on)
+  usercheck bool
+  // Length of user name substrings to reject, 0 to check the whole name only (`usersubstr`, default 0)
+  usersubstr int
+  // Whether a password that fails the checks is rejected rather than only warned about (`enforcing`, default on)
+  enforcing bool
+  // Number of times the user is prompted for a password (`retry`, default 1)
+  retry int
+  // Whether the checks also apply when root changes a password (`enforce_for_root`)
+  enforceForRoot bool
+  // Whether users not in /etc/passwd skip the checks (`local_users_only`)
+  localUsersOnly bool
+  // Words rejected in a password (`badwords`)
+  badwords []string
+  // Path of the cracklib dictionaries, empty for cracklib's default (`dictpath`)
+  dictpath string
+}
+
+// A pam_pwquality line of a PAM service
+private pwquality.pamModule @defaults("service") {
+  // PAM service file of the line, such as /etc/pam.d/system-auth
+  service string
+  // Line number in the file, counted from 0 as in pam.conf.serviceEntry
+  lineNumber int
+  // Control field of the line, such as requisite
+  control string
+  // Module arguments, such as retry=3 or minlen=14
+  arguments []string
+  // Settings the line applies: the configuration files with its arguments on top
+  settings pwquality.settings
+}
+
 // PAM resource limits configuration (limits.conf)
 //
 // Soft and hard caps on processes, open files, memory, and other per-user

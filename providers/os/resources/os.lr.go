@@ -336,6 +336,9 @@ const (
 	ResourceRsyslogRuleset                                string = "rsyslog.ruleset"
 	ResourceRsyslogRule                                   string = "rsyslog.rule"
 	ResourceLogindefs                                     string = "logindefs"
+	ResourcePwquality                                     string = "pwquality"
+	ResourcePwqualitySettings                             string = "pwquality.settings"
+	ResourcePwqualityPamModule                            string = "pwquality.pamModule"
 	ResourceLimits                                        string = "limits"
 	ResourceLimitsEntry                                   string = "limits.entry"
 	ResourceSudo                                          string = "sudo"
@@ -2021,6 +2024,18 @@ func init() {
 		"logindefs": {
 			Init:   initLogindefs,
 			Create: createLogindefs,
+		},
+		"pwquality": {
+			// to override args, implement: initPwquality(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPwquality,
+		},
+		"pwquality.settings": {
+			Init:   initPwqualitySettings,
+			Create: createPwqualitySettings,
+		},
+		"pwquality.pamModule": {
+			// to override args, implement: initPwqualityPamModule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPwqualityPamModule,
 		},
 		"limits": {
 			Init:   initLimits,
@@ -12110,6 +12125,93 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"logindefs.params": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlLogindefs).GetParams()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"pwquality.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwquality).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"pwquality.settings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwquality).GetSettings()).ToDataRes(types.Resource("pwquality.settings"))
+	},
+	"pwquality.pam": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwquality).GetPam()).ToDataRes(types.Array(types.Resource("pwquality.pamModule")))
+	},
+	"pwquality.settings.params": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetParams()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"pwquality.settings.difok": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetDifok()).ToDataRes(types.Int)
+	},
+	"pwquality.settings.minlen": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetMinlen()).ToDataRes(types.Int)
+	},
+	"pwquality.settings.dcredit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetDcredit()).ToDataRes(types.Int)
+	},
+	"pwquality.settings.ucredit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetUcredit()).ToDataRes(types.Int)
+	},
+	"pwquality.settings.lcredit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetLcredit()).ToDataRes(types.Int)
+	},
+	"pwquality.settings.ocredit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetOcredit()).ToDataRes(types.Int)
+	},
+	"pwquality.settings.minclass": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetMinclass()).ToDataRes(types.Int)
+	},
+	"pwquality.settings.maxrepeat": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetMaxrepeat()).ToDataRes(types.Int)
+	},
+	"pwquality.settings.maxclassrepeat": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetMaxclassrepeat()).ToDataRes(types.Int)
+	},
+	"pwquality.settings.maxsequence": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetMaxsequence()).ToDataRes(types.Int)
+	},
+	"pwquality.settings.gecoscheck": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetGecoscheck()).ToDataRes(types.Bool)
+	},
+	"pwquality.settings.dictcheck": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetDictcheck()).ToDataRes(types.Bool)
+	},
+	"pwquality.settings.usercheck": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetUsercheck()).ToDataRes(types.Bool)
+	},
+	"pwquality.settings.usersubstr": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetUsersubstr()).ToDataRes(types.Int)
+	},
+	"pwquality.settings.enforcing": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetEnforcing()).ToDataRes(types.Bool)
+	},
+	"pwquality.settings.retry": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetRetry()).ToDataRes(types.Int)
+	},
+	"pwquality.settings.enforceForRoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetEnforceForRoot()).ToDataRes(types.Bool)
+	},
+	"pwquality.settings.localUsersOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetLocalUsersOnly()).ToDataRes(types.Bool)
+	},
+	"pwquality.settings.badwords": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetBadwords()).ToDataRes(types.Array(types.String))
+	},
+	"pwquality.settings.dictpath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualitySettings).GetDictpath()).ToDataRes(types.String)
+	},
+	"pwquality.pamModule.service": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualityPamModule).GetService()).ToDataRes(types.String)
+	},
+	"pwquality.pamModule.lineNumber": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualityPamModule).GetLineNumber()).ToDataRes(types.Int)
+	},
+	"pwquality.pamModule.control": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualityPamModule).GetControl()).ToDataRes(types.String)
+	},
+	"pwquality.pamModule.arguments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualityPamModule).GetArguments()).ToDataRes(types.Array(types.String))
+	},
+	"pwquality.pamModule.settings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPwqualityPamModule).GetSettings()).ToDataRes(types.Resource("pwquality.settings"))
 	},
 	"limits.files": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlLimits).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
@@ -33253,6 +33355,134 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"logindefs.params": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlLogindefs).Params, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"pwquality.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwquality).__id, ok = v.Value.(string)
+		return
+	},
+	"pwquality.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwquality).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwquality).Settings, ok = plugin.RawToTValue[*mqlPwqualitySettings](v.Value, v.Error)
+		return
+	},
+	"pwquality.pam": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwquality).Pam, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).__id, ok = v.Value.(string)
+		return
+	},
+	"pwquality.settings.params": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Params, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.difok": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Difok, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.minlen": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Minlen, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.dcredit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Dcredit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.ucredit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Ucredit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.lcredit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Lcredit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.ocredit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Ocredit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.minclass": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Minclass, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.maxrepeat": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Maxrepeat, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.maxclassrepeat": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Maxclassrepeat, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.maxsequence": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Maxsequence, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.gecoscheck": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Gecoscheck, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.dictcheck": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Dictcheck, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.usercheck": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Usercheck, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.usersubstr": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Usersubstr, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.enforcing": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Enforcing, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.retry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Retry, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.enforceForRoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).EnforceForRoot, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.localUsersOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).LocalUsersOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.badwords": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Badwords, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"pwquality.settings.dictpath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualitySettings).Dictpath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pwquality.pamModule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualityPamModule).__id, ok = v.Value.(string)
+		return
+	},
+	"pwquality.pamModule.service": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualityPamModule).Service, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pwquality.pamModule.lineNumber": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualityPamModule).LineNumber, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pwquality.pamModule.control": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualityPamModule).Control, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pwquality.pamModule.arguments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualityPamModule).Arguments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"pwquality.pamModule.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPwqualityPamModule).Settings, ok = plugin.RawToTValue[*mqlPwqualitySettings](v.Value, v.Error)
 		return
 	},
 	"limits.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -81654,6 +81884,314 @@ func (c *mqlLogindefs) GetParams() *plugin.TValue[map[string]any] {
 
 		return c.params(vargContent.Data)
 	})
+}
+
+// mqlPwquality for the pwquality resource
+type mqlPwquality struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlPwqualityInternal
+	Files    plugin.TValue[[]any]
+	Settings plugin.TValue[*mqlPwqualitySettings]
+	Pam      plugin.TValue[[]any]
+}
+
+// createPwquality creates a new instance of this resource
+func createPwquality(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPwquality{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("pwquality", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPwquality) MqlName() string {
+	return "pwquality"
+}
+
+func (c *mqlPwquality) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPwquality) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("pwquality", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.files()
+	})
+}
+
+func (c *mqlPwquality) GetSettings() *plugin.TValue[*mqlPwqualitySettings] {
+	return plugin.GetOrCompute[*mqlPwqualitySettings](&c.Settings, func() (*mqlPwqualitySettings, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("pwquality", c.__id, "settings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPwqualitySettings), nil
+			}
+		}
+
+		vargFiles := c.GetFiles()
+		if vargFiles.Error != nil {
+			return nil, vargFiles.Error
+		}
+
+		return c.settings(vargFiles.Data)
+	})
+}
+
+func (c *mqlPwquality) GetPam() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Pam, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("pwquality", c.__id, "pam")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.pam()
+	})
+}
+
+// mqlPwqualitySettings for the pwquality.settings resource
+type mqlPwqualitySettings struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlPwqualitySettingsInternal it will be used here
+	Params         plugin.TValue[map[string]any]
+	Difok          plugin.TValue[int64]
+	Minlen         plugin.TValue[int64]
+	Dcredit        plugin.TValue[int64]
+	Ucredit        plugin.TValue[int64]
+	Lcredit        plugin.TValue[int64]
+	Ocredit        plugin.TValue[int64]
+	Minclass       plugin.TValue[int64]
+	Maxrepeat      plugin.TValue[int64]
+	Maxclassrepeat plugin.TValue[int64]
+	Maxsequence    plugin.TValue[int64]
+	Gecoscheck     plugin.TValue[bool]
+	Dictcheck      plugin.TValue[bool]
+	Usercheck      plugin.TValue[bool]
+	Usersubstr     plugin.TValue[int64]
+	Enforcing      plugin.TValue[bool]
+	Retry          plugin.TValue[int64]
+	EnforceForRoot plugin.TValue[bool]
+	LocalUsersOnly plugin.TValue[bool]
+	Badwords       plugin.TValue[[]any]
+	Dictpath       plugin.TValue[string]
+}
+
+// createPwqualitySettings creates a new instance of this resource
+func createPwqualitySettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPwqualitySettings{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("pwquality.settings", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPwqualitySettings) MqlName() string {
+	return "pwquality.settings"
+}
+
+func (c *mqlPwqualitySettings) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPwqualitySettings) GetParams() *plugin.TValue[map[string]any] {
+	return &c.Params
+}
+
+func (c *mqlPwqualitySettings) GetDifok() *plugin.TValue[int64] {
+	return &c.Difok
+}
+
+func (c *mqlPwqualitySettings) GetMinlen() *plugin.TValue[int64] {
+	return &c.Minlen
+}
+
+func (c *mqlPwqualitySettings) GetDcredit() *plugin.TValue[int64] {
+	return &c.Dcredit
+}
+
+func (c *mqlPwqualitySettings) GetUcredit() *plugin.TValue[int64] {
+	return &c.Ucredit
+}
+
+func (c *mqlPwqualitySettings) GetLcredit() *plugin.TValue[int64] {
+	return &c.Lcredit
+}
+
+func (c *mqlPwqualitySettings) GetOcredit() *plugin.TValue[int64] {
+	return &c.Ocredit
+}
+
+func (c *mqlPwqualitySettings) GetMinclass() *plugin.TValue[int64] {
+	return &c.Minclass
+}
+
+func (c *mqlPwqualitySettings) GetMaxrepeat() *plugin.TValue[int64] {
+	return &c.Maxrepeat
+}
+
+func (c *mqlPwqualitySettings) GetMaxclassrepeat() *plugin.TValue[int64] {
+	return &c.Maxclassrepeat
+}
+
+func (c *mqlPwqualitySettings) GetMaxsequence() *plugin.TValue[int64] {
+	return &c.Maxsequence
+}
+
+func (c *mqlPwqualitySettings) GetGecoscheck() *plugin.TValue[bool] {
+	return &c.Gecoscheck
+}
+
+func (c *mqlPwqualitySettings) GetDictcheck() *plugin.TValue[bool] {
+	return &c.Dictcheck
+}
+
+func (c *mqlPwqualitySettings) GetUsercheck() *plugin.TValue[bool] {
+	return &c.Usercheck
+}
+
+func (c *mqlPwqualitySettings) GetUsersubstr() *plugin.TValue[int64] {
+	return &c.Usersubstr
+}
+
+func (c *mqlPwqualitySettings) GetEnforcing() *plugin.TValue[bool] {
+	return &c.Enforcing
+}
+
+func (c *mqlPwqualitySettings) GetRetry() *plugin.TValue[int64] {
+	return &c.Retry
+}
+
+func (c *mqlPwqualitySettings) GetEnforceForRoot() *plugin.TValue[bool] {
+	return &c.EnforceForRoot
+}
+
+func (c *mqlPwqualitySettings) GetLocalUsersOnly() *plugin.TValue[bool] {
+	return &c.LocalUsersOnly
+}
+
+func (c *mqlPwqualitySettings) GetBadwords() *plugin.TValue[[]any] {
+	return &c.Badwords
+}
+
+func (c *mqlPwqualitySettings) GetDictpath() *plugin.TValue[string] {
+	return &c.Dictpath
+}
+
+// mqlPwqualityPamModule for the pwquality.pamModule resource
+type mqlPwqualityPamModule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlPwqualityPamModuleInternal it will be used here
+	Service    plugin.TValue[string]
+	LineNumber plugin.TValue[int64]
+	Control    plugin.TValue[string]
+	Arguments  plugin.TValue[[]any]
+	Settings   plugin.TValue[*mqlPwqualitySettings]
+}
+
+// createPwqualityPamModule creates a new instance of this resource
+func createPwqualityPamModule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPwqualityPamModule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("pwquality.pamModule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPwqualityPamModule) MqlName() string {
+	return "pwquality.pamModule"
+}
+
+func (c *mqlPwqualityPamModule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPwqualityPamModule) GetService() *plugin.TValue[string] {
+	return &c.Service
+}
+
+func (c *mqlPwqualityPamModule) GetLineNumber() *plugin.TValue[int64] {
+	return &c.LineNumber
+}
+
+func (c *mqlPwqualityPamModule) GetControl() *plugin.TValue[string] {
+	return &c.Control
+}
+
+func (c *mqlPwqualityPamModule) GetArguments() *plugin.TValue[[]any] {
+	return &c.Arguments
+}
+
+func (c *mqlPwqualityPamModule) GetSettings() *plugin.TValue[*mqlPwqualitySettings] {
+	return &c.Settings
 }
 
 // mqlLimits for the limits resource
