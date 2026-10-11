@@ -176,6 +176,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"tailscale.regionalRoutingEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscale).GetRegionalRoutingEnabled()).ToDataRes(types.Bool)
 	},
+	"tailscale.routeSelection": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscale).GetRouteSelection()).ToDataRes(types.String)
+	},
 	"tailscale.httpsEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscale).GetHttpsEnabled()).ToDataRes(types.Bool)
 	},
@@ -657,6 +660,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"tailscale.regionalRoutingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscale).RegionalRoutingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"tailscale.routeSelection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscale).RouteSelection, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"tailscale.httpsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1299,6 +1306,7 @@ type mqlTailscale struct {
 	NetworkFlowLoggingEnabled              plugin.TValue[bool]
 	PostureIdentityCollectionEnabled       plugin.TValue[bool]
 	RegionalRoutingEnabled                 plugin.TValue[bool]
+	RouteSelection                         plugin.TValue[string]
 	HttpsEnabled                           plugin.TValue[bool]
 	AclsExternallyManaged                  plugin.TValue[bool]
 	AclsExternalLink                       plugin.TValue[string]
@@ -1429,6 +1437,12 @@ func (c *mqlTailscale) GetPostureIdentityCollectionEnabled() *plugin.TValue[bool
 func (c *mqlTailscale) GetRegionalRoutingEnabled() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.RegionalRoutingEnabled, func() (bool, error) {
 		return c.regionalRoutingEnabled()
+	})
+}
+
+func (c *mqlTailscale) GetRouteSelection() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.RouteSelection, func() (string, error) {
+		return c.routeSelection()
 	})
 }
 

@@ -124,6 +124,7 @@ tailscale.organizationTailnet.orgId 14.0.1
 tailscale.organizationTailnets 14.0.1
 tailscale.postureIdentityCollectionEnabled 13.0.7
 tailscale.regionalRoutingEnabled 13.3.11
+tailscale.routeSelection 14.1.2
 tailscale.service 13.3.11
 tailscale.service.addresses 13.3.11
 tailscale.service.annotations 13.3.11

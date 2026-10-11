@@ -9,7 +9,7 @@ require (
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
 	go.mondoo.com/mql v0.0.0-20261006032124-4a88d2f13ca7
-	tailscale.com/client/tailscale/v2 v2.11.0
+	tailscale.com/client/tailscale/v2 v2.12.0
 )
 
 require go.opentelemetry.io/otel/log v1.47.0 // indirect

@@ -178,6 +178,18 @@ func (t *mqlTailscale) regionalRoutingEnabled() (bool, error) {
 	return s.RegionalRoutingOn, nil
 }
 
+func (t *mqlTailscale) routeSelection() (string, error) {
+	s, err := t.fetchSettings()
+	if err != nil {
+		return "", err
+	}
+	if s.RouteSelection == "" {
+		t.RouteSelection.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return string(s.RouteSelection), nil
+}
+
 func (t *mqlTailscale) httpsEnabled() (bool, error) {
 	s, err := t.fetchSettings()
 	if err != nil {
