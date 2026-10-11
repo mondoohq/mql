@@ -40,7 +40,16 @@ tailscale @root {
   // Whether device posture identity collection is enabled for the tailnet
   postureIdentityCollectionEnabled() bool
   // Whether traffic between regions is routed over Tailscale's network rather than taking the shortest path
-  regionalRoutingEnabled() bool
+  //
+  // Deprecated in favor of routeSelection, which reports `regional-routing` when this is true.
+  regionalRoutingEnabled() @maturity("deprecated") @replaced_by("tailscale.routeSelection") bool
+  // Route selection algorithm for the tailnet
+  //
+  // How clients pick among multiple subnet routers or exit nodes advertising
+  // the same routes. Values include `active-passive-failover`,
+  // `regional-routing`, `regional-routing-failover` (regional routing with
+  // in-region failover), and `magicroute`.
+  routeSelection() string
   // Whether HTTPS certificates are enabled for the tailnet
   //
   // Required before a node can obtain a certificate for its MagicDNS
