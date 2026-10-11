@@ -5,13 +5,17 @@ package resources
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // testAfero returns an afero.Afero backed by the real OS filesystem,
@@ -541,10 +545,12 @@ func TestWithAuthCacheOnlyServers(t *testing.T) {
 }
 
 func TestClaudeMcpServerID(t *testing.T) {
-	assert.Equal(t, "claude.code.mcpServer/memory", claudeMcpServerID("", "memory"),
-		"user-scope ids must not change")
-	assert.Equal(t, "claude.code.mcpServer//home/alice/src/api/memory", claudeMcpServerID("/home/alice/src/api", "memory"))
-	assert.NotEqual(t, claudeMcpServerID("/a", "memory"), claudeMcpServerID("/b", "memory"))
+	assert.Equal(t, "claude.code.mcpServer//home/alice/.claude//memory", claudeMcpServerID("/home/alice/.claude", "", "memory"))
+	assert.Equal(t, "claude.code.mcpServer//home/alice/.claude//home/alice/src/api/memory",
+		claudeMcpServerID("/home/alice/.claude", "/home/alice/src/api", "memory"))
+	assert.NotEqual(t, claudeMcpServerID("/c", "/a", "memory"), claudeMcpServerID("/c", "/b", "memory"))
+	// Two users' Claude Code instances with a same-named user-scope server.
+	assert.NotEqual(t, claudeMcpServerID("/home/ubuntu/.claude", "", "memory"), claudeMcpServerID("/home/alice/.claude", "", "memory"))
 }
 
 func TestClaudeMcpServersMalformedProjectFile(t *testing.T) {
@@ -627,4 +633,56 @@ func TestReadClaudeStateMalformedLiveFileIsAnError(t *testing.T) {
 
 	_, err := readClaudeState(afs, "/home/ubuntu/.claude")
 	assert.Error(t, err)
+}
+
+func TestClaudeCodeChildrenPerUser(t *testing.T) {
+	files := perUserFiles(map[string]string{
+		"/home/{u}/.claude/plugins/installed_plugins.json": `{"version":2,"plugins":{"gopls-lsp@claude-plugins-official":[{"scope":"user","version":"1.0.{u}"}]}}`,
+		"/home/{u}/.claude/backups/.claude.json.backup.1759000000000": `{"mcpServers":{"fs":{"command":"{u}-cmd"}},
+"projects":{"/srv/shared":{"lastModelUsage":{"claude-opus-4":{"inputTokens":{tokens}}}}}}`,
+	})
+	// Both users worked in the same project path, with different usage.
+	for u, tokens := range map[string]string{"ubuntu": "100", "alice": "7"} {
+		p := "/home/" + u + "/.claude/backups/.claude.json.backup.1759000000000"
+		files[p] = strings.ReplaceAll(files[p], "{tokens}", tokens)
+	}
+	rt := newAIToolsTestRuntime(t, files)
+	assertPerUser(t, childValues(t, rt, "claude.code", ".claude", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlClaudeCode).GetPlugins()
+		s, err := only[*mqlClaudeCodePlugin](t, l.Data, l.Error)
+		if err != nil {
+			return "", "", err
+		}
+		return s.MqlID(), s.Version.Data, nil
+	}), "1.0.%s")
+	assertPerUser(t, childValues(t, rt, "claude.code", ".claude", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlClaudeCode).GetMcpServers()
+		s, err := only[*mqlClaudeCodeMcpServer](t, l.Data, l.Error)
+		if err != nil {
+			return "", "", err
+		}
+		return s.MqlID(), s.Command.Data, nil
+	}), "%s-cmd")
+
+	tokens := map[string]string{}
+	aggregate := map[string]string{}
+	for _, u := range aiTestUsers {
+		parent, err := NewResource(rt, "claude.code", map[string]*llx.RawData{"configPath": llx.StringData("/home/" + u + "/.claude")})
+		require.NoError(t, err)
+		cc := parent.(*mqlClaudeCode)
+		projects := cc.GetProjects()
+		proj, err := only[*mqlClaudeCodeProject](t, projects.Data, projects.Error)
+		require.NoError(t, err)
+		models := proj.GetModels()
+		m, err := only[*mqlClaudeCodeModelUsage](t, models.Data, models.Error)
+		require.NoError(t, err)
+		tokens[u] = fmt.Sprint(m.InputTokens.Data)
+
+		all := cc.GetModels()
+		m, err = only[*mqlClaudeCodeModelUsage](t, all.Data, all.Error)
+		require.NoError(t, err)
+		aggregate[u] = fmt.Sprint(m.InputTokens.Data)
+	}
+	assert.Equal(t, map[string]string{"ubuntu": "100", "alice": "7"}, tokens, "per-project usage")
+	assert.Equal(t, map[string]string{"ubuntu": "100", "alice": "7"}, aggregate, "instance-wide usage")
 }

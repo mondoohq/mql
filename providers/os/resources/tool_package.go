@@ -206,9 +206,16 @@ func resolveToolPackage(runtime *plugin.Runtime, configPath string, spec toolPac
 		version = v
 	}
 
-	// synthetic id; distinct from the real "format://name/version/arch" scheme
-	// and hidden (no `id` field on package).
-	return newSyntheticPackage(runtime, "tool://"+spec.packageName, spec.packageName, version, spec.vendor, "", installed)
+	return newSyntheticPackage(runtime, syntheticToolPackageID(spec, configPath), spec.packageName, version, spec.vendor, "", installed)
+}
+
+// syntheticToolPackageID is the id of a tool's abstract package: distinct from
+// the real "format://name/version/arch" scheme and hidden (no `id` field on
+// package). installed and version come from configPath, so the id carries it:
+// one query can hold one instance per user, and a shared id would report the
+// first user's answer for all of them.
+func syntheticToolPackageID(spec toolPackageSpec, configPath string) string {
+	return "tool://" + spec.packageName + "/" + configPath
 }
 
 // newSyntheticPackage creates an abstract package resource (origin "unknown", no

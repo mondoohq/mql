@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func createTestGeminiConfig(t *testing.T) string {
@@ -191,4 +192,18 @@ func TestGeminiSettingsEmptyFile(t *testing.T) {
 	require.NoError(t, readGeminiSettings(afs, dir, &settings))
 	assert.NotNil(t, settings, "an empty file is an empty map, as a missing one is")
 	assert.Empty(t, settings)
+}
+
+func TestGeminiChildrenPerUser(t *testing.T) {
+	rt := newAIToolsTestRuntime(t, perUserFiles(map[string]string{
+		"/home/{u}/.gemini/settings.json": `{"mcpServers":{"fs":{"command":"{u}-cmd"}}}`,
+	}))
+	assertPerUser(t, childValues(t, rt, "gemini", ".gemini", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlGemini).GetMcpServers()
+		s, err := only[*mqlGeminiMcpServer](t, l.Data, l.Error)
+		if err != nil {
+			return "", "", err
+		}
+		return s.MqlID(), s.Command.Data, nil
+	}), "%s-cmd")
 }

@@ -81,7 +81,7 @@ func (r *mqlGemini) mcpServers() ([]interface{}, error) {
 		}
 
 		res, err := NewResource(r.MqlRuntime, "gemini.mcpServer", map[string]*llx.RawData{
-			"__id":    llx.StringData("gemini.mcpServer/" + name),
+			"__id":    llx.StringData(aiChildID("gemini.mcpServer", r.ConfigPath.Data, name)),
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport(server.Type, server.Command, url)),
 			"command": llx.StringData(server.Command),

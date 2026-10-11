@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func createTestWindsurfConfig(t *testing.T) string {
@@ -80,4 +81,27 @@ func TestWindsurfConfigMissing(t *testing.T) {
 
 	_, err := afs.ReadDir(filepath.Join(dir, "memories"))
 	assert.Error(t, err)
+}
+
+func TestWindsurfChildrenPerUser(t *testing.T) {
+	rt := newAIToolsTestRuntime(t, perUserFiles(map[string]string{
+		"/home/{u}/.codeium/windsurf/mcp_config.json":   `{"mcpServers":{"fs":{"command":"{u}-cmd"}}}`,
+		"/home/{u}/.codeium/windsurf/memories/style.md": "{u} rule",
+	}))
+	assertPerUser(t, childValues(t, rt, "windsurf", ".codeium/windsurf", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlWindsurf).GetMcpServers()
+		s, err := only[*mqlWindsurfMcpServer](t, l.Data, l.Error)
+		if err != nil {
+			return "", "", err
+		}
+		return s.MqlID(), s.Command.Data, nil
+	}), "%s-cmd")
+	assertPerUser(t, childValues(t, rt, "windsurf", ".codeium/windsurf", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlWindsurf).GetRules()
+		s, err := only[*mqlWindsurfRule](t, l.Data, l.Error)
+		if err != nil {
+			return "", "", err
+		}
+		return s.MqlID(), s.Content.Data, nil
+	}), "%s rule")
 }
