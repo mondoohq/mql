@@ -113,6 +113,7 @@ func volumeAttachmentArgs(a core.VolumeAttachment) map[string]*llx.RawData {
 		"isReadOnly":                     llx.BoolDataPtr(a.GetIsReadOnly()),
 		"isShareable":                    llx.BoolDataPtr(a.GetIsShareable()),
 		"isPvEncryptionInTransitEnabled": llx.BoolDataPtr(a.GetIsPvEncryptionInTransitEnabled()),
+		"isEncryptionInTransitEnabled":   llx.BoolDataPtr(a.GetIsEncryptionInTransitEnabled()),
 		"encryptionInTransitType":        llx.StringData(""),
 		"chapEnabled":                    llx.BoolFalse,
 		"isMultipath":                    llx.BoolDataPtr(a.GetIsMultipath()),
@@ -128,6 +129,8 @@ func volumeAttachmentArgs(a core.VolumeAttachment) map[string]*llx.RawData {
 		args["attachmentType"] = llx.StringData("paravirtualized")
 	case core.EmulatedVolumeAttachment:
 		args["attachmentType"] = llx.StringData("emulated")
+	case core.NvmeVolumeAttachment:
+		args["attachmentType"] = llx.StringData("nvme")
 	}
 	return args
 }

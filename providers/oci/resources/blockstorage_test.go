@@ -44,6 +44,18 @@ func TestVolumeAttachmentArgs(t *testing.T) {
 	em := volumeAttachmentArgs(core.EmulatedVolumeAttachment{Id: common.String("c")})
 	assert.Equal(t, "emulated", em["attachmentType"].Value)
 	assert.Nil(t, em["isPvEncryptionInTransitEnabled"].Value, "absent is null, not false")
+	assert.Nil(t, em["isEncryptionInTransitEnabled"].Value, "absent is null, not false")
+
+	nvme := volumeAttachmentArgs(core.NvmeVolumeAttachment{
+		Id:                             common.String("d"),
+		IsPvEncryptionInTransitEnabled: common.Bool(false),
+		IsEncryptionInTransitEnabled:   common.Bool(true),
+	})
+	assert.Equal(t, "nvme", nvme["attachmentType"].Value)
+	assert.Equal(t, true, nvme["isEncryptionInTransitEnabled"].Value, "read from isEncryptionInTransitEnabled, not the deprecated pv flag")
+	assert.Equal(t, false, nvme["isPvEncryptionInTransitEnabled"].Value)
+	assert.Equal(t, "", nvme["encryptionInTransitType"].Value)
+	assert.Equal(t, false, nvme["chapEnabled"].Value)
 }
 
 func TestVolumeBackupScheduleArgs(t *testing.T) {

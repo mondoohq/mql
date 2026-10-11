@@ -3163,6 +3163,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.compute.launchConfig.pvEncryptionInTransitEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciComputeLaunchConfig).GetPvEncryptionInTransitEnabled()).ToDataRes(types.Bool)
 	},
+	"oci.compute.launchConfig.encryptionInTransitEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeLaunchConfig).GetEncryptionInTransitEnabled()).ToDataRes(types.Bool)
+	},
 	"oci.compute.launchConfig.consistentVolumeNamingEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciComputeLaunchConfig).GetConsistentVolumeNamingEnabled()).ToDataRes(types.Bool)
 	},
@@ -13012,6 +13015,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.compute.volumeAttachment.isPvEncryptionInTransitEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciComputeVolumeAttachment).GetIsPvEncryptionInTransitEnabled()).ToDataRes(types.Bool)
 	},
+	"oci.compute.volumeAttachment.isEncryptionInTransitEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciComputeVolumeAttachment).GetIsEncryptionInTransitEnabled()).ToDataRes(types.Bool)
+	},
 	"oci.compute.volumeAttachment.encryptionInTransitType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciComputeVolumeAttachment).GetEncryptionInTransitType()).ToDataRes(types.String)
 	},
@@ -15714,6 +15720,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.compute.launchConfig.pvEncryptionInTransitEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciComputeLaunchConfig).PvEncryptionInTransitEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.compute.launchConfig.encryptionInTransitEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeLaunchConfig).EncryptionInTransitEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"oci.compute.launchConfig.consistentVolumeNamingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -29972,6 +29982,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciComputeVolumeAttachment).IsPvEncryptionInTransitEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"oci.compute.volumeAttachment.isEncryptionInTransitEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciComputeVolumeAttachment).IsEncryptionInTransitEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"oci.compute.volumeAttachment.encryptionInTransitType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciComputeVolumeAttachment).EncryptionInTransitType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -35841,6 +35855,7 @@ type mqlOciComputeLaunchConfig struct {
 	NetworkType                   plugin.TValue[string]
 	RemoteDataVolumeType          plugin.TValue[string]
 	PvEncryptionInTransitEnabled  plugin.TValue[bool]
+	EncryptionInTransitEnabled    plugin.TValue[bool]
 	ConsistentVolumeNamingEnabled plugin.TValue[bool]
 }
 
@@ -35894,6 +35909,10 @@ func (c *mqlOciComputeLaunchConfig) GetRemoteDataVolumeType() *plugin.TValue[str
 
 func (c *mqlOciComputeLaunchConfig) GetPvEncryptionInTransitEnabled() *plugin.TValue[bool] {
 	return &c.PvEncryptionInTransitEnabled
+}
+
+func (c *mqlOciComputeLaunchConfig) GetEncryptionInTransitEnabled() *plugin.TValue[bool] {
+	return &c.EncryptionInTransitEnabled
 }
 
 func (c *mqlOciComputeLaunchConfig) GetConsistentVolumeNamingEnabled() *plugin.TValue[bool] {
@@ -72606,6 +72625,7 @@ type mqlOciComputeVolumeAttachment struct {
 	IsReadOnly                     plugin.TValue[bool]
 	IsShareable                    plugin.TValue[bool]
 	IsPvEncryptionInTransitEnabled plugin.TValue[bool]
+	IsEncryptionInTransitEnabled   plugin.TValue[bool]
 	EncryptionInTransitType        plugin.TValue[string]
 	ChapEnabled                    plugin.TValue[bool]
 	IsMultipath                    plugin.TValue[bool]
@@ -72702,6 +72722,10 @@ func (c *mqlOciComputeVolumeAttachment) GetIsShareable() *plugin.TValue[bool] {
 
 func (c *mqlOciComputeVolumeAttachment) GetIsPvEncryptionInTransitEnabled() *plugin.TValue[bool] {
 	return &c.IsPvEncryptionInTransitEnabled
+}
+
+func (c *mqlOciComputeVolumeAttachment) GetIsEncryptionInTransitEnabled() *plugin.TValue[bool] {
+	return &c.IsEncryptionInTransitEnabled
 }
 
 func (c *mqlOciComputeVolumeAttachment) GetEncryptionInTransitType() *plugin.TValue[string] {
