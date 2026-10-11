@@ -100,6 +100,7 @@ alias os.unix.sudoers = sudoers
 alias os.unix.sysrc = sysrc
 alias os.unix.zfs = zfs
 alias os.linux.cgroups = cgroups
+alias os.linux.cryptoPolicy = cryptoPolicy
 alias os.linux.limits = limits
 alias os.linux.logindefs = logindefs
 alias os.linux.lsblk = lsblk
@@ -130,6 +131,7 @@ alias os.any.apparmor = apparmor
 alias os.any.auditpol = auditpol
 alias os.any.cgroups = cgroups
 alias os.any.crontab = crontab
+alias os.any.cryptoPolicy = cryptoPolicy
 alias os.any.exim = exim
 alias os.any.firewalld = firewalld
 alias os.any.fstab = fstab
@@ -11539,6 +11541,93 @@ private pwquality.pamModule @defaults("service") {
   arguments []string
   // Settings the line applies: the configuration files with its arguments on top
   settings pwquality.settings
+}
+
+// System-wide crypto policy (crypto-policies)
+//
+// The policy crypto-policies applies to the TLS, SSH, IPsec, Kerberos, DNSSEC
+// and other cryptographic back ends on RHEL 8 and later, Fedora, Amazon Linux
+// 2023, and SLES 16. `configured` is the policy set in
+// /etc/crypto-policies/config, as `update-crypto-policies --show` reports it.
+// `settings` and `scopes` are the resolved policy that
+// `update-crypto-policies` last applied, as it dumped it to
+// /etc/crypto-policies/state/CURRENT.pol: the algorithms and limits the back
+// ends were generated with.
+cryptoPolicy {
+  // Whether crypto-policies is in use: /etc/crypto-policies exists
+  installed() bool
+  // Policy configuration file, /etc/crypto-policies/config
+  file() file
+  // Configured policy with its subpolicies, such as DEFAULT:NO-SHA1
+  //
+  // As `update-crypto-policies --show` reports it: from
+  // /etc/crypto-policies/config, or FIPS when that file cannot be read and
+  // the kernel is in FIPS mode, or else the distribution's default from
+  // /usr/share/crypto-policies/default-config. Upper case. Null when
+  // crypto-policies is not installed.
+  configured() string
+  // Base policy, such as DEFAULT, LEGACY, FUTURE, or FIPS
+  name(configured) string
+  // Subpolicies (policy modules) applied on top of the base policy, such as NO-SHA1
+  subpolicies(configured) []string
+  // Policy the back ends were last generated for (/etc/crypto-policies/state/current)
+  current() string
+  // Whether the configured policy is applied
+  //
+  // The policy the back ends were generated for is the configured one, and
+  // the configuration has not changed since. Unlike
+  // `update-crypto-policies --is-applied`, which compares the two files
+  // byte for byte, a comment in /etc/crypto-policies/config does not make an
+  // applied policy count as not applied. Null when either file is missing.
+  applied() bool
+  // Whether the kernel runs in FIPS mode (/proc/sys/crypto/fips_enabled)
+  fips() bool
+  // Resolved policy for all back ends, by property
+  //
+  // The baseline values of /etc/crypto-policies/state/CURRENT.pol, such as
+  // `cipher`, `mac`, `hash`, `sign` and `protocol` (lists of algorithms),
+  // `min_rsa_size` and `sha1_in_certs` (numbers), and `etm` (a name).
+  // Back ends that differ have their values in `scopes`. Null when the file
+  // does not exist.
+  settings() map[string]dict
+  // Resolved policy for each back-end scope
+  //
+  // Every scope crypto-policies dumps (openssh, openssh-server, libssh,
+  // openssl, gnutls, nss, krb5, libreswan, bind, and others), and any other
+  // scope in the dump.
+  scopes() []cryptoPolicy.scope
+}
+
+// Crypto policy of a back-end scope
+//
+// The resolved policy one back end applies: the baseline, then the values
+// the dump sets for the scope. crypto-policies from 2025 on writes a scope's
+// values relative to the scope it derives from (openssh-server and
+// openssh-client from openssh, the nss-* scopes from nss), earlier releases
+// (RHEL 8 and 9) relative to the baseline; the installed update-crypto-policies
+// decides which.
+// `cryptoPolicy.scope("openssh-server").ciphers` lists the ciphers the SSH
+// server is allowed.
+cryptoPolicy.scope @defaults("name") {
+  init(name string)
+  // Scope name, such as openssh-server
+  name string
+  // Resolved properties of the scope, by property
+  settings map[string]dict
+  // Allowed ciphers (`cipher`)
+  ciphers []string
+  // Allowed MACs (`mac`)
+  macs []string
+  // Allowed hash algorithms (`hash`)
+  hashes []string
+  // Allowed signature algorithms (`sign`)
+  signatures []string
+  // Allowed key exchange methods (`key_exchange`)
+  keyExchanges []string
+  // Allowed groups and curves (`group`)
+  groups []string
+  // Allowed protocol versions (`protocol`)
+  protocols []string
 }
 
 // PAM resource limits configuration (limits.conf)
