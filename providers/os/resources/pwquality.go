@@ -29,7 +29,13 @@ var libpwqualityPackages = []string{"libpwquality", "libpwquality1"}
 type mqlPwqualityInternal struct {
 	lock        sync.Mutex
 	legacy      *bool
-	configCache map[string]pwquality.Settings
+	configCache map[string]pwqualityConfig
+}
+
+// pwqualityConfig is one configuration file read with its drop-ins.
+type pwqualityConfig struct {
+	settings pwquality.Settings
+	paths    []string
 }
 
 func (s *mqlPwquality) id() (string, error) {
@@ -107,8 +113,8 @@ func pwqualityExists(fs afero.Fs, p string) (bool, error) {
 	return isRegularTarget(st), nil
 }
 
-// pwqualityDropIns lists the names of the regular files in dir, following
-// symbolic links. A missing directory has none.
+// pwqualityDropIns lists the names in dir; pwquality.Files keeps the ones
+// libpwquality reads. A missing directory has none.
 func pwqualityDropIns(fs afero.Fs, dir string) ([]string, error) {
 	entries, err := afero.ReadDir(fs, dir)
 	if err != nil {
@@ -119,9 +125,6 @@ func pwqualityDropIns(fs afero.Fs, dir string) ([]string, error) {
 	}
 	var res []string
 	for _, e := range entries {
-		if !pwquality.IsDropIn(e.Name()) {
-			continue
-		}
 		res = append(res, e.Name())
 	}
 	sort.Strings(res)
@@ -162,32 +165,32 @@ func (s *mqlPwquality) readConfig(cfg string) (pwquality.Settings, []string, err
 	return settings, paths, nil
 }
 
-func (s *mqlPwquality) config(cfg string) (pwquality.Settings, error) {
+// config reads the configuration file cfg and its drop-ins once.
+func (s *mqlPwquality) config(cfg string) (pwqualityConfig, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	if settings, ok := s.configCache[cfg]; ok {
-		return settings, nil
+	if c, ok := s.configCache[cfg]; ok {
+		return c, nil
 	}
-	settings, _, err := s.readConfig(cfg)
+	settings, paths, err := s.readConfig(cfg)
 	if err != nil {
-		return nil, err
+		return pwqualityConfig{}, err
 	}
 	if s.configCache == nil {
-		s.configCache = map[string]pwquality.Settings{}
+		s.configCache = map[string]pwqualityConfig{}
 	}
-	s.configCache[cfg] = settings
-	return settings, nil
+	c := pwqualityConfig{settings: settings, paths: paths}
+	s.configCache[cfg] = c
+	return c, nil
 }
 
 func (s *mqlPwquality) files() ([]any, error) {
-	s.lock.Lock()
-	_, paths, err := s.readConfig(pwquality.DefaultFile)
-	s.lock.Unlock()
+	c, err := s.config(pwquality.DefaultFile)
 	if err != nil {
 		return nil, err
 	}
-	res := make([]any, 0, len(paths))
-	for _, p := range paths {
+	res := make([]any, 0, len(c.paths))
+	for _, p := range c.paths {
 		f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{"path": llx.StringData(p)})
 		if err != nil {
 			return nil, err
@@ -198,11 +201,11 @@ func (s *mqlPwquality) files() ([]any, error) {
 }
 
 func (s *mqlPwquality) settings(files []any) (*mqlPwqualitySettings, error) {
-	settings, err := s.config(pwquality.DefaultFile)
+	c, err := s.config(pwquality.DefaultFile)
 	if err != nil {
 		return nil, err
 	}
-	return newPwqualitySettings(s.MqlRuntime, "pwquality.settings", settings, s.isLegacy())
+	return newPwqualitySettings(s.MqlRuntime, "pwquality.settings", c.settings, s.isLegacy())
 }
 
 func (s *mqlPwquality) pam() ([]any, error) {
@@ -255,7 +258,7 @@ func (s *mqlPwquality) pam() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
-			settings := base.Clone()
+			settings := base.settings.Clone()
 			for _, a := range args {
 				settings.ApplyOption(a)
 			}
