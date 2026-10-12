@@ -140,7 +140,7 @@ func windowsTimeSource(source string) *string {
 	if name, flags, ok := strings.Cut(source, ","); ok && strings.HasPrefix(strings.TrimSpace(flags), "0x") {
 		source = strings.TrimSpace(name)
 	}
-	if source == "" || strings.ContainsAny(source, "\n") {
+	if source == "" || strings.ContainsAny(source, "\r\n") {
 		return nil
 	}
 	return &source

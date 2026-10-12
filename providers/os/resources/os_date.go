@@ -193,15 +193,20 @@ func linuxTimeSync(runtime *plugin.Runtime) (*date.TimeSync, error) {
 		}
 	}
 
-	if res.Source == nil || res.Synchronized == nil {
+	// Ask chronyd for whichever of the two answers is still missing: the
+	// clock state when timedatectl gave none, the source when no running
+	// systemd-timesyncd named one. Answers already found are kept.
+	needSynchronized := res.Synchronized == nil
+	needSource := res.Source == nil
+	if needSynchronized || needSource {
 		if stdout, ok, err := runSystemctl(runtime, "chronyc -n -c tracking"); err != nil {
 			return nil, err
 		} else if ok {
 			chrony := date.ParseChronycTracking(stdout)
-			if res.Synchronized == nil {
+			if needSynchronized {
 				res.Synchronized = chrony.Synchronized
 			}
-			if res.Source == nil {
+			if needSource {
 				res.Source = chrony.Source
 			}
 		}

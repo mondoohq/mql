@@ -193,3 +193,13 @@ func TestMacOSTimeSource(t *testing.T) {
 func strPtr(s string) *string {
 	return &s
 }
+
+func TestWindowsTimeSource(t *testing.T) {
+	got := windowsTimeSource("time.windows.com,0x9\r\n")
+	require.NotNil(t, got)
+	assert.Equal(t, "time.windows.com", *got)
+
+	for _, in := range []string{"", " ", "time.windows.com\rother", "time.windows.com\nother", "a\r\nb,0x9"} {
+		assert.Nil(t, windowsTimeSource(in), "%q", in)
+	}
+}

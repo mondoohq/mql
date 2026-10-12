@@ -640,7 +640,9 @@ os.date @defaults("time timezone") {
   // Windows zone ID is translated with the Unicode CLDR mapping (its default
   // zone for each ID), so "W. Europe Standard Time" reads "Europe/Berlin" and
   // "UTC" reads "Etc/UTC". A Windows zone ID that CLDR does not map is
-  // returned unchanged. Defaults to "UTC" when no timezone can be detected.
+  // returned unchanged. Defaults to "UTC" when no timezone can be detected,
+  // or empty when it cannot be detected and the system reports a non-zero
+  // `utcOffset`.
   timezone() string
   // Windows time zone ID
   //

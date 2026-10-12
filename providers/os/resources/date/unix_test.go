@@ -481,6 +481,8 @@ func TestParseUTCOffset(t *testing.T) {
 		"-0330":   -12600,
 		"+1345":   49500,
 		"+05:30":  19800,
+		"+1400":   50400,  // Pacific/Kiritimati
+		"-1200":   -43200, // Etc/GMT+12
 	}
 	for in, want := range valid {
 		got, ok := parseUTCOffset(in)
@@ -488,7 +490,7 @@ func TestParseUTCOffset(t *testing.T) {
 		assert.Equal(t, want, got, in)
 	}
 	// "%z" is what a date without %z support prints back
-	for _, in := range []string{"", "%z", "z", "CEST", "0200", "+02", "+2500", "+0260", "+-100", "+02000"} {
+	for _, in := range []string{"", "%z", "z", "CEST", "0200", "+02", "+2500", "+0260", "+-100", "+02000", "+1401", "+1459", "+1500", "-1201", "-1300"} {
 		_, ok := parseUTCOffset(in)
 		assert.False(t, ok, in)
 	}
@@ -530,4 +532,12 @@ func TestLocalize(t *testing.T) {
 		require.NotNil(t, off)
 		assert.Equal(t, int64(19800), *off)
 	})
+}
+
+func TestFallbackTimezone(t *testing.T) {
+	zero, east, west := int64(0), int64(3600), int64(-18000)
+	assert.Equal(t, "UTC", fallbackTimezone(nil), "no offset reported")
+	assert.Equal(t, "UTC", fallbackTimezone(&zero))
+	assert.Equal(t, "", fallbackTimezone(&east), "a non-zero offset is not UTC")
+	assert.Equal(t, "", fallbackTimezone(&west), "a non-zero offset is not UTC")
 }

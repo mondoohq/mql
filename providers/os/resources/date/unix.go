@@ -62,12 +62,12 @@ func (u *Unix) Get() (*Result, error) {
 		tz, err = timezoneFromCmd(u.conn)
 	}
 	if err != nil {
-		// If all methods fail, default to UTC. The offset is only reported
-		// when the system itself said what it is.
+		// No zone name could be detected. The offset is only reported when
+		// the system itself said what it is.
 		t, _ := localize(utcTime, "", offset)
 		return &Result{
 			Time:      t,
-			Timezone:  "UTC",
+			Timezone:  fallbackTimezone(offset),
 			UTCOffset: offset,
 		}, nil
 	}
@@ -78,6 +78,16 @@ func (u *Unix) Get() (*Result, error) {
 		Timezone:  tz,
 		UTCOffset: offset,
 	}, nil
+}
+
+// fallbackTimezone is the zone name reported when none could be detected:
+// "UTC" unless the system reported a different offset, in which case the
+// zone is unknown and left empty.
+func fallbackTimezone(offset *int64) string {
+	if offset != nil && *offset != 0 {
+		return ""
+	}
+	return "UTC"
 }
 
 // utcOffsetFromCmd asks the system for its current offset from UTC. Nil when
@@ -98,6 +108,11 @@ func (u *Unix) utcOffsetFromCmd() *int64 {
 	return &off
 }
 
+const (
+	minUTCOffsetMinutes = -12 * 60
+	maxUTCOffsetMinutes = 14 * 60
+)
+
 // parseUTCOffset reads a numeric zone offset as `date +%z` prints it
 // ("+0200", "-0330", also "+05:30") into seconds east of UTC.
 func parseUTCOffset(s string) (int64, bool) {
@@ -112,14 +127,19 @@ func parseUTCOffset(s string) (int64, bool) {
 	}
 	hours, _ := strconv.Atoi(s[1:3])
 	minutes, _ := strconv.Atoi(s[3:5])
-	if hours > 14 || minutes >= 60 {
+	if minutes >= 60 {
 		return 0, false
 	}
-	off := int64(hours*3600 + minutes*60)
+	total := hours*60 + minutes
 	if s[0] == '-' {
-		off = -off
+		total = -total
 	}
-	return off, true
+	// Zone offsets in use range from -12:00 (Etc/GMT+12) to +14:00
+	// (Pacific/Kiritimati).
+	if total < minUTCOffsetMinutes || total > maxUTCOffsetMinutes {
+		return 0, false
+	}
+	return int64(total) * 60, true
 }
 
 // localize returns t in the zone tz and the offset from UTC in effect at t
