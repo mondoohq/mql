@@ -1,0 +1,163 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package resources
+
+import (
+	"context"
+
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/circleci/connection"
+)
+
+// mqlCircleciContextInternal caches the owning organization's id, which the
+// API response for a context does not include but the organization()
+// typed reference needs.
+type mqlCircleciContextInternal struct {
+	cacheOrgId string
+}
+
+// newMqlCircleciContext maps a single API context to its MQL resource.
+func newMqlCircleciContext(runtime *plugin.Runtime, c connection.Context, orgId string) (plugin.Resource, error) {
+	res, err := CreateResource(runtime, "circleci.context", map[string]*llx.RawData{
+		"__id":      llx.StringData(c.ID),
+		"id":        llx.StringData(c.ID),
+		"name":      llx.StringData(c.Name),
+		"createdAt": llx.TimeDataPtr(parseCircleciTime(c.CreatedAt)),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	mqlContext := res.(*mqlCircleciContext)
+	mqlContext.cacheOrgId = orgId
+	return mqlContext, nil
+}
+
+// organization resolves the organization that owns this context.
+func (c *mqlCircleciContext) organization() (*mqlCircleciOrganization, error) {
+	if c.cacheOrgId == "" {
+		c.Organization.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(c.MqlRuntime, "circleci.organization", map[string]*llx.RawData{
+		"id": llx.StringData(c.cacheOrgId),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlCircleciOrganization), nil
+}
+
+// environmentVariables lists the environment variable names configured in
+// this context. CircleCI's API never returns context environment variable
+// values, in any form.
+func (c *mqlCircleciContext) environmentVariables() ([]any, error) {
+	conn := c.MqlRuntime.Connection.(*connection.CircleciConnection)
+	client := conn.Client()
+
+	var all []any
+	pageToken := ""
+	var walker pageWalker
+	for {
+		resp, err := client.ListContextEnvVars(context.Background(), c.Id.Data, pageToken)
+		if err != nil {
+			return nil, err
+		}
+		for _, v := range resp.Items {
+			res, err := CreateResource(c.MqlRuntime, "circleci.context.environmentVariable", map[string]*llx.RawData{
+				"__id":      llx.StringData(c.Id.Data + "/" + v.Variable),
+				"variable":  llx.StringData(v.Variable),
+				"createdAt": llx.TimeDataPtr(parseCircleciTime(v.CreatedAt)),
+			})
+			if err != nil {
+				return nil, err
+			}
+			res.(*mqlCircleciContextEnvironmentVariable).cacheContext = c
+			all = append(all, res)
+		}
+		next, done, err := walker.next(resp.NextPageToken)
+		if err != nil {
+			return nil, err
+		}
+		if done {
+			break
+		}
+		pageToken = next
+	}
+	return all, nil
+}
+
+// restrictions lists the project and group restrictions that scope which
+// projects may use this context. An empty list means the context is usable
+// by every project in the organization.
+func (c *mqlCircleciContext) restrictions() ([]any, error) {
+	conn := c.MqlRuntime.Connection.(*connection.CircleciConnection)
+	client := conn.Client()
+
+	var all []any
+	pageToken := ""
+	var walker pageWalker
+	for {
+		resp, err := client.ListContextRestrictions(context.Background(), c.Id.Data, pageToken)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range resp.Items {
+			res, err := CreateResource(c.MqlRuntime, "circleci.context.restriction", map[string]*llx.RawData{
+				"__id":             llx.StringData(r.ID),
+				"id":               llx.StringData(r.ID),
+				"name":             llx.StringData(r.Name),
+				"restrictionType":  llx.StringData(r.RestrictionType),
+				"restrictionValue": llx.StringData(r.RestrictionValue),
+			})
+			if err != nil {
+				return nil, err
+			}
+			res.(*mqlCircleciContextRestriction).cacheContext = c
+			all = append(all, res)
+		}
+		next, done, err := walker.next(resp.NextPageToken)
+		if err != nil {
+			return nil, err
+		}
+		if done {
+			break
+		}
+		pageToken = next
+	}
+	return all, nil
+}
+
+// mqlCircleciContextRestrictionInternal caches the context this restriction
+// applies to, so the context() typed reference resolves without an extra API
+// call.
+type mqlCircleciContextRestrictionInternal struct {
+	cacheContext *mqlCircleciContext
+}
+
+// context resolves the context this restriction applies to.
+func (r *mqlCircleciContextRestriction) context() (*mqlCircleciContext, error) {
+	if r.cacheContext == nil {
+		r.Context.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return r.cacheContext, nil
+}
+
+// mqlCircleciContextEnvironmentVariableInternal caches the context this
+// environment variable belongs to, so the context() typed reference resolves
+// without an extra API call.
+type mqlCircleciContextEnvironmentVariableInternal struct {
+	cacheContext *mqlCircleciContext
+}
+
+// context resolves the context this environment variable is configured in.
+func (v *mqlCircleciContextEnvironmentVariable) context() (*mqlCircleciContext, error) {
+	if v.cacheContext == nil {
+		v.Context.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return v.cacheContext, nil
+}
