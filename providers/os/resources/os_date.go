@@ -49,9 +49,6 @@ func (d *mqlOsDate) id() (string, error) {
 }
 
 func (d *mqlOsDate) fetch() (*date.Result, error) {
-	if d.fetched {
-		return d.result, nil
-	}
 	d.lock.Lock()
 	defer d.lock.Unlock()
 	if d.fetched {
@@ -119,9 +116,6 @@ func (d *mqlOsDate) utcOffset() (int64, error) {
 }
 
 func (d *mqlOsDate) fetchTimeSync() (*date.TimeSync, error) {
-	if d.syncFetched {
-		return d.syncResult, nil
-	}
 	d.syncLock.Lock()
 	defer d.syncLock.Unlock()
 	if d.syncFetched {
@@ -199,6 +193,7 @@ func linuxTimeSync(runtime *plugin.Runtime) (*date.TimeSync, error) {
 	needSynchronized := res.Synchronized == nil
 	needSource := res.Source == nil
 	if needSynchronized || needSource {
+		// runSystemctl runs any command line through the command resource.
 		if stdout, ok, err := runSystemctl(runtime, "chronyc -n -c tracking"); err != nil {
 			return nil, err
 		} else if ok {
