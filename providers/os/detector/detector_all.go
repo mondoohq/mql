@@ -1035,8 +1035,31 @@ var bottlerocket = &PlatformResolver{
 	IsFamily: false,
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		enrichFromBottlerocketRelease(pf, conn)
-		return pf.Name == "bottlerocket", nil
+		if pf.Name != "bottlerocket" {
+			return false, nil
+		}
+		if c, ok := conn.(bottlerocketAdminContainer); ok && c.BottlerocketAdminContainer() {
+			if pf.Metadata == nil {
+				pf.Metadata = map[string]string{}
+			}
+			pf.Metadata[MetadataBottlerocketAccess] = BottlerocketAccessAdminContainer
+		}
+		return true, nil
 	},
+}
+
+// MetadataBottlerocketAccess is the platform metadata key that says how a
+// Bottlerocket host was reached. BottlerocketAccessAdminContainer: through
+// its admin host container, with every command run in the host's namespaces.
+const (
+	MetadataBottlerocketAccess       = "bottlerocket/access"
+	BottlerocketAccessAdminContainer = "admin-container"
+)
+
+// bottlerocketAdminContainer is implemented by connections that can reach a
+// Bottlerocket host through its admin container (SSH).
+type bottlerocketAdminContainer interface {
+	BottlerocketAdminContainer() bool
 }
 
 // enrichFromBottlerocketRelease overlays /etc/bottlerocket-release onto pf when
