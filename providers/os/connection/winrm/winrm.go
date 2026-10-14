@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/masterzen/winrm"
@@ -194,22 +195,43 @@ func (p *Connection) RunCommand(command string) (*shared.Command, error) {
 }
 
 func (p *Connection) FileInfo(path string) (shared.FileInfoDetails, error) {
-	fs := p.FileSystem()
-	afs := &afero.Afero{Fs: fs}
-	stat, err := afs.Stat(path)
+	return fileInfo(p.FileSystem(), path)
+}
+
+// fileInfo describes a symbolic link or junction the way the local and SSH
+// connections do: the mode and size of what it points to, with the link bit
+// set. Only a filesystem that can lstat tells a link apart; on one that
+// cannot, the path is stat'ed alone. Windows has no uid or gid.
+func fileInfo(fs afero.Fs, path string) (shared.FileInfoDetails, error) {
+	var stat os.FileInfo
+	var err error
+	if lstater, ok := fs.(afero.Lstater); ok {
+		stat, _, err = lstater.LstatIfPossible(path)
+	} else {
+		stat, err = fs.Stat(path)
+	}
 	if err != nil {
 		return shared.FileInfoDetails{}, err
 	}
 
-	uid := int64(-1)
-	gid := int64(-1)
 	mode := stat.Mode()
+	size := stat.Size()
+	if mode&os.ModeSymlink != 0 {
+		target, err := fs.Stat(path)
+		if err == nil {
+			mode = target.Mode() | os.ModeSymlink
+			size = target.Size()
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return shared.FileInfoDetails{}, err
+		}
+		// a dangling link keeps what lstat said about the link itself
+	}
 
 	return shared.FileInfoDetails{
-		Mode: shared.FileModeDetails{mode},
-		Size: stat.Size(),
-		Uid:  uid,
-		Gid:  gid,
+		Mode: shared.FileModeDetails{FileMode: mode},
+		Size: size,
+		Uid:  -1,
+		Gid:  -1,
 	}, nil
 }
 

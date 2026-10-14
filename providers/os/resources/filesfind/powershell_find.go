@@ -32,22 +32,24 @@ func BuildPowershellCmd(from string, xdev bool, fileType string, regex string, p
 		script.WriteString("\n'@\n\n")
 	}
 
-	// Build the Get-ChildItem command
-	script.WriteString("$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue")
-
-	// Handle recursion and depth
-	if depth != nil {
-		if *depth > 0 {
+	// Like find, the search starts with the path itself and then walks what
+	// is below it, depth levels deep: depth 0 is the path alone, depth 1 adds
+	// its entries. Get-ChildItem counts differently: without -Recurse it lists
+	// the entries, and -Depth N goes N levels below them, so depth N is
+	// -Depth N-1. It also lists a file given as the path, which is why only a
+	// directory is walked.
+	script.WriteString("$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)\n")
+	if depth == nil || *depth > 0 {
+		script.WriteString("if ($items.Count -eq 1 -and $items[0].PSIsContainer) {\n")
+		script.WriteString("  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue")
+		if depth == nil {
+			script.WriteString(" -Recurse")
+		} else if *depth > 1 {
 			script.WriteString(" -Recurse -Depth ")
-			script.WriteString(strconv.FormatInt(*depth, 10))
+			script.WriteString(strconv.FormatInt(*depth-1, 10))
 		}
-		// If depth is 0, don't recurse (only current directory)
-	} else {
-		// No depth set, recurse without limit
-		script.WriteString(" -Recurse")
+		script.WriteString(")\n}\n")
 	}
-
-	script.WriteString("\n")
 
 	// Build filter conditions
 	var filters []string
