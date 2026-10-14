@@ -19,6 +19,12 @@ var (
 // Extractor is the parser for the package.lock file npm format.
 // see https://docs.npmjs.com/cli/v10/configuring-npm/package-lock-json
 type Extractor struct {
+	// DeclaredDependencies are the production dependency names of the
+	// package.json next to the lockfile. lockfileVersion 2+ records them in the
+	// root `packages[""]` entry, but lockfileVersion 1 has no root entry, so
+	// Direct() reads them from here for a v1 lockfile. Leave nil when there is
+	// no package.json.
+	DeclaredDependencies []string
 }
 
 func (p *Extractor) Name() string {
@@ -35,6 +41,7 @@ func (p *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 	if filename != "" {
 		packageJsonLock.evidence = append(packageJsonLock.evidence, filename)
 	}
+	packageJsonLock.declared = p.DeclaredDependencies
 
 	return &packageJsonLock, nil
 }
@@ -53,9 +60,8 @@ func (p *packageLock) Root() *languages.Package {
 func (p *packageLock) Direct() languages.Packages {
 	// search for root package, read the packages field
 
-	// at this point we only support lockfileVersion: 2 with direct dependencies
 	if p.Packages == nil {
-		return nil
+		return p.directV1()
 	}
 
 	rootPkg, ok := p.Packages[""]
@@ -126,16 +132,54 @@ func (p *packageLock) Transitive() languages.Packages {
 			})
 		}
 	} else if p.Dependencies != nil {
-		for k, v := range p.Dependencies {
-			transitive = append(transitive, &languages.Package{
-				Name:         k,
-				Version:      v.Version,
-				Purl:         javascript.NewPackageUrl(k, v.Version),
-				Cpes:         javascript.NewCpes(k, v.Version),
-				EvidenceList: javascript.NewEvidenceList(p.evidence),
-				Hashes:       javascript.NewHashes(v.Integrity),
-			})
-		}
+		transitive = p.appendV1(transitive, p.Dependencies, 0)
 	}
 	return transitive
+}
+
+// appendV1 walks a lockfileVersion 1 (or older) `dependencies` tree. A package
+// that cannot be hoisted to the root, because another version already sits
+// there, is nested under the package that requires it, so the tree has to be
+// walked to the bottom: a top-level-only read dropped every nested version.
+func (p *packageLock) appendV1(list languages.Packages, deps map[string]packageLockDependency, depth int) languages.Packages {
+	if depth > maxNodeModulesDepth {
+		return list
+	}
+	for k, v := range deps {
+		list = append(list, p.v1Package(k, v))
+		if len(v.Dependencies) > 0 {
+			list = p.appendV1(list, v.Dependencies, depth+1)
+		}
+	}
+	return list
+}
+
+func (p *packageLock) v1Package(name string, dep packageLockDependency) *languages.Package {
+	return &languages.Package{
+		Name:         name,
+		Version:      dep.Version,
+		Purl:         javascript.NewPackageUrl(name, dep.Version),
+		Cpes:         javascript.NewCpes(name, dep.Version),
+		EvidenceList: javascript.NewEvidenceList(p.evidence),
+		Hashes:       javascript.NewHashes(dep.Integrity),
+	}
+}
+
+// directV1 returns the direct dependencies of a lockfileVersion 1 lockfile.
+// The lockfile does not say which top-level entries the project declared
+// (hoisted transitive packages sit beside them), so the names come from the
+// package.json; a direct dependency always resolves to the top-level entry.
+func (p *packageLock) directV1() languages.Packages {
+	if len(p.declared) == 0 || p.Dependencies == nil {
+		return nil
+	}
+	var direct languages.Packages
+	for _, name := range p.declared {
+		dep, ok := p.Dependencies[name]
+		if !ok {
+			continue
+		}
+		direct = append(direct, p.v1Package(name, dep))
+	}
+	return direct
 }
