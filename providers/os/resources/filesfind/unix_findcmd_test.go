@@ -30,6 +30,13 @@ func TestUnixFilesCmdGeneration(t *testing.T) {
 			ExpectedCmd: "find -L \"/Users/john/.aws\" -xdev -type f -perm -0",
 		},
 		{
+			// files.find passes the one-letter type; firefox and chrome use
+			// it directly, and it used to add no -type at all
+			From:        "/Users/john/.aws",
+			FileType:    "f",
+			ExpectedCmd: "find -L \"/Users/john/.aws\" -xdev -type f -perm -0",
+		},
+		{
 			// -maxdepth must be decimal: depth 12 stays 12, not octal 14.
 			From:        "/etc",
 			FileType:    "file",

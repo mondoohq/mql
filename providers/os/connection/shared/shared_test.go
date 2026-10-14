@@ -330,3 +330,32 @@ func TestBuildSudoCommand_WrapWithUserAndDoas(t *testing.T) {
 	assert.Equal(t, `doas sh -c 'a && b'`, BuildSudoCommand(d, "a && b"))
 	assert.Equal(t, `doas sh -c 'FOO=1 a | b'`, BuildSudoCommand(d, "FOO=1 a | b"))
 }
+
+func TestParseFindType(t *testing.T) {
+	for typ, want := range map[string]string{
+		"":          "",
+		"file":      "f",
+		"f":         "f",
+		"regular":   "f",
+		"directory": "d",
+		"dir":       "d",
+		"link":      "l",
+		"symlink":   "l",
+		"character": "c",
+		"block":     "b",
+		"socket":    "s",
+		"fifo":      "p",
+		" file ":    "f",
+	} {
+		got, err := ParseFindType(typ)
+		require.NoError(t, err, typ)
+		assert.Equal(t, want, got, typ)
+	}
+
+	// an unknown type used to match every file on a host and none on an
+	// image ("symlink" read as a socket there)
+	for _, typ := range []string{"bogus", "files", "File", "file,directory"} {
+		_, err := ParseFindType(typ)
+		assert.Error(t, err, typ)
+	}
+}
