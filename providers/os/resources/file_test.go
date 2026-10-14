@@ -225,3 +225,53 @@ func TestReadSmallRegularFile(t *testing.T) {
 		assert.False(t, ok, "a link to a FIFO")
 	}
 }
+
+func TestWindowsBaseAndDir(t *testing.T) {
+	tests := []struct {
+		path, base, dir string
+	}{
+		{`C:\mqltest\plain.txt`, `plain.txt`, `C:\mqltest`},
+		{`C:\mqltest\sub dir\a.log`, `a.log`, `C:\mqltest\sub dir`},
+		{`C:/mqltest/plain.txt`, `plain.txt`, `C:/mqltest`},
+		{`C:\mqltest/mixed.txt`, `mixed.txt`, `C:\mqltest`},
+		{`C:\mqltest\`, `mqltest`, `C:\mqltest`},
+		{`C:\a\b\..\c\file`, `file`, `C:\a\c`},
+		{`C:\Windows`, `Windows`, `C:\`},
+		{`C:/Windows`, `Windows`, `C:/`},
+		{`C:\`, `\`, `C:\`},
+		{`c:\x`, `x`, `c:\`},
+		{`C:x`, `x`, `C:.`},
+		{`\\server\share\dir\f.txt`, `f.txt`, `\\server\share\dir`},
+		{`\\server\share\f.txt`, `f.txt`, `\\server\share\`},
+		{`\\server\share`, `\`, `\\server\share`},
+		{`\Windows\notepad.exe`, `notepad.exe`, `\Windows`},
+		{`plain.txt`, `plain.txt`, `.`},
+		{``, `.`, `.`},
+	}
+	for _, tc := range tests {
+		assert.Equal(t, tc.base, windowsBase(tc.path), "base of %q", tc.path)
+		assert.Equal(t, tc.dir, windowsDir(tc.path), "dir of %q", tc.path)
+	}
+}
+
+// basename and dirname split a Windows asset's path by Windows rules even when
+// mql runs elsewhere, and keep splitting other assets on / only: a backslash
+// is an ordinary character in a Linux file name.
+func TestFileBasenameDirnameFollowAssetPlatform(t *testing.T) {
+	for _, tc := range []struct {
+		family    []string
+		base, dir string
+	}{
+		{[]string{"windows", "os"}, `plain.txt`, `C:\mqltest`},
+		{[]string{"linux", "unix", "os"}, `C:\mqltest\plain.txt`, `.`},
+	} {
+		conn := &sudoCatConnection{asset: &inventory.Asset{Platform: &inventory.Platform{Family: tc.family}}}
+		f := &mqlFile{MqlRuntime: &plugin.Runtime{Connection: conn}}
+		base, err := f.basename(`C:\mqltest\plain.txt`)
+		require.NoError(t, err)
+		dir, err := f.dirname(`C:\mqltest\plain.txt`)
+		require.NoError(t, err)
+		assert.Equal(t, tc.base, base, "%v", tc.family)
+		assert.Equal(t, tc.dir, dir, "%v", tc.family)
+	}
+}

@@ -44,7 +44,8 @@ func (l *mqlFilesFind) id() (string, error) {
 		id.WriteString(" name=" + l.Name.Data)
 	}
 
-	if l.Depth.Data > 0 {
+	// depth 0 is a search of from alone, not the unbounded search of no depth
+	if l.Depth.IsSet() {
 		id.WriteString(" depth=" + strconv.Itoa(int(l.Depth.Data)))
 	}
 

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strings"
 
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
@@ -333,11 +334,106 @@ func (s *mqlFile) empty(path string) (bool, error) {
 }
 
 func (s *mqlFile) basename(fullPath string) (string, error) {
+	if s.onWindows() {
+		return windowsBase(fullPath), nil
+	}
 	return path.Base(fullPath), nil
 }
 
 func (s *mqlFile) dirname(fullPath string) (string, error) {
+	if s.onWindows() {
+		return windowsDir(fullPath), nil
+	}
 	return path.Dir(fullPath), nil
+}
+
+// onWindows reports whether the scanned asset is Windows, whose paths are
+// split by the asset's rules rather than those of the machine running mql.
+func (s *mqlFile) onWindows() bool {
+	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
+	if !ok || conn.Asset() == nil || conn.Asset().Platform == nil {
+		return false
+	}
+	return conn.Asset().Platform.IsFamily("windows")
+}
+
+func isWindowsSeparator(c byte) bool {
+	return c == '\\' || c == '/'
+}
+
+// windowsSeparator is the separator a Windows path uses: a backslash if it
+// has one, a forward slash otherwise, so C:/Users/x keeps its slashes.
+func windowsSeparator(p string) string {
+	if strings.Contains(p, `\`) {
+		return `\`
+	}
+	return "/"
+}
+
+// windowsVolumeLen is the length of the volume of a Windows path: a drive
+// letter (C:) or a UNC server and share (\\server\share).
+func windowsVolumeLen(p string) int {
+	if len(p) >= 2 && p[1] == ':' && ('a' <= p[0] && p[0] <= 'z' || 'A' <= p[0] && p[0] <= 'Z') {
+		return 2
+	}
+	if len(p) < 3 || !isWindowsSeparator(p[0]) || !isWindowsSeparator(p[1]) || isWindowsSeparator(p[2]) {
+		return 0
+	}
+	// \\server\share: the volume ends at the separator after the share.
+	n := 2
+	for n < len(p) && !isWindowsSeparator(p[n]) {
+		n++
+	}
+	if n == len(p) {
+		return n
+	}
+	n++
+	for n < len(p) && !isWindowsSeparator(p[n]) {
+		n++
+	}
+	return n
+}
+
+// windowsBase is filepath.Base by the rules of Windows, wherever mql runs:
+// the last element of the path, with both \ and / as separators.
+func windowsBase(p string) string {
+	if p == "" {
+		return "."
+	}
+	sep := windowsSeparator(p)
+	for len(p) > 0 && isWindowsSeparator(p[len(p)-1]) {
+		p = p[:len(p)-1]
+	}
+	p = p[windowsVolumeLen(p):]
+	i := len(p) - 1
+	for i >= 0 && !isWindowsSeparator(p[i]) {
+		i--
+	}
+	if i >= 0 {
+		p = p[i+1:]
+	}
+	if p == "" {
+		return sep
+	}
+	return p
+}
+
+// windowsDir is filepath.Dir by the rules of Windows, wherever mql runs:
+// all but the last element of the path, keeping the drive root (C:\ for
+// C:\Windows) and the separator the path uses.
+func windowsDir(p string) string {
+	sep := windowsSeparator(p)
+	vol := p[:windowsVolumeLen(p)]
+	i := len(p) - 1
+	for i >= len(vol) && !isWindowsSeparator(p[i]) {
+		i--
+	}
+	dir := path.Clean(strings.ReplaceAll(p[len(vol):i+1], `\`, "/"))
+	if dir == "." && len(vol) > 2 {
+		// the root of a UNC share: \\server\share
+		return vol
+	}
+	return vol + strings.ReplaceAll(dir, "/", sep)
 }
 
 func (s *mqlFile) exists(path string) (bool, error) {
