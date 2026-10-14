@@ -5,9 +5,10 @@ package filesfind
 
 import (
 	"fmt"
-	"go.mondoo.com/mql/providers/os/connection/shared"
 	"strconv"
 	"strings"
+
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 var findTypes = shared.FindTypes
