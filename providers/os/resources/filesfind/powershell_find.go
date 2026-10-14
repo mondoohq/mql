@@ -55,11 +55,11 @@ func BuildPowershellCmd(from string, xdev bool, fileType string, regex string, p
 	// Type filter
 	if fileType != "" {
 		switch fileType {
-		case "file", "regular":
+		case "file", "regular", "f":
 			filters = append(filters, "!$_.PSIsContainer")
-		case "directory", "dir":
+		case "directory", "dir", "d":
 			filters = append(filters, "$_.PSIsContainer")
-		case "symlink", "link":
+		case "symlink", "link", "l":
 			filters = append(filters, "$_.LinkType -ne $null")
 			// Note: socket, block, char, fifo don't exist in Windows
 		}

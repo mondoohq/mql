@@ -7,16 +7,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
-var findTypes = map[string]string{
-	"file":      "f",
-	"directory": "d",
-	"character": "c",
-	"block":     "b",
-	"socket":    "s",
-	"link":      "l",
-}
+var findTypes = shared.FindTypes
 
 func Octal2string(o int64) string {
 	return fmt.Sprintf("%o", o)
