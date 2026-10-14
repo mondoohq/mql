@@ -961,32 +961,62 @@ private file.context @defaults("file.path range content") {
 }
 
 // Access permissions for a given file
+//
+// POSIX mode bits and file type of a file. On Windows only the file type
+// (isDirectory, isFile, isSymlink) is set; the mode and its bits are null,
+// because Windows controls access with the DACL that `file.acl` reads.
 private file.permissions @defaults("string") {
   // POSIX file mode as a decimal integer (e.g., 33188 = 0100644)
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   mode int
   // Whether the file is readable by its owner
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   user_readable bool
   // Whether the file is writeable by its owner
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   user_writeable bool
   // Whether the file is executable by its owner
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   user_executable bool
   // Whether the file is readable by members of the group
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   group_readable bool
   // Whether the file is writeable by members of the group
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   group_writeable bool
   // Whether the file is executable by members of the group
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   group_executable bool
   // Whether the file is readable by others
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   other_readable bool
   // Whether the file is writeable by others
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   other_writeable bool
   // Whether the file is executable by others
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   other_executable bool
   // Whether the set-user-ID bit is set (executable runs with the owner's privileges)
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   suid bool
   // Whether the set-group-ID bit is set (executable runs with the group's privileges)
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   sgid bool
   // Whether the sticky bit is set (only a file's owner may delete it from a shared directory)
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   sticky bool
   // Whether the file describes a directory
   isDirectory bool
@@ -995,6 +1025,8 @@ private file.permissions @defaults("string") {
   // Whether the file is a symlink
   isSymlink bool
   // Symbolic permission string in ls -l form (e.g., "-rw-r--r--")
+  //
+  // Null on Windows, which has no POSIX mode. Read the file's `acl` there.
   string() string
 }
 

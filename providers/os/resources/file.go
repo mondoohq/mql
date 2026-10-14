@@ -132,26 +132,61 @@ func (s *mqlFile) content(path string, exists bool) (string, error) {
 	return string(res), err
 }
 
-func (s *mqlFile) cacheStatFields(stat shared.FileInfoDetails) error {
+// permissionsArgs builds the file.permissions fields from a stat result.
+// Windows has no POSIX mode: what a stat reports there is made up from the
+// READONLY attribute (0444 or 0666 for every class), so the mode and its bits
+// are null, and only the file type is reported. Who may access a Windows file
+// is in its DACL, which file.acl reads.
+func permissionsArgs(stat shared.FileInfoDetails, posixMode bool) map[string]*llx.RawData {
+	args := map[string]*llx.RawData{
+		"isDirectory": llx.BoolData(stat.Mode.IsDir()),
+		"isFile":      llx.BoolData(stat.Mode.IsRegular()),
+		"isSymlink":   llx.BoolData(stat.Mode.FileMode&os.ModeSymlink != 0),
+	}
+	if !posixMode {
+		for _, field := range []string{
+			"mode",
+			"user_readable", "user_writeable", "user_executable",
+			"group_readable", "group_writeable", "group_executable",
+			"other_readable", "other_writeable", "other_executable",
+			"suid", "sgid", "sticky",
+		} {
+			args[field] = llx.NilData
+		}
+		return args
+	}
+
 	mode := stat.Mode.UnixMode()
-	res, err := CreateResource(s.MqlRuntime, "file.permissions", map[string]*llx.RawData{
-		"mode":             llx.IntData(int64(uint32(mode) & 0o7777)),
-		"user_readable":    llx.BoolData(stat.Mode.UserReadable()),
-		"user_writeable":   llx.BoolData(stat.Mode.UserWriteable()),
-		"user_executable":  llx.BoolData(stat.Mode.UserExecutable()),
-		"group_readable":   llx.BoolData(stat.Mode.GroupReadable()),
-		"group_writeable":  llx.BoolData(stat.Mode.GroupWriteable()),
-		"group_executable": llx.BoolData(stat.Mode.GroupExecutable()),
-		"other_readable":   llx.BoolData(stat.Mode.OtherReadable()),
-		"other_writeable":  llx.BoolData(stat.Mode.OtherWriteable()),
-		"other_executable": llx.BoolData(stat.Mode.OtherExecutable()),
-		"suid":             llx.BoolData(stat.Mode.Suid()),
-		"sgid":             llx.BoolData(stat.Mode.Sgid()),
-		"sticky":           llx.BoolData(stat.Mode.Sticky()),
-		"isDirectory":      llx.BoolData(stat.Mode.IsDir()),
-		"isFile":           llx.BoolData(stat.Mode.IsRegular()),
-		"isSymlink":        llx.BoolData(stat.Mode.FileMode&os.ModeSymlink != 0),
-	})
+	args["mode"] = llx.IntData(int64(uint32(mode) & 0o7777))
+	args["user_readable"] = llx.BoolData(stat.Mode.UserReadable())
+	args["user_writeable"] = llx.BoolData(stat.Mode.UserWriteable())
+	args["user_executable"] = llx.BoolData(stat.Mode.UserExecutable())
+	args["group_readable"] = llx.BoolData(stat.Mode.GroupReadable())
+	args["group_writeable"] = llx.BoolData(stat.Mode.GroupWriteable())
+	args["group_executable"] = llx.BoolData(stat.Mode.GroupExecutable())
+	args["other_readable"] = llx.BoolData(stat.Mode.OtherReadable())
+	args["other_writeable"] = llx.BoolData(stat.Mode.OtherWriteable())
+	args["other_executable"] = llx.BoolData(stat.Mode.OtherExecutable())
+	args["suid"] = llx.BoolData(stat.Mode.Suid())
+	args["sgid"] = llx.BoolData(stat.Mode.Sgid())
+	args["sticky"] = llx.BoolData(stat.Mode.Sticky())
+	return args
+}
+
+// hasPosixFileMode reports whether the files of the connection's asset carry
+// a POSIX mode. Windows files do not, however they are reached (WinRM, SSH,
+// a local scan or a mounted disk).
+func hasPosixFileMode(conn shared.Connection) bool {
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil {
+		return true
+	}
+	return !asset.Platform.IsFamily("windows")
+}
+
+func (s *mqlFile) cacheStatFields(stat shared.FileInfoDetails) error {
+	conn := s.MqlRuntime.Connection.(shared.Connection)
+	res, err := CreateResource(s.MqlRuntime, "file.permissions", permissionsArgs(stat, hasPosixFileMode(conn)))
 	if err != nil {
 		return err
 	}
@@ -353,6 +388,10 @@ func (s *mqlFile) exists(path string) (bool, error) {
 // isDirectory and isFile for both.
 func (l *mqlFilePermissions) id() (string, error) {
 	res := l.modeString()
+	if l.Mode.IsNull() {
+		// No POSIX mode (Windows): the mode string carries no permissions.
+		res = "nomode " + res
+	}
 	switch {
 	case l.IsSymlink.Data && l.IsDirectory.Data:
 		res += " -> d"
@@ -432,6 +471,10 @@ func (l *mqlFilePermissions) modeString() string {
 }
 
 func (l *mqlFilePermissions) string() (string, error) {
+	if l.Mode.IsNull() {
+		l.String.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
 	return l.modeString(), nil
 }
 
