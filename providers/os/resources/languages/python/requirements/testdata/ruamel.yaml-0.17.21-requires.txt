@@ -1,0 +1,9 @@
+
+[:platform_python_implementation=="CPython" and python_version<"3.11"]
+ruamel.yaml.clib>=0.2.6
+
+[docs]
+ryd
+
+[jinja2]
+ruamel.yaml.jinja2>=0.2
