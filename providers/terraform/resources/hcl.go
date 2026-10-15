@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -138,7 +140,19 @@ func (t *mqlTerraform) ensureCache() error {
 	if ok && conn != nil {
 		if parser := conn.Parser(); parser != nil {
 			files := parser.Files()
+			// Sort the paths before building the block list. parser.Files() is a
+			// Go map, so ranging it directly randomizes block order per process
+			// — and several accessors take a last-writer-wins value while
+			// iterating (terraform.settings.backend most visibly). A policy
+			// asserting backend["type"] == "s3" against a configuration with two
+			// `terraform {}` blocks therefore passed or failed by coin flip.
+			paths := make([]string, 0, len(files))
 			for k := range files {
+				paths = append(paths, k)
+			}
+			sort.Strings(paths)
+
+			for _, k := range paths {
 				f := files[k]
 				bs, err := listHclBlocks(t.MqlRuntime, f.Body, f)
 				if err != nil {
@@ -182,29 +196,46 @@ func (t *mqlTerraform) ensureCache() error {
 		}
 
 		// labels must be pre-initialized
-		name := block.terraformID()
-		t.blocksByName[name] = block
+		key := block.blockKey()
+		if key == "" {
+			// Label-less blocks (terraform {}, locals {}, moved {}) have no
+			// identity of their own. Mapping them all to one empty key made
+			// every one of them report every other one's edges as related.
+			continue
+		}
+		t.blocksByName[key] = block
 	}
 
 	// We need blocks by name before we can jump into
 	// related blocks, because we need to access them
 	// via their name
+	edges := map[string]map[*mqlTerraformBlock]struct{}{}
+	addEdge := func(key string, to *mqlTerraformBlock) {
+		set, ok := edges[key]
+		if !ok {
+			set = map[*mqlTerraformBlock]struct{}{}
+			edges[key] = set
+		}
+		if _, dup := set[to]; dup {
+			return
+		}
+		set[to] = struct{}{}
+		t.relatedBlocks[key] = append(t.relatedBlocks[key], to)
+	}
+
 	for i := range blocks {
 		block := blocks[i].(*mqlTerraformBlock)
-		name := block.terraformID()
-
-		rel, err := listRelatedBlocks(t, block.block.Data.Body)
-		if err != nil {
-			return err
+		key := block.blockKey()
+		if key == "" {
+			continue
 		}
 
-		// connect from this block to all related blocks...
-		t.relatedBlocks[name] = append(t.relatedBlocks[name], rel...)
-		// ... and also connect the inverse (related to this block)
-		for i := range rel {
-			relBlock := rel[i]
-			relName := relBlock.terraformID()
-			t.relatedBlocks[relName] = append(t.relatedBlocks[relName], block)
+		rel := listRelatedBlocks(t, block)
+		for j := range rel {
+			// connect from this block to all related blocks...
+			addEdge(key, rel[j])
+			// ... and also connect the inverse (related to this block)
+			addEdge(rel[j].blockKey(), block)
 		}
 	}
 
@@ -212,29 +243,127 @@ func (t *mqlTerraform) ensureCache() error {
 	return nil
 }
 
-func listRelatedBlocks(t *mqlTerraform, rawBody any) ([]*mqlTerraformBlock, error) {
-	var res []*mqlTerraformBlock
-	switch body := rawBody.(type) {
-	case *hclsyntax.Body:
-		for _, v := range body.Attributes {
-			refs := getReferences(v.Expr, &hcl.EvalContext{
-				Functions: hclFunctions(),
-			})
-			// we need the resource name and its ID at least
-			if len(refs) < 2 {
-				continue
-			}
-
-			refName := strings.Join(refs[0:2], "\x00")
-			if t.blocksByName[refName] == nil { // do not add nil blocks
-				continue
-			}
-			res = append(res, t.blocksByName[refName])
-		}
-	case hcl.Body:
-		return nil, errors.New("cannot yet list related blocks for regular hcl Body")
+// listRelatedBlocks collects the blocks a block's body references.
+//
+// It walks nested blocks as well as top-level attributes (an `ingress { ... }`
+// rule naming a security group is the canonical reference shape and was
+// previously invisible), and it uses hcl.Expression.Variables(), which returns
+// every traversal in an expression tree — so references buried in templates,
+// function calls, lists and conditionals are found too.
+func listRelatedBlocks(t *mqlTerraform, block *mqlTerraformBlock) []*mqlTerraformBlock {
+	if block.block.State != plugin.StateIsSet || block.block.Data == nil {
+		return nil
 	}
-	return res, nil
+	body, ok := block.block.Data.Body.(*hclsyntax.Body)
+	if !ok {
+		// JSON-syntax (.tf.json) bodies carry no typed expression tree, so they
+		// contribute no related edges. This has to degrade rather than fail:
+		// ensureCache is the single entry point behind blocks(), providers(),
+		// datasources(), variables(), outputs(), terraform.resources and
+		// terraform.settings, so one unsupported body used to break every
+		// terraform.* accessor on the asset — including for the native .tf
+		// files beside it.
+		return nil
+	}
+
+	dir := block.blockDir()
+	var res []*mqlTerraformBlock
+	seen := map[*mqlTerraformBlock]struct{}{}
+
+	var walk func(b *hclsyntax.Body)
+	walk = func(b *hclsyntax.Body) {
+		for _, attr := range b.Attributes {
+			for _, traversal := range attr.Expr.Variables() {
+				key := referenceKey(dir, traversalNames(traversal))
+				if key == "" {
+					continue
+				}
+				ref := t.blocksByName[key]
+				if ref == nil || ref == block {
+					continue
+				}
+				if _, dup := seen[ref]; dup {
+					continue
+				}
+				seen[ref] = struct{}{}
+				res = append(res, ref)
+			}
+		}
+		for _, nested := range b.Blocks {
+			walk(nested.Body)
+		}
+	}
+	walk(body)
+
+	return res
+}
+
+// traversalNames renders the leading name path of a traversal
+// (`data.aws_subnet.ec2[x].zone` -> data, aws_subnet, ec2). An index step ends
+// the path, since anything past it addresses into a value rather than naming a
+// block.
+func traversalNames(traversal hcl.Traversal) []string {
+	res := make([]string, 0, len(traversal))
+	for _, step := range traversal {
+		switch v := step.(type) {
+		case hcl.TraverseRoot:
+			res = append(res, v.Name)
+		case hcl.TraverseAttr:
+			res = append(res, v.Name)
+		default:
+			return res
+		}
+	}
+	return res
+}
+
+// blockGraphKey builds the identity a block is tracked under in the block
+// graph: the directory that declares it, its block type, and its labels.
+//
+// The directory matters because it is Terraform's module boundary. The
+// connection walks the whole tree, so a root `main.tf` and a
+// `modules/vpc/main.tf` that both declare `resource "aws_s3_bucket" "this"`
+// used to share one key — and both buckets then reported the same related
+// list containing both modules' policies, so "every bucket has a policy" could
+// pass for a bucket that has none.
+func blockGraphKey(dir, blockType string, labels ...string) string {
+	return dir + "\x00" + blockType + "\x00" + strings.Join(labels, "\x00")
+}
+
+// referenceKey turns a reference traversal into the graph key of the block it
+// points at, or "" when it does not name a block we track.
+func referenceKey(dir string, names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+	switch names[0] {
+	case "data":
+		// data.<type>.<name>
+		if len(names) < 3 {
+			return ""
+		}
+		return blockGraphKey(dir, "data", names[1], names[2])
+	case "module":
+		if len(names) < 2 {
+			return ""
+		}
+		return blockGraphKey(dir, "module", names[1])
+	case "var":
+		if len(names) < 2 {
+			return ""
+		}
+		return blockGraphKey(dir, "variable", names[1])
+	case "local", "count", "each", "self", "path", "terraform":
+		// locals live in a label-less `locals` block that has no identity of
+		// its own; the rest are not blocks at all.
+		return ""
+	default:
+		// <type>.<name> for a managed resource
+		if len(names) < 2 {
+			return ""
+		}
+		return blockGraphKey(dir, "resource", names[0], names[1])
+	}
 }
 
 func (t *mqlTerraform) providers() ([]any, error) {
@@ -320,12 +449,23 @@ func newMqlHclBlock(runtime *plugin.Runtime, block *hcl.Block, file *hcl.File) (
 		return nil, err
 	}
 	r := res.(*mqlTerraformBlock)
-	r.block = plugin.TValue[*hcl.Block]{State: plugin.StateIsSet, Data: block}
-	r.cachedFile = plugin.TValue[*hcl.File]{State: plugin.StateIsSet, Data: file}
-	return r, err
+	// CreateResource returns the ALREADY CACHED instance when the __id matches,
+	// so this stamping runs on a shared struct: two goroutines reaching the same
+	// block through terraform.blocks and terraform.file(path).blocks used to
+	// write these fields concurrently. Stamp exactly once, which also publishes
+	// the writes to every later reader of the cached instance.
+	r.stampOnce.Do(func() {
+		r.block = plugin.TValue[*hcl.Block]{State: plugin.StateIsSet, Data: block}
+		r.cachedFile = plugin.TValue[*hcl.File]{State: plugin.StateIsSet, Data: file}
+	})
+	return r, nil
 }
 
 type mqlTerraformBlockInternal struct {
+	// stampOnce guards the one-time population of the fields below, which
+	// happens after CreateResource and therefore possibly on a shared,
+	// already-cached instance.
+	stampOnce  sync.Once
 	block      plugin.TValue[*hcl.Block]
 	cachedFile plugin.TValue[*hcl.File]
 }
@@ -424,7 +564,7 @@ func (g *mqlTerraformBlock) context() (*mqlTerraformContext, error) {
 	return cobj.(*mqlTerraformContext), nil
 }
 
-func (g *mqlTerraformBlock) terraformID() string {
+func (g *mqlTerraformBlock) blockLabels() []string {
 	labels := g.Labels.Data
 	var namearr []string
 	for i := range labels {
@@ -432,7 +572,26 @@ func (g *mqlTerraformBlock) terraformID() string {
 			namearr = append(namearr, s)
 		}
 	}
-	return strings.Join(namearr, "\x00")
+	return namearr
+}
+
+// blockDir returns the directory of the file declaring this block, which is
+// the Terraform module the block belongs to.
+func (g *mqlTerraformBlock) blockDir() string {
+	if g.block.State != plugin.StateIsSet || g.block.Data == nil {
+		return ""
+	}
+	return filepath.Dir(g.block.Data.DefRange.Filename)
+}
+
+// blockKey is this block's identity in the terraform singleton's block graph.
+// It returns "" for label-less blocks, which have no identity to key on.
+func (g *mqlTerraformBlock) blockKey() string {
+	labels := g.blockLabels()
+	if len(labels) == 0 {
+		return ""
+	}
+	return blockGraphKey(g.blockDir(), g.Type.Data, labels...)
 }
 
 func (t *mqlTerraformBlock) nameLabel() (string, error) {
@@ -502,12 +661,17 @@ func initTerraformResources(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	// terraform.resources("...") selector instances (mondoohq/mql#8966).
 	id := "terraform.resources"
 	if matchResource != nil || matchName != nil {
+		// Qualify each component by the argument key it came from.
+		// RawData.String() renders a string identically whichever key it came
+		// from, so hashing the bare values made terraform.resources(resource: X)
+		// and terraform.resources(name: X) share a cache key and the second
+		// query silently return the first one's list.
 		s := checksums.New
 		if matchResource != nil {
-			s = s.Add(resourceArg.String())
+			s = s.Add("resource").Add(resourceArg.String())
 		}
 		if matchName != nil {
-			s = s.Add(nameArg.String())
+			s = s.Add("name").Add(nameArg.String())
 		}
 		id = s.String()
 	}
@@ -807,24 +971,41 @@ func getCtyValue(expr hcl.Expression, ctx *hcl.EvalContext) any {
 		// TODO: are we sure we want to do this?
 		return strings.Join(res, ".")
 	case *hclsyntax.FunctionCallExpr:
-		results := []any{}
-		subVal, err := t.Value(ctx)
-		if err == nil && subVal.Type() == cty.String {
-			if t.Name == "jsonencode" {
-				// Decode into `any` so both a JSON object (`jsonencode({...})`)
-				// and a JSON array (`jsonencode([...])`) resolve. Unmarshalling
-				// into a map[string]any silently failed for a top-level array,
-				// leaving the argument empty so a check iterating the encoded
-				// list saw nothing and passed vacuously. appendCtyResult keeps
-				// the object case list-wrapped while flattening a decoded list
-				// into the result so it stays iterable.
-				var res any
-				if err := json.Unmarshal([]byte(subVal.AsString()), &res); err == nil {
-					appendCtyResult(&results, res)
+		// AsString panics on a null AND on an unknown value, and an unknown one
+		// reaches here whenever the function resolves but an argument does not
+		// (`jsonencode(<unknown>)` returns cty.UnknownVal with no diagnostic at
+		// all). Guard on known/non-null before touching the value.
+		if subVal, diags := t.Value(ctx); !diags.HasErrors() && subVal.IsKnown() && !subVal.IsNull() {
+			if subVal.Type() == cty.String {
+				results := []any{}
+				if t.Name == "jsonencode" {
+					// Decode into `any` so both a JSON object (`jsonencode({...})`)
+					// and a JSON array (`jsonencode([...])`) resolve. Unmarshalling
+					// into a map[string]any silently failed for a top-level array,
+					// leaving the argument empty so a check iterating the encoded
+					// list saw nothing and passed vacuously. appendCtyResult keeps
+					// the object case list-wrapped while flattening a decoded list
+					// into the result so it stays iterable.
+					var res any
+					if err := json.Unmarshal([]byte(subVal.AsString()), &res); err == nil {
+						appendCtyResult(&results, res)
+					}
+					return results
 				}
-			} else {
 				results = append(results, subVal.AsString())
+				return results
 			}
+			return ctyValueToGo(subVal)
+		}
+		// The function table registers only a small set of pure functions, so
+		// `format`, `merge`, `join`, `lookup`, `try`, `coalesce`, ... all fail
+		// with "Call to unknown function". Surface what the arguments reference,
+		// the way ConditionalExpr does, rather than returning an empty list: a
+		// tag-governance check reading arguments["tags"] on a
+		// `merge(var.common_tags, {...})` value otherwise saw nothing at all.
+		results := []any{}
+		for _, arg := range t.Args {
+			appendCtyResult(&results, getCtyValue(arg, ctx))
 		}
 		return results
 	case *hclsyntax.ConditionalExpr:
@@ -846,6 +1027,9 @@ func getCtyValue(expr hcl.Expression, ctx *hcl.EvalContext) any {
 		appendCtyResult(&results, getCtyValue(t.FalseResult, ctx))
 		return results
 	case *hclsyntax.ForExpr:
+		if val, diags := t.Value(ctx); !diags.HasErrors() && val.IsKnown() && !val.IsNull() {
+			return ctyValueToGo(val)
+		}
 		results := []any{}
 		appendCtyResult(&results, getCtyValue(t.CollExpr, ctx))
 		if t.KeyExpr != nil {
@@ -857,11 +1041,21 @@ func getCtyValue(expr hcl.Expression, ctx *hcl.EvalContext) any {
 		}
 		return results
 	case *hclsyntax.IndexExpr:
+		if val, diags := t.Value(ctx); !diags.HasErrors() && val.IsKnown() && !val.IsNull() {
+			return ctyValueToGo(val)
+		}
 		results := []any{}
 		appendCtyResult(&results, getCtyValue(t.Collection, ctx))
 		appendCtyResult(&results, getCtyValue(t.Key, ctx))
 		return results
 	case *hclsyntax.BinaryOpExpr:
+		// Evaluate the operation so the RESULT is surfaced, not the operands.
+		// `8080 + 1` read as [8080, 1] and `8080 > 80` as [8080, 80], which
+		// defeats every scalar comparison a policy writes against them.
+		// ConditionalExpr and UnaryOpExpr already did this; these arms did not.
+		if val, diags := t.Value(ctx); !diags.HasErrors() && val.IsKnown() && !val.IsNull() {
+			return ctyValueToGo(val)
+		}
 		results := []any{}
 		appendCtyResult(&results, getCtyValue(t.LHS, ctx))
 		appendCtyResult(&results, getCtyValue(t.RHS, ctx))
@@ -877,6 +1071,9 @@ func getCtyValue(expr hcl.Expression, ctx *hcl.EvalContext) any {
 		}
 		return getCtyValue(t.Val, ctx)
 	case *hclsyntax.SplatExpr:
+		if val, diags := t.Value(ctx); !diags.HasErrors() && val.IsKnown() && !val.IsNull() {
+			return ctyValueToGo(val)
+		}
 		results := []any{}
 		appendCtyResult(&results, getCtyValue(t.Source, ctx))
 		appendCtyResult(&results, getCtyValue(t.Each, ctx))
@@ -943,7 +1140,7 @@ func getCtyValue(expr hcl.Expression, ctx *hcl.EvalContext) any {
 		// single string. Attempt that first; otherwise fall back to surfacing the
 		// individual parts/references below (the historical behavior when off).
 		if ctx != nil && len(ctx.Variables) > 0 {
-			if subVal, diags := t.Value(ctx); !diags.HasErrors() && subVal.Type() == cty.String {
+			if subVal, diags := t.Value(ctx); !diags.HasErrors() && subVal.IsKnown() && !subVal.IsNull() && subVal.Type() == cty.String {
 				return subVal.AsString()
 			}
 		}
@@ -990,28 +1187,6 @@ func getCtyValue(expr hcl.Expression, ctx *hcl.EvalContext) any {
 		return v
 	default:
 		log.Warn().Msgf("unknown type %T", t)
-		return nil
-	}
-}
-
-func getReferences(expr hcl.Expression, ctx *hcl.EvalContext) []string {
-	switch t := expr.(type) {
-	case *hclsyntax.ScopeTraversalExpr:
-		traversal := t.Variables()
-		res := []string{}
-		for i := range traversal {
-			tr := traversal[i]
-			for j := range tr {
-				switch v := tr[j].(type) {
-				case hcl.TraverseRoot:
-					res = append(res, v.Name)
-				case hcl.TraverseAttr:
-					res = append(res, v.Name)
-				}
-			}
-		}
-		return res
-	default:
 		return nil
 	}
 }
@@ -1160,7 +1335,7 @@ func (g *mqlTerraformBlock) related() ([]any, error) {
 
 	terraform.lock.Lock()
 	defer terraform.lock.Unlock()
-	related := terraform.relatedBlocks[g.terraformID()]
+	related := terraform.relatedBlocks[g.blockKey()]
 	res := make([]any, len(related))
 	for i := range related {
 		res[i] = related[i]
@@ -1327,8 +1502,16 @@ func initTerraformSettings(runtime *plugin.Runtime, args map[string]*llx.RawData
 						// Shorthand syntax: aws = "~> 3.74"
 						version = v
 					}
+					// Qualify the cache key by the file that declares the
+					// constraint. This init deliberately collects the
+					// required_providers of EVERY `terraform {}` block in the
+					// tree, so keying on the provider name alone made a root
+					// `aws = "~> 3.0"` and a modules/vpc `aws = "~> 5.0"` hash
+					// to one entry — the list then held the first one twice and
+					// the module's constraint was invisible to a pin check.
 					r, err := CreateResource(runtime, "terraform.settings.requiredProvider",
 						map[string]*llx.RawData{
+							"__id":    llx.StringData("terraform.settings.requiredProvider/" + hb.DefRange.Filename + "/" + name),
 							"name":    llx.StringData(name),
 							"source":  llx.StringData(source),
 							"version": llx.StringData(version),
