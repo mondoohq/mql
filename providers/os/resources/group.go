@@ -224,7 +224,11 @@ func (x *mqlGroups) refreshCache(all []any) error {
 		// The first entry wins, as in getpw*/getgr*: an alias that shares an ID
 		// or name with an earlier entry (a second UID 0 account) must not
 		// rename the owner of every file with that ID.
-		if _, ok := x.groupsByID[g.Gid.Data]; !ok {
+		//
+		// A negative ID is not an ID: Windows groups have none and report -1,
+		// as do files whose group could not be read. Indexing it would make
+		// every lookup of -1 return whichever group was listed first.
+		if _, ok := x.groupsByID[g.Gid.Data]; !ok && g.Gid.Data >= 0 {
 			x.groupsByID[g.Gid.Data] = g
 		}
 		if _, ok := x.groupsByName[g.Name.Data]; !ok {

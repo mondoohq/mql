@@ -1200,6 +1200,9 @@ user @defaults("name uid gid") {
   // Private SSH keys discovered in the user's home directory
   sshkeys() []privatekey
   // The user's primary group
+  //
+  // The group whose `gid` matches the user's `gid`. Null when no group has
+  // that ID, and on Windows, where local accounts have no primary group ID.
   group(gid) group
   // Whether the user currently has an active login session
   loggedIn() bool
@@ -1338,7 +1341,7 @@ authorizedkeys.entry @defaults("key") {
 // privileged-group membership (`sudo`, `wheel`, `docker`, `adm`, and so
 // on) and to confirm only expected accounts are present.
 group @defaults("name gid") {
-  init(id string)
+  init(name string)
   // Group ID
   gid int
   // Group's security identifier (Windows)
@@ -15926,14 +15929,17 @@ private windows.logonSession @defaults("logonTypeName accountName authentication
   logonId string
   // How the session was established
   //
-  // 2 interactive, 3 network, 4 batch, 5 service, 7 unlock, 8 network
-  // cleartext, 9 new credentials, 10 remote interactive, 11 cached
-  // interactive.
+  // 0 the system account's own session, 2 interactive, 3 network, 4 batch,
+  // 5 service, 6 proxy, 7 unlock, 8 network cleartext, 9 new credentials,
+  // 10 remote interactive, 11 cached interactive, 12 cached remote
+  // interactive, 13 cached unlock.
   logonType int
   // Readable form of logonType
   //
-  // For example "RemoteInteractive" for type 10. Empty for a type outside
-  // the documented set, in which case read logonType directly.
+  // For example "RemoteInteractive" for type 10. Null for a type outside
+  // the documented set, including 0, which only the system account's own
+  // session uses and which has no documented name. Read logonType directly
+  // in that case.
   logonTypeName string
   // Package that authenticated the session
   //
@@ -15949,11 +15955,13 @@ private windows.logonSession @defaults("logonTypeName accountName authentication
   // Domain of the account the session authenticated as
   //
   // The machine name for a local account, the domain name for a domain
-  // account, and "NT AUTHORITY" for the accounts the system creates.
+  // account, and the owning authority for the accounts the system creates:
+  // "NT AUTHORITY" for SYSTEM, LOCAL SERVICE, NETWORK SERVICE and IUSR,
+  // "Window Manager" for DWM-1, "Font Driver Host" for UMFD-0.
   accountDomain string
   // Security identifier of the account the session authenticated as
   //
-  // Empty when the account could not be translated to a SID, which happens
+  // Null when the account could not be translated to a SID, which happens
   // for a domain account while the domain is unreachable.
   sid string
   // Local user account the session authenticated as
