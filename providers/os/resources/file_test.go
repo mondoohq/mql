@@ -185,6 +185,21 @@ func TestFileOwnership_UnknownUidGid(t *testing.T) {
 	assert.True(t, group.State&plugin.StateIsNull != 0, "file.group should be null for an unknown gid")
 }
 
+func TestClassifyFsError(t *testing.T) {
+	denied := &os.PathError{Op: "open", Path: `C:\secret.txt`, Err: os.ErrPermission}
+	assert.ErrorIs(t, classifyFsError(denied), llx.ErrForbidden)
+	assert.ErrorIs(t, classifyFsError(denied), os.ErrPermission)
+
+	missing := &os.PathError{Op: "open", Path: `C:\missing.txt`, Err: os.ErrNotExist}
+	assert.Same(t, missing, classifyFsError(missing))
+	assert.NotErrorIs(t, classifyFsError(missing), llx.ErrForbidden)
+
+	inUse := errors.New("The process cannot access the file because it is being used by another process.")
+	assert.NotErrorIs(t, classifyFsError(inUse), llx.ErrForbidden)
+
+	assert.NoError(t, classifyFsError(nil))
+}
+
 // Paths from a container's settings are read only as small regular files, so
 // a device, FIFO or huge file cannot hang the scan or exhaust its memory.
 func TestReadSmallRegularFile(t *testing.T) {
