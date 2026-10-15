@@ -351,9 +351,21 @@ type pkgUpdates struct {
 	// err is why the manager could not report all of its updates. The maps
 	// hold the ones it did report.
 	err error
+	// noCommands is set for a connection that cannot run commands, a
+	// container image or a disk snapshot, where no manager can be asked.
+	noCommands bool
 }
 
 func (u *pkgUpdates) load() {
+	// No manager can be asked there. Each answered "no newer version" in its
+	// own way, which a policy reads as "everything is patched", and apk
+	// warned about a check that never ran on every image scan.
+	if u.noCommands {
+		if plugin.StructuredErrors() {
+			u.err = llx.NotApplicable(errors.New("available package updates need a running system, and this connection cannot run commands"))
+		}
+		return
+	}
 	available, err := u.pm.Available()
 	if err != nil {
 		// A manager that has no update check (pacman, macOS, COS) reports no
@@ -519,7 +531,7 @@ func (x *mqlPackages) list() ([]any, error) {
 		}
 		osPkgs = append(osPkgs, pkgs...)
 
-		updates := &pkgUpdates{pm: pm}
+		updates := &pkgUpdates{pm: pm, noCommands: !conn.Capabilities().Has(shared.Capability_RunCommand)}
 		for range pkgs {
 			osPkgUpdates = append(osPkgUpdates, updates)
 		}
