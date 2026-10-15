@@ -4,9 +4,12 @@
 package processes
 
 import (
+	"github.com/cockroachdb/errors"
+	"os"
 	"testing"
 
 	"github.com/spf13/afero"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -118,4 +121,13 @@ func TestLinuxProcManager_ProcessFullExecutable(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "kube-controller-manager", p.Executable)
 	require.Equal(t, "/usr/local/bin/kube-controller-manager --profiling=false", p.Command)
+}
+
+// A process gone between the listing of /proc and the read is not worth a
+// warning; over docker exec that is every command the scan itself runs.
+func TestProcessVanished(t *testing.T) {
+	assert.True(t, processVanished(os.ErrNotExist))
+	assert.True(t, processVanished(errors.WithMessage(&os.PathError{Op: "open", Path: "/proc/1876/cmdline", Err: os.ErrNotExist}, "read cmdline")))
+	assert.False(t, processVanished(os.ErrPermission))
+	assert.False(t, processVanished(errors.New("could not parse status")))
 }
