@@ -242,7 +242,34 @@ func (m *mqlMountPoint) fetchDfEntry() (*mount.DfEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return entries[m.Path.Data], nil
+	return dfEntryFor(entries, m.Path.Data, m.Device.Data), nil
+}
+
+// dfEntryFor returns the capacity of the mount at mountpoint. GNU df lists a
+// block device once, so a second mount of it, such as a bind mount or the EFI
+// system partition at both /boot/efi and /efi, is missing from its listing.
+// Every mount of a block device shows the same filesystem, so such a mount
+// takes the numbers df printed for another mount of the device. Devices
+// that are not block devices (tmpfs, NFS exports, ZFS datasets) share names
+// across unrelated filesystems and are not matched.
+func dfEntryFor(entries map[string]*mount.DfEntry, mountpoint, device string) *mount.DfEntry {
+	if entry, ok := entries[mountpoint]; ok {
+		return entry
+	}
+	if !strings.HasPrefix(device, "/dev/") {
+		return nil
+	}
+	var found *mount.DfEntry
+	for _, entry := range entries {
+		if entry.Filesystem != device {
+			continue
+		}
+		// map order is random; pick the same entry every time
+		if found == nil || entry.MountedOn < found.MountedOn {
+			found = entry
+		}
+	}
+	return found
 }
 
 func (m *mqlMountPoint) size() (int64, error) {
