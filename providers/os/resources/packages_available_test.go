@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
@@ -297,4 +298,24 @@ func TestPackageOutdatedFailedZypperCheck(t *testing.T) {
 	outdated := pkgs["openssl"].GetOutdated()
 	require.ErrorIs(t, outdated.Error, packages.ErrUpdateCheckFailed)
 	assert.Contains(t, outdated.Error.Error(), "System management is locked")
+}
+
+// A container image or a disk snapshot cannot ask any manager for updates.
+// Each one answered "no newer version", which reads as fully patched; with
+// StructuredErrors that is not applicable.
+func TestPkgUpdatesWithoutCommands(t *testing.T) {
+	withStructuredErrors(t, true)
+	pm := &fakeUpdatesPkgManager{updates: map[string]packages.PackageUpdate{}}
+	u := &pkgUpdates{pm: pm, noCommands: true}
+	_, err := u.lookup("bash", "x86_64")
+	require.Error(t, err)
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE, llx.KindOf(err))
+	assert.Equal(t, 0, pm.calls, "no manager is asked")
+
+	// v13 behavior without the StructuredErrors feature
+	withStructuredErrors(t, false)
+	pm = &fakeUpdatesPkgManager{updates: map[string]packages.PackageUpdate{}}
+	u = &pkgUpdates{pm: pm, noCommands: true}
+	assert.Equal(t, "", lookupOK(t, u, "bash", "x86_64"))
+	assert.Equal(t, 0, pm.calls, "no manager is asked, and none warns about a check that cannot run")
 }
