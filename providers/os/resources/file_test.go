@@ -225,3 +225,65 @@ func TestReadSmallRegularFile(t *testing.T) {
 		assert.False(t, ok, "a link to a FIFO")
 	}
 }
+
+// A Windows stat reports 0666 for every writable file (0444 when READONLY is
+// set) whatever its DACL, so on Windows the mode bits are null instead of
+// claiming the file is world-writable. The file type stays readable.
+func TestFilePermissions_WindowsHasNoPosixMode(t *testing.T) {
+	fixturePath, err := filepath.Abs("testdata/file_orphan_owner.toml")
+	require.NoError(t, err)
+
+	newPermissions := func(t *testing.T, platform *inventory.Platform, path string, mode os.FileMode) *mqlFilePermissions {
+		t.Helper()
+		conn, err := mock.New(0, &inventory.Asset{Platform: platform}, mock.WithPath(fixturePath))
+		require.NoError(t, err)
+		runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+		raw, err := CreateResource(runtime, "file", map[string]*llx.RawData{"path": llx.StringData(path)})
+		require.NoError(t, err)
+		file := raw.(*mqlFile)
+		require.NoError(t, file.cacheStatFields(shared.FileInfoDetails{Mode: shared.FileModeDetails{FileMode: mode}, Size: 1}))
+		perm := file.GetPermissions()
+		require.NoError(t, perm.Error)
+		return perm.Data
+	}
+
+	windows := &inventory.Platform{Name: "windows", Family: []string{"windows", "os"}}
+	linux := &inventory.Platform{Name: "ubuntu", Family: []string{"debian", "linux", "unix", "os"}}
+
+	t.Run("windows writable file", func(t *testing.T) {
+		p := newPermissions(t, windows, "C:/mqltest/plain.txt", 0o666)
+		for name, v := range map[string]*plugin.TValue[bool]{
+			"user_readable": &p.User_readable, "user_writeable": &p.User_writeable, "user_executable": &p.User_executable,
+			"group_readable": &p.Group_readable, "group_writeable": &p.Group_writeable, "group_executable": &p.Group_executable,
+			"other_readable": &p.Other_readable, "other_writeable": &p.Other_writeable, "other_executable": &p.Other_executable,
+			"suid": &p.Suid, "sgid": &p.Sgid, "sticky": &p.Sticky,
+		} {
+			assert.True(t, v.IsNull(), "%s must be null on Windows", name)
+		}
+		assert.True(t, p.Mode.IsNull(), "mode must be null on Windows")
+		assert.True(t, p.IsFile.Data)
+		assert.False(t, p.IsDirectory.Data)
+
+		str := p.GetString()
+		require.NoError(t, str.Error)
+		assert.True(t, str.IsNull(), "string must be null on Windows")
+	})
+
+	t.Run("windows directory keeps its type", func(t *testing.T) {
+		p := newPermissions(t, windows, "C:/mqltest", os.ModeDir|0o777)
+		assert.True(t, p.IsDirectory.Data)
+		assert.False(t, p.IsFile.Data)
+		assert.True(t, p.Other_writeable.IsNull())
+		id, err := p.id()
+		require.NoError(t, err)
+		assert.Equal(t, "nomode d---------", id)
+	})
+
+	t.Run("posix file keeps its mode", func(t *testing.T) {
+		p := newPermissions(t, linux, "/tmp/plain", 0o666)
+		assert.Equal(t, int64(0o666), p.Mode.Data)
+		assert.True(t, p.Other_writeable.Data)
+		assert.False(t, p.Other_writeable.IsNull())
+		assert.Equal(t, "-rw-rw-rw-", p.GetString().Data)
+	})
+}
