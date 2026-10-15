@@ -746,19 +746,9 @@ func (k *mqlKernel) installed() ([]any, error) {
 	}
 
 	// 1. gather running kernel information
-	info := k.GetInfo()
-	if info.Error != nil {
-		return nil, errors.New("could not determine kernel version")
-	}
-
-	kernelInfo, ok := info.Data.(map[string]any)
-	if !ok {
-		return nil, errors.New("no structured kernel information found")
-	}
-
-	runningKernelVersion, ok := kernelInfo["version"].(string)
-	if !ok {
-		return nil, errors.New("no running kernel version found")
+	runningKernelVersion, err := k.installedRunningVersion(conn)
+	if err != nil {
+		return nil, err
 	}
 
 	// 2. get all packages
@@ -795,6 +785,34 @@ func (k *mqlKernel) installed() ([]any, error) {
 	}
 
 	return convert.JsonToDictSlice(dropKernelCoreShadowedByKernel(res))
+}
+
+// installedRunningVersion returns the version of the running kernel that
+// the installed kernels are compared to. A connection that cannot run
+// commands (a container image, a stopped container, a disk snapshot) has no
+// running kernel, so every installed kernel is reported as not running. The
+// list used to fail there instead, on bootc images and disk snapshots that
+// carry kernels as much as on images that carry none.
+func (k *mqlKernel) installedRunningVersion(conn shared.Connection) (string, error) {
+	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return "", nil
+	}
+
+	info := k.GetInfo()
+	if info.Error != nil {
+		return "", errors.New("could not determine kernel version")
+	}
+
+	kernelInfo, ok := info.Data.(map[string]any)
+	if !ok {
+		return "", errors.New("no structured kernel information found")
+	}
+
+	runningKernelVersion, ok := kernelInfo["version"].(string)
+	if !ok {
+		return "", errors.New("no running kernel version found")
+	}
+	return runningKernelVersion, nil
 }
 
 // dropKernelCoreShadowedByKernel removes a kernel-core entry when a "kernel"
