@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func createTestCursorConfig(t *testing.T) string {
@@ -127,4 +128,28 @@ func isNotExist(err error) bool {
 		return false
 	}
 	return filepath.IsAbs(err.Error()) || err.Error() != "" // fallback
+}
+
+func TestCursorChildrenPerUser(t *testing.T) {
+	rt := newAIToolsTestRuntime(t, perUserFiles(map[string]string{
+		"/home/{u}/.cursor/mcp.json":       `{"mcpServers":{"fs":{"command":"{u}-cmd"}}}`,
+		"/home/{u}/.cursor/rules/style.md": "{u} rule",
+	}))
+	assertPerUser(t, childValues(t, rt, "cursor", ".cursor", func(p plugin.Resource) (string, string, error) {
+		c := p.(*mqlCursor)
+		l := c.GetMcpServers()
+		s, err := only[*mqlCursorMcpServer](t, l.Data, l.Error)
+		if err != nil {
+			return "", "", err
+		}
+		return s.MqlID(), s.Command.Data, nil
+	}), "%s-cmd")
+	assertPerUser(t, childValues(t, rt, "cursor", ".cursor", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlCursor).GetRules()
+		s, err := only[*mqlCursorRule](t, l.Data, l.Error)
+		if err != nil {
+			return "", "", err
+		}
+		return s.MqlID(), s.Content.Data, nil
+	}), "%s rule")
 }

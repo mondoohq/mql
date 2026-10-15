@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -12,6 +13,11 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func TestIsRealUserHome(t *testing.T) {
@@ -373,4 +379,80 @@ func TestReadJSONFileAferoEmptyFile(t *testing.T) {
 	var settings geminiSettings
 	require.NoError(t, readJSONFileAfero(afs, dir, "settings.json", &settings))
 	assert.Empty(t, settings.Theme)
+}
+
+// Two users on one host configure the same tool with children that share a
+// name. Each test resolves both users' instances in one runtime, as a query
+// that covers both users does, and checks that every child reports its own
+// user's values: a child id that ignores the parent's configPath makes the
+// resource cache hand the first user's child to the second.
+
+var aiTestUsers = []string{"ubuntu", "alice"}
+
+func newAIToolsTestRuntime(t *testing.T, files map[string]string) *plugin.Runtime {
+	t.Helper()
+	data := &mock.TomlData{Files: map[string]*mock.MockFileData{}}
+	for path, content := range files {
+		data.Files[path] = &mock.MockFileData{Path: path, Content: content, StatData: mock.FileInfo{Mode: 0o644}}
+		// register every parent directory so ReadDir and DirExists work
+		for dir := path[:strings.LastIndex(path, "/")]; dir != ""; dir = dir[:strings.LastIndex(dir, "/")] {
+			if _, ok := data.Files[dir]; !ok {
+				data.Files[dir] = &mock.MockFileData{Path: dir, StatData: mock.FileInfo{Mode: os.ModeDir | 0o755, IsDir: true}}
+			}
+		}
+	}
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "ubuntu", Family: []string{"debian", "linux", "unix"}},
+	}, mock.WithData(data))
+	require.NoError(t, err)
+	return &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+}
+
+// perUserFiles expands a file template for each test user; "{u}" is the user.
+func perUserFiles(tmpl map[string]string) map[string]string {
+	files := map[string]string{}
+	for _, u := range aiTestUsers {
+		for path, content := range tmpl {
+			files[strings.ReplaceAll(path, "{u}", u)] = strings.ReplaceAll(content, "{u}", u)
+		}
+	}
+	return files
+}
+
+// childValues resolves the tool for each user in one runtime and returns, per
+// user, the value read from that user's child.
+func childValues(t *testing.T, rt *plugin.Runtime, tool, configDir string, read func(parent plugin.Resource) (string, string, error)) map[string]string {
+	t.Helper()
+	got := map[string]string{}
+	ids := map[string]string{}
+	for _, u := range aiTestUsers {
+		parent, err := NewResource(rt, tool, map[string]*llx.RawData{
+			"configPath": llx.StringData("/home/" + u + "/" + configDir),
+		})
+		require.NoError(t, err)
+		id, val, err := read(parent)
+		require.NoError(t, err, u)
+		got[u] = val
+		ids[u] = id
+	}
+	assert.NotEqual(t, ids["ubuntu"], ids["alice"], "child ids of two users' %s must differ", tool)
+	return got
+}
+
+func assertPerUser(t *testing.T, got map[string]string, format string) {
+	t.Helper()
+	for _, u := range aiTestUsers {
+		assert.Equal(t, fmt.Sprintf(format, u), got[u], "value read for %s", u)
+	}
+}
+
+// only returns the single element of a child list.
+func only[T plugin.Resource](t *testing.T, list []any, err error) (T, error) {
+	t.Helper()
+	var zero T
+	if err != nil {
+		return zero, err
+	}
+	require.Len(t, list, 1)
+	return list[0].(T), nil
 }
