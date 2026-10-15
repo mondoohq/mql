@@ -6,6 +6,7 @@ package processes
 import (
 	"bytes"
 	"io"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -51,6 +52,13 @@ func (lpm *LinuxProcManager) List() ([]*OSProcess, error) {
 		// collect process info
 		proc, err := lpm.processInfo(pid, pidPath)
 		if err != nil {
+			// A process that exited between the listing of /proc and the
+			// read is gone, not a problem: over docker exec that is every
+			// command the scan itself runs.
+			if processVanished(err) {
+				log.Debug().Err(err).Int64("pid", pid).Msg("mql[processes]> process exited while listing")
+				continue
+			}
 			log.Warn().Err(err).Int64("pid", pid).Msg("mql[processes]> could not retrieve process information")
 			continue
 		}
@@ -61,6 +69,12 @@ func (lpm *LinuxProcManager) List() ([]*OSProcess, error) {
 	}
 
 	return res, nil
+}
+
+// processVanished reports whether reading a process failed because it is no
+// longer there.
+func processVanished(err error) bool {
+	return errors.Is(err, os.ErrNotExist)
 }
 
 // processInfo gathers cmdline, status for a process without socket inodes.
