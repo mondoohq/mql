@@ -36,6 +36,7 @@ func TestCatFs(t *testing.T) {
 	fi, err := catfs.Stat("C:\\test.txt")
 	require.NoError(t, err)
 
+	assert.Equal(t, "test.txt", fi.Name())
 	assert.Equal(t, int64(2), fi.Size())
 	assert.Equal(t, false, fi.IsDir())
 	assert.Equal(t, int64(1603529613), fi.ModTime().Unix())
