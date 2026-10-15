@@ -4,12 +4,14 @@
 package resources
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestDebianImageKernelName(t *testing.T) {
@@ -1677,4 +1679,27 @@ func TestDropKernelCoreShadowedByKernel(t *testing.T) {
 	got := dropKernelCoreShadowedByKernel(nil)
 	assert.NotNil(t, got)
 	assert.Empty(t, got)
+}
+
+// An image or a disk snapshot runs no kernel. installed lists its kernels as
+// not running instead of failing on the missing kernel.info.
+func TestKernelInstalledRunningVersionWithoutCommands(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{Platform: &inventory.Platform{Name: "debian", Family: []string{"debian", "linux", "unix"}}})
+	require.NoError(t, err)
+
+	k := &mqlKernel{MqlRuntime: &plugin.Runtime{Connection: &noCommandConnection{Connection: conn}}}
+	version, err := k.installedRunningVersion(&noCommandConnection{Connection: conn})
+	require.NoError(t, err)
+	assert.Equal(t, "", version)
+
+	// a running system that cannot tell its kernel is still an error
+	k = &mqlKernel{MqlRuntime: &plugin.Runtime{Connection: conn}}
+	k.Info = plugin.TValue[any]{State: plugin.StateIsSet, Error: errors.New("uname failed")}
+	_, err = k.installedRunningVersion(conn)
+	assert.Error(t, err)
+
+	// with the kernel known, a matching package is the running one
+	kv, ok := debianKernelVersion(kernelPackage{Name: "linux-image-6.1.0-41-arm64", Version: "6.1.158-1", Status: "install ok installed"}, "")
+	require.True(t, ok)
+	assert.False(t, kv.Running)
 }
