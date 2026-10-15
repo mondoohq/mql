@@ -52,8 +52,11 @@ func initContainerImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	return nil, r, nil
 }
 
+// id is the reference as given. References that normalize to the same name
+// ("alpine", "docker.io/library/alpine:latest") stay separate resources, so
+// each reports the reference it was created from.
 func (k *mqlContainerImage) id() (string, error) {
-	return k.Name.Data, nil
+	return k.Reference.Data, nil
 }
 
 func (k *mqlContainerImage) repository() (*mqlContainerRepository, error) {
