@@ -199,6 +199,7 @@ type RouteMapEntry struct {
 	Name      string
 	Action    string
 	Sequence  int64
+	Clauses   RouteMapClauses
 	Match     []string
 	Set       []string
 	Call      string
@@ -894,6 +895,7 @@ func buildRouteMapEntry(blk *Block) RouteMapEntry {
 		File:      blk.File,
 		StartLine: blk.StartLine,
 		Raw:       blk.Raw,
+		Clauses:   parseRouteMapClauses(blk.Directives),
 	}
 	if len(blk.Args) > 1 {
 		e.Action = blk.Args[1]
