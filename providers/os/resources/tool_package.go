@@ -362,13 +362,6 @@ func lookupInstalledPackage(runtime *plugin.Runtime, name string) (*mqlPackage, 
 	return nil, nil
 }
 
-// configDirPresent is the presence signal for the abstract-package fallback:
-// the tool's configPath directory exists on the target. Best-effort — used only
-// when binary ownership and name candidates both come up empty.
-func configDirPresent(runtime *plugin.Runtime, configPath string) bool {
-	return configPresent(runtime, configPath, false)
-}
-
 // configPresent reports whether configPath exists on the target as a directory,
 // or as a regular file when isFile is set.
 func configPresent(runtime *plugin.Runtime, configPath string, isFile bool) bool {

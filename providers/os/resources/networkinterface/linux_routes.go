@@ -107,8 +107,9 @@ func (l *linuxRouteDetector) convertJSONRouteToRoute(jsonRoute ipRouteJSON) *Rou
 	}
 
 	route := &Route{
-		Interface: jsonRoute.Dev,
-		Gateway:   jsonRoute.Gateway,
+		Interface: jsonRoute.Dev, Gateway: jsonRoute.Gateway, Type: jsonRoute.Type,
+		Table: jsonRoute.Table, Protocol: jsonRoute.Protocol, Scope: jsonRoute.Scope,
+		Source: jsonRoute.Prefsrc, Metric: int64(jsonRoute.Metric),
 	}
 
 	dest := jsonRoute.Dst
@@ -195,6 +196,10 @@ func (l *linuxRouteDetector) parseLinuxRoutesFromProc(output string) ([]Route, e
 		}
 
 		flags := parseLinuxRouteFlags(int64(flagsInt))
+		metric, err := strconv.ParseInt(line[6], 10, 64)
+		if err != nil {
+			metric = 0
+		}
 
 		// Same discard entries the IPv6 table and `ip route` paths drop. The
 		// kernel's fib_flag_trans sets RTF_REJECT for unreachable and prohibit
@@ -213,8 +218,7 @@ func (l *linuxRouteDetector) parseLinuxRoutesFromProc(output string) ([]Route, e
 		routes = append(routes, Route{
 			Destination: destStr,
 			Gateway:     gatewayStr,
-			Flags:       flags,
-			Interface:   iface,
+			Flags:       flags, Interface: iface, Table: "main", Metric: metric,
 		})
 	}
 
@@ -291,11 +295,20 @@ func (l *linuxRouteDetector) parseLinuxIPv6RoutesFromProc(output string) ([]Rout
 			continue
 		}
 
+		// The metric sits in the sixth column as a hex value.
+		var metric int64
+		if v, err := strconv.ParseInt(fields[5], 16, 64); err == nil {
+			metric = v
+		}
+
+		// /proc/net/ipv6_route holds the routes of every table and names
+		// none of them, so the table stays empty rather than claiming main.
 		routes = append(routes, Route{
 			Destination: destStr,
 			Gateway:     gatewayStr,
 			Flags:       flags,
 			Interface:   device,
+			Metric:      metric,
 		})
 	}
 

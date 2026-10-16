@@ -283,10 +283,7 @@ func checkStatus(ctx context.Context) (Status, error) {
 	// that sets it. Recomputing the precedence here is how this row came to claim
 	// Mondoo's bucket while providers were being downloaded from a configured
 	// mirror.
-	s.Client.ProvidersURL = cliproviders.RegistryURL()
-	if s.Client.ProvidersURL == "" {
-		s.Client.ProvidersURL = providers.DefaultProviderRegistryURL
-	}
+	s.Client.ProvidersURL = cliproviders.EffectiveRegistryURL()
 
 	// gather installed providers and their version drift up front, so rendering
 	// stays a pure, side-effect-free transformation of the Status value
