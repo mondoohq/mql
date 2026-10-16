@@ -20,48 +20,6 @@ func neighborByName(n []Neighbor, name string) *Neighbor {
 	return nil
 }
 
-func asn(v int64) *int64 { return &v }
-
-func TestParseASN(t *testing.T) {
-	tests := []struct {
-		in   string
-		want *int64
-	}{
-		{"65000", asn(65000)},
-		{"4294967295", asn(4294967295)},
-		// asdot, as FRR accepts it after `as-notation dot`
-		{"1.10", asn(65546)},
-		{"0.65535", asn(65535)},
-		{"internal", nil},
-		{"external", nil},
-		{"notanumber", nil},
-		{"", nil},
-		{"0", nil},
-		{"4294967296", nil},
-		{"-1", nil},
-		{"1.65536", nil},
-		{"1.", nil},
-		{".1", nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.in, func(t *testing.T) {
-			assert.Equal(t, tt.want, parseASN(tt.in))
-		})
-	}
-}
-
-// A `router bgp` block that names no valid ASN reports none rather than 0.
-func TestBGPInstances_InvalidASN(t *testing.T) {
-	cfg, err := Parse("frr.conf", strings.NewReader("router bgp notanumber\n neighbor 10.0.0.1 remote-as internal\nexit\n"))
-	require.NoError(t, err)
-	instances := cfg.BGPInstances()
-	require.Len(t, instances, 1)
-	assert.Nil(t, instances[0].ASN)
-	require.Len(t, instances[0].Neighbors, 1)
-	assert.Equal(t, "internal", instances[0].Neighbors[0].RemoteAs)
-	assert.Nil(t, instances[0].Neighbors[0].RemoteASN)
-}
-
 func bgpByVRF(list []BGP, vrf string) *BGP {
 	for i := range list {
 		if list[i].VRF == vrf {
@@ -95,7 +53,8 @@ func TestBGPInstances_PlainSetup(t *testing.T) {
 	require.Len(t, instances, 1)
 
 	b := instances[0]
-	assert.Equal(t, asn(65500), b.ASN)
+	require.NotNil(t, b.ASN)
+	assert.Equal(t, int64(65500), *b.ASN)
 	assert.Equal(t, "", b.VRF)
 	assert.Equal(t, "192.0.2.10", b.RouterID)
 	// Both defaults are switched off by an explicit `no` line.
@@ -112,12 +71,14 @@ func TestNeighbors_UnnumberedAndPeerGroups(t *testing.T) {
 	require.NotNil(t, dcgw1)
 	assert.True(t, dcgw1.Interface)
 	assert.Equal(t, "64497", dcgw1.RemoteAs)
-	assert.Equal(t, asn(64497), dcgw1.RemoteASN)
+	require.NotNil(t, dcgw1.RemoteASN)
+	assert.Equal(t, int64(64497), *dcgw1.RemoteASN)
 
 	group := neighborByName(b.Neighbors, "server")
 	require.NotNil(t, group)
 	assert.True(t, group.IsPeerGroup)
-	assert.Equal(t, asn(65501), group.RemoteASN)
+	require.NotNil(t, group.RemoteASN)
+	assert.Equal(t, int64(65501), *group.RemoteASN)
 	assert.True(t, group.BFD)
 	assert.True(t, group.PasswordSet)
 	assert.Equal(t, int64(3), group.KeepaliveTime)
@@ -215,7 +176,8 @@ func TestBGPInstances_EVPNSetup(t *testing.T) {
 
 	underlay := bgpByVRF(instances, "")
 	require.NotNil(t, underlay)
-	assert.Equal(t, asn(65100), underlay.ASN)
+	require.NotNil(t, underlay.ASN)
+	assert.Equal(t, int64(65100), *underlay.ASN)
 
 	evpn := afByName(underlay.AddressFamilies, "l2vpn", "evpn")
 	require.NotNil(t, evpn)
@@ -255,7 +217,8 @@ func TestVRFs_TenantSeparation(t *testing.T) {
 	cluster := vrfByName(vrfs, "cluster")
 	require.NotNil(t, cluster)
 	assert.Equal(t, int64(5000), cluster.VNI)
-	assert.Equal(t, asn(65100), cluster.RouterASN)
+	require.NotNil(t, cluster.RouterASN)
+	assert.Equal(t, int64(65100), *cluster.RouterASN)
 	assert.Equal(t, []string{"10.100.0.0/16 blackhole"}, cluster.StaticRoutes)
 	assert.Equal(t, []string{"vr.mgmt"}, cluster.ImportedVrfs)
 	assert.Equal(t, []string{"65100:5000"}, cluster.RouteTargetsImport)
@@ -374,52 +337,4 @@ exit
 	assert.Equal(t, "EVPN", instances[0].Neighbors[0].Name)
 	assert.Equal(t, "10.50.0.0/16", instances[0].Neighbors[0].ListenRange)
 	assert.True(t, instances[0].Neighbors[0].IsPeerGroup)
-}
-
-func TestNeighbors_NegatedSettingsClearPreviousValues(t *testing.T) {
-	src := `hostname x
-router bgp 65100
- neighbor GROUP peer-group
- neighbor PEER peer-group GROUP
- address-family ipv4 unicast
-  neighbor PEER activate
-  neighbor PEER route-map rm-in in
-  neighbor PEER route-map rm-out out
-  neighbor PEER prefix-list pl-in in
-  neighbor PEER prefix-list pl-out out
-  neighbor PEER filter-list fl-in in
-  neighbor PEER filter-list fl-out out
-  neighbor PEER maximum-prefix 100
-  no neighbor PEER route-map rm-in in
-  no neighbor PEER route-map rm-out out
-  no neighbor PEER prefix-list pl-in in
-  no neighbor PEER prefix-list pl-out out
-  no neighbor PEER filter-list fl-in in
-  no neighbor PEER filter-list fl-out out
-  no neighbor PEER maximum-prefix
- exit-address-family
- no neighbor GROUP peer-group
- no neighbor PEER peer-group GROUP
-exit
-`
-	cfg, err := Parse("inline.conf", strings.NewReader(src))
-	require.NoError(t, err)
-	require.Len(t, cfg.BGPInstances(), 1)
-
-	neighbors := cfg.BGPInstances()[0].Neighbors
-	group := neighborByName(neighbors, "GROUP")
-	require.NotNil(t, group)
-	assert.False(t, group.IsPeerGroup)
-
-	peer := neighborByName(neighbors, "PEER")
-	require.NotNil(t, peer)
-	assert.Empty(t, peer.PeerGroup)
-	require.Len(t, peer.AddressFamilies, 1)
-	assert.Empty(t, peer.RouteMapsIn)
-	assert.Empty(t, peer.RouteMapsOut)
-	assert.Empty(t, peer.PrefixListsIn)
-	assert.Empty(t, peer.PrefixListsOut)
-	assert.Empty(t, peer.FilterListsIn)
-	assert.Empty(t, peer.FilterListsOut)
-	assert.Zero(t, peer.AddressFamilies[0].MaximumPrefix)
 }

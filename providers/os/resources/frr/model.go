@@ -44,8 +44,7 @@ type Neighbor struct {
 	// PeerGroup names the group this neighbor joins, if any.
 	PeerGroup string
 	// RemoteAs holds the raw value, which is a number or `internal` or
-	// `external`. RemoteASN and LocalASN are nil when there is no valid AS
-	// number.
+	// `external`.
 	RemoteAs  string
 	RemoteASN *int64
 	LocalASN  *int64
@@ -144,7 +143,6 @@ type VRF struct {
 	StartLine    int
 	Raw          string
 
-	// RouterASN is nil when no instance with a valid AS number serves the VRF.
 	RouterASN          *int64
 	RouteTargetsImport []string
 	RouteTargetsExport []string
@@ -160,10 +158,12 @@ type Interface struct {
 	IPv6Addresses []string
 	Shutdown      bool
 	PBRPolicy     string
-	Params        map[string]string
-	File          string
-	StartLine     int
-	Raw           string
+	// Protocols holds the routing protocol settings of the interface.
+	Protocols InterfaceProtocols
+	Params    map[string]string
+	File      string
+	StartLine int
+	Raw       string
 }
 
 // PrefixList groups every `ip prefix-list <name> ...` line of one name.
@@ -196,11 +196,14 @@ type RouteMap struct {
 
 // RouteMapEntry is one clause of a route map.
 type RouteMapEntry struct {
-	Name      string
-	Action    string
-	Sequence  int64
-	Match     []string
-	Set       []string
+	Name     string
+	Action   string
+	Sequence int64
+	// Match and Set hold the raw statements, without the leading keyword.
+	Match []string
+	Set   []string
+	// Clauses holds the same statements read into fields.
+	Clauses   RouteMapClauses
 	Call      string
 	OnMatch   string
 	File      string
@@ -448,10 +451,8 @@ func (n *Neighbor) setRemoteAs(v string) {
 	n.RemoteASN = parseASN(v)
 }
 
-// parseASN reads an AS number in asplain (`65546`) or asdot (`1.10`)
-// notation, the two FRR accepts. It returns nil for anything else, including
-// `internal` and `external` and a number outside 1..4294967295, so a value
-// FRR would reject is not reported as a real ASN.
+// parseASN reads an AS number in asplain or asdot notation and returns nil
+// for values FRR does not treat as a numeric ASN.
 func parseASN(s string) *int64 {
 	high, low, dotted := strings.Cut(s, ".")
 	var asn uint64
@@ -475,8 +476,8 @@ func parseASN(s string) *int64 {
 	if asn == 0 {
 		return nil
 	}
-	res := int64(asn)
-	return &res
+	v := int64(asn)
+	return &v
 }
 
 func buildAddressFamily(blk *Block, neighbors *neighborSet) AddressFamily {
@@ -771,6 +772,7 @@ func (c *Config) Interfaces() []Interface {
 		iface := Interface{
 			Name:      blk.Name,
 			VRF:       argAfter(blk.Args, "vrf"),
+			Protocols: parseInterfaceProtocols(blk.Directives),
 			Params:    map[string]string{},
 			File:      blk.File,
 			StartLine: blk.StartLine,
@@ -901,6 +903,8 @@ func buildRouteMapEntry(blk *Block) RouteMapEntry {
 	if len(blk.Args) > 2 {
 		e.Sequence, _ = strconv.ParseInt(blk.Args[2], 10, 64)
 	}
+	e.Clauses = parseRouteMapClauses(blk.Directives)
+
 	for i := range blk.Directives {
 		d := &blk.Directives[i]
 		switch d.Name {

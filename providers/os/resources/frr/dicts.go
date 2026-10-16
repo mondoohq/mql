@@ -78,3 +78,20 @@ func VtyshUsersAsDicts(users []VtyshUser) []any {
 	}
 	return out
 }
+
+// PolicyEntriesAsDicts renders the entries of a community list, an access
+// list or an AS path access list as plain maps.
+func PolicyEntriesAsDicts(entries []PolicyEntry) []any {
+	out := make([]any, 0, len(entries))
+	for i := range entries {
+		e := &entries[i]
+		out = append(out, map[string]any{
+			"seq":    e.Seq,
+			"action": e.Action,
+			"value":  e.Value,
+			"line":   int64(e.Line),
+			"raw":    e.Raw,
+		})
+	}
+	return out
+}
