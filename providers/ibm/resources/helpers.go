@@ -385,9 +385,9 @@ func crnSegment(crn string, i int) string {
 }
 
 // statusError keeps the HTTP status of a failed call whose error does not
-// expose it. Older generated IBM SDKs (User Management, Resource Manager)
-// return the core's problem unchanged, which hides the HTTP problem it
-// carries, so classifyError would not see a refusal as one.
+// expose it. Older generated IBM SDKs (User Management, Cloud Internet
+// Services, Resource Manager) return the core's problem unchanged, which hides
+// the HTTP problem it carries, so classifyError would not see a refusal as one.
 type statusError struct {
 	err    error
 	status int
