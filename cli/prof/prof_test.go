@@ -4,6 +4,8 @@
 package prof
 
 import (
+	"io"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -157,5 +159,32 @@ func TestParse(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, expected, opts)
 		}
+	})
+}
+
+func TestInitProfilerForUnset(t *testing.T) {
+	// An unset variable must leave the process untouched, in particular it must
+	// not open a port.
+	InitProfilerFor("MONDOO_PROF_TEST_UNSET")
+}
+
+func TestSetupProfiler(t *testing.T) {
+	t.Run("disabled", func(t *testing.T) {
+		require.Nil(t, setupProfiler(profilerOpts{Enabled: false, Listen: "localhost:0"}))
+	})
+
+	t.Run("serves the heap endpoint", func(t *testing.T) {
+		l := setupProfiler(profilerOpts{Enabled: true, Listen: "localhost:0"})
+		require.NotNil(t, l)
+		t.Cleanup(func() { _ = l.Close() })
+
+		res, err := http.Get("http://" + l.Addr().String() + "/debug/pprof/heap")
+		require.NoError(t, err)
+		defer res.Body.Close()
+		require.Equal(t, 200, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.NotEmpty(t, body)
 	})
 }
