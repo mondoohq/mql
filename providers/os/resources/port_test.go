@@ -248,3 +248,29 @@ func TestParseWindowsPorts(t *testing.T) {
 		{"udp4", "0.0.0.0", "close", "", 123, 0},
 	}, got)
 }
+
+// ports reads the sockets the processes listing leaves out, once, when it
+// first maps a socket to its process. The fixtures are the dumps of a
+// php:8.3-apache container (Debian 13.7), see TestProcessesListLeavesSocketsToPorts.
+func TestPortsProcessesBySocketReadsSocketsOnDemand(t *testing.T) {
+	base, err := mock.New(0, &inventory.Asset{})
+	require.NoError(t, err)
+	procDump, err := os.ReadFile("./processes/testdata/procdump-php83-apache-debian13.bin")
+	require.NoError(t, err)
+	sockDump, err := os.ReadFile("./processes/testdata/sockdump-php83-apache-debian13.txt")
+	require.NoError(t, err)
+	conn := &procCmdConn{Connection: base, procDump: string(procDump), sockDump: string(sockDump)}
+	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+	ports := &mqlPorts{MqlRuntime: runtime}
+
+	bySocket, err := ports.processesBySocket()
+	require.NoError(t, err)
+	require.Len(t, bySocket, 1)
+	assert.Equal(t, int64(1), bySocket[1424795].Pid.Data)
+	require.Len(t, conn.commands, 2, "one command lists the processes, one reads their sockets")
+	assert.Contains(t, conn.commands[1], "ls -l")
+
+	_, err = ports.processesBySocket()
+	require.NoError(t, err)
+	assert.Len(t, conn.commands, 2, "and only once")
+}
