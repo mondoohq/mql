@@ -28,6 +28,11 @@ func TestProviderRegistryURLUnset(t *testing.T) {
 	assert.Empty(t, RegistryURL())
 }
 
+func TestEffectiveProviderRegistryURLUnset(t *testing.T) {
+	resetViper(t)
+	assert.Equal(t, "https://releases.mondoo.com/providers", EffectiveRegistryURL())
+}
+
 func TestProviderRegistryURLFromUpdatesURL(t *testing.T) {
 	resetViper(t)
 	viper.Set("updates_url", "https://install.mondoo.com")

@@ -89,11 +89,12 @@ func ResolveManager(conn shared.Connection, pf *inventory.Platform) (SmBiosManag
 	} else if pf.IsFamily("darwin") {
 		biosM = &OSXSmbiosManager{provider: conn, platform: pf}
 	} else if pf.IsFamily(inventory.FAMILY_UNIX) {
-		if pf.Name == "aix" {
+		switch pf.Name {
+		case "aix":
 			biosM = &AIXSmbiosManager{provider: conn}
-		} else if pf.Name == "freebsd" {
+		case "freebsd":
 			biosM = &FreeBSDSmbiosManager{provider: conn}
-		} else {
+		default:
 			biosM = &LinuxSmbiosManager{provider: conn}
 		}
 	} else if pf.IsFamily("windows") {

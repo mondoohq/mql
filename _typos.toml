@@ -36,6 +36,7 @@ oif = "oif"
 routeros = "routeros"
 aks = "aks"
 nd = "nd"
+# `iif` and `oif` are the input and output interface selectors of `ip rule`.
 hashi = "hashi"
 udid = "udid"
 writeable = "writeable"

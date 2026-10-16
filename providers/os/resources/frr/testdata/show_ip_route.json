@@ -1,0 +1,106 @@
+{
+  "0.0.0.0/0": [
+    {
+      "prefix": "0.0.0.0/0",
+      "prefixLen": 0,
+      "protocol": "bgp",
+      "vrfId": 0,
+      "vrfName": "default",
+      "selected": true,
+      "destSelected": true,
+      "distance": 20,
+      "metric": 0,
+      "installed": true,
+      "table": 254,
+      "uptime": "01:12:40",
+      "nexthops": [
+        {
+          "flags": 3,
+          "fib": true,
+          "ip": "192.0.2.1",
+          "afi": "ipv4",
+          "interfaceIndex": 3,
+          "interfaceName": "swp1",
+          "active": true,
+          "weight": 1
+        }
+      ]
+    }
+  ],
+  "192.0.2.30/32": [
+    {
+      "prefix": "192.0.2.30/32",
+      "prefixLen": 32,
+      "protocol": "connected",
+      "vrfId": 0,
+      "vrfName": "default",
+      "selected": true,
+      "destSelected": true,
+      "distance": 0,
+      "metric": 0,
+      "installed": true,
+      "table": 254,
+      "uptime": "01:13:02",
+      "nexthops": [
+        {
+          "flags": 3,
+          "fib": true,
+          "directlyConnected": true,
+          "interfaceIndex": 1,
+          "interfaceName": "lo",
+          "active": true,
+          "weight": 1
+        }
+      ]
+    }
+  ],
+  "10.100.0.0/16": [
+    {
+      "prefix": "10.100.0.0/16",
+      "prefixLen": 16,
+      "protocol": "static",
+      "vrfId": 5,
+      "vrfName": "cluster",
+      "selected": true,
+      "distance": 1,
+      "metric": 0,
+      "installed": false,
+      "table": 1005,
+      "uptime": "01:13:00",
+      "nexthops": [
+        {
+          "flags": 1,
+          "blackhole": true,
+          "active": true,
+          "vrf": "cluster",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "prefix": "10.100.0.0/16",
+      "prefixLen": 16,
+      "protocol": "bgp",
+      "vrfId": 5,
+      "vrfName": "cluster",
+      "selected": false,
+      "distance": 200,
+      "metric": 0,
+      "installed": false,
+      "table": 1005,
+      "uptime": "00:44:11",
+      "nexthops": [
+        {
+          "flags": 3,
+          "fib": false,
+          "ip": "192.0.2.31",
+          "afi": "ipv4",
+          "interfaceName": "vlan100",
+          "vrf": "cluster",
+          "active": true,
+          "weight": 1
+        }
+      ]
+    }
+  ]
+}

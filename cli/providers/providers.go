@@ -115,6 +115,15 @@ func RegistryURL() string {
 	return ""
 }
 
+// EffectiveRegistryURL returns the configured provider registry, or the
+// default provider path under the release bucket when no mirror is configured.
+func EffectiveRegistryURL() string {
+	if registryURL := RegistryURL(); registryURL != "" {
+		return registryURL
+	}
+	return providers.NewMondooProviderRegistry().BaseURL
+}
+
 func detectConnectorName(args []string, rootCmd *cobra.Command, commands []*Command, existing providers.Providers) cliPreflight {
 	config.InitViperConfig()
 
