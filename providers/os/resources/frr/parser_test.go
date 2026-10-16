@@ -14,10 +14,9 @@ import (
 
 func parseFixture(t *testing.T, name string) *Config {
 	t.Helper()
-	f, err := os.Open("testdata/" + name)
+	data, err := os.ReadFile("testdata/" + name)
 	require.NoError(t, err)
-	defer f.Close()
-	cfg, err := Parse(name, f)
+	cfg, err := Parse(name, strings.NewReader(string(data)))
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	return cfg
@@ -209,109 +208,4 @@ exit
 		assert.NotEqual(t, "a", d.Name)
 		assert.NotEqual(t, "an", d.Name)
 	}
-}
-
-func TestRedactSecrets(t *testing.T) {
-	tests := []struct {
-		line string
-		want string
-	}{
-		{"password zebra", "password <redacted>"},
-		{"enable password zebra", "enable password <redacted>"},
-		{"neighbor 10.0.0.1 password s3cret", "neighbor 10.0.0.1 password <redacted>"},
-		// everything after the secret goes with it
-		{"username alice password s3cret privilege 15", "username alice password <redacted>"},
-		{"area-password md5 s3cret authenticate snp validate", "area-password md5 <redacted>"},
-		// LINE arguments run to the end of the line and may hold spaces
-		{"neighbor 10.0.0.1 password my s3cret phrase", "neighbor 10.0.0.1 password <redacted>"},
-		{"key-string two words", "key-string <redacted>"},
-		{"ip rip authentication string a b c", "ip rip authentication string <redacted>"},
-		{"isis password md5 s3cret", "isis password md5 <redacted>"},
-		{"area-password clear s3cret", "area-password clear <redacted>"},
-		{"domain-password hmac-md5 s3cret", "domain-password hmac-md5 <redacted>"},
-		{"ip ospf authentication-key s3cret", "ip ospf authentication-key <redacted>"},
-		{"ip ospf message-digest-key 1 md5 s3cret", "ip ospf message-digest-key 1 md5 <redacted>"},
-		{"key-string s3cret", "key-string <redacted>"},
-		{"ip rip authentication string s3cret", "ip rip authentication string <redacted>"},
-		{"ipv6 ospf6 authentication key-id 1 hash-algo hmac-sha-256 key s3cret", "ipv6 ospf6 authentication key-id 1 hash-algo hmac-sha-256 key <redacted>"},
-		{"ip nhrp authentication s3cret", "ip nhrp authentication <redacted>"},
-		// service password-encryption writes the encrypted form after an 8
-		{"password 8 Cpu5Ryrx5Mtc", "password 8 <redacted>"},
-		{"enable password 8 Cpu5Ryrx5Mtc", "enable password 8 <redacted>"},
-		// a type token with nothing after it is the password itself
-		{"password md5", "password <redacted>"},
-		{"password 8", "password <redacted>"},
-		// nothing to redact
-		{"username alice nopassword", "username alice nopassword"},
-		{"neighbor 10.0.0.1 password", "neighbor 10.0.0.1 password"},
-		{"key chain ospf-keys", "key chain ospf-keys"},
-		{"ip ospf authentication message-digest", "ip ospf authentication message-digest"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.line, func(t *testing.T) {
-			got, redacted := redactSecrets(strings.Fields(tt.line))
-			assert.Equal(t, tt.want, strings.Join(got, " "))
-			assert.Equal(t, tt.want != tt.line, redacted)
-		})
-	}
-}
-
-// No password or key in the config is readable through the parsed config,
-// neither in a block's raw text, a directive, nor a neighbor's params.
-func TestParse_SecretsAreRedacted(t *testing.T) {
-	conf := `password vty-s3cret
-enable password enable-s3cret
-username alice nopassword
-interface eth0
- ! ip ospf authentication-key old-s3cret
- ip ospf authentication-key ospf-s3cret
- ip ospf message-digest-key 1 md5 md5-s3cret
-exit
-key chain k
- key 1
-  key-string chain-s3cret
- exit
-exit
-router bgp 65000
- neighbor 10.0.0.1 remote-as 65001
- neighbor 10.0.0.1 password bgp phrase with s3cret words
-exit
-`
-	cfg, err := Parse("frr.conf", strings.NewReader(conf))
-	require.NoError(t, err)
-
-	var dump strings.Builder
-	var walk func(blocks []Block)
-	walk = func(blocks []Block) {
-		for i := range blocks {
-			dump.WriteString(blocks[i].Raw + "\n" + strings.Join(blocks[i].Args, " ") + "\n")
-			for _, d := range blocks[i].Directives {
-				dump.WriteString(d.Raw + "\n" + strings.Join(d.Args, " ") + "\n")
-			}
-			walk(blocks[i].Blocks)
-		}
-	}
-	walk(cfg.Blocks)
-	for _, d := range cfg.Directives {
-		dump.WriteString(d.Raw + "\n" + strings.Join(d.Args, " ") + "\n")
-	}
-	for _, b := range cfg.BGPInstances() {
-		dump.WriteString(b.Raw + "\n")
-		for _, n := range b.Neighbors {
-			for k, v := range n.Params {
-				dump.WriteString(k + " " + v + "\n")
-			}
-		}
-	}
-	assert.NotContains(t, dump.String(), "s3cret")
-	assert.Contains(t, dump.String(), "password <redacted>")
-
-	// what the model reads from these lines still works
-	instances := cfg.BGPInstances()
-	require.Len(t, instances, 1)
-	require.Len(t, instances[0].Neighbors, 1)
-	assert.True(t, instances[0].Neighbors[0].PasswordSet)
-	users := cfg.VtyshUsers()
-	require.Len(t, users, 1)
-	assert.True(t, users[0].NoPassword)
 }

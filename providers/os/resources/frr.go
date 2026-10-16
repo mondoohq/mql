@@ -224,6 +224,20 @@ func (s *mqlFrrConfig) markParseErrors(err error) {
 	s.RouteMaps = arrVal
 	s.Blocks = arrVal
 	s.Directives = arrVal
+	s.StaticRoutes = arrVal
+	s.CommunityLists = arrVal
+	s.AccessLists = arrVal
+	s.AsPathAccessLists = arrVal
+	s.Ospf = arrVal
+	s.Isis = arrVal
+	s.BfdPeers = arrVal
+	s.PbrMaps = arrVal
+	s.SegmentRouting = plugin.TValue[*mqlFrrConfigSegmentRoutingSettings]{
+		Error: err, State: plugin.StateIsSet | plugin.StateIsNull,
+	}
+	s.Service = plugin.TValue[*mqlFrrConfigServiceSettings]{
+		Error: err, State: plugin.StateIsSet | plugin.StateIsNull,
+	}
 }
 
 func (s *mqlFrrConfig) hostname(file *mqlFile) (string, error) {
@@ -308,8 +322,7 @@ func (s *mqlFrrConfig) bgp(file *mqlFile) ([]any, error) {
 		b := &instances[i]
 		// The id is built from what the instance is, not from where it
 		// sits, so reordering the blocks does not renumber the rest. An ASN
-		// and a VRF name identify an instance; FRR allows one instance per
-		// VRF, so an instance without a valid ASN is still told apart.
+		// and a VRF name identify an instance.
 		asn := ""
 		if b.ASN != nil {
 			asn = strconv.FormatInt(*b.ASN, 10)
@@ -492,7 +505,7 @@ func (s *mqlFrrConfig) interfaces(file *mqlFile) ([]any, error) {
 	res := make([]any, 0, len(ifaces))
 	for i := range ifaces {
 		iface := &ifaces[i]
-		obj, err := CreateResource(s.MqlRuntime, "frr.config.interface", map[string]*llx.RawData{
+		ifaceArgs := map[string]*llx.RawData{
 			"__id":          llx.StringData(s.__id + "#interface/" + iface.Name + "/" + iface.VRF),
 			"name":          llx.StringData(iface.Name),
 			"vrf":           llx.StringData(iface.VRF),
@@ -505,7 +518,10 @@ func (s *mqlFrrConfig) interfaces(file *mqlFile) ([]any, error) {
 			"file":          llx.StringData(iface.File),
 			"startLine":     llx.IntData(int64(iface.StartLine)),
 			"raw":           llx.StringData(iface.Raw),
-		})
+		}
+		interfaceProtocolArgs(ifaceArgs, &iface.Protocols)
+
+		obj, err := CreateResource(s.MqlRuntime, "frr.config.interface", ifaceArgs)
 		if err != nil {
 			return nil, err
 		}
@@ -553,7 +569,7 @@ func (s *mqlFrrConfig) routeMaps(file *mqlFile) ([]any, error) {
 		entries := make([]any, 0, len(rm.Entries))
 		for j := range rm.Entries {
 			e := &rm.Entries[j]
-			obj, err := CreateResource(s.MqlRuntime, "frr.config.routeMap.entry", map[string]*llx.RawData{
+			entryArgs := map[string]*llx.RawData{
 				"__id":      llx.StringData(id + "/" + strconv.FormatInt(e.Sequence, 10) + "/" + strconv.Itoa(j)),
 				"name":      llx.StringData(e.Name),
 				"action":    llx.StringData(e.Action),
@@ -565,7 +581,10 @@ func (s *mqlFrrConfig) routeMaps(file *mqlFile) ([]any, error) {
 				"file":      llx.StringData(e.File),
 				"startLine": llx.IntData(int64(e.StartLine)),
 				"raw":       llx.StringData(e.Raw),
-			})
+			}
+			routeMapClauseArgs(entryArgs, &e.Clauses)
+
+			obj, err := CreateResource(s.MqlRuntime, "frr.config.routeMap.entry", entryArgs)
 			if err != nil {
 				return nil, err
 			}
