@@ -150,28 +150,31 @@ func getContainers(
 		if err != nil {
 			return nil, err
 		}
-
 		ports, err := convert.JsonToDictSlice(c.Ports)
 		if err != nil {
 			return nil, err
 		}
 
 		args := map[string]*llx.RawData{
-			"uid":                      llx.StringData(id + "/" + c.Name), // container names are unique within a resource
-			"name":                     llx.StringData(c.Name),
-			"imageName":                llx.StringData(c.Image),
-			"command":                  llx.ArrayData(convert.SliceAnyToInterface(c.Command), types.String),
-			"args":                     llx.ArrayData(convert.SliceAnyToInterface(c.Args), types.String),
-			"volumeMounts":             llx.ArrayData(volumeMounts, types.Dict),
-			"volumeDevices":            llx.ArrayData(volumeDevices, types.Dict),
-			"imagePullPolicy":          llx.StringData(string(c.ImagePullPolicy)),
-			"securityContext":          llx.DictData(secContext),
-			"workingDir":               llx.StringData(c.WorkingDir),
-			"tty":                      llx.BoolData(c.TTY),
-			"stdin":                    llx.BoolData(c.Stdin),
-			"stdinOnce":                llx.BoolData(c.StdinOnce),
+			"uid":             llx.StringData(id + "/" + c.Name), // container names are unique within a resource
+			"name":            llx.StringData(c.Name),
+			"imageName":       llx.StringData(c.Image),
+			"command":         llx.ArrayData(convert.SliceAnyToInterface(c.Command), types.String),
+			"args":            llx.ArrayData(convert.SliceAnyToInterface(c.Args), types.String),
+			"volumeMounts":    llx.ArrayData(volumeMounts, types.Dict),
+			"volumeDevices":   llx.ArrayData(volumeDevices, types.Dict),
+			"imagePullPolicy": llx.StringData(string(c.ImagePullPolicy)),
+			"securityContext": llx.DictData(secContext),
+			"workingDir":      llx.StringData(c.WorkingDir),
+			"tty":             llx.BoolData(c.TTY),
+			"stdin":           llx.BoolData(c.Stdin),
+			"stdinOnce":       llx.BoolData(c.StdinOnce),
+			// Preserve the released fields' existing runtime behavior; use the
+			// typed plural fields for the corrected list shape.
 			"env":                      llx.ArrayData(env, types.Dict),
 			"envFrom":                  llx.ArrayData(envFrom, types.Dict),
+			"envs":                     llx.ArrayData(env, types.Dict),
+			"envFromEntries":           llx.ArrayData(envFrom, types.Dict),
 			"ports":                    llx.ArrayData(ports, types.Dict),
 			"terminationMessagePath":   llx.StringData(c.TerminationMessagePath),
 			"terminationMessagePolicy": llx.StringData(string(c.TerminationMessagePolicy)),

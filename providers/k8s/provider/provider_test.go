@@ -141,6 +141,37 @@ func TestK8sServiceAccountNoAutomount(t *testing.T) {
 	assert.False(t, dataResp.Data.RawData().Value.(bool))
 }
 
+func TestK8sServiceAccountSecrets(t *testing.T) {
+	srv, connRes := newTestService(t, "../connection/shared/resources/testdata/serviceaccount-secrets.yaml")
+
+	dataResp, err := srv.GetData(&plugin.DataReq{
+		Connection: connRes.Id,
+		Resource:   "k8s",
+	})
+	require.NoError(t, err)
+	resourceId := string(dataResp.Data.Value)
+
+	dataResp, err = srv.GetData(&plugin.DataReq{
+		Connection: connRes.Id,
+		Resource:   "k8s",
+		ResourceId: resourceId,
+		Field:      "serviceaccounts",
+	})
+	require.NoError(t, err)
+	require.Len(t, dataResp.Data.Array, 1)
+
+	saResourceID := string(dataResp.Data.Array[0].Value)
+
+	dataResp, err = srv.GetData(&plugin.DataReq{
+		Connection: connRes.Id,
+		Resource:   "k8s.serviceaccount",
+		ResourceId: saResourceID,
+		Field:      "secrets",
+	})
+	require.NoError(t, err)
+	assert.Len(t, dataResp.Data.Array, 1)
+}
+
 func TestIngress(t *testing.T) {
 	srv, connRes := newTestService(t, "../connection/shared/resources/testdata/ingress.yaml")
 
@@ -302,5 +333,47 @@ func TestParseCLI(t *testing.T) {
 		}
 
 		assert.Equal(t, expectedRes, res)
+	})
+
+	t.Run("WithKyvernoOptions", func(t *testing.T) {
+		req := &plugin.ParseCLIReq{
+			Connector: "k8s",
+			Flags: map[string]*llx.Primitive{
+				shared.OPTION_KYVERNO_DEFAULT_MAPPINGS: {
+					Type:  "bool",
+					Value: []byte("false"),
+				},
+				shared.OPTION_KYVERNO_MAPPING_ANNOTATION_CHECK_UIDS: {
+					Value: []byte("security.example.com/check-uid"),
+				},
+				shared.OPTION_KYVERNO_EXCEPTION_ANNOTATION_OWNERS: {
+					Value: []byte("owner.example.com/team"),
+				},
+				shared.OPTION_KYVERNO_MIRROR_POLICY_EXCEPTIONS: {
+					Type:  "bool",
+					Value: []byte("true"),
+				},
+				shared.OPTION_KYVERNO_MIRRORED_EXCEPTION_ACTION: {
+					Value: []byte("WORKAROUND"),
+				},
+				shared.OPTION_KYVERNO_FAIL_EXPIRED_POLICY_EXCEPTIONS: {
+					Type:  "bool",
+					Value: []byte("false"),
+				},
+				shared.OPTION_KYVERNO_REPORT_UNMAPPED_POLICY_RESULTS: nil,
+			},
+		}
+
+		res, err := srv.ParseCLI(req)
+		require.NoError(t, err)
+
+		options := res.Asset.Connections[0].Options
+		assert.Equal(t, "false", options[shared.OPTION_KYVERNO_DEFAULT_MAPPINGS])
+		assert.Equal(t, "security.example.com/check-uid", options[shared.OPTION_KYVERNO_MAPPING_ANNOTATION_CHECK_UIDS])
+		assert.Equal(t, "owner.example.com/team", options[shared.OPTION_KYVERNO_EXCEPTION_ANNOTATION_OWNERS])
+		assert.Equal(t, "true", options[shared.OPTION_KYVERNO_MIRROR_POLICY_EXCEPTIONS])
+		assert.Equal(t, "WORKAROUND", options[shared.OPTION_KYVERNO_MIRRORED_EXCEPTION_ACTION])
+		assert.Equal(t, "false", options[shared.OPTION_KYVERNO_FAIL_EXPIRED_POLICY_EXCEPTIONS])
+		assert.NotContains(t, options, shared.OPTION_KYVERNO_REPORT_UNMAPPED_POLICY_RESULTS)
 	})
 }
