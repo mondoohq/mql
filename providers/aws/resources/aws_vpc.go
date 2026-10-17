@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	vpctypes "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/smithy-go"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -1636,7 +1637,53 @@ func initAwsVpc(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[stri
 		}
 	}
 
+	// The list holds only the VPCs that carry the discovery's tag filters, so
+	// a VPC that another resource references (a subnet of a SageMaker model,
+	// a security group peer) may be missing from it. Describe that one VPC
+	// directly, as the region-aware path above does.
+	if vpcId != "" {
+		vpc, err := describeVpcInRegions(runtime, vpcId)
+		if err != nil {
+			return nil, nil, err
+		}
+		if vpc != nil {
+			return args, vpc, nil
+		}
+	}
+
 	return nil, nil, errors.New("vpc does not exist")
+}
+
+// describeVpcInRegions looks one VPC up by its ID in each region of the
+// connection and returns nil when no region has it.
+func describeVpcInRegions(runtime *plugin.Runtime, vpcId string) (*mqlAwsVpc, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	regions, err := conn.Regions()
+	if err != nil {
+		return nil, err
+	}
+	for _, region := range regions {
+		resp, err := conn.Ec2(region).DescribeVpcs(context.Background(), &ec2.DescribeVpcsInput{
+			VpcIds: []string{vpcId},
+		})
+		if err != nil {
+			if isVpcNotFoundError(err) || Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
+				continue
+			}
+			return nil, err
+		}
+		if len(resp.Vpcs) > 0 {
+			return buildVpcResource(runtime, region, conn.AccountId(), resp.Vpcs[0])
+		}
+	}
+	return nil, nil
+}
+
+// isVpcNotFoundError reports whether DescribeVpcs rejected a VPC ID because
+// the region has no such VPC.
+func isVpcNotFoundError(err error) bool {
+	var apiErr smithy.APIError
+	return errors.As(err, &apiErr) && apiErr.ErrorCode() == "InvalidVpcID.NotFound"
 }
 
 // vpcFilter scopes a lookup to the resources of one VPC. Such a lookup takes

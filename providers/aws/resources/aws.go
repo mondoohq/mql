@@ -168,8 +168,11 @@ func awsResolveVpcFromSubnets(runtime *plugin.Runtime, region string, subnetIds 
 		field.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	res, err := NewResource(runtime, "aws.vpc",
-		map[string]*llx.RawData{"id": llx.StringData(*resp.Subnets[0].VpcId)})
+	// The ARN carries the region, so initAwsVpc describes this one VPC instead
+	// of searching the VPC list, which holds only the tag-filtered VPCs.
+	res, err := NewResource(runtime, "aws.vpc", map[string]*llx.RawData{
+		"arn": llx.StringData(fmt.Sprintf(vpcArnPattern, region, conn.AccountId(), *resp.Subnets[0].VpcId)),
+	})
 	if err != nil {
 		return nil, err
 	}
