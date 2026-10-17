@@ -11,6 +11,7 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.15.1
 	github.com/IBM/ibm-cos-sdk-go-config/v2 v2.3.1
 	github.com/IBM/keyprotect-go-client v1.0.2
+	github.com/IBM/networking-go-sdk v0.55.2
 	github.com/IBM/platform-services-go-sdk v0.103.4
 	github.com/IBM/vpc-go-sdk v0.93.0
 	github.com/go-openapi/runtime v0.33.3

@@ -2,20 +2,21 @@
 
 The `ibm` provider connects to an [IBM Cloud](https://cloud.ibm.com/) account and inventories its
 IAM configuration and users, resource groups and instances, VPC infrastructure, Power Virtual Server
-workspaces, Cloud Object Storage buckets, Key Protect keys, Activity Tracker Event Routing,
-IBM Cloud Databases, and IBM Cloud Kubernetes Service and Red Hat OpenShift on IBM Cloud clusters
-through read-only API calls. Use it to audit account settings such as MFA and session
-limits, who holds which roles, network exposure in VPCs, and Power Virtual Server workloads.
+workspaces, Cloud Object Storage buckets, Key Protect keys, Activity Tracker Event Routing, IBM
+Cloud Databases, IBM Cloud Kubernetes Service and Red Hat OpenShift on IBM Cloud clusters, and Cloud
+Internet Services through read-only API calls. Use it to audit account settings such as MFA and
+session limits, who holds which roles, network exposure in VPCs, TLS and firewall settings at the
+edge, and Power Virtual Server workloads.
 
 ## Prerequisites
 
 An IBM Cloud API key. A key whose identity has the Viewer role on IAM Identity, IAM Access Groups,
 and the services you query, plus Reader on VPC Infrastructure, Power Virtual Server, Key Protect,
-Activity Tracker Event Routing, and IBM Cloud Databases, and Viewer on Kubernetes Service, is
-enough. Reading a bucket's firewall and activity tracking settings needs the Manager role on Cloud
-Object Storage. Listing every user of the account (`ibm.iamUsers`) needs the Viewer role on User
-Management; without it, IBM Cloud may return only the key's own user when the account lets users
-see each other. The provider only reads.
+Activity Tracker Event Routing, IBM Cloud Databases, and Internet Services, and Viewer on
+Kubernetes Service, is enough. Reading a bucket's firewall and activity tracking settings needs the
+Manager role on Cloud Object Storage. Listing every user of the account (`ibm.iamUsers`) needs the
+Viewer role on User Management; without it, IBM Cloud may return only the key's own user when the
+account lets users see each other. The provider only reads.
 
 ## Authentication
 
@@ -225,6 +226,23 @@ mql> ibm.kubernetesClusters.where(!kmsEnabled || !imagePullSecretsEnabled) { nam
 Monitoring and logging agents are not visible through the Kubernetes Service API: IBM retired the
 observability endpoints (`v2/observe`) and the `ibmcloud ob` plug-in, and the agents are now
 installed into the cluster. Check them with the `k8s` provider against the cluster itself.
+
+**Cloud Internet Services: TLS and the web application firewall**
+
+```shell
+mql> ibm.cisInstances { zones { name minTlsVersion tls13 ssl alwaysUseHttps wafEnabled } }
+```
+
+**Cloud Internet Services: DNS records and global load balancers that bypass the edge**
+
+```shell
+mql> ibm.cisInstances { zones { dnsRecords.where(proxiable && !proxied) { name type } } }
+mql> ibm.cisInstances { zones { globalLoadBalancers.where(!proxied) { name enabled } } }
+```
+
+Only proxied DNS records and global load balancers get the edge's TLS settings, web application
+firewall, and DDoS protection. A record that is proxiable but not proxied resolves to its origin
+directly. Zone settings are read when queried, one call per setting and zone.
 
 **Power Virtual Server workspaces and their images**
 

@@ -16,48 +16,52 @@ import (
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceIbm                     string = "ibm"
-	ResourceIbmIamAccountSettings   string = "ibm.iam.accountSettings"
-	ResourceIbmResourceGroup        string = "ibm.resourceGroup"
-	ResourceIbmResourceInstance     string = "ibm.resourceInstance"
-	ResourceIbmIamAccessGroup       string = "ibm.iam.accessGroup"
-	ResourceIbmIamAccessGroupMember string = "ibm.iam.accessGroup.member"
-	ResourceIbmIamPolicy            string = "ibm.iam.policy"
-	ResourceIbmIamServiceId         string = "ibm.iam.serviceId"
-	ResourceIbmIamApiKey            string = "ibm.iam.apiKey"
-	ResourceIbmIamUser              string = "ibm.iam.user"
-	ResourceIbmIamTrustedProfile    string = "ibm.iam.trustedProfile"
-	ResourceIbmRegion               string = "ibm.region"
-	ResourceIbmVpc                  string = "ibm.vpc"
-	ResourceIbmVpcSubnet            string = "ibm.vpc.subnet"
-	ResourceIbmVpcInstance          string = "ibm.vpc.instance"
-	ResourceIbmNetworkExposure      string = "ibm.network.exposure"
-	ResourceIbmVpcSecurityGroup     string = "ibm.vpc.securityGroup"
-	ResourceIbmVpcSecurityGroupRule string = "ibm.vpc.securityGroup.rule"
-	ResourceIbmVpcNetworkAcl        string = "ibm.vpc.networkAcl"
-	ResourceIbmVpcNetworkAclRule    string = "ibm.vpc.networkAcl.rule"
-	ResourceIbmVpcFloatingIp        string = "ibm.vpc.floatingIp"
-	ResourceIbmVpcPublicGateway     string = "ibm.vpc.publicGateway"
-	ResourceIbmVpcLoadBalancer      string = "ibm.vpc.loadBalancer"
-	ResourceIbmVpcVolume            string = "ibm.vpc.volume"
-	ResourceIbmVpcSshKey            string = "ibm.vpc.sshKey"
-	ResourceIbmVpcFlowLogCollector  string = "ibm.vpc.flowLogCollector"
-	ResourceIbmPowerWorkspace       string = "ibm.power.workspace"
-	ResourceIbmPowerInstance        string = "ibm.power.instance"
-	ResourceIbmPowerNetwork         string = "ibm.power.network"
-	ResourceIbmPowerVolume          string = "ibm.power.volume"
-	ResourceIbmPowerImage           string = "ibm.power.image"
-	ResourceIbmCosBucket            string = "ibm.cos.bucket"
-	ResourceIbmKmsInstance          string = "ibm.kms.instance"
-	ResourceIbmKmsKey               string = "ibm.kms.key"
-	ResourceIbmKmsKeyRegistration   string = "ibm.kms.key.registration"
-	ResourceIbmAtrackerTarget       string = "ibm.atracker.target"
-	ResourceIbmAtrackerRoute        string = "ibm.atracker.route"
-	ResourceIbmAtrackerRouteRule    string = "ibm.atracker.route.rule"
-	ResourceIbmAtrackerSettings     string = "ibm.atracker.settings"
-	ResourceIbmDatabase             string = "ibm.database"
-	ResourceIbmKubernetesCluster    string = "ibm.kubernetes.cluster"
-	ResourceIbmKubernetesWorker     string = "ibm.kubernetes.worker"
+	ResourceIbm                      string = "ibm"
+	ResourceIbmIamAccountSettings    string = "ibm.iam.accountSettings"
+	ResourceIbmResourceGroup         string = "ibm.resourceGroup"
+	ResourceIbmResourceInstance      string = "ibm.resourceInstance"
+	ResourceIbmIamAccessGroup        string = "ibm.iam.accessGroup"
+	ResourceIbmIamAccessGroupMember  string = "ibm.iam.accessGroup.member"
+	ResourceIbmIamPolicy             string = "ibm.iam.policy"
+	ResourceIbmIamServiceId          string = "ibm.iam.serviceId"
+	ResourceIbmIamApiKey             string = "ibm.iam.apiKey"
+	ResourceIbmIamUser               string = "ibm.iam.user"
+	ResourceIbmIamTrustedProfile     string = "ibm.iam.trustedProfile"
+	ResourceIbmRegion                string = "ibm.region"
+	ResourceIbmVpc                   string = "ibm.vpc"
+	ResourceIbmVpcSubnet             string = "ibm.vpc.subnet"
+	ResourceIbmVpcInstance           string = "ibm.vpc.instance"
+	ResourceIbmNetworkExposure       string = "ibm.network.exposure"
+	ResourceIbmVpcSecurityGroup      string = "ibm.vpc.securityGroup"
+	ResourceIbmVpcSecurityGroupRule  string = "ibm.vpc.securityGroup.rule"
+	ResourceIbmVpcNetworkAcl         string = "ibm.vpc.networkAcl"
+	ResourceIbmVpcNetworkAclRule     string = "ibm.vpc.networkAcl.rule"
+	ResourceIbmVpcFloatingIp         string = "ibm.vpc.floatingIp"
+	ResourceIbmVpcPublicGateway      string = "ibm.vpc.publicGateway"
+	ResourceIbmVpcLoadBalancer       string = "ibm.vpc.loadBalancer"
+	ResourceIbmVpcVolume             string = "ibm.vpc.volume"
+	ResourceIbmVpcSshKey             string = "ibm.vpc.sshKey"
+	ResourceIbmVpcFlowLogCollector   string = "ibm.vpc.flowLogCollector"
+	ResourceIbmPowerWorkspace        string = "ibm.power.workspace"
+	ResourceIbmPowerInstance         string = "ibm.power.instance"
+	ResourceIbmPowerNetwork          string = "ibm.power.network"
+	ResourceIbmPowerVolume           string = "ibm.power.volume"
+	ResourceIbmPowerImage            string = "ibm.power.image"
+	ResourceIbmCosBucket             string = "ibm.cos.bucket"
+	ResourceIbmKmsInstance           string = "ibm.kms.instance"
+	ResourceIbmKmsKey                string = "ibm.kms.key"
+	ResourceIbmKmsKeyRegistration    string = "ibm.kms.key.registration"
+	ResourceIbmAtrackerTarget        string = "ibm.atracker.target"
+	ResourceIbmAtrackerRoute         string = "ibm.atracker.route"
+	ResourceIbmAtrackerRouteRule     string = "ibm.atracker.route.rule"
+	ResourceIbmAtrackerSettings      string = "ibm.atracker.settings"
+	ResourceIbmDatabase              string = "ibm.database"
+	ResourceIbmKubernetesCluster     string = "ibm.kubernetes.cluster"
+	ResourceIbmCisInstance           string = "ibm.cis.instance"
+	ResourceIbmKubernetesWorker      string = "ibm.kubernetes.worker"
+	ResourceIbmCisZone               string = "ibm.cis.zone"
+	ResourceIbmCisDnsRecord          string = "ibm.cis.dnsRecord"
+	ResourceIbmCisGlobalLoadBalancer string = "ibm.cis.globalLoadBalancer"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -228,9 +232,25 @@ func init() {
 			// to override args, implement: initIbmKubernetesCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createIbmKubernetesCluster,
 		},
+		"ibm.cis.instance": {
+			// to override args, implement: initIbmCisInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmCisInstance,
+		},
 		"ibm.kubernetes.worker": {
 			// to override args, implement: initIbmKubernetesWorker(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createIbmKubernetesWorker,
+		},
+		"ibm.cis.zone": {
+			// to override args, implement: initIbmCisZone(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmCisZone,
+		},
+		"ibm.cis.dnsRecord": {
+			// to override args, implement: initIbmCisDnsRecord(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmCisDnsRecord,
+		},
+		"ibm.cis.globalLoadBalancer": {
+			// to override args, implement: initIbmCisGlobalLoadBalancer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIbmCisGlobalLoadBalancer,
 		},
 	}
 }
@@ -395,6 +415,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.kubernetesClusters": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbm).GetKubernetesClusters()).ToDataRes(types.Array(types.Resource("ibm.kubernetes.cluster")))
+	},
+	"ibm.cisInstances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbm).GetCisInstances()).ToDataRes(types.Array(types.Resource("ibm.cis.instance")))
 	},
 	"ibm.iam.accountSettings.mfa": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmIamAccountSettings).GetMfa()).ToDataRes(types.String)
@@ -1941,11 +1964,29 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ibm.kubernetes.cluster.workers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmKubernetesCluster).GetWorkers()).ToDataRes(types.Array(types.Resource("ibm.kubernetes.worker")))
 	},
-	"ibm.kubernetes.cluster.tags": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlIbmKubernetesCluster).GetTags()).ToDataRes(types.Array(types.String))
+	"ibm.cis.instance.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisInstance).GetId()).ToDataRes(types.String)
 	},
-	"ibm.kubernetes.cluster.accessTags": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlIbmKubernetesCluster).GetAccessTags()).ToDataRes(types.Array(types.String))
+	"ibm.cis.instance.guid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisInstance).GetGuid()).ToDataRes(types.String)
+	},
+	"ibm.cis.instance.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisInstance).GetName()).ToDataRes(types.String)
+	},
+	"ibm.cis.instance.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisInstance).GetState()).ToDataRes(types.String)
+	},
+	"ibm.cis.instance.resourceGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisInstance).GetResourceGroup()).ToDataRes(types.Resource("ibm.resourceGroup"))
+	},
+	"ibm.cis.instance.zones": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisInstance).GetZones()).ToDataRes(types.Array(types.Resource("ibm.cis.zone")))
+	},
+	"ibm.cis.instance.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisInstance).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.cis.instance.accessTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisInstance).GetAccessTags()).ToDataRes(types.Array(types.String))
 	},
 	"ibm.kubernetes.worker.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmKubernetesWorker).GetId()).ToDataRes(types.String)
@@ -1985,6 +2026,111 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.kubernetes.worker.cluster": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmKubernetesWorker).GetCluster()).ToDataRes(types.Resource("ibm.kubernetes.cluster"))
+	},
+	"ibm.cis.zone.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetId()).ToDataRes(types.String)
+	},
+	"ibm.cis.zone.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetName()).ToDataRes(types.String)
+	},
+	"ibm.cis.zone.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetStatus()).ToDataRes(types.String)
+	},
+	"ibm.cis.zone.paused": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetPaused()).ToDataRes(types.Bool)
+	},
+	"ibm.cis.zone.nameServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetNameServers()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.cis.zone.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.cis.zone.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetModifiedAt()).ToDataRes(types.Time)
+	},
+	"ibm.cis.zone.minTlsVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetMinTlsVersion()).ToDataRes(types.String)
+	},
+	"ibm.cis.zone.tls13": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetTls13()).ToDataRes(types.String)
+	},
+	"ibm.cis.zone.ssl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetSsl()).ToDataRes(types.String)
+	},
+	"ibm.cis.zone.alwaysUseHttps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetAlwaysUseHttps()).ToDataRes(types.String)
+	},
+	"ibm.cis.zone.wafEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetWafEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.cis.zone.dnsRecords": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetDnsRecords()).ToDataRes(types.Array(types.Resource("ibm.cis.dnsRecord")))
+	},
+	"ibm.cis.zone.globalLoadBalancers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisZone).GetGlobalLoadBalancers()).ToDataRes(types.Array(types.Resource("ibm.cis.globalLoadBalancer")))
+	},
+	"ibm.cis.dnsRecord.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisDnsRecord).GetId()).ToDataRes(types.String)
+	},
+	"ibm.cis.dnsRecord.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisDnsRecord).GetName()).ToDataRes(types.String)
+	},
+	"ibm.cis.dnsRecord.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisDnsRecord).GetType()).ToDataRes(types.String)
+	},
+	"ibm.cis.dnsRecord.content": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisDnsRecord).GetContent()).ToDataRes(types.String)
+	},
+	"ibm.cis.dnsRecord.proxiable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisDnsRecord).GetProxiable()).ToDataRes(types.Bool)
+	},
+	"ibm.cis.dnsRecord.proxied": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisDnsRecord).GetProxied()).ToDataRes(types.Bool)
+	},
+	"ibm.cis.dnsRecord.ttl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisDnsRecord).GetTtl()).ToDataRes(types.Int)
+	},
+	"ibm.cis.dnsRecord.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisDnsRecord).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.cis.dnsRecord.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisDnsRecord).GetModifiedAt()).ToDataRes(types.Time)
+	},
+	"ibm.cis.globalLoadBalancer.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisGlobalLoadBalancer).GetId()).ToDataRes(types.String)
+	},
+	"ibm.cis.globalLoadBalancer.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisGlobalLoadBalancer).GetName()).ToDataRes(types.String)
+	},
+	"ibm.cis.globalLoadBalancer.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisGlobalLoadBalancer).GetDescription()).ToDataRes(types.String)
+	},
+	"ibm.cis.globalLoadBalancer.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisGlobalLoadBalancer).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"ibm.cis.globalLoadBalancer.proxied": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisGlobalLoadBalancer).GetProxied()).ToDataRes(types.Bool)
+	},
+	"ibm.cis.globalLoadBalancer.ttl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisGlobalLoadBalancer).GetTtl()).ToDataRes(types.Int)
+	},
+	"ibm.cis.globalLoadBalancer.defaultPools": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisGlobalLoadBalancer).GetDefaultPools()).ToDataRes(types.Array(types.String))
+	},
+	"ibm.cis.globalLoadBalancer.fallbackPool": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisGlobalLoadBalancer).GetFallbackPool()).ToDataRes(types.String)
+	},
+	"ibm.cis.globalLoadBalancer.steeringPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisGlobalLoadBalancer).GetSteeringPolicy()).ToDataRes(types.String)
+	},
+	"ibm.cis.globalLoadBalancer.sessionAffinity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisGlobalLoadBalancer).GetSessionAffinity()).ToDataRes(types.String)
+	},
+	"ibm.cis.globalLoadBalancer.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisGlobalLoadBalancer).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"ibm.cis.globalLoadBalancer.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIbmCisGlobalLoadBalancer).GetModifiedAt()).ToDataRes(types.Time)
 	},
 }
 
@@ -2124,6 +2270,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.kubernetesClusters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbm).KubernetesClusters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cisInstances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbm).CisInstances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.iam.accountSettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -4346,12 +4496,40 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIbmKubernetesCluster).Workers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
-	"ibm.kubernetes.cluster.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlIbmKubernetesCluster).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+	"ibm.cis.instance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisInstance).__id, ok = v.Value.(string)
 		return
 	},
-	"ibm.kubernetes.cluster.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlIbmKubernetesCluster).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+	"ibm.cis.instance.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisInstance).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.instance.guid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisInstance).Guid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.instance.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisInstance).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.instance.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisInstance).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.instance.resourceGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisInstance).ResourceGroup, ok = plugin.RawToTValue[*mqlIbmResourceGroup](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.instance.zones": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisInstance).Zones, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.instance.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisInstance).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.instance.accessTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisInstance).AccessTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ibm.kubernetes.worker.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -4408,6 +4586,158 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.kubernetes.worker.cluster": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmKubernetesWorker).Cluster, ok = plugin.RawToTValue[*mqlIbmKubernetesCluster](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.cis.zone.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.paused": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).Paused, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.nameServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).NameServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.modifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.minTlsVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).MinTlsVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.tls13": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).Tls13, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.ssl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).Ssl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.alwaysUseHttps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).AlwaysUseHttps, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.wafEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).WafEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.dnsRecords": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).DnsRecords, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.zone.globalLoadBalancers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisZone).GlobalLoadBalancers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.dnsRecord.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisDnsRecord).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.cis.dnsRecord.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisDnsRecord).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.dnsRecord.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisDnsRecord).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.dnsRecord.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisDnsRecord).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.dnsRecord.content": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisDnsRecord).Content, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.dnsRecord.proxiable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisDnsRecord).Proxiable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.dnsRecord.proxied": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisDnsRecord).Proxied, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.dnsRecord.ttl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisDnsRecord).Ttl, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.dnsRecord.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisDnsRecord).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.dnsRecord.modifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisDnsRecord).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.globalLoadBalancer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisGlobalLoadBalancer).__id, ok = v.Value.(string)
+		return
+	},
+	"ibm.cis.globalLoadBalancer.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisGlobalLoadBalancer).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.globalLoadBalancer.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisGlobalLoadBalancer).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.globalLoadBalancer.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisGlobalLoadBalancer).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.globalLoadBalancer.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisGlobalLoadBalancer).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.globalLoadBalancer.proxied": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisGlobalLoadBalancer).Proxied, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.globalLoadBalancer.ttl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisGlobalLoadBalancer).Ttl, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.globalLoadBalancer.defaultPools": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisGlobalLoadBalancer).DefaultPools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.globalLoadBalancer.fallbackPool": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisGlobalLoadBalancer).FallbackPool, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.globalLoadBalancer.steeringPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisGlobalLoadBalancer).SteeringPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.globalLoadBalancer.sessionAffinity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisGlobalLoadBalancer).SessionAffinity, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.globalLoadBalancer.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisGlobalLoadBalancer).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ibm.cis.globalLoadBalancer.modifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIbmCisGlobalLoadBalancer).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 }
@@ -4470,6 +4800,7 @@ type mqlIbm struct {
 	AtrackerSettings     plugin.TValue[*mqlIbmAtrackerSettings]
 	Databases            plugin.TValue[[]any]
 	KubernetesClusters   plugin.TValue[[]any]
+	CisInstances         plugin.TValue[[]any]
 }
 
 // createIbm creates a new instance of this resource
@@ -4990,6 +5321,22 @@ func (c *mqlIbm) GetKubernetesClusters() *plugin.TValue[[]any] {
 		}
 
 		return c.kubernetesClusters()
+	})
+}
+
+func (c *mqlIbm) GetCisInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CisInstances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm", c.__id, "cisInstances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.cisInstances()
 	})
 }
 
@@ -9999,8 +10346,6 @@ type mqlIbmKubernetesCluster struct {
 	ImagePullSecretsEnabled       plugin.TValue[bool]
 	ResourceGroup                 plugin.TValue[*mqlIbmResourceGroup]
 	Workers                       plugin.TValue[[]any]
-	Tags                          plugin.TValue[[]any]
-	AccessTags                    plugin.TValue[[]any]
 }
 
 // createIbmKubernetesCluster creates a new instance of this resource
@@ -10193,13 +10538,108 @@ func (c *mqlIbmKubernetesCluster) GetWorkers() *plugin.TValue[[]any] {
 	})
 }
 
-func (c *mqlIbmKubernetesCluster) GetTags() *plugin.TValue[[]any] {
+// mqlIbmCisInstance for the ibm.cis.instance resource
+type mqlIbmCisInstance struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmCisInstanceInternal
+	Id            plugin.TValue[string]
+	Guid          plugin.TValue[string]
+	Name          plugin.TValue[string]
+	State         plugin.TValue[string]
+	ResourceGroup plugin.TValue[*mqlIbmResourceGroup]
+	Zones         plugin.TValue[[]any]
+	Tags          plugin.TValue[[]any]
+	AccessTags    plugin.TValue[[]any]
+}
+
+// createIbmCisInstance creates a new instance of this resource
+func createIbmCisInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmCisInstance{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.cis.instance", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmCisInstance) MqlName() string {
+	return "ibm.cis.instance"
+}
+
+func (c *mqlIbmCisInstance) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmCisInstance) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmCisInstance) GetGuid() *plugin.TValue[string] {
+	return &c.Guid
+}
+
+func (c *mqlIbmCisInstance) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmCisInstance) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlIbmCisInstance) GetResourceGroup() *plugin.TValue[*mqlIbmResourceGroup] {
+	return plugin.GetOrCompute[*mqlIbmResourceGroup](&c.ResourceGroup, func() (*mqlIbmResourceGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.cis.instance", c.__id, "resourceGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIbmResourceGroup), nil
+			}
+		}
+
+		return c.resourceGroup()
+	})
+}
+
+func (c *mqlIbmCisInstance) GetZones() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Zones, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.cis.instance", c.__id, "zones")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.zones()
+	})
+}
+
+func (c *mqlIbmCisInstance) GetTags() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Tags, func() ([]any, error) {
 		return c.tags()
 	})
 }
 
-func (c *mqlIbmKubernetesCluster) GetAccessTags() *plugin.TValue[[]any] {
+func (c *mqlIbmCisInstance) GetAccessTags() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.AccessTags, func() ([]any, error) {
 		return c.accessTags()
 	})
@@ -10319,4 +10759,330 @@ func (c *mqlIbmKubernetesWorker) GetCluster() *plugin.TValue[*mqlIbmKubernetesCl
 
 		return c.cluster()
 	})
+}
+
+// mqlIbmCisZone for the ibm.cis.zone resource
+type mqlIbmCisZone struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIbmCisZoneInternal
+	Id                  plugin.TValue[string]
+	Name                plugin.TValue[string]
+	Status              plugin.TValue[string]
+	Paused              plugin.TValue[bool]
+	NameServers         plugin.TValue[[]any]
+	CreatedAt           plugin.TValue[*time.Time]
+	ModifiedAt          plugin.TValue[*time.Time]
+	MinTlsVersion       plugin.TValue[string]
+	Tls13               plugin.TValue[string]
+	Ssl                 plugin.TValue[string]
+	AlwaysUseHttps      plugin.TValue[string]
+	WafEnabled          plugin.TValue[bool]
+	DnsRecords          plugin.TValue[[]any]
+	GlobalLoadBalancers plugin.TValue[[]any]
+}
+
+// createIbmCisZone creates a new instance of this resource
+func createIbmCisZone(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmCisZone{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.cis.zone", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmCisZone) MqlName() string {
+	return "ibm.cis.zone"
+}
+
+func (c *mqlIbmCisZone) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmCisZone) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmCisZone) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmCisZone) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlIbmCisZone) GetPaused() *plugin.TValue[bool] {
+	return &c.Paused
+}
+
+func (c *mqlIbmCisZone) GetNameServers() *plugin.TValue[[]any] {
+	return &c.NameServers
+}
+
+func (c *mqlIbmCisZone) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlIbmCisZone) GetModifiedAt() *plugin.TValue[*time.Time] {
+	return &c.ModifiedAt
+}
+
+func (c *mqlIbmCisZone) GetMinTlsVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.MinTlsVersion, func() (string, error) {
+		return c.minTlsVersion()
+	})
+}
+
+func (c *mqlIbmCisZone) GetTls13() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Tls13, func() (string, error) {
+		return c.tls13()
+	})
+}
+
+func (c *mqlIbmCisZone) GetSsl() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Ssl, func() (string, error) {
+		return c.ssl()
+	})
+}
+
+func (c *mqlIbmCisZone) GetAlwaysUseHttps() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AlwaysUseHttps, func() (string, error) {
+		return c.alwaysUseHttps()
+	})
+}
+
+func (c *mqlIbmCisZone) GetWafEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.WafEnabled, func() (bool, error) {
+		return c.wafEnabled()
+	})
+}
+
+func (c *mqlIbmCisZone) GetDnsRecords() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DnsRecords, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.cis.zone", c.__id, "dnsRecords")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.dnsRecords()
+	})
+}
+
+func (c *mqlIbmCisZone) GetGlobalLoadBalancers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.GlobalLoadBalancers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ibm.cis.zone", c.__id, "globalLoadBalancers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.globalLoadBalancers()
+	})
+}
+
+// mqlIbmCisDnsRecord for the ibm.cis.dnsRecord resource
+type mqlIbmCisDnsRecord struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIbmCisDnsRecordInternal it will be used here
+	Id         plugin.TValue[string]
+	Name       plugin.TValue[string]
+	Type       plugin.TValue[string]
+	Content    plugin.TValue[string]
+	Proxiable  plugin.TValue[bool]
+	Proxied    plugin.TValue[bool]
+	Ttl        plugin.TValue[int64]
+	CreatedAt  plugin.TValue[*time.Time]
+	ModifiedAt plugin.TValue[*time.Time]
+}
+
+// createIbmCisDnsRecord creates a new instance of this resource
+func createIbmCisDnsRecord(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmCisDnsRecord{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.cis.dnsRecord", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmCisDnsRecord) MqlName() string {
+	return "ibm.cis.dnsRecord"
+}
+
+func (c *mqlIbmCisDnsRecord) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmCisDnsRecord) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmCisDnsRecord) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmCisDnsRecord) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlIbmCisDnsRecord) GetContent() *plugin.TValue[string] {
+	return &c.Content
+}
+
+func (c *mqlIbmCisDnsRecord) GetProxiable() *plugin.TValue[bool] {
+	return &c.Proxiable
+}
+
+func (c *mqlIbmCisDnsRecord) GetProxied() *plugin.TValue[bool] {
+	return &c.Proxied
+}
+
+func (c *mqlIbmCisDnsRecord) GetTtl() *plugin.TValue[int64] {
+	return &c.Ttl
+}
+
+func (c *mqlIbmCisDnsRecord) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlIbmCisDnsRecord) GetModifiedAt() *plugin.TValue[*time.Time] {
+	return &c.ModifiedAt
+}
+
+// mqlIbmCisGlobalLoadBalancer for the ibm.cis.globalLoadBalancer resource
+type mqlIbmCisGlobalLoadBalancer struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIbmCisGlobalLoadBalancerInternal it will be used here
+	Id              plugin.TValue[string]
+	Name            plugin.TValue[string]
+	Description     plugin.TValue[string]
+	Enabled         plugin.TValue[bool]
+	Proxied         plugin.TValue[bool]
+	Ttl             plugin.TValue[int64]
+	DefaultPools    plugin.TValue[[]any]
+	FallbackPool    plugin.TValue[string]
+	SteeringPolicy  plugin.TValue[string]
+	SessionAffinity plugin.TValue[string]
+	CreatedAt       plugin.TValue[*time.Time]
+	ModifiedAt      plugin.TValue[*time.Time]
+}
+
+// createIbmCisGlobalLoadBalancer creates a new instance of this resource
+func createIbmCisGlobalLoadBalancer(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIbmCisGlobalLoadBalancer{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ibm.cis.globalLoadBalancer", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) MqlName() string {
+	return "ibm.cis.globalLoadBalancer"
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) GetProxied() *plugin.TValue[bool] {
+	return &c.Proxied
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) GetTtl() *plugin.TValue[int64] {
+	return &c.Ttl
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) GetDefaultPools() *plugin.TValue[[]any] {
+	return &c.DefaultPools
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) GetFallbackPool() *plugin.TValue[string] {
+	return &c.FallbackPool
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) GetSteeringPolicy() *plugin.TValue[string] {
+	return &c.SteeringPolicy
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) GetSessionAffinity() *plugin.TValue[string] {
+	return &c.SessionAffinity
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlIbmCisGlobalLoadBalancer) GetModifiedAt() *plugin.TValue[*time.Time] {
+	return &c.ModifiedAt
 }

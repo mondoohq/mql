@@ -22,6 +22,9 @@ option root = "ibm"
 // Event Routing, and IBM Cloud Databases cover data protection and audit
 // logging. IBM Cloud Kubernetes Service and Red Hat OpenShift on IBM Cloud
 // clusters are listed once for every region.
+// Cloud Internet Services instances cover the edge: TLS, the web
+// application firewall, and which DNS records and global load balancers are
+// proxied.
 ibm @root {
   // Account ID
   accountId string
@@ -85,6 +88,8 @@ ibm @root {
   databases() []ibm.database
   // IBM Cloud Kubernetes Service and Red Hat OpenShift on IBM Cloud clusters, on VPC and classic infrastructure, in every region
   kubernetesClusters() []ibm.kubernetes.cluster
+  // Cloud Internet Services instances
+  cisInstances() []ibm.cis.instance
 }
 
 // IBM Cloud IAM account settings
@@ -1413,6 +1418,26 @@ private ibm.kubernetes.cluster @defaults("name region state") {
   resourceGroup() ibm.resourceGroup
   // Worker nodes of the cluster
   workers() []ibm.kubernetes.worker
+}
+
+// IBM Cloud Internet Services instance
+//
+// A Cloud Internet Services (CIS) instance, IBM Cloud's edge service for DNS,
+// TLS termination, a web application firewall, DDoS protection, and global
+// load balancing, with the domains (zones) it serves.
+private ibm.cis.instance @defaults("name") {
+  // Instance CRN
+  id string
+  // Instance GUID
+  guid string
+  // Instance name
+  name string
+  // State, for example active
+  state string
+  // Resource group of the instance
+  resourceGroup() ibm.resourceGroup
+  // Domains (zones) served by the instance
+  zones() []ibm.cis.zone
   // User tags, for example env:prod
   tags() []string
   // Access management tags, which IAM policies can grant access by
@@ -1451,4 +1476,99 @@ private ibm.kubernetes.worker @defaults("id state kubeVersion") {
   updateAvailable bool
   // Cluster the worker belongs to
   cluster() ibm.kubernetes.cluster
+}
+
+// IBM Cloud Internet Services zone
+//
+// A domain served by a Cloud Internet Services instance, with its TLS
+// settings (the minimum TLS version, TLS 1.3, the SSL mode, and whether HTTP
+// is redirected to HTTPS), its web application firewall setting, its DNS
+// records, and its global load balancers. Settings are read when queried.
+private ibm.cis.zone @defaults("name status") {
+  // Zone ID
+  id string
+  // Domain name, for example example.com
+  name string
+  // Status: active, pending, initializing, moved, deleted, or deactivated
+  status string
+  // Whether the zone is paused, which turns off the proxy and with it TLS termination, the firewall, and DDoS protection
+  paused bool
+  // Name servers the zone is delegated to
+  nameServers []string
+  // Creation timestamp
+  createdAt time
+  // Last modification timestamp
+  modifiedAt time
+  // Minimum TLS version clients must use to reach the proxy: 1.0, 1.1, 1.2, or 1.3
+  minTlsVersion() string
+  // Whether TLS 1.3 is offered: on, off, or zrt (on with 0-RTT)
+  tls13() string
+  // SSL mode between clients, the proxy, and the origin: off, flexible, full, or strict
+  ssl() string
+  // Whether HTTP requests are redirected to HTTPS: on or off
+  alwaysUseHttps() string
+  // Whether the web application firewall is on
+  wafEnabled() bool
+  // DNS records of the zone
+  dnsRecords() []ibm.cis.dnsRecord
+  // Global load balancers of the zone
+  globalLoadBalancers() []ibm.cis.globalLoadBalancer
+}
+
+// IBM Cloud Internet Services DNS record
+//
+// A DNS record of a Cloud Internet Services zone. A proxied record resolves
+// to the edge, which applies the zone's TLS settings, firewall, and DDoS
+// protection; a record that is proxiable but not proxied exposes its origin.
+private ibm.cis.dnsRecord @defaults("name type proxied") {
+  // Record ID
+  id string
+  // Record name, for example www.example.com
+  name string
+  // Record type, for example A, AAAA, CNAME, MX, or TXT
+  type string
+  // Record content, for example an IP address or a host name
+  content string
+  // Whether the record can be proxied
+  proxiable bool
+  // Whether the record is proxied through the edge
+  proxied bool
+  // Time to live in seconds; 1 means automatic
+  ttl int
+  // Creation timestamp
+  createdAt time
+  // Last modification timestamp
+  modifiedAt time
+}
+
+// IBM Cloud Internet Services global load balancer
+//
+// A global load balancer of a Cloud Internet Services zone, which spreads
+// traffic for a host name across origin pools. A proxied load balancer is
+// protected by the edge's TLS settings, firewall, and DDoS protection.
+private ibm.cis.globalLoadBalancer @defaults("name enabled proxied") {
+  // Load balancer ID
+  id string
+  // Host name the load balancer answers for, for example www.example.com
+  name string
+  // Description
+  description string
+  // Whether the load balancer is enabled
+  enabled bool
+  // Whether traffic is proxied through the edge
+  proxied bool
+  // Time to live in seconds of the DNS answer when not proxied
+  ttl int
+  // IDs of the origin pools traffic is sent to, in failover order
+  defaultPools []string
+  // ID of the pool used when every other pool is unhealthy
+  fallbackPool string
+  // Steering policy, for example off, geo, random, or dynamic_latency
+  steeringPolicy string
+  // Session affinity: none, cookie, or ip_cookie
+  sessionAffinity string
+  // Creation timestamp
+  createdAt time
+  // Last modification timestamp
+  modifiedAt time
 }
