@@ -25,7 +25,9 @@ func TestSanitizeRepoURL(t *testing.T) {
 		"%zz":                                   "",
 	}
 	for in, want := range tests {
-		assert.Equal(t, want, sanitizeRepoURL(in), in)
+		t.Run(in, func(t *testing.T) {
+			assert.Equal(t, want, sanitizeRepoURL(in))
+		})
 	}
 }
 
@@ -33,6 +35,7 @@ func TestDefaultSource(t *testing.T) {
 	assert.Equal(t, Source{Channel: ChannelSnap, Name: "lxd"}, DefaultSource(Package{Name: "lxd", Format: SnapPkgFormat}))
 	assert.Equal(t, Source{Channel: ChannelFlatpak, Name: "flathub"}, DefaultSource(Package{Name: "org.gimp.GIMP", Format: FlatpakPkgFormat, Origin: "flathub"}))
 	assert.Equal(t, Source{OSProvided: osProvided(false), Channel: ChannelChocolatey, Name: "7zip"}, DefaultSource(Package{Name: "7zip", Format: ChocolateyPkgFormat}))
+	assert.Equal(t, Source{OSProvided: osProvided(false), Channel: ChannelHomebrew, Name: "wget"}, DefaultSource(Package{Name: "wget", Format: HomebrewPkgFormat}))
 	assert.Equal(t, Source{OSProvided: osProvided(true), Channel: ChannelOS, Name: "Windows Update"}, DefaultSource(Package{Name: "KB5034441", Format: WindowsHotfixPkgFormat}))
 	assert.Equal(t, unknownSource(), DefaultSource(Package{Name: "busybox", Format: AlpinePkgFormat}))
 	// a source the backend learned while listing wins
