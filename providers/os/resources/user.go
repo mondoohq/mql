@@ -289,6 +289,10 @@ func loggedInUsers(runtime *plugin.Runtime, conn shared.Connection) (map[string]
 	if stdout.Error != nil {
 		return nil, stdout.Error
 	}
+	// stderr only tells a failure from "nobody is logged on" on a non-zero exit
+	if exit.Data == 0 {
+		return parseLoggedInUsers(true, 0, stdout.Data, "")
+	}
 	stderr := cmd.GetStderr()
 	if stderr.Error != nil {
 		return nil, stderr.Error
