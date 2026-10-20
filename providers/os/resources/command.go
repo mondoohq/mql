@@ -102,11 +102,13 @@ func commandResult(cmd *mqlCommand) (commandRun, error) {
 	if stdout.Error != nil {
 		return commandRun{}, stdout.Error
 	}
-	return commandRun{
-		exitcode: exit.Data,
-		stdout:   stdout.Data,
-		stderr:   cmd.GetStderr().Data,
-	}, nil
+	// Copy exitcode and stdout before reading stderr: on a resource created with
+	// only some of its fields, reading stderr runs the command and replaces the
+	// others in place, and Go does not order a field read against a call in one
+	// composite literal.
+	run := commandRun{exitcode: exit.Data, stdout: stdout.Data}
+	run.stderr = cmd.GetStderr().Data
+	return run, nil
 }
 
 // commandOutput returns the stdout of an already-created `command` resource,
