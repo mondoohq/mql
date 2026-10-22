@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/gobwas/glob"
@@ -17,7 +18,6 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/k8s/connection/shared"
 	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
-	"go.mondoo.com/mql/types"
 	"go.mondoo.com/mql/utils/stringx"
 	admissionv1 "k8s.io/api/admission/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -1320,6 +1320,16 @@ func discoverContainerImages(conn shared.Connection, runtime *plugin.Runtime, in
 		return nil, pods.Error
 	}
 
+	// node architectures are only needed to qualify digest claims, so the node
+	// list is read at most once and only when a digest-bearing image shows up
+	var nodeArchs map[string]string
+	nodeArch := func(nodeName string) string {
+		if nodeArchs == nil {
+			nodeArchs = nodeArchitectures(k8s)
+		}
+		return nodeArchs[nodeName]
+	}
+
 	runningImages := make(map[string]ContainerImage)
 	for _, p := range pods.Data {
 		pod := p.(*mqlK8sPod)
@@ -1337,7 +1347,18 @@ func discoverContainerImages(conn shared.Connection, runtime *plugin.Runtime, in
 		}
 
 		podImages := UniqueImagesForPod(podObj, runtime)
-		runningImages = types.MergeMaps(runningImages, podImages)
+		if podObj.Spec.NodeName != "" {
+			for key, img := range podImages {
+				if _, ok := containerImageDigest(img.resolvedImage); !ok {
+					continue
+				}
+				if arch := nodeArch(podObj.Spec.NodeName); arch != "" {
+					img.archs = map[string]struct{}{arch: {}}
+					podImages[key] = img
+				}
+			}
+		}
+		runningImages = mergeContainerImages(runningImages, podImages)
 	}
 
 	options := map[string]string{}
@@ -1353,7 +1374,7 @@ func discoverContainerImages(conn shared.Connection, runtime *plugin.Runtime, in
 		if imgFilter.skip(i.resolvedImage) {
 			continue
 		}
-		assetList = append(assetList, &inventory.Asset{
+		asset := &inventory.Asset{
 			Connections: []*inventory.Config{
 				{
 					Type:    registryImageConnectionType,
@@ -1362,10 +1383,49 @@ func discoverContainerImages(conn shared.Connection, runtime *plugin.Runtime, in
 				},
 			},
 			Category: conn.Asset().Category,
-		})
+		}
+		addContainerImageClaims(asset, i)
+		assetList = append(assetList, asset)
 	}
 
 	return assetList, nil
+}
+
+// addContainerImageClaims attaches one container-image claim per architecture
+// the image was seen running on. Images without a digest in the resolved
+// reference get no claim. An image whose architecture is unknown gets a single
+// claim without an arch.
+func addContainerImageClaims(asset *inventory.Asset, img ContainerImage) {
+	digest, ok := containerImageDigest(img.resolvedImage)
+	if !ok {
+		return
+	}
+	if len(img.archs) == 0 {
+		asset.AddClaim(inventory.NewContainerImageClaim(digest, img.resolvedImage, ""))
+		return
+	}
+	for _, arch := range slices.Sorted(maps.Keys(img.archs)) {
+		asset.AddClaim(inventory.NewContainerImageClaim(digest, img.resolvedImage, arch))
+	}
+}
+
+// nodeArchitectures maps node names to their reported CPU architecture. It is
+// best-effort: if the nodes cannot be listed (e.g. missing RBAC) the result is
+// empty and callers treat every architecture as unknown.
+func nodeArchitectures(k8s *mqlK8s) map[string]string {
+	archs := map[string]string{}
+	nodes := k8s.GetNodes()
+	if nodes.Error != nil {
+		return archs
+	}
+	for _, n := range nodes.Data {
+		node, ok := n.(*mqlK8sNode)
+		if !ok || node.obj == nil {
+			continue
+		}
+		archs[node.obj.GetName()] = node.obj.Status.NodeInfo.Architecture
+	}
+	return archs
 }
 
 func addMondooAssetLabels(assetLabels map[string]string, objMeta metav1.Object, clusterIdentifier string) {

@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 
@@ -19,6 +20,45 @@ type ContainerImage struct {
 	image         string
 	resolvedImage string
 	pullSecrets   []v1.Secret
+	// archs are the CPU architectures of the nodes the image was seen running
+	// on. It is best-effort: empty when the node or its architecture is unknown.
+	archs map[string]struct{}
+}
+
+// ociDigestPattern matches a sha256 image digest as it appears after the "@"
+// of a resolved image reference.
+var ociDigestPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+
+// containerImageDigest returns the "sha256:..." digest of a resolved image
+// reference such as "repo@sha256:...". Tag-only references, which is what the
+// resolution falls back to for stopped pods and imagePullPolicy: Never, have no
+// digest and yield false.
+func containerImageDigest(resolvedImage string) (string, bool) {
+	_, digest, found := strings.Cut(resolvedImage, "@")
+	if !found || !ociDigestPattern.MatchString(digest) {
+		return "", false
+	}
+	return digest, true
+}
+
+// mergeContainerImages merges src into dst. Like types.MergeMaps, src wins for
+// every field, except archs: an image running on several architectures keeps
+// the union of them.
+func mergeContainerImages(dst, src map[string]ContainerImage) map[string]ContainerImage {
+	for key, img := range src {
+		if existing, ok := dst[key]; ok && len(existing.archs) > 0 {
+			merged := make(map[string]struct{}, len(existing.archs)+len(img.archs))
+			for arch := range existing.archs {
+				merged[arch] = struct{}{}
+			}
+			for arch := range img.archs {
+				merged[arch] = struct{}{}
+			}
+			img.archs = merged
+		}
+		dst[key] = img
+	}
+	return dst
 }
 
 func ResolveUniqueContainerImages(cs []v1.Container, ps []v1.Secret) map[string]ContainerImage {
