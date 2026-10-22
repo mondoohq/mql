@@ -96,6 +96,12 @@ message Asset {
   // provider found it at connect time. Only the provider knows where that
   // root is, which may be a temporary clone (cnspec ADR-0006).
   ContextConfig context_config = 40;
+
+  // Preview: may still change (ADR-285, mondoohq/server).
+  // Facts a discoverer or connection observed about the thing this asset
+  // identifies, as kind-tagged claims. The server uses them to recognise the
+  // same thing across scans and to reuse earlier results (ADR-285).
+  repeated AssetClaim claims = 41;
 }
 
 // Preview: may still change (cnspec ADR-0006).
@@ -128,6 +134,21 @@ message ConfigOrigin {
   // path of the file: relative to the repository root when repository is set,
   // otherwise the path on the machine that read it
   string path = 4;
+}
+
+// Preview: may still change (ADR-285, mondoohq/server).
+// AssetClaim is a set of facts about what an asset is, tagged with a kind that
+// says how to read them. It is kind-generic: the claims map carries the
+// kind's fields as strings (e.g. the digest, ref and arch of a container
+// image), so new kinds do not need a new message.
+message AssetClaim {
+  // what the claims describe, e.g. "container-image"
+  string kind = 1;
+  // the kind's facts, keyed by field name
+  map<string, string> claims = 2;
+  // optional signature over the claims (JWS compact serialization); empty
+  // when the claim is unsigned
+  string signature = 3;
 }
 
 // AssetRelationship is a directed, resource-anchored edge to another asset. An

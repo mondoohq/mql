@@ -317,6 +317,20 @@ func keepContextConfig(requested *inventory.Asset, res *plugin.ConnectRes) {
 	res.Asset.ContextConfig = requested.ContextConfig.CloneVT()
 }
 
+// keepAssetClaims carries the claims of the asset a provider was asked to
+// connect onto the asset it answered with (ADR-285, mondoohq/server). Most
+// providers answer with the asset they were given, which keeps them already;
+// one that builds a new asset would otherwise drop the claims its discoverer
+// recorded. Claims the provider set itself win.
+func keepAssetClaims(requested *inventory.Asset, res *plugin.ConnectRes) {
+	if len(requested.GetClaims()) == 0 || res == nil || res.Asset == nil || len(res.Asset.Claims) != 0 {
+		return
+	}
+	for _, c := range requested.Claims {
+		res.Asset.Claims = append(res.Asset.Claims, c.CloneVT())
+	}
+}
+
 func (r *Runtime) setProviderConnection(c *plugin.ConnectRes, err error) {
 	r.mu.Lock()
 	r.Provider.Connection = c
@@ -481,6 +495,7 @@ func (r *Runtime) Connect(req *plugin.ConnectReq) error {
 		_, err = r.handlePluginError(err, r.Provider, "", "")
 	}
 	keepContextConfig(req.GetAsset(), conn)
+	keepAssetClaims(req.GetAsset(), conn)
 	r.setProviderConnection(conn, err)
 	if err != nil {
 		return err

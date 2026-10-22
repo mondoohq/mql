@@ -197,6 +197,11 @@ type Asset struct {
 	// provider found it at connect time. Only the provider knows where that
 	// root is, which may be a temporary clone (cnspec ADR-0006).
 	ContextConfig *ContextConfig `protobuf:"bytes,40,opt,name=context_config,json=contextConfig,proto3" json:"context_config,omitempty"`
+	// Preview: may still change (ADR-285, mondoohq/server).
+	// Facts a discoverer or connection observed about the thing this asset
+	// identifies, as kind-tagged claims. The server uses them to recognise the
+	// same thing across scans and to reuse earlier results (ADR-285).
+	Claims        []*AssetClaim `protobuf:"bytes,41,rep,name=claims,proto3" json:"claims,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -371,6 +376,13 @@ func (x *Asset) GetContextConfig() *ContextConfig {
 	return nil
 }
 
+func (x *Asset) GetClaims() []*AssetClaim {
+	if x != nil {
+		return x.Claims
+	}
+	return nil
+}
+
 // Preview: may still change (cnspec ADR-0006).
 // ContextConfig is a config file found at a scanned root. The content is
 // carried unparsed: it is untrusted input, written by anyone who can change
@@ -518,6 +530,75 @@ func (x *ConfigOrigin) GetPath() string {
 	return ""
 }
 
+// Preview: may still change (ADR-285, mondoohq/server).
+// AssetClaim is a set of facts about what an asset is, tagged with a kind that
+// says how to read them. It is kind-generic: the claims map carries the
+// kind's fields as strings (e.g. the digest, ref and arch of a container
+// image), so new kinds do not need a new message.
+type AssetClaim struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// what the claims describe, e.g. "container-image"
+	Kind string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	// the kind's facts, keyed by field name
+	Claims map[string]string `protobuf:"bytes,2,rep,name=claims,proto3" json:"claims,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// optional signature over the claims (JWS compact serialization); empty
+	// when the claim is unsigned
+	Signature     string `protobuf:"bytes,3,opt,name=signature,proto3" json:"signature,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AssetClaim) Reset() {
+	*x = AssetClaim{}
+	mi := &file_inventory_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AssetClaim) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AssetClaim) ProtoMessage() {}
+
+func (x *AssetClaim) ProtoReflect() protoreflect.Message {
+	mi := &file_inventory_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AssetClaim.ProtoReflect.Descriptor instead.
+func (*AssetClaim) Descriptor() ([]byte, []int) {
+	return file_inventory_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *AssetClaim) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *AssetClaim) GetClaims() map[string]string {
+	if x != nil {
+		return x.Claims
+	}
+	return nil
+}
+
+func (x *AssetClaim) GetSignature() string {
+	if x != nil {
+		return x.Signature
+	}
+	return ""
+}
+
 // AssetRelationship is a directed, resource-anchored edge to another asset. An
 // edge has two ends, and the anchor resource is meaningless without the asset
 // that owns it, so the message names both: the counterparty `asset` (a full
@@ -537,7 +618,7 @@ type AssetRelationship struct {
 
 func (x *AssetRelationship) Reset() {
 	*x = AssetRelationship{}
-	mi := &file_inventory_proto_msgTypes[3]
+	mi := &file_inventory_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -549,7 +630,7 @@ func (x *AssetRelationship) String() string {
 func (*AssetRelationship) ProtoMessage() {}
 
 func (x *AssetRelationship) ProtoReflect() protoreflect.Message {
-	mi := &file_inventory_proto_msgTypes[3]
+	mi := &file_inventory_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -562,7 +643,7 @@ func (x *AssetRelationship) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssetRelationship.ProtoReflect.Descriptor instead.
 func (*AssetRelationship) Descriptor() ([]byte, []int) {
-	return file_inventory_proto_rawDescGZIP(), []int{3}
+	return file_inventory_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *AssetRelationship) GetAsset() *Asset {
@@ -623,7 +704,7 @@ type AssetUrlBranch struct {
 
 func (x *AssetUrlBranch) Reset() {
 	*x = AssetUrlBranch{}
-	mi := &file_inventory_proto_msgTypes[4]
+	mi := &file_inventory_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -635,7 +716,7 @@ func (x *AssetUrlBranch) String() string {
 func (*AssetUrlBranch) ProtoMessage() {}
 
 func (x *AssetUrlBranch) ProtoReflect() protoreflect.Message {
-	mi := &file_inventory_proto_msgTypes[4]
+	mi := &file_inventory_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -648,7 +729,7 @@ func (x *AssetUrlBranch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssetUrlBranch.ProtoReflect.Descriptor instead.
 func (*AssetUrlBranch) Descriptor() ([]byte, []int) {
-	return file_inventory_proto_rawDescGZIP(), []int{4}
+	return file_inventory_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *AssetUrlBranch) GetPathSegments() []string {
@@ -741,7 +822,7 @@ type Config struct {
 
 func (x *Config) Reset() {
 	*x = Config{}
-	mi := &file_inventory_proto_msgTypes[5]
+	mi := &file_inventory_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -753,7 +834,7 @@ func (x *Config) String() string {
 func (*Config) ProtoMessage() {}
 
 func (x *Config) ProtoReflect() protoreflect.Message {
-	mi := &file_inventory_proto_msgTypes[5]
+	mi := &file_inventory_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -766,7 +847,7 @@ func (x *Config) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Config.ProtoReflect.Descriptor instead.
 func (*Config) Descriptor() ([]byte, []int) {
-	return file_inventory_proto_rawDescGZIP(), []int{5}
+	return file_inventory_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Config) GetHost() string {
@@ -893,7 +974,7 @@ type Sudo struct {
 
 func (x *Sudo) Reset() {
 	*x = Sudo{}
-	mi := &file_inventory_proto_msgTypes[6]
+	mi := &file_inventory_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -905,7 +986,7 @@ func (x *Sudo) String() string {
 func (*Sudo) ProtoMessage() {}
 
 func (x *Sudo) ProtoReflect() protoreflect.Message {
-	mi := &file_inventory_proto_msgTypes[6]
+	mi := &file_inventory_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -918,7 +999,7 @@ func (x *Sudo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Sudo.ProtoReflect.Descriptor instead.
 func (*Sudo) Descriptor() ([]byte, []int) {
-	return file_inventory_proto_rawDescGZIP(), []int{6}
+	return file_inventory_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Sudo) GetActive() bool {
@@ -959,7 +1040,7 @@ type Discovery struct {
 
 func (x *Discovery) Reset() {
 	*x = Discovery{}
-	mi := &file_inventory_proto_msgTypes[7]
+	mi := &file_inventory_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -971,7 +1052,7 @@ func (x *Discovery) String() string {
 func (*Discovery) ProtoMessage() {}
 
 func (x *Discovery) ProtoReflect() protoreflect.Message {
-	mi := &file_inventory_proto_msgTypes[7]
+	mi := &file_inventory_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -984,7 +1065,7 @@ func (x *Discovery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Discovery.ProtoReflect.Descriptor instead.
 func (*Discovery) Descriptor() ([]byte, []int) {
-	return file_inventory_proto_rawDescGZIP(), []int{7}
+	return file_inventory_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Discovery) GetTargets() []string {
@@ -1024,7 +1105,7 @@ type Platform struct {
 
 func (x *Platform) Reset() {
 	*x = Platform{}
-	mi := &file_inventory_proto_msgTypes[8]
+	mi := &file_inventory_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1036,7 +1117,7 @@ func (x *Platform) String() string {
 func (*Platform) ProtoMessage() {}
 
 func (x *Platform) ProtoReflect() protoreflect.Message {
-	mi := &file_inventory_proto_msgTypes[8]
+	mi := &file_inventory_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1049,7 +1130,7 @@ func (x *Platform) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Platform.ProtoReflect.Descriptor instead.
 func (*Platform) Descriptor() ([]byte, []int) {
-	return file_inventory_proto_rawDescGZIP(), []int{8}
+	return file_inventory_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Platform) GetName() string {
@@ -1157,7 +1238,7 @@ type TypeMeta struct {
 
 func (x *TypeMeta) Reset() {
 	*x = TypeMeta{}
-	mi := &file_inventory_proto_msgTypes[9]
+	mi := &file_inventory_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1169,7 +1250,7 @@ func (x *TypeMeta) String() string {
 func (*TypeMeta) ProtoMessage() {}
 
 func (x *TypeMeta) ProtoReflect() protoreflect.Message {
-	mi := &file_inventory_proto_msgTypes[9]
+	mi := &file_inventory_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1182,7 +1263,7 @@ func (x *TypeMeta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TypeMeta.ProtoReflect.Descriptor instead.
 func (*TypeMeta) Descriptor() ([]byte, []int) {
-	return file_inventory_proto_rawDescGZIP(), []int{9}
+	return file_inventory_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *TypeMeta) GetKind() string {
@@ -1258,7 +1339,7 @@ type ObjectMeta struct {
 
 func (x *ObjectMeta) Reset() {
 	*x = ObjectMeta{}
-	mi := &file_inventory_proto_msgTypes[10]
+	mi := &file_inventory_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1270,7 +1351,7 @@ func (x *ObjectMeta) String() string {
 func (*ObjectMeta) ProtoMessage() {}
 
 func (x *ObjectMeta) ProtoReflect() protoreflect.Message {
-	mi := &file_inventory_proto_msgTypes[10]
+	mi := &file_inventory_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1283,7 +1364,7 @@ func (x *ObjectMeta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObjectMeta.ProtoReflect.Descriptor instead.
 func (*ObjectMeta) Descriptor() ([]byte, []int) {
-	return file_inventory_proto_rawDescGZIP(), []int{10}
+	return file_inventory_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ObjectMeta) GetName() string {
@@ -1345,7 +1426,7 @@ type Time struct {
 
 func (x *Time) Reset() {
 	*x = Time{}
-	mi := &file_inventory_proto_msgTypes[11]
+	mi := &file_inventory_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1357,7 +1438,7 @@ func (x *Time) String() string {
 func (*Time) ProtoMessage() {}
 
 func (x *Time) ProtoReflect() protoreflect.Message {
-	mi := &file_inventory_proto_msgTypes[11]
+	mi := &file_inventory_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1370,7 +1451,7 @@ func (x *Time) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Time.ProtoReflect.Descriptor instead.
 func (*Time) Descriptor() ([]byte, []int) {
-	return file_inventory_proto_rawDescGZIP(), []int{11}
+	return file_inventory_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Time) GetSeconds() int64 {
@@ -1417,7 +1498,7 @@ type OwnerReference struct {
 
 func (x *OwnerReference) Reset() {
 	*x = OwnerReference{}
-	mi := &file_inventory_proto_msgTypes[12]
+	mi := &file_inventory_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1429,7 +1510,7 @@ func (x *OwnerReference) String() string {
 func (*OwnerReference) ProtoMessage() {}
 
 func (x *OwnerReference) ProtoReflect() protoreflect.Message {
-	mi := &file_inventory_proto_msgTypes[12]
+	mi := &file_inventory_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1442,7 +1523,7 @@ func (x *OwnerReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OwnerReference.ProtoReflect.Descriptor instead.
 func (*OwnerReference) Descriptor() ([]byte, []int) {
-	return file_inventory_proto_rawDescGZIP(), []int{12}
+	return file_inventory_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *OwnerReference) GetApiVersion() string {
@@ -1491,7 +1572,7 @@ type Inventory struct {
 
 func (x *Inventory) Reset() {
 	*x = Inventory{}
-	mi := &file_inventory_proto_msgTypes[13]
+	mi := &file_inventory_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1503,7 +1584,7 @@ func (x *Inventory) String() string {
 func (*Inventory) ProtoMessage() {}
 
 func (x *Inventory) ProtoReflect() protoreflect.Message {
-	mi := &file_inventory_proto_msgTypes[13]
+	mi := &file_inventory_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1516,7 +1597,7 @@ func (x *Inventory) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Inventory.ProtoReflect.Descriptor instead.
 func (*Inventory) Descriptor() ([]byte, []int) {
-	return file_inventory_proto_rawDescGZIP(), []int{13}
+	return file_inventory_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Inventory) GetMetadata() *ObjectMeta {
@@ -1554,7 +1635,7 @@ type InventorySpec struct {
 
 func (x *InventorySpec) Reset() {
 	*x = InventorySpec{}
-	mi := &file_inventory_proto_msgTypes[14]
+	mi := &file_inventory_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1566,7 +1647,7 @@ func (x *InventorySpec) String() string {
 func (*InventorySpec) ProtoMessage() {}
 
 func (x *InventorySpec) ProtoReflect() protoreflect.Message {
-	mi := &file_inventory_proto_msgTypes[14]
+	mi := &file_inventory_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1579,7 +1660,7 @@ func (x *InventorySpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InventorySpec.ProtoReflect.Descriptor instead.
 func (*InventorySpec) Descriptor() ([]byte, []int) {
-	return file_inventory_proto_rawDescGZIP(), []int{14}
+	return file_inventory_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *InventorySpec) GetAssets() []*Asset {
@@ -1625,7 +1706,7 @@ type InventoryStatus struct {
 
 func (x *InventoryStatus) Reset() {
 	*x = InventoryStatus{}
-	mi := &file_inventory_proto_msgTypes[15]
+	mi := &file_inventory_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1637,7 +1718,7 @@ func (x *InventoryStatus) String() string {
 func (*InventoryStatus) ProtoMessage() {}
 
 func (x *InventoryStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_inventory_proto_msgTypes[15]
+	mi := &file_inventory_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1650,14 +1731,14 @@ func (x *InventoryStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InventoryStatus.ProtoReflect.Descriptor instead.
 func (*InventoryStatus) Descriptor() ([]byte, []int) {
-	return file_inventory_proto_rawDescGZIP(), []int{15}
+	return file_inventory_proto_rawDescGZIP(), []int{16}
 }
 
 var File_inventory_proto protoreflect.FileDescriptor
 
 const file_inventory_proto_rawDesc = "" +
 	"\n" +
-	"\x0finventory.proto\x12\x14cnquery.providers.v1\x1a(providers-sdk/v1/upstream/upstream.proto\x1a\"providers-sdk/v1/vault/vault.proto\"\xe3\b\n" +
+	"\x0finventory.proto\x12\x14cnquery.providers.v1\x1a(providers-sdk/v1/upstream/upstream.proto\x1a\"providers-sdk/v1/vault/vault.proto\"\x9d\t\n" +
 	"\x05Asset\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
 	"\x03mrn\x18\x02 \x01(\tR\x03mrn\x12\x12\n" +
@@ -1681,7 +1762,8 @@ const file_inventory_proto_rawDesc = "" +
 	"\x04fqdn\x18% \x01(\tR\x04fqdn\x12\x19\n" +
 	"\btrace_id\x18& \x01(\tR\atraceId\x12M\n" +
 	"\rrelationships\x18' \x03(\v2'.cnquery.providers.v1.AssetRelationshipR\rrelationships\x12J\n" +
-	"\x0econtext_config\x18( \x01(\v2#.cnquery.providers.v1.ContextConfigR\rcontextConfig\x1a9\n" +
+	"\x0econtext_config\x18( \x01(\v2#.cnquery.providers.v1.ContextConfigR\rcontextConfig\x128\n" +
+	"\x06claims\x18) \x03(\v2 .cnquery.providers.v1.AssetClaimR\x06claims\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a>\n" +
@@ -1702,7 +1784,15 @@ const file_inventory_proto_rawDesc = "" +
 	"repository\x18\x02 \x01(\tR\n" +
 	"repository\x12\x10\n" +
 	"\x03ref\x18\x03 \x01(\tR\x03ref\x12\x12\n" +
-	"\x04path\x18\x04 \x01(\tR\x04path\"\x8c\x01\n" +
+	"\x04path\x18\x04 \x01(\tR\x04path\"\xbf\x01\n" +
+	"\n" +
+	"AssetClaim\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12D\n" +
+	"\x06claims\x18\x02 \x03(\v2,.cnquery.providers.v1.AssetClaim.ClaimsEntryR\x06claims\x12\x1c\n" +
+	"\tsignature\x18\x03 \x01(\tR\tsignature\x1a9\n" +
+	"\vClaimsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8c\x01\n" +
 	"\x11AssetRelationship\x121\n" +
 	"\x05asset\x18\x01 \x01(\v2\x1b.cnquery.providers.v1.AssetR\x05asset\x12#\n" +
 	"\rresource_type\x18\x02 \x01(\tR\fresourceType\x12\x1f\n" +
@@ -1849,80 +1939,84 @@ func file_inventory_proto_rawDescGZIP() []byte {
 }
 
 var file_inventory_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_inventory_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_inventory_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_inventory_proto_goTypes = []any{
 	(State)(0),                       // 0: cnquery.providers.v1.State
 	(AssetCategory)(0),               // 1: cnquery.providers.v1.AssetCategory
 	(*Asset)(nil),                    // 2: cnquery.providers.v1.Asset
 	(*ContextConfig)(nil),            // 3: cnquery.providers.v1.ContextConfig
 	(*ConfigOrigin)(nil),             // 4: cnquery.providers.v1.ConfigOrigin
-	(*AssetRelationship)(nil),        // 5: cnquery.providers.v1.AssetRelationship
-	(*AssetUrlBranch)(nil),           // 6: cnquery.providers.v1.AssetUrlBranch
-	(*Config)(nil),                   // 7: cnquery.providers.v1.Config
-	(*Sudo)(nil),                     // 8: cnquery.providers.v1.Sudo
-	(*Discovery)(nil),                // 9: cnquery.providers.v1.Discovery
-	(*Platform)(nil),                 // 10: cnquery.providers.v1.Platform
-	(*TypeMeta)(nil),                 // 11: cnquery.providers.v1.TypeMeta
-	(*ObjectMeta)(nil),               // 12: cnquery.providers.v1.ObjectMeta
-	(*Time)(nil),                     // 13: cnquery.providers.v1.Time
-	(*OwnerReference)(nil),           // 14: cnquery.providers.v1.OwnerReference
-	(*Inventory)(nil),                // 15: cnquery.providers.v1.Inventory
-	(*InventorySpec)(nil),            // 16: cnquery.providers.v1.InventorySpec
-	(*InventoryStatus)(nil),          // 17: cnquery.providers.v1.InventoryStatus
-	nil,                              // 18: cnquery.providers.v1.Asset.LabelsEntry
-	nil,                              // 19: cnquery.providers.v1.Asset.AnnotationsEntry
-	nil,                              // 20: cnquery.providers.v1.Asset.OptionsEntry
-	nil,                              // 21: cnquery.providers.v1.AssetUrlBranch.ValuesEntry
-	nil,                              // 22: cnquery.providers.v1.Config.OptionsEntry
-	nil,                              // 23: cnquery.providers.v1.Discovery.FilterEntry
-	nil,                              // 24: cnquery.providers.v1.Platform.LabelsEntry
-	nil,                              // 25: cnquery.providers.v1.Platform.MetadataEntry
-	nil,                              // 26: cnquery.providers.v1.ObjectMeta.LabelsEntry
-	nil,                              // 27: cnquery.providers.v1.ObjectMeta.AnnotationsEntry
-	nil,                              // 28: cnquery.providers.v1.InventorySpec.CredentialsEntry
-	(*vault.Credential)(nil),         // 29: cnquery.providers.v1.Credential
-	(*vault.VaultConfiguration)(nil), // 30: cnquery.providers.v1.VaultConfiguration
-	(*upstream.ServiceAccountCredentials)(nil), // 31: mondoo.mql.upstream.v1.ServiceAccountCredentials
+	(*AssetClaim)(nil),               // 5: cnquery.providers.v1.AssetClaim
+	(*AssetRelationship)(nil),        // 6: cnquery.providers.v1.AssetRelationship
+	(*AssetUrlBranch)(nil),           // 7: cnquery.providers.v1.AssetUrlBranch
+	(*Config)(nil),                   // 8: cnquery.providers.v1.Config
+	(*Sudo)(nil),                     // 9: cnquery.providers.v1.Sudo
+	(*Discovery)(nil),                // 10: cnquery.providers.v1.Discovery
+	(*Platform)(nil),                 // 11: cnquery.providers.v1.Platform
+	(*TypeMeta)(nil),                 // 12: cnquery.providers.v1.TypeMeta
+	(*ObjectMeta)(nil),               // 13: cnquery.providers.v1.ObjectMeta
+	(*Time)(nil),                     // 14: cnquery.providers.v1.Time
+	(*OwnerReference)(nil),           // 15: cnquery.providers.v1.OwnerReference
+	(*Inventory)(nil),                // 16: cnquery.providers.v1.Inventory
+	(*InventorySpec)(nil),            // 17: cnquery.providers.v1.InventorySpec
+	(*InventoryStatus)(nil),          // 18: cnquery.providers.v1.InventoryStatus
+	nil,                              // 19: cnquery.providers.v1.Asset.LabelsEntry
+	nil,                              // 20: cnquery.providers.v1.Asset.AnnotationsEntry
+	nil,                              // 21: cnquery.providers.v1.Asset.OptionsEntry
+	nil,                              // 22: cnquery.providers.v1.AssetClaim.ClaimsEntry
+	nil,                              // 23: cnquery.providers.v1.AssetUrlBranch.ValuesEntry
+	nil,                              // 24: cnquery.providers.v1.Config.OptionsEntry
+	nil,                              // 25: cnquery.providers.v1.Discovery.FilterEntry
+	nil,                              // 26: cnquery.providers.v1.Platform.LabelsEntry
+	nil,                              // 27: cnquery.providers.v1.Platform.MetadataEntry
+	nil,                              // 28: cnquery.providers.v1.ObjectMeta.LabelsEntry
+	nil,                              // 29: cnquery.providers.v1.ObjectMeta.AnnotationsEntry
+	nil,                              // 30: cnquery.providers.v1.InventorySpec.CredentialsEntry
+	(*vault.Credential)(nil),         // 31: cnquery.providers.v1.Credential
+	(*vault.VaultConfiguration)(nil), // 32: cnquery.providers.v1.VaultConfiguration
+	(*upstream.ServiceAccountCredentials)(nil), // 33: mondoo.mql.upstream.v1.ServiceAccountCredentials
 }
 var file_inventory_proto_depIdxs = []int32{
 	0,  // 0: cnquery.providers.v1.Asset.state:type_name -> cnquery.providers.v1.State
-	10, // 1: cnquery.providers.v1.Asset.platform:type_name -> cnquery.providers.v1.Platform
-	7,  // 2: cnquery.providers.v1.Asset.connections:type_name -> cnquery.providers.v1.Config
-	18, // 3: cnquery.providers.v1.Asset.labels:type_name -> cnquery.providers.v1.Asset.LabelsEntry
-	19, // 4: cnquery.providers.v1.Asset.annotations:type_name -> cnquery.providers.v1.Asset.AnnotationsEntry
-	20, // 5: cnquery.providers.v1.Asset.options:type_name -> cnquery.providers.v1.Asset.OptionsEntry
+	11, // 1: cnquery.providers.v1.Asset.platform:type_name -> cnquery.providers.v1.Platform
+	8,  // 2: cnquery.providers.v1.Asset.connections:type_name -> cnquery.providers.v1.Config
+	19, // 3: cnquery.providers.v1.Asset.labels:type_name -> cnquery.providers.v1.Asset.LabelsEntry
+	20, // 4: cnquery.providers.v1.Asset.annotations:type_name -> cnquery.providers.v1.Asset.AnnotationsEntry
+	21, // 5: cnquery.providers.v1.Asset.options:type_name -> cnquery.providers.v1.Asset.OptionsEntry
 	1,  // 6: cnquery.providers.v1.Asset.category:type_name -> cnquery.providers.v1.AssetCategory
 	2,  // 7: cnquery.providers.v1.Asset.related_assets:type_name -> cnquery.providers.v1.Asset
-	5,  // 8: cnquery.providers.v1.Asset.relationships:type_name -> cnquery.providers.v1.AssetRelationship
+	6,  // 8: cnquery.providers.v1.Asset.relationships:type_name -> cnquery.providers.v1.AssetRelationship
 	3,  // 9: cnquery.providers.v1.Asset.context_config:type_name -> cnquery.providers.v1.ContextConfig
-	4,  // 10: cnquery.providers.v1.ContextConfig.origin:type_name -> cnquery.providers.v1.ConfigOrigin
-	2,  // 11: cnquery.providers.v1.AssetRelationship.asset:type_name -> cnquery.providers.v1.Asset
-	21, // 12: cnquery.providers.v1.AssetUrlBranch.values:type_name -> cnquery.providers.v1.AssetUrlBranch.ValuesEntry
-	6,  // 13: cnquery.providers.v1.AssetUrlBranch.parent:type_name -> cnquery.providers.v1.AssetUrlBranch
-	29, // 14: cnquery.providers.v1.Config.credentials:type_name -> cnquery.providers.v1.Credential
-	8,  // 15: cnquery.providers.v1.Config.sudo:type_name -> cnquery.providers.v1.Sudo
-	22, // 16: cnquery.providers.v1.Config.options:type_name -> cnquery.providers.v1.Config.OptionsEntry
-	9,  // 17: cnquery.providers.v1.Config.discover:type_name -> cnquery.providers.v1.Discovery
-	23, // 18: cnquery.providers.v1.Discovery.filter:type_name -> cnquery.providers.v1.Discovery.FilterEntry
-	24, // 19: cnquery.providers.v1.Platform.labels:type_name -> cnquery.providers.v1.Platform.LabelsEntry
-	25, // 20: cnquery.providers.v1.Platform.metadata:type_name -> cnquery.providers.v1.Platform.MetadataEntry
-	26, // 21: cnquery.providers.v1.ObjectMeta.labels:type_name -> cnquery.providers.v1.ObjectMeta.LabelsEntry
-	27, // 22: cnquery.providers.v1.ObjectMeta.annotations:type_name -> cnquery.providers.v1.ObjectMeta.AnnotationsEntry
-	14, // 23: cnquery.providers.v1.ObjectMeta.ownerReferences:type_name -> cnquery.providers.v1.OwnerReference
-	12, // 24: cnquery.providers.v1.Inventory.metadata:type_name -> cnquery.providers.v1.ObjectMeta
-	16, // 25: cnquery.providers.v1.Inventory.spec:type_name -> cnquery.providers.v1.InventorySpec
-	17, // 26: cnquery.providers.v1.Inventory.status:type_name -> cnquery.providers.v1.InventoryStatus
-	2,  // 27: cnquery.providers.v1.InventorySpec.assets:type_name -> cnquery.providers.v1.Asset
-	28, // 28: cnquery.providers.v1.InventorySpec.credentials:type_name -> cnquery.providers.v1.InventorySpec.CredentialsEntry
-	30, // 29: cnquery.providers.v1.InventorySpec.vault:type_name -> cnquery.providers.v1.VaultConfiguration
-	31, // 30: cnquery.providers.v1.InventorySpec.upstream_credentials:type_name -> mondoo.mql.upstream.v1.ServiceAccountCredentials
-	6,  // 31: cnquery.providers.v1.AssetUrlBranch.ValuesEntry.value:type_name -> cnquery.providers.v1.AssetUrlBranch
-	29, // 32: cnquery.providers.v1.InventorySpec.CredentialsEntry.value:type_name -> cnquery.providers.v1.Credential
-	33, // [33:33] is the sub-list for method output_type
-	33, // [33:33] is the sub-list for method input_type
-	33, // [33:33] is the sub-list for extension type_name
-	33, // [33:33] is the sub-list for extension extendee
-	0,  // [0:33] is the sub-list for field type_name
+	5,  // 10: cnquery.providers.v1.Asset.claims:type_name -> cnquery.providers.v1.AssetClaim
+	4,  // 11: cnquery.providers.v1.ContextConfig.origin:type_name -> cnquery.providers.v1.ConfigOrigin
+	22, // 12: cnquery.providers.v1.AssetClaim.claims:type_name -> cnquery.providers.v1.AssetClaim.ClaimsEntry
+	2,  // 13: cnquery.providers.v1.AssetRelationship.asset:type_name -> cnquery.providers.v1.Asset
+	23, // 14: cnquery.providers.v1.AssetUrlBranch.values:type_name -> cnquery.providers.v1.AssetUrlBranch.ValuesEntry
+	7,  // 15: cnquery.providers.v1.AssetUrlBranch.parent:type_name -> cnquery.providers.v1.AssetUrlBranch
+	31, // 16: cnquery.providers.v1.Config.credentials:type_name -> cnquery.providers.v1.Credential
+	9,  // 17: cnquery.providers.v1.Config.sudo:type_name -> cnquery.providers.v1.Sudo
+	24, // 18: cnquery.providers.v1.Config.options:type_name -> cnquery.providers.v1.Config.OptionsEntry
+	10, // 19: cnquery.providers.v1.Config.discover:type_name -> cnquery.providers.v1.Discovery
+	25, // 20: cnquery.providers.v1.Discovery.filter:type_name -> cnquery.providers.v1.Discovery.FilterEntry
+	26, // 21: cnquery.providers.v1.Platform.labels:type_name -> cnquery.providers.v1.Platform.LabelsEntry
+	27, // 22: cnquery.providers.v1.Platform.metadata:type_name -> cnquery.providers.v1.Platform.MetadataEntry
+	28, // 23: cnquery.providers.v1.ObjectMeta.labels:type_name -> cnquery.providers.v1.ObjectMeta.LabelsEntry
+	29, // 24: cnquery.providers.v1.ObjectMeta.annotations:type_name -> cnquery.providers.v1.ObjectMeta.AnnotationsEntry
+	15, // 25: cnquery.providers.v1.ObjectMeta.ownerReferences:type_name -> cnquery.providers.v1.OwnerReference
+	13, // 26: cnquery.providers.v1.Inventory.metadata:type_name -> cnquery.providers.v1.ObjectMeta
+	17, // 27: cnquery.providers.v1.Inventory.spec:type_name -> cnquery.providers.v1.InventorySpec
+	18, // 28: cnquery.providers.v1.Inventory.status:type_name -> cnquery.providers.v1.InventoryStatus
+	2,  // 29: cnquery.providers.v1.InventorySpec.assets:type_name -> cnquery.providers.v1.Asset
+	30, // 30: cnquery.providers.v1.InventorySpec.credentials:type_name -> cnquery.providers.v1.InventorySpec.CredentialsEntry
+	32, // 31: cnquery.providers.v1.InventorySpec.vault:type_name -> cnquery.providers.v1.VaultConfiguration
+	33, // 32: cnquery.providers.v1.InventorySpec.upstream_credentials:type_name -> mondoo.mql.upstream.v1.ServiceAccountCredentials
+	7,  // 33: cnquery.providers.v1.AssetUrlBranch.ValuesEntry.value:type_name -> cnquery.providers.v1.AssetUrlBranch
+	31, // 34: cnquery.providers.v1.InventorySpec.CredentialsEntry.value:type_name -> cnquery.providers.v1.Credential
+	35, // [35:35] is the sub-list for method output_type
+	35, // [35:35] is the sub-list for method input_type
+	35, // [35:35] is the sub-list for extension type_name
+	35, // [35:35] is the sub-list for extension extendee
+	0,  // [0:35] is the sub-list for field type_name
 }
 
 func init() { file_inventory_proto_init() }
@@ -1936,7 +2030,7 @@ func file_inventory_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_inventory_proto_rawDesc), len(file_inventory_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   27,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
