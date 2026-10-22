@@ -327,6 +327,9 @@ func keepAssetClaims(requested *inventory.Asset, res *plugin.ConnectRes) {
 		return
 	}
 	for _, c := range requested.Claims {
+		if c == nil {
+			continue
+		}
 		res.Asset.Claims = append(res.Asset.Claims, c.CloneVT())
 	}
 }

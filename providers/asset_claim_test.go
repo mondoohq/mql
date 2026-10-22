@@ -30,6 +30,13 @@ func TestKeepAssetClaims(t *testing.T) {
 		assert.Same(t, own, res.Asset.Claims[0])
 	}
 
+	// nil elements in the source are skipped, not cloned into the answer
+	res = &plugin.ConnectRes{Asset: &inventory.Asset{Name: "new"}}
+	keepAssetClaims(&inventory.Asset{Claims: []*inventory.AssetClaim{nil, claim, nil}}, res)
+	if assert.Len(t, res.Asset.Claims, 1) {
+		assert.NotNil(t, res.Asset.Claims[0])
+	}
+
 	// nothing to keep, or nowhere to put it
 	keepAssetClaims(&inventory.Asset{}, res)
 	keepAssetClaims(nil, res)

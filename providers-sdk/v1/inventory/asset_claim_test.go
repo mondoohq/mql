@@ -50,4 +50,11 @@ func TestAddClaimNilSafe(t *testing.T) {
 	a := &Asset{}
 	assert.NotPanics(t, func() { a.AddClaim(nil) })
 	assert.Empty(t, a.Claims)
+
+	// a nil element already in the slice must not panic the dedupe
+	withNil := &Asset{Claims: []*AssetClaim{nil}}
+	assert.NotPanics(t, func() {
+		withNil.AddClaim(NewContainerImageClaim("sha256:abc", "alpine:3.20", ""))
+	})
+	assert.Len(t, withNil.Claims, 2)
 }
