@@ -5,6 +5,7 @@ package container_registry
 
 import (
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/http"
@@ -209,6 +210,12 @@ func (a *ImageLister) toAsset(ref name.Reference, creds []*vault.Credential, opt
 	if err != nil {
 		return nil, handleUnauthorizedError(err, ref.Name())
 	}
+	return assetFromDescriptor(ref, desc, creds), nil
+}
+
+// assetFromDescriptor builds the asset for an already-fetched image descriptor.
+// It makes no network calls.
+func assetFromDescriptor(ref name.Reference, desc *remote.Descriptor, creds []*vault.Credential) *inventory.Asset {
 	imgDigest := desc.Digest.String()
 	repoName := ref.Context().Name()
 	imgTag := ref.Context().Tag(ref.Identifier()).TagStr()
@@ -228,9 +235,27 @@ func (a *ImageLister) toAsset(ref name.Reference, creds []*vault.Credential, opt
 		Labels: make(map[string]string),
 	}
 
+	// The digest may be an index digest; the server resolves index to platform
+	// digests. The manifest comes from the same remote.Get as the
+	// digest, so the claim costs no extra request.
+	asset.AddClaim(containerImageClaimFromDescriptor(imgDigest, desc.Manifest, imageUrl))
+
 	// store digest and tag
 	asset.Labels["docker.io/digest"] = imgDigest
 	asset.Labels["docker.io/tags"] = imgTag
 	log.Debug().Strs("platform-ids", asset.PlatformIds).Msg("asset platform ids")
-	return asset, nil
+	return asset
+}
+
+// containerImageClaimFromDescriptor builds the container-image claim for a
+// discovered registry image: digest, ref and the base64-encoded raw manifest as
+// proof of possession. Arch is left out because an index digest has no single
+// architecture. An empty manifest leaves the manifest key out; the claim is
+// still attached, just without the possession proof.
+func containerImageClaimFromDescriptor(digest string, manifest []byte, ref string) *inventory.AssetClaim {
+	claim := inventory.NewContainerImageClaim(digest, ref, "")
+	if len(manifest) > 0 {
+		claim.Claims[inventory.AssetClaimManifest] = base64.StdEncoding.EncodeToString(manifest)
+	}
+	return claim
 }
