@@ -383,6 +383,16 @@ func (failingManifestImage) RawManifest() ([]byte, error) {
 	return nil, errors.New("manifest unavailable")
 }
 
+// oversizedManifestImage is an image whose raw manifest is larger than the claim cap.
+type oversizedManifestImage struct {
+	v1.Image
+	size int
+}
+
+func (i oversizedManifestImage) RawManifest() ([]byte, error) {
+	return make([]byte, i.size), nil
+}
+
 func TestAttachResolvedImageClaim(t *testing.T) {
 	t.Run("keeps the discovery claim and adds the resolved one with a matching manifest", func(t *testing.T) {
 		img, err := random.Image(64, 1)
@@ -430,6 +440,30 @@ func TestAttachResolvedImageClaim(t *testing.T) {
 		container.AttachResolvedImageClaim(asset, img, "example.com/app:1", "amd64")
 		container.AttachResolvedImageClaim(asset, img, "example.com/app:1", "amd64")
 		assert.Len(t, asset.Claims, 1)
+	})
+
+	t.Run("an oversized manifest keeps the claim but omits the manifest key", func(t *testing.T) {
+		img, err := random.Image(64, 1)
+		require.NoError(t, err)
+		digest, err := img.Digest()
+		require.NoError(t, err)
+		asset := &inventory.Asset{}
+		container.AttachResolvedImageClaim(asset, oversizedManifestImage{Image: img, size: 256*1024 + 1}, "example.com/app:1", "amd64")
+		require.Len(t, asset.Claims, 1)
+		claims := asset.Claims[0].Claims
+		assert.Equal(t, digest.String(), claims[inventory.AssetClaimDigest])
+		assert.Equal(t, "example.com/app:1", claims[inventory.AssetClaimRef])
+		assert.Equal(t, "amd64", claims[inventory.AssetClaimArch])
+		assert.NotContains(t, claims, inventory.AssetClaimManifest)
+	})
+
+	t.Run("a manifest exactly at the cap is attached", func(t *testing.T) {
+		img, err := random.Image(64, 1)
+		require.NoError(t, err)
+		asset := &inventory.Asset{}
+		container.AttachResolvedImageClaim(asset, oversizedManifestImage{Image: img, size: 256 * 1024}, "example.com/app:1", "amd64")
+		require.Len(t, asset.Claims, 1)
+		assert.Contains(t, asset.Claims[0].Claims, inventory.AssetClaimManifest)
 	})
 
 	t.Run("an unreadable manifest skips the claim", func(t *testing.T) {
