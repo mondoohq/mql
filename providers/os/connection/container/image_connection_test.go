@@ -4,6 +4,10 @@
 package container_test
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -12,6 +16,8 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/stretchr/testify/assert"
@@ -366,4 +372,71 @@ func TestTarRelativeSymlinkFileCentos(t *testing.T) {
 		assert.Equal(t, nil, err, "should execute without error")
 		assert.Equal(t, 37, len(content), "should read the full content")
 	}
+}
+
+// failingManifestImage is an image whose raw manifest cannot be read.
+type failingManifestImage struct {
+	v1.Image
+}
+
+func (failingManifestImage) RawManifest() ([]byte, error) {
+	return nil, errors.New("manifest unavailable")
+}
+
+func TestAttachResolvedImageClaim(t *testing.T) {
+	t.Run("keeps the discovery claim and adds the resolved one with a matching manifest", func(t *testing.T) {
+		img, err := random.Image(64, 1)
+		require.NoError(t, err)
+		digest, err := img.Digest()
+		require.NoError(t, err)
+
+		// the discovery lane saw the index, so its digest differs from the
+		// resolved platform image's digest
+		indexDigest := "sha256:" + hex.EncodeToString(make([]byte, 32))
+		require.NotEqual(t, indexDigest, digest.String())
+		asset := &inventory.Asset{}
+		asset.AddClaim(inventory.NewContainerImageClaim(indexDigest, "example.com/app:1", ""))
+
+		container.AttachResolvedImageClaim(asset, img, "example.com/app:1", "arm64")
+
+		require.Len(t, asset.Claims, 2)
+		discovery, resolved := asset.Claims[0], asset.Claims[1]
+		assert.Equal(t, indexDigest, discovery.Claims[inventory.AssetClaimDigest])
+
+		assert.Equal(t, inventory.AssetClaimKindContainerImage, resolved.Kind)
+		assert.Equal(t, digest.String(), resolved.Claims[inventory.AssetClaimDigest])
+		assert.Equal(t, "example.com/app:1", resolved.Claims[inventory.AssetClaimRef])
+		assert.Equal(t, "arm64", resolved.Claims[inventory.AssetClaimArch])
+
+		manifest, err := base64.StdEncoding.DecodeString(resolved.Claims[inventory.AssetClaimManifest])
+		require.NoError(t, err)
+		sum := sha256.Sum256(manifest)
+		assert.Equal(t, resolved.Claims[inventory.AssetClaimDigest], "sha256:"+hex.EncodeToString(sum[:]))
+	})
+
+	t.Run("empty arch is left out", func(t *testing.T) {
+		img, err := random.Image(64, 1)
+		require.NoError(t, err)
+		asset := &inventory.Asset{}
+		container.AttachResolvedImageClaim(asset, img, "example.com/app:1", "")
+		require.Len(t, asset.Claims, 1)
+		assert.NotContains(t, asset.Claims[0].Claims, inventory.AssetClaimArch)
+	})
+
+	t.Run("attaching twice does not duplicate", func(t *testing.T) {
+		img, err := random.Image(64, 1)
+		require.NoError(t, err)
+		asset := &inventory.Asset{}
+		container.AttachResolvedImageClaim(asset, img, "example.com/app:1", "amd64")
+		container.AttachResolvedImageClaim(asset, img, "example.com/app:1", "amd64")
+		assert.Len(t, asset.Claims, 1)
+	})
+
+	t.Run("an unreadable manifest skips the claim", func(t *testing.T) {
+		img, err := random.Image(64, 1)
+		require.NoError(t, err)
+		asset := &inventory.Asset{}
+		container.AttachResolvedImageClaim(asset, failingManifestImage{Image: img}, "example.com/app:1", "amd64")
+		assert.Empty(t, asset.Claims)
+	})
 }
