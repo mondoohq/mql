@@ -4,7 +4,8 @@
 package container_registry
 
 import (
-	"encoding/base64"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/url"
 	"strings"
 	"testing"
@@ -60,41 +61,35 @@ func TestHarbor(t *testing.T) {
 	}
 }
 
-// An OCI image index manifest as remote.Get returns it. The bytes are opaque to
-// the claim, so only the exact round-trip matters (the child digest is synthetic).
+// An OCI image index manifest as remote.Get returns it (the child digest is
+// synthetic). testIndexDigest is the real sha256 of these bytes, as remote.Get
+// guarantees for a descriptor; TestFixtureDigestMatchesManifest pins that.
 const testIndexManifest = `{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:d3f0ce2b2f7a3b4b1e4e2a4d0a1b0d3f5c3b7d3c5a3f1e2d4c6b8a0f2e4d6c8b","size":483,"platform":{"architecture":"amd64","os":"linux"}}]}`
 
-const testIndexDigest = "sha256:a8560b36e8b8210634f77d9f7f9efd7ffa463e380b75e2e74aff4511df3ef88c"
+const testIndexDigest = "sha256:f00f56e576cb61555b7bf9969953bd832f0c3114eb2a8c4fe5532fc4ea88266d"
+
+func TestFixtureDigestMatchesManifest(t *testing.T) {
+	sum := sha256.Sum256([]byte(testIndexManifest))
+	assert.Equal(t, "sha256:"+hex.EncodeToString(sum[:]), testIndexDigest)
+}
 
 func TestContainerImageClaimFromDescriptor(t *testing.T) {
 	ref := "index.docker.io/library/alpine@" + testIndexDigest
 
-	t.Run("digest, ref and manifest", func(t *testing.T) {
-		claim := containerImageClaimFromDescriptor(testIndexDigest, []byte(testIndexManifest), ref)
+	t.Run("digest and ref only", func(t *testing.T) {
+		claim := containerImageClaimFromDescriptor(testIndexDigest, ref)
 		require.NotNil(t, claim)
 		assert.Equal(t, inventory.AssetClaimKindContainerImage, claim.Kind)
-		assert.Len(t, claim.Claims, 3)
-		assert.Equal(t, testIndexDigest, claim.Claims[inventory.AssetClaimDigest])
-		assert.Equal(t, ref, claim.Claims[inventory.AssetClaimRef])
-
-		raw, err := base64.StdEncoding.DecodeString(claim.Claims[inventory.AssetClaimManifest])
-		require.NoError(t, err)
-		assert.Equal(t, testIndexManifest, string(raw), "base64 must round-trip to the exact manifest bytes")
+		assert.Equal(t, map[string]string{
+			inventory.AssetClaimDigest: testIndexDigest,
+			inventory.AssetClaimRef:    ref,
+		}, claim.Claims)
 	})
 
-	t.Run("arch is never set", func(t *testing.T) {
-		claim := containerImageClaimFromDescriptor(testIndexDigest, []byte(testIndexManifest), ref)
+	t.Run("neither arch nor manifest is set", func(t *testing.T) {
+		claim := containerImageClaimFromDescriptor(testIndexDigest, ref)
 		assert.NotContains(t, claim.Claims, inventory.AssetClaimArch)
-	})
-
-	t.Run("empty manifest keeps the claim but omits the manifest key", func(t *testing.T) {
-		for _, m := range [][]byte{nil, {}} {
-			claim := containerImageClaimFromDescriptor(testIndexDigest, m, ref)
-			require.NotNil(t, claim)
-			assert.Equal(t, testIndexDigest, claim.Claims[inventory.AssetClaimDigest])
-			assert.Equal(t, ref, claim.Claims[inventory.AssetClaimRef])
-			assert.NotContains(t, claim.Claims, inventory.AssetClaimManifest)
-		}
+		assert.NotContains(t, claim.Claims, inventory.AssetClaimManifest)
 	})
 }
 
@@ -118,9 +113,7 @@ func TestAssetFromDescriptorClaims(t *testing.T) {
 	require.Len(t, asset.Connections, 1)
 	assert.Equal(t, asset.Connections[0].Host, claim.Claims[inventory.AssetClaimRef])
 	assert.Equal(t, "index.docker.io/library/alpine@"+testIndexDigest, claim.Claims[inventory.AssetClaimRef])
-	raw, err := base64.StdEncoding.DecodeString(claim.Claims[inventory.AssetClaimManifest])
-	require.NoError(t, err)
-	assert.Equal(t, testIndexManifest, string(raw))
+	assert.NotContains(t, claim.Claims, inventory.AssetClaimManifest, "the seed lane owns the manifest")
 
 	// same descriptor, different tag: identical claim, and AddClaim dedupes it,
 	// which is what ListRepository's tag-merge path relies on (it keeps the first asset).

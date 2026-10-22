@@ -5,7 +5,6 @@ package container_registry
 
 import (
 	"crypto/tls"
-	"encoding/base64"
 	"fmt"
 	"net"
 	"net/http"
@@ -236,9 +235,9 @@ func assetFromDescriptor(ref name.Reference, desc *remote.Descriptor, creds []*v
 	}
 
 	// The digest may be an index digest; the server resolves index to platform
-	// digests. The manifest comes from the same remote.Get as the
-	// digest, so the claim costs no extra request.
-	asset.AddClaim(containerImageClaimFromDescriptor(imgDigest, desc.Manifest, imageUrl))
+	// digests. The claim lane is digest-only: the manifest travels on
+	// the seed lane (the registry-image connection), so it is not attached here.
+	asset.AddClaim(containerImageClaimFromDescriptor(imgDigest, imageUrl))
 
 	// store digest and tag
 	asset.Labels["docker.io/digest"] = imgDigest
@@ -248,14 +247,9 @@ func assetFromDescriptor(ref name.Reference, desc *remote.Descriptor, creds []*v
 }
 
 // containerImageClaimFromDescriptor builds the container-image claim for a
-// discovered registry image: digest, ref and the base64-encoded raw manifest as
-// proof of possession. Arch is left out because an index digest has no single
-// architecture. An empty manifest leaves the manifest key out; the claim is
-// still attached, just without the possession proof.
-func containerImageClaimFromDescriptor(digest string, manifest []byte, ref string) *inventory.AssetClaim {
-	claim := inventory.NewContainerImageClaim(digest, ref, "")
-	if len(manifest) > 0 {
-		claim.Claims[inventory.AssetClaimManifest] = base64.StdEncoding.EncodeToString(manifest)
-	}
-	return claim
+// discovered registry image: digest and ref only. Arch is left out because an
+// index digest has no single architecture, and the manifest is left out because
+// the seed lane owns it.
+func containerImageClaimFromDescriptor(digest, ref string) *inventory.AssetClaim {
+	return inventory.NewContainerImageClaim(digest, ref, "")
 }
