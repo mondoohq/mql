@@ -75,6 +75,7 @@ func TestDefaultProvidersIncludesExternalProviders(t *testing.T) {
 		"db2",
 		"fortios",
 		"junos",
+		"netscaler",
 		"networkdevices",
 		"networkdiscovery",
 		"oracledb",

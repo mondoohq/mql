@@ -1001,6 +1001,21 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"netscaler": {
+		Provider: &plugin.Provider{
+			Name:            "netscaler",
+			ID:              "go.mondoo.com/mql/providers/netscaler",
+			ConnectionTypes: []string{"netscaler"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "netscaler",
+					Use:   "netscaler",
+					Short: "a remote NetScaler ADC or NetScaler Gateway appliance",
+				},
+			},
+		},
+	},
+
 	"network": {
 		Provider: &plugin.Provider{
 			Name:            "network",

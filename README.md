@@ -170,6 +170,7 @@ To learn about Mondoo Platform, read the [Mondoo Platform docs](https://mondoo.c
 | MongoDB server (self-hosted)  | `mongo`                    | `mql shell mongo db.contoso.com --user admin --ask-pass`                                                                                        |
 | Neon organization             | `neon`                     | `mql shell neon --token TOKEN`                                                                                                                  |
 | Netlify account               | `netlify`                  | `mql shell netlify --token TOKEN`                                                                                                               |
+| NetScaler ADC and Gateway     | `netscaler`                | `mql shell netscaler --hostname HOST --username USER --ask-pass`                                                                                |
 | Network scanning              | `nmap`                     | `mql shell nmap --networks 192.168.1.0/24`                                                                                                      |
 | NextDNS accounts              | `nextdns`                  | `mql shell nextdns --api-key API_KEY`                                                                                                           |
 | Notion workspaces             | `notion`                   | `mql shell notion --token INTEGRATION_TOKEN`                                                                                                    |
