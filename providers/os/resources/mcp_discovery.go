@@ -34,6 +34,7 @@ var mcpClientResources = []string{
 	"mistral.vibe",
 	"opencode",
 	"kilocode",
+	"antigravity",
 }
 
 // mcpClientLike is satisfied by every AI tool resource that lists MCP servers.

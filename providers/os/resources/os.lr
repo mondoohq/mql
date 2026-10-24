@@ -25198,12 +25198,14 @@ private mistral.vibe.skill @defaults("name") @maturity("preview") {
 // Antigravity (Google) instance
 //
 // Antigravity, Google's agentic development platform, installed on the
-// target. Reports its presence and version via package, the host it runs in
-// via runtime, and the SKILL.md definitions installed for it via skills.
-// Skills are scanned under the configuration directory (default
-// .gemini/antigravity in the user's home); pass configPath to target a
-// non-default install. Auditing this resource shows whether the agent is
-// present and what skills extend it.
+// target as the IDE or as the agy CLI. Reports its presence and version via
+// package, the host it runs in via runtime, the SKILL.md definitions
+// installed for it via skills, and the MCP servers it connects to via
+// mcpServers. The IDE keeps its configuration in .gemini/antigravity in the
+// user's home (the default configPath) and the CLI in .gemini/config beside
+// it; both are read. Pass configPath to target a non-default install.
+// Auditing this resource shows whether the agent is present, what skills
+// extend it, and which servers it can reach.
 // URL: https://antigravity.google/
 antigravity @defaults("configPath") @maturity("preview") {
   init(configPath? string)
@@ -25230,7 +25232,52 @@ antigravity @defaults("configPath") @maturity("preview") {
   // determined.
   runtime() extensionRuntime
   // Skills installed for the agent, one resource per discovered SKILL.md file
+  //
+  // Read from skills/ under the IDE's configPath and under the CLI's
+  // .gemini/config directory.
   skills() []antigravity.skill
+  // MCP servers the agent connects to
+  //
+  // Read from mcp_config.json in the CLI's .gemini/config directory and in
+  // the IDE's configPath. The same name in both files is two servers, told
+  // apart by source.
+  mcpServers() []antigravity.mcpServer
+}
+
+// Antigravity MCP server
+//
+// Model Context Protocol server Antigravity is configured to use. Stdio
+// servers launch a local command with args; http servers connect to a url.
+// `type` reports the transport, `enabled` whether the server is switched on,
+// and hasEnv and hasHeaders whether environment variables or HTTP headers
+// (often holding API keys or tokens) are configured for the server.
+private antigravity.mcpServer @defaults("name") @maturity("preview") {
+  // Server name
+  name string
+  // Server transport type, for example "stdio" or "http"
+  type string
+  // Local command launched for stdio-type servers
+  command string
+  // Command-line arguments passed to the server command
+  args []string
+  // Endpoint URL for http servers
+  url string
+  // Whether environment variables (for example API keys) are configured
+  hasEnv bool
+  // Whether HTTP headers (for example an Authorization token) are configured
+  hasHeaders bool
+  // Whether the server is enabled
+  //
+  // False for a server switched off with `agy mcp disable`.
+  enabled bool
+  // Path of the configuration file that declares the server
+  source string
+  // Discovered MCP server asset
+  //
+  // Points at the asset discovered for this MCP server, anchored on this
+  // resource. The reference is typed to the `mcp` root: the resource that
+  // roots the MCP server's own tree. See ADR 030 and ADR 031.
+  running() asset<mcp>
 }
 
 // Antigravity skill

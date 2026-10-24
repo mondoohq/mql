@@ -72,6 +72,9 @@ func TestReadMcpServersFileAgentFormats(t *testing.T) {
 		// command as an array, environment instead of env, type local/remote.
 		{"opencode", ".config/opencode/opencode.jsonc", "mcp", true},
 		{"kilo", ".config/kilo/kilo.jsonc", "mcp", true},
+		// Measured: agy 1.4.7 (Antigravity CLI), macOS, 2026-10-24. Remote
+		// server written as serverUrl, every server with an explicit disabled.
+		{"antigravity cli", ".gemini/config/mcp_config.json", "mcpServers", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -100,6 +103,20 @@ func TestReadMcpServersFileEnabled(t *testing.T) {
 	byName = mcpSpecsByName(specs)
 	assert.False(t, byName["a"].enabled)
 	assert.True(t, byName["b"].enabled)
+
+	// Measured: `agy mcp add off uvx some-server` then `agy mcp disable off`,
+	// agy 1.4.7, macOS, 2026-10-24.
+	specs, err = parseMcpServersJSON([]byte(`{"mcpServers":{"off":{"args":["some-server"],"command":"uvx","disabled":true}}}`), "mcpServers", "f")
+	require.NoError(t, err)
+	assert.False(t, mcpSpecsByName(specs)["off"].enabled)
+}
+
+// Synthetic: url wins over serverUrl when a file carries both; no tool wrote
+// this.
+func TestParseMcpServersJSONServerURLPrecedence(t *testing.T) {
+	specs, err := parseMcpServersJSON([]byte(`{"mcpServers":{"a":{"url":"https://u.example/mcp","serverUrl":"https://s.example/mcp"}}}`), "mcpServers", "f")
+	require.NoError(t, err)
+	assert.Equal(t, "https://u.example/mcp", mcpSpecsByName(specs)["a"].url)
 }
 
 func TestReadMcpServersFileMissingAndMalformed(t *testing.T) {

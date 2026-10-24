@@ -749,6 +749,7 @@ const (
 	ResourceMistralVibeMcpServer                           string = "mistral.vibe.mcpServer"
 	ResourceMistralVibeSkill                               string = "mistral.vibe.skill"
 	ResourceAntigravity                                    string = "antigravity"
+	ResourceAntigravityMcpServer                           string = "antigravity.mcpServer"
 	ResourceAntigravitySkill                               string = "antigravity.skill"
 	ResourceIbmBob                                         string = "ibm.bob"
 	ResourceIbmBobSkill                                    string = "ibm.bob.skill"
@@ -3749,6 +3750,10 @@ func init() {
 		"antigravity": {
 			Init:   initAntigravity,
 			Create: createAntigravity,
+		},
+		"antigravity.mcpServer": {
+			// to override args, implement: initAntigravityMcpServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAntigravityMcpServer,
 		},
 		"antigravity.skill": {
 			// to override args, implement: initAntigravitySkill(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -21823,6 +21828,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"antigravity.skills": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAntigravity).GetSkills()).ToDataRes(types.Array(types.Resource("antigravity.skill")))
+	},
+	"antigravity.mcpServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravity).GetMcpServers()).ToDataRes(types.Array(types.Resource("antigravity.mcpServer")))
+	},
+	"antigravity.mcpServer.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetName()).ToDataRes(types.String)
+	},
+	"antigravity.mcpServer.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetType()).ToDataRes(types.String)
+	},
+	"antigravity.mcpServer.command": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetCommand()).ToDataRes(types.String)
+	},
+	"antigravity.mcpServer.args": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetArgs()).ToDataRes(types.Array(types.String))
+	},
+	"antigravity.mcpServer.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetUrl()).ToDataRes(types.String)
+	},
+	"antigravity.mcpServer.hasEnv": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetHasEnv()).ToDataRes(types.Bool)
+	},
+	"antigravity.mcpServer.hasHeaders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetHasHeaders()).ToDataRes(types.Bool)
+	},
+	"antigravity.mcpServer.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"antigravity.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetSource()).ToDataRes(types.String)
+	},
+	"antigravity.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
 	},
 	"antigravity.skill.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAntigravitySkill).GetName()).ToDataRes(types.String)
@@ -49817,6 +49855,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"antigravity.skills": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAntigravity).Skills, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravity).McpServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).__id, ok = v.Value.(string)
+		return
+	},
+	"antigravity.mcpServer.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.command": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).Command, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.args": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).Args, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.hasEnv": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).HasEnv, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.hasHeaders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).HasHeaders, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
 		return
 	},
 	"antigravity.skill.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -127271,6 +127357,7 @@ type mqlAntigravity struct {
 	Package    plugin.TValue[*mqlPackage]
 	Runtime    plugin.TValue[*mqlExtensionRuntime]
 	Skills     plugin.TValue[[]any]
+	McpServers plugin.TValue[[]any]
 }
 
 // createAntigravity creates a new instance of this resource
@@ -127359,6 +127446,118 @@ func (c *mqlAntigravity) GetSkills() *plugin.TValue[[]any] {
 		}
 
 		return c.skills()
+	})
+}
+
+func (c *mqlAntigravity) GetMcpServers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.McpServers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("antigravity", c.__id, "mcpServers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mcpServers()
+	})
+}
+
+// mqlAntigravityMcpServer for the antigravity.mcpServer resource
+type mqlAntigravityMcpServer struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAntigravityMcpServerInternal it will be used here
+	Name       plugin.TValue[string]
+	Type       plugin.TValue[string]
+	Command    plugin.TValue[string]
+	Args       plugin.TValue[[]any]
+	Url        plugin.TValue[string]
+	HasEnv     plugin.TValue[bool]
+	HasHeaders plugin.TValue[bool]
+	Enabled    plugin.TValue[bool]
+	Source     plugin.TValue[string]
+	Running    plugin.TValue[*llx.AssetValue]
+}
+
+// createAntigravityMcpServer creates a new instance of this resource
+func createAntigravityMcpServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAntigravityMcpServer{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("antigravity.mcpServer", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAntigravityMcpServer) MqlName() string {
+	return "antigravity.mcpServer"
+}
+
+func (c *mqlAntigravityMcpServer) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAntigravityMcpServer) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAntigravityMcpServer) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlAntigravityMcpServer) GetCommand() *plugin.TValue[string] {
+	return &c.Command
+}
+
+func (c *mqlAntigravityMcpServer) GetArgs() *plugin.TValue[[]any] {
+	return &c.Args
+}
+
+func (c *mqlAntigravityMcpServer) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlAntigravityMcpServer) GetHasEnv() *plugin.TValue[bool] {
+	return &c.HasEnv
+}
+
+func (c *mqlAntigravityMcpServer) GetHasHeaders() *plugin.TValue[bool] {
+	return &c.HasHeaders
+}
+
+func (c *mqlAntigravityMcpServer) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlAntigravityMcpServer) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlAntigravityMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
+	return plugin.GetOrCompute[*llx.AssetValue](&c.Running, func() (*llx.AssetValue, error) {
+		return c.running()
 	})
 }
 

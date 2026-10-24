@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
@@ -209,9 +210,61 @@ func (r *mqlAntigravity) id() (string, error) {
 	return "antigravity/" + r.ConfigPath.Data, nil
 }
 
+// defaultAntigravityCLIConfigDir is where the Antigravity CLI (agy) keeps its
+// user configuration: skills, plugins, mcp_config.json and hooks.json.
+const defaultAntigravityCLIConfigDir = ".gemini/config"
+
+// antigravityCLIConfigDir is the CLI's configuration directory beside an IDE
+// configPath of <home>/.gemini/antigravity. Empty for a configPath of any
+// other shape, which names no CLI directory.
+func antigravityCLIConfigDir(configPath string) string {
+	dir := filepath.Dir(configPath)
+	if filepath.Base(configPath) != "antigravity" || filepath.Base(dir) != ".gemini" {
+		return ""
+	}
+	return filepath.Join(dir, "config")
+}
+
 func (r *mqlAntigravity) skills() ([]any, error) {
-	return agentSkills(r.MqlRuntime, "antigravity.skill", r.ConfigPath.Data, defaultAntigravityConfigDir,
+	dirs, err := resolvePerUserDirs(r.MqlRuntime, r.ConfigPath.Data, defaultAntigravityConfigDir,
 		filepath.Join(defaultAntigravityConfigDir, "skills"), filepath.Join(r.ConfigPath.Data, "skills"))
+	if err != nil {
+		return nil, err
+	}
+	if cliDir := antigravityCLIConfigDir(r.ConfigPath.Data); cliDir != "" {
+		cliDirs, err := resolvePerUserDirs(r.MqlRuntime, r.ConfigPath.Data, defaultAntigravityConfigDir,
+			filepath.Join(defaultAntigravityCLIConfigDir, "skills"), filepath.Join(cliDir, "skills"))
+		if err != nil {
+			return nil, err
+		}
+		dirs = append(dirs, cliDirs...)
+	}
+	return readSkillsFromDirs(r.MqlRuntime, dirs, "antigravity.skill")
+}
+
+// mcpServers reads the CLI's mcp_config.json and the IDE's, in that order.
+func (r *mqlAntigravity) mcpServers() ([]any, error) {
+	var paths []string
+	if cliDir := antigravityCLIConfigDir(r.ConfigPath.Data); cliDir != "" {
+		paths = append(paths, filepath.Join(cliDir, "mcp_config.json"))
+	}
+	paths = append(paths, filepath.Join(r.ConfigPath.Data, "mcp_config.json"))
+	specs, err := readMcpServersFiles(connectionAfs(r.MqlRuntime), paths, "mcpServers")
+	if err != nil {
+		return nil, err
+	}
+	return newMcpServerResources(r.MqlRuntime, "antigravity.mcpServer", specs)
+}
+
+func (r *mqlAntigravityMcpServer) id() (string, error) {
+	return mcpServerResourceID("antigravity.mcpServer", r.Source.Data, r.Name.Data), nil
+}
+
+func (r *mqlAntigravityMcpServer) running() (*llx.AssetValue, error) { return mcpServerAsset(r), nil }
+
+// MqlAsset implements plugin.AssetSource. See mcpServerAssetFor.
+func (r *mqlAntigravityMcpServer) MqlAsset() (*inventory.Asset, error) {
+	return mcpServerAssetFor(r.MqlRuntime, r)
 }
 
 func (r *mqlAntigravitySkill) id() (string, error)     { return "antigravity.skill/" + r.Source.Data, nil }

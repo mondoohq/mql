@@ -292,6 +292,40 @@ func TestClaudeNativeVersionAbsent(t *testing.T) {
 	assert.Equal(t, "", claudeNativeVersion(afs, "/root/.claude"))
 }
 
+func TestFindHomeBinary(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	rels := toolPackageSpecs["antigravity"].homeBinaries
+	homes := []string{"/home/alice", "/home/bob"}
+
+	assert.Equal(t, "", findHomeBinary(afs, homes, rels), "no binary in any home")
+
+	// A directory where the binary belongs is not an install.
+	require.NoError(t, afs.MkdirAll("/home/alice/.local/bin/agy", 0o755))
+	assert.Equal(t, "", findHomeBinary(afs, homes, rels))
+
+	// Measured: the agy 1.4.7 installer (install.sh) writes ~/.local/bin/agy.
+	require.NoError(t, afs.WriteFile("/home/bob/.local/bin/agy", []byte("bin"), 0o755))
+	assert.Equal(t, filepath.Join("/home/bob", ".local", "bin", "agy"), findHomeBinary(afs, homes, rels))
+
+	// Measured: install.ps1 writes %LOCALAPPDATA%\agy\bin\agy.exe.
+	win := &afero.Afero{Fs: afero.NewMemMapFs()}
+	require.NoError(t, win.WriteFile("/Users/carol/AppData/Local/agy/bin/agy.exe", []byte("bin"), 0o755))
+	assert.Equal(t, filepath.Join("/Users/carol", "AppData", "Local", "agy", "bin", "agy.exe"),
+		findHomeBinary(win, []string{"/Users/carol"}, rels))
+}
+
+func TestFirstSemverToken(t *testing.T) {
+	// Measured: `agy --version` prints the bare version, agy 1.4.7, macOS,
+	// 2026-10-24.
+	assert.Equal(t, "1.4.7", firstSemverToken("1.4.7\n"))
+	// Synthetic: a leading non-version token is skipped, the shape
+	// `codex --version` prints.
+	assert.Equal(t, "0.44.0", firstSemverToken("codex-cli 0.44.0\n"))
+	// Synthetic: no token is a version.
+	assert.Equal(t, "", firstSemverToken("command not found"))
+	assert.Equal(t, "", firstSemverToken(""))
+}
+
 func TestFindVSCodeExtensionUnreadableManifestErrors(t *testing.T) {
 	mem := afero.NewMemMapFs()
 	manifest := filepath.Join("/home/alice", ".vscode", "extensions", "example.extension-1.0.0", "package.json")

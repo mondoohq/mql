@@ -39,6 +39,7 @@ type mcpServerSpec struct {
 //   - the common shape (Claude, Gemini, Augment, Copilot CLI): type, command,
 //     args, env, url, headers
 //   - Gemini and Qwen: httpUrl for a streamable HTTP server
+//   - Antigravity CLI: serverUrl for an http server
 //   - Copilot CLI: type "local" for a stdio server
 //   - OpenHands: transport as a string, plus enabled
 //   - Cline CLI: transport as an object that carries the whole definition
@@ -51,6 +52,7 @@ type mcpJSONServer struct {
 	Args        []string        `json:"args"`
 	URL         string          `json:"url"`
 	HTTPURL     string          `json:"httpUrl"`
+	ServerURL   string          `json:"serverUrl"`
 	Env         map[string]any  `json:"env"`
 	Environment map[string]any  `json:"environment"`
 	Headers     map[string]any  `json:"headers"`
@@ -97,6 +99,9 @@ func (s mcpJSONServer) spec(name, source string) mcpServerSpec {
 	url := s.URL
 	if url == "" {
 		url = s.HTTPURL
+	}
+	if url == "" {
+		url = s.ServerURL
 	}
 
 	return mcpServerSpec{

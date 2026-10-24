@@ -99,6 +99,12 @@ type toolPackageSpec struct {
 	// lookup cannot reach. A package matches when its name is the candidate,
 	// a space, and the package's own version, so "ZCode Helper 3.15.1" does not.
 	versionedCandidates []string
+	// homeBinaries are paths, relative to a user's home, where the tool's own
+	// installer drops its executable outside any package manager (the
+	// Antigravity CLI's ~/.local/bin/agy). One present in any home marks the
+	// tool installed even when its configuration directory does not exist, and
+	// on non-Windows targets `<binary> --version` supplies the version.
+	homeBinaries []string
 }
 
 // toolPackageSpecs is keyed by MQL resource name.
@@ -133,7 +139,7 @@ var toolPackageSpecs = map[string]toolPackageSpec{
 	"opencode":         {packageName: "opencode", binaryNames: []string{"opencode"}, managerCandidates: []string{"opencode", "opencode-desktop", "OpenCode"}},
 	"pi":               {packageName: "pi"},
 	"mistral.vibe":     {packageName: "mistral-vibe", vendor: "Mistral AI"},
-	"antigravity":      {packageName: "antigravity", managerCandidates: []string{"antigravity", "Antigravity", "Antigravity (User)", "Antigravity IDE", "Antigravity IDE (User)"}, vendor: "Google"},
+	"antigravity":      {packageName: "antigravity", managerCandidates: []string{"antigravity", "Antigravity", "Antigravity (User)", "Antigravity IDE", "Antigravity IDE (User)"}, vendor: "Google", homeBinaries: []string{".local/bin/agy", "AppData/Local/agy/bin/agy.exe"}},
 	"ibm.bob":          {packageName: "ibm-bob", vendor: "IBM"},
 	"openclaw":         {packageName: "openclaw", managerCandidates: []string{"OpenClaw"}},
 	"snowflake.cortex": {packageName: "snowflake-cortex", vendor: "Snowflake"},
@@ -247,6 +253,20 @@ func resolveToolPackage(runtime *plugin.Runtime, configPath string, spec toolPac
 		if ok {
 			installed = true
 			version = v
+		}
+	}
+	if len(spec.homeBinaries) > 0 && version == "" {
+		homes, err := targetUserHomes(runtime)
+		if err != nil {
+			return nil, err
+		}
+		dirs := make([]string, 0, len(homes))
+		for _, u := range homes {
+			dirs = append(dirs, u.home)
+		}
+		if bin := findHomeBinary(connectionAfs(runtime), dirs, spec.homeBinaries); bin != "" {
+			installed = true
+			version = homeBinaryVersion(runtime, bin)
 		}
 	}
 	if (installed || configFound) && version == "" && spec.inferVersion != nil {
@@ -446,6 +466,59 @@ func versionedPackageMatch(byName map[string]*mqlPackage, name string) *mqlPacka
 	return nil
 }
 
+// findHomeBinary returns the first of rels, joined onto each home in turn, that
+// is a regular file on the target. Empty when none is.
+func findHomeBinary(afs *afero.Afero, homes []string, rels []string) string {
+	for _, home := range homes {
+		for _, rel := range rels {
+			p := filepath.Join(home, filepath.FromSlash(rel))
+			if info, err := afs.Stat(p); err == nil && info.Mode().IsRegular() {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
+// homeBinaryVersion runs `<path> --version` and returns the first token MQL's
+// semver parser recognizes. Windows targets are skipped: the quoted path would
+// need PowerShell's call operator to run. Best-effort: empty when the command
+// fails or prints no version.
+func homeBinaryVersion(runtime *plugin.Runtime, path string) string {
+	if conn, ok := runtime.Connection.(shared.Connection); ok && isWindowsAsset(conn) {
+		return ""
+	}
+	return commandSemver(runtime, versionCommand(path))
+}
+
+// commandSemver runs cmdline through the command resource and returns the
+// first whitespace-separated token of its stdout that MQL's semver parser
+// recognizes. Empty when the command fails or prints no version.
+func commandSemver(runtime *plugin.Runtime, cmdline string) string {
+	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+		"command": llx.StringData(cmdline),
+	})
+	if err != nil {
+		return ""
+	}
+	cmd := o.(*mqlCommand)
+	if cmd.GetExitcode().Data != 0 {
+		return ""
+	}
+	return firstSemverToken(cmd.GetStdout().Data)
+}
+
+// firstSemverToken returns the first whitespace-separated token of out that
+// MQL's semver parser recognizes, empty when none does.
+func firstSemverToken(out string) string {
+	for field := range strings.FieldsSeq(out) {
+		if isSemverVersion(field) {
+			return field
+		}
+	}
+	return ""
+}
+
 // configPresent reports whether configPath exists on the target as a directory,
 // or as a regular file when isFile is set.
 func configPresent(runtime *plugin.Runtime, configPath string, isFile bool) bool {
@@ -566,25 +639,7 @@ func versionCommand(binary string) string {
 // keep the first token MQL's semver parser recognizes. Best-effort: unknown when
 // the binary is absent or the output carries no recognizable version.
 func inferCodexVersion(runtime *plugin.Runtime, configPath string) (string, error) {
-	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
-		"command": llx.StringData(toolVersionCommand(runtime, "codex")),
-	})
-	if err != nil {
-		return "", nil
-	}
-	cmd := o.(*mqlCommand)
-	if cmd.GetExitcode().Data != 0 {
-		return "", nil
-	}
-	for field := range strings.FieldsSeq(cmd.GetStdout().Data) {
-		// Validate with MQL's semver parser instead of a bespoke regex. The
-		// parser exposes only Compare, so we parse by self-compare: a valid
-		// version compares against itself without error.
-		if _, err := (semver.Parser{}).Compare(field, field); err == nil {
-			return field, nil
-		}
-	}
-	return "", nil
+	return commandSemver(runtime, toolVersionCommand(runtime, "codex")), nil
 }
 
 // inferClaudeVersion runs `claude --version` through the command resource
