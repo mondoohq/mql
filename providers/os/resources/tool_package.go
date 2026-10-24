@@ -102,8 +102,9 @@ type toolPackageSpec struct {
 	// homeBinaries are paths, relative to a user's home, where the tool's own
 	// installer drops its executable outside any package manager (the
 	// Antigravity CLI's ~/.local/bin/agy). One present in any home marks the
-	// tool installed even when its configuration directory does not exist, and
-	// on non-Windows targets `<binary> --version` supplies the version.
+	// tool installed even when its configuration directory does not exist. It
+	// is never executed: any user can write a file there, and a scan running as
+	// root would run it with root's privileges.
 	homeBinaries []string
 }
 
@@ -255,7 +256,7 @@ func resolveToolPackage(runtime *plugin.Runtime, configPath string, spec toolPac
 			version = v
 		}
 	}
-	if len(spec.homeBinaries) > 0 && version == "" {
+	if !installed && len(spec.homeBinaries) > 0 {
 		homes, err := targetUserHomes(runtime)
 		if err != nil {
 			return nil, err
@@ -264,10 +265,7 @@ func resolveToolPackage(runtime *plugin.Runtime, configPath string, spec toolPac
 		for _, u := range homes {
 			dirs = append(dirs, u.home)
 		}
-		if bin := findHomeBinary(connectionAfs(runtime), dirs, spec.homeBinaries); bin != "" {
-			installed = true
-			version = homeBinaryVersion(runtime, bin)
-		}
+		installed = findHomeBinary(connectionAfs(runtime), dirs, spec.homeBinaries) != ""
 	}
 	if (installed || configFound) && version == "" && spec.inferVersion != nil {
 		v, err := spec.inferVersion(runtime, configPath)
@@ -478,17 +476,6 @@ func findHomeBinary(afs *afero.Afero, homes []string, rels []string) string {
 		}
 	}
 	return ""
-}
-
-// homeBinaryVersion runs `<path> --version` and returns the first token MQL's
-// semver parser recognizes. Windows targets are skipped: the quoted path would
-// need PowerShell's call operator to run. Best-effort: empty when the command
-// fails or prints no version.
-func homeBinaryVersion(runtime *plugin.Runtime, path string) string {
-	if conn, ok := runtime.Connection.(shared.Connection); ok && isWindowsAsset(conn) {
-		return ""
-	}
-	return commandSemver(runtime, versionCommand(path))
 }
 
 // commandSemver runs cmdline through the command resource and returns the

@@ -315,8 +315,7 @@ func TestFindHomeBinary(t *testing.T) {
 }
 
 func TestFirstSemverToken(t *testing.T) {
-	// Measured: `agy --version` prints the bare version, agy 1.4.7, macOS,
-	// 2026-10-24.
+	// Synthetic: a bare version.
 	assert.Equal(t, "1.4.7", firstSemverToken("1.4.7\n"))
 	// Synthetic: a leading non-version token is skipped, the shape
 	// `codex --version` prints.
