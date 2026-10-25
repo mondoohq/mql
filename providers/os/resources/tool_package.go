@@ -178,6 +178,25 @@ var toolPackageSpecs = map[string]toolPackageSpec{
 	// Fedora), and so is the binary, so neither is used. Presence is the
 	// config directory plus `ant --version` answering in the CLI's own format.
 	"anthropic.cli": {packageName: "anthropic-cli", vendor: "Anthropic", inferVersion: inferAnthropicCLIVersion, configShared: true},
+	// The Devin CLI shares Devin Desktop's ~/.config/devin, so the directory
+	// is no install signal (configShared). It is installed by its Homebrew cask
+	// "devin-cli", the binary its install script links into ~/.local/bin (or
+	// copies to %LOCALAPPDATA%\devin\cli\bin), or a release under the install
+	// script's versions directory, which inferVersion reads.
+	"devin.cli": {packageName: "devin-cli", managerCandidates: []string{"devin-cli"}, vendor: "Cognition", configShared: true, homeBinaries: []string{".local/bin/devin", "AppData/Local/devin/cli/bin/devin.exe"}, inferVersion: inferDevinCLIVersion},
+	// The Cursor CLI's configPath is its own cli-config.json, which the editor
+	// never writes; the rest of ~/.cursor is the editor's too. "cursor-cli" is
+	// the Homebrew cask. Bare "agent", the script's second link name, is too
+	// generic to mark it.
+	"cursor.cli": {packageName: "cursor-cli", managerCandidates: []string{"cursor-cli"}, vendor: "Anysphere", configIsFile: true, homeBinaries: []string{".local/bin/cursor-agent", "AppData/Local/cursor-agent/cursor-agent.exe"}, inferVersion: inferCursorCLIVersion},
+	// "coderabbit" is the Homebrew cask. The install scripts write
+	// ~/.local/bin/coderabbit and %LOCALAPPDATA%\Programs\coderabbit, and
+	// neither leaves a version on disk.
+	"coderabbit.cli": {packageName: "coderabbit-cli", managerCandidates: []string{"coderabbit"}, vendor: "CodeRabbit", homeBinaries: []string{".local/bin/coderabbit", "AppData/Local/Programs/coderabbit/coderabbit.exe"}},
+	// "deepseek-harness" is the Homebrew cask; "DeepSeek Harness" the macOS
+	// app and the per-user Windows installer's DisplayName, which carries no
+	// version.
+	"deepseek.harness": {packageName: "deepseek-harness", managerCandidates: []string{"deepseek-harness", "DeepSeek Harness"}, vendor: "DeepSeek"},
 	// Ollama is a model server rather than a coding agent, but it is installed
 	// and versioned the same way, so it resolves through the same path.
 	"ollama": {packageName: "ollama", binaryNames: []string{"ollama"}, managerCandidates: []string{"ollama", "Ollama", "ollama-app"}, vendor: "Ollama", inferVersion: inferOllamaVersion},
@@ -1086,4 +1105,36 @@ func claudeNativeVersion(afs *afero.Afero, configPath string) string {
 func isSemverVersion(v string) bool {
 	_, err := (semver.Parser{}).Compare(v, v)
 	return err == nil
+}
+
+func (r *mqlDevinCli) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["devin.cli"])
+}
+
+func (r *mqlDevinCli) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["devin.cli"])
+}
+
+func (r *mqlCursorCli) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["cursor.cli"])
+}
+
+func (r *mqlCursorCli) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["cursor.cli"])
+}
+
+func (r *mqlCoderabbitCli) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["coderabbit.cli"])
+}
+
+func (r *mqlCoderabbitCli) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["coderabbit.cli"])
+}
+
+func (r *mqlDeepseekHarness) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["deepseek.harness"])
+}
+
+func (r *mqlDeepseekHarness) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["deepseek.harness"])
 }

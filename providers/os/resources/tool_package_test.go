@@ -132,46 +132,51 @@ func TestToolPackageCandidates(t *testing.T) {
 		name string
 		tool string // "" when the package is not an AI tool
 	}{
-		{"claude-code", "claude.code"},        // pkg:brew/homebrew/cask/claude-code
-		{"claude-code@latest", "claude.code"}, // pkg:brew/homebrew/cask/claude-code%40latest
-		{"Claude Code", "claude.code"},        // pkg:windows/windows/Claude%20Code
-		{"Claude CLI", "claude.code"},         // pkg:windows/windows/Claude%20CLI
-		{"Claude", "claude.desktop"},          // bundle-id=com.anthropic.claudefordesktop, pkg:appx/windows/Claude
-		{"codex", "openai.codex"},             // pkg:brew/homebrew/core/codex
-		{"OpenAI.Codex", "openai.codex"},      // pkg:appx/windows/OpenAI.Codex
-		{"cursor", "cursor"},                  // pkg:windows/windows/cursor
-		{"Cursor", "cursor"},                  // bundle-id=com.todesktop.230313mzl4w4u92
-		{"Cursor (User)", "cursor"},           // pkg:windows/windows/Cursor%20%28User%29
-		{"block-goose", "goose"},              // pkg:brew/homebrew/cask/block-goose
-		{"gemini-cli", "gemini"},              // pkg:brew/homebrew/core/gemini-cli
-		{"Windsurf", "windsurf"},              // pkg:macos/macos/Windsurf, pkg:windows/windows/Windsurf
-		{"Windsurf (User)", "windsurf"},       // pkg:windows/windows/Windsurf%20%28User%29
-		{"zed", "zed"},                        // pkg:brew/homebrew/cask/zed
-		{"Zed", "zed"},                        // bundle-id=dev.zed.Zed, pkg:windows/windows/Zed
-		{"ZedIndustries.Zed", "zed"},          // pkg:appx/windows/ZedIndustries.Zed
-		{"kiro", "kiro"},                      // pkg:brew/homebrew/cask/kiro
-		{"Kiro", "kiro"},                      // bundle-id=dev.kiro.desktop
-		{"opencode", "opencode"},              // pkg:brew/anomalyco/tap/opencode
-		{"opencode-desktop", "opencode"},      // pkg:brew/homebrew/cask/opencode-desktop
-		{"OpenCode", "opencode"},              // pkg:windows/windows/OpenCode
-		{"antigravity", "antigravity"},        // pkg:brew/homebrew/cask/antigravity
-		{"Antigravity", "antigravity"},        // bundle-id=com.google.antigravity
-		{"Antigravity (User)", "antigravity"}, // pkg:windows/windows/Antigravity%20%28User%29
-		{"Antigravity IDE", "antigravity"},    // bundle-id=com.google.antigravity-ide
-		{"OpenClaw", "openclaw"},              // bundle-id=ai.openclaw.mac
-		{"Warp", "warp"},                      // bundle-id=dev.warp.Warp-Stable
-		{"aider", "aider"},                    // pkg:brew/homebrew/core/aider
-		{"ollama", "ollama"},                  // pkg:brew/homebrew/core/ollama
-		{"Ollama", "ollama"},                  // bundle-id=com.electron.ollama
-		{"ollama-app", "ollama"},              // pkg:brew/homebrew/cask/ollama-app
-		{"devin-desktop", "devin.desktop"},    // Homebrew cask, deb and rpm
-		{"Devin", "devin.desktop"},            // pkg:windows/windows/Devin, Devin.app
-		{"Devin (User)", "devin.desktop"},     // pkg:windows/windows/Devin%20%28User%29
-		{"zcode", "zcode"},                    // Homebrew cask, deb and rpm
-		{"ZCode", "zcode"},                    // pkg:macos/macos/ZCode
-		{"qualia", "qualia"},                  // deb
-		{"Qualia", "qualia"},                  // Qualia.app
-		{"Builder.io", "builderio"},           // pkg:windows/windows/Builder.io, Builder.io.app
+		{"claude-code", "claude.code"},           // pkg:brew/homebrew/cask/claude-code
+		{"claude-code@latest", "claude.code"},    // pkg:brew/homebrew/cask/claude-code%40latest
+		{"Claude Code", "claude.code"},           // pkg:windows/windows/Claude%20Code
+		{"Claude CLI", "claude.code"},            // pkg:windows/windows/Claude%20CLI
+		{"Claude", "claude.desktop"},             // bundle-id=com.anthropic.claudefordesktop, pkg:appx/windows/Claude
+		{"codex", "openai.codex"},                // pkg:brew/homebrew/core/codex
+		{"OpenAI.Codex", "openai.codex"},         // pkg:appx/windows/OpenAI.Codex
+		{"cursor", "cursor"},                     // pkg:windows/windows/cursor
+		{"Cursor", "cursor"},                     // bundle-id=com.todesktop.230313mzl4w4u92
+		{"Cursor (User)", "cursor"},              // pkg:windows/windows/Cursor%20%28User%29
+		{"block-goose", "goose"},                 // pkg:brew/homebrew/cask/block-goose
+		{"gemini-cli", "gemini"},                 // pkg:brew/homebrew/core/gemini-cli
+		{"Windsurf", "windsurf"},                 // pkg:macos/macos/Windsurf, pkg:windows/windows/Windsurf
+		{"Windsurf (User)", "windsurf"},          // pkg:windows/windows/Windsurf%20%28User%29
+		{"zed", "zed"},                           // pkg:brew/homebrew/cask/zed
+		{"Zed", "zed"},                           // bundle-id=dev.zed.Zed, pkg:windows/windows/Zed
+		{"ZedIndustries.Zed", "zed"},             // pkg:appx/windows/ZedIndustries.Zed
+		{"kiro", "kiro"},                         // pkg:brew/homebrew/cask/kiro
+		{"Kiro", "kiro"},                         // bundle-id=dev.kiro.desktop
+		{"opencode", "opencode"},                 // pkg:brew/anomalyco/tap/opencode
+		{"opencode-desktop", "opencode"},         // pkg:brew/homebrew/cask/opencode-desktop
+		{"OpenCode", "opencode"},                 // pkg:windows/windows/OpenCode
+		{"antigravity", "antigravity"},           // pkg:brew/homebrew/cask/antigravity
+		{"Antigravity", "antigravity"},           // bundle-id=com.google.antigravity
+		{"Antigravity (User)", "antigravity"},    // pkg:windows/windows/Antigravity%20%28User%29
+		{"Antigravity IDE", "antigravity"},       // bundle-id=com.google.antigravity-ide
+		{"OpenClaw", "openclaw"},                 // bundle-id=ai.openclaw.mac
+		{"Warp", "warp"},                         // bundle-id=dev.warp.Warp-Stable
+		{"aider", "aider"},                       // pkg:brew/homebrew/core/aider
+		{"ollama", "ollama"},                     // pkg:brew/homebrew/core/ollama
+		{"Ollama", "ollama"},                     // bundle-id=com.electron.ollama
+		{"ollama-app", "ollama"},                 // pkg:brew/homebrew/cask/ollama-app
+		{"devin-desktop", "devin.desktop"},       // Homebrew cask, deb and rpm
+		{"Devin", "devin.desktop"},               // pkg:windows/windows/Devin, Devin.app
+		{"Devin (User)", "devin.desktop"},        // pkg:windows/windows/Devin%20%28User%29
+		{"zcode", "zcode"},                       // Homebrew cask, deb and rpm
+		{"ZCode", "zcode"},                       // pkg:macos/macos/ZCode
+		{"qualia", "qualia"},                     // deb
+		{"Qualia", "qualia"},                     // Qualia.app
+		{"Builder.io", "builderio"},              // pkg:windows/windows/Builder.io, Builder.io.app
+		{"devin-cli", "devin.cli"},               // pkg:brew/homebrew/cask/devin-cli
+		{"cursor-cli", "cursor.cli"},             // pkg:brew/homebrew/cask/cursor-cli
+		{"coderabbit", "coderabbit.cli"},         // pkg:brew/homebrew/cask/coderabbit
+		{"deepseek-harness", "deepseek.harness"}, // pkg:brew/homebrew/cask/deepseek-harness
+		{"DeepSeek Harness", "deepseek.harness"}, // bundle-id=com.deepseek.dsh
 
 		{"claude", ""},                       // Claude Code's macOS app AND Claude Desktop's cask
 		{"zfs-zed", ""},                      // pkg:deb/debian/zfs-zed, OpenZFS event daemon
@@ -190,7 +195,6 @@ func TestToolPackageCandidates(t *testing.T) {
 		{"@anthropic-ai/claude-code", ""},    // npm, not an OS package
 		{"Ollama version 0.34.4", ""},        // version in the name; exact match cannot reach it
 		{"ant", ""},                          // Apache Ant (formula, deb, rpm) AND the Claude Platform CLI's cask
-		{"devin-cli", ""},                    // Devin CLI, not Devin Desktop
 		{"ZCode 3.15.1", ""},                 // versioned name; versionedCandidates reaches it
 		{"Qualia 0.8.14", ""},                // versioned name; versionedCandidates reaches it
 		{"Visual Studio Code", ""},           // a runtime host, not a tool

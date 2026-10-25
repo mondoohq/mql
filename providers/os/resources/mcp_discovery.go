@@ -35,6 +35,8 @@ var mcpClientResources = []string{
 	"opencode",
 	"kilocode",
 	"antigravity",
+	"devin.cli",
+	"deepseek.harness",
 }
 
 // mcpClientLike is satisfied by every AI tool resource that lists MCP servers.

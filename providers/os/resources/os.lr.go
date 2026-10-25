@@ -783,6 +783,14 @@ const (
 	ResourceBuilderio                                      string = "builderio"
 	ResourceBuilderioSkill                                 string = "builderio.skill"
 	ResourceAnthropicCli                                   string = "anthropic.cli"
+	ResourceDevinCli                                       string = "devin.cli"
+	ResourceDevinCliMcpServer                              string = "devin.cli.mcpServer"
+	ResourceDevinCliSkill                                  string = "devin.cli.skill"
+	ResourceCursorCli                                      string = "cursor.cli"
+	ResourceCoderabbitCli                                  string = "coderabbit.cli"
+	ResourceDeepseekHarness                                string = "deepseek.harness"
+	ResourceDeepseekHarnessMcpServer                       string = "deepseek.harness.mcpServer"
+	ResourceDeepseekHarnessSkill                           string = "deepseek.harness.skill"
 	ResourceAgentskills                                    string = "agentskills"
 	ResourceAgentskillsSkill                               string = "agentskills.skill"
 	ResourceAgentinstructions                              string = "agentinstructions"
@@ -3886,6 +3894,38 @@ func init() {
 		"anthropic.cli": {
 			Init:   initAnthropicCli,
 			Create: createAnthropicCli,
+		},
+		"devin.cli": {
+			Init:   initDevinCli,
+			Create: createDevinCli,
+		},
+		"devin.cli.mcpServer": {
+			// to override args, implement: initDevinCliMcpServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDevinCliMcpServer,
+		},
+		"devin.cli.skill": {
+			// to override args, implement: initDevinCliSkill(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDevinCliSkill,
+		},
+		"cursor.cli": {
+			Init:   initCursorCli,
+			Create: createCursorCli,
+		},
+		"coderabbit.cli": {
+			Init:   initCoderabbitCli,
+			Create: createCoderabbitCli,
+		},
+		"deepseek.harness": {
+			Init:   initDeepseekHarness,
+			Create: createDeepseekHarness,
+		},
+		"deepseek.harness.mcpServer": {
+			// to override args, implement: initDeepseekHarnessMcpServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDeepseekHarnessMcpServer,
+		},
+		"deepseek.harness.skill": {
+			// to override args, implement: initDeepseekHarnessSkill(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDeepseekHarnessSkill,
 		},
 		"agentskills": {
 			// to override args, implement: initAgentskills(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -22524,6 +22564,177 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"anthropic.cli.runtime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAnthropicCli).GetRuntime()).ToDataRes(types.Resource("extensionRuntime"))
+	},
+	"devin.cli.configPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCli).GetConfigPath()).ToDataRes(types.String)
+	},
+	"devin.cli.package": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCli).GetPackage()).ToDataRes(types.Resource("package"))
+	},
+	"devin.cli.runtime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCli).GetRuntime()).ToDataRes(types.Resource("extensionRuntime"))
+	},
+	"devin.cli.skills": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCli).GetSkills()).ToDataRes(types.Array(types.Resource("devin.cli.skill")))
+	},
+	"devin.cli.mcpServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCli).GetMcpServers()).ToDataRes(types.Array(types.Resource("devin.cli.mcpServer")))
+	},
+	"devin.cli.mcpServer.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetName()).ToDataRes(types.String)
+	},
+	"devin.cli.mcpServer.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetType()).ToDataRes(types.String)
+	},
+	"devin.cli.mcpServer.command": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetCommand()).ToDataRes(types.String)
+	},
+	"devin.cli.mcpServer.args": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetArgs()).ToDataRes(types.Array(types.String))
+	},
+	"devin.cli.mcpServer.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetUrl()).ToDataRes(types.String)
+	},
+	"devin.cli.mcpServer.hasEnv": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetHasEnv()).ToDataRes(types.Bool)
+	},
+	"devin.cli.mcpServer.hasHeaders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetHasHeaders()).ToDataRes(types.Bool)
+	},
+	"devin.cli.mcpServer.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"devin.cli.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetSource()).ToDataRes(types.String)
+	},
+	"devin.cli.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
+	},
+	"devin.cli.skill.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliSkill).GetName()).ToDataRes(types.String)
+	},
+	"devin.cli.skill.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliSkill).GetDescription()).ToDataRes(types.String)
+	},
+	"devin.cli.skill.allowedTools": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliSkill).GetAllowedTools()).ToDataRes(types.Array(types.String))
+	},
+	"devin.cli.skill.argumentHint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliSkill).GetArgumentHint()).ToDataRes(types.String)
+	},
+	"devin.cli.skill.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliSkill).GetSource()).ToDataRes(types.String)
+	},
+	"devin.cli.skill.content": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliSkill).GetContent()).ToDataRes(types.String)
+	},
+	"devin.cli.skill.sha256": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliSkill).GetSha256()).ToDataRes(types.String)
+	},
+	"devin.cli.skill.purl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliSkill).GetPurl()).ToDataRes(types.String)
+	},
+	"cursor.cli.configPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorCli).GetConfigPath()).ToDataRes(types.String)
+	},
+	"cursor.cli.package": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorCli).GetPackage()).ToDataRes(types.Resource("package"))
+	},
+	"cursor.cli.runtime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorCli).GetRuntime()).ToDataRes(types.Resource("extensionRuntime"))
+	},
+	"cursor.cli.approvalMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorCli).GetApprovalMode()).ToDataRes(types.String)
+	},
+	"cursor.cli.sandboxMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorCli).GetSandboxMode()).ToDataRes(types.String)
+	},
+	"cursor.cli.sandboxNetworkAccess": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorCli).GetSandboxNetworkAccess()).ToDataRes(types.String)
+	},
+	"cursor.cli.allowedPermissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorCli).GetAllowedPermissions()).ToDataRes(types.Array(types.String))
+	},
+	"cursor.cli.deniedPermissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorCli).GetDeniedPermissions()).ToDataRes(types.Array(types.String))
+	},
+	"coderabbit.cli.configPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCoderabbitCli).GetConfigPath()).ToDataRes(types.String)
+	},
+	"coderabbit.cli.package": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCoderabbitCli).GetPackage()).ToDataRes(types.Resource("package"))
+	},
+	"coderabbit.cli.runtime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCoderabbitCli).GetRuntime()).ToDataRes(types.Resource("extensionRuntime"))
+	},
+	"deepseek.harness.configPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarness).GetConfigPath()).ToDataRes(types.String)
+	},
+	"deepseek.harness.package": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarness).GetPackage()).ToDataRes(types.Resource("package"))
+	},
+	"deepseek.harness.runtime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarness).GetRuntime()).ToDataRes(types.Resource("extensionRuntime"))
+	},
+	"deepseek.harness.skills": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarness).GetSkills()).ToDataRes(types.Array(types.Resource("deepseek.harness.skill")))
+	},
+	"deepseek.harness.mcpServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarness).GetMcpServers()).ToDataRes(types.Array(types.Resource("deepseek.harness.mcpServer")))
+	},
+	"deepseek.harness.mcpServer.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetName()).ToDataRes(types.String)
+	},
+	"deepseek.harness.mcpServer.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetType()).ToDataRes(types.String)
+	},
+	"deepseek.harness.mcpServer.command": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetCommand()).ToDataRes(types.String)
+	},
+	"deepseek.harness.mcpServer.args": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetArgs()).ToDataRes(types.Array(types.String))
+	},
+	"deepseek.harness.mcpServer.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetUrl()).ToDataRes(types.String)
+	},
+	"deepseek.harness.mcpServer.hasEnv": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetHasEnv()).ToDataRes(types.Bool)
+	},
+	"deepseek.harness.mcpServer.hasHeaders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetHasHeaders()).ToDataRes(types.Bool)
+	},
+	"deepseek.harness.mcpServer.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"deepseek.harness.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetSource()).ToDataRes(types.String)
+	},
+	"deepseek.harness.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
+	},
+	"deepseek.harness.skill.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessSkill).GetName()).ToDataRes(types.String)
+	},
+	"deepseek.harness.skill.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessSkill).GetDescription()).ToDataRes(types.String)
+	},
+	"deepseek.harness.skill.allowedTools": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessSkill).GetAllowedTools()).ToDataRes(types.Array(types.String))
+	},
+	"deepseek.harness.skill.argumentHint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessSkill).GetArgumentHint()).ToDataRes(types.String)
+	},
+	"deepseek.harness.skill.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessSkill).GetSource()).ToDataRes(types.String)
+	},
+	"deepseek.harness.skill.content": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessSkill).GetContent()).ToDataRes(types.String)
+	},
+	"deepseek.harness.skill.sha256": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessSkill).GetSha256()).ToDataRes(types.String)
+	},
+	"deepseek.harness.skill.purl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessSkill).GetPurl()).ToDataRes(types.String)
 	},
 	"agentskills.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAgentskills).GetPath()).ToDataRes(types.String)
@@ -50919,6 +51130,266 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"anthropic.cli.runtime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAnthropicCli).Runtime, ok = plugin.RawToTValue[*mqlExtensionRuntime](v.Value, v.Error)
+		return
+	},
+	"devin.cli.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCli).__id, ok = v.Value.(string)
+		return
+	},
+	"devin.cli.configPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCli).ConfigPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.package": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCli).Package, ok = plugin.RawToTValue[*mqlPackage](v.Value, v.Error)
+		return
+	},
+	"devin.cli.runtime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCli).Runtime, ok = plugin.RawToTValue[*mqlExtensionRuntime](v.Value, v.Error)
+		return
+	},
+	"devin.cli.skills": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCli).Skills, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCli).McpServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).__id, ok = v.Value.(string)
+		return
+	},
+	"devin.cli.mcpServer.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.command": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).Command, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.args": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).Args, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.hasEnv": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).HasEnv, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.hasHeaders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).HasHeaders, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
+		return
+	},
+	"devin.cli.skill.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliSkill).__id, ok = v.Value.(string)
+		return
+	},
+	"devin.cli.skill.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliSkill).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.skill.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliSkill).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.skill.allowedTools": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliSkill).AllowedTools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"devin.cli.skill.argumentHint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliSkill).ArgumentHint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.skill.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliSkill).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.skill.content": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliSkill).Content, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.skill.sha256": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliSkill).Sha256, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.skill.purl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliSkill).Purl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cursor.cli.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorCli).__id, ok = v.Value.(string)
+		return
+	},
+	"cursor.cli.configPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorCli).ConfigPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cursor.cli.package": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorCli).Package, ok = plugin.RawToTValue[*mqlPackage](v.Value, v.Error)
+		return
+	},
+	"cursor.cli.runtime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorCli).Runtime, ok = plugin.RawToTValue[*mqlExtensionRuntime](v.Value, v.Error)
+		return
+	},
+	"cursor.cli.approvalMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorCli).ApprovalMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cursor.cli.sandboxMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorCli).SandboxMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cursor.cli.sandboxNetworkAccess": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorCli).SandboxNetworkAccess, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cursor.cli.allowedPermissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorCli).AllowedPermissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cursor.cli.deniedPermissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorCli).DeniedPermissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"coderabbit.cli.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCoderabbitCli).__id, ok = v.Value.(string)
+		return
+	},
+	"coderabbit.cli.configPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCoderabbitCli).ConfigPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"coderabbit.cli.package": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCoderabbitCli).Package, ok = plugin.RawToTValue[*mqlPackage](v.Value, v.Error)
+		return
+	},
+	"coderabbit.cli.runtime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCoderabbitCli).Runtime, ok = plugin.RawToTValue[*mqlExtensionRuntime](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarness).__id, ok = v.Value.(string)
+		return
+	},
+	"deepseek.harness.configPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarness).ConfigPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.package": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarness).Package, ok = plugin.RawToTValue[*mqlPackage](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.runtime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarness).Runtime, ok = plugin.RawToTValue[*mqlExtensionRuntime](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.skills": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarness).Skills, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarness).McpServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).__id, ok = v.Value.(string)
+		return
+	},
+	"deepseek.harness.mcpServer.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.command": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).Command, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.args": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).Args, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.hasEnv": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).HasEnv, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.hasHeaders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).HasHeaders, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.skill.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessSkill).__id, ok = v.Value.(string)
+		return
+	},
+	"deepseek.harness.skill.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessSkill).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.skill.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessSkill).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.skill.allowedTools": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessSkill).AllowedTools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.skill.argumentHint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessSkill).ArgumentHint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.skill.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessSkill).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.skill.content": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessSkill).Content, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.skill.sha256": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessSkill).Sha256, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.skill.purl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessSkill).Purl, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"agentskills.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -130781,6 +131252,809 @@ func (c *mqlAnthropicCli) GetRuntime() *plugin.TValue[*mqlExtensionRuntime] {
 		}
 
 		return c.runtime()
+	})
+}
+
+// mqlDevinCli for the devin.cli resource
+type mqlDevinCli struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDevinCliInternal it will be used here
+	ConfigPath plugin.TValue[string]
+	Package    plugin.TValue[*mqlPackage]
+	Runtime    plugin.TValue[*mqlExtensionRuntime]
+	Skills     plugin.TValue[[]any]
+	McpServers plugin.TValue[[]any]
+}
+
+// createDevinCli creates a new instance of this resource
+func createDevinCli(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDevinCli{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("devin.cli", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDevinCli) MqlName() string {
+	return "devin.cli"
+}
+
+func (c *mqlDevinCli) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDevinCli) GetConfigPath() *plugin.TValue[string] {
+	return &c.ConfigPath
+}
+
+func (c *mqlDevinCli) GetPackage() *plugin.TValue[*mqlPackage] {
+	return plugin.GetOrCompute[*mqlPackage](&c.Package, func() (*mqlPackage, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("devin.cli", c.__id, "package")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPackage), nil
+			}
+		}
+
+		return c.compute_package()
+	})
+}
+
+func (c *mqlDevinCli) GetRuntime() *plugin.TValue[*mqlExtensionRuntime] {
+	return plugin.GetOrCompute[*mqlExtensionRuntime](&c.Runtime, func() (*mqlExtensionRuntime, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("devin.cli", c.__id, "runtime")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlExtensionRuntime), nil
+			}
+		}
+
+		return c.runtime()
+	})
+}
+
+func (c *mqlDevinCli) GetSkills() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Skills, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("devin.cli", c.__id, "skills")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.skills()
+	})
+}
+
+func (c *mqlDevinCli) GetMcpServers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.McpServers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("devin.cli", c.__id, "mcpServers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mcpServers()
+	})
+}
+
+// mqlDevinCliMcpServer for the devin.cli.mcpServer resource
+type mqlDevinCliMcpServer struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDevinCliMcpServerInternal it will be used here
+	Name       plugin.TValue[string]
+	Type       plugin.TValue[string]
+	Command    plugin.TValue[string]
+	Args       plugin.TValue[[]any]
+	Url        plugin.TValue[string]
+	HasEnv     plugin.TValue[bool]
+	HasHeaders plugin.TValue[bool]
+	Enabled    plugin.TValue[bool]
+	Source     plugin.TValue[string]
+	Running    plugin.TValue[*llx.AssetValue]
+}
+
+// createDevinCliMcpServer creates a new instance of this resource
+func createDevinCliMcpServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDevinCliMcpServer{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("devin.cli.mcpServer", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDevinCliMcpServer) MqlName() string {
+	return "devin.cli.mcpServer"
+}
+
+func (c *mqlDevinCliMcpServer) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDevinCliMcpServer) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDevinCliMcpServer) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlDevinCliMcpServer) GetCommand() *plugin.TValue[string] {
+	return &c.Command
+}
+
+func (c *mqlDevinCliMcpServer) GetArgs() *plugin.TValue[[]any] {
+	return &c.Args
+}
+
+func (c *mqlDevinCliMcpServer) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlDevinCliMcpServer) GetHasEnv() *plugin.TValue[bool] {
+	return &c.HasEnv
+}
+
+func (c *mqlDevinCliMcpServer) GetHasHeaders() *plugin.TValue[bool] {
+	return &c.HasHeaders
+}
+
+func (c *mqlDevinCliMcpServer) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlDevinCliMcpServer) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlDevinCliMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
+	return plugin.GetOrCompute[*llx.AssetValue](&c.Running, func() (*llx.AssetValue, error) {
+		return c.running()
+	})
+}
+
+// mqlDevinCliSkill for the devin.cli.skill resource
+type mqlDevinCliSkill struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDevinCliSkillInternal it will be used here
+	Name         plugin.TValue[string]
+	Description  plugin.TValue[string]
+	AllowedTools plugin.TValue[[]any]
+	ArgumentHint plugin.TValue[string]
+	Source       plugin.TValue[string]
+	Content      plugin.TValue[string]
+	Sha256       plugin.TValue[string]
+	Purl         plugin.TValue[string]
+}
+
+// createDevinCliSkill creates a new instance of this resource
+func createDevinCliSkill(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDevinCliSkill{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("devin.cli.skill", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDevinCliSkill) MqlName() string {
+	return "devin.cli.skill"
+}
+
+func (c *mqlDevinCliSkill) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDevinCliSkill) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDevinCliSkill) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlDevinCliSkill) GetAllowedTools() *plugin.TValue[[]any] {
+	return &c.AllowedTools
+}
+
+func (c *mqlDevinCliSkill) GetArgumentHint() *plugin.TValue[string] {
+	return &c.ArgumentHint
+}
+
+func (c *mqlDevinCliSkill) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlDevinCliSkill) GetContent() *plugin.TValue[string] {
+	return &c.Content
+}
+
+func (c *mqlDevinCliSkill) GetSha256() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Sha256, func() (string, error) {
+		return c.sha256()
+	})
+}
+
+func (c *mqlDevinCliSkill) GetPurl() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Purl, func() (string, error) {
+		return c.purl()
+	})
+}
+
+// mqlCursorCli for the cursor.cli resource
+type mqlCursorCli struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCursorCliInternal
+	ConfigPath           plugin.TValue[string]
+	Package              plugin.TValue[*mqlPackage]
+	Runtime              plugin.TValue[*mqlExtensionRuntime]
+	ApprovalMode         plugin.TValue[string]
+	SandboxMode          plugin.TValue[string]
+	SandboxNetworkAccess plugin.TValue[string]
+	AllowedPermissions   plugin.TValue[[]any]
+	DeniedPermissions    plugin.TValue[[]any]
+}
+
+// createCursorCli creates a new instance of this resource
+func createCursorCli(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCursorCli{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cursor.cli", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCursorCli) MqlName() string {
+	return "cursor.cli"
+}
+
+func (c *mqlCursorCli) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCursorCli) GetConfigPath() *plugin.TValue[string] {
+	return &c.ConfigPath
+}
+
+func (c *mqlCursorCli) GetPackage() *plugin.TValue[*mqlPackage] {
+	return plugin.GetOrCompute[*mqlPackage](&c.Package, func() (*mqlPackage, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cursor.cli", c.__id, "package")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPackage), nil
+			}
+		}
+
+		return c.compute_package()
+	})
+}
+
+func (c *mqlCursorCli) GetRuntime() *plugin.TValue[*mqlExtensionRuntime] {
+	return plugin.GetOrCompute[*mqlExtensionRuntime](&c.Runtime, func() (*mqlExtensionRuntime, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cursor.cli", c.__id, "runtime")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlExtensionRuntime), nil
+			}
+		}
+
+		return c.runtime()
+	})
+}
+
+func (c *mqlCursorCli) GetApprovalMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ApprovalMode, func() (string, error) {
+		return c.approvalMode()
+	})
+}
+
+func (c *mqlCursorCli) GetSandboxMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SandboxMode, func() (string, error) {
+		return c.sandboxMode()
+	})
+}
+
+func (c *mqlCursorCli) GetSandboxNetworkAccess() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SandboxNetworkAccess, func() (string, error) {
+		return c.sandboxNetworkAccess()
+	})
+}
+
+func (c *mqlCursorCli) GetAllowedPermissions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedPermissions, func() ([]any, error) {
+		return c.allowedPermissions()
+	})
+}
+
+func (c *mqlCursorCli) GetDeniedPermissions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DeniedPermissions, func() ([]any, error) {
+		return c.deniedPermissions()
+	})
+}
+
+// mqlCoderabbitCli for the coderabbit.cli resource
+type mqlCoderabbitCli struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCoderabbitCliInternal it will be used here
+	ConfigPath plugin.TValue[string]
+	Package    plugin.TValue[*mqlPackage]
+	Runtime    plugin.TValue[*mqlExtensionRuntime]
+}
+
+// createCoderabbitCli creates a new instance of this resource
+func createCoderabbitCli(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCoderabbitCli{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("coderabbit.cli", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCoderabbitCli) MqlName() string {
+	return "coderabbit.cli"
+}
+
+func (c *mqlCoderabbitCli) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCoderabbitCli) GetConfigPath() *plugin.TValue[string] {
+	return &c.ConfigPath
+}
+
+func (c *mqlCoderabbitCli) GetPackage() *plugin.TValue[*mqlPackage] {
+	return plugin.GetOrCompute[*mqlPackage](&c.Package, func() (*mqlPackage, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("coderabbit.cli", c.__id, "package")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPackage), nil
+			}
+		}
+
+		return c.compute_package()
+	})
+}
+
+func (c *mqlCoderabbitCli) GetRuntime() *plugin.TValue[*mqlExtensionRuntime] {
+	return plugin.GetOrCompute[*mqlExtensionRuntime](&c.Runtime, func() (*mqlExtensionRuntime, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("coderabbit.cli", c.__id, "runtime")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlExtensionRuntime), nil
+			}
+		}
+
+		return c.runtime()
+	})
+}
+
+// mqlDeepseekHarness for the deepseek.harness resource
+type mqlDeepseekHarness struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDeepseekHarnessInternal it will be used here
+	ConfigPath plugin.TValue[string]
+	Package    plugin.TValue[*mqlPackage]
+	Runtime    plugin.TValue[*mqlExtensionRuntime]
+	Skills     plugin.TValue[[]any]
+	McpServers plugin.TValue[[]any]
+}
+
+// createDeepseekHarness creates a new instance of this resource
+func createDeepseekHarness(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDeepseekHarness{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("deepseek.harness", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDeepseekHarness) MqlName() string {
+	return "deepseek.harness"
+}
+
+func (c *mqlDeepseekHarness) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDeepseekHarness) GetConfigPath() *plugin.TValue[string] {
+	return &c.ConfigPath
+}
+
+func (c *mqlDeepseekHarness) GetPackage() *plugin.TValue[*mqlPackage] {
+	return plugin.GetOrCompute[*mqlPackage](&c.Package, func() (*mqlPackage, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("deepseek.harness", c.__id, "package")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPackage), nil
+			}
+		}
+
+		return c.compute_package()
+	})
+}
+
+func (c *mqlDeepseekHarness) GetRuntime() *plugin.TValue[*mqlExtensionRuntime] {
+	return plugin.GetOrCompute[*mqlExtensionRuntime](&c.Runtime, func() (*mqlExtensionRuntime, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("deepseek.harness", c.__id, "runtime")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlExtensionRuntime), nil
+			}
+		}
+
+		return c.runtime()
+	})
+}
+
+func (c *mqlDeepseekHarness) GetSkills() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Skills, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("deepseek.harness", c.__id, "skills")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.skills()
+	})
+}
+
+func (c *mqlDeepseekHarness) GetMcpServers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.McpServers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("deepseek.harness", c.__id, "mcpServers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mcpServers()
+	})
+}
+
+// mqlDeepseekHarnessMcpServer for the deepseek.harness.mcpServer resource
+type mqlDeepseekHarnessMcpServer struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDeepseekHarnessMcpServerInternal it will be used here
+	Name       plugin.TValue[string]
+	Type       plugin.TValue[string]
+	Command    plugin.TValue[string]
+	Args       plugin.TValue[[]any]
+	Url        plugin.TValue[string]
+	HasEnv     plugin.TValue[bool]
+	HasHeaders plugin.TValue[bool]
+	Enabled    plugin.TValue[bool]
+	Source     plugin.TValue[string]
+	Running    plugin.TValue[*llx.AssetValue]
+}
+
+// createDeepseekHarnessMcpServer creates a new instance of this resource
+func createDeepseekHarnessMcpServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDeepseekHarnessMcpServer{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("deepseek.harness.mcpServer", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDeepseekHarnessMcpServer) MqlName() string {
+	return "deepseek.harness.mcpServer"
+}
+
+func (c *mqlDeepseekHarnessMcpServer) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetCommand() *plugin.TValue[string] {
+	return &c.Command
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetArgs() *plugin.TValue[[]any] {
+	return &c.Args
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetHasEnv() *plugin.TValue[bool] {
+	return &c.HasEnv
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetHasHeaders() *plugin.TValue[bool] {
+	return &c.HasHeaders
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
+	return plugin.GetOrCompute[*llx.AssetValue](&c.Running, func() (*llx.AssetValue, error) {
+		return c.running()
+	})
+}
+
+// mqlDeepseekHarnessSkill for the deepseek.harness.skill resource
+type mqlDeepseekHarnessSkill struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDeepseekHarnessSkillInternal it will be used here
+	Name         plugin.TValue[string]
+	Description  plugin.TValue[string]
+	AllowedTools plugin.TValue[[]any]
+	ArgumentHint plugin.TValue[string]
+	Source       plugin.TValue[string]
+	Content      plugin.TValue[string]
+	Sha256       plugin.TValue[string]
+	Purl         plugin.TValue[string]
+}
+
+// createDeepseekHarnessSkill creates a new instance of this resource
+func createDeepseekHarnessSkill(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDeepseekHarnessSkill{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("deepseek.harness.skill", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDeepseekHarnessSkill) MqlName() string {
+	return "deepseek.harness.skill"
+}
+
+func (c *mqlDeepseekHarnessSkill) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDeepseekHarnessSkill) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDeepseekHarnessSkill) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlDeepseekHarnessSkill) GetAllowedTools() *plugin.TValue[[]any] {
+	return &c.AllowedTools
+}
+
+func (c *mqlDeepseekHarnessSkill) GetArgumentHint() *plugin.TValue[string] {
+	return &c.ArgumentHint
+}
+
+func (c *mqlDeepseekHarnessSkill) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlDeepseekHarnessSkill) GetContent() *plugin.TValue[string] {
+	return &c.Content
+}
+
+func (c *mqlDeepseekHarnessSkill) GetSha256() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Sha256, func() (string, error) {
+		return c.sha256()
+	})
+}
+
+func (c *mqlDeepseekHarnessSkill) GetPurl() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Purl, func() (string, error) {
+		return c.purl()
 	})
 }
 

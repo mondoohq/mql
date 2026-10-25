@@ -26657,6 +26657,358 @@ anthropic.cli @defaults("configPath") @maturity("preview") {
   runtime() extensionRuntime
 }
 
+// Devin CLI (Cognition) instance
+//
+// The Devin CLI, Cognition's terminal coding agent (binary `devin`), installed
+// on the target. Reports its presence and version via package, the host it runs
+// in via runtime, the SKILL.md definitions installed for it via skills, and the
+// MCP servers it connects to via mcpServers. Its configuration directory
+// (default .config/devin in the user's home, AppData\Roaming\devin on Windows)
+// is shared with Devin Desktop, so the directory alone is not an install
+// signal: the CLI counts as installed through its Homebrew cask, the
+// ~/.local/bin/devin or %LOCALAPPDATA%\devin\cli\bin\devin.exe its installer
+// writes, or its versions directory. Pass configPath to target a non-default
+// directory.
+// URL: https://docs.devin.ai/cli
+devin.cli @defaults("configPath") @maturity("preview") {
+  init(configPath? string)
+  // Path to the Devin configuration directory
+  configPath string
+
+  // Package that installed this tool
+  //
+  // Resolves to the system-package-manager entry that installed the tool
+  // when one can be identified; otherwise an abstract package (origin
+  // "unknown", empty format, absent from `packages`) that records the tool's
+  // presence and, where determinable, an inferred version. Read `.installed`
+  // for the install signal, or any package field (`version`, `purl`,
+  // `vendor`) for detail.
+  package() package
+
+  // Host the agent runs in
+  //
+  // The environment the agent runs inside: the operating system for a standalone
+  // agent, the IDE/editor for an editor plugin, or the browser for a browser
+  // extension. The runtime's `package` carries the host's software identity
+  // (version and purl where known) so its own version and vulnerabilities can be
+  // looked up like any other software. Optional; null when the host cannot be
+  // determined.
+  runtime() extensionRuntime
+  // Skills installed for the agent, one resource per discovered SKILL.md file
+  //
+  // Read from skills/ under configPath, which Devin Desktop also loads.
+  skills() []devin.cli.skill
+  // MCP servers the agent connects to
+  //
+  // Read from mcp_config.json under configPath, and from the `mcpServers` key
+  // of config.json, where releases before 3000.3 kept them. Devin Desktop's
+  // default agent configures its servers in the same file.
+  mcpServers() []devin.cli.mcpServer
+}
+
+// Devin CLI MCP server
+//
+// Model Context Protocol server Devin CLI is configured to use. Stdio
+// servers launch a local command with args; http servers connect to a url.
+// `type` reports the transport, `enabled` whether the server is switched on,
+// and hasEnv and hasHeaders whether environment variables or HTTP headers
+// (often holding API keys or tokens) are configured for the server.
+private devin.cli.mcpServer @defaults("name") @maturity("preview") {
+  // Server name
+  name string
+  // Server transport type, for example "stdio" or "http"
+  type string
+  // Local command launched for stdio-type servers
+  command string
+  // Command-line arguments passed to the server command
+  args []string
+  // Endpoint URL for http servers
+  url string
+  // Whether environment variables (for example API keys) are configured
+  hasEnv bool
+  // Whether HTTP headers (for example an Authorization token) are configured
+  hasHeaders bool
+  // Whether the server is enabled
+  //
+  // False for a server declared with `disabled: true`.
+  enabled bool
+  // Path of the configuration file that declares the server
+  source string
+  // Discovered MCP server asset
+  //
+  // Points at the asset discovered for this MCP server, anchored on this
+  // resource. The reference is typed to the `mcp` root: the resource that
+  // roots the MCP server's own tree. See ADR 030 and ADR 031.
+  running() asset<mcp>
+}
+
+// Devin CLI skill
+//
+// A single SKILL.md definition discovered for the Devin CLI. Each skill
+// is a Markdown file with YAML frontmatter that adds instructions and tool
+// access to the assistant; auditing them surfaces the capabilities granted.
+private devin.cli.skill @defaults("name") @maturity("preview") {
+  // Skill name
+  //
+  // Name from the SKILL.md YAML frontmatter `name` field, falling back to
+  // the skill's directory name when the frontmatter omits it.
+  name string
+  // Skill description
+  //
+  // Free-text summary from the frontmatter `description` field, stating what
+  // the skill does and when the agent should invoke it.
+  description string
+  // Tools the skill is allowed to use
+  //
+  // Tool identifiers parsed from the frontmatter `allowed-tools` field (a
+  // comma-separated list), naming the capabilities the skill may invoke such
+  // as file edits, shell commands, or web access. Empty when the skill
+  // declares no restriction. The key field for reviewing what an installed
+  // skill is permitted to do.
+  allowedTools []string
+  // Hint for expected arguments
+  //
+  // Usage hint from the frontmatter `argument-hint` field, shown when the
+  // skill is invoked. Empty when unset.
+  argumentHint string
+  // Filesystem path to the SKILL.md file that defines the skill
+  source string
+  // Full raw content of the SKILL.md file
+  //
+  // Complete Markdown body of the skill, including the YAML frontmatter and
+  // the prose instructions the agent follows. Inspect it to review exactly
+  // what an installed skill tells the agent to do.
+  content string
+  // SHA-256 hash of the skill content
+  //
+  // Hex-encoded SHA-256 digest of content, for detecting drift or pinning a
+  // known-good skill definition against a baseline.
+  sha256() string
+  // Package URL identifying the skill's git origin
+  purl() string
+}
+
+// Cursor CLI (Anysphere) instance
+//
+// The Cursor CLI, Cursor's terminal agent (binaries `cursor-agent` and `agent`),
+// installed on the target. Reports its presence and version via package, the
+// host it runs in via runtime, and the approval, sandbox and permission
+// settings of its cli-config.json (default .cursor/cli-config.json in the
+// user's home). The MCP servers, rules and skills it shares with the Cursor
+// editor are on the `cursor` resource. Pass configPath to target a non-default
+// cli-config.json.
+// URL: https://cursor.com/cli
+cursor.cli @defaults("configPath") @maturity("preview") {
+  init(configPath? string)
+  // Path to the Cursor CLI configuration file (cli-config.json)
+  configPath string
+
+  // Package that installed this tool
+  //
+  // Resolves to the system-package-manager entry that installed the tool
+  // when one can be identified; otherwise an abstract package (origin
+  // "unknown", empty format, absent from `packages`) that records the tool's
+  // presence and, where determinable, an inferred version. Read `.installed`
+  // for the install signal, or any package field (`version`, `purl`,
+  // `vendor`) for detail.
+  package() package
+
+  // Host the agent runs in
+  //
+  // The environment the agent runs inside: the operating system for a standalone
+  // agent, the IDE/editor for an editor plugin, or the browser for a browser
+  // extension. The runtime's `package` carries the host's software identity
+  // (version and purl where known) so its own version and vulnerabilities can be
+  // looked up like any other software. Optional; null when the host cannot be
+  // determined.
+  runtime() extensionRuntime
+  // How the agent asks before running tools
+  //
+  // The `approvalMode` setting: "allowlist", "auto-review" or
+  // "unrestricted". Empty when unset.
+  approvalMode() string
+  // Sandbox mode for shell commands
+  //
+  // The `sandbox.mode` setting. Empty when unset.
+  sandboxMode() string
+  // Whether sandboxed commands may reach the network
+  //
+  // The `sandbox.networkAccess` setting. Empty when unset.
+  sandboxNetworkAccess() string
+  // Tool permissions granted without asking
+  //
+  // Entries of `permissions.allow`, for example "Shell(ls)".
+  allowedPermissions() []string
+  // Tool permissions always refused
+  //
+  // Entries of `permissions.deny`, for example "Shell(rm)".
+  deniedPermissions() []string
+}
+
+// CodeRabbit CLI instance
+//
+// The CodeRabbit CLI, CodeRabbit's AI code review tool for the terminal
+// (binaries `coderabbit` and `cr`), installed on the target. Reports its
+// presence and version via package and the host it runs in via runtime. It
+// keeps its login and review history in a data directory (default .coderabbit
+// in the user's home). The skills `coderabbit skills` installs belong to the
+// agents they are installed for. Pass configPath to target a non-default
+// directory.
+// URL: https://www.coderabbit.ai/cli
+coderabbit.cli @defaults("configPath") @maturity("preview") {
+  init(configPath? string)
+  // Path to the CodeRabbit data directory
+  configPath string
+
+  // Package that installed this tool
+  //
+  // Resolves to the system-package-manager entry that installed the tool
+  // when one can be identified; otherwise an abstract package (origin
+  // "unknown", empty format, absent from `packages`) that records the tool's
+  // presence and, where determinable, an inferred version. Read `.installed`
+  // for the install signal, or any package field (`version`, `purl`,
+  // `vendor`) for detail.
+  package() package
+
+  // Host the agent runs in
+  //
+  // The environment the agent runs inside: the operating system for a standalone
+  // agent, the IDE/editor for an editor plugin, or the browser for a browser
+  // extension. The runtime's `package` carries the host's software identity
+  // (version and purl where known) so its own version and vulnerabilities can be
+  // looked up like any other software. Optional; null when the host cannot be
+  // determined.
+  runtime() extensionRuntime
+}
+
+// DeepSeek Harness instance
+//
+// DeepSeek Harness, DeepSeek's open-source agent harness (desktop app, or the
+// `dsh` CLI from npm), installed on the target. Reports its presence and
+// version via package, the host it runs in via runtime, the SKILL.md
+// definitions installed for it via skills, and the MCP servers it connects to
+// via mcpServers. Its home directory is .dsh in the user's home on every
+// platform. Pass configPath to target a non-default home, such as one set with
+// DSH_HOME.
+// URL: https://www.deepseek.com/harness/
+deepseek.harness @defaults("configPath") @maturity("preview") {
+  init(configPath? string)
+  // Path to the DeepSeek Harness home directory
+  configPath string
+
+  // Package that installed this tool
+  //
+  // Resolves to the system-package-manager entry that installed the tool
+  // when one can be identified; otherwise an abstract package (origin
+  // "unknown", empty format, absent from `packages`) that records the tool's
+  // presence and, where determinable, an inferred version. Read `.installed`
+  // for the install signal, or any package field (`version`, `purl`,
+  // `vendor`) for detail.
+  package() package
+
+  // Host the agent runs in
+  //
+  // The environment the agent runs inside: the operating system for a standalone
+  // agent, the IDE/editor for an editor plugin, or the browser for a browser
+  // extension. The runtime's `package` carries the host's software identity
+  // (version and purl where known) so its own version and vulnerabilities can be
+  // looked up like any other software. Optional; null when the host cannot be
+  // determined.
+  runtime() extensionRuntime
+  // Skills installed for the agent, one resource per discovered SKILL.md file
+  //
+  // Read from skills/ under configPath.
+  skills() []deepseek.harness.skill
+  // MCP servers the agent connects to
+  //
+  // Read from the `@deepseek-ai/dsh-mcp-client` rows that cordis.patch.yml
+  // inserts, at configPath and in each profile under profiles/. Each row
+  // names one server.
+  mcpServers() []deepseek.harness.mcpServer
+}
+
+// DeepSeek Harness MCP server
+//
+// Model Context Protocol server DeepSeek Harness is configured to use. Stdio
+// servers launch a local command with args; http servers connect to a url.
+// `type` reports the transport, `enabled` whether the server is switched on,
+// and hasEnv and hasHeaders whether environment variables or HTTP headers
+// (often holding API keys or tokens) are configured for the server.
+private deepseek.harness.mcpServer @defaults("name") @maturity("preview") {
+  // Server name
+  name string
+  // Server transport type, for example "stdio" or "http"
+  type string
+  // Local command launched for stdio-type servers
+  command string
+  // Command-line arguments passed to the server command
+  args []string
+  // Endpoint URL for http servers
+  url string
+  // Whether environment variables (for example API keys) are configured
+  hasEnv bool
+  // Whether HTTP headers (for example an Authorization token) are configured
+  hasHeaders bool
+  // Whether the server is enabled
+  //
+  // Always true: a row in cordis.patch.yml is a server the harness starts.
+  enabled bool
+  // Path of the configuration file that declares the server
+  source string
+  // Discovered MCP server asset
+  //
+  // Points at the asset discovered for this MCP server, anchored on this
+  // resource. The reference is typed to the `mcp` root: the resource that
+  // roots the MCP server's own tree. See ADR 030 and ADR 031.
+  running() asset<mcp>
+}
+
+// DeepSeek Harness skill
+//
+// A single SKILL.md definition discovered for DeepSeek Harness. Each skill
+// is a Markdown file with YAML frontmatter that adds instructions and tool
+// access to the assistant; auditing them surfaces the capabilities granted.
+private deepseek.harness.skill @defaults("name") @maturity("preview") {
+  // Skill name
+  //
+  // Name from the SKILL.md YAML frontmatter `name` field, falling back to
+  // the skill's directory name when the frontmatter omits it.
+  name string
+  // Skill description
+  //
+  // Free-text summary from the frontmatter `description` field, stating what
+  // the skill does and when the agent should invoke it.
+  description string
+  // Tools the skill is allowed to use
+  //
+  // Tool identifiers parsed from the frontmatter `allowed-tools` field (a
+  // comma-separated list), naming the capabilities the skill may invoke such
+  // as file edits, shell commands, or web access. Empty when the skill
+  // declares no restriction. The key field for reviewing what an installed
+  // skill is permitted to do.
+  allowedTools []string
+  // Hint for expected arguments
+  //
+  // Usage hint from the frontmatter `argument-hint` field, shown when the
+  // skill is invoked. Empty when unset.
+  argumentHint string
+  // Filesystem path to the SKILL.md file that defines the skill
+  source string
+  // Full raw content of the SKILL.md file
+  //
+  // Complete Markdown body of the skill, including the YAML frontmatter and
+  // the prose instructions the agent follows. Inspect it to review exactly
+  // what an installed skill tells the agent to do.
+  content string
+  // SHA-256 hash of the skill content
+  //
+  // Hex-encoded SHA-256 digest of content, for detecting drift or pinning a
+  // known-good skill definition against a baseline.
+  sha256() string
+  // Package URL identifying the skill's git origin
+  purl() string
+}
+
 // Agent Skills under a directory
 //
 // Skills that follow the Agent Skills specification (https://agentskills.io/specification),
