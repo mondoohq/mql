@@ -409,7 +409,7 @@ func yamlMappingValue(n *yaml.Node, key string) *yaml.Node {
 
 // yamlScalars returns the scalar items of a sequence node, as written.
 func yamlScalars(n *yaml.Node) []string {
-	if n.Kind != yaml.SequenceNode {
+	if n == nil || n.Kind != yaml.SequenceNode {
 		return nil
 	}
 	out := make([]string, 0, len(n.Content))
@@ -425,6 +425,9 @@ func yamlScalars(n *yaml.Node) []string {
 // with entries, or a scalar other than null (an expression the harness
 // evaluates counts).
 func yamlNonEmpty(n *yaml.Node) bool {
+	if n == nil {
+		return false
+	}
 	switch n.Kind {
 	case yaml.MappingNode, yaml.SequenceNode:
 		return len(n.Content) > 0

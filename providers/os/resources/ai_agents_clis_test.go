@@ -102,6 +102,9 @@ func TestParseDshPatchMcpServers(t *testing.T) {
 	assert.True(t, specs[1].enabled)
 	assert.Equal(t, "/home/alice/.dsh/cordis.patch.yml", specs[1].source)
 
+	assert.Nil(t, yamlScalars(nil))
+	assert.False(t, yamlNonEmpty(nil))
+
 	specs, err = parseDshPatchMcpServers(nil, "empty")
 	require.NoError(t, err)
 	assert.Empty(t, specs)
