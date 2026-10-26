@@ -4,7 +4,6 @@ package services_test
 
 import (
 	"os"
-
 	"testing"
 
 	"github.com/stretchr/testify/assert"
