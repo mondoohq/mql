@@ -113,7 +113,7 @@ func peVersionInfo(r io.ReaderAt) (peInfo, bool) {
 	if !ok {
 		return peInfo{}, false
 	}
-	info.Machine = peMachineArch(f.FileHeader.Machine)
+	info.Machine = peMachineArch(f.Machine)
 	return info, true
 }
 
