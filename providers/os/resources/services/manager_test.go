@@ -3,6 +3,8 @@
 package services_test
 
 import (
+	"os"
+
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -412,11 +414,21 @@ func TestManagerMXLinux(t *testing.T) {
 			expected: "SysV Service Manager",
 		},
 		{
+			// sd_booted(3) wants the directory, not just something at the path
+			name: "regular file at the systemd marker",
+			files: map[string]*mock.MockFileData{
+				"/sbin/init":           {},
+				"/lib/systemd/systemd": {},
+				"/run/systemd/system":  {},
+			},
+			expected: "SysV Service Manager",
+		},
+		{
 			name: "booted with systemd",
 			files: map[string]*mock.MockFileData{
 				"/sbin/init":           {},
 				"/lib/systemd/systemd": {},
-				"/run/systemd/system":  {StatData: mock.FileInfo{IsDir: true}},
+				"/run/systemd/system":  {StatData: mock.FileInfo{Mode: os.ModeDir | 0o755}},
 			},
 			expected: "systemd Service Manager",
 		},

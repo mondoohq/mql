@@ -121,10 +121,10 @@ func hasInitSystem(conn shared.Connection) bool {
 }
 
 // systemdBooted reports whether systemd is the running init, the check
-// sd_booted(3) makes: systemd creates /run/systemd/system at boot.
+// sd_booted(3) makes: systemd creates the /run/systemd/system directory at boot.
 func systemdBooted(conn shared.Connection) bool {
-	_, err := conn.FileInfo("/run/systemd/system")
-	return err == nil
+	fi, err := conn.FileInfo("/run/systemd/system")
+	return err == nil && fi.Mode.IsDir()
 }
 
 func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
