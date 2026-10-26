@@ -53,6 +53,14 @@ func NewManifestParser(manifest []byte, namespace, selectedResourceID string) (M
 	}, nil
 }
 
+// WithNamespace returns a copy of the parser scoped to namespace. The copy
+// shares the parsed objects with t, so neither may write to them.
+func (t *ManifestParser) WithNamespace(namespace string) ManifestParser {
+	p := *t
+	p.namespace = namespace
+	return p
+}
+
 // SetDefaultNamespaces gives every namespaced object without a
 // metadata.namespace the namespace Kubernetes would create it in: "default".
 // An object in a manifest that names no namespace is applied to the default
@@ -183,8 +191,10 @@ func (t *ManifestParser) Namespaces() ([]v1.Namespace, error) {
 			continue
 		}
 		// The universal deserializer strips TypeMeta, so set the Kind explicitly.
-		ns.Kind = "Namespace"
-		namespaces[ns.Name] = *ns
+		// Set it on the copy: the objects are shared between connections.
+		nsCopy := *ns
+		nsCopy.Kind = "Namespace"
+		namespaces[ns.Name] = nsCopy
 	}
 
 	// Second pass: add namespaces that are only referenced by other objects'

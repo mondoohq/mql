@@ -27,12 +27,16 @@ type Service struct {
 	*plugin.Service
 
 	discoveryCache *connectionResources.DiscoveryCache
+	// manifests shares one parse of a manifest among every asset discovered
+	// from it: the manifest itself, its namespaces and their workloads.
+	manifests *manifest.Cache
 }
 
 func Init() *Service {
 	return &Service{
 		Service:        plugin.NewService(),
 		discoveryCache: connectionResources.NewDiscoveryCache(),
+		manifests:      manifest.NewCache(),
 	}
 }
 
@@ -178,12 +182,12 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 		var conn shared.Connection
 		var err error
 		if manifestContent, ok := conf.Options[shared.OPTION_IMMEMORY_CONTENT]; ok {
-			conn, err = manifest.NewConnection(connId, asset, manifest.WithManifestContent([]byte(manifestContent)))
+			conn, err = manifest.NewConnection(connId, asset, manifest.WithManifestContent([]byte(manifestContent)), manifest.WithCache(s.manifests))
 			if err != nil {
 				return nil, err
 			}
 		} else if manifestFile, ok := conf.Options[shared.OPTION_MANIFEST]; ok {
-			conn, err = manifest.NewConnection(connId, asset, manifest.WithManifestFile(manifestFile))
+			conn, err = manifest.NewConnection(connId, asset, manifest.WithManifestFile(manifestFile), manifest.WithCache(s.manifests))
 			if err != nil {
 				return nil, err
 			}
@@ -193,7 +197,7 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 				return nil, err
 			}
 		} else if _, ok := conf.Options[shared.OPTION_GIT_HTTP]; ok {
-			conn, err = manifest.NewGitConnection(connId, asset)
+			conn, err = manifest.NewGitConnection(connId, asset, manifest.WithCache(s.manifests))
 			if err != nil {
 				return nil, err
 			}
@@ -208,6 +212,12 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 		if req.Upstream != nil && !req.Upstream.Incognito {
 			upstream, err = req.Upstream.InitClient(context.Background())
 			if err != nil {
+				// No runtime will own the connection, so nothing would close it:
+				// it would keep its share of the manifest cache, and a git
+				// clone, for the life of the process.
+				if closer, ok := conn.(plugin.Closer); ok {
+					closer.Close()
+				}
 				return nil, err
 			}
 		}
