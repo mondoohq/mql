@@ -464,6 +464,7 @@ func (s *Service) MockConnect(req *plugin.ConnectReq, callback plugin.ProviderCa
 
 	asset := &inventory.Asset{
 		Mrn:         req.Asset.Mrn,
+		Name:        req.Asset.Name,
 		PlatformIds: req.Asset.PlatformIds,
 		Platform:    req.Asset.Platform,
 		Connections: []*inventory.Config{{

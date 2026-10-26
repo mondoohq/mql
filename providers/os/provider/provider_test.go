@@ -317,3 +317,30 @@ func TestParseCLIIdDetector(t *testing.T) {
 	assert.Equal(t, []string{ids.IdDetector_Default, ids.IdDetector_CrowdStrikeAID},
 		parse(t, map[string]*llx.Primitive{"id-detector": {Value: []byte(" default , crowdstrike-aid ")}}), "a list")
 }
+
+// The sbom provider replays an imported SBOM through MockConnect. The asset
+// name it carries (the scanned host's name) must survive, otherwise the
+// asset shows up under its platform title.
+func TestMockConnectKeepsAssetName(t *testing.T) {
+	srv := &Service{
+		Service: plugin.NewService(),
+	}
+
+	connectResp, err := srv.MockConnect(&plugin.ConnectReq{
+		Asset: &inventory.Asset{
+			Name:        "WIN-TEST01",
+			PlatformIds: []string{"//platformid.api.mondoo.app/hostname/win-test01"},
+			Platform: &inventory.Platform{
+				Name:   "windows",
+				Title:  "Microsoft Windows Server 2022 Datacenter",
+				Family: []string{"windows", "os"},
+			},
+		},
+	}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, connectResp)
+	assert.Equal(t, "WIN-TEST01", connectResp.Asset.Name)
+
+	_, err = srv.Shutdown(&plugin.ShutdownReq{})
+	require.NoError(t, err)
+}
