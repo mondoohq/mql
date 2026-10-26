@@ -54,7 +54,9 @@ func NewManifestParser(manifest []byte, namespace, selectedResourceID string) (M
 }
 
 // WithNamespace returns a copy of the parser scoped to namespace. The copy
-// shares the parsed objects with t, so neither may write to them.
+// shares the parsed objects and the namespace-scope map with t, so neither may
+// write to them: call SetDefaultNamespaces, which writes both, before taking
+// any copy.
 func (t *ManifestParser) WithNamespace(namespace string) ManifestParser {
 	p := *t
 	p.namespace = namespace

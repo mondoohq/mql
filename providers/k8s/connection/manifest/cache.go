@@ -81,9 +81,13 @@ func NewCache() *Cache {
 
 // acquire returns the manifest for key, calling load if no connection holds
 // it yet. Concurrent callers for one key wait for a single load. The returned
-// release gives the reference back; it is safe to call more than once. A
-// failed load is not kept: the callers that waited on it get its error, and
-// the next one loads again.
+// release gives the reference back; it is safe to call more than once.
+//
+// A failed load is not kept past its waiters: every caller that finds the
+// entry before the last of them has returned gets the same error, and the
+// first caller after that loads again. Handing a late caller the error rather
+// than retrying is deliberate: it arrives within the same moment, for the same
+// files, and a retry would only fail the same way.
 func (c *Cache) acquire(key cacheKey, load func() (*loaded, error)) (*loaded, func(), error) {
 	if c == nil {
 		l, err := load()
