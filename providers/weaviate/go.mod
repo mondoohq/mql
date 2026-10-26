@@ -7,7 +7,7 @@ go 1.27.3
 require (
 	github.com/stretchr/testify v1.12.1
 	github.com/weaviate/weaviate-go-client/v5 v5.7.3
-	go.mondoo.com/mql v0.0.0-20261024173047-83cc7347d76d
+	go.mondoo.com/mql v0.0.0-20261026054543-00c16ca67199
 	go.mondoo.com/ranger-rpc v0.8.1
 )
 

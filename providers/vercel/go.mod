@@ -4,7 +4,7 @@ replace go.mondoo.com/mql => ../..
 
 go 1.27.3
 
-require go.mondoo.com/mql v0.0.0-20261024173047-83cc7347d76d
+require go.mondoo.com/mql v0.0.0-20261026054543-00c16ca67199
 
 require (
 	dario.cat/mergo v1.0.2 // indirect

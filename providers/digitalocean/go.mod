@@ -12,7 +12,7 @@ require (
 	github.com/digitalocean/godo v1.232.0
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
-	go.mondoo.com/mql v0.0.0-20261024173047-83cc7347d76d
+	go.mondoo.com/mql v0.0.0-20261026054543-00c16ca67199
 	golang.org/x/oauth2 v0.37.0
 )
 

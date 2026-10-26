@@ -8,7 +8,7 @@ require (
 	github.com/cockroachdb/errors v1.14.0
 	github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.2
 	github.com/rs/zerolog v1.35.1
-	go.mondoo.com/mql v0.0.0-20261024173047-83cc7347d76d
+	go.mondoo.com/mql v0.0.0-20261026054543-00c16ca67199
 )
 
 require (

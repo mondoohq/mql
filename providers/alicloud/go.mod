@@ -40,10 +40,10 @@ require (
 	github.com/alibabacloud-go/vpc-20160428/v7 v7.3.1
 	github.com/alibabacloud-go/waf-openapi-20211001/v7 v7.8.6
 	github.com/aliyun/alibabacloud-oss-go-sdk-v2 v1.6.1
-	github.com/aliyun/credentials-go v1.4.13
+	github.com/aliyun/credentials-go v1.4.14
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
-	go.mondoo.com/mql v0.0.0-20261024173047-83cc7347d76d
+	go.mondoo.com/mql v0.0.0-20261026054543-00c16ca67199
 )
 
 require (
