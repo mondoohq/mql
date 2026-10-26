@@ -351,7 +351,7 @@ func TestComponentSearchSkipsUNCPaths(t *testing.T) {
 	for _, s := range componentProbeSpecs(bundles, h) {
 		assert.False(t, strings.HasPrefix(s.base, `\\`), "probe spec for %q", s.base)
 	}
-	script, ok := componentProbeScript(componentProbeSpecs(bundles, h))
+	script, ok := componentProbeScript(componentProbePlan(bundles, h))
 	require.True(t, ok)
 	assert.NotContains(t, script, "fileserver")
 	// A normal directory next to them is still searched.
@@ -512,26 +512,30 @@ func TestComponentArch(t *testing.T) {
 
 func TestComponentProbeScript(t *testing.T) {
 	// Synthetic: specs that must and must not reach the script.
-	script, ok := componentProbeScript([]probeSpec{
-		{base: `C:\xampp`, segments: []string{"apache", "bin"}},
-		{base: `C:\Users\alice\scoop\apps\php`, segments: []string{"*"}, skipCurrent: true},
-		{base: `C:\it's`},
-		{base: "C:\\a\u2019b"},
-		{base: "C:\\a\nb"},
-		{base: `C:\a|b`},
-		{base: `C:\ok`, segments: []string{"x'y"}},
+	script, ok := componentProbeScript(probePlan{
+		bundles: []string{`C:\xampp`, `C:\it's`, "C:\\a\u2019b", "C:\\a\nb", `C:\a|b`},
+		direct: []probeSpec{
+			{base: `C:\wamp`, segments: []string{"apache", "bin"}},
+			{base: `C:\Users\alice\scoop\apps\php`, segments: []string{"*"}, skipCurrent: true},
+			{base: `C:\it's`},
+			{base: "C:\\a\u2019b"},
+			{base: "C:\\a\nb"},
+			{base: `C:\a|b`},
+			{base: `C:\ok`, segments: []string{"x'y"}},
+		},
 	})
 	require.True(t, ok)
-	assert.Contains(t, script, `'0|C:\xampp|apache|bin'`)
+	assert.Contains(t, script, `@('C:\xampp')`, "a bundle directory is listed once")
+	assert.Contains(t, script, `'0|C:\wamp|apache|bin'`)
 	assert.Contains(t, script, `'1|C:\Users\alice\scoop\apps\php|*'`)
 	assert.NotContains(t, script, "it's")
 	assert.NotContains(t, script, "\u2019")
 	assert.NotContains(t, script, `a|b`)
 	assert.NotContains(t, script, `x'y`)
 
-	_, ok = componentProbeScript([]probeSpec{{base: `C:\it's`}})
+	_, ok = componentProbeScript(probePlan{direct: []probeSpec{{base: `C:\it's`}}, bundles: []string{`C:\it's`}})
 	assert.False(t, ok)
-	_, ok = componentProbeScript(nil)
+	_, ok = componentProbeScript(probePlan{})
 	assert.False(t, ok)
 }
 
@@ -639,6 +643,48 @@ func (c *stagingTestConnection) Capabilities() shared.Capabilities {
 	return shared.Capability_RunCommand | shared.Capability_File
 }
 
+func TestComponentProbeScriptSizeScalesWithBaseDirs(t *testing.T) {
+	// Synthetic: install directories of a realistic length. Every directory is
+	// sent once, not once per layout, so each one adds its path and the quotes
+	// and comma around it, and nothing else.
+	mk := func(n int) string {
+		var bundles []string
+		for i := 0; i < n; i++ {
+			bundles = append(bundles, fmt.Sprintf(`C:\Program Files\Vendor%03d\Product Suite %03d\runtime`, i, i))
+		}
+		script, ok := componentProbeScript(probePlan{bundles: bundles})
+		require.True(t, ok)
+		return script
+	}
+	one, many := mk(1), mk(300)
+	pathLen := len(`C:\Program Files\Vendor000\Product Suite 000\runtime`)
+	assert.Equal(t, 299*(pathLen+3), len(many)-len(one), "300 directories add one quoted path and a comma each")
+	// With ten layouts per directory the old shape was about 10 times larger.
+	assert.Less(t, len(many), len(one)+300*(pathLen+3))
+	assert.Less(t, len(many), 30000)
+}
+
+func TestComponentProbeScriptHasTheGoLayouts(t *testing.T) {
+	// The script applies the layouts to each bundle itself, so the layouts the
+	// Go finder expands must be the ones in the script, in the same notation.
+	script, ok := componentProbeScript(probePlan{bundles: []string{`C:\xampp`}})
+	require.True(t, ok)
+	var want []string
+	for _, l := range bundledComponentLayouts {
+		want = append(want, "'"+strings.Join(l, "|")+"'")
+	}
+	assert.Contains(t, script, "$layouts = @("+strings.Join(want, ",")+")")
+
+	// And the plan, expanded as the Go finder does, is the layouts applied to
+	// each bundle then the direct directories.
+	plan := probePlan{bundles: []string{`C:\a`, `C:\b`}, direct: []probeSpec{{base: `C:\php`}}}
+	specs := plan.specs()
+	require.Len(t, specs, 2*len(bundledComponentLayouts)+1)
+	assert.Equal(t, probeSpec{base: `C:\a`, segments: bundledComponentLayouts[0]}, specs[0])
+	assert.Equal(t, probeSpec{base: `C:\b`, segments: bundledComponentLayouts[0]}, specs[len(bundledComponentLayouts)])
+	assert.Equal(t, probeSpec{base: `C:\php`}, specs[len(specs)-1])
+}
+
 func TestComponentScriptsFitOrAreStaged(t *testing.T) {
 	// The hints script carries no data from the target, so its size is fixed.
 	assert.True(t, powershell.FitsCommandLine(componentHintsScript), "the hints script must fit an encoded command on WinRM")
@@ -651,9 +697,12 @@ func TestComponentScriptsFitOrAreStaged(t *testing.T) {
 		Services:    []string{`"C:\xampp\apache\bin\httpd.exe" -k runservice`},
 		Profiles:    []componentProfile{{Dir: `C:\Users\alice`}},
 	}
-	script, ok := componentProbeScript(componentProbeSpecs(bundles, hints))
+	script, ok := componentProbeScript(componentProbePlan(bundles, hints))
 	require.True(t, ok)
-	require.False(t, powershell.FitsCommandLine(script), "if this fits, the staging test below no longer covers anything")
+	// The fixed body alone is past the encoded limit, so even a host with
+	// nothing installed goes through staging. If this starts to fit, the
+	// staging test below no longer covers anything.
+	require.False(t, powershell.FitsCommandLine(script))
 
 	t.Run("a long script is staged and run with -File", func(t *testing.T) {
 		conn := newStagingTestConnection()

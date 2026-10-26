@@ -597,28 +597,53 @@ type probeSpec struct {
 	skipCurrent bool
 }
 
-// componentProbeSpecs lists where to look, in the order the packages come out:
-// the layouts inside other apps, the directories the machine points at, and
-// the fixed folders.
-func componentProbeSpecs(bundles []bundleDir, hints componentHints) []probeSpec {
-	var specs []probeSpec
+// probePlan is where to look. Every install directory of another app takes
+// the same layouts, so the plan keeps those directories once and the layouts
+// stay a constant; that keeps the remote script small on a host with hundreds
+// of apps.
+type probePlan struct {
+	// bundles are the install directories each bundledComponentLayouts entry
+	// is applied to.
+	bundles []string
+	// direct are the directories the machine points at and the fixed folders.
+	direct []probeSpec
+}
+
+// componentProbePlan plans the search.
+func componentProbePlan(bundles []bundleDir, hints componentHints) probePlan {
+	var plan probePlan
 	for _, b := range bundles {
-		for _, layout := range bundledComponentLayouts {
-			specs = append(specs, probeSpec{base: b.dir, segments: layout})
-		}
+		plan.bundles = append(plan.bundles, b.dir)
 	}
 	for _, d := range hints.candidateDirs() {
-		specs = append(specs, probeSpec{base: d})
+		plan.direct = append(plan.direct, probeSpec{base: d})
 	}
-	specs = append(specs, probeSpec{base: `C:\php`}, probeSpec{base: `C:\tools`, segments: []string{"php*"}})
+	plan.direct = append(plan.direct, probeSpec{base: `C:\php`}, probeSpec{base: `C:\tools`, segments: []string{"php*"}})
 	for _, p := range hints.Profiles {
 		apps := cleanComponentDir(p.Dir + `\scoop\apps\php`)
 		if apps == "" {
 			continue
 		}
-		specs = append(specs, probeSpec{base: apps, segments: []string{"*"}, skipCurrent: true})
+		plan.direct = append(plan.direct, probeSpec{base: apps, segments: []string{"*"}, skipCurrent: true})
 	}
-	return specs
+	return plan
+}
+
+// specs lists the plan as probe specs, in the order the packages come out: the
+// layouts inside other apps, then the direct directories.
+func (p probePlan) specs() []probeSpec {
+	var specs []probeSpec
+	for _, b := range p.bundles {
+		for _, layout := range bundledComponentLayouts {
+			specs = append(specs, probeSpec{base: b, segments: layout})
+		}
+	}
+	return append(specs, p.direct...)
+}
+
+// componentProbeSpecs lists where to look as probe specs.
+func componentProbeSpecs(bundles []bundleDir, hints componentHints) []probeSpec {
+	return componentProbePlan(bundles, hints).specs()
 }
 
 // remoteSafeString reports whether s can sit in a single-quoted PowerShell
@@ -637,27 +662,45 @@ func remoteSafeString(s string) bool {
 // are read only where a component executable is, since OpenSSL is only
 // reported beside one. A spec with a character that could break out of the
 // literal is left out.
-func componentProbeScript(specs []probeSpec) (string, bool) {
-	quoted := make([]string, 0, len(specs))
-specs:
-	for _, s := range specs {
+//
+// The layouts are written into the script once, from bundledComponentLayouts,
+// and each bundle directory once; the script applies every layout to every
+// bundle. The direct directories are one spec string each.
+func componentProbeScript(plan probePlan) (string, bool) {
+	var bundles []string
+	for _, b := range plan.bundles {
+		if remoteSafeString(b) {
+			bundles = append(bundles, "'"+b+"'")
+		}
+	}
+	var direct []string
+direct:
+	for _, s := range plan.direct {
 		parts := append([]string{s.base}, s.segments...)
 		for _, p := range parts {
 			if !remoteSafeString(p) {
-				continue specs
+				continue direct
 			}
 		}
 		skip := "0"
 		if s.skipCurrent {
 			skip = "1"
 		}
-		quoted = append(quoted, "'"+skip+"|"+strings.Join(parts, "|")+"'")
+		direct = append(direct, "'"+skip+"|"+strings.Join(parts, "|")+"'")
 	}
-	if len(quoted) == 0 {
+	if len(bundles)+len(direct) == 0 {
 		return "", false
 	}
+	layouts := make([]string, 0, len(bundledComponentLayouts))
+	for _, l := range bundledComponentLayouts {
+		layouts = append(layouts, "'"+strings.Join(l, "|")+"'")
+	}
 	return `$ErrorActionPreference = 'SilentlyContinue'
-$specs = @(` + strings.Join(quoted, ",") + `)
+$layouts = @(` + strings.Join(layouts, ",") + `)
+$bundles = @(` + strings.Join(bundles, ",") + `)
+$specs = New-Object System.Collections.Generic.List[string]
+foreach ($b in $bundles) { foreach ($l in $layouts) { $specs.Add('0|' + $b + '|' + $l) } }
+$specs.AddRange([string[]]@(` + strings.Join(direct, ",") + `))
 $wanted = '^(php\d*(ts)?\.dll|php\.exe|httpd\.exe|mysqld\.exe|mariadbd\.exe|libssl[^\\/]*\.dll|ssleay32\.dll)$'
 $exes = '^(php|httpd|mysqld|mariadbd)\.exe$'
 $libs = '^(libssl[^\\/]*|ssleay32)\.dll$'
@@ -847,7 +890,7 @@ func runComponentScript(conn shared.Connection, name, script string) (*shared.Co
 // PowerShell run. The specs are those the finder will expand, computed from
 // the same packages and hints.
 func (w *WinPkgManager) remoteComponentSource(pkgs []Package, hints componentHints) componentSource {
-	script, ok := componentProbeScript(componentProbeSpecs(appInstallDirs(pkgs), hints))
+	script, ok := componentProbeScript(componentProbePlan(appInstallDirs(pkgs), hints))
 	if !ok {
 		return nil
 	}
