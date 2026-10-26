@@ -8,6 +8,7 @@ import (
 	"io"
 	"path"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -152,12 +153,60 @@ func (h componentHints) candidateDirs() []string {
 	return out
 }
 
-// componentFinder reads a filesystem for component executables.
-type componentFinder struct {
+// componentSource is where the finder reads directories and version
+// resources from. A scan that can read files itself (local Windows, an
+// offline image) uses the filesystem; a remote scan can't, because every
+// directory listing would be a command on the target and the remote file
+// handles don't support the random reads a PE parser needs, so it gets
+// everything it may ask for from one PowerShell run (see
+// remoteComponentSource).
+type componentSource interface {
+	// list returns the file and directory names in dir, ok false when dir
+	// can't be read.
+	list(dir string) (files, dirs []string, ok bool)
+	// info returns the version resource and machine of dir\name.
+	info(dir, name string) (peInfo, bool)
+}
+
+// fsComponentSource reads through a filesystem. toFsPath maps a Windows path
+// to the path on fs, or reports that it can't be reached.
+type fsComponentSource struct {
 	fs       afero.Fs
 	toFsPath func(string) (string, bool)
-	listed   map[string]map[string]string // lower-cased dir -> lower-cased file -> real name
-	subdirs  map[string][]string
+}
+
+func (s fsComponentSource) list(dir string) (files, dirs []string, ok bool) {
+	fp, ok := s.toFsPath(dir)
+	if !ok {
+		return nil, nil, false
+	}
+	infos, err := afero.ReadDir(s.fs, fp)
+	if err != nil {
+		return nil, nil, false
+	}
+	for _, fi := range infos {
+		if fi.IsDir() {
+			dirs = append(dirs, fi.Name())
+		} else {
+			files = append(files, fi.Name())
+		}
+	}
+	return files, dirs, true
+}
+
+func (s fsComponentSource) info(dir, name string) (peInfo, bool) {
+	fp, ok := s.toFsPath(dir + `\` + name)
+	if !ok {
+		return peInfo{}, false
+	}
+	return fsPEVersion(s.fs, fp, peVersionInfo)
+}
+
+// componentFinder finds component executables through a componentSource.
+type componentFinder struct {
+	src     componentSource
+	listed  map[string]map[string]string // lower-cased dir -> lower-cased file -> real name
+	subdirs map[string][]string
 }
 
 // list returns the files of a directory by lower-cased name, nil when it
@@ -168,31 +217,18 @@ func (c *componentFinder) list(dir string) map[string]string {
 	if m, ok := c.listed[key]; ok {
 		return m
 	}
-	files, dirs := c.readEntries(dir)
-	c.listed[key] = files
-	c.subdirs[key] = dirs
-	return files
-}
-
-func (c *componentFinder) readEntries(dir string) (files map[string]string, dirs []string) {
-	fp, ok := c.toFsPath(dir)
-	if !ok {
-		return nil, nil
-	}
-	infos, err := afero.ReadDir(c.fs, fp)
-	if err != nil {
-		return nil, nil
-	}
-	files = map[string]string{}
-	for _, fi := range infos {
-		if fi.IsDir() {
-			dirs = append(dirs, fi.Name())
-		} else {
-			files[strings.ToLower(fi.Name())] = fi.Name()
+	names, dirs, _ := c.src.list(dir)
+	var files map[string]string
+	if names != nil {
+		files = make(map[string]string, len(names))
+		for _, n := range names {
+			files[strings.ToLower(n)] = n
 		}
 	}
 	sort.Strings(dirs)
-	return files, dirs
+	c.listed[key] = files
+	c.subdirs[key] = dirs
+	return files
 }
 
 // childDirs returns the subdirectories of dir whose name matches the glob
@@ -229,16 +265,28 @@ func (c *componentFinder) expand(base string, segments []string) []string {
 }
 
 func (c *componentFinder) info(dir, name string) (peInfo, bool) {
-	fp, ok := c.toFsPath(dir + `\` + name)
-	if !ok {
-		return peInfo{}, false
-	}
-	return fsPEVersion(c.fs, fp, peVersionInfo)
+	return c.src.info(dir, name)
 }
 
-// component is one find, before it becomes a package.
+// component is one find, before it becomes a package. machine is the
+// architecture family of its PE image ("x64", "x86", "arm64"), see
+// componentArch for the package architecture.
 type component struct {
-	name, vendor, version, arch, dir string
+	name, vendor, version, machine, dir string
+}
+
+// componentArch maps the architecture family of a PE image onto the
+// architecture a Windows app package carries: the platform's own spelling for
+// the host's family, "x86" for a 32-bit image, the family string otherwise. An
+// unknown machine gives "", which leaves createPackage with the platform's.
+func componentArch(machine string, platform *inventory.Platform) string {
+	if machine == "" {
+		return ""
+	}
+	if platform != nil && machine == windowsArchFamily(platform.Arch) {
+		return platform.Arch
+	}
+	return machine
 }
 
 var (
@@ -354,7 +402,13 @@ func (c *componentFinder) componentsIn(dir string) []component {
 		}
 	}
 
-	// OpenSSL: once per directory, from the first matching library.
+	// OpenSSL: once per directory, from the first matching library, and only
+	// beside a component above. Many unrelated products ship their own
+	// libssl next to a service executable or into a PATH directory; those
+	// vendor copies are not what this reports.
+	if len(out) == 0 {
+		return nil
+	}
 	var libs []string
 	for lower := range files {
 		if opensslLibName.MatchString(lower) {
@@ -411,47 +465,32 @@ func appInstallDirs(pkgs []Package) []bundleDir {
 // PATH, behind a service, or in a fixed folder. A candidate is skipped when
 // an existing package already covers it: one whose install directory equals
 // or contains the component's and whose name holds the component's name.
-func findBundledComponents(fs afero.Fs, toFsPath func(string) (string, bool), pkgs []Package, hints componentHints, platform *inventory.Platform) []Package {
-	if fs == nil {
+func findBundledComponents(src componentSource, pkgs []Package, hints componentHints, platform *inventory.Platform) []Package {
+	if src == nil {
 		return nil
 	}
-	c := &componentFinder{fs: fs, toFsPath: toFsPath, listed: map[string]map[string]string{}, subdirs: map[string][]string{}}
+	c := &componentFinder{src: src, listed: map[string]map[string]string{}, subdirs: map[string][]string{}}
 	bundles := appInstallDirs(pkgs)
 
 	var candidates []string
 	seen := map[string]bool{}
-	add := func(d string) {
-		if k := strings.ToLower(d); d != "" && !seen[k] {
-			seen[k] = true
-			candidates = append(candidates, d)
-		}
-	}
-	for _, b := range bundles {
-		for _, layout := range bundledComponentLayouts {
-			for _, d := range c.expand(b.dir, layout) {
-				add(d)
-			}
-		}
-	}
-	for _, d := range hints.candidateDirs() {
-		add(d)
-	}
-	add(`C:\php`)
-	for _, d := range c.childDirs(`C:\tools`, "php*") {
-		add(d)
-	}
-	for _, p := range hints.Profiles {
-		apps := strings.TrimRight(strings.ReplaceAll(strings.TrimSpace(p.Dir), "/", `\`), `\`) + `\scoop\apps\php`
-		if normalizeWindowsDir(apps, nil) == "" {
-			continue
-		}
-		versions := c.childDirs(apps, "*")
-		for _, d := range versions {
+	for _, spec := range componentProbeSpecs(bundles, hints) {
+		dirs := c.expand(spec.base, spec.segments)
+		if spec.skipCurrent && len(dirs) > 1 {
 			// "current" is a junction to a versioned directory.
-			if len(versions) > 1 && strings.EqualFold(path.Base(strings.ReplaceAll(d, `\`, "/")), "current") {
-				continue
+			kept := dirs[:0:0]
+			for _, d := range dirs {
+				if !strings.EqualFold(path.Base(strings.ReplaceAll(d, `\`, "/")), "current") {
+					kept = append(kept, d)
+				}
 			}
-			add(d)
+			dirs = kept
+		}
+		for _, d := range dirs {
+			if k := strings.ToLower(d); !seen[k] {
+				seen[k] = true
+				candidates = append(candidates, d)
+			}
 		}
 	}
 
@@ -462,10 +501,10 @@ func findBundledComponents(fs afero.Fs, toFsPath func(string) (string, bool), pk
 				log.Debug().Str("component", comp.name).Str("dir", comp.dir).Msg("component already covered by a package")
 				continue
 			}
-			if addComponentLocation(found, comp) {
+			if addComponentLocation(found, comp, platform) {
 				continue
 			}
-			pkg := createPackage(comp.name, comp.version, "windows/app", comp.arch, comp.vendor, comp.dir, platform)
+			pkg := createPackage(comp.name, comp.version, "windows/app", componentArch(comp.machine, platform), comp.vendor, comp.dir, platform)
 			pkg.InstallScope = installScopeMachine
 			pkg.Origin = originOf(bundles, comp.dir)
 			found = append(found, *pkg)
@@ -495,10 +534,10 @@ func coveredByPackage(pkgs []Package, comp component) bool {
 // found package of the same name, version and architecture. Packages with that
 // identity are one row in the package list, so a second copy is evidence of
 // the first.
-func addComponentLocation(found []Package, comp component) bool {
+func addComponentLocation(found []Package, comp component, platform *inventory.Platform) bool {
 	for i := range found {
 		p := &found[i]
-		if p.Name == comp.name && p.Version == comp.version && p.Arch == comp.arch {
+		if p.Name == comp.name && p.Version == comp.version && p.Arch == componentArch(comp.machine, platform) {
 			p.Files = append(p.Files, FileRecord{Path: comp.dir})
 			return true
 		}
@@ -519,21 +558,280 @@ func originOf(bundles []bundleDir, dir string) string {
 	return origin
 }
 
+// probeSpec names the directories to check: base, then one directory level
+// per segment, where a segment with a wildcard matches any number of
+// directories. A spec without segments is the directory itself.
+type probeSpec struct {
+	base     string
+	segments []string
+	// skipCurrent drops a directory named "current" when others matched,
+	// scoop's junction to the active version.
+	skipCurrent bool
+}
+
+// componentProbeSpecs lists where to look, in the order the packages come out:
+// the layouts inside other apps, the directories the machine points at, and
+// the fixed folders.
+func componentProbeSpecs(bundles []bundleDir, hints componentHints) []probeSpec {
+	var specs []probeSpec
+	for _, b := range bundles {
+		for _, layout := range bundledComponentLayouts {
+			specs = append(specs, probeSpec{base: b.dir, segments: layout})
+		}
+	}
+	for _, d := range hints.candidateDirs() {
+		specs = append(specs, probeSpec{base: d})
+	}
+	specs = append(specs, probeSpec{base: `C:\php`}, probeSpec{base: `C:\tools`, segments: []string{"php*"}})
+	for _, p := range hints.Profiles {
+		apps := strings.TrimRight(strings.ReplaceAll(strings.TrimSpace(p.Dir), "/", `\`), `\`) + `\scoop\apps\php`
+		if normalizeWindowsDir(apps, nil) == "" {
+			continue
+		}
+		specs = append(specs, probeSpec{base: apps, segments: []string{"*"}, skipCurrent: true})
+	}
+	return specs
+}
+
+// remoteSafeString reports whether s can sit in a single-quoted PowerShell
+// literal, or in the "|" separated spec list: no quote character PowerShell
+// accepts, no control character, no "|" (not valid in a Windows path).
+func remoteSafeString(s string) bool {
+	return !strings.ContainsAny(s, "'|\u2018\u2019\u201a\u201b") &&
+		strings.IndexFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f }) < 0
+}
+
+// componentProbeScript returns a PowerShell script that expands the specs as
+// componentFinder.expand does and prints, as JSON, the relevant files of every
+// directory it lists plus the version resource and machine of the executables
+// the confirmation logic reads. Only names componentFiles matches are
+// returned, so a directory with thousands of files stays small. The libraries
+// are read only where a component executable is, since OpenSSL is only
+// reported beside one. A spec with a character that could break out of the
+// literal is left out.
+func componentProbeScript(specs []probeSpec) (string, bool) {
+	quoted := make([]string, 0, len(specs))
+specs:
+	for _, s := range specs {
+		parts := append([]string{s.base}, s.segments...)
+		for _, p := range parts {
+			if !remoteSafeString(p) {
+				continue specs
+			}
+		}
+		skip := "0"
+		if s.skipCurrent {
+			skip = "1"
+		}
+		quoted = append(quoted, "'"+skip+"|"+strings.Join(parts, "|")+"'")
+	}
+	if len(quoted) == 0 {
+		return "", false
+	}
+	return `$ErrorActionPreference = 'SilentlyContinue'
+$specs = @(` + strings.Join(quoted, ",") + `)
+$wanted = '^(php\d*(ts)?\.dll|php\.exe|httpd\.exe|mysqld\.exe|mariadbd\.exe|libssl[^\\/]*\.dll|ssleay32\.dll)$'
+$exes = '^(php|httpd|mysqld|mariadbd)\.exe$'
+$libs = '^(libssl[^\\/]*|ssleay32)\.dll$'
+$listed = @{}
+$out = New-Object System.Collections.Generic.List[object]
+function Get-Machine($p) {
+    try {
+        $s = [IO.File]::OpenRead($p)
+        try {
+            $b = New-Object byte[] 64
+            if ($s.Read($b, 0, 64) -lt 64) { return 0 }
+            $off = [BitConverter]::ToInt32($b, 60)
+            if ($off -lt 0 -or $off -gt 1048576) { return 0 }
+            $s.Position = $off
+            $h = New-Object byte[] 6
+            if ($s.Read($h, 0, 6) -lt 6) { return 0 }
+            if ($h[0] -ne 80 -or $h[1] -ne 69 -or $h[2] -ne 0 -or $h[3] -ne 0) { return 0 }
+            return [int][BitConverter]::ToUInt16($h, 4)
+        } finally { $s.Dispose() }
+    } catch { return 0 }
+}
+function Add-Dir($d, $withDirs) {
+    $key = $d.ToLowerInvariant()
+    if ($listed.ContainsKey($key)) {
+        if ($withDirs -and -not $listed[$key].DirsDone) {
+            $listed[$key].Entry.Dirs = @(Get-ChildItem -LiteralPath $d -Force -Directory | Select-Object -First 256 -ExpandProperty Name)
+            $listed[$key].DirsDone = $true
+        }
+        return
+    }
+    $entry = [ordered]@{ Path = $d; Files = @(); Dirs = @(); Infos = @() }
+    $listed[$key] = @{ Entry = $entry; DirsDone = [bool]$withDirs }
+    if (-not (Test-Path -LiteralPath $d -PathType Container)) { $entry.Missing = $true; return }
+    $files = @(Get-ChildItem -LiteralPath $d -Force -File | Where-Object { $_.Name -match $wanted })
+    $entry.Files = @($files | ForEach-Object { $_.Name })
+    if ($withDirs) { $entry.Dirs = @(Get-ChildItem -LiteralPath $d -Force -Directory | Select-Object -First 256 -ExpandProperty Name) }
+    $hasExe = @($files | Where-Object { $_.Name -match $exes }).Count -gt 0
+    $infos = @()
+    foreach ($f in $files) {
+        if (-not (($f.Name -match $exes) -or ($hasExe -and $f.Name -match $libs))) { continue }
+        $v = $f.VersionInfo
+        $infos += [pscustomobject]@{
+            Name = $f.Name; ProductName = [string]$v.ProductName; CompanyName = [string]$v.CompanyName
+            ProductVersion = [string]$v.ProductVersion
+            File = ('{0}.{1}.{2}.{3}' -f $v.FileMajorPart, $v.FileMinorPart, $v.FileBuildPart, $v.FilePrivatePart)
+            Machine = Get-Machine $f.FullName
+        }
+    }
+    $entry.Infos = $infos
+    $out.Add($entry)
+}
+foreach ($spec in $specs) {
+    $parts = $spec.Split('|')
+    $dirs = @($parts[1])
+    for ($i = 2; $i -lt $parts.Length; $i++) {
+        $seg = $parts[$i]
+        $next = @()
+        foreach ($d in $dirs) {
+            if ($seg -match '[*?\[]') {
+                Add-Dir $d $true
+                $next += @(Get-ChildItem -LiteralPath $d -Force -Directory | Where-Object { $_.Name -like $seg } | Select-Object -First 64 | ForEach-Object { $_.FullName })
+            } else {
+                $next += ($d.TrimEnd('\') + '\' + $seg)
+            }
+        }
+        $dirs = $next
+    }
+    if ($parts[0] -eq '1' -and $dirs.Count -gt 1) { $dirs = @($dirs | Where-Object { (Split-Path $_ -Leaf) -ne 'current' }) }
+    foreach ($d in $dirs) { Add-Dir $d $false }
+}
+ConvertTo-Json -InputObject @($out) -Compress -Depth 5
+`, true
+}
+
+// psComponentInfo is one executable of componentProbeScript's output. The
+// strings may be null or {} (Windows PowerShell 5.1) when the resource has none.
+type psComponentInfo struct {
+	Name           string
+	ProductName    psOptionalString
+	CompanyName    psOptionalString
+	ProductVersion psOptionalString
+	File           string
+	Machine        int
+}
+
+type psComponentDir struct {
+	Path  string
+	Files psList[string]
+	Dirs  psList[string]
+	Infos psList[psComponentInfo]
+}
+
+// remoteComponentSource serves what componentProbeScript printed.
+type remoteComponentSource struct {
+	dirs  map[string]psComponentDir // lower-cased path
+	infos map[string]peInfo         // lower-cased path + "\x00" + lower-cased name
+}
+
+func peMachineFromNumber(m int) string {
+	if m < 0 || m > 0xffff {
+		return ""
+	}
+	return peMachineArch(uint16(m))
+}
+
+// parseComponentProbe reads componentProbeScript's output.
+func parseComponentProbe(r io.Reader) (*remoteComponentSource, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	src := &remoteComponentSource{dirs: map[string]psComponentDir{}, infos: map[string]peInfo{}}
+	s := strings.TrimSpace(string(data))
+	if s == "" {
+		return src, nil
+	}
+	var dirs psList[psComponentDir]
+	if err := json.Unmarshal([]byte(s), &dirs); err != nil {
+		return nil, err
+	}
+	for _, d := range dirs {
+		key := strings.ToLower(d.Path)
+		src.dirs[key] = d
+		for _, i := range d.Infos {
+			info := peInfo{Machine: peMachineFromNumber(i.Machine)}
+			if v, ok := windowsNumericVersion(i.File); ok && compareWindowsNumericVersions(v, nil) != 0 {
+				info.File = v
+			} else if i.ProductVersion.v == nil || strings.TrimSpace(*i.ProductVersion.v) == "" {
+				continue
+			}
+			if i.ProductVersion.v != nil {
+				info.ProductVersion = strings.TrimSpace(*i.ProductVersion.v)
+			}
+			if i.ProductName.v != nil {
+				info.ProductName = strings.TrimSpace(*i.ProductName.v)
+			}
+			if i.CompanyName.v != nil {
+				info.CompanyName = strings.TrimSpace(*i.CompanyName.v)
+			}
+			src.infos[key+"\x00"+strings.ToLower(i.Name)] = info
+		}
+	}
+	return src, nil
+}
+
+func (s *remoteComponentSource) list(dir string) (files, dirs []string, ok bool) {
+	d, found := s.dirs[strings.ToLower(dir)]
+	if !found || len(d.Files)+len(d.Dirs) == 0 {
+		return nil, nil, false
+	}
+	return d.Files, d.Dirs, true
+}
+
+func (s *remoteComponentSource) info(dir, name string) (peInfo, bool) {
+	i, ok := s.infos[strings.ToLower(dir)+"\x00"+strings.ToLower(name)]
+	return i, ok
+}
+
+// remoteComponentSource reads everything the finder may ask for with one
+// PowerShell run. The specs are those the finder will expand, computed from
+// the same packages and hints.
+func (w *WinPkgManager) remoteComponentSource(pkgs []Package, hints componentHints) componentSource {
+	script, ok := componentProbeScript(componentProbeSpecs(appInstallDirs(pkgs), hints))
+	if !ok {
+		return nil
+	}
+	cmd, err := w.conn.RunCommand(powershell.Encode(script))
+	if err != nil || cmd.ExitStatus != 0 {
+		log.Debug().Err(err).Msg("could not probe component directories on the target")
+		return nil
+	}
+	src, err := parseComponentProbe(cmd.Stdout)
+	if err != nil {
+		log.Debug().Err(err).Msg("could not parse component directories of the target")
+		return nil
+	}
+	return src
+}
+
 // bundledComponents adds the components the machine's files show. Nothing in
 // here fails the package list: a source that can't be read is skipped.
+//
+// A remote scan (WinRM, SSH) reads through PowerShell, in two runs: the hints,
+// then the directories. Local Windows and offline images read files directly.
 func (w *WinPkgManager) bundledComponents(pkgs []Package) []Package {
-	toFs := nativeWindowsPath
 	var hints componentHints
+	var src componentSource
 	switch {
 	case w.conn.Type() == shared.Type_FileSystem || w.conn.Type() == shared.Type_Device:
-		toFs = mountedSystemDrivePath
 		hints = w.offlineComponentHints()
+		src = fsComponentSource{fs: w.conn.FileSystem(), toFsPath: mountedSystemDrivePath}
 	case w.conn.Capabilities().Has(shared.Capability_RunCommand):
 		hints = w.remoteComponentHints()
+		if w.conn.Type() == shared.Type_Local && runtime.GOOS == "windows" {
+			src = fsComponentSource{fs: w.conn.FileSystem(), toFsPath: nativeWindowsPath}
+		} else {
+			src = w.remoteComponentSource(pkgs, hints)
+		}
 	default:
-		log.Debug().Msg("cannot read PATH and services of the target, probing install directories and fixed folders only")
+		log.Debug().Msg("cannot read the target, skipping bundled components")
 	}
-	return findBundledComponents(w.conn.FileSystem(), toFs, pkgs, hints, w.platform)
+	return findBundledComponents(src, pkgs, hints, w.platform)
 }
 
 // componentHintsScript prints the machine PATH, the service ImagePaths and

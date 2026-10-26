@@ -78,7 +78,7 @@ func summary(pkgs []Package) []string {
 }
 
 func find(fs afero.Fs, pkgs []Package, hints componentHints) []Package {
-	return findBundledComponents(fs, mountedSystemDrivePath, pkgs, hints, winX64Platform())
+	return findBundledComponents(fsComponentSource{fs: fs, toFsPath: mountedSystemDrivePath}, pkgs, hints, winX64Platform())
 }
 
 func TestFindBundledComponentsXampp(t *testing.T) {
@@ -112,18 +112,18 @@ func TestFindBundledComponentsXampp(t *testing.T) {
 	}
 	got := find(fs, pkgs, hints)
 	assert.Equal(t, []string{
-		`PHP|7.3.2|x64|The PHP Group|origin=XAMPP|C:\xampp\php`,
-		`Apache HTTP Server|2.4.38|x64|Apache Software Foundation|origin=XAMPP|C:\xampp\apache\bin`,
-		`OpenSSL|1.1.1a|x64|The OpenSSL Project|origin=XAMPP|C:\xampp\apache\bin`,
-		`MariaDB|10.1.38.0|x64|MariaDB|origin=XAMPP|C:\xampp\mysql\bin`,
-		`PHP|7.3.33|x64|The PHP Group|origin=|C:\php`,
-		`PHP|8.4.27|x64|The PHP Group|origin=|C:\tools\php84`,
+		`PHP|7.3.2|x86_64|The PHP Group|origin=XAMPP|C:\xampp\php`,
+		`Apache HTTP Server|2.4.38|x86_64|Apache Software Foundation|origin=XAMPP|C:\xampp\apache\bin`,
+		`OpenSSL|1.1.1a|x86_64|The OpenSSL Project|origin=XAMPP|C:\xampp\apache\bin`,
+		`MariaDB|10.1.38.0|x86_64|MariaDB|origin=XAMPP|C:\xampp\mysql\bin`,
+		`PHP|7.3.33|x86_64|The PHP Group|origin=|C:\php`,
+		`PHP|8.4.27|x86_64|The PHP Group|origin=|C:\tools\php84`,
 	}, summary(got))
 
 	php := got[0]
 	assert.Equal(t, "windows/app", php.Format)
 	assert.Contains(t, php.PUrl, "PHP@7.3.2")
-	assert.Contains(t, php.PUrl, "arch=x64")
+	assert.Contains(t, php.PUrl, "arch=x86_64")
 	assert.NotEmpty(t, php.CPEs)
 	assert.Equal(t, installScopeMachine, php.InstallScope)
 }
@@ -142,11 +142,11 @@ func TestFindBundledComponentsLayouts(t *testing.T) {
 
 	got := find(fs, []Package{appPkg("WampServer", `C:\wamp64`), appPkg("Laragon", `C:\laragon`)}, componentHints{})
 	assert.ElementsMatch(t, []string{
-		`PHP|8.2.0|x64|The PHP Group|origin=WampServer|C:\wamp64\bin\php\php8.2.0`,
-		`Apache HTTP Server|2.4.38|x64|Apache Software Foundation|origin=WampServer|C:\wamp64\bin\apache\apache2.4.54\bin`,
-		`MariaDB|10.10.2|x64|MariaDB|origin=WampServer|C:\wamp64\bin\mariadb\mariadb10.10.2\bin`,
-		`PHP|8.1.10|x64|The PHP Group|origin=Laragon|C:\laragon\bin\php\php-8.1.10-Win32-vs16-x64`,
-		`MySQL Server|8.0.30|x64|Oracle Corporation|origin=Laragon|C:\laragon\bin\mysql\mysql-8.0.30-winx64\bin`,
+		`PHP|8.2.0|x86_64|The PHP Group|origin=WampServer|C:\wamp64\bin\php\php8.2.0`,
+		`Apache HTTP Server|2.4.38|x86_64|Apache Software Foundation|origin=WampServer|C:\wamp64\bin\apache\apache2.4.54\bin`,
+		`MariaDB|10.10.2|x86_64|MariaDB|origin=WampServer|C:\wamp64\bin\mariadb\mariadb10.10.2\bin`,
+		`PHP|8.1.10|x86_64|The PHP Group|origin=Laragon|C:\laragon\bin\php\php-8.1.10-Win32-vs16-x64`,
+		`MySQL Server|8.0.30|x86_64|Oracle Corporation|origin=Laragon|C:\laragon\bin\mysql\mysql-8.0.30-winx64\bin`,
 	}, summary(got))
 }
 
@@ -180,7 +180,7 @@ func TestFindBundledComponentsConfirmation(t *testing.T) {
 		{"upper-case file names, as an image mounted on a POSIX scanner shows them", func(t *testing.T, fs afero.Fs) {
 			phpBin(`php/PHP.EXE`, "7.3.33", [4]uint16{7, 3, 33, 0}).write(t, fs)
 			writeStub(t, fs, `php/PHP7TS.DLL`)
-		}, []string{`PHP|7.3.33|x64|The PHP Group|origin=|C:\php`}},
+		}, []string{`PHP|7.3.33|x86_64|The PHP Group|origin=|C:\php`}},
 		{"x86 binary", func(t *testing.T, fs afero.Fs) {
 			b := phpBin(`php/php.exe`, "5.6.40", [4]uint16{5, 6, 40, 0})
 			b.machine = pe.IMAGE_FILE_MACHINE_I386
@@ -244,7 +244,7 @@ func TestFindBundledComponentsDedup(t *testing.T) {
 	})
 	t.Run("a package of another name does not cover it", func(t *testing.T) {
 		got := find(setup(t), []Package{appPkg("Some Tool", `C:\Program Files\MariaDB 10.6`)}, hints)
-		assert.Equal(t, []string{`MariaDB|10.6.12|x64|MariaDB|origin=Some Tool|C:\Program Files\MariaDB 10.6\bin`}, summary(got))
+		assert.Equal(t, []string{`MariaDB|10.6.12|x86_64|MariaDB|origin=Some Tool|C:\Program Files\MariaDB 10.6\bin`}, summary(got))
 	})
 	t.Run("a package of that name elsewhere does not cover it", func(t *testing.T) {
 		got := find(setup(t), []Package{appPkg("MariaDB 10.5", `C:\Program Files\MariaDB 10.5`)}, hints)
@@ -280,7 +280,7 @@ func TestFindBundledComponentsSameVersionTwice(t *testing.T) {
 		writeStub(t, fs, d+`/php7ts.dll`)
 	}
 	got := find(fs, nil, componentHints{})
-	assert.Equal(t, []string{`PHP|7.4.33|x64|The PHP Group|origin=|C:\php,C:\tools\php74`}, summary(got))
+	assert.Equal(t, []string{`PHP|7.4.33|x86_64|The PHP Group|origin=|C:\php,C:\tools\php74`}, summary(got))
 }
 
 func TestFindBundledComponentsScoop(t *testing.T) {
@@ -297,7 +297,7 @@ func TestFindBundledComponentsScoop(t *testing.T) {
 	hints := componentHints{Profiles: []componentProfile{{Dir: `C:\Users\alice`}}}
 	t.Run("current is skipped beside a versioned directory", func(t *testing.T) {
 		got := find(mk(t, `Users/alice/scoop/apps/php/8.3.1`, `Users/alice/scoop/apps/php/current`), nil, hints)
-		assert.Equal(t, []string{`PHP|8.3.1|x64|The PHP Group|origin=|C:\Users\alice\scoop\apps\php\8.3.1`}, summary(got))
+		assert.Equal(t, []string{`PHP|8.3.1|x86_64|The PHP Group|origin=|C:\Users\alice\scoop\apps\php\8.3.1`}, summary(got))
 	})
 	t.Run("current alone is kept", func(t *testing.T) {
 		got := find(mk(t, `Users/alice/scoop/apps/php/current`), nil, hints)
@@ -306,7 +306,7 @@ func TestFindBundledComponentsScoop(t *testing.T) {
 }
 
 func TestFindBundledComponentsNoFilesystem(t *testing.T) {
-	assert.Nil(t, findBundledComponents(nil, nativeWindowsPath, nil, componentHints{}, winX64Platform()))
+	assert.Nil(t, findBundledComponents(nil, nil, componentHints{}, winX64Platform()))
 	// An empty filesystem yields nothing and does not fail.
 	assert.Empty(t, find(afero.NewMemMapFs(), []Package{appPkg("XAMPP", `C:\xampp`)}, componentHints{MachinePath: `C:\php`}))
 }
@@ -429,4 +429,150 @@ func TestExpandComponentEnv(t *testing.T) {
 	assert.Equal(t, `C:\Users\a\bin`, expandComponentEnv(`%USERPROFILE%\bin`, `C:\Users\a`))
 	assert.Equal(t, `%USERPROFILE%\bin`, expandComponentEnv(`%USERPROFILE%\bin`, ""), "no profile: left for the caller to reject")
 	assert.Equal(t, `C:\Program Files (x86)\x`, expandComponentEnv(`%ProgramFiles(x86)%\x`, ""))
+}
+
+func TestFindBundledComponentsOpenSSLNeedsAComponent(t *testing.T) {
+	// Synthetic: unrelated products ship their own libssl next to a service
+	// executable or into a PATH directory. Those copies are out of scope, only
+	// a libssl beside PHP, Apache or MariaDB/MySQL is reported.
+	fs := afero.NewMemMapFs()
+	sslBin(`vendor/svc/libssl-3-x64.dll`).write(t, fs)
+	writeStub(t, fs, `vendor/svc/agent.exe`)
+	sslBin(`tools/bin/libssl-3-x64.dll`).write(t, fs)
+	hints := componentHints{
+		MachinePath: `C:\tools\bin`,
+		Services:    []string{`"C:\vendor\svc\agent.exe" --run`},
+	}
+	assert.Empty(t, find(fs, nil, hints))
+
+	// The same library next to a php.exe is reported.
+	phpBin(`tools/bin/php.exe`, "8.2.0", [4]uint16{8, 2, 0, 0}).write(t, fs)
+	writeStub(t, fs, `tools/bin/php8.dll`)
+	assert.Equal(t, []string{
+		`PHP|8.2.0|x86_64|The PHP Group|origin=|C:\tools\bin`,
+		`OpenSSL|1.1.1a|x86_64|The OpenSSL Project|origin=|C:\tools\bin`,
+	}, summary(find(fs, nil, hints)))
+}
+
+func TestComponentArch(t *testing.T) {
+	// Synthetic: platform spellings; Windows app packages carry the platform's
+	// own architecture string for the host's family and "x86" for 32-bit.
+	x64 := winX64Platform()
+	arm := winX64Platform()
+	arm.Arch = "arm64"
+	x86Host := winX64Platform()
+	x86Host.Arch = "x86"
+	assert.Equal(t, "x86_64", componentArch("x64", x64))
+	assert.Equal(t, "x86", componentArch("x86", x64))
+	assert.Equal(t, "arm64", componentArch("arm64", arm))
+	assert.Equal(t, "x64", componentArch("x64", arm), "emulated x64 on an arm64 host")
+	assert.Equal(t, "x86", componentArch("x86", x86Host))
+	assert.Equal(t, "x64", componentArch("x64", nil))
+	assert.Equal(t, "", componentArch("", x64))
+}
+
+func TestComponentProbeScript(t *testing.T) {
+	// Synthetic: specs that must and must not reach the script.
+	script, ok := componentProbeScript([]probeSpec{
+		{base: `C:\xampp`, segments: []string{"apache", "bin"}},
+		{base: `C:\Users\alice\scoop\apps\php`, segments: []string{"*"}, skipCurrent: true},
+		{base: `C:\it's`},
+		{base: "C:\\a\u2019b"},
+		{base: "C:\\a\nb"},
+		{base: `C:\a|b`},
+		{base: `C:\ok`, segments: []string{"x'y"}},
+	})
+	require.True(t, ok)
+	assert.Contains(t, script, `'0|C:\xampp|apache|bin'`)
+	assert.Contains(t, script, `'1|C:\Users\alice\scoop\apps\php|*'`)
+	assert.Contains(t, script, `OpenRead`, "the machine is read from the header bytes")
+	assert.NotContains(t, script, "it's")
+	assert.NotContains(t, script, "\u2019")
+	assert.NotContains(t, script, `a|b`)
+	assert.NotContains(t, script, `x'y`)
+
+	_, ok = componentProbeScript([]probeSpec{{base: `C:\it's`}})
+	assert.False(t, ok)
+	_, ok = componentProbeScript(nil)
+	assert.False(t, ok)
+}
+
+// remoteProbeFixture is componentProbeScript's output for a XAMPP host,
+// shaped as Windows PowerShell 5.1 writes it: a single Infos element is an
+// object and not an array, a string without a value is null or {}.
+// Machine 34404 is IMAGE_FILE_MACHINE_AMD64.
+//
+// Measured: Azure Windows Server 2022, XAMPP 7.3.2, 2026-10-26, for the
+// version resources; the JSON itself is written by hand in the shape of the
+// script, not captured from it.
+const remoteProbeFixture = `[
+ {"Path":"C:\\xampp\\php","Files":["php.exe","php7ts.dll","php7apache2_4.dll"],"Dirs":[],
+  "Infos":{"Name":"php.exe","ProductName":"PHP","CompanyName":"The PHP Group","ProductVersion":"7.3.2","File":"7.3.2.0","Machine":34404}},
+ {"Path":"C:\\xampp\\apache\\bin","Files":["httpd.exe","libssl-1_1-x64.dll"],"Dirs":{},
+  "Infos":[
+   {"Name":"httpd.exe","ProductName":"Apache HTTP Server","CompanyName":"Apache Software Foundation","ProductVersion":"2.4.38","File":"2.4.38.0","Machine":34404},
+   {"Name":"libssl-1_1-x64.dll","ProductName":"The OpenSSL Toolkit","CompanyName":"The OpenSSL Project, https://www.openssl.org/","ProductVersion":"1.1.1a","File":"1.1.1.1","Machine":34404}]},
+ {"Path":"C:\\xampp\\mysql\\bin","Files":"mysqld.exe","Dirs":null,
+  "Infos":{"Name":"mysqld.exe","ProductName":{},"CompanyName":null,"ProductVersion":"10.1.38.0","File":"10.1.38.0","Machine":34404}},
+ {"Path":"C:\\Users\\alice\\scoop\\apps\\php","Files":[],"Dirs":["8.3.1","current"],"Infos":[]},
+ {"Path":"C:\\Users\\alice\\scoop\\apps\\php\\8.3.1","Files":["php.exe","php8ts.dll"],"Dirs":[],
+  "Infos":{"Name":"php.exe","ProductName":"PHP","CompanyName":"The PHP Group","ProductVersion":"8.3.1","File":"8.3.1.0","Machine":332}},
+ {"Path":"C:\\Users\\alice\\scoop\\apps\\php\\current","Files":["php.exe","php8ts.dll"],"Dirs":[],
+  "Infos":{"Name":"php.exe","ProductName":"PHP","CompanyName":"The PHP Group","ProductVersion":"8.3.1","File":"8.3.1.0","Machine":332}}
+]`
+
+func TestParseComponentProbe(t *testing.T) {
+	src, err := parseComponentProbe(strings.NewReader(remoteProbeFixture))
+	require.NoError(t, err)
+
+	files, dirs, ok := src.list(`C:\XAMPP\PHP`)
+	assert.True(t, ok, "directory names compare case-insensitively")
+	assert.Equal(t, []string{"php.exe", "php7ts.dll", "php7apache2_4.dll"}, files)
+	assert.Empty(t, dirs)
+
+	files, _, ok = src.list(`C:\xampp\mysql\bin`)
+	assert.True(t, ok)
+	assert.Equal(t, []string{"mysqld.exe"}, files, "a single string, not an array")
+
+	_, _, ok = src.list(`C:\nowhere`)
+	assert.False(t, ok)
+
+	info, ok := src.info(`C:\xampp\mysql\bin`, "MYSQLD.EXE")
+	require.True(t, ok)
+	assert.Equal(t, peInfo{File: []uint64{10, 1, 38, 0}, ProductVersion: "10.1.38.0", Machine: "x64"}, info, "null and {} names are empty")
+
+	info, ok = src.info(`C:\xampp\apache\bin`, "libssl-1_1-x64.dll")
+	require.True(t, ok)
+	assert.Equal(t, "1.1.1a", info.ProductVersion)
+	assert.Equal(t, []uint64{1, 1, 1, 1}, info.File)
+
+	_, ok = src.info(`C:\xampp\php`, "httpd.exe")
+	assert.False(t, ok)
+
+	empty, err := parseComponentProbe(strings.NewReader("  "))
+	require.NoError(t, err)
+	_, _, ok = empty.list(`C:\xampp\php`)
+	assert.False(t, ok)
+	empty, err = parseComponentProbe(strings.NewReader("[]"))
+	require.NoError(t, err)
+	_, _, ok = empty.list(`C:\xampp\php`)
+	assert.False(t, ok)
+
+	_, err = parseComponentProbe(strings.NewReader("not json"))
+	assert.Error(t, err)
+}
+
+func TestFindBundledComponentsRemote(t *testing.T) {
+	src, err := parseComponentProbe(strings.NewReader(remoteProbeFixture))
+	require.NoError(t, err)
+	hints := componentHints{Profiles: []componentProfile{{Dir: `C:\Users\alice`}}}
+	got := findBundledComponents(src, []Package{appPkg("XAMPP", `C:\xampp`)}, hints, winX64Platform())
+	assert.Equal(t, []string{
+		`PHP|7.3.2|x86_64|The PHP Group|origin=XAMPP|C:\xampp\php`,
+		`Apache HTTP Server|2.4.38|x86_64|Apache Software Foundation|origin=XAMPP|C:\xampp\apache\bin`,
+		`OpenSSL|1.1.1a|x86_64|The OpenSSL Project|origin=XAMPP|C:\xampp\apache\bin`,
+		`MariaDB|10.1.38.0|x86_64|MariaDB|origin=XAMPP|C:\xampp\mysql\bin`,
+		// Synthetic: a 32-bit scoop install; "current" is skipped beside 8.3.1.
+		`PHP|8.3.1|x86|The PHP Group|origin=|C:\Users\alice\scoop\apps\php\8.3.1`,
+	}, summary(got))
 }
