@@ -1771,6 +1771,9 @@ func (w *WinPkgManager) List() ([]Package, error) {
 	// the target before it is attached (windows_dotnet_paths.go).
 	if w.conn.Capabilities().Has(shared.Capability_File) {
 		fillDotNetInstallPaths(w.conn.FileSystem(), appPkgs)
+		// PHP, Apache, MariaDB/MySQL and OpenSSL inside XAMPP and friends,
+		// or unzipped, have no entry of their own (windows_bundled_components.go).
+		appPkgs = append(appPkgs, w.bundledComponents(appPkgs)...)
 	}
 	pkgs = append(pkgs, appPkgs...)
 

@@ -65,29 +65,92 @@ func peProductVersion(r io.ReaderAt) (string, bool) {
 // StringFileInfo ProductVersion string, which is empty when the resource has
 // none or it is malformed.
 func peFixedVersions(r io.ReaderAt) (file []uint64, product string, ok bool) {
-	f, err := pe.NewFile(r)
-	if err != nil {
+	info, ok := peVersionInfo(r)
+	if !ok {
 		return nil, "", false
 	}
+	return info.File, info.ProductVersion, true
+}
+
+// peInfo is what a PE image's version resource and header say about it.
+type peInfo struct {
+	// File is the fixed file version.
+	File []uint64
+	// ProductVersion, ProductName and CompanyName are StringFileInfo strings,
+	// empty when the resource has none or it is malformed.
+	ProductVersion string
+	ProductName    string
+	CompanyName    string
+	// Machine is the architecture of the image in the vocabulary of the
+	// package architectures ("x64", "x86", "arm64"), empty for any other
+	// machine type.
+	Machine string
+}
+
+// peMachineArch maps the PE header machine onto a package architecture.
+func peMachineArch(m uint16) string {
+	switch m {
+	case pe.IMAGE_FILE_MACHINE_AMD64:
+		return "x64"
+	case pe.IMAGE_FILE_MACHINE_I386:
+		return "x86"
+	case pe.IMAGE_FILE_MACHINE_ARM64:
+		return "arm64"
+	}
+	return ""
+}
+
+// peVersionInfo reads the fixed file version, the StringFileInfo strings the
+// package code needs and the machine of a PE image. It fails in the same
+// cases as peFileVersion.
+func peVersionInfo(r io.ReaderAt) (peInfo, bool) {
+	f, err := pe.NewFile(r)
+	if err != nil {
+		return peInfo{}, false
+	}
 	defer f.Close()
+	info, ok := peReadVersion(f)
+	if !ok {
+		return peInfo{}, false
+	}
+	info.Machine = peMachineArch(f.FileHeader.Machine)
+	return info, true
+}
+
+func peReadVersion(f *pe.File) (peInfo, bool) {
+	file, product, block, ok := peVersionBlock(f)
+	if !ok {
+		return peInfo{}, false
+	}
+	info := peInfo{File: file, ProductVersion: product}
+	if block != nil {
+		info.ProductName = versionInfoString(block, "ProductName")
+		info.CompanyName = versionInfoString(block, "CompanyName")
+	}
+	return info, true
+}
+
+// peVersionBlock returns the fixed file version, the ProductVersion string
+// and the raw VS_VERSIONINFO block (nil when it is too short to hold strings).
+func peVersionBlock(f *pe.File) (file []uint64, product string, strBlock []byte, ok bool) {
 
 	var rsrcRVA uint32
 	switch oh := f.OptionalHeader.(type) {
 	case *pe.OptionalHeader32:
 		if oh.NumberOfRvaAndSizes <= peResourceDirectoryEntry {
-			return nil, "", false
+			return nil, "", nil, false
 		}
 		rsrcRVA = oh.DataDirectory[peResourceDirectoryEntry].VirtualAddress
 	case *pe.OptionalHeader64:
 		if oh.NumberOfRvaAndSizes <= peResourceDirectoryEntry {
-			return nil, "", false
+			return nil, "", nil, false
 		}
 		rsrcRVA = oh.DataDirectory[peResourceDirectoryEntry].VirtualAddress
 	default:
-		return nil, "", false
+		return nil, "", nil, false
 	}
 	if rsrcRVA == 0 {
-		return nil, "", false
+		return nil, "", nil, false
 	}
 
 	// readRVA reads n bytes at a relative virtual address, from whichever
@@ -136,7 +199,7 @@ func peFixedVersions(r io.ReaderAt) (file []uint64, product string, ok bool) {
 
 	root, ok := entries(0)
 	if !ok {
-		return nil, "", false
+		return nil, "", nil, false
 	}
 	var next uint32
 	found := false
@@ -147,20 +210,20 @@ func peFixedVersions(r io.ReaderAt) (file []uint64, product string, ok bool) {
 		}
 	}
 	if !found {
-		return nil, "", false
+		return nil, "", nil, false
 	}
 	// Name level, then language level: the first of each.
 	names, ok := entries(next)
 	if !ok || names[0].offset&subdir == 0 {
-		return nil, "", false
+		return nil, "", nil, false
 	}
 	langs, ok := entries(names[0].offset &^ subdir)
 	if !ok || langs[0].offset&subdir != 0 {
-		return nil, "", false
+		return nil, "", nil, false
 	}
 	dataEntry, ok := readRVA(rsrcRVA+langs[0].offset, 16)
 	if !ok {
-		return nil, "", false
+		return nil, "", nil, false
 	}
 	dataRVA := binary.LittleEndian.Uint32(dataEntry[0:])
 	dataSize := binary.LittleEndian.Uint32(dataEntry[4:])
@@ -169,34 +232,35 @@ func peFixedVersions(r io.ReaderAt) (file []uint64, product string, ok bool) {
 	// padding to 32 bits, then VS_FIXEDFILEINFO (52 bytes) at offset 40.
 	const fixedOff, fixedLen = 40, 52
 	if dataSize < fixedOff+fixedLen {
-		return nil, "", false
+		return nil, "", nil, false
 	}
 	vi, ok := readRVA(dataRVA, fixedOff+fixedLen)
 	if !ok {
-		return nil, "", false
+		return nil, "", nil, false
 	}
 	if binary.LittleEndian.Uint16(vi[2:]) < fixedLen || !bytes.Equal(vi[6:6+len(vsVersionInfoKey)], vsVersionInfoKey) {
-		return nil, "", false
+		return nil, "", nil, false
 	}
 	fixed := vi[fixedOff:]
 	if binary.LittleEndian.Uint32(fixed[0:]) != peFixedFileInfoSignature {
-		return nil, "", false
+		return nil, "", nil, false
 	}
 	split := func(ms, ls uint32) []uint64 {
 		return []uint64{uint64(ms >> 16), uint64(ms & 0xffff), uint64(ls >> 16), uint64(ls & 0xffff)}
 	}
 	file = split(binary.LittleEndian.Uint32(fixed[8:]), binary.LittleEndian.Uint32(fixed[12:]))
 	if file[0] == 0 && file[1] == 0 && file[2] == 0 && file[3] == 0 {
-		return nil, "", false
+		return nil, "", nil, false
 	}
 	// The strings follow the fixed info. Reading them is best effort: any
 	// failure leaves the product string empty.
 	if n := min(dataSize, peMaxVersionInfoSize); n > fixedOff+fixedLen {
 		if block, ok := readRVA(dataRVA, int(n)); ok {
 			product = versionInfoString(block, "ProductVersion")
+			strBlock = block
 		}
 	}
-	return file, product, true
+	return file, product, strBlock, true
 }
 
 // versionInfoString finds a string value in the StringFileInfo of a

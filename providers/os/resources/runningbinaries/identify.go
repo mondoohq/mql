@@ -11,6 +11,7 @@ import (
 	"errors"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/afero"
@@ -244,7 +245,22 @@ func Identify(fs afero.Fs, b Binary) Identity {
 		}
 	}
 
+	// MariaDB 10.0 and later and XAMPP's MariaDB 10.1 still run as mysqld,
+	// while MySQL went from 5.7 to 8.0, so a mysqld with a major version of
+	// 10 or more is MariaDB.
+	if runtime != nil && runtime.name == "mysql" && mysqldIsMariaDB(id.Version) {
+		id.Name = "mariadb"
+	}
+
 	return id
+}
+
+// mysqldIsMariaDB reports whether a mysqld version belongs to MariaDB by its
+// major version.
+func mysqldIsMariaDB(version string) bool {
+	major, _, _ := strings.Cut(version, ".")
+	n, err := strconv.Atoi(major)
+	return err == nil && n >= 10
 }
 
 func (id *Identity) fromMetadata(fs afero.Fs, path string, runtime *knownRuntime) bool {

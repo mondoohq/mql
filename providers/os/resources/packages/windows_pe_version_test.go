@@ -83,6 +83,12 @@ func stringFileInfo(kv ...string) []byte {
 // key/value pairs; none leaves it out.
 func buildPEStrings(t *testing.T, file, product [4]uint16, strs []string, withVersion bool) []byte {
 	t.Helper()
+	return buildPEMachine(t, pe.IMAGE_FILE_MACHINE_AMD64, file, product, strs, withVersion)
+}
+
+// buildPEMachine is buildPEStrings for an image of the given machine type.
+func buildPEMachine(t *testing.T, machine uint16, file, product [4]uint16, strs []string, withVersion bool) []byte {
+	t.Helper()
 	const rsrcRVA = 0x1000
 	le := binary.LittleEndian
 
@@ -130,7 +136,7 @@ func buildPEStrings(t *testing.T, file, product [4]uint16, strs []string, withVe
 	out.Write(dos)
 	out.WriteString("PE\x00\x00")
 	write(out, pe.FileHeader{
-		Machine:              pe.IMAGE_FILE_MACHINE_AMD64,
+		Machine:              machine,
 		NumberOfSections:     1,
 		SizeOfOptionalHeader: uint16(binary.Size(pe.OptionalHeader64{})),
 		Characteristics:      pe.IMAGE_FILE_EXECUTABLE_IMAGE,
@@ -250,6 +256,48 @@ func TestPEProductVersion(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestPEVersionInfo(t *testing.T) {
+	v := [4]uint16{7, 3, 33, 0}
+	php := []string{"FileVersion", "7.3.33", "ProductVersion", "7.3.33", "ProductName", "PHP", "CompanyName", "The PHP Group"}
+	want := peInfo{File: []uint64{7, 3, 33, 0}, ProductVersion: "7.3.33", ProductName: "PHP", CompanyName: "The PHP Group"}
+	withMachine := func(m string) peInfo {
+		w := want
+		w.Machine = m
+		return w
+	}
+	ssl := []string{"FileVersion", "1.1.1a", "ProductVersion", "1.1.1a", "ProductName", "The OpenSSL Toolkit", "CompanyName", "The OpenSSL Project, https://www.openssl.org/"}
+	cases := []struct {
+		name string
+		img  []byte
+		want peInfo
+		ok   bool
+	}{
+		// Measured: Azure Windows Server 2022, php.net 7.3.33 TS zip, XAMPP
+		// 7.3.2, 2026-10-26. The PE images are synthesized from the measured
+		// version resources, not copied binaries.
+		{"php.exe x64", buildPEStrings(t, v, v, php, true), withMachine("x64"), true},
+		{"openssl.exe: ProductVersion string differs from the fixed version",
+			buildPEStrings(t, [4]uint16{1, 1, 1, 1}, [4]uint16{1, 1, 1, 1}, ssl, true),
+			peInfo{File: []uint64{1, 1, 1, 1}, ProductVersion: "1.1.1a", ProductName: "The OpenSSL Toolkit", CompanyName: "The OpenSSL Project, https://www.openssl.org/", Machine: "x64"}, true},
+		{"mysqld.exe: resource without names",
+			buildPEStrings(t, [4]uint16{10, 1, 38, 0}, [4]uint16{10, 1, 38, 0}, []string{"FileVersion", "10.1.38.0", "ProductVersion", "10.1.38.0"}, true),
+			peInfo{File: []uint64{10, 1, 38, 0}, ProductVersion: "10.1.38.0", Machine: "x64"}, true},
+
+		// Synthetic: machine types no host showed; every measured binary was x64.
+		{"x86 image", buildPEMachine(t, pe.IMAGE_FILE_MACHINE_I386, v, v, php, true), withMachine("x86"), true},
+		{"arm64 image", buildPEMachine(t, pe.IMAGE_FILE_MACHINE_ARM64, v, v, php, true), withMachine("arm64"), true},
+		{"unmapped machine has no arch", buildPEMachine(t, pe.IMAGE_FILE_MACHINE_RISCV64, v, v, php, true), withMachine(""), true},
+		{"no RT_VERSION", buildPE(t, 7, 3, 33, 0, false), peInfo{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := peVersionInfo(bytes.NewReader(tc.img))
+			assert.Equal(t, tc.ok, ok)
+			assert.Equal(t, tc.want, got)
+		})
+	}
 }
 
 func TestFsFileVersionReader(t *testing.T) {

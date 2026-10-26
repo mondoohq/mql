@@ -450,3 +450,22 @@ func TestIdentifyNodeInBundleIsNode(t *testing.T) {
 	assert.Equal(t, "node", id.Name)
 	assert.Equal(t, "22.11.0", id.Version)
 }
+
+func TestIdentifyMysqldMariaDB(t *testing.T) {
+	// Measured: Azure Windows Server 2022, XAMPP 7.3.2, 2026-10-26. The
+	// resource of C:\xampp\mysql\bin\mysqld.exe has no product or company name
+	// and the version 10.1.38.0, which is MariaDB 10.1.38.
+	id := Identify(nil, Binary{
+		Path:        `C:\xampp\mysql\bin\mysqld.exe`,
+		VersionInfo: &PEVersionInfo{FileVersion: "10.1.38.0", ProductVersion: "10.1.38.0"},
+	})
+	assert.Equal(t, Identity{Name: "mariadb", Version: "10.1.38.0", VersionSource: SourcePEVersionInfo}, id)
+
+	// Synthetic: MySQL versions below 10 stay mysql; no host showed these.
+	for _, v := range []string{"5.7.44.0", "8.4.13.0", "9.1.0.0"} {
+		id := Identify(nil, Binary{Path: `C:\mysql\bin\mysqld.exe`, VersionInfo: &PEVersionInfo{ProductVersion: v}})
+		assert.Equal(t, "mysql", id.Name, v)
+	}
+	// Synthetic: no version found, so no evidence for either.
+	assert.Equal(t, "mysql", Identify(nil, Binary{Path: "/usr/sbin/mysqld"}).Name)
+}
