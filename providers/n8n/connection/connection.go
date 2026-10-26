@@ -20,8 +20,8 @@ import (
 const (
 	OptionURL = "url"
 
-	EnvURL    = "N8N_URL"
-	EnvAPIKey = "N8N_API_KEY"
+	EnvURLVar    = "N8N_URL"
+	EnvAPIKeyVar = "N8N_API_KEY"
 
 	// apiKeyHeader carries the API key on every Public API request.
 	apiKeyHeader = "X-N8N-API-KEY"
@@ -43,21 +43,21 @@ type N8nConnection struct {
 func NewN8nConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*N8nConnection, error) {
 	instanceURL := conf.Options[OptionURL]
 	if instanceURL == "" {
-		instanceURL = os.Getenv(EnvURL)
+		instanceURL = os.Getenv(EnvURLVar)
 	}
 	instanceURL, err := normalizeInstanceURL(instanceURL)
 	if err != nil {
 		return nil, err
 	}
 
-	apiKey := os.Getenv(EnvAPIKey)
+	apiKey := os.Getenv(EnvAPIKeyVar)
 	for _, cred := range conf.Credentials {
 		if cred.Type == vault.CredentialType_password && len(cred.Secret) > 0 {
 			apiKey = string(cred.Secret)
 		}
 	}
 	if apiKey == "" {
-		return nil, errors.New("an n8n API key is required (set " + EnvAPIKey + " or use --api-key)")
+		return nil, errors.New("an n8n API key is required (set " + EnvAPIKeyVar + " or use --api-key)")
 	}
 
 	return &N8nConnection{
@@ -98,7 +98,7 @@ func sameOriginRedirects(req *http.Request, via []*http.Request) error {
 func normalizeInstanceURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", errors.New("an n8n instance URL is required (set " + EnvURL + " or pass it as the first argument)")
+		return "", errors.New("an n8n instance URL is required (set " + EnvURLVar + " or pass it as the first argument)")
 	}
 	if !strings.Contains(raw, "://") {
 		raw = "https://" + raw

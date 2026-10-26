@@ -58,7 +58,7 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 
 	apiKey := flagString("api-key")
 	if apiKey == "" {
-		apiKey = os.Getenv(connection.EnvAPIKey)
+		apiKey = os.Getenv(connection.EnvAPIKeyVar)
 	}
 	if apiKey != "" {
 		conf.Credentials = append(conf.Credentials, vault.NewPasswordCredential("", apiKey))
