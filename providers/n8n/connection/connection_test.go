@@ -4,6 +4,9 @@
 package connection
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,6 +38,40 @@ func TestNormalizeInstanceURL(t *testing.T) {
 		_, err := normalizeInstanceURL(bad)
 		assert.Error(t, err, bad)
 	}
+}
+
+func TestRedirectsKeepTheAPIKeyOnTheInstance(t *testing.T) {
+	// Synthetic: an instance answering with a redirect to another host must
+	// not receive the API key there; a redirect within the instance is fine.
+	var leaked []string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked = append(leaked, r.Header.Get(apiKeyHeader))
+		_, _ = w.Write([]byte(`{"data":[],"nextCursor":null}`))
+	}))
+	defer other.Close()
+
+	instance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/tags":
+			http.Redirect(w, r, other.URL+r.URL.Path, http.StatusFound)
+		case "/api/v1/users":
+			http.Redirect(w, r, "/api/v1/users-moved", http.StatusFound)
+		case "/api/v1/users-moved":
+			assert.Equal(t, "secret-key", r.Header.Get(apiKeyHeader))
+			_, _ = w.Write([]byte(`{"data":[],"nextCursor":null}`))
+		}
+	}))
+	defer instance.Close()
+
+	c := &Client{baseURL: instance.URL, apiKey: "secret-key", http: &http.Client{CheckRedirect: sameOriginRedirects}}
+
+	_, err := c.Tags(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "redirected")
+	assert.Empty(t, leaked)
+
+	_, err = c.Users(context.Background())
+	assert.NoError(t, err)
 }
 
 func TestInstanceHost(t *testing.T) {

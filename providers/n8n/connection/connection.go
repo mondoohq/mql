@@ -5,6 +5,7 @@ package connection
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -67,9 +68,28 @@ func NewN8nConnection(id uint32, asset *inventory.Asset, conf *inventory.Config)
 		client: &Client{
 			baseURL: instanceURL,
 			apiKey:  apiKey,
-			http:    &http.Client{Timeout: httpTimeout},
+			http: &http.Client{
+				Timeout:       httpTimeout,
+				CheckRedirect: sameOriginRedirects,
+			},
 		},
 	}, nil
+}
+
+// sameOriginRedirects refuses a redirect that leaves the scheme and host of
+// the first request. Go drops Authorization and Cookie on such a redirect but
+// forwards custom headers, so following it would hand the API key to the
+// redirect target.
+func sameOriginRedirects(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("n8n API: stopped after 10 redirects")
+	}
+	first := via[0].URL
+	if req.URL.Scheme != first.Scheme || req.URL.Host != first.Host {
+		return fmt.Errorf("n8n API redirected from %s://%s to %s://%s; not following it with the API key, use the instance URL it redirects to",
+			first.Scheme, first.Host, req.URL.Scheme, req.URL.Host)
+	}
+	return nil
 }
 
 // normalizeInstanceURL turns what the user typed into the instance root the
