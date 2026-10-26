@@ -80,8 +80,11 @@ func ParseSolarisSmfServices(r io.Reader) []*Service {
 
 		running, enabled := smfStateToRunningEnabled(entry.State)
 		services = append(services, &Service{
-			Name:      entry.FMRI,
-			Installed: true,
+			Name: entry.FMRI,
+			// An incomplete instance has no manifest of its own; it exists only
+			// because a profile or another manifest names it, so no package
+			// delivers it.
+			Installed: normalizeSmfState(entry.State) != "incomplete",
 			Running:   running,
 			Enabled:   enabled,
 			State:     smfStateToServiceState(entry.State),
@@ -131,10 +134,10 @@ func smfStateToRunningEnabled(state string) (running, enabled bool) {
 	case "maintenance":
 		// Enabled but in error state
 		return false, true
-	case "incomplete":
-		// Service is in progress or waiting
-		return false, true
-	case "disabled", "uninitialized":
+	case "disabled", "uninitialized", "incomplete":
+		// incomplete: the instance is defined only by a profile or another
+		// manifest's dependency, has no general/enabled, and svcadm refuses to
+		// enable or disable it until the package that delivers it is installed
 		return false, false
 	default:
 		// Unknown state, assume not running

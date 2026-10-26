@@ -138,8 +138,8 @@ incomplete     22:01:42        svc:/application/graphical-login/gdm:default
 	incompleteService := findServiceByName(services, "svc:/application/graphical-login/gdm:default")
 	require.NotNil(t, incompleteService, "should find incomplete service")
 	assert.False(t, incompleteService.Running, "incomplete should not be running")
-	assert.True(t, incompleteService.Enabled, "incomplete should be enabled")
-	assert.True(t, incompleteService.Installed, "incomplete should be installed")
+	assert.False(t, incompleteService.Enabled, "incomplete should not be enabled")
+	assert.False(t, incompleteService.Installed, "incomplete should not be installed")
 	assert.Equal(t, ServiceStopped, incompleteService.State)
 }
 
@@ -178,7 +178,7 @@ incomplete     22:01:45        svc:/test/incomplete:default
 		{"svc:/test/maintenance:default", false, true, ServiceStopped},
 		{"svc:/test/degraded:default", true, true, ServiceRunning},
 		{"lrc:/etc/rc2_d/S99legacy", true, true, ServiceRunning},
-		{"svc:/test/incomplete:default", false, true, ServiceStopped},
+		{"svc:/test/incomplete:default", false, false, ServiceStopped},
 	}
 
 	for _, tc := range testCases {
@@ -201,7 +201,7 @@ func TestSmfStateMapping(t *testing.T) {
 		{"legacy_run", true, true},
 		{"offline", false, true},
 		{"maintenance", false, true},
-		{"incomplete", false, true},
+		{"incomplete", false, false},
 		{"disabled", false, false},
 		{"uninitialized", false, false},
 		{"unknown_state", false, false},
