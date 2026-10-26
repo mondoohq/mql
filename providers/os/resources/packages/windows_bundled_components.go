@@ -398,8 +398,8 @@ func (c *componentFinder) componentsIn(dir string) []component {
 		}
 	}
 
-	_, hasMariadbd := files["mariadbd.exe"]
-	exe, ok := files["mariadbd.exe"]
+	exe, hasMariadbd := files["mariadbd.exe"]
+	ok := hasMariadbd
 	if !ok {
 		exe, ok = files["mysqld.exe"]
 	}
