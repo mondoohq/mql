@@ -6,11 +6,9 @@ package gql
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 
 	mondoogql "go.mondoo.com/mondoo-go"
 	"go.mondoo.com/mondoo-go/option"
-	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 )
 
@@ -31,28 +29,15 @@ func WithProvider(name string) ClientOption {
 	return func(s *clientSettings) { s.provider = name }
 }
 
-// UserAgent returns the User-Agent mql sends on GraphQL calls:
-// "mql/<version>", followed by " (provider <name>)" if a provider is given.
-// The leading "mql/" is relied on by the server to classify traffic. In a
-// provider plugin the version is the one stamped into that provider binary
-// (the mql release it was built from), or the dev version for unstamped builds.
-func UserAgent(provider string) string {
-	ua := "mql/" + strings.TrimPrefix(mql.GetVersion(), "v")
-	if provider != "" {
-		ua += " (provider " + provider + ")"
-	}
-	return ua
-}
-
 // NewClient creates a new GraphQL client for the Mondoo API
 // provide the http client used for rpc, to also pass in the proxy settings
-func NewClient(upstream *upstream.UpstreamConfig, httpClient *http.Client, opts ...ClientOption) (*MondooClient, error) {
+func NewClient(cfg *upstream.UpstreamConfig, httpClient *http.Client, opts ...ClientOption) (*MondooClient, error) {
 	var settings clientSettings
 	for _, o := range opts {
 		o(&settings)
 	}
-	gqlEndpoint := upstream.ApiEndpoint + "/query"
-	creds, err := json.Marshal(upstream.Creds)
+	gqlEndpoint := cfg.ApiEndpoint + "/query"
+	creds, err := json.Marshal(cfg.Creds)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +46,7 @@ func NewClient(upstream *upstream.UpstreamConfig, httpClient *http.Client, opts 
 		option.WithEndpoint(gqlEndpoint),
 		option.WithHTTPClient(httpClient),
 		option.WithServiceAccount(creds),
-		option.WithUserAgent(UserAgent(settings.provider)),
+		option.WithUserAgent(upstream.UserAgent(settings.provider)),
 	)
 	if err != nil {
 		return nil, err

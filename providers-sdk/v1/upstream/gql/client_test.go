@@ -12,20 +12,12 @@ import (
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 )
-
-func TestUserAgent(t *testing.T) {
-	assert.True(t, strings.HasPrefix(UserAgent(""), "mql/"))
-	assert.NotContains(t, UserAgent(""), "(")
-	assert.True(t, strings.HasSuffix(UserAgent("os"), " (provider os)"))
-	assert.True(t, strings.HasPrefix(UserAgent("os"), "mql/"))
-}
 
 func TestNewClientSendsUserAgent(t *testing.T) {
 	got := make(chan string, 1)
@@ -62,7 +54,7 @@ func TestNewClientSendsUserAgent(t *testing.T) {
 	qErr := c.Query(context.Background(), &q, nil)
 	select {
 	case ua := <-got:
-		assert.Equal(t, UserAgent("os"), ua)
+		assert.Equal(t, upstream.UserAgent("os"), ua)
 	default:
 		t.Fatalf("request never reached the server: %v", qErr)
 	}

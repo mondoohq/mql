@@ -13,7 +13,6 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/providers-sdk/v1/upstream/gql"
 	"go.mondoo.com/mql/utils/multierr"
 )
 
@@ -31,8 +30,8 @@ type Connection struct {
 	Type     ConnType
 }
 
-func New(id uint32, asset *inventory.Asset, conf *inventory.Config, upstream *upstream.UpstreamClient) (*Connection, error) {
-	creds := upstream.GetCreds()
+func New(id uint32, asset *inventory.Asset, conf *inventory.Config, upstreamClient *upstream.UpstreamClient) (*Connection, error) {
+	creds := upstreamClient.GetCreds()
 	rawCreds, err := json.Marshal(creds)
 	if err != nil {
 		return nil, multierr.Wrap(err, "failed to wrap credentials for Mondoo API client")
@@ -41,22 +40,22 @@ func New(id uint32, asset *inventory.Asset, conf *inventory.Config, upstream *up
 	client, err := mondoogql.NewClient(
 		option.UseUSRegion(),
 		// option.WithAPIToken(os.Getenv("MONDOO_API_TOKEN")),
-		option.WithHTTPClient(upstream.HttpClient),
+		option.WithHTTPClient(upstreamClient.HttpClient),
 		option.WithServiceAccount(rawCreds),
-		option.WithUserAgent(gql.UserAgent("mondoo")),
+		option.WithUserAgent(upstream.UserAgent("mondoo")),
 	)
 	if err != nil {
 		return nil, multierr.Wrap(err, "failed to initialize Mondoo API client")
 	}
 
-	conn, err := determineConnType(upstream.SpaceMrn)
+	conn, err := determineConnType(upstreamClient.SpaceMrn)
 	if err != nil {
 		return nil, multierr.Wrap(err, "failed to determine connection type")
 	}
 	return &Connection{
 		Connection: plugin.NewConnection(id, asset),
 		Client:     client,
-		Upstream:   upstream,
+		Upstream:   upstreamClient,
 		Type:       conn,
 	}, nil
 }
