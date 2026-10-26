@@ -197,10 +197,10 @@ type Asset struct {
 	// provider found it at connect time. Only the provider knows where that
 	// root is, which may be a temporary clone (cnspec ADR-0006).
 	ContextConfig *ContextConfig `protobuf:"bytes,40,opt,name=context_config,json=contextConfig,proto3" json:"context_config,omitempty"`
-	// Preview: may still change (ADR-285, mondoohq/server).
+	// Preview: may still change (ADR-305, mondoohq/server).
 	// Facts a discoverer or connection observed about the thing this asset
 	// identifies, as kind-tagged claims. The server uses them to recognise the
-	// same thing across scans and to reuse earlier results (ADR-285).
+	// same thing across scans and to reuse earlier results (ADR-305).
 	Claims        []*AssetClaim `protobuf:"bytes,41,rep,name=claims,proto3" json:"claims,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -530,7 +530,7 @@ func (x *ConfigOrigin) GetPath() string {
 	return ""
 }
 
-// Preview: may still change (ADR-285, mondoohq/server).
+// Preview: may still change (ADR-305, mondoohq/server).
 // AssetClaim is a set of facts about what an asset is, tagged with a kind that
 // says how to read them. It is kind-generic: the claims map carries the
 // kind's fields as strings (e.g. the digest, ref and arch of a container

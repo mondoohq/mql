@@ -5,7 +5,7 @@ package inventory
 
 import "maps"
 
-// Claim kinds and keys (ADR-285, mondoohq/server). The claims map is
+// Claim kinds and keys (ADR-305, mondoohq/server). The claims map is
 // string-to-string, so each kind names its keys here.
 const (
 	// AssetClaimKindContainerImage describes a container image.
