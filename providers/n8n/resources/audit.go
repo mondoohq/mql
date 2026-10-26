@@ -118,7 +118,7 @@ func sortedKeys(m map[string]struct{}) []string {
 	return out
 }
 
-func (r *mqlN8n) instanceSettings() (*mqlN8nInstanceSettings, error) {
+func (r *mqlN8n) instanceSettings() (*mqlN8nSecuritySettings, error) {
 	audit, err := r.securityAudit()
 	if err != nil {
 		return nil, err
@@ -133,7 +133,7 @@ func (r *mqlN8n) instanceSettings() (*mqlN8nInstanceSettings, error) {
 		r.InstanceSettings.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	res, err := CreateResource(r.MqlRuntime, ResourceN8nInstanceSettings, map[string]*llx.RawData{
+	res, err := CreateResource(r.MqlRuntime, ResourceN8nSecuritySettings, map[string]*llx.RawData{
 		"communityPackagesEnabled":    llx.BoolDataPtr(s.CommunityPackagesEnabled),
 		"publicApiEnabled":            llx.BoolDataPtr(s.PublicAPIEnabled),
 		"templatesEnabled":            llx.BoolDataPtr(s.TemplatesEnabled),
@@ -145,11 +145,11 @@ func (r *mqlN8n) instanceSettings() (*mqlN8nInstanceSettings, error) {
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlN8nInstanceSettings), nil
+	return res.(*mqlN8nSecuritySettings), nil
 }
 
-func (r *mqlN8nInstanceSettings) id() (string, error) {
-	return "n8n.instanceSettings", nil
+func (r *mqlN8nSecuritySettings) id() (string, error) {
+	return "n8n.securitySettings", nil
 }
 
 func (r *mqlN8nAuditSection) workflows() ([]any, error) {

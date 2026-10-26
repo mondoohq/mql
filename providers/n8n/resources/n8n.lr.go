@@ -17,7 +17,7 @@ import (
 // The MQL type names exposed as public consts for ease of reference.
 const (
 	ResourceN8n                 string = "n8n"
-	ResourceN8nInstanceSettings string = "n8n.instanceSettings"
+	ResourceN8nSecuritySettings string = "n8n.securitySettings"
 	ResourceN8nWorkflow         string = "n8n.workflow"
 	ResourceN8nWorkflowNode     string = "n8n.workflow.node"
 	ResourceN8nCredential       string = "n8n.credential"
@@ -37,9 +37,9 @@ func init() {
 			Init:   initN8n,
 			Create: createN8n,
 		},
-		"n8n.instanceSettings": {
-			// to override args, implement: initN8nInstanceSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
-			Create: createN8nInstanceSettings,
+		"n8n.securitySettings": {
+			// to override args, implement: initN8nSecuritySettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createN8nSecuritySettings,
 		},
 		"n8n.workflow": {
 			Init:   initN8nWorkflow,
@@ -173,28 +173,28 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlN8n).GetSecurityAudit()).ToDataRes(types.Resource("n8n.audit"))
 	},
 	"n8n.instanceSettings": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlN8n).GetInstanceSettings()).ToDataRes(types.Resource("n8n.instanceSettings"))
+		return (r.(*mqlN8n).GetInstanceSettings()).ToDataRes(types.Resource("n8n.securitySettings"))
 	},
-	"n8n.instanceSettings.communityPackagesEnabled": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlN8nInstanceSettings).GetCommunityPackagesEnabled()).ToDataRes(types.Bool)
+	"n8n.securitySettings.communityPackagesEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nSecuritySettings).GetCommunityPackagesEnabled()).ToDataRes(types.Bool)
 	},
-	"n8n.instanceSettings.publicApiEnabled": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlN8nInstanceSettings).GetPublicApiEnabled()).ToDataRes(types.Bool)
+	"n8n.securitySettings.publicApiEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nSecuritySettings).GetPublicApiEnabled()).ToDataRes(types.Bool)
 	},
-	"n8n.instanceSettings.templatesEnabled": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlN8nInstanceSettings).GetTemplatesEnabled()).ToDataRes(types.Bool)
+	"n8n.securitySettings.templatesEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nSecuritySettings).GetTemplatesEnabled()).ToDataRes(types.Bool)
 	},
-	"n8n.instanceSettings.versionNotificationsEnabled": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlN8nInstanceSettings).GetVersionNotificationsEnabled()).ToDataRes(types.Bool)
+	"n8n.securitySettings.versionNotificationsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nSecuritySettings).GetVersionNotificationsEnabled()).ToDataRes(types.Bool)
 	},
-	"n8n.instanceSettings.diagnosticsEnabled": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlN8nInstanceSettings).GetDiagnosticsEnabled()).ToDataRes(types.Bool)
+	"n8n.securitySettings.diagnosticsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nSecuritySettings).GetDiagnosticsEnabled()).ToDataRes(types.Bool)
 	},
-	"n8n.instanceSettings.excludedNodes": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlN8nInstanceSettings).GetExcludedNodes()).ToDataRes(types.Array(types.String))
+	"n8n.securitySettings.excludedNodes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nSecuritySettings).GetExcludedNodes()).ToDataRes(types.Array(types.String))
 	},
-	"n8n.instanceSettings.includedNodes": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlN8nInstanceSettings).GetIncludedNodes()).ToDataRes(types.Array(types.String))
+	"n8n.securitySettings.includedNodes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nSecuritySettings).GetIncludedNodes()).ToDataRes(types.Array(types.String))
 	},
 	"n8n.workflow.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlN8nWorkflow).GetId()).ToDataRes(types.String)
@@ -473,39 +473,39 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"n8n.instanceSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlN8n).InstanceSettings, ok = plugin.RawToTValue[*mqlN8nInstanceSettings](v.Value, v.Error)
+		r.(*mqlN8n).InstanceSettings, ok = plugin.RawToTValue[*mqlN8nSecuritySettings](v.Value, v.Error)
 		return
 	},
-	"n8n.instanceSettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlN8nInstanceSettings).__id, ok = v.Value.(string)
+	"n8n.securitySettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nSecuritySettings).__id, ok = v.Value.(string)
 		return
 	},
-	"n8n.instanceSettings.communityPackagesEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlN8nInstanceSettings).CommunityPackagesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"n8n.securitySettings.communityPackagesEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nSecuritySettings).CommunityPackagesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"n8n.instanceSettings.publicApiEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlN8nInstanceSettings).PublicApiEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"n8n.securitySettings.publicApiEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nSecuritySettings).PublicApiEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"n8n.instanceSettings.templatesEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlN8nInstanceSettings).TemplatesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"n8n.securitySettings.templatesEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nSecuritySettings).TemplatesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"n8n.instanceSettings.versionNotificationsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlN8nInstanceSettings).VersionNotificationsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"n8n.securitySettings.versionNotificationsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nSecuritySettings).VersionNotificationsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"n8n.instanceSettings.diagnosticsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlN8nInstanceSettings).DiagnosticsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"n8n.securitySettings.diagnosticsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nSecuritySettings).DiagnosticsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"n8n.instanceSettings.excludedNodes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlN8nInstanceSettings).ExcludedNodes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+	"n8n.securitySettings.excludedNodes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nSecuritySettings).ExcludedNodes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
-	"n8n.instanceSettings.includedNodes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlN8nInstanceSettings).IncludedNodes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+	"n8n.securitySettings.includedNodes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nSecuritySettings).IncludedNodes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"n8n.workflow.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -885,7 +885,7 @@ type mqlN8n struct {
 	CommunityPackages plugin.TValue[[]any]
 	ApiKeyScopes      plugin.TValue[[]any]
 	SecurityAudit     plugin.TValue[*mqlN8nAudit]
-	InstanceSettings  plugin.TValue[*mqlN8nInstanceSettings]
+	InstanceSettings  plugin.TValue[*mqlN8nSecuritySettings]
 }
 
 // createN8n creates a new instance of this resource
@@ -1031,15 +1031,15 @@ func (c *mqlN8n) GetSecurityAudit() *plugin.TValue[*mqlN8nAudit] {
 	})
 }
 
-func (c *mqlN8n) GetInstanceSettings() *plugin.TValue[*mqlN8nInstanceSettings] {
-	return plugin.GetOrCompute[*mqlN8nInstanceSettings](&c.InstanceSettings, func() (*mqlN8nInstanceSettings, error) {
+func (c *mqlN8n) GetInstanceSettings() *plugin.TValue[*mqlN8nSecuritySettings] {
+	return plugin.GetOrCompute[*mqlN8nSecuritySettings](&c.InstanceSettings, func() (*mqlN8nSecuritySettings, error) {
 		if c.MqlRuntime.HasRecording {
 			d, err := c.MqlRuntime.FieldResourceFromRecording("n8n", c.__id, "instanceSettings")
 			if err != nil {
 				return nil, err
 			}
 			if d != nil {
-				return d.Value.(*mqlN8nInstanceSettings), nil
+				return d.Value.(*mqlN8nSecuritySettings), nil
 			}
 		}
 
@@ -1047,11 +1047,11 @@ func (c *mqlN8n) GetInstanceSettings() *plugin.TValue[*mqlN8nInstanceSettings] {
 	})
 }
 
-// mqlN8nInstanceSettings for the n8n.instanceSettings resource
-type mqlN8nInstanceSettings struct {
+// mqlN8nSecuritySettings for the n8n.securitySettings resource
+type mqlN8nSecuritySettings struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlN8nInstanceSettingsInternal it will be used here
+	// optional: if you define mqlN8nSecuritySettingsInternal it will be used here
 	CommunityPackagesEnabled    plugin.TValue[bool]
 	PublicApiEnabled            plugin.TValue[bool]
 	TemplatesEnabled            plugin.TValue[bool]
@@ -1061,9 +1061,9 @@ type mqlN8nInstanceSettings struct {
 	IncludedNodes               plugin.TValue[[]any]
 }
 
-// createN8nInstanceSettings creates a new instance of this resource
-func createN8nInstanceSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
-	res := &mqlN8nInstanceSettings{
+// createN8nSecuritySettings creates a new instance of this resource
+func createN8nSecuritySettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlN8nSecuritySettings{
 		MqlRuntime: runtime,
 	}
 
@@ -1080,7 +1080,7 @@ func createN8nInstanceSettings(runtime *plugin.Runtime, args map[string]*llx.Raw
 	}
 
 	if runtime.HasRecording {
-		args, err = runtime.ResourceFromRecording("n8n.instanceSettings", res.__id)
+		args, err = runtime.ResourceFromRecording("n8n.securitySettings", res.__id)
 		if err != nil || args == nil {
 			return res, err
 		}
@@ -1090,39 +1090,39 @@ func createN8nInstanceSettings(runtime *plugin.Runtime, args map[string]*llx.Raw
 	return res, nil
 }
 
-func (c *mqlN8nInstanceSettings) MqlName() string {
-	return "n8n.instanceSettings"
+func (c *mqlN8nSecuritySettings) MqlName() string {
+	return "n8n.securitySettings"
 }
 
-func (c *mqlN8nInstanceSettings) MqlID() string {
+func (c *mqlN8nSecuritySettings) MqlID() string {
 	return c.__id
 }
 
-func (c *mqlN8nInstanceSettings) GetCommunityPackagesEnabled() *plugin.TValue[bool] {
+func (c *mqlN8nSecuritySettings) GetCommunityPackagesEnabled() *plugin.TValue[bool] {
 	return &c.CommunityPackagesEnabled
 }
 
-func (c *mqlN8nInstanceSettings) GetPublicApiEnabled() *plugin.TValue[bool] {
+func (c *mqlN8nSecuritySettings) GetPublicApiEnabled() *plugin.TValue[bool] {
 	return &c.PublicApiEnabled
 }
 
-func (c *mqlN8nInstanceSettings) GetTemplatesEnabled() *plugin.TValue[bool] {
+func (c *mqlN8nSecuritySettings) GetTemplatesEnabled() *plugin.TValue[bool] {
 	return &c.TemplatesEnabled
 }
 
-func (c *mqlN8nInstanceSettings) GetVersionNotificationsEnabled() *plugin.TValue[bool] {
+func (c *mqlN8nSecuritySettings) GetVersionNotificationsEnabled() *plugin.TValue[bool] {
 	return &c.VersionNotificationsEnabled
 }
 
-func (c *mqlN8nInstanceSettings) GetDiagnosticsEnabled() *plugin.TValue[bool] {
+func (c *mqlN8nSecuritySettings) GetDiagnosticsEnabled() *plugin.TValue[bool] {
 	return &c.DiagnosticsEnabled
 }
 
-func (c *mqlN8nInstanceSettings) GetExcludedNodes() *plugin.TValue[[]any] {
+func (c *mqlN8nSecuritySettings) GetExcludedNodes() *plugin.TValue[[]any] {
 	return &c.ExcludedNodes
 }
 
-func (c *mqlN8nInstanceSettings) GetIncludedNodes() *plugin.TValue[[]any] {
+func (c *mqlN8nSecuritySettings) GetIncludedNodes() *plugin.TValue[[]any] {
 	return &c.IncludedNodes
 }
 

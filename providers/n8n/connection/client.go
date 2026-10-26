@@ -29,6 +29,11 @@ const (
 	// records, far beyond any instance, so reaching it means the cursor is
 	// not advancing.
 	maxPages = 10000
+
+	// maxResponseBytes caps one response body, so a misbehaving server or
+	// proxy cannot exhaust memory. A page of 250 workflows with their nodes
+	// stays far below it.
+	maxResponseBytes = 64 << 20
 )
 
 // Client calls the n8n Public API with pagination and error classification,
@@ -464,9 +469,12 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		return nil, transportError(err)
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return nil, transportError(err)
+	}
+	if len(data) > maxResponseBytes {
+		return nil, fmt.Errorf("n8n API %s %s: response larger than %d MB", method, path, maxResponseBytes>>20)
 	}
 	if err := responseError(resp, data, scope); err != nil {
 		return nil, err

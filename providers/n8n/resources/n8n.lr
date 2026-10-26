@@ -33,7 +33,7 @@ n8n @root {
   // Security audit of the instance
   securityAudit() n8n.audit
   // Security settings of the instance
-  instanceSettings() n8n.instanceSettings
+  instanceSettings() n8n.securitySettings
 }
 
 // n8n instance security settings
@@ -42,7 +42,7 @@ n8n @root {
 // security audit reports them. They come from the instance's environment,
 // for example `N8N_COMMUNITY_PACKAGES_ENABLED` and `NODES_EXCLUDE`. Reading
 // them needs the `securityAudit:generate` scope.
-private n8n.instanceSettings {
+private n8n.securitySettings {
   // Whether community node packages can be installed
   communityPackagesEnabled bool
   // Whether the Public API is enabled
@@ -145,12 +145,13 @@ private n8n.workflow.node @defaults("name type") {
   path string
   // Whether a Chat Trigger's chat is publicly available
   //
-  // Reports false, the node's default, when unset. Null on other node types.
+  // Reports false, the node's default, when unset. Null when an expression
+  // sets it, and on other node types.
   public bool
   // Origins allowed to call a public Chat Trigger
   //
   // Reports `*` (every origin), the node's default, when unset. Null on other
-  // node types and on a Chat Trigger that is not public.
+  // node types and on a Chat Trigger that is known not to be public.
   allowedOrigins []string
   // IP addresses allowed to call a Webhook node
   //
@@ -159,7 +160,8 @@ private n8n.workflow.node @defaults("name type") {
   ipAllowlist []string
   // Whether an HTTP Request node skips TLS certificate verification
   //
-  // Reports false, the node's default, when unset. Null on other node types.
+  // Reports false, the node's default, when unset. Null when an expression
+  // sets it, and on other node types.
   allowUnauthorizedCerts bool
   // Host an HTTP Request node calls
   //

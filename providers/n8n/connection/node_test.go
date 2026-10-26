@@ -51,6 +51,22 @@ func TestNodeSecurityOtherTypes(t *testing.T) {
 	assert.Equal(t, nodeSecurity{}, readNodeSecurity("n8n-nodes-base.code", 2, map[string]any{"jsCode": "return [];"}))
 }
 
+func TestNodeSecurityExpressions(t *testing.T) {
+	// Synthetic: settings an expression decides are unknown, never the safe
+	// default. A chat whose visibility is an expression may be public, so its
+	// authentication and origins are still read.
+	chat := readNodeSecurity(NodeTypeChatTrigger, 1.1, map[string]any{"public": "={{ $env.PUBLIC_CHAT }}"})
+	assert.Nil(t, chat.Public)
+	assert.Equal(t, "none", chat.Authentication)
+	assert.Equal(t, []string{"*"}, chat.AllowedOrigins)
+
+	http := readNodeSecurity(NodeTypeHTTPRequest, 4.2, map[string]any{"options": map[string]any{"allowUnauthorizedCerts": "={{ $json.insecure }}"}})
+	assert.Nil(t, http.AllowUnauthorizedCerts)
+
+	legacy := readNodeSecurity(NodeTypeHTTPRequest, 1, map[string]any{"allowUnauthorizedCerts": "={{ true }}"})
+	assert.Nil(t, legacy.AllowUnauthorizedCerts)
+}
+
 func TestStringParam(t *testing.T) {
 	// Synthetic: values the editor can store besides plain strings.
 	params := map[string]any{"a": "basicAuth", "expr": "={{ $json.auth }}", "num": 3.0, "null": nil}

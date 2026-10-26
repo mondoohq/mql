@@ -148,6 +148,27 @@ func TestWorkflowsPagination(t *testing.T) {
 	assert.Equal(t, []string{"", "page2"}, cursors)
 }
 
+func TestResponseSizeLimit(t *testing.T) {
+	// Synthetic: a body past the cap is refused instead of read into memory.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		chunk := make([]byte, 1<<20)
+		for i := range chunk {
+			chunk[i] = ' '
+		}
+		for i := 0; i <= maxResponseBytes>>20; i++ {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+
+	_, err := testClient(t, srv.URL).Tags(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "response larger than 64 MB")
+}
+
 func TestWalkCursorRepeatedCursor(t *testing.T) {
 	// Synthetic: an API that keeps returning the same cursor must not loop forever.
 	calls := 0

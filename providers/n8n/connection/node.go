@@ -52,12 +52,12 @@ func readNodeSecurity(nodeType string, typeVersion float64, params map[string]an
 		s.Authentication = stringParam(params, "authentication", "none")
 		s.Path = stringParam(params, "path", "")
 	case NodeTypeChatTrigger:
-		public := boolParam(params, "public", false)
-		s.Public = &public
+		s.Public = boolParam(params, "public", false)
 		// A chat that is not public opens only inside the n8n editor, where
 		// the editor login protects it; authentication and origins apply to
-		// the public chat.
-		if public {
+		// the public chat. When an expression decides whether the chat is
+		// public, it may be, so they are read too.
+		if s.Public == nil || *s.Public {
 			s.Authentication = stringParam(params, "authentication", "none")
 			s.AllowedOrigins = listParam(options, "allowedOrigins", "*")
 		}
@@ -65,11 +65,11 @@ func readNodeSecurity(nodeType string, typeVersion float64, params map[string]an
 		s.Authentication = stringParam(params, "authentication", "none")
 		// Versions 1 and 2 keep the flag at the top level, 3 and later
 		// under options.
-		insecure := boolParam(options, "allowUnauthorizedCerts", false)
 		if typeVersion < 3 {
-			insecure = boolParam(params, "allowUnauthorizedCerts", false)
+			s.AllowUnauthorizedCerts = boolParam(params, "allowUnauthorizedCerts", false)
+		} else {
+			s.AllowUnauthorizedCerts = boolParam(options, "allowUnauthorizedCerts", false)
 		}
-		s.AllowUnauthorizedCerts = &insecure
 		s.RequestHost = literalURLHost(stringParam(params, "url", ""))
 	}
 	return s
@@ -90,12 +90,20 @@ func stringParam(params map[string]any, key, def string) string {
 	return s
 }
 
-func boolParam(params map[string]any, key string, def bool) bool {
-	b, ok := params[key].(bool)
-	if !ok {
-		return def
+// boolParam reads a boolean parameter, or the default when it is unset. A
+// value that is set but is not a boolean, such as an expression, is decided
+// per execution and reads as nil (unknown) rather than as the default, which
+// would claim the safe setting.
+func boolParam(params map[string]any, key string, def bool) *bool {
+	v, ok := params[key]
+	if !ok || v == nil {
+		return &def
 	}
-	return b
+	b, ok := v.(bool)
+	if !ok {
+		return nil
+	}
+	return &b
 }
 
 // listParam reads a comma-separated list parameter, or the default list when
