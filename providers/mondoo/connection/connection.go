@@ -13,6 +13,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream/gql"
 	"go.mondoo.com/mql/utils/multierr"
 )
 
@@ -42,6 +43,7 @@ func New(id uint32, asset *inventory.Asset, conf *inventory.Config, upstream *up
 		// option.WithAPIToken(os.Getenv("MONDOO_API_TOKEN")),
 		option.WithHTTPClient(upstream.HttpClient),
 		option.WithServiceAccount(rawCreds),
+		option.WithUserAgent(gql.UserAgent("mondoo")),
 	)
 	if err != nil {
 		return nil, multierr.Wrap(err, "failed to initialize Mondoo API client")

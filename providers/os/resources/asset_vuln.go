@@ -119,7 +119,7 @@ func getAdvisoryReport(runtime *plugin.Runtime) (*mvd.VulnReport, error) {
 	}
 
 	// get new gql client
-	mondooClient, err := gql.NewClient(&mcc.UpstreamConfig, mcc.HttpClient)
+	mondooClient, err := gql.NewClient(&mcc.UpstreamConfig, mcc.HttpClient, gql.WithProvider("os"))
 	if err != nil {
 		return nil, err
 	}
