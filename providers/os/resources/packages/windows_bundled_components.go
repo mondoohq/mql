@@ -110,23 +110,20 @@ func expandComponentEnv(s, profile string) string {
 
 // cleanComponentDir returns p as a usable absolute directory with its case
 // kept, or "" when it is not one, still holds a %VAR%, or is a broad root
-// (see normalizeWindowsDir) that many products live under.
+// (see normalizeWindowsDir) that many products live under. A UNC path
+// (\\server\share) gives "" too: listing one waits on SMB timeouts when the
+// server is unreachable, and an install there is not realistic. Every
+// directory the search touches goes through here.
 func cleanComponentDir(p string) string {
-	p = strings.TrimSpace(strings.Trim(strings.TrimSpace(p), `"`))
-	if p == "" || normalizeWindowsDir(p, nil) == "" {
+	p = strings.ReplaceAll(strings.TrimSpace(strings.Trim(strings.TrimSpace(p), `"`)), "/", `\`)
+	if p == "" || strings.HasPrefix(p, `\\`) || normalizeWindowsDir(p, nil) == "" {
 		return ""
 	}
-	p = strings.ReplaceAll(p, "/", `\`)
-	unc := strings.HasPrefix(p, `\\`)
-	body := strings.TrimLeft(p, `\`)
+	body := p
 	for strings.Contains(body, `\\`) {
 		body = strings.ReplaceAll(body, `\\`, `\`)
 	}
-	body = strings.TrimRight(body, `\ `)
-	if unc {
-		return `\\` + body
-	}
-	return body
+	return strings.TrimRight(body, `\ `)
 }
 
 // candidateDirs returns the directories the hints and the fixed folders name,
@@ -615,8 +612,8 @@ func componentProbeSpecs(bundles []bundleDir, hints componentHints) []probeSpec 
 	}
 	specs = append(specs, probeSpec{base: `C:\php`}, probeSpec{base: `C:\tools`, segments: []string{"php*"}})
 	for _, p := range hints.Profiles {
-		apps := strings.TrimRight(strings.ReplaceAll(strings.TrimSpace(p.Dir), "/", `\`), `\`) + `\scoop\apps\php`
-		if normalizeWindowsDir(apps, nil) == "" {
+		apps := cleanComponentDir(p.Dir + `\scoop\apps\php`)
+		if apps == "" {
 			continue
 		}
 		specs = append(specs, probeSpec{base: apps, segments: []string{"*"}, skipCurrent: true})

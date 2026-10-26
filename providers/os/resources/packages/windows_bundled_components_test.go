@@ -332,6 +332,38 @@ func TestComponentHintsCandidateDirs(t *testing.T) {
 	}, h.candidateDirs())
 }
 
+func TestComponentSearchSkipsUNCPaths(t *testing.T) {
+	// Synthetic: listing a UNC path waits on SMB timeouts when the server is
+	// unreachable, so none is a candidate, wherever it comes from.
+	h := componentHints{
+		MachinePath: `\\fileserver\tools\php;C:\php`,
+		Services:    []string{`\\fileserver\svc\httpd.exe -k run`, `"C:\xampp\apache\bin\httpd.exe" -k runservice`},
+		Profiles: []componentProfile{
+			{Dir: `C:\Users\alice`, Path: `//fileserver/tools/bin;%USERPROFILE%\bin`},
+			{Dir: `\\fileserver\home\bob`, Path: `\\fileserver\home\bob\bin`},
+		},
+	}
+	assert.Equal(t, []string{`C:\php`, `C:\xampp\apache\bin`, `C:\Users\alice\bin`}, h.candidateDirs())
+
+	bundles := appInstallDirs([]Package{appPkg("Remote App", `\\fileserver\apps\remote`), appPkg("XAMPP", `C:\xampp`)})
+	assert.Equal(t, []bundleDir{{"XAMPP", `C:\xampp`}}, bundles)
+
+	for _, s := range componentProbeSpecs(bundles, h) {
+		assert.False(t, strings.HasPrefix(s.base, `\\`), "probe spec for %q", s.base)
+	}
+	script, ok := componentProbeScript(componentProbeSpecs(bundles, h))
+	require.True(t, ok)
+	assert.NotContains(t, script, "fileserver")
+	// A normal directory next to them is still searched.
+	assert.Contains(t, script, `'0|C:\php'`)
+
+	// Through the finder: only the local directory is read.
+	fs := afero.NewMemMapFs()
+	phpBin(`php/php.exe`, "8.2.0", [4]uint16{8, 2, 0, 0}).write(t, fs)
+	writeStub(t, fs, `php/php8ts.dll`)
+	assert.Equal(t, []string{`PHP|8.2.0|x86_64|The PHP Group|origin=|C:\php`}, summary(find(fs, nil, h)))
+}
+
 func TestParseComponentHints(t *testing.T) {
 	// Synthetic: the JSON shapes Windows PowerShell 5.1 and PowerShell 7
 	// write for arrays of zero, one and several elements.
