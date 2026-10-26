@@ -701,7 +701,7 @@ foreach ($spec in $specs) {
     if ($parts[0] -eq '1' -and $dirs.Count -gt 1) { $dirs = @($dirs | Where-Object { (Split-Path $_ -Leaf) -ne 'current' }) }
     foreach ($d in $dirs) { Add-Dir $d $false }
 }
-ConvertTo-Json -InputObject @($out) -Compress -Depth 5
+ConvertTo-Json -InputObject @($out | ForEach-Object { [pscustomobject]$_ }) -Compress -Depth 5
 `, true
 }
 
@@ -736,6 +736,12 @@ func peMachineFromNumber(m int) string {
 	return peMachineArch(uint16(m))
 }
 
+// errEmptyProbeOutput is what a script that failed inside PowerShell leaves:
+// the script runs with errors silenced and exits 0, so a failed conversion
+// prints nothing. A host with nothing to find still prints "[]", so empty output
+// is a failure and must not read as "nothing found".
+var errEmptyProbeOutput = errors.New("the probe script printed nothing")
+
 // parseComponentProbe reads componentProbeScript's output.
 func parseComponentProbe(r io.Reader) (*remoteComponentSource, error) {
 	data, err := io.ReadAll(r)
@@ -745,7 +751,7 @@ func parseComponentProbe(r io.Reader) (*remoteComponentSource, error) {
 	src := &remoteComponentSource{dirs: map[string]psComponentDir{}, infos: map[string]peInfo{}}
 	s := strings.TrimSpace(string(data))
 	if s == "" {
-		return src, nil
+		return nil, errEmptyProbeOutput
 	}
 	var dirs psList[psComponentDir]
 	if err := json.Unmarshal([]byte(s), &dirs); err != nil {
@@ -824,6 +830,10 @@ func (w *WinPkgManager) remoteComponentSource(pkgs []Package, hints componentHin
 		return nil
 	}
 	src, err := parseComponentProbe(cmd.Stdout)
+	if errors.Is(err, errEmptyProbeOutput) {
+		log.Debug().Err(err).Msg("component probe failed on the target: empty output, which is not the same as nothing found")
+		return nil
+	}
 	if err != nil {
 		log.Debug().Err(err).Msg("could not parse component directories of the target")
 		return nil

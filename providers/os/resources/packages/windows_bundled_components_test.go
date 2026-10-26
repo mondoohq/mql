@@ -492,6 +492,10 @@ func TestComponentProbeScript(t *testing.T) {
 	assert.Contains(t, script, `'0|C:\xampp|apache|bin'`)
 	assert.Contains(t, script, `'1|C:\Users\alice\scoop\apps\php|*'`)
 	assert.Contains(t, script, `OpenRead`, "the machine is read from the header bytes")
+	// Measured: Windows PowerShell 5.1 on Windows Server 2022 throws "Argument
+	// types do not match" converting a list of [ordered] dictionaries, and the
+	// silenced error leaves empty output; objects convert.
+	assert.Contains(t, script, `ForEach-Object { [pscustomobject]$_ }) -Compress`)
 	assert.NotContains(t, script, "it's")
 	assert.NotContains(t, script, "\u2019")
 	assert.NotContains(t, script, `a|b`)
@@ -504,13 +508,13 @@ func TestComponentProbeScript(t *testing.T) {
 }
 
 // remoteProbeFixture is componentProbeScript's output for a XAMPP host,
-// shaped as Windows PowerShell 5.1 writes it: a single Infos element is an
-// object and not an array, a string without a value is null or {}.
+// shaped as Windows PowerShell 5.1 might write it: a single Infos element is
+// an object and not an array, a string without a value is null or {}.
 // Machine 34404 is IMAGE_FILE_MACHINE_AMD64.
 //
-// Measured: Azure Windows Server 2022, XAMPP 7.3.2, 2026-10-26, for the
-// version resources; the JSON itself is written by hand in the shape of the
-// script, not captured from it.
+// Synthetic: written by hand to cover the single-element and null shapes that
+// the measured output (testdata/windows_component_probe_xampp.json) does not
+// contain; the version resources in it are the measured values.
 const remoteProbeFixture = `[
  {"Path":"C:\\xampp\\php","Files":["php.exe","php7ts.dll","php7apache2_4.dll"],"Dirs":[],
   "Infos":{"Name":"php.exe","ProductName":"PHP","CompanyName":"The PHP Group","ProductVersion":"7.3.2","File":"7.3.2.0","Machine":34404}},
@@ -555,11 +559,11 @@ func TestParseComponentProbe(t *testing.T) {
 	_, ok = src.info(`C:\xampp\php`, "httpd.exe")
 	assert.False(t, ok)
 
-	empty, err := parseComponentProbe(strings.NewReader("  "))
-	require.NoError(t, err)
-	_, _, ok = empty.list(`C:\xampp\php`)
-	assert.False(t, ok)
-	empty, err = parseComponentProbe(strings.NewReader("[]"))
+	// Empty output is a failed script, not an empty result: the script
+	// silences its errors and exits 0, and prints "[]" when nothing is there.
+	_, err = parseComponentProbe(strings.NewReader("  "))
+	assert.ErrorIs(t, err, errEmptyProbeOutput)
+	empty, err := parseComponentProbe(strings.NewReader("[]"))
 	require.NoError(t, err)
 	_, _, ok = empty.list(`C:\xampp\php`)
 	assert.False(t, ok)
@@ -577,11 +581,13 @@ type stagingTestConnection struct {
 	commands []string
 	// seen is the staged file's content at the time the command ran.
 	seen map[string]string
+	// stdout is what every command prints.
+	stdout string
 }
 
 func newStagingTestConnection() *stagingTestConnection {
 	asset := &inventory.Asset{Platform: &inventory.Platform{Name: "windows", Arch: "amd64", Family: []string{"windows"}}}
-	return &stagingTestConnection{Connection: plugin.NewConnection(1, asset), asset: asset, fs: afero.NewMemMapFs(), seen: map[string]string{}}
+	return &stagingTestConnection{Connection: plugin.NewConnection(1, asset), asset: asset, fs: afero.NewMemMapFs(), seen: map[string]string{}, stdout: "[]"}
 }
 
 func (c *stagingTestConnection) RunCommand(command string) (*shared.Command, error) {
@@ -591,7 +597,7 @@ func (c *stagingTestConnection) RunCommand(command string) (*shared.Command, err
 			c.seen[path] = string(b)
 		}
 	}
-	return &shared.Command{Command: command, Stdout: bytes.NewBufferString("[]"), Stderr: bytes.NewBufferString(""), ExitStatus: 0}, nil
+	return &shared.Command{Command: command, Stdout: bytes.NewBufferString(c.stdout), Stderr: bytes.NewBufferString(""), ExitStatus: 0}, nil
 }
 func (c *stagingTestConnection) FileInfo(string) (shared.FileInfoDetails, error) {
 	return shared.FileInfoDetails{}, os.ErrNotExist
@@ -661,16 +667,44 @@ type noRunConnection struct{ *stagingTestConnection }
 func (noRunConnection) Capabilities() shared.Capabilities { return shared.Capability_File }
 
 func TestFindBundledComponentsRemote(t *testing.T) {
-	src, err := parseComponentProbe(strings.NewReader(remoteProbeFixture))
+	// Measured: Azure Windows Server 2022, Windows PowerShell 5.1, XAMPP 7.3.2 /
+	// php.net 7.3.33 TS and 8.4.27 NTS zips, 2026-10-26, output of
+	// componentProbeScript. The machine PATH held C:\php and C:\tools\php84 was
+	// found through the C:\tools\php* fixed folder.
+	f, err := os.Open("testdata/windows_component_probe_xampp.json")
 	require.NoError(t, err)
-	hints := componentHints{Profiles: []componentProfile{{Dir: `C:\Users\alice`}}}
+	defer f.Close()
+	src, err := parseComponentProbe(f)
+	require.NoError(t, err)
+
+	hints := componentHints{MachinePath: `C:\Program Files\dotnet;C:\php;C:\Users\mqladmin\AppData\Local\Microsoft\WindowsApps`}
 	got := findBundledComponents(src, []Package{appPkg("XAMPP", `C:\xampp`)}, hints, winX64Platform())
 	assert.Equal(t, []string{
 		`PHP|7.3.2|x86_64|The PHP Group|origin=XAMPP|C:\xampp\php`,
+		// The same libssl sits in XAMPP's php and apache\bin: one package, two locations.
+		`OpenSSL|1.1.1a|x86_64|The OpenSSL Project|origin=XAMPP|C:\xampp\php,C:\xampp\apache\bin`,
 		`Apache HTTP Server|2.4.38|x86_64|Apache Software Foundation|origin=XAMPP|C:\xampp\apache\bin`,
-		`OpenSSL|1.1.1a|x86_64|The OpenSSL Project|origin=XAMPP|C:\xampp\apache\bin`,
 		`MariaDB|10.1.38.0|x86_64|MariaDB|origin=XAMPP|C:\xampp\mysql\bin`,
-		// Synthetic: a 32-bit scoop install; "current" is skipped beside 8.3.1.
-		`PHP|8.3.1|x86|The PHP Group|origin=|C:\Users\alice\scoop\apps\php\8.3.1`,
+		`PHP|7.3.33|x86_64|The PHP Group|origin=|C:\php`,
+		`OpenSSL|1.1.1l|x86_64|The OpenSSL Project|origin=|C:\php`,
+		`PHP|8.4.27|x86_64|The PHP Group|origin=|C:\tools\php84`,
+		`OpenSSL|3.0.22|x86_64|The OpenSSL Project|origin=|C:\tools\php84`,
 	}, summary(got))
+}
+
+func TestRemoteComponentSourceEmptyOutputIsAFailure(t *testing.T) {
+	// Synthetic: a probe script that failed inside PowerShell prints nothing
+	// and exits 0; that must read as a failure (no source), while "[]" is a
+	// host with nothing to find.
+	pkgs := []Package{appPkg("XAMPP", `C:\xampp`)}
+	for _, tc := range []struct {
+		stdout string
+		usable bool
+	}{{"", false}, {"  \r\n", false}, {"not json", false}, {"[]", true}} {
+		conn := newStagingTestConnection()
+		conn.stdout = tc.stdout
+		w := &WinPkgManager{conn: conn, platform: winX64Platform()}
+		src := w.remoteComponentSource(pkgs, componentHints{})
+		assert.Equal(t, tc.usable, src != nil, "stdout %q", tc.stdout)
+	}
 }
