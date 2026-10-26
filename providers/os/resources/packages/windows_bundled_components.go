@@ -274,6 +274,19 @@ func (c *componentFinder) info(dir, name string) (peInfo, bool) {
 // componentArch for the package architecture.
 type component struct {
 	name, vendor, version, machine, dir string
+	// file is the library an OpenSSL find is reported at, empty for the others
+	file string
+}
+
+// location is the path the package carries as its file. OpenSSL is reported at
+// its library, not its directory: it shares the directory with Apache or PHP,
+// and the running-binaries owner lookup takes the longest matching install
+// directory, so with equal directories OpenSSL would own httpd.exe.
+func (c component) location() string {
+	if c.file != "" {
+		return c.file
+	}
+	return c.dir
 }
 
 // componentArch maps the architecture family of a PE image onto the
@@ -372,7 +385,7 @@ func (c *componentFinder) componentsIn(dir string) []component {
 		}
 		if info, ok := c.info(dir, exe); ok && hasCore && strings.EqualFold(info.ProductName, "PHP") {
 			if v := versionToken(info); v != "" {
-				out = append(out, component{"PHP", "The PHP Group", v, info.Machine, dir})
+				out = append(out, component{"PHP", "The PHP Group", v, info.Machine, dir, ""})
 			}
 		}
 	}
@@ -380,7 +393,7 @@ func (c *componentFinder) componentsIn(dir string) []component {
 	if exe, ok := files["httpd.exe"]; ok {
 		if info, ok := c.info(dir, exe); ok && strings.EqualFold(info.ProductName, "Apache HTTP Server") {
 			if v := versionToken(info); v != "" {
-				out = append(out, component{"Apache HTTP Server", "Apache Software Foundation", v, info.Machine, dir})
+				out = append(out, component{"Apache HTTP Server", "Apache Software Foundation", v, info.Machine, dir, ""})
 			}
 		}
 	}
@@ -395,9 +408,9 @@ func (c *componentFinder) componentsIn(dir string) []component {
 			if v := versionToken(info); v != "" {
 				switch mysqlFlavor(info.ProductName, v, hasMariadbd) {
 				case "MariaDB":
-					out = append(out, component{"MariaDB", "MariaDB", v, info.Machine, dir})
+					out = append(out, component{"MariaDB", "MariaDB", v, info.Machine, dir, ""})
 				case "MySQL Server":
-					out = append(out, component{"MySQL Server", "Oracle Corporation", v, info.Machine, dir})
+					out = append(out, component{"MySQL Server", "Oracle Corporation", v, info.Machine, dir, ""})
 				}
 			}
 		}
@@ -423,7 +436,7 @@ func (c *componentFinder) componentsIn(dir string) []component {
 			continue
 		}
 		if v := versionToken(info); v != "" {
-			out = append(out, component{"OpenSSL", "The OpenSSL Project", v, info.Machine, dir})
+			out = append(out, component{"OpenSSL", "The OpenSSL Project", v, info.Machine, dir, dir + `\` + files[lower]})
 			break
 		}
 	}
@@ -505,7 +518,7 @@ func findBundledComponents(src componentSource, pkgs []Package, hints componentH
 			if addComponentLocation(found, comp, platform) {
 				continue
 			}
-			pkg := createPackage(comp.name, comp.version, "windows/app", componentArch(comp.machine, platform), comp.vendor, comp.dir, platform)
+			pkg := createPackage(comp.name, comp.version, "windows/app", componentArch(comp.machine, platform), comp.vendor, comp.location(), platform)
 			pkg.InstallScope = installScopeMachine
 			pkg.Origin = originOf(bundles, comp.dir)
 			found = append(found, *pkg)
@@ -539,7 +552,7 @@ func addComponentLocation(found []Package, comp component, platform *inventory.P
 	for i := range found {
 		p := &found[i]
 		if p.Name == comp.name && p.Version == comp.version && p.Arch == componentArch(comp.machine, platform) {
-			p.Files = append(p.Files, FileRecord{Path: comp.dir})
+			p.Files = append(p.Files, FileRecord{Path: comp.location()})
 			return true
 		}
 	}

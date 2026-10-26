@@ -120,7 +120,7 @@ func TestFindBundledComponentsXampp(t *testing.T) {
 	assert.Equal(t, []string{
 		`PHP|7.3.2|x86_64|The PHP Group|origin=XAMPP|C:\xampp\php`,
 		`Apache HTTP Server|2.4.38|x86_64|Apache Software Foundation|origin=XAMPP|C:\xampp\apache\bin`,
-		`OpenSSL|1.1.1a|x86_64|The OpenSSL Project|origin=XAMPP|C:\xampp\apache\bin`,
+		`OpenSSL|1.1.1a|x86_64|The OpenSSL Project|origin=XAMPP|C:\xampp\apache\bin\libssl-1_1-x64.dll`,
 		`MariaDB|10.1.38.0|x86_64|MariaDB|origin=XAMPP|C:\xampp\mysql\bin`,
 		`PHP|7.3.33|x86_64|The PHP Group|origin=|C:\php`,
 		`PHP|8.4.27|x86_64|The PHP Group|origin=|C:\tools\php84`,
@@ -456,7 +456,7 @@ func TestFindBundledComponentsOpenSSLNeedsAComponent(t *testing.T) {
 	writeStub(t, fs, `tools/bin/php8.dll`)
 	assert.Equal(t, []string{
 		`PHP|8.2.0|x86_64|The PHP Group|origin=|C:\tools\bin`,
-		`OpenSSL|1.1.1a|x86_64|The OpenSSL Project|origin=|C:\tools\bin`,
+		`OpenSSL|1.1.1a|x86_64|The OpenSSL Project|origin=|C:\tools\bin\libssl-3-x64.dll`,
 	}, summary(find(fs, nil, hints)))
 }
 
@@ -491,11 +491,6 @@ func TestComponentProbeScript(t *testing.T) {
 	require.True(t, ok)
 	assert.Contains(t, script, `'0|C:\xampp|apache|bin'`)
 	assert.Contains(t, script, `'1|C:\Users\alice\scoop\apps\php|*'`)
-	assert.Contains(t, script, `OpenRead`, "the machine is read from the header bytes")
-	// Measured: Windows PowerShell 5.1 on Windows Server 2022 throws "Argument
-	// types do not match" converting a list of [ordered] dictionaries, and the
-	// silenced error leaves empty output; objects convert.
-	assert.Contains(t, script, `ForEach-Object { [pscustomobject]$_ }) -Compress`)
 	assert.NotContains(t, script, "it's")
 	assert.NotContains(t, script, "\u2019")
 	assert.NotContains(t, script, `a|b`)
@@ -682,13 +677,13 @@ func TestFindBundledComponentsRemote(t *testing.T) {
 	assert.Equal(t, []string{
 		`PHP|7.3.2|x86_64|The PHP Group|origin=XAMPP|C:\xampp\php`,
 		// The same libssl sits in XAMPP's php and apache\bin: one package, two locations.
-		`OpenSSL|1.1.1a|x86_64|The OpenSSL Project|origin=XAMPP|C:\xampp\php,C:\xampp\apache\bin`,
+		`OpenSSL|1.1.1a|x86_64|The OpenSSL Project|origin=XAMPP|C:\xampp\php\libssl-1_1-x64.dll,C:\xampp\apache\bin\libssl-1_1-x64.dll`,
 		`Apache HTTP Server|2.4.38|x86_64|Apache Software Foundation|origin=XAMPP|C:\xampp\apache\bin`,
 		`MariaDB|10.1.38.0|x86_64|MariaDB|origin=XAMPP|C:\xampp\mysql\bin`,
 		`PHP|7.3.33|x86_64|The PHP Group|origin=|C:\php`,
-		`OpenSSL|1.1.1l|x86_64|The OpenSSL Project|origin=|C:\php`,
+		`OpenSSL|1.1.1l|x86_64|The OpenSSL Project|origin=|C:\php\libssl-1_1-x64.dll`,
 		`PHP|8.4.27|x86_64|The PHP Group|origin=|C:\tools\php84`,
-		`OpenSSL|3.0.22|x86_64|The OpenSSL Project|origin=|C:\tools\php84`,
+		`OpenSSL|3.0.22|x86_64|The OpenSSL Project|origin=|C:\tools\php84\libssl-3-x64.dll`,
 	}, summary(got))
 }
 

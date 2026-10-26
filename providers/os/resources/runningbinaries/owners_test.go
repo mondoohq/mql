@@ -285,6 +285,26 @@ func TestWindowsOwner(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestWindowsOwnerComponentSharingADirectory(t *testing.T) {
+	// Measured: Azure Windows Server 2022, XAMPP 7.3.2, 2026-10-26. XAMPP's
+	// apache\bin holds httpd.exe and the OpenSSL libraries. Reported at the
+	// directory, OpenSSL tied with Apache on the longest install directory and
+	// owned httpd.exe. Reported at its library file it owns only that file.
+	dirs := []InstallDir{
+		{Package: "Apache HTTP Server", Dir: `C:\xampp\apache\bin`},
+		{Package: "OpenSSL", Dir: `C:\xampp\apache\bin\libssl-1_1-x64.dll`},
+		{Package: "XAMPP", Dir: `C:\xampp`},
+	}
+	name, ok := WindowsOwner(`C:\xampp\apache\bin\httpd.exe`, dirs)
+	assert.True(t, ok)
+	assert.Equal(t, "Apache HTTP Server", name)
+
+	// The library itself is OpenSSL's.
+	name, ok = WindowsOwner(`C:\xampp\apache\bin\libssl-1_1-x64.dll`, dirs)
+	assert.True(t, ok)
+	assert.Equal(t, "OpenSSL", name)
+}
+
 func TestWindowsOwnerSharedDirs(t *testing.T) {
 	// install locations some installers record that hold other products too
 	for _, dir := range []string{
