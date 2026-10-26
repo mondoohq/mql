@@ -120,6 +120,13 @@ func hasInitSystem(conn shared.Connection) bool {
 	return false
 }
 
+// systemdBooted reports whether systemd is the running init, the check
+// sd_booted(3) makes: systemd creates /run/systemd/system at boot.
+func systemdBooted(conn shared.Connection) bool {
+	_, err := conn.FileInfo("/run/systemd/system")
+	return err == nil
+}
+
 func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 	var osm OSServiceManager
 
@@ -168,6 +175,15 @@ func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 		}
 		if v < 7 {
 			osm = &UpstartServiceManager{SysVServiceManager{conn: conn}}
+		} else {
+			osm = ResolveSystemdServiceManager(conn)
+		}
+	// MX Linux installs both sysvinit and systemd and boots sysvinit unless
+	// systemd is picked at the boot menu. SysV needs commands to list
+	// services, so without them read the systemd units, the only ones on disk.
+	case asset.Platform.Name == "mx":
+		if !systemdBooted(conn) && conn.Capabilities().Has(shared.Capability_RunCommand) {
+			osm = &SysVServiceManager{conn: conn}
 		} else {
 			osm = ResolveSystemdServiceManager(conn)
 		}

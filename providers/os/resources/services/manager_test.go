@@ -392,25 +392,52 @@ func TestManagerElementary(t *testing.T) {
 	assert.True(t, ok, "SystemDServiceManager used for Elementary Linux")
 }
 
+// MX Linux installs both sysvinit and systemd and boots sysvinit unless
+// systemd is picked at the boot menu. Handing it to systemd regardless meant
+// a sysvinit host listed its services from unit files on disk, none of them
+// running. /run/systemd/system exists only while systemd is PID 1.
 func TestManagerMXLinux(t *testing.T) {
-	mock, err := mock.New(0, &inventory.Asset{
-		Platform: &inventory.Platform{
-			Name:    "mx",
-			Version: "23.2",
-			Family:  []string{"debian", "linux", "unix", "os"},
+	tests := []struct {
+		name     string
+		files    map[string]*mock.MockFileData
+		expected string
+	}{
+		{
+			name: "booted with sysvinit",
+			files: map[string]*mock.MockFileData{
+				"/sbin/init":                      {},
+				"/lib/systemd/systemd":            {},
+				"/lib/systemd/system/ssh.service": {},
+			},
+			expected: "SysV Service Manager",
 		},
-	}, mock.WithData(&mock.TomlData{
-		Files: map[string]*mock.MockFileData{
-			"/sbin/init": {},
+		{
+			name: "booted with systemd",
+			files: map[string]*mock.MockFileData{
+				"/sbin/init":           {},
+				"/lib/systemd/systemd": {},
+				"/run/systemd/system":  {StatData: mock.FileInfo{IsDir: true}},
+			},
+			expected: "systemd Service Manager",
 		},
-	}))
-	require.NoError(t, err)
+	}
 
-	mm, err := services.ResolveManager(mock)
-	require.NoError(t, err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			conn, err := mock.New(0, &inventory.Asset{
+				Platform: &inventory.Platform{
+					Name:    "mx",
+					Version: "23.2",
+					Family:  []string{"debian", "linux", "unix", "os"},
+				},
+			}, mock.WithData(&mock.TomlData{Files: test.files}))
+			require.NoError(t, err)
 
-	_, ok := mm.(*services.SystemDServiceManager)
-	assert.True(t, ok, "SystemDServiceManager used for MX Linux")
+			mm, err := services.ResolveManager(conn)
+			require.NoError(t, err)
+			assert.Equal(t, test.expected, mm.Name())
+		})
+	}
 }
 
 func TestManagerZorin(t *testing.T) {
