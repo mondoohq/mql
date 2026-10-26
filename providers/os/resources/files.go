@@ -237,13 +237,17 @@ func (l *mqlFilesFind) hasGNUFind() bool {
 }
 
 // findLacksMaxDepth reports whether the target's find rejects -maxdepth, as
-// AIX find does ("find: bad option -maxdepth").
+// AIX and Oracle Solaris find do ("find: bad option -maxdepth").
 func (l *mqlFilesFind) findLacksMaxDepth() bool {
 	conn, ok := l.MqlRuntime.Connection.(shared.Connection)
 	if !ok || conn.Asset() == nil || conn.Asset().Platform == nil {
 		return false
 	}
-	return conn.Asset().Platform.Name == "aix"
+	switch conn.Asset().Platform.Name {
+	case "aix", "solaris":
+		return true
+	}
+	return false
 }
 
 func (l *mqlFilesFind) windowsPowershellCmd() ([]string, error) {

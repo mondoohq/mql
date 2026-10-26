@@ -47,7 +47,7 @@ func globEscape(s string) string {
 type FindFlavor struct {
 	// GNU is GNU findutils, which has -xtype.
 	GNU bool
-	// NoMaxDepth is a find without -maxdepth (AIX), which rejects the option
+	// NoMaxDepth is a find without -maxdepth (AIX, Solaris), which rejects the option
 	// and prints nothing; the depth is then kept by pruning every path below
 	// it, which POSIX find supports.
 	NoMaxDepth bool
