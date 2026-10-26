@@ -254,14 +254,15 @@ func TestFindBundledComponentsDedup(t *testing.T) {
 	})
 	t.Run("a package of that name elsewhere does not cover it", func(t *testing.T) {
 		got := find(setup(t), []Package{appPkg("MariaDB 10.5", `C:\Program Files\MariaDB 10.5`)}, hints)
-		assert.Len(t, got, 1)
+		// Not inside the 10.5 directory, so no origin either.
+		assert.Equal(t, []string{`MariaDB|10.6.12|x86_64|MariaDB|origin=|C:\Program Files\MariaDB 10.6\bin`}, summary(got))
 	})
 	t.Run("the same directory from two sources is one package", func(t *testing.T) {
 		h := componentHints{
 			MachinePath: `C:\Program Files\MariaDB 10.6\bin`,
 			Services:    hints.Services,
 		}
-		assert.Len(t, find(setup(t), nil, h), 1)
+		assert.Equal(t, []string{`MariaDB|10.6.12|x86_64|MariaDB|origin=|C:\Program Files\MariaDB 10.6\bin`}, summary(find(setup(t), nil, h)))
 	})
 }
 
@@ -307,7 +308,7 @@ func TestFindBundledComponentsScoop(t *testing.T) {
 	})
 	t.Run("current alone is kept", func(t *testing.T) {
 		got := find(mk(t, `Users/alice/scoop/apps/php/current`), nil, hints)
-		assert.Len(t, got, 1)
+		assert.Equal(t, []string{`PHP|8.3.1|x86_64|The PHP Group|origin=|C:\Users\alice\scoop\apps\php\current`}, summary(got))
 	})
 }
 

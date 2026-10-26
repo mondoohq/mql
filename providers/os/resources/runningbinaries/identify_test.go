@@ -466,6 +466,15 @@ func TestIdentifyMysqldMariaDB(t *testing.T) {
 		id := Identify(nil, Binary{Path: `C:\mysql\bin\mysqld.exe`, VersionInfo: &PEVersionInfo{ProductVersion: v}})
 		assert.Equal(t, "mysql", id.Name, v)
 	}
+	// Synthetic: the product name decides before the version does, as it does
+	// in the Windows package scan.
+	id = Identify(nil, Binary{Path: `C:\mysql\bin\mysqld.exe`, VersionInfo: &PEVersionInfo{ProductName: "MySQL Server", ProductVersion: "10.1.38.0"}})
+	assert.Equal(t, "mysql", id.Name)
+	id = Identify(nil, Binary{Path: `C:\maria\bin\mysqld.exe`, VersionInfo: &PEVersionInfo{ProductName: "MariaDB Server", ProductVersion: "5.5.68"}})
+	assert.Equal(t, "mariadb", id.Name)
+	// Synthetic: 5.5 with no name is ambiguous, so it stays mysql.
+	id = Identify(nil, Binary{Path: `C:\mysql\bin\mysqld.exe`, VersionInfo: &PEVersionInfo{ProductVersion: "5.5.62.0"}})
+	assert.Equal(t, "mysql", id.Name)
 	// Synthetic: no version found, so no evidence for either.
 	assert.Equal(t, "mysql", Identify(nil, Binary{Path: "/usr/sbin/mysqld"}).Name)
 }

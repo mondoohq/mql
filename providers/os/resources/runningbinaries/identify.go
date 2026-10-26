@@ -11,10 +11,10 @@ import (
 	"errors"
 	"io"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/afero"
+	"go.mondoo.com/mql/providers/os/resources/packages"
 	"golang.org/x/mod/module"
 	"howett.net/plist"
 )
@@ -245,22 +245,23 @@ func Identify(fs afero.Fs, b Binary) Identity {
 		}
 	}
 
-	// MariaDB 10.0 and later and XAMPP's MariaDB 10.1 still run as mysqld,
-	// while MySQL went from 5.7 to 8.0, so a mysqld with a major version of
-	// 10 or more is MariaDB.
-	if runtime != nil && runtime.name == "mysql" && mysqldIsMariaDB(id.Version) {
-		id.Name = "mariadb"
+	// MariaDB 10.0 and later and XAMPP's MariaDB 10.1 still run as mysqld.
+	// The same rules as the Windows package scan decide: the version
+	// resource's product name first, then the version (MySQL went from 5.7 to
+	// 8.0). A mysqld they can't classify stays mysql. The mariadbd.exe sibling
+	// the package scan also uses is not looked at here, since mariadbd is its
+	// own known runtime.
+	if runtime != nil && runtime.name == "mysql" {
+		productName := ""
+		if b.VersionInfo != nil {
+			productName = b.VersionInfo.ProductName
+		}
+		if mariadb, ok := packages.IsMariaDBServer(productName, id.Version); ok && mariadb {
+			id.Name = "mariadb"
+		}
 	}
 
 	return id
-}
-
-// mysqldIsMariaDB reports whether a mysqld version belongs to MariaDB by its
-// major version.
-func mysqldIsMariaDB(version string) bool {
-	major, _, _ := strings.Cut(version, ".")
-	n, err := strconv.Atoi(major)
-	return err == nil && n >= 10
 }
 
 func (id *Identity) fromMetadata(fs afero.Fs, path string, runtime *knownRuntime) bool {

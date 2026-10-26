@@ -344,6 +344,9 @@ func minorVersion(v string) int {
 // MariaDB started at 10.0 after 5.5 while MySQL went from 5.7 to 8.0, so the
 // major version tells them apart when the resource carries no name. Returns
 // "" for a version that fits neither (5.5 with no name).
+//
+// 5.5 with no name is ambiguous on purpose: both MariaDB and MySQL shipped a
+// 5.5, so it must not be "fixed" to MySQL.
 func mysqlFlavor(productName, version string, hasMariadbd bool) string {
 	name := strings.ToLower(productName)
 	switch {
@@ -364,6 +367,20 @@ func mysqlFlavor(productName, version string, hasMariadbd bool) string {
 		return "MySQL Server"
 	}
 	return ""
+}
+
+// IsMariaDBServer reports whether a mysqld executable with this PE
+// ProductName and version is MariaDB, by the rules that name the Windows
+// bundled components (ProductName first, then the version). ok is false when
+// they can't tell, such as 5.5 with no name.
+func IsMariaDBServer(productName, version string) (mariadb, ok bool) {
+	switch mysqlFlavor(productName, version, false) {
+	case "MariaDB":
+		return true, true
+	case "MySQL Server":
+		return false, true
+	}
+	return false, false
 }
 
 // componentsIn returns the components whose executables are in dir.
