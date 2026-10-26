@@ -272,6 +272,7 @@ use (
    ./mql/providers/ms365
    ./mql/providers/mssql
    ./mql/providers/mysqldb
+   ./mql/providers/n8n
    ./mql/providers/neon
    ./mql/providers/netlify
    ./mql/providers/nextdns

@@ -257,6 +257,7 @@ PROVIDERS := \
 	ms365 \
 	mssql \
 	mysqldb \
+	n8n \
 	neon \
 	netlify \
 	network \

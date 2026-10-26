@@ -969,6 +969,22 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"n8n": {
+		Provider: &plugin.Provider{
+			Name:            "n8n",
+			ID:              "go.mondoo.com/mql/providers/n8n",
+			ConnectionTypes: []string{"n8n"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "n8n",
+					Use:   "n8n [url]",
+					Short: "an n8n instance",
+				},
+			},
+		},
+	},
+
 	"neon": {
 		Provider: &plugin.Provider{
 			Name:            "neon",

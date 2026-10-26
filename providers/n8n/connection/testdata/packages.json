@@ -1,0 +1,1 @@
+[{"packageName":"n8n-nodes-text-manipulation","installedVersion":"1.4.0","authorName":"lublak","installedNodes":[{"name":"TextManipulation","type":"n8n-nodes-text-manipulation.textManipulation","latestVersion":1}],"createdAt":"2026-10-26T00:52:53.612Z","updatedAt":"2026-10-26T00:52:53.612Z","failedLoading":false}]

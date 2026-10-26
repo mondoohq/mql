@@ -168,6 +168,7 @@ To learn about Mondoo Platform, read the [Mondoo Platform docs](https://mondoo.c
 | MySQL or MariaDB server       | `mysqldb`                  | `mql shell mysqldb db.contoso.com --user root --ask-pass`                                                                                       |
 | MongoDB Atlas organization    | `mongodbatlas`             | `mql shell mongodbatlas --org-id ORG_ID --public-key PUBLIC_KEY --private-key PRIVATE_KEY`                                                       |
 | MongoDB server (self-hosted)  | `mongo`                    | `mql shell mongo db.contoso.com --user admin --ask-pass`                                                                                        |
+| n8n instance                  | `n8n`                      | `mql shell n8n https://n8n.contoso.com --api-key API_KEY`                                                                                       |
 | Neon organization             | `neon`                     | `mql shell neon --token TOKEN`                                                                                                                  |
 | Netlify account               | `netlify`                  | `mql shell netlify --token TOKEN`                                                                                                               |
 | NetScaler ADC and Gateway     | `netscaler`                | `mql shell netscaler --hostname HOST --username USER --ask-pass`                                                                                |
