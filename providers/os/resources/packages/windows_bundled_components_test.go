@@ -4,15 +4,21 @@
 package packages
 
 import (
+	"bytes"
 	"debug/pe"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/registry"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 // The PE images in this file are synthesized (no vendor binaries are shipped)
@@ -561,6 +567,98 @@ func TestParseComponentProbe(t *testing.T) {
 	_, err = parseComponentProbe(strings.NewReader("not json"))
 	assert.Error(t, err)
 }
+
+// stagingTestConnection records the commands run on it and keeps staged files
+// on an in-memory filesystem, which Stage writes through.
+type stagingTestConnection struct {
+	plugin.Connection
+	asset    *inventory.Asset
+	fs       afero.Fs
+	commands []string
+	// seen is the staged file's content at the time the command ran.
+	seen map[string]string
+}
+
+func newStagingTestConnection() *stagingTestConnection {
+	asset := &inventory.Asset{Platform: &inventory.Platform{Name: "windows", Arch: "amd64", Family: []string{"windows"}}}
+	return &stagingTestConnection{Connection: plugin.NewConnection(1, asset), asset: asset, fs: afero.NewMemMapFs(), seen: map[string]string{}}
+}
+
+func (c *stagingTestConnection) RunCommand(command string) (*shared.Command, error) {
+	c.commands = append(c.commands, command)
+	if path, ok := strings.CutPrefix(command, powershell.StagedCommand("")); ok {
+		if b, err := afero.ReadFile(c.fs, path); err == nil {
+			c.seen[path] = string(b)
+		}
+	}
+	return &shared.Command{Command: command, Stdout: bytes.NewBufferString("[]"), Stderr: bytes.NewBufferString(""), ExitStatus: 0}, nil
+}
+func (c *stagingTestConnection) FileInfo(string) (shared.FileInfoDetails, error) {
+	return shared.FileInfoDetails{}, os.ErrNotExist
+}
+func (c *stagingTestConnection) FileSystem() afero.Fs               { return c.fs }
+func (c *stagingTestConnection) Name() string                       { return "staging-test" }
+func (c *stagingTestConnection) Type() shared.ConnectionType        { return shared.Type_Winrm }
+func (c *stagingTestConnection) Asset() *inventory.Asset            { return c.asset }
+func (c *stagingTestConnection) UpdateAsset(asset *inventory.Asset) { c.asset = asset }
+func (c *stagingTestConnection) Capabilities() shared.Capabilities {
+	return shared.Capability_RunCommand | shared.Capability_File
+}
+
+func TestComponentScriptsFitOrAreStaged(t *testing.T) {
+	// The hints script carries no data from the target, so its size is fixed.
+	assert.True(t, powershell.FitsCommandLine(componentHintsScript), "the hints script must fit an encoded command on WinRM")
+
+	// Synthetic: a host with a bundle and a few PATH and service entries. The
+	// probe script lists every path to probe, so it grows with the host.
+	bundles := []bundleDir{{"XAMPP", `C:\xampp`}, {"WampServer", `C:\wamp64`}}
+	hints := componentHints{
+		MachinePath: `C:\php;C:\Tools\bin;C:\Program Files\Git\cmd`,
+		Services:    []string{`"C:\xampp\apache\bin\httpd.exe" -k runservice`},
+		Profiles:    []componentProfile{{Dir: `C:\Users\alice`}},
+	}
+	script, ok := componentProbeScript(componentProbeSpecs(bundles, hints))
+	require.True(t, ok)
+	require.False(t, powershell.FitsCommandLine(script), "if this fits, the staging test below no longer covers anything")
+
+	t.Run("a long script is staged and run with -File", func(t *testing.T) {
+		conn := newStagingTestConnection()
+		cmd, err := runComponentScript(conn, "components", script)
+		require.NoError(t, err)
+		require.NotNil(t, cmd)
+
+		path := powershell.StagedWindowsPath("components", script)
+		require.NotEmpty(t, conn.commands)
+		run := conn.commands[len(conn.commands)-1]
+		assert.Equal(t, powershell.StagedCommand(path), run)
+		assert.NotContains(t, run, "EncodedCommand")
+		assert.Equal(t, script, conn.seen[path], "the file holds the script when the command runs")
+		for _, c := range conn.commands {
+			assert.LessOrEqual(t, len(c), powershell.MaxCommandLength, "no command may exceed the WinRM limit")
+		}
+		exists, err := afero.Exists(conn.fs, path)
+		require.NoError(t, err)
+		assert.False(t, exists, "the staged file is removed")
+	})
+
+	t.Run("a short script is an encoded command", func(t *testing.T) {
+		conn := newStagingTestConnection()
+		_, err := runComponentScript(conn, "componenthints", componentHintsScript)
+		require.NoError(t, err)
+		assert.Equal(t, []string{powershell.Encode(componentHintsScript)}, conn.commands)
+	})
+
+	t.Run("no way to stage is an error and not a truncated command", func(t *testing.T) {
+		conn := &noRunConnection{newStagingTestConnection()}
+		_, err := runComponentScript(conn, "components", script)
+		assert.Error(t, err)
+	})
+}
+
+// noRunConnection cannot run commands.
+type noRunConnection struct{ *stagingTestConnection }
+
+func (noRunConnection) Capabilities() shared.Capabilities { return shared.Capability_File }
 
 func TestFindBundledComponentsRemote(t *testing.T) {
 	src, err := parseComponentProbe(strings.NewReader(remoteProbeFixture))

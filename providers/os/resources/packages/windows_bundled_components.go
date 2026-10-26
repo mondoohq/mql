@@ -5,6 +5,7 @@ package packages
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"path"
 	"regexp"
@@ -788,6 +789,27 @@ func (s *remoteComponentSource) info(dir, name string) (peInfo, bool) {
 	return i, ok
 }
 
+// runComponentScript runs a PowerShell script on the target. A script that
+// fits on a command line travels as an encoded command; a longer one is staged
+// as a file and run with -File (powershell.Stage), because a target rejects an
+// over-long command before PowerShell starts: 28k encoded over WinRM, which
+// allows 8191. componentProbeScript is always that long on a host with a few
+// apps, since it carries the paths to probe.
+func runComponentScript(conn shared.Connection, name, script string) (*shared.Command, error) {
+	if powershell.FitsCommandLine(script) {
+		return conn.RunCommand(powershell.Encode(script))
+	}
+	if !powershell.CanStage(conn) {
+		return nil, errors.New("script is too long for a command line and the connection can't stage it")
+	}
+	staged, err := powershell.Stage(conn, name, script)
+	if err != nil {
+		return nil, err
+	}
+	defer staged.Remove()
+	return conn.RunCommand(staged.Command)
+}
+
 // remoteComponentSource reads everything the finder may ask for with one
 // PowerShell run. The specs are those the finder will expand, computed from
 // the same packages and hints.
@@ -796,7 +818,7 @@ func (w *WinPkgManager) remoteComponentSource(pkgs []Package, hints componentHin
 	if !ok {
 		return nil
 	}
-	cmd, err := w.conn.RunCommand(powershell.Encode(script))
+	cmd, err := runComponentScript(w.conn, "components", script)
 	if err != nil || cmd.ExitStatus != 0 {
 		log.Debug().Err(err).Msg("could not probe component directories on the target")
 		return nil
@@ -916,7 +938,7 @@ func parseComponentHints(r io.Reader) (componentHints, error) {
 // remoteComponentHints reads the hints with one PowerShell run over the
 // active connection; local scans on Windows take the same route.
 func (w *WinPkgManager) remoteComponentHints() componentHints {
-	cmd, err := w.conn.RunCommand(powershell.Encode(componentHintsScript))
+	cmd, err := runComponentScript(w.conn, "componenthints", componentHintsScript)
 	if err != nil || cmd.ExitStatus != 0 {
 		log.Debug().Err(err).Msg("could not read PATH and services of the target")
 		return componentHints{}
