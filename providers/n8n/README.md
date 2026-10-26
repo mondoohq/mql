@@ -15,7 +15,7 @@ The provider reads what the API key's scopes allow:
 | `n8n.users` | `user:list` |
 | `n8n.tags` | `tag:list` |
 | `n8n.communityPackages` | `communityPackage:list` |
-| `n8n.securityAudit` | `securityAudit:generate` |
+| `n8n.securityAudit`, `n8n.instanceSettings` | `securityAudit:generate` |
 
 A field the key may not read reports an access-denied error naming the scope, never an empty answer.
 
@@ -53,15 +53,77 @@ Each instance is one asset, identified by its host.
 
 **Workflows with a webhook that requires no authentication**
 
+A webhook left on its default authentication counts too: the n8n editor does not store default settings, and the provider reports the default.
+
 ```shell
-mql> n8n.workflows.where(nodes.any(type == "n8n-nodes-base.webhook" && authentication == "none")) { name active isArchived }
+mql> n8n.workflows.where(nodes.any(type == "n8n-nodes-base.webhook" && authentication == "none")) { name }
 workflows.where: [
   0: {
+    name: "mql-verify-node-security"
+  }
+  1: {
     name: "mql-verify-open-webhook"
-    active: false
-    isArchived: true
   }
 ]
+```
+
+**Workflows with a public chat anyone can use**
+
+```shell
+mql> n8n.workflows.where(nodes.any(public == true && authentication == "none")) { name }
+workflows.where: [
+  0: {
+    name: "mql-verify-node-security"
+  }
+]
+```
+
+**HTTP requests that skip TLS certificate verification**
+
+`requestHost` is null when the URL is built from an expression.
+
+```shell
+mql> n8n.workflows { name nodes.where(allowUnauthorizedCerts == true) { name requestHost } }
+workflows: [
+  0: {
+    nodes.where: [
+      0: {
+        name: "HTTP insecure"
+        requestHost: null
+      }
+      1: {
+        name: "HTTP v1 insecure"
+        requestHost: "legacy.example.com"
+      }
+    ]
+    name: "mql-verify-node-security"
+  }
+  1: {
+    nodes.where: []
+    name: "mql-verify-open-webhook"
+  }
+  2: {
+    nodes.where: []
+    name: "mql-verify-http"
+  }
+]
+```
+
+**Instance settings**
+
+Setting `NODES_EXCLUDE` replaces n8n's default exclusions rather than adding to them, so check the list itself.
+
+```shell
+mql> n8n.instanceSettings { communityPackagesEnabled excludedNodes }
+instanceSettings: {
+  excludedNodes: [
+    0: "n8n-nodes-base.executeCommand"
+    1: "n8n-nodes-base.localFileTrigger"
+    2: "n8n-nodes-base.e2eTest"
+    3: "n8n-nodes-base.dynamicCredentialCheck"
+  ]
+  communityPackagesEnabled: true
+}
 ```
 
 **Credentials no workflow uses**
@@ -150,4 +212,4 @@ securityAudit.reports: [
 
 ## Secrets
 
-Credentials are listed by name and type only: the Public API never returns their data. Of a node's parameters, the provider reads only `authentication`. The rest are free-form per node type and can hold secrets typed in directly, such as header values or code, so they are not exposed.
+Credentials are listed by name and type only: the Public API never returns their data. Node parameters are free-form per node type and can hold secrets typed in directly, such as header values or code, so the provider does not expose them. It reads only named security settings (authentication, webhook path and IP allowlist, chat visibility and origins, TLS verification) and, for HTTP Request nodes, the host of the URL, never its path or query.

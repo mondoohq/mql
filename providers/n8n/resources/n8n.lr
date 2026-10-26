@@ -12,8 +12,9 @@ option root = "n8n"
 // An n8n workflow automation instance, read through its Public API. The
 // `workflows`, `credentials`, `users`, and `tags` fields list what the instance
 // holds, `communityPackages` lists the installed community node packages, and
-// `securityAudit` runs the instance's built-in security audit. `apiKeyScopes`
-// lists what the API key in use is allowed to do.
+// `securityAudit` runs the instance's built-in security audit, and
+// `instanceSettings` reports the security settings that audit lists.
+// `apiKeyScopes` lists what the API key in use is allowed to do.
 n8n @root {
   // URL of the instance
   url string
@@ -31,6 +32,31 @@ n8n @root {
   apiKeyScopes() []string
   // Security audit of the instance
   securityAudit() n8n.audit
+  // Security settings of the instance
+  instanceSettings() n8n.instanceSettings
+}
+
+// n8n instance security settings
+//
+// The instance's feature switches and node allow and deny lists, as its
+// security audit reports them. They come from the instance's environment,
+// for example `N8N_COMMUNITY_PACKAGES_ENABLED` and `NODES_EXCLUDE`. Reading
+// them needs the `securityAudit:generate` scope.
+private n8n.instanceSettings {
+  // Whether community node packages can be installed
+  communityPackagesEnabled bool
+  // Whether the Public API is enabled
+  publicApiEnabled bool
+  // Whether workflow templates can be browsed and imported
+  templatesEnabled bool
+  // Whether the instance checks for new versions
+  versionNotificationsEnabled bool
+  // Whether the instance sends diagnostics to n8n
+  diagnosticsEnabled bool
+  // Node types that cannot be used, for example n8n-nodes-base.executeCommand
+  excludedNodes []string
+  // Node types allowed when an allowlist is set, empty when every node type is allowed
+  includedNodes []string
 }
 
 // n8n workflow
@@ -110,10 +136,36 @@ private n8n.workflow.node @defaults("name type") {
   disabled bool
   // Authentication the node uses
   //
-  // The node's `authentication` parameter, for example `none` or `headerAuth`
-  // on a Webhook node and `genericCredentialType` on an HTTP Request node.
-  // Null on nodes that have no such parameter.
+  // Set on Webhook, Form Trigger, HTTP Request, and public Chat Trigger
+  // nodes, for example `none`, `basicAuth`, or `headerAuth` on a Webhook and
+  // `genericCredentialType` on an HTTP Request. Reports the node's default,
+  // `none`, when the workflow does not set it. Null on other node types.
   authentication string
+  // URL path of a Webhook or Form Trigger node
+  path string
+  // Whether a Chat Trigger's chat is publicly available
+  //
+  // Reports false, the node's default, when unset. Null on other node types.
+  public bool
+  // Origins allowed to call a public Chat Trigger
+  //
+  // Reports `*` (every origin), the node's default, when unset. Null on other
+  // node types and on a Chat Trigger that is not public.
+  allowedOrigins []string
+  // IP addresses allowed to call a Webhook node
+  //
+  // Empty when every address may call it, the node's default. Null on other
+  // node types.
+  ipAllowlist []string
+  // Whether an HTTP Request node skips TLS certificate verification
+  //
+  // Reports false, the node's default, when unset. Null on other node types.
+  allowUnauthorizedCerts bool
+  // Host an HTTP Request node calls
+  //
+  // Null when the URL is built from an expression, since it is only known
+  // when the workflow runs. Null on other node types.
+  requestHost string
   // Webhook ID, set on nodes that receive webhooks
   webhookId string
   // What the workflow does when the node fails, for example stopWorkflow or continueRegularOutput

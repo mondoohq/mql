@@ -155,3 +155,11 @@ func toAnySlice(in []string) []any {
 func stringArray(in []string) *llx.RawData {
 	return llx.ArrayData(toAnySlice(in), types.String)
 }
+
+// optStringArray maps a nil list, a setting that does not apply, to null.
+func optStringArray(in []string) *llx.RawData {
+	if in == nil {
+		return llx.NilData
+	}
+	return stringArray(in)
+}

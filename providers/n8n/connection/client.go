@@ -77,20 +77,20 @@ type WorkflowSettings struct {
 	AvailableInMCP           *bool
 }
 
-// Node is one node of a workflow. Of the node's parameters only
-// `authentication` is kept: parameters are free-form per node type and can
-// hold secrets typed in directly, such as header values or code.
+// Node is one node of a workflow. Parameters are free-form per node type and
+// can hold secrets typed in directly, such as header values or code, so only
+// the security settings in nodeSecurity are read from them (see node.go).
 type Node struct {
-	ID             string
-	Name           string
-	Type           string
-	TypeVersion    float64
-	Disabled       bool
-	Authentication string
-	WebhookID      string
-	OnError        string
-	RetryOnFail    bool
-	CredentialIDs  []string
+	ID            string
+	Name          string
+	Type          string
+	TypeVersion   float64
+	Disabled      bool
+	WebhookID     string
+	OnError       string
+	RetryOnFail   bool
+	CredentialIDs []string
+	nodeSecurity
 }
 
 // Credential is a credential record from GET /credentials. The API never
@@ -258,18 +258,17 @@ func toWorkflow(r workflowRecord) Workflow {
 		}
 	}
 	for _, n := range r.Nodes {
-		auth, _ := n.Parameters["authentication"].(string)
 		wf.Nodes = append(wf.Nodes, Node{
-			ID:             n.ID,
-			Name:           n.Name,
-			Type:           n.Type,
-			TypeVersion:    n.TypeVersion,
-			Disabled:       n.Disabled,
-			Authentication: auth,
-			WebhookID:      n.WebhookID,
-			OnError:        n.OnError,
-			RetryOnFail:    n.RetryOnFail,
-			CredentialIDs:  nodeCredentialIDs(n.Credentials),
+			ID:            n.ID,
+			Name:          n.Name,
+			Type:          n.Type,
+			TypeVersion:   n.TypeVersion,
+			Disabled:      n.Disabled,
+			WebhookID:     n.WebhookID,
+			OnError:       n.OnError,
+			RetryOnFail:   n.RetryOnFail,
+			CredentialIDs: nodeCredentialIDs(n.Credentials),
+			nodeSecurity:  readNodeSecurity(n.Type, n.TypeVersion, n.Parameters),
 		})
 	}
 	if s := r.Settings; s != nil {

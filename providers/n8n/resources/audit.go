@@ -9,9 +9,16 @@ import (
 	"strconv"
 
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/n8n/connection"
 	"go.mondoo.com/mql/types"
 )
+
+type mqlN8nAuditInternal struct {
+	// raw is the decoded audit, kept for instanceSettings so the instance
+	// computes the audit once per scan.
+	raw []connection.AuditReport
+}
 
 type mqlN8nAuditSectionInternal struct {
 	workflowIDs   []string
@@ -27,6 +34,7 @@ func (r *mqlN8nAudit) reports() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	r.raw = reports
 	out := make([]any, 0, len(reports))
 	for _, rep := range reports {
 		sections := make([]any, 0, len(rep.Sections))
@@ -108,6 +116,40 @@ func sortedKeys(m map[string]struct{}) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func (r *mqlN8n) instanceSettings() (*mqlN8nInstanceSettings, error) {
+	audit, err := r.securityAudit()
+	if err != nil {
+		return nil, err
+	}
+	// Reading reports runs the audit once; the decoded result stays on the
+	// audit resource.
+	if reports := audit.GetReports(); reports.Error != nil {
+		return nil, reports.Error
+	}
+	s, ok := connection.InstanceSettingsFrom(audit.raw)
+	if !ok {
+		r.InstanceSettings.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := CreateResource(r.MqlRuntime, ResourceN8nInstanceSettings, map[string]*llx.RawData{
+		"communityPackagesEnabled":    llx.BoolDataPtr(s.CommunityPackagesEnabled),
+		"publicApiEnabled":            llx.BoolDataPtr(s.PublicAPIEnabled),
+		"templatesEnabled":            llx.BoolDataPtr(s.TemplatesEnabled),
+		"versionNotificationsEnabled": llx.BoolDataPtr(s.VersionNotificationsEnabled),
+		"diagnosticsEnabled":          llx.BoolDataPtr(s.DiagnosticsEnabled),
+		"excludedNodes":               stringArray(s.ExcludedNodes),
+		"includedNodes":               stringArray(s.IncludedNodes),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlN8nInstanceSettings), nil
+}
+
+func (r *mqlN8nInstanceSettings) id() (string, error) {
+	return "n8n.instanceSettings", nil
 }
 
 func (r *mqlN8nAuditSection) workflows() ([]any, error) {

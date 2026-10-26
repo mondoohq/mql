@@ -158,16 +158,22 @@ func newWorkflowNode(runtime *plugin.Runtime, workflowID string, n connection.No
 		key = n.Name
 	}
 	res, err := CreateResource(runtime, ResourceN8nWorkflowNode, map[string]*llx.RawData{
-		"__id":           llx.StringData(workflowID + "/" + key),
-		"id":             llx.StringData(n.ID),
-		"name":           llx.StringData(n.Name),
-		"type":           llx.StringData(n.Type),
-		"typeVersion":    llx.FloatData(n.TypeVersion),
-		"disabled":       llx.BoolData(n.Disabled),
-		"authentication": optString(n.Authentication),
-		"webhookId":      optString(n.WebhookID),
-		"onError":        optString(n.OnError),
-		"retryOnFail":    llx.BoolData(n.RetryOnFail),
+		"__id":                   llx.StringData(workflowID + "/" + key),
+		"id":                     llx.StringData(n.ID),
+		"name":                   llx.StringData(n.Name),
+		"type":                   llx.StringData(n.Type),
+		"typeVersion":            llx.FloatData(n.TypeVersion),
+		"disabled":               llx.BoolData(n.Disabled),
+		"authentication":         optString(n.Authentication),
+		"path":                   optString(n.Path),
+		"public":                 llx.BoolDataPtr(n.Public),
+		"allowedOrigins":         optStringArray(n.AllowedOrigins),
+		"ipAllowlist":            optStringArray(n.IPAllowlist),
+		"allowUnauthorizedCerts": llx.BoolDataPtr(n.AllowUnauthorizedCerts),
+		"requestHost":            optString(n.RequestHost),
+		"webhookId":              optString(n.WebhookID),
+		"onError":                optString(n.OnError),
+		"retryOnFail":            llx.BoolData(n.RetryOnFail),
 	})
 	if err != nil {
 		return nil, err

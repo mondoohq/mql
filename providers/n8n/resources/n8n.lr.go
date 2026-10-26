@@ -17,6 +17,7 @@ import (
 // The MQL type names exposed as public consts for ease of reference.
 const (
 	ResourceN8n                 string = "n8n"
+	ResourceN8nInstanceSettings string = "n8n.instanceSettings"
 	ResourceN8nWorkflow         string = "n8n.workflow"
 	ResourceN8nWorkflowNode     string = "n8n.workflow.node"
 	ResourceN8nCredential       string = "n8n.credential"
@@ -35,6 +36,10 @@ func init() {
 		"n8n": {
 			Init:   initN8n,
 			Create: createN8n,
+		},
+		"n8n.instanceSettings": {
+			// to override args, implement: initN8nInstanceSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createN8nInstanceSettings,
 		},
 		"n8n.workflow": {
 			Init:   initN8nWorkflow,
@@ -167,6 +172,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"n8n.securityAudit": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlN8n).GetSecurityAudit()).ToDataRes(types.Resource("n8n.audit"))
 	},
+	"n8n.instanceSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8n).GetInstanceSettings()).ToDataRes(types.Resource("n8n.instanceSettings"))
+	},
+	"n8n.instanceSettings.communityPackagesEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nInstanceSettings).GetCommunityPackagesEnabled()).ToDataRes(types.Bool)
+	},
+	"n8n.instanceSettings.publicApiEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nInstanceSettings).GetPublicApiEnabled()).ToDataRes(types.Bool)
+	},
+	"n8n.instanceSettings.templatesEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nInstanceSettings).GetTemplatesEnabled()).ToDataRes(types.Bool)
+	},
+	"n8n.instanceSettings.versionNotificationsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nInstanceSettings).GetVersionNotificationsEnabled()).ToDataRes(types.Bool)
+	},
+	"n8n.instanceSettings.diagnosticsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nInstanceSettings).GetDiagnosticsEnabled()).ToDataRes(types.Bool)
+	},
+	"n8n.instanceSettings.excludedNodes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nInstanceSettings).GetExcludedNodes()).ToDataRes(types.Array(types.String))
+	},
+	"n8n.instanceSettings.includedNodes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nInstanceSettings).GetIncludedNodes()).ToDataRes(types.Array(types.String))
+	},
 	"n8n.workflow.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlN8nWorkflow).GetId()).ToDataRes(types.String)
 	},
@@ -247,6 +276,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"n8n.workflow.node.authentication": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlN8nWorkflowNode).GetAuthentication()).ToDataRes(types.String)
+	},
+	"n8n.workflow.node.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nWorkflowNode).GetPath()).ToDataRes(types.String)
+	},
+	"n8n.workflow.node.public": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nWorkflowNode).GetPublic()).ToDataRes(types.Bool)
+	},
+	"n8n.workflow.node.allowedOrigins": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nWorkflowNode).GetAllowedOrigins()).ToDataRes(types.Array(types.String))
+	},
+	"n8n.workflow.node.ipAllowlist": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nWorkflowNode).GetIpAllowlist()).ToDataRes(types.Array(types.String))
+	},
+	"n8n.workflow.node.allowUnauthorizedCerts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nWorkflowNode).GetAllowUnauthorizedCerts()).ToDataRes(types.Bool)
+	},
+	"n8n.workflow.node.requestHost": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlN8nWorkflowNode).GetRequestHost()).ToDataRes(types.String)
 	},
 	"n8n.workflow.node.webhookId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlN8nWorkflowNode).GetWebhookId()).ToDataRes(types.String)
@@ -425,6 +472,42 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlN8n).SecurityAudit, ok = plugin.RawToTValue[*mqlN8nAudit](v.Value, v.Error)
 		return
 	},
+	"n8n.instanceSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8n).InstanceSettings, ok = plugin.RawToTValue[*mqlN8nInstanceSettings](v.Value, v.Error)
+		return
+	},
+	"n8n.instanceSettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nInstanceSettings).__id, ok = v.Value.(string)
+		return
+	},
+	"n8n.instanceSettings.communityPackagesEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nInstanceSettings).CommunityPackagesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"n8n.instanceSettings.publicApiEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nInstanceSettings).PublicApiEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"n8n.instanceSettings.templatesEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nInstanceSettings).TemplatesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"n8n.instanceSettings.versionNotificationsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nInstanceSettings).VersionNotificationsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"n8n.instanceSettings.diagnosticsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nInstanceSettings).DiagnosticsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"n8n.instanceSettings.excludedNodes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nInstanceSettings).ExcludedNodes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"n8n.instanceSettings.includedNodes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nInstanceSettings).IncludedNodes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"n8n.workflow.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlN8nWorkflow).__id, ok = v.Value.(string)
 		return
@@ -539,6 +622,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"n8n.workflow.node.authentication": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlN8nWorkflowNode).Authentication, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"n8n.workflow.node.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nWorkflowNode).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"n8n.workflow.node.public": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nWorkflowNode).Public, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"n8n.workflow.node.allowedOrigins": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nWorkflowNode).AllowedOrigins, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"n8n.workflow.node.ipAllowlist": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nWorkflowNode).IpAllowlist, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"n8n.workflow.node.allowUnauthorizedCerts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nWorkflowNode).AllowUnauthorizedCerts, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"n8n.workflow.node.requestHost": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlN8nWorkflowNode).RequestHost, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"n8n.workflow.node.webhookId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -778,6 +885,7 @@ type mqlN8n struct {
 	CommunityPackages plugin.TValue[[]any]
 	ApiKeyScopes      plugin.TValue[[]any]
 	SecurityAudit     plugin.TValue[*mqlN8nAudit]
+	InstanceSettings  plugin.TValue[*mqlN8nInstanceSettings]
 }
 
 // createN8n creates a new instance of this resource
@@ -921,6 +1029,101 @@ func (c *mqlN8n) GetSecurityAudit() *plugin.TValue[*mqlN8nAudit] {
 
 		return c.securityAudit()
 	})
+}
+
+func (c *mqlN8n) GetInstanceSettings() *plugin.TValue[*mqlN8nInstanceSettings] {
+	return plugin.GetOrCompute[*mqlN8nInstanceSettings](&c.InstanceSettings, func() (*mqlN8nInstanceSettings, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("n8n", c.__id, "instanceSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlN8nInstanceSettings), nil
+			}
+		}
+
+		return c.instanceSettings()
+	})
+}
+
+// mqlN8nInstanceSettings for the n8n.instanceSettings resource
+type mqlN8nInstanceSettings struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlN8nInstanceSettingsInternal it will be used here
+	CommunityPackagesEnabled    plugin.TValue[bool]
+	PublicApiEnabled            plugin.TValue[bool]
+	TemplatesEnabled            plugin.TValue[bool]
+	VersionNotificationsEnabled plugin.TValue[bool]
+	DiagnosticsEnabled          plugin.TValue[bool]
+	ExcludedNodes               plugin.TValue[[]any]
+	IncludedNodes               plugin.TValue[[]any]
+}
+
+// createN8nInstanceSettings creates a new instance of this resource
+func createN8nInstanceSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlN8nInstanceSettings{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("n8n.instanceSettings", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlN8nInstanceSettings) MqlName() string {
+	return "n8n.instanceSettings"
+}
+
+func (c *mqlN8nInstanceSettings) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlN8nInstanceSettings) GetCommunityPackagesEnabled() *plugin.TValue[bool] {
+	return &c.CommunityPackagesEnabled
+}
+
+func (c *mqlN8nInstanceSettings) GetPublicApiEnabled() *plugin.TValue[bool] {
+	return &c.PublicApiEnabled
+}
+
+func (c *mqlN8nInstanceSettings) GetTemplatesEnabled() *plugin.TValue[bool] {
+	return &c.TemplatesEnabled
+}
+
+func (c *mqlN8nInstanceSettings) GetVersionNotificationsEnabled() *plugin.TValue[bool] {
+	return &c.VersionNotificationsEnabled
+}
+
+func (c *mqlN8nInstanceSettings) GetDiagnosticsEnabled() *plugin.TValue[bool] {
+	return &c.DiagnosticsEnabled
+}
+
+func (c *mqlN8nInstanceSettings) GetExcludedNodes() *plugin.TValue[[]any] {
+	return &c.ExcludedNodes
+}
+
+func (c *mqlN8nInstanceSettings) GetIncludedNodes() *plugin.TValue[[]any] {
+	return &c.IncludedNodes
 }
 
 // mqlN8nWorkflow for the n8n.workflow resource
@@ -1125,16 +1328,22 @@ type mqlN8nWorkflowNode struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlN8nWorkflowNodeInternal
-	Id             plugin.TValue[string]
-	Name           plugin.TValue[string]
-	Type           plugin.TValue[string]
-	TypeVersion    plugin.TValue[float64]
-	Disabled       plugin.TValue[bool]
-	Authentication plugin.TValue[string]
-	WebhookId      plugin.TValue[string]
-	OnError        plugin.TValue[string]
-	RetryOnFail    plugin.TValue[bool]
-	Credentials    plugin.TValue[[]any]
+	Id                     plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	Type                   plugin.TValue[string]
+	TypeVersion            plugin.TValue[float64]
+	Disabled               plugin.TValue[bool]
+	Authentication         plugin.TValue[string]
+	Path                   plugin.TValue[string]
+	Public                 plugin.TValue[bool]
+	AllowedOrigins         plugin.TValue[[]any]
+	IpAllowlist            plugin.TValue[[]any]
+	AllowUnauthorizedCerts plugin.TValue[bool]
+	RequestHost            plugin.TValue[string]
+	WebhookId              plugin.TValue[string]
+	OnError                plugin.TValue[string]
+	RetryOnFail            plugin.TValue[bool]
+	Credentials            plugin.TValue[[]any]
 }
 
 // createN8nWorkflowNode creates a new instance of this resource
@@ -1191,6 +1400,30 @@ func (c *mqlN8nWorkflowNode) GetDisabled() *plugin.TValue[bool] {
 
 func (c *mqlN8nWorkflowNode) GetAuthentication() *plugin.TValue[string] {
 	return &c.Authentication
+}
+
+func (c *mqlN8nWorkflowNode) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlN8nWorkflowNode) GetPublic() *plugin.TValue[bool] {
+	return &c.Public
+}
+
+func (c *mqlN8nWorkflowNode) GetAllowedOrigins() *plugin.TValue[[]any] {
+	return &c.AllowedOrigins
+}
+
+func (c *mqlN8nWorkflowNode) GetIpAllowlist() *plugin.TValue[[]any] {
+	return &c.IpAllowlist
+}
+
+func (c *mqlN8nWorkflowNode) GetAllowUnauthorizedCerts() *plugin.TValue[bool] {
+	return &c.AllowUnauthorizedCerts
+}
+
+func (c *mqlN8nWorkflowNode) GetRequestHost() *plugin.TValue[string] {
+	return &c.RequestHost
 }
 
 func (c *mqlN8nWorkflowNode) GetWebhookId() *plugin.TValue[string] {
@@ -1553,7 +1786,7 @@ func (c *mqlN8nCommunityPackage) GetUpdatedAt() *plugin.TValue[*time.Time] {
 type mqlN8nAudit struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlN8nAuditInternal it will be used here
+	mqlN8nAuditInternal
 	Reports plugin.TValue[[]any]
 }
 

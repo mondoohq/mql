@@ -353,20 +353,6 @@ func TestNodeCredentialIDs(t *testing.T) {
 	assert.Equal(t, []string{"AAA", "Y2ILtunxAFKvFQyE"}, ids)
 }
 
-func TestToWorkflowNodeAuthentication(t *testing.T) {
-	// Synthetic: only a string authentication parameter is read; any other
-	// shape, and every other parameter, is dropped.
-	wf := toWorkflow(workflowRecord{Nodes: []nodeRecord{
-		{Name: "Webhook", Parameters: map[string]any{"authentication": "headerAuth", "path": "hook"}},
-		{Name: "Odd", Parameters: map[string]any{"authentication": map[string]any{"mode": "x"}}},
-		{Name: "Code", Parameters: map[string]any{"jsCode": "const token = 'secret';"}},
-	}})
-	require.Len(t, wf.Nodes, 3)
-	assert.Equal(t, "headerAuth", wf.Nodes[0].Authentication)
-	assert.Empty(t, wf.Nodes[1].Authentication)
-	assert.Empty(t, wf.Nodes[2].Authentication)
-}
-
 func TestSplitList(t *testing.T) {
 	// Measured: callerIds "abc123, rgNSSvk5U0wgznVg" as stored by n8n 2.44.6.
 	assert.Equal(t, []string{"abc123", "rgNSSvk5U0wgznVg"}, splitList("abc123, rgNSSvk5U0wgznVg"))
