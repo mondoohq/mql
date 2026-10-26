@@ -241,10 +241,14 @@ func TestResolveSystemPkgManagersNoDoubleCountOnKnownPlatforms(t *testing.T) {
 // did not claim it, it fell through to the filesystem probe, matched nothing,
 // and `packages` failed with "could not detect suitable package manager" on a
 // live Flatcar 4757.2.0 host instead of reporting an empty inventory.
+//
+// Talos Linux and CirrOS have the same shape and failed the same way: neither
+// ships a package manager or a package database (checked against the Talos
+// v1.14.5 image and the CirrOS 0.6.3 rootfs).
 func TestResolveSystemPkgManagersFlatcar(t *testing.T) {
-	for _, name := range []string{"flatcar", "coreos", "scratch"} {
+	for _, name := range []string{"flatcar", "coreos", "scratch", "talos", "cirros"} {
 		t.Run(name, func(t *testing.T) {
-			// no package database of any kind, which is the real Flatcar shape
+			// no package database of any kind, which is the real Flatcar, Talos and CirrOS shape
 			conn := newProbeConn(t, &inventory.Platform{
 				Name:   name,
 				Family: []string{"linux", "unix", "os"},

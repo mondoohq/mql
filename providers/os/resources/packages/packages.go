@@ -235,7 +235,10 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 	// filesystem probe, found no database, and `packages` failed with
 	// "could not detect suitable package manager for platform" rather than
 	// reporting the empty inventory that is the truth for the platform.
-	case asset.Platform.Name == "scratch" || asset.Platform.Name == "coreos" || asset.Platform.Name == "flatcar":
+	//
+	// Talos Linux and CirrOS ship no package manager or database either.
+	case asset.Platform.Name == "scratch" || asset.Platform.Name == "coreos" || asset.Platform.Name == "flatcar" ||
+		asset.Platform.Name == "talos" || asset.Platform.Name == "cirros":
 		pms = append(pms, &ScratchPkgManager{conn: conn})
 	case asset.Platform.Name == "openwrt":
 		// OpenWrt replaced opkg with apk in its 25.x snapshots. A system
