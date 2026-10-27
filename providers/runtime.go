@@ -318,7 +318,7 @@ func keepContextConfig(requested *inventory.Asset, res *plugin.ConnectRes) {
 }
 
 // keepAssetClaims carries the claims of the asset a provider was asked to
-// connect onto the asset it answered with (ADR-305, mondoohq/server). Most
+// connect onto the asset it answered with. Most
 // providers answer with the asset they were given, which keeps them already;
 // one that builds a new asset would otherwise drop the claims its discoverer
 // recorded. Claims the provider set itself win.

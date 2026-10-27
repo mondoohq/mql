@@ -4,6 +4,7 @@
 package container
 
 import (
+	"encoding/base64"
 	"errors"
 	"maps"
 	"os"
@@ -181,11 +182,18 @@ func NewRegistryImage(id uint32, conf *inventory.Config, asset *inventory.Asset)
 	}
 
 	// set the platform architecture using the image configuration
+	var arch string
 	imgConfig, err := img.ConfigFile()
 	if err == nil {
 		conn.PlatformArchitecture = imgConfig.Architecture
 		conn.ImageConfig = tar.ImageConfigFrom(imgConfig)
+		arch = imgConfig.Architecture
 	}
+
+	// Seed-lane claim: the resolved platform image's digest plus its
+	// manifest as proof of possession. It sits next to any discovery claim that
+	// carries the index digest, which is how the server learns the alias.
+	AttachResolvedImageClaim(asset, img, conf.Host, arch)
 
 	labels := map[string]string{}
 	labels["docker.io/digests"] = ref.String()
@@ -203,6 +211,44 @@ func NewRegistryImage(id uint32, conf *inventory.Config, asset *inventory.Asset)
 	maps.Copy(asset.Labels, labels)
 
 	return conn, err
+}
+
+// maxClaimManifestBytes caps the manifest attached to a seed-lane claim. The
+// server rejects requests over 8 MiB and SynchronizeAssets batches many assets
+// into one request, so a single oversized manifest (base64 adds a third on top)
+// could fail the whole batch. Real image manifests are a few KiB; a manifest
+// over the cap is dropped and the claim is sent with digest, ref and arch only.
+const maxClaimManifestBytes = 256 * 1024
+
+// AttachResolvedImageClaim appends a container-image claim for the image the
+// registry connection resolved to: its digest, the reference it was addressed
+// by, its architecture (left out when empty) and its base64-encoded raw
+// manifest. The claim is only attached when both the digest and the manifest
+// can be read. A manifest larger than maxClaimManifestBytes is left out of the
+// claim, which is still attached. Claims are best-effort: failures are logged
+// at debug level and never affect the connection.
+func AttachResolvedImageClaim(asset *inventory.Asset, img v1.Image, ref, arch string) {
+	digest, err := img.Digest()
+	if err != nil {
+		log.Debug().Err(err).Msg("skipping image claim, cannot read image digest")
+		return
+	}
+	manifest, err := img.RawManifest()
+	if err != nil {
+		log.Debug().Err(err).Msg("skipping image claim, cannot read image manifest")
+		return
+	}
+	claim := inventory.NewContainerImageClaim(digest.String(), ref, arch)
+	if len(manifest) > maxClaimManifestBytes {
+		log.Debug().
+			Str("digest", digest.String()).
+			Int("manifest_bytes", len(manifest)).
+			Int("max_bytes", maxClaimManifestBytes).
+			Msg("image claim manifest exceeds the size cap, attaching the claim without it")
+	} else {
+		claim.Claims[inventory.AssetClaimManifest] = base64.StdEncoding.EncodeToString(manifest)
+	}
+	asset.AddClaim(claim)
 }
 
 // NewFromTar opens a container-image tar file (OCI format) and exposes its

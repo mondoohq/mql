@@ -97,10 +97,10 @@ message Asset {
   // root is, which may be a temporary clone (cnspec ADR-0006).
   ContextConfig context_config = 40;
 
-  // Preview: may still change (ADR-305, mondoohq/server).
+  // Preview: may still change.
   // Facts a discoverer or connection observed about the thing this asset
   // identifies, as kind-tagged claims. The server uses them to recognise the
-  // same thing across scans and to reuse earlier results (ADR-305).
+  // same thing across scans and to reuse earlier results.
   repeated AssetClaim claims = 41;
 }
 
@@ -136,7 +136,7 @@ message ConfigOrigin {
   string path = 4;
 }
 
-// Preview: may still change (ADR-305, mondoohq/server).
+// Preview: may still change.
 // AssetClaim is a set of facts about what an asset is, tagged with a kind that
 // says how to read them. It is kind-generic: the claims map carries the
 // kind's fields as strings (e.g. the digest, ref and arch of a container

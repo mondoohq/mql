@@ -209,6 +209,12 @@ func (a *ImageLister) toAsset(ref name.Reference, creds []*vault.Credential, opt
 	if err != nil {
 		return nil, handleUnauthorizedError(err, ref.Name())
 	}
+	return assetFromDescriptor(ref, desc, creds), nil
+}
+
+// assetFromDescriptor builds the asset for an already-fetched image descriptor.
+// It makes no network calls.
+func assetFromDescriptor(ref name.Reference, desc *remote.Descriptor, creds []*vault.Credential) *inventory.Asset {
 	imgDigest := desc.Digest.String()
 	repoName := ref.Context().Name()
 	imgTag := ref.Context().Tag(ref.Identifier()).TagStr()
@@ -228,9 +234,22 @@ func (a *ImageLister) toAsset(ref name.Reference, creds []*vault.Credential, opt
 		Labels: make(map[string]string),
 	}
 
+	// The digest may be an index digest; the server resolves index to platform
+	// digests. The claim lane is digest-only: the manifest travels on
+	// the seed lane (the registry-image connection), so it is not attached here.
+	asset.AddClaim(containerImageClaimFromDescriptor(imgDigest, imageUrl))
+
 	// store digest and tag
 	asset.Labels["docker.io/digest"] = imgDigest
 	asset.Labels["docker.io/tags"] = imgTag
 	log.Debug().Strs("platform-ids", asset.PlatformIds).Msg("asset platform ids")
-	return asset, nil
+	return asset
+}
+
+// containerImageClaimFromDescriptor builds the container-image claim for a
+// discovered registry image: digest and ref only. Arch is left out because an
+// index digest has no single architecture, and the manifest is left out because
+// the seed lane owns it.
+func containerImageClaimFromDescriptor(digest, ref string) *inventory.AssetClaim {
+	return inventory.NewContainerImageClaim(digest, ref, "")
 }
