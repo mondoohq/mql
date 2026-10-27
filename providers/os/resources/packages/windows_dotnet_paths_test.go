@@ -482,3 +482,24 @@ func TestRelocatedDotNetRoots(t *testing.T) {
 		assert.False(t, complete)
 	})
 }
+
+func TestRegistryKeyAbsentStderr(t *testing.T) {
+	tests := []struct {
+		name   string
+		stderr string
+		absent bool
+	}{
+		{"missing key", `Get-Item : Cannot find path 'HKEY_LOCAL_MACHINE\SOFTWARE\dotnet\Setup\InstalledVersions\arm64' because it does not exist.
+    + CategoryInfo          : ObjectNotFound: (HKEY_LOCAL_MACH...ersions\arm64:String) [Get-Item], ItemNotFoundException
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetItemCommand`, true},
+		{"refused key", `Get-Item : Requested registry access is not allowed.
+    + CategoryInfo          : PermissionDenied: (HKEY_LOCAL_MACH...ersions\x64:String) [Get-Item], SecurityException`, false},
+		{"empty stderr", "", false},
+		{"transport failure", "Processing data for a remote command failed", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.absent, registryKeyAbsentStderr([]byte(tc.stderr)))
+		})
+	}
+}

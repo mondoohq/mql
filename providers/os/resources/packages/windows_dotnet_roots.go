@@ -215,7 +215,17 @@ func (r *remoteDotNetRegistry) read(path string) ([]registry.RegistryKeyItem, bo
 		return nil, false, err
 	}
 	if cmd.ExitStatus != 0 {
-		return nil, false, nil
+		// Only an error record saying the key does not exist means "absent".
+		// Anything else (a refused key, a PowerShell or transport hiccup)
+		// leaves the lookup incomplete, so the package is kept.
+		var stderr []byte
+		if cmd.Stderr != nil {
+			stderr, _ = io.ReadAll(cmd.Stderr)
+		}
+		if registryKeyAbsentStderr(stderr) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("could not read registry key %s (exit %d)", path, cmd.ExitStatus)
 	}
 	data, err := io.ReadAll(cmd.Stdout)
 	if err != nil {
@@ -261,4 +271,14 @@ func (w *WinPkgManager) dotNetRootLookup() dotNetRootLookup {
 		return func() ([]string, bool) { return relocatedDotNetRoots(&remoteDotNetRegistry{w: w}, false) }
 	}
 	return nil
+}
+
+// registryKeyAbsentStderr reports whether a failed registry script's error
+// record says the key does not exist. It matches the error category and
+// exception identifiers, which Windows does not translate, the same way the
+// registrykey resource classifies its own failures.
+func registryKeyAbsentStderr(stderr []byte) bool {
+	// the SSH, WinRM and local transports decode CLIXML already; others do not
+	s := string(powershell.DecodeCLIXML(stderr))
+	return strings.Contains(s, "ObjectNotFound") || strings.Contains(s, "PathNotFound")
 }
