@@ -175,12 +175,26 @@ jobs:
         if: ${{ steps.branch.outputs.SKIP != 'true' }}
         run: rm -rf .version-output
 
+      # Open the PR with the mergebot app token, not GITHUB_TOKEN. A PR opened
+      # with GITHUB_TOKEN is authored by github-actions[bot], and GitHub holds
+      # every pull_request run it triggers for manual approval: CI does not start
+      # until someone approves it, and merge-release-pr waits on that CI. Minted
+      # here, right before use, because the token expires after an hour.
+      - name: Generate mergebot token
+        if: ${{ steps.branch.outputs.SKIP != 'true' }}
+        id: generate-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.MONDOO_MERGEBOT_APP_ID }}
+          private-key: ${{ secrets.MONDOO_MERGEBOT_APP_PRIVATE_KEY }}
+
       # We have to use this extension, because `gh pr create` does not support the ssh key case
       - name: Create pull request
         if: ${{ steps.branch.outputs.SKIP != 'true' }}
         id: cpr
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
+          token: ${{ steps.generate-token.outputs.token }}
           base: ${{ steps.base.outputs.base }}
           labels: providers
           committer: "Mondoo Tools <tools@mondoo.com>"
