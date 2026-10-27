@@ -223,6 +223,8 @@ k8s.containerStatus.name 11.1.110
 k8s.containerStatus.ready 11.1.110
 k8s.containerStatus.resources 13.0.16
 k8s.containerStatus.restartCount 11.1.110
+k8s.containerStatus.runtimeImage 14.2.3
+k8s.containerStatus.runtimeImageStatus 14.2.3
 k8s.containerStatus.started 13.0.16
 k8s.containerStatus.state 13.0.16
 k8s.context 13.6.1
@@ -1033,7 +1035,9 @@ k8s.node.podCIDR 13.0.16
 k8s.node.podCIDRs 13.0.16
 k8s.node.providerID 13.0.16
 k8s.node.resourceVersion 9.0.0
+k8s.node.runtimeDelegates 14.2.3
 k8s.node.runtimeHandlers 13.10.1
+k8s.node.runtimeImages 14.2.3
 k8s.node.supportsSupplementalGroupsPolicy 13.10.1
 k8s.node.supportsUserNamespaces 13.10.1
 k8s.node.taints 11.1.138
@@ -1146,6 +1150,7 @@ k8s.pod.dnsConfig 13.0.16
 k8s.pod.dnsPolicy 13.0.16
 k8s.pod.dropsAllCapabilities 13.2.2
 k8s.pod.enableServiceLinks 13.0.16
+k8s.pod.ephemeralContainerStatuses 14.2.3
 k8s.pod.ephemeralContainers 9.0.0
 k8s.pod.escapesNetworkPolicy 13.4.1
 k8s.pod.exposures 13.3.4
@@ -1167,6 +1172,7 @@ k8s.pod.hostname 13.0.16
 k8s.pod.id 9.0.0
 k8s.pod.imagePullSecrets 13.0.16
 k8s.pod.imageRegistries 13.3.1
+k8s.pod.initContainerStatuses 14.2.3
 k8s.pod.initContainers 9.0.0
 k8s.pod.job 13.0.16
 k8s.pod.kind 9.0.0
