@@ -51,6 +51,13 @@ type ScanConfig struct {
 
 const DefaultTimeout = 2 * time.Second
 
+// probeDialTimeout bounds the connect of every probe handshake. Test has
+// already reached the target within ConnectTimeout, so this only has to
+// outlast a few lost SYNs (Linux retransmits after 1s, 3s and 7s). Without it
+// a peer that silently drops one probe's SYN, e.g. a rate limiter, held the
+// scan until the job deadline. A var so tests can shorten it.
+var probeDialTimeout = 10 * time.Second
+
 var ErrFailedToConnect = errors.New("failed to connect")
 
 var ErrFailedToWrite = errors.New("failed to write")
@@ -273,14 +280,14 @@ func (s *Tester) probeCiphers(conf *ScanConfig) error {
 // Returns the number of remaining ciphers to test (if so desired)
 // and any potential error
 func (s *Tester) testTLS(proto string, target string, conf *ScanConfig) (int, error) {
-	conn, err := net.Dial(proto, target)
+	conn, err := net.DialTimeout(proto, target, probeDialTimeout)
 	if err != nil {
 		return 0, multierr.Wrap(err, "failed to connect to target")
 	}
-	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return 0, err
 	}
-	defer conn.Close()
 
 	return s.testTLSWithConn(conn, conf)
 }
