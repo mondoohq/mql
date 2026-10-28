@@ -246,6 +246,8 @@ func resolveClaudePolicy(all []claudeSettingsSource) *claudePolicy {
 // who owns configDir, then the device-level one.
 func claudeMdmPlists(configDir string) []string {
 	var out []string
+	// configDir is built with the scanner's separator, which is a backslash
+	// when mql runs on Windows against a Mac.
 	home := path.Dir(filepath.ToSlash(configDir))
 	if path.Base(filepath.ToSlash(configDir)) == defaultClaudeCodeConfigDir && path.Dir(home) == "/Users" {
 		out = append(out, path.Join(claudeManagedPrefsDir, path.Base(home), claudeMdmDomain+".plist"))
@@ -519,6 +521,8 @@ func (p *claudePolicy) anyPolicyTrue(keys ...string) *bool {
 // false when one of them sets another value, nil when neither sets it.
 func (p *claudePolicy) disableSwitch(paths ...[]string) *bool {
 	set := false
+	// A nil map reads as unset. Under "merge" every policy source counts,
+	// since a "disable" in any of them is the strictest value.
 	sources := []map[string]any{p.managed, p.user}
 	if p.merge {
 		for _, s := range p.policy {
@@ -904,13 +908,21 @@ func (r *mqlClaudeCode) deniedMcpServers() ([]any, error) {
 	return claudeMcpRuleResources(r.MqlRuntime, "denied", p.deniedMcpRules())
 }
 
+// claudeMcpRuleID is the resource id of an allowlist or denylist entry. It
+// hashes the raw entry, so a token in a server URL or command never appears
+// in the id, while two entries that differ only in a redacted part stay
+// distinct.
+func claudeMcpRuleID(list string, rule claudeMcpRule) string {
+	key, _ := json.Marshal([]any{rule.ServerName, rule.ServerCommand, rule.ServerURL, rule.managed})
+	return "claude.code.mcpServerRule/" + list + "/" + contentSHA256(string(key))
+}
+
 func claudeMcpRuleResources(runtime *plugin.Runtime, list string, rules []claudeMcpRule) ([]any, error) {
 	out := []any{}
 	for _, rule := range rules {
 		cmd := redactArgs(rule.ServerCommand)
-		key, _ := json.Marshal([]any{rule.ServerName, cmd, rule.ServerURL, rule.managed})
 		res, err := CreateResource(runtime, "claude.code.mcpServerRule", map[string]*llx.RawData{
-			"__id":          llx.StringData("claude.code.mcpServerRule/" + list + "/" + string(key)),
+			"__id":          llx.StringData(claudeMcpRuleID(list, rule)),
 			"serverName":    llx.StringData(rule.ServerName),
 			"serverCommand": llx.ArrayData(llx.TArr2Raw(cmd), types.String),
 			"serverUrl":     llx.StringData(redactURL(rule.ServerURL)),

@@ -15,7 +15,6 @@ import (
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/types"
 )
 
 // claudeManagedSettingsDir is the system directory that holds Claude Code's

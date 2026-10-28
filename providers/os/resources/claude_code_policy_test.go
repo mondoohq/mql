@@ -343,3 +343,17 @@ func TestClaudeCodePolicyFields(t *testing.T) {
 	env := settings.(map[string]any)["env"].(map[string]any)
 	assert.NotContains(t, env["ANTHROPIC_API_KEY"], "placeholder", "managed settings are redacted")
 }
+
+func TestClaudeMcpRuleID(t *testing.T) {
+	// Synthetic: a credential in a server URL or command must not reach the
+	// resource id, and entries differing only in that credential stay
+	// distinct.
+	secret := "tok" + "en-" + "abc123"
+	a := claudeMcpRule{ServerURL: "https://mcp.example.com/?key=" + secret, ServerCommand: []string{"srv", "--api-key", secret}, managed: true}
+	b := claudeMcpRule{ServerURL: "https://mcp.example.com/?key=other", ServerCommand: []string{"srv", "--api-key", "other"}, managed: true}
+	idA := claudeMcpRuleID("denied", a)
+	assert.NotContains(t, idA, secret)
+	assert.NotContains(t, idA, "mcp.example.com")
+	assert.NotEqual(t, idA, claudeMcpRuleID("denied", b))
+	assert.NotEqual(t, idA, claudeMcpRuleID("allowed", a))
+}
