@@ -882,7 +882,8 @@ claude.organization.usageEntry @defaults("startingAt") {
 // Claude organization cost report bucket
 //
 // Daily cost bucket from the Admin API cost report. Each bucket covers a
-// time window with cost amounts broken down by workspace and cost type.
+// time window with cost amounts broken down by workspace and line item (model,
+// cost type, token type and service tier).
 claude.organization.costEntry @defaults("startingAt costType") {
   // Bucket start timestamp
   startingAt time
@@ -890,8 +891,8 @@ claude.organization.costEntry @defaults("startingAt costType") {
   endingAt time
   // Cost amount
   //
-  // Decimal string of the cost in the units given by the `currency`
-  // field (for example USD).
+  // Decimal string of the cost in the lowest unit of the `currency` field,
+  // for example cents for USD: "150" is $1.50.
   amount string
   // Currency code
   currency string
@@ -900,7 +901,15 @@ claude.organization.costEntry @defaults("startingAt costType") {
   // One of tokens, web_search, code_execution, or session_usage.
   costType string
   // Model identifier
+  //
+  // Empty for costs that are not token costs.
   model string
+  // Line-item description
+  //
+  // The label the cost report gives this row, for example "Claude Opus 5.5
+  // Usage - Input Tokens". It tells apart rows that share a model and cost
+  // type, such as input and output tokens of the same model.
+  description string
   // Workspace the cost is attributed to
   //
   // Null for buckets that are not scoped to a single workspace.

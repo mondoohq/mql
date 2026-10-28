@@ -148,6 +148,7 @@ claude.organization.costEntry 13.0.0
 claude.organization.costEntry.amount 13.0.0
 claude.organization.costEntry.costType 13.0.0
 claude.organization.costEntry.currency 13.0.0
+claude.organization.costEntry.description 14.1.7
 claude.organization.costEntry.endingAt 13.0.0
 claude.organization.costEntry.model 13.0.0
 claude.organization.costEntry.startingAt 13.0.0

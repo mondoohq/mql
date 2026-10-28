@@ -175,3 +175,82 @@ func TestDoRequest_ErrorStatusPropagates(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
 }
+
+func TestListUsageReport_GroupsByServiceTier(t *testing.T) {
+	var groupBy []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/organizations/usage_report/messages", r.URL.Path)
+		groupBy = r.URL.Query()["group_by[]"]
+		// Synthetic: one result shaped like the response example in the
+		// Admin API reference for GET /v1/organizations/usage_report/messages.
+		_, _ = w.Write([]byte(`{
+			"data": [{
+				"starting_at": "2025-08-01T00:00:00Z",
+				"ending_at": "2025-08-02T00:00:00Z",
+				"results": [{
+					"uncached_input_tokens": 1500,
+					"cache_read_input_tokens": 200,
+					"output_tokens": 500,
+					"model": "claude-opus-5-5",
+					"service_tier": "batch",
+					"workspace_id": "wrkspc_01JwQvzr7rXLA5AGx3HKfFUJ"
+				}]
+			}],
+			"has_more": false,
+			"next_page": null
+		}`))
+	}))
+	defer srv.Close()
+
+	c := NewAdminClient("test-key", srv.URL)
+	got, err := c.ListUsageReport(context.Background())
+	require.NoError(t, err)
+
+	// The API returns service_tier as null unless the request groups by it.
+	assert.ElementsMatch(t, []string{"workspace_id", "model", "service_tier"}, groupBy)
+	require.Len(t, got, 1)
+	require.Len(t, got[0].Results, 1)
+	assert.Equal(t, "batch", got[0].Results[0].ServiceTier)
+	assert.Equal(t, "claude-opus-5-5", got[0].Results[0].Model)
+	assert.Equal(t, "wrkspc_01JwQvzr7rXLA5AGx3HKfFUJ", got[0].Results[0].WorkspaceID)
+}
+
+func TestListCostReport_GroupsByDescription(t *testing.T) {
+	var groupBy []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/organizations/cost_report", r.URL.Path)
+		groupBy = r.URL.Query()["group_by[]"]
+		// Synthetic: one result shaped like the response example in the
+		// Admin API reference for GET /v1/organizations/cost_report.
+		_, _ = w.Write([]byte(`{
+			"data": [{
+				"starting_at": "2025-08-01T00:00:00Z",
+				"ending_at": "2025-08-02T00:00:00Z",
+				"results": [{
+					"amount": "123.78912",
+					"currency": "USD",
+					"cost_type": "tokens",
+					"description": "Claude Opus 5.5 Usage - Input Tokens",
+					"model": "claude-opus-5-5",
+					"workspace_id": "wrkspc_01JwQvzr7rXLA5AGx3HKfFUJ"
+				}]
+			}],
+			"has_more": false,
+			"next_page": null
+		}`))
+	}))
+	defer srv.Close()
+
+	c := NewAdminClient("test-key", srv.URL)
+	got, err := c.ListCostReport(context.Background())
+	require.NoError(t, err)
+
+	// The API returns cost_type and model as null unless the request groups by description.
+	assert.ElementsMatch(t, []string{"workspace_id", "description"}, groupBy)
+	require.Len(t, got, 1)
+	require.Len(t, got[0].Results, 1)
+	res := got[0].Results[0]
+	assert.Equal(t, "tokens", res.CostType)
+	assert.Equal(t, "claude-opus-5-5", res.Model)
+	assert.Equal(t, "Claude Opus 5.5 Usage - Input Tokens", res.Description)
+}

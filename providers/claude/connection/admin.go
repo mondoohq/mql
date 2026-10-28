@@ -308,7 +308,7 @@ type AdminUsageResult struct {
 
 func (c *AdminClient) ListUsageReport(ctx context.Context) ([]AdminUsageBucket, error) {
 	startingAt := time.Now().UTC().AddDate(0, 0, -7).Format("2006-01-02T00:00:00Z")
-	return paginatePageToken[AdminUsageBucket](ctx, c, "/v1/organizations/usage_report/messages?bucket_width=1d&starting_at="+startingAt+"&group_by[]=workspace_id&group_by[]=model")
+	return paginatePageToken[AdminUsageBucket](ctx, c, "/v1/organizations/usage_report/messages?bucket_width=1d&starting_at="+startingAt+"&group_by[]=workspace_id&group_by[]=model&group_by[]=service_tier")
 }
 
 // Cost Report
@@ -325,11 +325,12 @@ type AdminCostResult struct {
 	CostType    string `json:"cost_type"`
 	Model       string `json:"model"`
 	WorkspaceID string `json:"workspace_id"`
+	Description string `json:"description"`
 }
 
 func (c *AdminClient) ListCostReport(ctx context.Context) ([]AdminCostBucket, error) {
 	startingAt := time.Now().UTC().AddDate(0, 0, -7).Format("2006-01-02T00:00:00Z")
-	return paginatePageToken[AdminCostBucket](ctx, c, "/v1/organizations/cost_report?bucket_width=1d&starting_at="+startingAt+"&group_by[]=workspace_id")
+	return paginatePageToken[AdminCostBucket](ctx, c, "/v1/organizations/cost_report?bucket_width=1d&starting_at="+startingAt+"&group_by[]=workspace_id&group_by[]=description")
 }
 
 // Compliance Activities
