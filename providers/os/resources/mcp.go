@@ -67,9 +67,10 @@ func deriveMcpTransport(explicitType, command, url string) string {
 	return ""
 }
 
-// mcpArgsData converts an MCP server's command-line arguments into the llx
-// string-array RawData every mcpServer resource uses for its args field, with
-// secrets passed on the command line redacted (see redactArgs).
+// mcpArgsData converts command-line arguments into an llx string-array RawData,
+// with secrets passed on the command line redacted (see redactArgs). Every
+// mcpServer resource uses it for its args field, and claude.code.hook for the
+// args of an exec-form hook.
 func mcpArgsData(in []string) *llx.RawData {
 	in = redactArgs(in)
 	out := make([]any, len(in))
