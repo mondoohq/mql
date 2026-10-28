@@ -59,7 +59,7 @@ func (r *mqlZed) settings() (any, error) {
 	if err := json.Unmarshal(clean, &settings); err != nil {
 		return nil, err
 	}
-	return settings, nil
+	return redactSettings(settings), nil
 }
 
 // zedAgentSettings captures the default model configured for Zed's agent.

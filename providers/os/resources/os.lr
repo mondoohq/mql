@@ -23123,6 +23123,10 @@ claude.code @defaults("configPath") @maturity("preview") {
   // Organization ID
   organizationId() string
   // Settings dictionary
+  //
+  // Parsed from settings.json. Secret values (API keys, tokens, passwords,
+  // header values, and env values inside MCP server definitions) are replaced
+  // with `<redacted>`; values that only reference a variable are kept.
   settings() dict
   // List of enabled plugin names
   enabledPlugins() []string
@@ -23380,7 +23384,7 @@ private claude.code.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http or sse servers
   url string
@@ -23465,7 +23469,7 @@ private claude.desktop.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http or sse servers
   url string
@@ -23666,7 +23670,7 @@ private openai.codex.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Server endpoint URL the agent connects to
   url string
@@ -23829,7 +23833,7 @@ private cursor.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for sse or streamable-http servers
   url string
@@ -23963,7 +23967,7 @@ private github.copilot.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http or sse servers
   url string
@@ -24158,7 +24162,7 @@ private goose.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http or sse servers
   url string
@@ -24243,6 +24247,10 @@ gemini @defaults("configPath") @maturity("preview") {
   // "oauth-personal" or "gemini-api-key".
   authType() string
   // Full settings dictionary parsed from the Gemini configuration
+  //
+  // Secret values (API keys, tokens, passwords, header values, and env values
+  // inside MCP server definitions) are replaced with `<redacted>`; values that
+  // only reference a variable are kept.
   settings() dict
   // MCP servers the tool connects to
   //
@@ -24280,7 +24288,7 @@ private gemini.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http or sse servers
   url string
@@ -24472,7 +24480,7 @@ private windsurf.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for sse or streamable-http servers
   url string
@@ -24620,7 +24628,7 @@ private breezell.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for sse or streamable-http servers
   url string
@@ -24693,6 +24701,10 @@ zed @defaults("configPath") @maturity("preview") {
   // determined.
   runtime() extensionRuntime
   // Full settings dictionary parsed from the Zed configuration
+  //
+  // Secret values (API keys, tokens, passwords, header values, and env values
+  // inside context server definitions) are replaced with `<redacted>`; values
+  // that only reference a variable are kept.
   settings() dict
   // Names of installed extensions
   extensions() []string
@@ -24861,7 +24873,7 @@ private cline.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http or sse servers
   url string
@@ -25194,7 +25206,7 @@ private opencode.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http or sse servers
   url string
@@ -25399,7 +25411,7 @@ private mistral.vibe.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http or sse servers
   url string
@@ -25529,7 +25541,7 @@ private antigravity.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http servers
   url string
@@ -26032,7 +26044,7 @@ private augment.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http or sse servers
   url string
@@ -26243,7 +26255,7 @@ private kilocode.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http or sse servers
   url string
@@ -26365,7 +26377,7 @@ private openhands.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http or sse servers
   url string
@@ -26493,7 +26505,7 @@ private qwen.code.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http or sse servers
   url string
@@ -26991,7 +27003,7 @@ private devin.cli.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http servers
   url string
@@ -27212,7 +27224,7 @@ private deepseek.harness.mcpServer @defaults("name") @maturity("preview") {
   type string
   // Local command launched for stdio-type servers
   command string
-  // Command-line arguments passed to the server command
+  // Command-line arguments passed to the server command, with secret values redacted
   args []string
   // Endpoint URL for http servers
   url string

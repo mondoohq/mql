@@ -62,9 +62,11 @@ func deriveMcpTransport(explicitType, command, url string) string {
 	return ""
 }
 
-// strSliceToArrayData converts a string slice into an llx string-array RawData,
-// the shape every mcpServer resource uses for its args field.
-func strSliceToArrayData(in []string) *llx.RawData {
+// mcpArgsData converts an MCP server's command-line arguments into the llx
+// string-array RawData every mcpServer resource uses for its args field, with
+// secrets passed on the command line redacted (see redactArgs).
+func mcpArgsData(in []string) *llx.RawData {
+	in = redactArgs(in)
 	out := make([]any, len(in))
 	for i, v := range in {
 		out[i] = v

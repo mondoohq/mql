@@ -118,7 +118,7 @@ func (r *mqlClaudeCode) settings() (any, error) {
 		}
 		return nil, err
 	}
-	return settings, nil
+	return redactSettings(settings), nil
 }
 
 func (r *mqlClaudeCode) enabledPlugins() ([]any, error) {
@@ -265,8 +265,8 @@ func (r *mqlClaudeCode) mcpServers() ([]any, error) {
 			"project":     llx.StringData(scoped.project),
 			"type":        llx.StringData(deriveMcpTransport(srv.Type, srv.Command, srv.URL)),
 			"command":     llx.StringData(srv.Command),
-			"args":        strSliceToArrayData(srv.Args),
-			"url":         llx.StringData(srv.URL),
+			"args":        mcpArgsData(srv.Args),
+			"url":         llx.StringData(redactURL(srv.URL)),
 			"hasEnv":      llx.BoolData(len(srv.Env) > 0),
 			"hasHeaders":  llx.BoolData(len(srv.Headers) > 0),
 			"needsAuth":   llx.BoolData(needsAuth),

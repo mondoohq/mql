@@ -606,7 +606,7 @@ func parseGitRemotes(afs *afero.Afero, configPath string) map[string]string {
 			continue
 		}
 		if strings.TrimSpace(key) == "url" {
-			remotes[currentRemote] = strings.TrimSpace(value)
+			remotes[currentRemote] = redactURL(strings.TrimSpace(value))
 		}
 	}
 	return remotes

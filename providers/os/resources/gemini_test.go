@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func createTestGeminiConfig(t *testing.T) string {
@@ -193,4 +195,29 @@ func TestGeminiSettingsEmptyFile(t *testing.T) {
 	require.NoError(t, readGeminiSettings(afs, dir, &settings))
 	assert.NotNil(t, settings, "an empty file is an empty map, as a missing one is")
 	assert.Empty(t, settings)
+}
+
+func TestGeminiSettingsRedactsSecrets(t *testing.T) {
+	// Synthetic: an MCP server in settings.json with an env token and an
+	// Authorization header, in the shape the Gemini CLI docs show.
+	mockFS := afero.NewMemMapFs()
+	writeMemFSFile(t, mockFS, "/home/alice/.gemini/settings.json", []byte(`{
+		"mcpServers": {
+			"github": {"command": "github-mcp", "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "abc123"}},
+			"remote": {"httpUrl": "https://mcp.example.com/mcp", "headers": {"Authorization": "Bearer abc123"}}
+		}
+	}`))
+	r := &mqlGemini{
+		MqlRuntime: memFSRuntime(t, mockFS),
+		ConfigPath: plugin.TValue[string]{Data: "/home/alice/.gemini", State: plugin.StateIsSet},
+	}
+
+	got, err := r.settings()
+	require.NoError(t, err)
+	servers := got.(map[string]any)["mcpServers"].(map[string]any)
+	gh := servers["github"].(map[string]any)
+	assert.Equal(t, "github-mcp", gh["command"])
+	assert.Equal(t, redactedValue, gh["env"].(map[string]any)["GITHUB_PERSONAL_ACCESS_TOKEN"])
+	remote := servers["remote"].(map[string]any)
+	assert.Equal(t, redactedValue, remote["headers"].(map[string]any)["Authorization"])
 }
