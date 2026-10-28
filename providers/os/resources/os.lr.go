@@ -701,6 +701,7 @@ const (
 	ResourceClaudeCodeRepo                                 string = "claude.code.repo"
 	ResourceClaudeCodeMcpServer                            string = "claude.code.mcpServer"
 	ResourceClaudeCodeHook                                 string = "claude.code.hook"
+	ResourceClaudeCodeMcpServerRule                        string = "claude.code.mcpServerRule"
 	ResourceClaudeDesktop                                  string = "claude.desktop"
 	ResourceClaudeDesktopMcpServer                         string = "claude.desktop.mcpServer"
 	ResourceClaudeDesktopExtension                         string = "claude.desktop.extension"
@@ -3579,6 +3580,10 @@ func init() {
 		"claude.code.hook": {
 			// to override args, implement: initClaudeCodeHook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createClaudeCodeHook,
+		},
+		"claude.code.mcpServerRule": {
+			// to override args, implement: initClaudeCodeMcpServerRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createClaudeCodeMcpServerRule,
 		},
 		"claude.desktop": {
 			Init:   initClaudeDesktop,
@@ -20824,6 +20829,81 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.code.models": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCode).GetModels()).ToDataRes(types.Array(types.Resource("claude.code.modelUsage")))
 	},
+	"claude.code.managedSettingsPresent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetManagedSettingsPresent()).ToDataRes(types.Bool)
+	},
+	"claude.code.managedSources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetManagedSources()).ToDataRes(types.Array(types.String))
+	},
+	"claude.code.managedSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetManagedSettings()).ToDataRes(types.Dict)
+	},
+	"claude.code.defaultPermissionMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetDefaultPermissionMode()).ToDataRes(types.String)
+	},
+	"claude.code.bypassPermissionsDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetBypassPermissionsDisabled()).ToDataRes(types.Bool)
+	},
+	"claude.code.autoModeDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetAutoModeDisabled()).ToDataRes(types.Bool)
+	},
+	"claude.code.allowManagedPermissionRulesOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetAllowManagedPermissionRulesOnly()).ToDataRes(types.Bool)
+	},
+	"claude.code.allowedPermissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetAllowedPermissions()).ToDataRes(types.Array(types.String))
+	},
+	"claude.code.askPermissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetAskPermissions()).ToDataRes(types.Array(types.String))
+	},
+	"claude.code.deniedPermissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetDeniedPermissions()).ToDataRes(types.Array(types.String))
+	},
+	"claude.code.sandboxEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetSandboxEnabled()).ToDataRes(types.Bool)
+	},
+	"claude.code.sandboxAllowUnsandboxedCommands": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetSandboxAllowUnsandboxedCommands()).ToDataRes(types.Bool)
+	},
+	"claude.code.sandboxAllowedDomains": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetSandboxAllowedDomains()).ToDataRes(types.Array(types.String))
+	},
+	"claude.code.sandboxAllowManagedDomainsOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetSandboxAllowManagedDomainsOnly()).ToDataRes(types.Bool)
+	},
+	"claude.code.allowManagedHooksOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetAllowManagedHooksOnly()).ToDataRes(types.Bool)
+	},
+	"claude.code.disableAllHooks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetDisableAllHooks()).ToDataRes(types.Bool)
+	},
+	"claude.code.hasApiKeyHelper": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetHasApiKeyHelper()).ToDataRes(types.Bool)
+	},
+	"claude.code.enableAllProjectMcpServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetEnableAllProjectMcpServers()).ToDataRes(types.Bool)
+	},
+	"claude.code.allowManagedMcpServersOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetAllowManagedMcpServersOnly()).ToDataRes(types.Bool)
+	},
+	"claude.code.allowedMcpServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetAllowedMcpServers()).ToDataRes(types.Array(types.Resource("claude.code.mcpServerRule")))
+	},
+	"claude.code.deniedMcpServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetDeniedMcpServers()).ToDataRes(types.Array(types.Resource("claude.code.mcpServerRule")))
+	},
+	"claude.code.managedMcpExclusive": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetManagedMcpExclusive()).ToDataRes(types.Bool)
+	},
+	"claude.code.managedMcpServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetManagedMcpServers()).ToDataRes(types.Array(types.Resource("claude.code.mcpServer")))
+	},
+	"claude.code.forceLoginMethod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetForceLoginMethod()).ToDataRes(types.String)
+	},
+	"claude.code.forceLoginOrgUuids": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetForceLoginOrgUuids()).ToDataRes(types.Array(types.String))
+	},
 	"claude.code.plugin.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCodePlugin).GetName()).ToDataRes(types.String)
 	},
@@ -21066,6 +21146,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"claude.code.hook.managed": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCodeHook).GetManaged()).ToDataRes(types.Bool)
+	},
+	"claude.code.mcpServerRule.serverName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeMcpServerRule).GetServerName()).ToDataRes(types.String)
+	},
+	"claude.code.mcpServerRule.serverCommand": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeMcpServerRule).GetServerCommand()).ToDataRes(types.Array(types.String))
+	},
+	"claude.code.mcpServerRule.serverUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeMcpServerRule).GetServerUrl()).ToDataRes(types.String)
+	},
+	"claude.code.mcpServerRule.managed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeMcpServerRule).GetManaged()).ToDataRes(types.Bool)
 	},
 	"claude.desktop.configPath": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeDesktop).GetConfigPath()).ToDataRes(types.String)
@@ -49254,6 +49346,106 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClaudeCode).Models, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"claude.code.managedSettingsPresent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).ManagedSettingsPresent, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.managedSources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).ManagedSources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.code.managedSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).ManagedSettings, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"claude.code.defaultPermissionMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).DefaultPermissionMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.code.bypassPermissionsDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).BypassPermissionsDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.autoModeDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).AutoModeDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.allowManagedPermissionRulesOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).AllowManagedPermissionRulesOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.allowedPermissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).AllowedPermissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.code.askPermissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).AskPermissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.code.deniedPermissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).DeniedPermissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.code.sandboxEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).SandboxEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.sandboxAllowUnsandboxedCommands": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).SandboxAllowUnsandboxedCommands, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.sandboxAllowedDomains": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).SandboxAllowedDomains, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.code.sandboxAllowManagedDomainsOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).SandboxAllowManagedDomainsOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.allowManagedHooksOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).AllowManagedHooksOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.disableAllHooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).DisableAllHooks, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.hasApiKeyHelper": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).HasApiKeyHelper, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.enableAllProjectMcpServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).EnableAllProjectMcpServers, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.allowManagedMcpServersOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).AllowManagedMcpServersOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.allowedMcpServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).AllowedMcpServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.code.deniedMcpServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).DeniedMcpServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.code.managedMcpExclusive": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).ManagedMcpExclusive, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.managedMcpServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).ManagedMcpServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.code.forceLoginMethod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).ForceLoginMethod, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.code.forceLoginOrgUuids": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).ForceLoginOrgUuids, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"claude.code.plugin.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeCodePlugin).__id, ok = v.Value.(string)
 		return
@@ -49608,6 +49800,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"claude.code.hook.managed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeCodeHook).Managed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.mcpServerRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeMcpServerRule).__id, ok = v.Value.(string)
+		return
+	},
+	"claude.code.mcpServerRule.serverName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeMcpServerRule).ServerName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.code.mcpServerRule.serverCommand": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeMcpServerRule).ServerCommand, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.code.mcpServerRule.serverUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeMcpServerRule).ServerUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.code.mcpServerRule.managed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeMcpServerRule).Managed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"claude.desktop.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -124290,26 +124502,51 @@ type mqlClaudeCode struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlClaudeCodeInternal
-	ConfigPath     plugin.TValue[string]
-	Package        plugin.TValue[*mqlPackage]
-	Runtime        plugin.TValue[*mqlExtensionRuntime]
-	Email          plugin.TValue[string]
-	Organization   plugin.TValue[string]
-	Role           plugin.TValue[string]
-	Subscription   plugin.TValue[string]
-	UserId         plugin.TValue[string]
-	OrganizationId plugin.TValue[string]
-	Settings       plugin.TValue[any]
-	EnabledPlugins plugin.TValue[[]any]
-	Plugins        plugin.TValue[[]any]
-	Marketplaces   plugin.TValue[[]any]
-	Skills         plugin.TValue[[]any]
-	Projects       plugin.TValue[[]any]
-	Repos          plugin.TValue[[]any]
-	McpServers     plugin.TValue[[]any]
-	Hooks          plugin.TValue[[]any]
-	Model          plugin.TValue[string]
-	Models         plugin.TValue[[]any]
+	ConfigPath                      plugin.TValue[string]
+	Package                         plugin.TValue[*mqlPackage]
+	Runtime                         plugin.TValue[*mqlExtensionRuntime]
+	Email                           plugin.TValue[string]
+	Organization                    plugin.TValue[string]
+	Role                            plugin.TValue[string]
+	Subscription                    plugin.TValue[string]
+	UserId                          plugin.TValue[string]
+	OrganizationId                  plugin.TValue[string]
+	Settings                        plugin.TValue[any]
+	EnabledPlugins                  plugin.TValue[[]any]
+	Plugins                         plugin.TValue[[]any]
+	Marketplaces                    plugin.TValue[[]any]
+	Skills                          plugin.TValue[[]any]
+	Projects                        plugin.TValue[[]any]
+	Repos                           plugin.TValue[[]any]
+	McpServers                      plugin.TValue[[]any]
+	Hooks                           plugin.TValue[[]any]
+	Model                           plugin.TValue[string]
+	Models                          plugin.TValue[[]any]
+	ManagedSettingsPresent          plugin.TValue[bool]
+	ManagedSources                  plugin.TValue[[]any]
+	ManagedSettings                 plugin.TValue[any]
+	DefaultPermissionMode           plugin.TValue[string]
+	BypassPermissionsDisabled       plugin.TValue[bool]
+	AutoModeDisabled                plugin.TValue[bool]
+	AllowManagedPermissionRulesOnly plugin.TValue[bool]
+	AllowedPermissions              plugin.TValue[[]any]
+	AskPermissions                  plugin.TValue[[]any]
+	DeniedPermissions               plugin.TValue[[]any]
+	SandboxEnabled                  plugin.TValue[bool]
+	SandboxAllowUnsandboxedCommands plugin.TValue[bool]
+	SandboxAllowedDomains           plugin.TValue[[]any]
+	SandboxAllowManagedDomainsOnly  plugin.TValue[bool]
+	AllowManagedHooksOnly           plugin.TValue[bool]
+	DisableAllHooks                 plugin.TValue[bool]
+	HasApiKeyHelper                 plugin.TValue[bool]
+	EnableAllProjectMcpServers      plugin.TValue[bool]
+	AllowManagedMcpServersOnly      plugin.TValue[bool]
+	AllowedMcpServers               plugin.TValue[[]any]
+	DeniedMcpServers                plugin.TValue[[]any]
+	ManagedMcpExclusive             plugin.TValue[bool]
+	ManagedMcpServers               plugin.TValue[[]any]
+	ForceLoginMethod                plugin.TValue[string]
+	ForceLoginOrgUuids              plugin.TValue[[]any]
 }
 
 // createClaudeCode creates a new instance of this resource
@@ -124564,6 +124801,186 @@ func (c *mqlClaudeCode) GetModels() *plugin.TValue[[]any] {
 		}
 
 		return c.models()
+	})
+}
+
+func (c *mqlClaudeCode) GetManagedSettingsPresent() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ManagedSettingsPresent, func() (bool, error) {
+		return c.managedSettingsPresent()
+	})
+}
+
+func (c *mqlClaudeCode) GetManagedSources() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ManagedSources, func() ([]any, error) {
+		return c.managedSources()
+	})
+}
+
+func (c *mqlClaudeCode) GetManagedSettings() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.ManagedSettings, func() (any, error) {
+		return c.managedSettings()
+	})
+}
+
+func (c *mqlClaudeCode) GetDefaultPermissionMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DefaultPermissionMode, func() (string, error) {
+		return c.defaultPermissionMode()
+	})
+}
+
+func (c *mqlClaudeCode) GetBypassPermissionsDisabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.BypassPermissionsDisabled, func() (bool, error) {
+		return c.bypassPermissionsDisabled()
+	})
+}
+
+func (c *mqlClaudeCode) GetAutoModeDisabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AutoModeDisabled, func() (bool, error) {
+		return c.autoModeDisabled()
+	})
+}
+
+func (c *mqlClaudeCode) GetAllowManagedPermissionRulesOnly() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowManagedPermissionRulesOnly, func() (bool, error) {
+		return c.allowManagedPermissionRulesOnly()
+	})
+}
+
+func (c *mqlClaudeCode) GetAllowedPermissions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedPermissions, func() ([]any, error) {
+		return c.allowedPermissions()
+	})
+}
+
+func (c *mqlClaudeCode) GetAskPermissions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AskPermissions, func() ([]any, error) {
+		return c.askPermissions()
+	})
+}
+
+func (c *mqlClaudeCode) GetDeniedPermissions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DeniedPermissions, func() ([]any, error) {
+		return c.deniedPermissions()
+	})
+}
+
+func (c *mqlClaudeCode) GetSandboxEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SandboxEnabled, func() (bool, error) {
+		return c.sandboxEnabled()
+	})
+}
+
+func (c *mqlClaudeCode) GetSandboxAllowUnsandboxedCommands() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SandboxAllowUnsandboxedCommands, func() (bool, error) {
+		return c.sandboxAllowUnsandboxedCommands()
+	})
+}
+
+func (c *mqlClaudeCode) GetSandboxAllowedDomains() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SandboxAllowedDomains, func() ([]any, error) {
+		return c.sandboxAllowedDomains()
+	})
+}
+
+func (c *mqlClaudeCode) GetSandboxAllowManagedDomainsOnly() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SandboxAllowManagedDomainsOnly, func() (bool, error) {
+		return c.sandboxAllowManagedDomainsOnly()
+	})
+}
+
+func (c *mqlClaudeCode) GetAllowManagedHooksOnly() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowManagedHooksOnly, func() (bool, error) {
+		return c.allowManagedHooksOnly()
+	})
+}
+
+func (c *mqlClaudeCode) GetDisableAllHooks() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.DisableAllHooks, func() (bool, error) {
+		return c.disableAllHooks()
+	})
+}
+
+func (c *mqlClaudeCode) GetHasApiKeyHelper() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HasApiKeyHelper, func() (bool, error) {
+		return c.hasApiKeyHelper()
+	})
+}
+
+func (c *mqlClaudeCode) GetEnableAllProjectMcpServers() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableAllProjectMcpServers, func() (bool, error) {
+		return c.enableAllProjectMcpServers()
+	})
+}
+
+func (c *mqlClaudeCode) GetAllowManagedMcpServersOnly() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowManagedMcpServersOnly, func() (bool, error) {
+		return c.allowManagedMcpServersOnly()
+	})
+}
+
+func (c *mqlClaudeCode) GetAllowedMcpServers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedMcpServers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.code", c.__id, "allowedMcpServers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.allowedMcpServers()
+	})
+}
+
+func (c *mqlClaudeCode) GetDeniedMcpServers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DeniedMcpServers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.code", c.__id, "deniedMcpServers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.deniedMcpServers()
+	})
+}
+
+func (c *mqlClaudeCode) GetManagedMcpExclusive() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ManagedMcpExclusive, func() (bool, error) {
+		return c.managedMcpExclusive()
+	})
+}
+
+func (c *mqlClaudeCode) GetManagedMcpServers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ManagedMcpServers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.code", c.__id, "managedMcpServers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.managedMcpServers()
+	})
+}
+
+func (c *mqlClaudeCode) GetForceLoginMethod() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ForceLoginMethod, func() (string, error) {
+		return c.forceLoginMethod()
+	})
+}
+
+func (c *mqlClaudeCode) GetForceLoginOrgUuids() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ForceLoginOrgUuids, func() ([]any, error) {
+		return c.forceLoginOrgUuids()
 	})
 }
 
@@ -125405,6 +125822,65 @@ func (c *mqlClaudeCodeHook) GetSource() *plugin.TValue[string] {
 }
 
 func (c *mqlClaudeCodeHook) GetManaged() *plugin.TValue[bool] {
+	return &c.Managed
+}
+
+// mqlClaudeCodeMcpServerRule for the claude.code.mcpServerRule resource
+type mqlClaudeCodeMcpServerRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlClaudeCodeMcpServerRuleInternal it will be used here
+	ServerName    plugin.TValue[string]
+	ServerCommand plugin.TValue[[]any]
+	ServerUrl     plugin.TValue[string]
+	Managed       plugin.TValue[bool]
+}
+
+// createClaudeCodeMcpServerRule creates a new instance of this resource
+func createClaudeCodeMcpServerRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlClaudeCodeMcpServerRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("claude.code.mcpServerRule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlClaudeCodeMcpServerRule) MqlName() string {
+	return "claude.code.mcpServerRule"
+}
+
+func (c *mqlClaudeCodeMcpServerRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlClaudeCodeMcpServerRule) GetServerName() *plugin.TValue[string] {
+	return &c.ServerName
+}
+
+func (c *mqlClaudeCodeMcpServerRule) GetServerCommand() *plugin.TValue[[]any] {
+	return &c.ServerCommand
+}
+
+func (c *mqlClaudeCodeMcpServerRule) GetServerUrl() *plugin.TValue[string] {
+	return &c.ServerUrl
+}
+
+func (c *mqlClaudeCodeMcpServerRule) GetManaged() *plugin.TValue[bool] {
 	return &c.Managed
 }
 
