@@ -135,11 +135,16 @@ func (s codexTomlMcpServer) enabled() bool {
 }
 
 // mqlOpenaiCodexInternal caches the parsed config.toml so that model() and
-// modelProvider() do not each re-read and re-parse it.
+// modelProvider() do not each re-read and re-parse it, and the approval and
+// sandbox posture computed from every configuration layer.
 type mqlOpenaiCodexInternal struct {
 	configOnce      sync.Once
 	cachedConfig    *codexConfig
 	cachedConfigErr error
+
+	policyOnce sync.Once
+	policy     *codexPolicy
+	policyErr  error
 }
 
 func (r *mqlOpenaiCodex) loadConfig() (*codexConfig, error) {
@@ -222,9 +227,7 @@ func (r *mqlOpenaiCodex) plugins() ([]any, error) {
 		mcpExists, _ := afs.Exists(filepath.Join(dir.path, ".mcp.json"))
 		p.hasMcp = mcpExists
 
-		// Check for hooks
-		hooksExists, _ := afs.Exists(filepath.Join(dir.path, "hooks.json"))
-		p.hasHooks = hooksExists
+		p.hasHooks = codexPluginHasHooks(afs, dir.path, pj.Hooks)
 
 		capAny := make([]any, len(p.capabilities))
 		for i, c := range p.capabilities {
@@ -499,9 +502,26 @@ type codexTokensJSON struct {
 
 type codexPluginJSON struct {
 	Version     string              `json:"version"`
+	Hooks       json.RawMessage     `json:"hooks"`
 	Description string              `json:"description"`
 	Author      *codexAuthorJSON    `json:"author"`
 	Interface   *codexInterfaceJSON `json:"interface"`
+}
+
+// codexPluginHasHooks reports whether a plugin declares hooks. Codex reads
+// them from the manifest's `hooks` entry (a path, a list of paths, an inline
+// hooks object, or a list of them) when present, otherwise from the plugin's
+// hooks/hooks.json (codex-rs/core-plugins/src/loader.rs).
+func codexPluginHasHooks(afs *afero.Afero, pluginDir string, manifestHooks json.RawMessage) bool {
+	switch v := bytes.TrimSpace(manifestHooks); {
+	case len(v) == 0 || bytes.Equal(v, []byte("null")):
+		exists, _ := afs.Exists(filepath.Join(pluginDir, "hooks", "hooks.json"))
+		return exists
+	case bytes.Equal(v, []byte(`""`)), bytes.Equal(v, []byte("[]")), bytes.Equal(v, []byte("{}")):
+		return false
+	default:
+		return true
+	}
 }
 
 type codexAuthorJSON struct {
