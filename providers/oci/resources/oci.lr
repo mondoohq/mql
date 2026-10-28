@@ -10980,6 +10980,8 @@ private oci.ai.agents.agent @defaults("name state") {
   welcomeMessage string
   // Language-model routing and selection configuration
   llmConfig dict
+  // Knowledge bases the agent retrieves from
+  knowledgeBases() []oci.ai.agents.knowledgeBase
   // Lifecycle state (e.g., CREATING, UPDATING, ACTIVE, DELETING, DELETED, FAILED)
   state string
   // Detail message describing the current lifecycle state
@@ -11040,6 +11042,20 @@ private oci.ai.agents.endpoint @defaults("name state") {
   citationEnabled bool
   // Whether multi-language chat is enabled
   multiLanguageEnabled bool
+  // Whether the agent can pause a conversation to ask a human for input
+  //
+  // Null when the endpoint reports no human-input configuration.
+  humanInputEnabled bool
+  // Object Storage bucket that receives the endpoint's chat output
+  //
+  // Null when the endpoint does not persist output to Object Storage.
+  outputBucket() oci.objectStorage.bucket
+  // Object name prefix under which chat output is written in outputBucket
+  outputPrefix string
+  // Minutes chat output is retained in outputBucket before removal
+  //
+  // Null when no retention period is set.
+  outputRetentionInMinutes int
   // Additional endpoint configuration key-value pairs
   metadata map[string]string
   // Lifecycle state (e.g., CREATING, UPDATING, ACTIVE, DELETING, DELETED, FAILED)
@@ -11158,6 +11174,14 @@ private oci.ai.agents.tool @defaults("name toolType state") {
   toolType string
   // Full tool configuration, with shape determined by `toolType`
   toolConfig dict
+  // Subnet an HTTP endpoint tool sends its requests from
+  //
+  // Set for HTTP_ENDPOINT_TOOL_CONFIG tools, null for every other type.
+  subnet() oci.network.subnet
+  // Knowledge bases a retrieval-augmented generation tool retrieves from
+  //
+  // Set for RAG_TOOL_CONFIG tools, empty for every other type.
+  knowledgeBases() []oci.ai.agents.knowledgeBase
   // Additional tool configuration key-value pairs
   metadata map[string]string
   // Lifecycle state (e.g., CREATING, UPDATING, ACTIVE, DELETING, DELETED, FAILED)
@@ -11197,6 +11221,8 @@ oci.ai.dataScience {
   jobs() []oci.ai.dataScience.job
   // Pipelines
   pipelines() []oci.ai.dataScience.pipeline
+  // Private endpoints that place notebook sessions and model deployments in a customer subnet
+  privateEndpoints() []oci.ai.dataScience.privateEndpoint
 }
 
 // Oracle Cloud Infrastructure (OCI) Data Science project
@@ -11263,7 +11289,13 @@ private oci.ai.dataScience.notebookSession @defaults("name state") {
   // Block storage attached to the session, in gigabytes
   blockStorageSizeInGBs int
   // OCID of the Data Science private endpoint isolating the session, when set
-  privateEndpointID string
+  //
+  // Deprecated in favor of privateEndpoint.
+  privateEndpointID @maturity("deprecated") @replaced_by("oci.ai.dataScience.notebookSession.privateEndpoint") string
+  // Data Science private endpoint isolating the session
+  //
+  // Null when the session is not reached through a private endpoint.
+  privateEndpoint() oci.ai.dataScience.privateEndpoint
   // URL used to access the session
   notebookSessionUrl string
   // Lifecycle state (e.g., CREATING, ACTIVE, DELETING, DELETED, FAILED, INACTIVE, UPDATING)
@@ -11398,6 +11430,34 @@ private oci.ai.dataScience.modelDeployment @defaults("name state") {
   // Has `access` and `predict`, each with the OCID of the log and log
   // group when logging is enabled.
   loggingConfiguration dict
+  // Network access type of the deployment's instances
+  //
+  // One of MANAGED_NETWORKING_INTERNET_ACCESS (service-managed network with
+  // internet egress), MANAGED_NETWORKING_NO_INTERNET_ACCESS (service-managed
+  // network without internet egress), or CUSTOM_NETWORKING (instances run in
+  // the customer `subnet`). Empty when the deployment reports no network
+  // access type, such as one running on a managed compute cluster.
+  networkAccessType string
+  // Customer subnet the deployment's instances run in
+  //
+  // Null when the deployment uses service-managed networking.
+  subnet() oci.network.subnet
+  // Data Science private endpoint through which the deployment is reached
+  //
+  // Null when the deployment is not reached through a private endpoint.
+  privateEndpoint() oci.ai.dataScience.privateEndpoint
+  // Catalog model served by a single-model deployment
+  //
+  // Null for a model-group deployment.
+  model() oci.ai.dataScience.model
+  // Log receiving the deployment's access logs
+  //
+  // Null when access logging is not enabled.
+  accessLog() oci.logging.log
+  // Log receiving the deployment's predict logs
+  //
+  // Null when predict logging is not enabled.
+  predictLog() oci.logging.log
   // Lifecycle state (e.g., CREATING, ACTIVE, DELETING, DELETED, FAILED, INACTIVE, UPDATING, NEEDS_ATTENTION)
   state string
   // Creation time
@@ -11472,6 +11532,51 @@ private oci.ai.dataScience.pipeline @defaults("name state") {
   definedTags map[string]map[string]string
 }
 
+// Oracle Cloud Infrastructure (OCI) Data Science private endpoint
+//
+// Private access point in a customer subnet through which Data Science
+// notebook sessions or model deployments are reached without traversing the
+// public internet. Select an endpoint by its OCID, for example
+// `oci.ai.dataScience.privateEndpoint(id: "ocid1.datascienceprivateendpoint.oc1...")`.
+// The endpoint reports the subnet and network security groups that govern
+// who can reach it, its private DNS name, and the kind of Data Science
+// resource it serves.
+private oci.ai.dataScience.privateEndpoint @defaults("name dataScienceResourceType state") {
+  init(id? string)
+  // Private endpoint OCID
+  id string
+  // Private endpoint display name
+  name string
+  // Compartment OCID containing the private endpoint
+  compartmentID string
+  // Compartment containing the private endpoint
+  compartment() oci.compartment
+  // OCID of the principal that created the private endpoint
+  createdBy string
+  // Subnet the private endpoint is placed in
+  subnet() oci.network.subnet
+  // Network security groups attached to the private endpoint
+  networkSecurityGroups() []oci.network.networkSecurityGroup
+  // Fully qualified domain name clients use to reach the private endpoint
+  fqdn string
+  // Kind of Data Science resource the private endpoint serves
+  //
+  // One of NOTEBOOK_SESSION or MODEL_DEPLOYMENT.
+  dataScienceResourceType string
+  // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED, NEEDS_ATTENTION)
+  state string
+  // Detail message describing the current lifecycle state
+  lifecycleDetails string
+  // Creation time
+  created time
+  // Last update time
+  timeUpdated time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
 // Oracle Cloud Infrastructure (OCI) Generative AI
 //
 // Generative AI foundation model estate for the tenancy across every
@@ -11487,6 +11592,8 @@ oci.ai.generativeAi {
   models() []oci.ai.generativeAi.model
   // Model-serving endpoints
   endpoints() []oci.ai.generativeAi.endpoint
+  // Private endpoints that make Generative AI reachable from a customer subnet
+  privateEndpoints() []oci.ai.generativeAi.privateEndpoint
 }
 
 // Oracle Cloud Infrastructure (OCI) Generative AI dedicated AI cluster
@@ -11620,7 +11727,13 @@ private oci.ai.generativeAi.endpoint @defaults("name state") {
   // Dedicated AI cluster hosting the endpoint
   dedicatedAiCluster() oci.ai.generativeAi.dedicatedAiCluster
   // OCID of the Generative AI private endpoint isolating this endpoint, when set
-  generativeAiPrivateEndpointID string
+  //
+  // Deprecated in favor of privateEndpoint.
+  generativeAiPrivateEndpointID @maturity("deprecated") @replaced_by("oci.ai.generativeAi.endpoint.privateEndpoint") string
+  // Generative AI private endpoint isolating this endpoint
+  //
+  // Null when the endpoint is not reached through a private endpoint.
+  privateEndpoint() oci.ai.generativeAi.privateEndpoint
   // Description of the endpoint
   description string
   // Whether content moderation is enabled
@@ -11635,6 +11748,55 @@ private oci.ai.generativeAi.endpoint @defaults("name state") {
   piiDetectionEnabled bool
   // PII detection mode (INFORM or BLOCK), when enabled
   piiDetectionMode string
+  // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
+  state string
+  // Detail message describing the current lifecycle state
+  lifecycleDetails string
+  // Creation time
+  created time
+  // Last update time
+  timeUpdated time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) Generative AI private endpoint
+//
+// Private access point in a customer subnet through which Generative AI
+// endpoints and hosted applications are reached without traversing the
+// public internet. Select a private endpoint by its OCID, for example
+// `oci.ai.generativeAi.privateEndpoint(id: "ocid1.generativeaiprivateendpoint.oc1...")`.
+// The private endpoint reports the subnet and network security groups that
+// govern who can reach it, its private IP address and DNS name, and
+// whether it also admits calls to on-demand models.
+private oci.ai.generativeAi.privateEndpoint @defaults("name state") {
+  init(id? string)
+  // Private endpoint OCID
+  id string
+  // Private endpoint display name
+  name string
+  // Compartment OCID containing the private endpoint
+  compartmentID string
+  // Compartment containing the private endpoint
+  compartment() oci.compartment
+  // Description of the private endpoint
+  description string
+  // Subnet the private endpoint is placed in
+  subnet() oci.network.subnet
+  // Network security groups attached to the private endpoint
+  networkSecurityGroups() []oci.network.networkSecurityGroup
+  // Fully qualified domain name clients use to reach the private endpoint
+  fqdn string
+  // Private IP address of the private endpoint in the customer subnet
+  privateIp string
+  // Whether on-demand models can be called through the private endpoint
+  isAllowOnDemand bool
+  // Kind of Generative AI resource the private endpoint serves
+  //
+  // One of ENDPOINT or APPLICATION.
+  resourceType string
   // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
   state string
   // Detail message describing the current lifecycle state

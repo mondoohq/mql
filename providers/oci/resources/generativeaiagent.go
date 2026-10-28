@@ -82,6 +82,7 @@ func (o *mqlOciAiAgents) agents() ([]any, error) {
 				if err != nil {
 					return nil, err
 				}
+				mqlAgent.(*mqlOciAiAgentsAgent).cacheKnowledgeBaseIDs = a.KnowledgeBaseIds
 				res = append(res, mqlAgent)
 			}
 			return res, nil
@@ -119,6 +120,14 @@ func (o *mqlOciAiAgentsAgent) id() (string, error) {
 
 func (o *mqlOciAiAgentsAgent) compartment() (*mqlOciCompartment, error) {
 	return resolveOciCompartment(o.MqlRuntime, o.CompartmentID.Data, &o.Compartment)
+}
+
+type mqlOciAiAgentsAgentInternal struct {
+	cacheKnowledgeBaseIDs []string
+}
+
+func (o *mqlOciAiAgentsAgent) knowledgeBases() ([]any, error) {
+	return resolveOciAiKnowledgeBases(o.MqlRuntime, o.cacheKnowledgeBaseIDs)
 }
 
 // ----- agent endpoints -----
@@ -167,6 +176,11 @@ func (o *mqlOciAiAgents) agentEndpoints() ([]any, error) {
 				if e.SessionConfig != nil {
 					idleTimeout = intValue(e.SessionConfig.IdleTimeoutInSeconds)
 				}
+				var humanInput *bool
+				if e.HumanInputConfig != nil {
+					humanInput = e.HumanInputConfig.ShouldEnableHumanInput
+				}
+				output := ociAgentEndpointOutput(e.OutputConfig)
 
 				mqlEndpoint, err := CreateResource(o.MqlRuntime, "oci.ai.agents.endpoint", map[string]*llx.RawData{
 					"id":                          llx.StringDataPtr(e.Id),
@@ -182,6 +196,9 @@ func (o *mqlOciAiAgents) agentEndpoints() ([]any, error) {
 					"traceEnabled":                llx.BoolDataPtr(e.ShouldEnableTrace),
 					"citationEnabled":             llx.BoolDataPtr(e.ShouldEnableCitation),
 					"multiLanguageEnabled":        llx.BoolDataPtr(e.ShouldEnableMultiLanguage),
+					"humanInputEnabled":           llx.BoolDataPtr(humanInput),
+					"outputPrefix":                llx.StringData(output.prefix),
+					"outputRetentionInMinutes":    llx.IntDataPtr(output.retentionInMinutes),
 					"metadata":                    llx.MapData(strMapToAny(e.Metadata), types.String),
 					"state":                       llx.StringData(string(e.LifecycleState)),
 					"lifecycleDetails":            llx.StringDataPtr(e.LifecycleDetails),
@@ -195,6 +212,8 @@ func (o *mqlOciAiAgents) agentEndpoints() ([]any, error) {
 				}
 				mqlEndpointTyped := mqlEndpoint.(*mqlOciAiAgentsEndpoint)
 				mqlEndpointTyped.cacheAgentID = stringValue(e.AgentId)
+				mqlEndpointTyped.cacheOutput = output
+				mqlEndpointTyped.cacheRegion = region
 				res = append(res, mqlEndpointTyped)
 			}
 			return res, nil
@@ -203,6 +222,8 @@ func (o *mqlOciAiAgents) agentEndpoints() ([]any, error) {
 
 type mqlOciAiAgentsEndpointInternal struct {
 	cacheAgentID string
+	cacheOutput  ociAgentOutput
+	cacheRegion  string
 }
 
 func initOciAiAgentsEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -240,6 +261,72 @@ func (o *mqlOciAiAgentsEndpoint) compartment() (*mqlOciCompartment, error) {
 
 func (o *mqlOciAiAgentsEndpoint) agent() (*mqlOciAiAgentsAgent, error) {
 	return resolveOciAiAgent(o.MqlRuntime, o.cacheAgentID, &o.Agent)
+}
+
+// outputBucket resolves the Object Storage bucket the endpoint writes chat
+// output to. GetBucket is regional; the output location names no region, so
+// the bucket is looked up in the endpoint's own region.
+func (o *mqlOciAiAgentsEndpoint) outputBucket() (*mqlOciObjectStorageBucket, error) {
+	out := o.cacheOutput
+	// Both parts are required: an empty namespace would build the cache key
+	// "oci.objectStorage.bucket//<name>", shared by every such bucket.
+	if out.namespace == "" || out.bucket == "" || o.cacheRegion == "" {
+		o.OutputBucket.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	regionRes, err := NewResource(o.MqlRuntime, "oci.region", map[string]*llx.RawData{
+		"id": llx.StringData(o.cacheRegion),
+	})
+	if err != nil {
+		return nil, err
+	}
+	res, err := NewResource(o.MqlRuntime, "oci.objectStorage.bucket", map[string]*llx.RawData{
+		"namespace": llx.StringData(out.namespace),
+		"name":      llx.StringData(out.bucket),
+		"region":    llx.ResourceData(regionRes, "oci.region"),
+	})
+	if err != nil {
+		// The bucket can be deleted while the endpoint still names it.
+		if ociReferentGone(err) {
+			log.Debug().Str("bucket", out.bucket).Msg("agent endpoint output bucket no longer exists")
+			o.OutputBucket.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+	return res.(*mqlOciObjectStorageBucket), nil
+}
+
+// ociAgentOutput is where an agent endpoint persists chat output.
+type ociAgentOutput struct {
+	namespace          string
+	bucket             string
+	prefix             string
+	retentionInMinutes *int
+}
+
+// ociAgentEndpointOutput extracts the Object Storage output location and the
+// retention period from an agent endpoint's output configuration.
+func ociAgentEndpointOutput(cfg *generativeaiagent.OutputConfig) ociAgentOutput {
+	var res ociAgentOutput
+	if cfg == nil {
+		return res
+	}
+	res.retentionInMinutes = cfg.RetentionPeriodInMinutes
+	switch loc := cfg.OutputLocation.(type) {
+	case generativeaiagent.ObjectStoragePrefixOutputLocation:
+		res.namespace = stringValue(loc.NamespaceName)
+		res.bucket = stringValue(loc.BucketName)
+		res.prefix = stringValue(loc.Prefix)
+	case *generativeaiagent.ObjectStoragePrefixOutputLocation:
+		if loc != nil {
+			res.namespace = stringValue(loc.NamespaceName)
+			res.bucket = stringValue(loc.BucketName)
+			res.prefix = stringValue(loc.Prefix)
+		}
+	}
+	return res
 }
 
 // ----- knowledge bases -----
@@ -495,6 +582,7 @@ func (o *mqlOciAiAgents) tools() ([]any, error) {
 				}
 				mqlToolTyped := mqlTool.(*mqlOciAiAgentsTool)
 				mqlToolTyped.cacheAgentID = stringValue(t.AgentId)
+				mqlToolTyped.cacheSubnetID, mqlToolTyped.cacheKnowledgeBaseIDs = ociToolConfigRefs(t.ToolConfig)
 				res = append(res, mqlToolTyped)
 			}
 			return res, nil
@@ -502,7 +590,9 @@ func (o *mqlOciAiAgents) tools() ([]any, error) {
 }
 
 type mqlOciAiAgentsToolInternal struct {
-	cacheAgentID string
+	cacheAgentID          string
+	cacheSubnetID         string
+	cacheKnowledgeBaseIDs []string
 }
 
 func initOciAiAgentsTool(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -542,6 +632,41 @@ func (o *mqlOciAiAgentsTool) agent() (*mqlOciAiAgentsAgent, error) {
 	return resolveOciAiAgent(o.MqlRuntime, o.cacheAgentID, &o.Agent)
 }
 
+func (o *mqlOciAiAgentsTool) subnet() (*mqlOciNetworkSubnet, error) {
+	return resolveOciSubnet(o.MqlRuntime, o.cacheSubnetID, &o.Subnet)
+}
+
+func (o *mqlOciAiAgentsTool) knowledgeBases() ([]any, error) {
+	return resolveOciAiKnowledgeBases(o.MqlRuntime, o.cacheKnowledgeBaseIDs)
+}
+
+// ociToolConfigRefs extracts the resources a tool configuration points at:
+// the subnet an HTTP endpoint tool calls out from, and the knowledge bases a
+// RAG tool retrieves from. Other tool types reference neither.
+func ociToolConfigRefs(cfg generativeaiagent.ToolConfig) (subnetID string, knowledgeBaseIDs []string) {
+	var kbConfigs []generativeaiagent.KnowledgeBaseConfig
+	switch c := cfg.(type) {
+	case generativeaiagent.HttpEndpointToolConfig:
+		subnetID = stringValue(c.SubnetId)
+	case *generativeaiagent.HttpEndpointToolConfig:
+		if c != nil {
+			subnetID = stringValue(c.SubnetId)
+		}
+	case generativeaiagent.RagToolConfig:
+		kbConfigs = c.KnowledgeBaseConfigs
+	case *generativeaiagent.RagToolConfig:
+		if c != nil {
+			kbConfigs = c.KnowledgeBaseConfigs
+		}
+	}
+	for _, kb := range kbConfigs {
+		if id := stringValue(kb.KnowledgeBaseId); id != "" {
+			knowledgeBaseIDs = append(knowledgeBaseIDs, id)
+		}
+	}
+	return subnetID, knowledgeBaseIDs
+}
+
 // ----- helpers -----
 
 // resolveOciAiAgent resolves a typed agent resource from an agent OCID. Returns
@@ -558,6 +683,43 @@ func resolveOciAiAgent(runtime *plugin.Runtime, id string, field *plugin.TValue[
 		return nil, err
 	}
 	return r.(*mqlOciAiAgentsAgent), nil
+}
+
+// resolveOciAiKnowledgeBases resolves knowledge base OCIDs through the
+// cached knowledge base listing. An OCID the listing does not contain (a
+// deleted knowledge base, or one in a compartment outside the scan) is
+// skipped; a failure to list is returned.
+func resolveOciAiKnowledgeBases(runtime *plugin.Runtime, ids []string) ([]any, error) {
+	if len(ids) == 0 {
+		return []any{}, nil
+	}
+	obj, err := CreateResource(runtime, "oci.ai.agents", nil)
+	if err != nil {
+		return nil, err
+	}
+	list := obj.(*mqlOciAiAgents).GetKnowledgeBases()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	return ociSelectByID(list.Data, ids), nil
+}
+
+// ociSelectByID returns the resources from items whose id is in ids, in the
+// order of ids. Ids with no matching resource are skipped.
+func ociSelectByID(items []any, ids []string) []any {
+	byID := make(map[string]any, len(items))
+	for _, raw := range items {
+		if r, ok := raw.(interface{ GetId() *plugin.TValue[string] }); ok {
+			byID[r.GetId().Data] = raw
+		}
+	}
+	res := make([]any, 0, len(ids))
+	for _, id := range ids {
+		if r, ok := byID[id]; ok && id != "" {
+			res = append(res, r)
+		}
+	}
+	return res
 }
 
 // ociToolConfigType extracts the polymorphic tool-config discriminator
