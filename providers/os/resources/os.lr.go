@@ -697,10 +697,12 @@ const (
 	ResourceClaudeCodeModelUsage                           string = "claude.code.modelUsage"
 	ResourceClaudeCodeRepo                                 string = "claude.code.repo"
 	ResourceClaudeCodeMcpServer                            string = "claude.code.mcpServer"
+	ResourceClaudeCodeHook                                 string = "claude.code.hook"
 	ResourceClaudeDesktop                                  string = "claude.desktop"
 	ResourceClaudeDesktopMcpServer                         string = "claude.desktop.mcpServer"
 	ResourceClaudeDesktopExtension                         string = "claude.desktop.extension"
 	ResourceOpenaiCodex                                    string = "openai.codex"
+	ResourceOpenaiCodexHook                                string = "openai.codex.hook"
 	ResourceOpenaiCodexPlugin                              string = "openai.codex.plugin"
 	ResourceOpenaiCodexSkill                               string = "openai.codex.skill"
 	ResourceOpenaiCodexMcpServer                           string = "openai.codex.mcpServer"
@@ -723,6 +725,7 @@ const (
 	ResourceGemini                                         string = "gemini"
 	ResourceGeminiMcpServer                                string = "gemini.mcpServer"
 	ResourceGeminiExtension                                string = "gemini.extension"
+	ResourceGeminiHook                                     string = "gemini.hook"
 	ResourceGeminiSkill                                    string = "gemini.skill"
 	ResourceWindsurf                                       string = "windsurf"
 	ResourceWindsurfRepo                                   string = "windsurf.repo"
@@ -3558,6 +3561,10 @@ func init() {
 			// to override args, implement: initClaudeCodeMcpServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createClaudeCodeMcpServer,
 		},
+		"claude.code.hook": {
+			// to override args, implement: initClaudeCodeHook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createClaudeCodeHook,
+		},
 		"claude.desktop": {
 			Init:   initClaudeDesktop,
 			Create: createClaudeDesktop,
@@ -3573,6 +3580,10 @@ func init() {
 		"openai.codex": {
 			Init:   initOpenaiCodex,
 			Create: createOpenaiCodex,
+		},
+		"openai.codex.hook": {
+			// to override args, implement: initOpenaiCodexHook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createOpenaiCodexHook,
 		},
 		"openai.codex.plugin": {
 			// to override args, implement: initOpenaiCodexPlugin(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -3661,6 +3672,10 @@ func init() {
 		"gemini.extension": {
 			// to override args, implement: initGeminiExtension(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGeminiExtension,
+		},
+		"gemini.hook": {
+			// to override args, implement: initGeminiHook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGeminiHook,
 		},
 		"gemini.skill": {
 			// to override args, implement: initGeminiSkill(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -20695,6 +20710,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.code.mcpServers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCode).GetMcpServers()).ToDataRes(types.Array(types.Resource("claude.code.mcpServer")))
 	},
+	"claude.code.hooks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCode).GetHooks()).ToDataRes(types.Array(types.Resource("claude.code.hook")))
+	},
 	"claude.code.model": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCode).GetModel()).ToDataRes(types.String)
 	},
@@ -20757,6 +20775,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"claude.code.plugin.hasHooks": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCodePlugin).GetHasHooks()).ToDataRes(types.Bool)
+	},
+	"claude.code.plugin.hooks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodePlugin).GetHooks()).ToDataRes(types.Array(types.Resource("claude.code.hook")))
 	},
 	"claude.code.plugin.mcpServers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCodePlugin).GetMcpServers()).ToDataRes(types.Array(types.Resource("claude.code.mcpServer")))
@@ -20893,6 +20914,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.code.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCodeMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
 	},
+	"claude.code.hook.event": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeHook).GetEvent()).ToDataRes(types.String)
+	},
+	"claude.code.hook.matcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeHook).GetMatcher()).ToDataRes(types.String)
+	},
+	"claude.code.hook.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeHook).GetType()).ToDataRes(types.String)
+	},
+	"claude.code.hook.command": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeHook).GetCommand()).ToDataRes(types.String)
+	},
+	"claude.code.hook.args": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeHook).GetArgs()).ToDataRes(types.Array(types.String))
+	},
+	"claude.code.hook.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeHook).GetUrl()).ToDataRes(types.String)
+	},
+	"claude.code.hook.timeout": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeHook).GetTimeout()).ToDataRes(types.Int)
+	},
+	"claude.code.hook.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeHook).GetSource()).ToDataRes(types.String)
+	},
+	"claude.code.hook.managed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeHook).GetManaged()).ToDataRes(types.Bool)
+	},
 	"claude.desktop.configPath": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeDesktop).GetConfigPath()).ToDataRes(types.String)
 	},
@@ -21007,6 +21055,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"openai.codex.connectors": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiCodex).GetConnectors()).ToDataRes(types.Array(types.Resource("openai.codex.connector")))
 	},
+	"openai.codex.hooks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodex).GetHooks()).ToDataRes(types.Array(types.Resource("openai.codex.hook")))
+	},
 	"openai.codex.repos": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiCodex).GetRepos()).ToDataRes(types.Array(types.Resource("openai.codex.repo")))
 	},
@@ -21015,6 +21066,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"openai.codex.modelProvider": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiCodex).GetModelProvider()).ToDataRes(types.String)
+	},
+	"openai.codex.hook.event": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexHook).GetEvent()).ToDataRes(types.String)
+	},
+	"openai.codex.hook.matcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexHook).GetMatcher()).ToDataRes(types.String)
+	},
+	"openai.codex.hook.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexHook).GetType()).ToDataRes(types.String)
+	},
+	"openai.codex.hook.command": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexHook).GetCommand()).ToDataRes(types.String)
+	},
+	"openai.codex.hook.timeout": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexHook).GetTimeout()).ToDataRes(types.Int)
+	},
+	"openai.codex.hook.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexHook).GetSource()).ToDataRes(types.String)
 	},
 	"openai.codex.plugin.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiCodexPlugin).GetName()).ToDataRes(types.String)
@@ -21460,6 +21529,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gemini.extensions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGemini).GetExtensions()).ToDataRes(types.Array(types.Resource("gemini.extension")))
 	},
+	"gemini.hooks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGemini).GetHooks()).ToDataRes(types.Array(types.Resource("gemini.hook")))
+	},
 	"gemini.model": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGemini).GetModel()).ToDataRes(types.String)
 	},
@@ -21525,6 +21597,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gemini.extension.skills": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGeminiExtension).GetSkills()).ToDataRes(types.Array(types.Resource("gemini.skill")))
+	},
+	"gemini.extension.hooks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiExtension).GetHooks()).ToDataRes(types.Array(types.Resource("gemini.hook")))
+	},
+	"gemini.hook.event": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiHook).GetEvent()).ToDataRes(types.String)
+	},
+	"gemini.hook.matcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiHook).GetMatcher()).ToDataRes(types.String)
+	},
+	"gemini.hook.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiHook).GetName()).ToDataRes(types.String)
+	},
+	"gemini.hook.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiHook).GetDescription()).ToDataRes(types.String)
+	},
+	"gemini.hook.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiHook).GetType()).ToDataRes(types.String)
+	},
+	"gemini.hook.command": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiHook).GetCommand()).ToDataRes(types.String)
+	},
+	"gemini.hook.timeout": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiHook).GetTimeout()).ToDataRes(types.Int)
+	},
+	"gemini.hook.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiHook).GetSource()).ToDataRes(types.String)
+	},
+	"gemini.hook.managed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiHook).GetManaged()).ToDataRes(types.Bool)
 	},
 	"gemini.skill.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGeminiSkill).GetName()).ToDataRes(types.String)
@@ -48531,6 +48633,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClaudeCode).McpServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"claude.code.hooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCode).Hooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"claude.code.model": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeCode).Model, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -48617,6 +48723,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"claude.code.plugin.hasHooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeCodePlugin).HasHooks, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.plugin.hooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodePlugin).Hooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"claude.code.plugin.mcpServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -48823,6 +48933,46 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClaudeCodeMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
 		return
 	},
+	"claude.code.hook.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeHook).__id, ok = v.Value.(string)
+		return
+	},
+	"claude.code.hook.event": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeHook).Event, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.code.hook.matcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeHook).Matcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.code.hook.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeHook).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.code.hook.command": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeHook).Command, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.code.hook.args": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeHook).Args, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.code.hook.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeHook).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.code.hook.timeout": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeHook).Timeout, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"claude.code.hook.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeHook).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.code.hook.managed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeHook).Managed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"claude.desktop.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeDesktop).__id, ok = v.Value.(string)
 		return
@@ -48991,6 +49141,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOpenaiCodex).Connectors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"openai.codex.hooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodex).Hooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"openai.codex.repos": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenaiCodex).Repos, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -49001,6 +49155,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"openai.codex.modelProvider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenaiCodex).ModelProvider, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.codex.hook.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexHook).__id, ok = v.Value.(string)
+		return
+	},
+	"openai.codex.hook.event": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexHook).Event, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.codex.hook.matcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexHook).Matcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.codex.hook.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexHook).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.codex.hook.command": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexHook).Command, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.codex.hook.timeout": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexHook).Timeout, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"openai.codex.hook.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexHook).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"openai.codex.plugin.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -49675,6 +49857,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGemini).Extensions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"gemini.hooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGemini).Hooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gemini.model": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGemini).Model, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -49769,6 +49955,50 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gemini.extension.skills": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGeminiExtension).Skills, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gemini.extension.hooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiExtension).Hooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gemini.hook.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiHook).__id, ok = v.Value.(string)
+		return
+	},
+	"gemini.hook.event": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiHook).Event, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gemini.hook.matcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiHook).Matcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gemini.hook.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiHook).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gemini.hook.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiHook).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gemini.hook.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiHook).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gemini.hook.command": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiHook).Command, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gemini.hook.timeout": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiHook).Timeout, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gemini.hook.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiHook).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gemini.hook.managed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiHook).Managed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"gemini.skill.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -122614,6 +122844,7 @@ type mqlClaudeCode struct {
 	Projects       plugin.TValue[[]any]
 	Repos          plugin.TValue[[]any]
 	McpServers     plugin.TValue[[]any]
+	Hooks          plugin.TValue[[]any]
 	Model          plugin.TValue[string]
 	Models         plugin.TValue[[]any]
 }
@@ -122835,6 +123066,22 @@ func (c *mqlClaudeCode) GetMcpServers() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlClaudeCode) GetHooks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Hooks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.code", c.__id, "hooks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.hooks()
+	})
+}
+
 func (c *mqlClaudeCode) GetModel() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Model, func() (string, error) {
 		return c.model()
@@ -122881,6 +123128,7 @@ type mqlClaudeCodePlugin struct {
 	Commands     plugin.TValue[[]any]
 	Agents       plugin.TValue[[]any]
 	HasHooks     plugin.TValue[bool]
+	Hooks        plugin.TValue[[]any]
 	McpServers   plugin.TValue[[]any]
 }
 
@@ -123034,6 +123282,22 @@ func (c *mqlClaudeCodePlugin) GetAgents() *plugin.TValue[[]any] {
 func (c *mqlClaudeCodePlugin) GetHasHooks() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.HasHooks, func() (bool, error) {
 		return c.hasHooks()
+	})
+}
+
+func (c *mqlClaudeCodePlugin) GetHooks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Hooks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.code.plugin", c.__id, "hooks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.hooks()
 	})
 }
 
@@ -123562,6 +123826,90 @@ func (c *mqlClaudeCodeMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
 	})
 }
 
+// mqlClaudeCodeHook for the claude.code.hook resource
+type mqlClaudeCodeHook struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlClaudeCodeHookInternal it will be used here
+	Event   plugin.TValue[string]
+	Matcher plugin.TValue[string]
+	Type    plugin.TValue[string]
+	Command plugin.TValue[string]
+	Args    plugin.TValue[[]any]
+	Url     plugin.TValue[string]
+	Timeout plugin.TValue[int64]
+	Source  plugin.TValue[string]
+	Managed plugin.TValue[bool]
+}
+
+// createClaudeCodeHook creates a new instance of this resource
+func createClaudeCodeHook(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlClaudeCodeHook{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("claude.code.hook", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlClaudeCodeHook) MqlName() string {
+	return "claude.code.hook"
+}
+
+func (c *mqlClaudeCodeHook) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlClaudeCodeHook) GetEvent() *plugin.TValue[string] {
+	return &c.Event
+}
+
+func (c *mqlClaudeCodeHook) GetMatcher() *plugin.TValue[string] {
+	return &c.Matcher
+}
+
+func (c *mqlClaudeCodeHook) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlClaudeCodeHook) GetCommand() *plugin.TValue[string] {
+	return &c.Command
+}
+
+func (c *mqlClaudeCodeHook) GetArgs() *plugin.TValue[[]any] {
+	return &c.Args
+}
+
+func (c *mqlClaudeCodeHook) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlClaudeCodeHook) GetTimeout() *plugin.TValue[int64] {
+	return &c.Timeout
+}
+
+func (c *mqlClaudeCodeHook) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlClaudeCodeHook) GetManaged() *plugin.TValue[bool] {
+	return &c.Managed
+}
+
 // mqlClaudeDesktop for the claude.desktop resource
 type mqlClaudeDesktop struct {
 	MqlRuntime *plugin.Runtime
@@ -123923,6 +124271,7 @@ type mqlOpenaiCodex struct {
 	Skills        plugin.TValue[[]any]
 	McpServers    plugin.TValue[[]any]
 	Connectors    plugin.TValue[[]any]
+	Hooks         plugin.TValue[[]any]
 	Repos         plugin.TValue[[]any]
 	Model         plugin.TValue[string]
 	ModelProvider plugin.TValue[string]
@@ -124083,6 +124432,22 @@ func (c *mqlOpenaiCodex) GetConnectors() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlOpenaiCodex) GetHooks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Hooks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("openai.codex", c.__id, "hooks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.hooks()
+	})
+}
+
 func (c *mqlOpenaiCodex) GetRepos() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Repos, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -124109,6 +124474,75 @@ func (c *mqlOpenaiCodex) GetModelProvider() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.ModelProvider, func() (string, error) {
 		return c.modelProvider()
 	})
+}
+
+// mqlOpenaiCodexHook for the openai.codex.hook resource
+type mqlOpenaiCodexHook struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlOpenaiCodexHookInternal it will be used here
+	Event   plugin.TValue[string]
+	Matcher plugin.TValue[string]
+	Type    plugin.TValue[string]
+	Command plugin.TValue[string]
+	Timeout plugin.TValue[int64]
+	Source  plugin.TValue[string]
+}
+
+// createOpenaiCodexHook creates a new instance of this resource
+func createOpenaiCodexHook(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOpenaiCodexHook{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("openai.codex.hook", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOpenaiCodexHook) MqlName() string {
+	return "openai.codex.hook"
+}
+
+func (c *mqlOpenaiCodexHook) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOpenaiCodexHook) GetEvent() *plugin.TValue[string] {
+	return &c.Event
+}
+
+func (c *mqlOpenaiCodexHook) GetMatcher() *plugin.TValue[string] {
+	return &c.Matcher
+}
+
+func (c *mqlOpenaiCodexHook) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlOpenaiCodexHook) GetCommand() *plugin.TValue[string] {
+	return &c.Command
+}
+
+func (c *mqlOpenaiCodexHook) GetTimeout() *plugin.TValue[int64] {
+	return &c.Timeout
+}
+
+func (c *mqlOpenaiCodexHook) GetSource() *plugin.TValue[string] {
+	return &c.Source
 }
 
 // mqlOpenaiCodexPlugin for the openai.codex.plugin resource
@@ -125940,6 +126374,7 @@ type mqlGemini struct {
 	McpServers plugin.TValue[[]any]
 	Skills     plugin.TValue[[]any]
 	Extensions plugin.TValue[[]any]
+	Hooks      plugin.TValue[[]any]
 	Model      plugin.TValue[string]
 }
 
@@ -126076,6 +126511,22 @@ func (c *mqlGemini) GetExtensions() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlGemini) GetHooks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Hooks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gemini", c.__id, "hooks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.hooks()
+	})
+}
+
 func (c *mqlGemini) GetModel() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Model, func() (string, error) {
 		return c.model()
@@ -126206,6 +126657,7 @@ type mqlGeminiExtension struct {
 	Commands        plugin.TValue[[]any]
 	McpServers      plugin.TValue[[]any]
 	Skills          plugin.TValue[[]any]
+	Hooks           plugin.TValue[[]any]
 }
 
 // createGeminiExtension creates a new instance of this resource
@@ -126311,6 +126763,106 @@ func (c *mqlGeminiExtension) GetSkills() *plugin.TValue[[]any] {
 
 		return c.skills()
 	})
+}
+
+func (c *mqlGeminiExtension) GetHooks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Hooks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gemini.extension", c.__id, "hooks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.hooks()
+	})
+}
+
+// mqlGeminiHook for the gemini.hook resource
+type mqlGeminiHook struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGeminiHookInternal it will be used here
+	Event       plugin.TValue[string]
+	Matcher     plugin.TValue[string]
+	Name        plugin.TValue[string]
+	Description plugin.TValue[string]
+	Type        plugin.TValue[string]
+	Command     plugin.TValue[string]
+	Timeout     plugin.TValue[int64]
+	Source      plugin.TValue[string]
+	Managed     plugin.TValue[bool]
+}
+
+// createGeminiHook creates a new instance of this resource
+func createGeminiHook(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGeminiHook{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gemini.hook", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGeminiHook) MqlName() string {
+	return "gemini.hook"
+}
+
+func (c *mqlGeminiHook) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGeminiHook) GetEvent() *plugin.TValue[string] {
+	return &c.Event
+}
+
+func (c *mqlGeminiHook) GetMatcher() *plugin.TValue[string] {
+	return &c.Matcher
+}
+
+func (c *mqlGeminiHook) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGeminiHook) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGeminiHook) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlGeminiHook) GetCommand() *plugin.TValue[string] {
+	return &c.Command
+}
+
+func (c *mqlGeminiHook) GetTimeout() *plugin.TValue[int64] {
+	return &c.Timeout
+}
+
+func (c *mqlGeminiHook) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlGeminiHook) GetManaged() *plugin.TValue[bool] {
+	return &c.Managed
 }
 
 // mqlGeminiSkill for the gemini.skill resource

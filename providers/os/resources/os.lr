@@ -23147,6 +23147,15 @@ claude.code @defaults("configPath") @maturity("preview") {
   // Servers configured in .claude.json, in each project's .mcp.json, and by
   // every enabled plugin.
   mcpServers() []claude.code.mcpServer
+  // Hooks that run on agent events
+  //
+  // Hooks run a command, call a URL, or prompt a model when an agent event
+  // fires, such as a tool call or the start of a session. Read from the
+  // `hooks` key of the user's settings.json, of the system's
+  // managed-settings.json and every file in its managed-settings.d directory
+  // (`managed` is true for these), and from the hooks of every enabled plugin.
+  // Hooks in a project's .claude/settings.json are not included.
+  hooks() []claude.code.hook
   // Configured default model
   //
   // The model Claude Code is configured to use by default, taken from the
@@ -23222,6 +23231,11 @@ private claude.code.plugin @defaults("name") @maturity("preview") {
   // Hooks run commands on agent events such as a tool call or the start of a
   // session.
   hasHooks() bool
+  // Hooks the plugin registers
+  //
+  // Read from the plugin's hooks/hooks.json and from the `hooks` key of its
+  // manifest, which names further hooks files or declares hooks inline.
+  hooks() []claude.code.hook
   // MCP servers the plugin declares
   mcpServers() []claude.code.mcpServer
 }
@@ -23406,6 +23420,49 @@ private claude.code.mcpServer @defaults("name") @maturity("preview") {
   running() asset<mcp>
 }
 
+// Claude Code hook
+//
+// A single hook handler from a Claude Code settings file or plugin. The
+// `event` names the agent event that runs it, `matcher` narrows which tool
+// calls or sources it fires for, and `type` decides whether it runs `command`
+// with `args`, calls `url`, or hands the event to a model or an MCP tool.
+// `source` is the file that declares the hook, and `managed` whether that
+// file is part of the system's managed settings, which users cannot override.
+private claude.code.hook @defaults("event matcher command") @maturity("preview") {
+  // Agent event that runs the hook
+  //
+  // For example "PreToolUse", "PostToolUse", "UserPromptSubmit",
+  // "SessionStart", or "Stop".
+  event string
+  // Filter on the event's tool name or source
+  //
+  // Empty or "*" matches every occurrence of the event. For tool events this
+  // is a tool name, a list such as "Edit|Write", or a regular expression.
+  matcher string
+  // Handler type
+  //
+  // For example "command", "http", "mcp_tool", "prompt", or "agent".
+  type string
+  // Shell command the hook runs
+  //
+  // Set for "command" hooks. When `args` is set, this is the executable,
+  // started without a shell.
+  command string
+  // Arguments passed to the command without a shell
+  args []string
+  // URL an "http" hook posts the event to
+  url string
+  // Timeout in seconds
+  //
+  // Null when the file does not set one and Claude Code's default for the
+  // handler type applies.
+  timeout int
+  // Path of the file that declares the hook
+  source string
+  // Whether the hook comes from the system's managed settings
+  managed bool
+}
+
 // Claude desktop app instance
 //
 // Anthropic's Claude desktop application configured on the host. Queryable
@@ -23574,6 +23631,14 @@ openai.codex @defaults("configPath") @maturity("preview") {
   mcpServers() []openai.codex.mcpServer
   // OAuth app connectors
   connectors() []openai.codex.connector
+  // Hooks that run on agent events
+  //
+  // Hooks run a command when an agent event fires, such as a tool call or
+  // the start of a session. Read from hooks.json and the inline `hooks`
+  // tables of config.toml in the configuration directory. Hooks of plugins,
+  // of a project's .codex directory, and of managed requirements are not
+  // included.
+  hooks() []openai.codex.hook
   // Git repositories worked in across recorded sessions
   repos() []openai.codex.repo
   // Configured default model
@@ -23588,6 +23653,34 @@ openai.codex @defaults("configPath") @maturity("preview") {
   // `model_provider` key in config.toml (for example "openai"). Empty when
   // unset.
   modelProvider() string
+}
+
+// OpenAI Codex hook
+//
+// A single hook handler from the Codex configuration. The `event` names the
+// agent event that runs it, `matcher` narrows which tools or sources it fires
+// for, and `command` is what it runs. `source` is the hooks.json or
+// config.toml file that declares the hook.
+private openai.codex.hook @defaults("event matcher command") @maturity("preview") {
+  // Agent event that runs the hook
+  //
+  // For example "PreToolUse", "PostToolUse", "UserPromptSubmit",
+  // "SessionStart", or "Stop".
+  event string
+  // Filter on the event's tool name or source
+  //
+  // A regular expression. Empty or "*" matches every occurrence of the event.
+  matcher string
+  // Handler type, for example "command" or "mcp_tool"
+  type string
+  // Shell command the hook runs
+  command string
+  // Timeout in seconds
+  //
+  // Null when the file does not set one and Codex's default applies.
+  timeout int
+  // Path of the file that declares the hook
+  source string
 }
 
 // OpenAI Codex installed plugin
@@ -24258,6 +24351,14 @@ gemini @defaults("configPath") @maturity("preview") {
   skills() []gemini.skill
   // Installed extensions
   extensions() []gemini.extension
+  // Hooks that run on agent events
+  //
+  // Hooks run a command when an agent event fires, such as a tool call or
+  // the start of a session. Read from the `hooks` key of the user's
+  // settings.json, of the system settings.json and system-defaults.json
+  // (`managed` is true for these), and from hooks/hooks.json of every enabled
+  // extension. Hooks in a project's .gemini/settings.json are not included.
+  hooks() []gemini.hook
   // Configured default model
   //
   // The model Gemini is configured to use, taken from the `model.name` key
@@ -24340,6 +24441,44 @@ private gemini.extension @defaults("name version enabled") @maturity("preview") 
   mcpServers() []gemini.mcpServer
   // Skills the extension provides
   skills() []gemini.skill
+  // Hooks the extension registers in hooks/hooks.json
+  hooks() []gemini.hook
+}
+
+// Gemini CLI hook
+//
+// A single hook handler from a Gemini CLI settings file or extension. The
+// `event` names the agent event that runs it, `matcher` narrows which tools
+// it fires for, and `command` is what it runs. `source` is the file that
+// declares the hook, and `managed` whether that file is a system settings
+// file rather than the user's own.
+private gemini.hook @defaults("event matcher command") @maturity("preview") {
+  // Agent event that runs the hook
+  //
+  // For example "BeforeTool", "AfterTool", "BeforeAgent", "SessionStart", or
+  // "Notification".
+  event string
+  // Filter on the event's tool name or trigger
+  //
+  // A regular expression for tool events, an exact string for lifecycle
+  // events. Empty matches every occurrence of the event.
+  matcher string
+  // Name of the hook, shown in logs and used by the hooks commands
+  name string
+  // Description of what the hook does
+  description string
+  // Handler type, for example "command"
+  type string
+  // Shell command the hook runs
+  command string
+  // Timeout in milliseconds
+  //
+  // Null when the file does not set one and Gemini CLI's default applies.
+  timeout int
+  // Path of the file that declares the hook
+  source string
+  // Whether the hook comes from a system settings file
+  managed bool
 }
 
 // Gemini skill
