@@ -498,6 +498,7 @@ const (
 	ResourceMacosProfiles                                  string = "macos.profiles"
 	ResourceMacosProfile                                   string = "macos.profile"
 	ResourceMacosProfilePayload                            string = "macos.profile.payload"
+	ResourceMacosAppleIntelligence                         string = "macos.appleIntelligence"
 	ResourceMacosPreferences                               string = "macos.preferences"
 	ResourceMacosPreferencesUser                           string = "macos.preferences.user"
 	ResourceMacosSoftwareupdate                            string = "macos.softwareupdate"
@@ -553,6 +554,8 @@ const (
 	ResourceWindowsSpoolerRpc                              string = "windows.spooler.rpc"
 	ResourceWindowsSpoolerIpp                              string = "windows.spooler.ipp"
 	ResourceWindowsTelemetry                               string = "windows.telemetry"
+	ResourceWindowsRecall                                  string = "windows.recall"
+	ResourceWindowsCopilot                                 string = "windows.copilot"
 	ResourceWindowsPowershell                              string = "windows.powershell"
 	ResourceWindowsPowershellScriptBlockLogging            string = "windows.powershell.scriptBlockLogging"
 	ResourceWindowsPowershellTranscription                 string = "windows.powershell.transcription"
@@ -2762,6 +2765,10 @@ func init() {
 			// to override args, implement: initMacosProfilePayload(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMacosProfilePayload,
 		},
+		"macos.appleIntelligence": {
+			// to override args, implement: initMacosAppleIntelligence(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMacosAppleIntelligence,
+		},
 		"macos.preferences": {
 			Init:   initMacosPreferences,
 			Create: createMacosPreferences,
@@ -2981,6 +2988,14 @@ func init() {
 		"windows.telemetry": {
 			// to override args, implement: initWindowsTelemetry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createWindowsTelemetry,
+		},
+		"windows.recall": {
+			// to override args, implement: initWindowsRecall(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsRecall,
+		},
+		"windows.copilot": {
+			// to override args, implement: initWindowsCopilot(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsCopilot,
 		},
 		"windows.powershell": {
 			// to override args, implement: initWindowsPowershell(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -15847,6 +15862,42 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"macos.profile.payload.content": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosProfilePayload).GetContent()).ToDataRes(types.Dict)
 	},
+	"macos.appleIntelligence.writingToolsAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosAppleIntelligence).GetWritingToolsAllowed()).ToDataRes(types.Bool)
+	},
+	"macos.appleIntelligence.genmojiAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosAppleIntelligence).GetGenmojiAllowed()).ToDataRes(types.Bool)
+	},
+	"macos.appleIntelligence.imagePlaygroundAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosAppleIntelligence).GetImagePlaygroundAllowed()).ToDataRes(types.Bool)
+	},
+	"macos.appleIntelligence.externalIntelligenceIntegrationsAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosAppleIntelligence).GetExternalIntelligenceIntegrationsAllowed()).ToDataRes(types.Bool)
+	},
+	"macos.appleIntelligence.externalIntelligenceSignInAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosAppleIntelligence).GetExternalIntelligenceSignInAllowed()).ToDataRes(types.Bool)
+	},
+	"macos.appleIntelligence.mailSummaryAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosAppleIntelligence).GetMailSummaryAllowed()).ToDataRes(types.Bool)
+	},
+	"macos.appleIntelligence.mailSmartRepliesAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosAppleIntelligence).GetMailSmartRepliesAllowed()).ToDataRes(types.Bool)
+	},
+	"macos.appleIntelligence.notesTranscriptionAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosAppleIntelligence).GetNotesTranscriptionAllowed()).ToDataRes(types.Bool)
+	},
+	"macos.appleIntelligence.notesTranscriptionSummaryAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosAppleIntelligence).GetNotesTranscriptionSummaryAllowed()).ToDataRes(types.Bool)
+	},
+	"macos.appleIntelligence.safariSummaryAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosAppleIntelligence).GetSafariSummaryAllowed()).ToDataRes(types.Bool)
+	},
+	"macos.appleIntelligence.reportAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosAppleIntelligence).GetReportAllowed()).ToDataRes(types.Bool)
+	},
+	"macos.appleIntelligence.profiles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosAppleIntelligence).GetProfiles()).ToDataRes(types.Array(types.Resource("macos.profile")))
+	},
 	"macos.preferences.domain": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosPreferences).GetDomain()).ToDataRes(types.String)
 	},
@@ -17262,6 +17313,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"windows.telemetry.disableWindowsConsumerFeatures": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsTelemetry).GetDisableWindowsConsumerFeatures()).ToDataRes(types.Bool)
+	},
+	"windows.recall.enablementAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetEnablementAllowed()).ToDataRes(types.Bool)
+	},
+	"windows.recall.exportAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetExportAllowed()).ToDataRes(types.Bool)
+	},
+	"windows.recall.snapshotsDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetSnapshotsDisabled()).ToDataRes(types.Bool)
+	},
+	"windows.recall.userSnapshotsDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetUserSnapshotsDisabled()).ToDataRes(types.Bool)
+	},
+	"windows.recall.clickToDoDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetClickToDoDisabled()).ToDataRes(types.Bool)
+	},
+	"windows.recall.userClickToDoDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetUserClickToDoDisabled()).ToDataRes(types.Bool)
+	},
+	"windows.recall.filteredApps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetFilteredApps()).ToDataRes(types.Array(types.String))
+	},
+	"windows.recall.userFilteredApps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetUserFilteredApps()).ToDataRes(types.Array(types.String))
+	},
+	"windows.recall.filteredUris": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetFilteredUris()).ToDataRes(types.Array(types.String))
+	},
+	"windows.recall.userFilteredUris": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetUserFilteredUris()).ToDataRes(types.Array(types.String))
+	},
+	"windows.recall.maxSnapshotRetentionDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetMaxSnapshotRetentionDays()).ToDataRes(types.Int)
+	},
+	"windows.recall.userMaxSnapshotRetentionDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetUserMaxSnapshotRetentionDays()).ToDataRes(types.Int)
+	},
+	"windows.recall.maxSnapshotStorageMB": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetMaxSnapshotStorageMB()).ToDataRes(types.Int)
+	},
+	"windows.recall.userMaxSnapshotStorageMB": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetUserMaxSnapshotStorageMB()).ToDataRes(types.Int)
+	},
+	"windows.recall.optionalFeature": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsRecall).GetOptionalFeature()).ToDataRes(types.Resource("windows.optionalFeature"))
+	},
+	"windows.copilot.turnedOff": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsCopilot).GetTurnedOff()).ToDataRes(types.Bool)
 	},
 	"windows.powershell.scriptBlockLogging": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsPowershell).GetScriptBlockLogging()).ToDataRes(types.Resource("windows.powershell.scriptBlockLogging"))
@@ -41299,6 +41398,58 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMacosProfilePayload).Content, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"macos.appleIntelligence.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosAppleIntelligence).__id, ok = v.Value.(string)
+		return
+	},
+	"macos.appleIntelligence.writingToolsAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosAppleIntelligence).WritingToolsAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.appleIntelligence.genmojiAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosAppleIntelligence).GenmojiAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.appleIntelligence.imagePlaygroundAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosAppleIntelligence).ImagePlaygroundAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.appleIntelligence.externalIntelligenceIntegrationsAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosAppleIntelligence).ExternalIntelligenceIntegrationsAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.appleIntelligence.externalIntelligenceSignInAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosAppleIntelligence).ExternalIntelligenceSignInAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.appleIntelligence.mailSummaryAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosAppleIntelligence).MailSummaryAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.appleIntelligence.mailSmartRepliesAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosAppleIntelligence).MailSmartRepliesAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.appleIntelligence.notesTranscriptionAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosAppleIntelligence).NotesTranscriptionAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.appleIntelligence.notesTranscriptionSummaryAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosAppleIntelligence).NotesTranscriptionSummaryAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.appleIntelligence.safariSummaryAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosAppleIntelligence).SafariSummaryAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.appleIntelligence.reportAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosAppleIntelligence).ReportAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.appleIntelligence.profiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosAppleIntelligence).Profiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"macos.preferences.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMacosPreferences).__id, ok = v.Value.(string)
 		return
@@ -43405,6 +43556,78 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"windows.telemetry.disableWindowsConsumerFeatures": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsTelemetry).DisableWindowsConsumerFeatures, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.recall.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.recall.enablementAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).EnablementAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.recall.exportAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).ExportAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.recall.snapshotsDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).SnapshotsDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.recall.userSnapshotsDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).UserSnapshotsDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.recall.clickToDoDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).ClickToDoDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.recall.userClickToDoDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).UserClickToDoDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.recall.filteredApps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).FilteredApps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"windows.recall.userFilteredApps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).UserFilteredApps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"windows.recall.filteredUris": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).FilteredUris, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"windows.recall.userFilteredUris": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).UserFilteredUris, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"windows.recall.maxSnapshotRetentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).MaxSnapshotRetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"windows.recall.userMaxSnapshotRetentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).UserMaxSnapshotRetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"windows.recall.maxSnapshotStorageMB": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).MaxSnapshotStorageMB, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"windows.recall.userMaxSnapshotStorageMB": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).UserMaxSnapshotStorageMB, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"windows.recall.optionalFeature": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsRecall).OptionalFeature, ok = plugin.RawToTValue[*mqlWindowsOptionalFeature](v.Value, v.Error)
+		return
+	},
+	"windows.copilot.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCopilot).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.copilot.turnedOff": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCopilot).TurnedOff, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"windows.powershell.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -104024,6 +104247,144 @@ func (c *mqlMacosProfilePayload) GetContent() *plugin.TValue[any] {
 	return &c.Content
 }
 
+// mqlMacosAppleIntelligence for the macos.appleIntelligence resource
+type mqlMacosAppleIntelligence struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMacosAppleIntelligenceInternal
+	WritingToolsAllowed                     plugin.TValue[bool]
+	GenmojiAllowed                          plugin.TValue[bool]
+	ImagePlaygroundAllowed                  plugin.TValue[bool]
+	ExternalIntelligenceIntegrationsAllowed plugin.TValue[bool]
+	ExternalIntelligenceSignInAllowed       plugin.TValue[bool]
+	MailSummaryAllowed                      plugin.TValue[bool]
+	MailSmartRepliesAllowed                 plugin.TValue[bool]
+	NotesTranscriptionAllowed               plugin.TValue[bool]
+	NotesTranscriptionSummaryAllowed        plugin.TValue[bool]
+	SafariSummaryAllowed                    plugin.TValue[bool]
+	ReportAllowed                           plugin.TValue[bool]
+	Profiles                                plugin.TValue[[]any]
+}
+
+// createMacosAppleIntelligence creates a new instance of this resource
+func createMacosAppleIntelligence(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMacosAppleIntelligence{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("macos.appleIntelligence", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMacosAppleIntelligence) MqlName() string {
+	return "macos.appleIntelligence"
+}
+
+func (c *mqlMacosAppleIntelligence) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMacosAppleIntelligence) GetWritingToolsAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.WritingToolsAllowed, func() (bool, error) {
+		return c.writingToolsAllowed()
+	})
+}
+
+func (c *mqlMacosAppleIntelligence) GetGenmojiAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.GenmojiAllowed, func() (bool, error) {
+		return c.genmojiAllowed()
+	})
+}
+
+func (c *mqlMacosAppleIntelligence) GetImagePlaygroundAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ImagePlaygroundAllowed, func() (bool, error) {
+		return c.imagePlaygroundAllowed()
+	})
+}
+
+func (c *mqlMacosAppleIntelligence) GetExternalIntelligenceIntegrationsAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ExternalIntelligenceIntegrationsAllowed, func() (bool, error) {
+		return c.externalIntelligenceIntegrationsAllowed()
+	})
+}
+
+func (c *mqlMacosAppleIntelligence) GetExternalIntelligenceSignInAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ExternalIntelligenceSignInAllowed, func() (bool, error) {
+		return c.externalIntelligenceSignInAllowed()
+	})
+}
+
+func (c *mqlMacosAppleIntelligence) GetMailSummaryAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.MailSummaryAllowed, func() (bool, error) {
+		return c.mailSummaryAllowed()
+	})
+}
+
+func (c *mqlMacosAppleIntelligence) GetMailSmartRepliesAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.MailSmartRepliesAllowed, func() (bool, error) {
+		return c.mailSmartRepliesAllowed()
+	})
+}
+
+func (c *mqlMacosAppleIntelligence) GetNotesTranscriptionAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.NotesTranscriptionAllowed, func() (bool, error) {
+		return c.notesTranscriptionAllowed()
+	})
+}
+
+func (c *mqlMacosAppleIntelligence) GetNotesTranscriptionSummaryAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.NotesTranscriptionSummaryAllowed, func() (bool, error) {
+		return c.notesTranscriptionSummaryAllowed()
+	})
+}
+
+func (c *mqlMacosAppleIntelligence) GetSafariSummaryAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SafariSummaryAllowed, func() (bool, error) {
+		return c.safariSummaryAllowed()
+	})
+}
+
+func (c *mqlMacosAppleIntelligence) GetReportAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ReportAllowed, func() (bool, error) {
+		return c.reportAllowed()
+	})
+}
+
+func (c *mqlMacosAppleIntelligence) GetProfiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Profiles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("macos.appleIntelligence", c.__id, "profiles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.profiles()
+	})
+}
+
 // mqlMacosPreferences for the macos.preferences resource
 type mqlMacosPreferences struct {
 	MqlRuntime *plugin.Runtime
@@ -109678,6 +110039,216 @@ func (c *mqlWindowsTelemetry) GetDisableConsumerAccountStateContent() *plugin.TV
 func (c *mqlWindowsTelemetry) GetDisableWindowsConsumerFeatures() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.DisableWindowsConsumerFeatures, func() (bool, error) {
 		return c.disableWindowsConsumerFeatures()
+	})
+}
+
+// mqlWindowsRecall for the windows.recall resource
+type mqlWindowsRecall struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlWindowsRecallInternal
+	EnablementAllowed            plugin.TValue[bool]
+	ExportAllowed                plugin.TValue[bool]
+	SnapshotsDisabled            plugin.TValue[bool]
+	UserSnapshotsDisabled        plugin.TValue[bool]
+	ClickToDoDisabled            plugin.TValue[bool]
+	UserClickToDoDisabled        plugin.TValue[bool]
+	FilteredApps                 plugin.TValue[[]any]
+	UserFilteredApps             plugin.TValue[[]any]
+	FilteredUris                 plugin.TValue[[]any]
+	UserFilteredUris             plugin.TValue[[]any]
+	MaxSnapshotRetentionDays     plugin.TValue[int64]
+	UserMaxSnapshotRetentionDays plugin.TValue[int64]
+	MaxSnapshotStorageMB         plugin.TValue[int64]
+	UserMaxSnapshotStorageMB     plugin.TValue[int64]
+	OptionalFeature              plugin.TValue[*mqlWindowsOptionalFeature]
+}
+
+// createWindowsRecall creates a new instance of this resource
+func createWindowsRecall(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsRecall{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.recall", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsRecall) MqlName() string {
+	return "windows.recall"
+}
+
+func (c *mqlWindowsRecall) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsRecall) GetEnablementAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnablementAllowed, func() (bool, error) {
+		return c.enablementAllowed()
+	})
+}
+
+func (c *mqlWindowsRecall) GetExportAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ExportAllowed, func() (bool, error) {
+		return c.exportAllowed()
+	})
+}
+
+func (c *mqlWindowsRecall) GetSnapshotsDisabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SnapshotsDisabled, func() (bool, error) {
+		return c.snapshotsDisabled()
+	})
+}
+
+func (c *mqlWindowsRecall) GetUserSnapshotsDisabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.UserSnapshotsDisabled, func() (bool, error) {
+		return c.userSnapshotsDisabled()
+	})
+}
+
+func (c *mqlWindowsRecall) GetClickToDoDisabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ClickToDoDisabled, func() (bool, error) {
+		return c.clickToDoDisabled()
+	})
+}
+
+func (c *mqlWindowsRecall) GetUserClickToDoDisabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.UserClickToDoDisabled, func() (bool, error) {
+		return c.userClickToDoDisabled()
+	})
+}
+
+func (c *mqlWindowsRecall) GetFilteredApps() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.FilteredApps, func() ([]any, error) {
+		return c.filteredApps()
+	})
+}
+
+func (c *mqlWindowsRecall) GetUserFilteredApps() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.UserFilteredApps, func() ([]any, error) {
+		return c.userFilteredApps()
+	})
+}
+
+func (c *mqlWindowsRecall) GetFilteredUris() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.FilteredUris, func() ([]any, error) {
+		return c.filteredUris()
+	})
+}
+
+func (c *mqlWindowsRecall) GetUserFilteredUris() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.UserFilteredUris, func() ([]any, error) {
+		return c.userFilteredUris()
+	})
+}
+
+func (c *mqlWindowsRecall) GetMaxSnapshotRetentionDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxSnapshotRetentionDays, func() (int64, error) {
+		return c.maxSnapshotRetentionDays()
+	})
+}
+
+func (c *mqlWindowsRecall) GetUserMaxSnapshotRetentionDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.UserMaxSnapshotRetentionDays, func() (int64, error) {
+		return c.userMaxSnapshotRetentionDays()
+	})
+}
+
+func (c *mqlWindowsRecall) GetMaxSnapshotStorageMB() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxSnapshotStorageMB, func() (int64, error) {
+		return c.maxSnapshotStorageMB()
+	})
+}
+
+func (c *mqlWindowsRecall) GetUserMaxSnapshotStorageMB() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.UserMaxSnapshotStorageMB, func() (int64, error) {
+		return c.userMaxSnapshotStorageMB()
+	})
+}
+
+func (c *mqlWindowsRecall) GetOptionalFeature() *plugin.TValue[*mqlWindowsOptionalFeature] {
+	return plugin.GetOrCompute[*mqlWindowsOptionalFeature](&c.OptionalFeature, func() (*mqlWindowsOptionalFeature, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows.recall", c.__id, "optionalFeature")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlWindowsOptionalFeature), nil
+			}
+		}
+
+		return c.optionalFeature()
+	})
+}
+
+// mqlWindowsCopilot for the windows.copilot resource
+type mqlWindowsCopilot struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWindowsCopilotInternal it will be used here
+	TurnedOff plugin.TValue[bool]
+}
+
+// createWindowsCopilot creates a new instance of this resource
+func createWindowsCopilot(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsCopilot{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.copilot", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsCopilot) MqlName() string {
+	return "windows.copilot"
+}
+
+func (c *mqlWindowsCopilot) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsCopilot) GetTurnedOff() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.TurnedOff, func() (bool, error) {
+		return c.turnedOff()
 	})
 }
 
