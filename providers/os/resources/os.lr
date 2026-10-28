@@ -16108,6 +16108,55 @@ private macos.profile.payload @defaults("type displayName") {
   content dict
 }
 
+// Apple Intelligence restrictions on macOS
+//
+// Apple Intelligence features that the configuration profiles installed for
+// the computer allow or prohibit, from the Restrictions
+// (`com.apple.applicationaccess`) payloads of the system-scope profiles listed
+// by `macos.profiles`. Each field is true when a payload allows the feature,
+// false when a payload prohibits it, and null when no payload sets the key, in
+// which case the feature is available. When several payloads set the same key,
+// the most restrictive value applies. `profiles` lists the profiles that set
+// any of these keys. Apple deprecated these restriction keys in macOS 26.4 in
+// favor of the declarative `com.apple.configuration.intelligence.settings` and
+// `com.apple.configuration.external-intelligence.settings` configurations,
+// which are not covered here.
+macos.appleIntelligence @defaults("writingToolsAllowed imagePlaygroundAllowed externalIntelligenceIntegrationsAllowed") {
+  // Whether Apple Intelligence Writing Tools are allowed (allowWritingTools). Null when no profile sets the key.
+  writingToolsAllowed() bool
+  // Whether creating new Genmoji is allowed (allowGenmoji). Null when no profile sets the key.
+  genmojiAllowed() bool
+  // Whether image generation with Image Playground is allowed (allowImagePlayground). Null when no profile sets the key.
+  imagePlaygroundAllowed() bool
+  // Whether external intelligence integrations are allowed (allowExternalIntelligenceIntegrations)
+  //
+  // External integrations are cloud-based intelligence services used with
+  // Siri, such as ChatGPT. Null when no profile sets the key.
+  externalIntelligenceIntegrationsAllowed() bool
+  // Whether signing in to external intelligence providers is allowed (allowExternalIntelligenceIntegrationsSignIn)
+  //
+  // False forces the providers into anonymous mode. Null when no profile sets
+  // the key.
+  externalIntelligenceSignInAllowed() bool
+  // Whether summarizing email messages on request is allowed (allowMailSummary)
+  //
+  // Automatic summaries are not affected by this key. Null when no profile
+  // sets the key.
+  mailSummaryAllowed() bool
+  // Whether smart replies in Mail are allowed (allowMailSmartReplies). Null when no profile sets the key.
+  mailSmartRepliesAllowed() bool
+  // Whether transcription in Notes is allowed (allowNotesTranscription). Null when no profile sets the key.
+  notesTranscriptionAllowed() bool
+  // Whether summarizing transcriptions in Notes is allowed (allowNotesTranscriptionSummary). Null when no profile sets the key.
+  notesTranscriptionSummaryAllowed() bool
+  // Whether summarizing content in Safari is allowed (allowSafariSummary). Null when no profile sets the key.
+  safariSummaryAllowed() bool
+  // Whether Apple Intelligence reports are allowed (allowAppleIntelligenceReport). Null when no profile sets the key.
+  reportAllowed() bool
+  // Configuration profiles whose Restrictions payloads set any of these keys
+  profiles() []macos.profile
+}
+
 // macOS preference domain
 //
 // Values of one preference domain, such as `com.apple.screensaver`, read the
@@ -18432,6 +18481,92 @@ windows.telemetry {
   // Consumer features include app suggestions and consumer experiences. Null
   // when the policy is not configured.
   disableWindowsConsumerFeatures() bool
+}
+
+// Windows Recall and Click to Do policy
+//
+// Group Policy settings for Recall and Click to Do from
+// HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsAI (Computer Configuration)
+// and HKCU\SOFTWARE\Policies\Microsoft\Windows\WindowsAI (User Configuration),
+// plus the Recall optional component. Fields prefixed `user` hold the User
+// Configuration policy of the account the scan runs as. A policy that is not
+// configured is null, and Windows then applies its default: on a managed
+// device Recall stays disabled and saves no snapshots, while Click to Do is
+// available.
+windows.recall @defaults("enablementAllowed snapshotsDisabled") {
+  // Whether users may enable Recall (AllowRecallEnablement)
+  //
+  // False keeps the Recall component disabled, removes it from the device and
+  // deletes saved snapshots. Null when not configured, in which case the
+  // component stays disabled on a managed device.
+  enablementAllowed() bool
+  // Whether users may export their Recall snapshots (AllowRecallExport)
+  //
+  // Applies to devices in the European Economic Area. Null when not
+  // configured, in which case export is not allowed.
+  exportAllowed() bool
+  // Whether saving snapshots for Recall is turned off for the computer (DisableAIDataAnalysis)
+  //
+  // True stops saving snapshots and deletes saved ones. False lets each user
+  // choose whether to save snapshots. Null when not configured, in which case
+  // no snapshots are saved.
+  snapshotsDisabled() bool
+  // Whether saving snapshots for Recall is turned off for the user (DisableAIDataAnalysis). Null when not configured.
+  userSnapshotsDisabled() bool
+  // Whether Click to Do is turned off for the computer (DisableClickToDo)
+  //
+  // Click to Do takes a screenshot and analyzes it to offer actions on the
+  // content. Null when not configured, in which case it is available.
+  clickToDoDisabled() bool
+  // Whether Click to Do is turned off for the user (DisableClickToDo). Null when not configured.
+  userClickToDoDisabled() bool
+  // Apps filtered from Recall snapshots for the computer (SetDenyAppListForRecall)
+  //
+  // Application User Model IDs or executable names. Users can add more apps
+  // in the Recall settings. Null when not configured.
+  filteredApps() []string
+  // Apps filtered from Recall snapshots for the user (SetDenyAppListForRecall). Null when not configured.
+  userFilteredApps() []string
+  // Websites filtered from Recall snapshots for the computer (SetDenyUriListForRecall)
+  //
+  // Each URI also filters its subdomains and paths in a supported browser.
+  // Null when not configured.
+  filteredUris() []string
+  // Websites filtered from Recall snapshots for the user (SetDenyUriListForRecall). Null when not configured.
+  userFilteredUris() []string
+  // Maximum number of days Recall keeps snapshots, for the computer (SetMaximumStorageDurationForRecallSnapshots)
+  //
+  // One of 30, 60, 90 or 180, or 0 to let Windows decide. Null when not
+  // configured.
+  maxSnapshotRetentionDays() int
+  // Maximum number of days Recall keeps snapshots, for the user (SetMaximumStorageDurationForRecallSnapshots). Null when not configured.
+  userMaxSnapshotRetentionDays() int
+  // Maximum disk space in MB for Recall snapshots, for the computer (SetMaximumStorageSpaceForRecallSnapshots)
+  //
+  // One of 10240, 25600, 51200, 76800, 102400 or 153600, or 0 to let Windows
+  // decide from the disk size. Null when not configured.
+  maxSnapshotStorageMB() int
+  // Maximum disk space in MB for Recall snapshots, for the user (SetMaximumStorageSpaceForRecallSnapshots). Null when not configured.
+  userMaxSnapshotStorageMB() int
+  // Recall optional component
+  //
+  // The `Recall` Windows optional feature: `enabled` tells whether the
+  // component is turned on. Null when the device does not offer the feature.
+  optionalFeature() windows.optionalFeature
+}
+
+// Windows Copilot policy
+//
+// The Turn off Windows Copilot Group Policy setting, a User Configuration
+// policy read from HKCU\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot for
+// the account the scan runs as. Microsoft has deprecated this setting, and it
+// does not govern the Microsoft Copilot app.
+windows.copilot @defaults("turnedOff") {
+  // Whether Windows Copilot is turned off for the user (TurnOffWindowsCopilot)
+  //
+  // True hides Copilot and its taskbar button. Null when not configured, in
+  // which case Copilot is available where it is offered.
+  turnedOff() bool
 }
 
 // Windows PowerShell logging policy
