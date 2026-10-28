@@ -27,7 +27,7 @@ func credURL(scheme, user, password, rest string) string {
 
 func TestIsSecretKey(t *testing.T) {
 	// Synthetic: names AI tools and MCP servers use for credentials, and
-	// look-alikes that are not credentials.
+	// similar names that are not credentials.
 	for _, k := range []string{
 		"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "GITHUB_PERSONAL_ACCESS_TOKEN",
 		"api-key", "apiKey", "x-api-key", "Authorization", "clientSecret",
@@ -58,7 +58,7 @@ func TestRedactURL(t *testing.T) {
 	// Synthetic: credentials embedded in remote MCP server and git remote URLs.
 	tests := []struct{ in, want string }{
 		{"https://mcp.example.com/sse", "https://mcp.example.com/sse"},
-		{credURL("postgres", "admin", "hunter2", "db.internal:5432/app"), "postgres://admin:<redacted>@db.internal:5432/app"},
+		{credURL("postgres", "admin", "hunter2", "db.internal:5432/app"), credURL("postgres", "admin", redactedValue, "db.internal:5432/app")},
 		{"https://x:${PAT}@github.com/org/repo.git", "https://x:${PAT}@github.com/org/repo.git"},
 		{"https://" + fakeGitHubToken + "@github.com/org/repo.git", "https://<redacted>@github.com/org/repo.git"},
 		{"https://mcp.example.com/mcp?api_key=abc123&region=eu", "https://mcp.example.com/mcp?api_key=<redacted>&region=eu"},
@@ -67,8 +67,8 @@ func TestRedactURL(t *testing.T) {
 		{"git@github.com:org/repo.git", "git@github.com:org/repo.git"},
 		// Synthetic: url.Parse rejects the unescaped { in the password, and the
 		// socket form has no host; both still lose the password.
-		{credURL("postgres", "app", "p{w}", "db.internal/app"), "postgres://app:<redacted>@db.internal/app"},
-		{credURL("postgres", "app", "pw", "/app?host=/var/run/postgresql"), "postgres://app:<redacted>@/app?host=/var/run/postgresql"},
+		{credURL("postgres", "app", "p{w}", "db.internal/app"), credURL("postgres", "app", redactedValue, "db.internal/app")},
+		{credURL("postgres", "app", "pw", "/app?host=/var/run/postgresql"), credURL("postgres", "app", redactedValue, "/app?host=/var/run/postgresql")},
 		// Synthetic: an opaque token alone as the username, and a short account
 		// name that is kept.
 		{"https://" + strings.Repeat("e", 40) + "@github.com/org/repo.git", "https://<redacted>@github.com/org/repo.git"},
@@ -140,7 +140,7 @@ func TestRedactArgs(t *testing.T) {
 		{
 			name: "connection string positional",
 			in:   []string{"-y", "@modelcontextprotocol/server-postgres", credURL("postgresql", "app", "s3cret", "localhost/db")},
-			want: []string{"-y", "@modelcontextprotocol/server-postgres", "postgresql://app:<redacted>@localhost/db"},
+			want: []string{"-y", "@modelcontextprotocol/server-postgres", credURL("postgresql", "app", redactedValue, "localhost/db")},
 		},
 		{
 			name: "bare vendor token positional",
@@ -150,7 +150,7 @@ func TestRedactArgs(t *testing.T) {
 		{
 			name: "url in a non-secret flag value",
 			in:   []string{"--endpoint=" + credURL("https", "u", "pw", "host.example.com/x")},
-			want: []string{"--endpoint=https://u:<redacted>@host.example.com/x"},
+			want: []string{"--endpoint=" + credURL("https", "u", redactedValue, "host.example.com/x")},
 		},
 	}
 	for _, tt := range tests {
@@ -195,8 +195,8 @@ func TestRedactSettings(t *testing.T) {
 			"pg": map[string]any{"command": map[string]any{"path": "pg-mcp", "env": map[string]any{"PGHOST": "db"}}},
 		},
 		"pinSettings": map[string]any{"pin_password": 1234, "enabled": true, "port": 8080},
-		"apiKey":        map[string]any{"value": "abc123", "source": "inline"},
-		"nothing":       nil,
+		"apiKey":      map[string]any{"value": "abc123", "source": "inline"},
+		"nothing":     nil,
 	}
 
 	got := redactSettings(in)
@@ -209,7 +209,7 @@ func TestRedactSettings(t *testing.T) {
 	assert.Equal(t, "1", env["CLAUDE_CODE_USE_BEDROCK"])
 	assert.Equal(t, "1", env["DISABLE_TELEMETRY"])
 	assert.Equal(t, "https://gateway.example.com", env["ANTHROPIC_BASE_URL"])
-	assert.Equal(t, "http://user:<redacted>@proxy.example.com:3128", env["HTTPS_PROXY"])
+	assert.Equal(t, credURL("http", "user", redactedValue, "proxy.example.com:3128"), env["HTTPS_PROXY"])
 	assert.Equal(t, "/usr/local/bin/get-key.sh", got["apiKeyHelper"])
 	assert.Equal(t, []any{"Bash(npm run test)"}, got["permissions"].(map[string]any)["allow"])
 

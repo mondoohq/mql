@@ -434,6 +434,6 @@ func TestParseGitRemotesRedactsCredentials(t *testing.T) {
 	url = git@github.com:org/repo.git
 `))
 	remotes := parseGitRemotes(&afero.Afero{Fs: mockFS}, "/repo/.git/config")
-	assert.Equal(t, "https://x-access-token:<redacted>@github.com/org/repo.git", remotes["origin"])
+	assert.Equal(t, credURL("https", "x-access-token", redactedValue, "github.com/org/repo.git"), remotes["origin"])
 	assert.Equal(t, "git@github.com:org/repo.git", remotes["upstream"])
 }
