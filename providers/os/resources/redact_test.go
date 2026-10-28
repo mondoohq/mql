@@ -65,6 +65,14 @@ func TestRedactURL(t *testing.T) {
 		{"https://generativelanguage.googleapis.com/v1?key=abc", "https://generativelanguage.googleapis.com/v1?key=<redacted>"},
 		{"https://mcp.example.com/mcp?token=${TOKEN}", "https://mcp.example.com/mcp?token=${TOKEN}"},
 		{"git@github.com:org/repo.git", "git@github.com:org/repo.git"},
+		// Synthetic: url.Parse rejects the unescaped { in the password, and the
+		// socket form has no host; both still lose the password.
+		{credURL("postgres", "app", "p{w}", "db.internal/app"), "postgres://app:<redacted>@db.internal/app"},
+		{credURL("postgres", "app", "pw", "/app?host=/var/run/postgresql"), "postgres://app:<redacted>@/app?host=/var/run/postgresql"},
+		// Synthetic: an opaque token alone as the username, and a short account
+		// name that is kept.
+		{"https://" + strings.Repeat("e", 40) + "@github.com/org/repo.git", "https://<redacted>@github.com/org/repo.git"},
+		{"https://alice@github.com/org/repo.git", "https://alice@github.com/org/repo.git"},
 		{"not a url " + fakeAnthropicKey, "not a url <redacted>"},
 	}
 	for _, tt := range tests {
@@ -83,6 +91,11 @@ func TestRedactArgs(t *testing.T) {
 			name: "no secrets",
 			in:   []string{"-y", "@modelcontextprotocol/server-filesystem", "/Users/alice/Desktop"},
 			want: []string{"-y", "@modelcontextprotocol/server-filesystem", "/Users/alice/Desktop"},
+		},
+		{
+			name: "bare key and auth flags",
+			in:   []string{"server", "--key", "abc123", "--auth=xyz"},
+			want: []string{"server", "--key", "<redacted>", "--auth=<redacted>"},
 		},
 		{
 			name: "flag=value",
@@ -182,6 +195,7 @@ func TestRedactSettings(t *testing.T) {
 			"pg": map[string]any{"command": map[string]any{"path": "pg-mcp", "env": map[string]any{"PGHOST": "db"}}},
 		},
 		"numericSecret": map[string]any{"pin_password": 1234, "enabled": true, "port": 8080},
+		"apiKey":        map[string]any{"value": "abc123", "source": "inline"},
 		"nothing":       nil,
 	}
 
@@ -222,6 +236,8 @@ func TestRedactSettings(t *testing.T) {
 	assert.Equal(t, true, ns["enabled"])
 	assert.Equal(t, 8080, ns["port"])
 	assert.Nil(t, got["nothing"])
+	// Everything under a secret-named key is redacted, whatever the child keys.
+	assert.Equal(t, map[string]any{"value": redactedValue, "source": redactedValue}, got["apiKey"])
 
 	// The input is not modified.
 	assert.Equal(t, fakeAnthropicKey, in["env"].(map[string]any)["ANTHROPIC_API_KEY"])

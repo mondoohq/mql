@@ -35,6 +35,8 @@ var secretKeySuffixes = []string{
 	"accesskey",
 	"credential",
 	"credentials",
+	"secrets",
+	"apikeys",
 }
 
 // secretQueryKeys are URL query parameters that carry a credential even though
@@ -85,6 +87,17 @@ var knownTokenPattern = regexp.MustCompile(
 // not written into the file.
 var varRefPattern = regexp.MustCompile(`^(\$?\{(env:)?[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*)$`)
 
+// userinfoPasswordPattern finds the password in scheme://user:password@ when
+// url.Parse rejects the URL (an unescaped character in the password) or it
+// has no host (postgres://user:pw@/db). The password runs to the last @ of
+// the authority, since an unescaped @ can be part of it.
+var userinfoPasswordPattern = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9+.-]*://[^/?#@:\s]*):([^/?#\s]*)@`)
+
+// minOpaqueUsernameLength is the length from which a username with no
+// password is taken to be a token. Services such as GitHub accept a token as
+// the username alone, and tokens are far longer than account names.
+const minOpaqueUsernameLength = 20
+
 func isSecretKey(name string) bool {
 	compact := strings.NewReplacer("-", "", "_", "", ".", "", " ", "").Replace(strings.ToLower(name))
 	if compact == "" {
@@ -131,8 +144,12 @@ func redactSecretValue(v string) string {
 // returned with only known token shapes redacted.
 func redactURL(raw string) string {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return knownTokenPattern.ReplaceAllString(raw, redactedValue)
+	if err != nil || u.Scheme == "" {
+		out := raw
+		if m := userinfoPasswordPattern.FindStringSubmatchIndex(raw); m != nil && !isVarRef(raw[m[4]:m[5]]) {
+			out = raw[:m[4]] + redactedValue + raw[m[5]:]
+		}
+		return knownTokenPattern.ReplaceAllString(out, redactedValue)
 	}
 
 	changed := false
@@ -140,8 +157,9 @@ func redactURL(raw string) string {
 		if pw, ok := u.User.Password(); ok && !isVarRef(pw) {
 			u.User = url.UserPassword(u.User.Username(), urlRedactionPlaceholder)
 			changed = true
-		} else if !ok && knownTokenPattern.MatchString(u.User.Username()) {
-			// A token used as the username, as in https://ghp_x@github.com.
+		} else if name := u.User.Username(); !ok && !isVarRef(name) &&
+			(len(name) >= minOpaqueUsernameLength || knownTokenPattern.MatchString(name)) {
+			// A token used as the username, as in https://<token>@github.com.
 			u.User = url.User(urlRedactionPlaceholder)
 			changed = true
 		}
@@ -191,6 +209,14 @@ func redactString(s string) string {
 	return redactURL(s)
 }
 
+// isSecretFlag reports whether a command-line flag name names a secret. Bare
+// --key and --auth count here, unlike in settings keys, since as flags they
+// take the credential itself.
+func isSecretFlag(name string) bool {
+	lower := strings.ToLower(name)
+	return isSecretKey(name) || lower == "key" || lower == "auth"
+}
+
 // redactArgs redacts the secrets in a command line: the value of a flag whose
 // name names a secret, given as --flag=value or as the next argument, plus
 // whatever redactString finds in each argument.
@@ -208,9 +234,9 @@ func redactArgs(args []string) []string {
 		if strings.HasPrefix(a, "-") {
 			name, value, hasValue := strings.Cut(strings.TrimLeft(a, "-"), "=")
 			switch {
-			case isSecretKey(name) && hasValue:
+			case isSecretFlag(name) && hasValue:
 				out[i] = a[:len(a)-len(value)] + redactSecretValue(value)
-			case isSecretKey(name):
+			case isSecretFlag(name):
 				out[i] = a
 				redactNext = true
 			case hasValue:
@@ -248,7 +274,7 @@ func redactSettingsMap(m map[string]any, inMcp, allSecret bool) map[string]any {
 	for k, v := range m {
 		lower := strings.ToLower(k)
 		childInMcp := inMcp || mcpServerMapKeys[lower]
-		childAllSecret := allSecret || secretHeaderMapKeys[lower] ||
+		childAllSecret := allSecret || secretHeaderMapKeys[lower] || isSecretKey(k) ||
 			(inMcp && (lower == "env" || lower == "environment"))
 		out[k] = redactSettingsValue(k, v, childInMcp, childAllSecret)
 	}
