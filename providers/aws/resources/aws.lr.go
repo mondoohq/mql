@@ -37161,6 +37161,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.bedrock.agentCore.memory.namespaceKeys": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreMemory).GetNamespaceKeys()).ToDataRes(types.Array(types.Resource("aws.bedrock.agentCore.memory.namespaceKey")))
 	},
+	"aws.bedrock.agentCore.memory.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreMemory).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
+	},
+	"aws.bedrock.agentCore.memory.iamRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreMemory).GetIamRole()).ToDataRes(types.Resource("aws.iam.role"))
+	},
+	"aws.bedrock.agentCore.memory.eventExpiryDuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreMemory).GetEventExpiryDuration()).ToDataRes(types.Int)
+	},
+	"aws.bedrock.agentCore.memory.deliveryStreams": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreMemory).GetDeliveryStreams()).ToDataRes(types.Array(types.Resource("aws.kinesis.stream")))
+	},
 	"aws.bedrock.agentCore.memory.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreMemory).GetCreatedAt()).ToDataRes(types.Time)
 	},
@@ -37536,6 +37548,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.bedrock.guardrail.wordPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockGuardrail).GetWordPolicy()).ToDataRes(types.Dict)
 	},
+	"aws.bedrock.guardrail.contextualGroundingPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockGuardrail).GetContextualGroundingPolicy()).ToDataRes(types.Dict)
+	},
+	"aws.bedrock.guardrail.automatedReasoningPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockGuardrail).GetAutomatedReasoningPolicy()).ToDataRes(types.Dict)
+	},
+	"aws.bedrock.guardrail.crossRegionProfileArn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockGuardrail).GetCrossRegionProfileArn()).ToDataRes(types.String)
+	},
 	"aws.bedrock.guardrail.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockGuardrail).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
@@ -37560,6 +37581,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.bedrock.modelInvocationLoggingConfiguration.videoDataDeliveryEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockModelInvocationLoggingConfiguration).GetVideoDataDeliveryEnabled()).ToDataRes(types.Bool)
 	},
+	"aws.bedrock.modelInvocationLoggingConfiguration.audioDataDeliveryEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockModelInvocationLoggingConfiguration).GetAudioDataDeliveryEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.bedrock.modelInvocationLoggingConfiguration.logGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockModelInvocationLoggingConfiguration).GetLogGroup()).ToDataRes(types.Resource("aws.cloudwatch.loggroup"))
+	},
+	"aws.bedrock.modelInvocationLoggingConfiguration.iamRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockModelInvocationLoggingConfiguration).GetIamRole()).ToDataRes(types.Resource("aws.iam.role"))
+	},
+	"aws.bedrock.modelInvocationLoggingConfiguration.s3Bucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockModelInvocationLoggingConfiguration).GetS3Bucket()).ToDataRes(types.Resource("aws.s3.bucket"))
+	},
+	"aws.bedrock.modelInvocationLoggingConfiguration.largeDataS3Bucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockModelInvocationLoggingConfiguration).GetLargeDataS3Bucket()).ToDataRes(types.Resource("aws.s3.bucket"))
+	},
 	"aws.bedrock.provisionedModelThroughput.provisionedModelArn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockProvisionedModelThroughput).GetProvisionedModelArn()).ToDataRes(types.String)
 	},
@@ -37574,6 +37610,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.bedrock.provisionedModelThroughput.foundationModel": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockProvisionedModelThroughput).GetFoundationModel()).ToDataRes(types.Resource("aws.bedrock.foundationModel"))
+	},
+	"aws.bedrock.provisionedModelThroughput.customModel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockProvisionedModelThroughput).GetCustomModel()).ToDataRes(types.Resource("aws.bedrock.customModel"))
 	},
 	"aws.bedrock.provisionedModelThroughput.modelUnits": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockProvisionedModelThroughput).GetModelUnits()).ToDataRes(types.Int)
@@ -38144,6 +38183,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.bedrock.batchInferenceJob.timeoutDurationInHours": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockBatchInferenceJob).GetTimeoutDurationInHours()).ToDataRes(types.Int)
+	},
+	"aws.bedrock.batchInferenceJob.vpc": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockBatchInferenceJob).GetVpc()).ToDataRes(types.Resource("aws.vpc"))
+	},
+	"aws.bedrock.batchInferenceJob.subnets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockBatchInferenceJob).GetSubnets()).ToDataRes(types.Array(types.Resource("aws.vpc.subnet")))
+	},
+	"aws.bedrock.batchInferenceJob.securityGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockBatchInferenceJob).GetSecurityGroups()).ToDataRes(types.Array(types.Resource("aws.ec2.securitygroup")))
+	},
+	"aws.bedrock.batchInferenceJob.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockBatchInferenceJob).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
+	},
+	"aws.bedrock.batchInferenceJob.inputDataBucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockBatchInferenceJob).GetInputDataBucket()).ToDataRes(types.Resource("aws.s3.bucket"))
+	},
+	"aws.bedrock.batchInferenceJob.outputDataBucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockBatchInferenceJob).GetOutputDataBucket()).ToDataRes(types.Resource("aws.s3.bucket"))
 	},
 	"aws.qBusiness.applications": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsQBusiness).GetApplications()).ToDataRes(types.Array(types.Resource("aws.qBusiness.application")))
@@ -85939,6 +85996,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsBedrockAgentCoreMemory).NamespaceKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.bedrock.agentCore.memory.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreMemory).KmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.memory.iamRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreMemory).IamRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.memory.eventExpiryDuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreMemory).EventExpiryDuration, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.memory.deliveryStreams": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreMemory).DeliveryStreams, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.bedrock.agentCore.memory.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockAgentCoreMemory).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
@@ -86491,6 +86564,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsBedrockGuardrail).WordPolicy, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"aws.bedrock.guardrail.contextualGroundingPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockGuardrail).ContextualGroundingPolicy, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.guardrail.automatedReasoningPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockGuardrail).AutomatedReasoningPolicy, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.guardrail.crossRegionProfileArn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockGuardrail).CrossRegionProfileArn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.bedrock.guardrail.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockGuardrail).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
@@ -86527,6 +86612,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsBedrockModelInvocationLoggingConfiguration).VideoDataDeliveryEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"aws.bedrock.modelInvocationLoggingConfiguration.audioDataDeliveryEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockModelInvocationLoggingConfiguration).AudioDataDeliveryEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.modelInvocationLoggingConfiguration.logGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockModelInvocationLoggingConfiguration).LogGroup, ok = plugin.RawToTValue[*mqlAwsCloudwatchLoggroup](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.modelInvocationLoggingConfiguration.iamRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockModelInvocationLoggingConfiguration).IamRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.modelInvocationLoggingConfiguration.s3Bucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockModelInvocationLoggingConfiguration).S3Bucket, ok = plugin.RawToTValue[*mqlAwsS3Bucket](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.modelInvocationLoggingConfiguration.largeDataS3Bucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockModelInvocationLoggingConfiguration).LargeDataS3Bucket, ok = plugin.RawToTValue[*mqlAwsS3Bucket](v.Value, v.Error)
+		return
+	},
 	"aws.bedrock.provisionedModelThroughput.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockProvisionedModelThroughput).__id, ok = v.Value.(string)
 		return
@@ -86549,6 +86654,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.bedrock.provisionedModelThroughput.foundationModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockProvisionedModelThroughput).FoundationModel, ok = plugin.RawToTValue[*mqlAwsBedrockFoundationModel](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.provisionedModelThroughput.customModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockProvisionedModelThroughput).CustomModel, ok = plugin.RawToTValue[*mqlAwsBedrockCustomModel](v.Value, v.Error)
 		return
 	},
 	"aws.bedrock.provisionedModelThroughput.modelUnits": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -87357,6 +87466,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.bedrock.batchInferenceJob.timeoutDurationInHours": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockBatchInferenceJob).TimeoutDurationInHours, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.batchInferenceJob.vpc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockBatchInferenceJob).Vpc, ok = plugin.RawToTValue[*mqlAwsVpc](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.batchInferenceJob.subnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockBatchInferenceJob).Subnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.batchInferenceJob.securityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockBatchInferenceJob).SecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.batchInferenceJob.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockBatchInferenceJob).KmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.batchInferenceJob.inputDataBucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockBatchInferenceJob).InputDataBucket, ok = plugin.RawToTValue[*mqlAwsS3Bucket](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.batchInferenceJob.outputDataBucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockBatchInferenceJob).OutputDataBucket, ok = plugin.RawToTValue[*mqlAwsS3Bucket](v.Value, v.Error)
 		return
 	},
 	"aws.qBusiness.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -209533,14 +209666,18 @@ type mqlAwsBedrockAgentCoreMemory struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsBedrockAgentCoreMemoryInternal
-	Id            plugin.TValue[string]
-	Arn           plugin.TValue[string]
-	Region        plugin.TValue[string]
-	Status        plugin.TValue[string]
-	NamespaceKeys plugin.TValue[[]any]
-	CreatedAt     plugin.TValue[*time.Time]
-	UpdatedAt     plugin.TValue[*time.Time]
-	Tags          plugin.TValue[map[string]any]
+	Id                  plugin.TValue[string]
+	Arn                 plugin.TValue[string]
+	Region              plugin.TValue[string]
+	Status              plugin.TValue[string]
+	NamespaceKeys       plugin.TValue[[]any]
+	KmsKey              plugin.TValue[*mqlAwsKmsKey]
+	IamRole             plugin.TValue[*mqlAwsIamRole]
+	EventExpiryDuration plugin.TValue[int64]
+	DeliveryStreams     plugin.TValue[[]any]
+	CreatedAt           plugin.TValue[*time.Time]
+	UpdatedAt           plugin.TValue[*time.Time]
+	Tags                plugin.TValue[map[string]any]
 }
 
 // createAwsBedrockAgentCoreMemory creates a new instance of this resource
@@ -209609,6 +209746,60 @@ func (c *mqlAwsBedrockAgentCoreMemory) GetNamespaceKeys() *plugin.TValue[[]any] 
 		}
 
 		return c.namespaceKeys()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreMemory) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.KmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.memory", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreMemory) GetIamRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.IamRole, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.memory", c.__id, "iamRole")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.iamRole()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreMemory) GetEventExpiryDuration() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.EventExpiryDuration, func() (int64, error) {
+		return c.eventExpiryDuration()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreMemory) GetDeliveryStreams() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DeliveryStreams, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.agentCore.memory", c.__id, "deliveryStreams")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.deliveryStreams()
 	})
 }
 
@@ -211003,6 +211194,9 @@ type mqlAwsBedrockGuardrail struct {
 	SensitiveInformationPolicy plugin.TValue[any]
 	TopicPolicy                plugin.TValue[any]
 	WordPolicy                 plugin.TValue[any]
+	ContextualGroundingPolicy  plugin.TValue[any]
+	AutomatedReasoningPolicy   plugin.TValue[any]
+	CrossRegionProfileArn      plugin.TValue[string]
 	Tags                       plugin.TValue[map[string]any]
 }
 
@@ -211107,6 +211301,24 @@ func (c *mqlAwsBedrockGuardrail) GetWordPolicy() *plugin.TValue[any] {
 	})
 }
 
+func (c *mqlAwsBedrockGuardrail) GetContextualGroundingPolicy() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.ContextualGroundingPolicy, func() (any, error) {
+		return c.contextualGroundingPolicy()
+	})
+}
+
+func (c *mqlAwsBedrockGuardrail) GetAutomatedReasoningPolicy() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.AutomatedReasoningPolicy, func() (any, error) {
+		return c.automatedReasoningPolicy()
+	})
+}
+
+func (c *mqlAwsBedrockGuardrail) GetCrossRegionProfileArn() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CrossRegionProfileArn, func() (string, error) {
+		return c.crossRegionProfileArn()
+	})
+}
+
 func (c *mqlAwsBedrockGuardrail) GetTags() *plugin.TValue[map[string]any] {
 	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
 		return c.tags()
@@ -211117,7 +211329,7 @@ func (c *mqlAwsBedrockGuardrail) GetTags() *plugin.TValue[map[string]any] {
 type mqlAwsBedrockModelInvocationLoggingConfiguration struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAwsBedrockModelInvocationLoggingConfigurationInternal it will be used here
+	mqlAwsBedrockModelInvocationLoggingConfigurationInternal
 	Region                       plugin.TValue[string]
 	CloudWatchConfig             plugin.TValue[any]
 	S3Config                     plugin.TValue[any]
@@ -211125,6 +211337,11 @@ type mqlAwsBedrockModelInvocationLoggingConfiguration struct {
 	ImageDataDeliveryEnabled     plugin.TValue[bool]
 	EmbeddingDataDeliveryEnabled plugin.TValue[bool]
 	VideoDataDeliveryEnabled     plugin.TValue[bool]
+	AudioDataDeliveryEnabled     plugin.TValue[bool]
+	LogGroup                     plugin.TValue[*mqlAwsCloudwatchLoggroup]
+	IamRole                      plugin.TValue[*mqlAwsIamRole]
+	S3Bucket                     plugin.TValue[*mqlAwsS3Bucket]
+	LargeDataS3Bucket            plugin.TValue[*mqlAwsS3Bucket]
 }
 
 // createAwsBedrockModelInvocationLoggingConfiguration creates a new instance of this resource
@@ -211192,6 +211409,74 @@ func (c *mqlAwsBedrockModelInvocationLoggingConfiguration) GetVideoDataDeliveryE
 	return &c.VideoDataDeliveryEnabled
 }
 
+func (c *mqlAwsBedrockModelInvocationLoggingConfiguration) GetAudioDataDeliveryEnabled() *plugin.TValue[bool] {
+	return &c.AudioDataDeliveryEnabled
+}
+
+func (c *mqlAwsBedrockModelInvocationLoggingConfiguration) GetLogGroup() *plugin.TValue[*mqlAwsCloudwatchLoggroup] {
+	return plugin.GetOrCompute[*mqlAwsCloudwatchLoggroup](&c.LogGroup, func() (*mqlAwsCloudwatchLoggroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.modelInvocationLoggingConfiguration", c.__id, "logGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsCloudwatchLoggroup), nil
+			}
+		}
+
+		return c.logGroup()
+	})
+}
+
+func (c *mqlAwsBedrockModelInvocationLoggingConfiguration) GetIamRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.IamRole, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.modelInvocationLoggingConfiguration", c.__id, "iamRole")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.iamRole()
+	})
+}
+
+func (c *mqlAwsBedrockModelInvocationLoggingConfiguration) GetS3Bucket() *plugin.TValue[*mqlAwsS3Bucket] {
+	return plugin.GetOrCompute[*mqlAwsS3Bucket](&c.S3Bucket, func() (*mqlAwsS3Bucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.modelInvocationLoggingConfiguration", c.__id, "s3Bucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsS3Bucket), nil
+			}
+		}
+
+		return c.s3Bucket()
+	})
+}
+
+func (c *mqlAwsBedrockModelInvocationLoggingConfiguration) GetLargeDataS3Bucket() *plugin.TValue[*mqlAwsS3Bucket] {
+	return plugin.GetOrCompute[*mqlAwsS3Bucket](&c.LargeDataS3Bucket, func() (*mqlAwsS3Bucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.modelInvocationLoggingConfiguration", c.__id, "largeDataS3Bucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsS3Bucket), nil
+			}
+		}
+
+		return c.largeDataS3Bucket()
+	})
+}
+
 // mqlAwsBedrockProvisionedModelThroughput for the aws.bedrock.provisionedModelThroughput resource
 type mqlAwsBedrockProvisionedModelThroughput struct {
 	MqlRuntime *plugin.Runtime
@@ -211202,6 +211487,7 @@ type mqlAwsBedrockProvisionedModelThroughput struct {
 	Region               plugin.TValue[string]
 	ModelArn             plugin.TValue[string]
 	FoundationModel      plugin.TValue[*mqlAwsBedrockFoundationModel]
+	CustomModel          plugin.TValue[*mqlAwsBedrockCustomModel]
 	ModelUnits           plugin.TValue[int64]
 	Status               plugin.TValue[string]
 	CommitmentDuration   plugin.TValue[string]
@@ -211273,6 +211559,22 @@ func (c *mqlAwsBedrockProvisionedModelThroughput) GetFoundationModel() *plugin.T
 		}
 
 		return c.foundationModel()
+	})
+}
+
+func (c *mqlAwsBedrockProvisionedModelThroughput) GetCustomModel() *plugin.TValue[*mqlAwsBedrockCustomModel] {
+	return plugin.GetOrCompute[*mqlAwsBedrockCustomModel](&c.CustomModel, func() (*mqlAwsBedrockCustomModel, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.provisionedModelThroughput", c.__id, "customModel")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsBedrockCustomModel), nil
+			}
+		}
+
+		return c.customModel()
 	})
 }
 
@@ -213124,6 +213426,12 @@ type mqlAwsBedrockBatchInferenceJob struct {
 	EndTime                plugin.TValue[*time.Time]
 	Message                plugin.TValue[string]
 	TimeoutDurationInHours plugin.TValue[int64]
+	Vpc                    plugin.TValue[*mqlAwsVpc]
+	Subnets                plugin.TValue[[]any]
+	SecurityGroups         plugin.TValue[[]any]
+	KmsKey                 plugin.TValue[*mqlAwsKmsKey]
+	InputDataBucket        plugin.TValue[*mqlAwsS3Bucket]
+	OutputDataBucket       plugin.TValue[*mqlAwsS3Bucket]
 }
 
 // createAwsBedrockBatchInferenceJob creates a new instance of this resource
@@ -213225,6 +213533,102 @@ func (c *mqlAwsBedrockBatchInferenceJob) GetMessage() *plugin.TValue[string] {
 
 func (c *mqlAwsBedrockBatchInferenceJob) GetTimeoutDurationInHours() *plugin.TValue[int64] {
 	return &c.TimeoutDurationInHours
+}
+
+func (c *mqlAwsBedrockBatchInferenceJob) GetVpc() *plugin.TValue[*mqlAwsVpc] {
+	return plugin.GetOrCompute[*mqlAwsVpc](&c.Vpc, func() (*mqlAwsVpc, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.batchInferenceJob", c.__id, "vpc")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsVpc), nil
+			}
+		}
+
+		return c.vpc()
+	})
+}
+
+func (c *mqlAwsBedrockBatchInferenceJob) GetSubnets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Subnets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.batchInferenceJob", c.__id, "subnets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.subnets()
+	})
+}
+
+func (c *mqlAwsBedrockBatchInferenceJob) GetSecurityGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SecurityGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.batchInferenceJob", c.__id, "securityGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.securityGroups()
+	})
+}
+
+func (c *mqlAwsBedrockBatchInferenceJob) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
+	return plugin.GetOrCompute[*mqlAwsKmsKey](&c.KmsKey, func() (*mqlAwsKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.batchInferenceJob", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsKmsKey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+func (c *mqlAwsBedrockBatchInferenceJob) GetInputDataBucket() *plugin.TValue[*mqlAwsS3Bucket] {
+	return plugin.GetOrCompute[*mqlAwsS3Bucket](&c.InputDataBucket, func() (*mqlAwsS3Bucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.batchInferenceJob", c.__id, "inputDataBucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsS3Bucket), nil
+			}
+		}
+
+		return c.inputDataBucket()
+	})
+}
+
+func (c *mqlAwsBedrockBatchInferenceJob) GetOutputDataBucket() *plugin.TValue[*mqlAwsS3Bucket] {
+	return plugin.GetOrCompute[*mqlAwsS3Bucket](&c.OutputDataBucket, func() (*mqlAwsS3Bucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.bedrock.batchInferenceJob", c.__id, "outputDataBucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsS3Bucket), nil
+			}
+		}
+
+		return c.outputDataBucket()
+	})
 }
 
 // mqlAwsQBusiness for the aws.qBusiness resource

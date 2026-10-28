@@ -1206,6 +1206,89 @@ func (a *mqlAwsBedrockAgentCoreMemory) namespaceKeys() ([]any, error) {
 	return res, nil
 }
 
+func (a *mqlAwsBedrockAgentCoreMemory) kmsKey() (*mqlAwsKmsKey, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil || detail.Memory == nil || convert.ToValue(detail.Memory.EncryptionKeyArn) == "" {
+		a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.kms.key", map[string]*llx.RawData{
+		"arn": llx.StringDataPtr(detail.Memory.EncryptionKeyArn),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsKmsKey), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreMemory) iamRole() (*mqlAwsIamRole, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	var roleArn *string
+	if detail != nil && detail.Memory != nil {
+		roleArn = detail.Memory.MemoryExecutionRoleArn
+	}
+	return agentCoreRole(a.MqlRuntime, roleArn, &a.IamRole)
+}
+
+func (a *mqlAwsBedrockAgentCoreMemory) eventExpiryDuration() (int64, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return 0, err
+	}
+	if detail == nil || detail.Memory == nil || detail.Memory.EventExpiryDuration == nil {
+		a.EventExpiryDuration.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*detail.Memory.EventExpiryDuration), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreMemory) deliveryStreams() ([]any, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	if detail == nil || detail.Memory == nil {
+		return res, nil
+	}
+	for _, streamArn := range memoryDeliveryStreamArns(detail.Memory.StreamDeliveryResources) {
+		mqlStream, err := NewResource(a.MqlRuntime, "aws.kinesis.stream", map[string]*llx.RawData{
+			"arn": llx.StringData(streamArn),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlStream)
+	}
+	return res, nil
+}
+
+// memoryDeliveryStreamArns returns the Kinesis data stream ARNs a memory store
+// delivers its records to, skipping destination kinds other than Kinesis and
+// entries without an ARN.
+func memoryDeliveryStreamArns(resources *bacctypes.StreamDeliveryResources) []string {
+	arns := []string{}
+	if resources == nil {
+		return arns
+	}
+	for _, r := range resources.Resources {
+		kinesis, ok := r.(*bacctypes.StreamDeliveryResourceMemberKinesis)
+		if !ok {
+			continue
+		}
+		if streamArn := convert.ToValue(kinesis.Value.DataStreamArn); streamArn != "" {
+			arns = append(arns, streamArn)
+		}
+	}
+	return arns
+}
+
 // --- Browsers ---
 
 func (a *mqlAwsBedrockAgentCore) browsers() ([]any, error) {

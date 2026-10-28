@@ -32533,6 +32533,20 @@ private aws.bedrock.agentCore.memory @defaults("id status") {
   // carries the validation constraining what values are accepted. A key with
   // no validation accepts any value. Empty when the store defines none.
   namespaceKeys() []aws.bedrock.agentCore.memory.namespaceKey
+  // Customer-managed KMS key encrypting the memory store
+  //
+  // Null when the store is encrypted with an AWS owned key.
+  kmsKey() aws.kms.key
+  // IAM role the memory store assumes to extract and consolidate memories
+  //
+  // Null when the store has no execution role.
+  iamRole() aws.iam.role
+  // Number of days events are retained before they expire
+  eventExpiryDuration() int
+  // Kinesis data streams the memory store delivers its records to
+  //
+  // Empty when the store streams to no destination.
+  deliveryStreams() []aws.kinesis.stream
   // Time the memory store was created
   createdAt time
   // Time the memory store was last updated
@@ -32958,6 +32972,22 @@ private aws.bedrock.guardrail @defaults("id name status") {
   // Keys: `Words` (custom blocked words) and `ManagedWordLists` (managed
   // word lists, such as profanity, that the guardrail blocks).
   wordPolicy() dict
+  // Contextual grounding policy configuration
+  //
+  // Keys: `Filters` (each grounding check, `GROUNDING` or `RELEVANCE`,
+  // with its `Threshold`, `Action`, and `Enabled` flag) and `Tier`. Null
+  // when the guardrail does not check responses for grounding.
+  contextualGroundingPolicy() dict
+  // Automated reasoning policy configuration
+  //
+  // Keys: `Policies` (ARNs of the automated reasoning policies the
+  // guardrail validates responses against) and `ConfidenceThreshold`.
+  // Null when no automated reasoning policy is attached.
+  automatedReasoningPolicy() dict
+  // ARN of the guardrail profile that routes requests across regions
+  //
+  // Empty when the guardrail evaluates requests only in its own region.
+  crossRegionProfileArn() string
   // Tags assigned to the guardrail
   tags() map[string]string
 }
@@ -32985,6 +33015,24 @@ private aws.bedrock.modelInvocationLoggingConfiguration @defaults("region textDa
   embeddingDataDeliveryEnabled bool
   // Whether video data delivery is enabled
   videoDataDeliveryEnabled bool
+  // Whether audio data delivery is enabled
+  audioDataDeliveryEnabled bool
+  // CloudWatch log group that receives the invocation logs
+  //
+  // Null when CloudWatch delivery is not configured.
+  logGroup() aws.cloudwatch.loggroup
+  // IAM role Bedrock assumes to write invocation logs to CloudWatch
+  //
+  // Null when CloudWatch delivery is not configured.
+  iamRole() aws.iam.role
+  // S3 bucket that receives the invocation logs
+  //
+  // Null when S3 delivery is not configured.
+  s3Bucket() aws.s3.bucket
+  // S3 bucket that receives payloads too large for the CloudWatch log group
+  //
+  // Null when CloudWatch delivery has no large-data location.
+  largeDataS3Bucket() aws.s3.bucket
 }
 
 // Amazon Bedrock provisioned model throughput
@@ -32999,6 +33047,10 @@ private aws.bedrock.provisionedModelThroughput @defaults("provisionedModelName m
   modelArn string
   // Foundation model for the provisioned throughput
   foundationModel() aws.bedrock.foundationModel
+  // Custom model the throughput serves
+  //
+  // Null when `modelArn` names a foundation model rather than a custom model.
+  customModel() aws.bedrock.customModel
   // Number of model units provisioned
   modelUnits int
   // Status: Creating, InService, Updating, or Failed
@@ -33648,6 +33700,22 @@ private aws.bedrock.batchInferenceJob @defaults("jobName modelId status") {
   message string
   // Number of hours after which the batch inference job times out
   timeoutDurationInHours int
+  // VPC the batch inference job runs in
+  //
+  // Null when the job does not run in a VPC.
+  vpc() aws.vpc
+  // Subnets the batch inference job attaches to
+  subnets() []aws.vpc.subnet
+  // Security groups applied to the batch inference job
+  securityGroups() []aws.ec2.securitygroup
+  // Customer-managed KMS key encrypting the job output
+  //
+  // Null when the output is encrypted with the bucket's default encryption.
+  kmsKey() aws.kms.key
+  // S3 bucket the job reads its input records from
+  inputDataBucket() aws.s3.bucket
+  // S3 bucket the job writes its output to
+  outputDataBucket() aws.s3.bucket
 }
 
 // Amazon Q Business

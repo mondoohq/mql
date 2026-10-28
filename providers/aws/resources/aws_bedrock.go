@@ -655,6 +655,35 @@ func (a *mqlAwsBedrockGuardrail) wordPolicy() (any, error) {
 	return result, nil
 }
 
+func (a *mqlAwsBedrockGuardrail) contextualGroundingPolicy() (any, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	result, _ := convert.JsonToDict(resp.ContextualGroundingPolicy)
+	return result, nil
+}
+
+func (a *mqlAwsBedrockGuardrail) automatedReasoningPolicy() (any, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	result, _ := convert.JsonToDict(resp.AutomatedReasoningPolicy)
+	return result, nil
+}
+
+func (a *mqlAwsBedrockGuardrail) crossRegionProfileArn() (string, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return "", err
+	}
+	if resp.CrossRegionDetails == nil {
+		return "", nil
+	}
+	return convert.ToValue(resp.CrossRegionDetails.GuardrailProfileArn), nil
+}
+
 // --- Model Invocation Logging Configurations ---
 
 func (a *mqlAwsBedrock) modelInvocationLoggingConfigurations() ([]any, error) {
@@ -715,10 +744,12 @@ func (a *mqlAwsBedrock) getModelInvocationLoggingConfigurations(conn *connection
 						"imageDataDeliveryEnabled":     llx.BoolDataPtr(lc.ImageDataDeliveryEnabled),
 						"embeddingDataDeliveryEnabled": llx.BoolDataPtr(lc.EmbeddingDataDeliveryEnabled),
 						"videoDataDeliveryEnabled":     llx.BoolDataPtr(lc.VideoDataDeliveryEnabled),
+						"audioDataDeliveryEnabled":     llx.BoolDataPtr(lc.AudioDataDeliveryEnabled),
 					})
 				if err != nil {
 					return nil, err
 				}
+				mqlLC.(*mqlAwsBedrockModelInvocationLoggingConfiguration).cacheDestinations = bedrockLoggingDestinationsFrom(lc)
 				res = append(res, mqlLC)
 			}
 			return jobpool.JobResult(res), nil
@@ -730,6 +761,89 @@ func (a *mqlAwsBedrock) getModelInvocationLoggingConfigurations(conn *connection
 
 func (a *mqlAwsBedrockModelInvocationLoggingConfiguration) id() (string, error) {
 	return "aws.bedrock.modelInvocationLoggingConfiguration/" + a.Region.Data, nil
+}
+
+type mqlAwsBedrockModelInvocationLoggingConfigurationInternal struct {
+	cacheDestinations bedrockLoggingDestinations
+}
+
+// bedrockLoggingDestinations holds the places a region's model invocation
+// logs are delivered to. Each value is empty when that destination is not
+// configured.
+type bedrockLoggingDestinations struct {
+	logGroupName      string
+	roleArn           string
+	s3BucketName      string
+	largeDataS3Bucket string
+}
+
+func bedrockLoggingDestinationsFrom(lc *bedrocktypes.LoggingConfig) bedrockLoggingDestinations {
+	d := bedrockLoggingDestinations{}
+	if lc == nil {
+		return d
+	}
+	if cw := lc.CloudWatchConfig; cw != nil {
+		d.logGroupName = convert.ToValue(cw.LogGroupName)
+		d.roleArn = convert.ToValue(cw.RoleArn)
+		if cw.LargeDataDeliveryS3Config != nil {
+			d.largeDataS3Bucket = convert.ToValue(cw.LargeDataDeliveryS3Config.BucketName)
+		}
+	}
+	if lc.S3Config != nil {
+		d.s3BucketName = convert.ToValue(lc.S3Config.BucketName)
+	}
+	return d
+}
+
+func (a *mqlAwsBedrockModelInvocationLoggingConfiguration) logGroup() (*mqlAwsCloudwatchLoggroup, error) {
+	name := a.cacheDestinations.logGroupName
+	if name == "" {
+		a.LogGroup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	// Bedrock writes only to a log group in the configuration's own region and
+	// account, so the ARN is built from those rather than searched for.
+	res, err := NewResource(a.MqlRuntime, "aws.cloudwatch.loggroup", map[string]*llx.RawData{
+		"arn": llx.StringData(fmt.Sprintf(logGroupArnPattern, a.Region.Data, conn.AccountId(), name)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsCloudwatchLoggroup), nil
+}
+
+func (a *mqlAwsBedrockModelInvocationLoggingConfiguration) iamRole() (*mqlAwsIamRole, error) {
+	roleArn := a.cacheDestinations.roleArn
+	if roleArn == "" {
+		a.IamRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.iam.role", map[string]*llx.RawData{"arn": llx.StringData(roleArn)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsIamRole), nil
+}
+
+func (a *mqlAwsBedrockModelInvocationLoggingConfiguration) s3Bucket() (*mqlAwsS3Bucket, error) {
+	return bedrockS3BucketByName(a.MqlRuntime, a.cacheDestinations.s3BucketName, &a.S3Bucket)
+}
+
+func (a *mqlAwsBedrockModelInvocationLoggingConfiguration) largeDataS3Bucket() (*mqlAwsS3Bucket, error) {
+	return bedrockS3BucketByName(a.MqlRuntime, a.cacheDestinations.largeDataS3Bucket, &a.LargeDataS3Bucket)
+}
+
+func bedrockS3BucketByName(runtime *plugin.Runtime, name string, field *plugin.TValue[*mqlAwsS3Bucket]) (*mqlAwsS3Bucket, error) {
+	if name == "" {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(runtime, "aws.s3.bucket", map[string]*llx.RawData{"name": llx.StringData(name)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsS3Bucket), nil
 }
 
 // --- Provisioned Model Throughputs ---
@@ -821,6 +935,31 @@ func (a *mqlAwsBedrockProvisionedModelThroughput) foundationModel() (*mqlAwsBedr
 		return nil, err
 	}
 	return res.(*mqlAwsBedrockFoundationModel), nil
+}
+
+func (a *mqlAwsBedrockProvisionedModelThroughput) customModel() (*mqlAwsBedrockCustomModel, error) {
+	if !isBedrockCustomModelArn(a.ModelArn.Data) {
+		a.CustomModel.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.bedrock.customModel",
+		map[string]*llx.RawData{"modelArn": llx.StringData(a.ModelArn.Data)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsBedrockCustomModel), nil
+}
+
+// isBedrockCustomModelArn reports whether a model ARN names a custom model
+// (arn:aws:bedrock:<region>:<account>:custom-model/...), as opposed to a
+// foundation model, an imported model, or anything else a provisioned
+// throughput can serve.
+func isBedrockCustomModelArn(modelArn string) bool {
+	parsed, err := arn.Parse(modelArn)
+	if err != nil {
+		return false
+	}
+	return parsed.Service == "bedrock" && strings.HasPrefix(parsed.Resource, "custom-model/")
 }
 
 func (a *mqlAwsBedrock) advancedPromptOptimizationJobs() ([]any, error) {
@@ -2105,7 +2244,13 @@ func (a *mqlAwsBedrock) getBatchInferenceJobs(conn *connection.AwsConnection) []
 					if err != nil {
 						return nil, err
 					}
-					mqlJob.(*mqlAwsBedrockBatchInferenceJob).cacheRoleArn = convert.ToValue(j.RoleArn)
+					mqlBatchJob := mqlJob.(*mqlAwsBedrockBatchInferenceJob)
+					mqlBatchJob.cacheRoleArn = convert.ToValue(j.RoleArn)
+					mqlBatchJob.cacheLocations = batchInferenceJobLocationsFrom(j.InputDataConfig, j.OutputDataConfig)
+					if j.VpcConfig != nil {
+						mqlBatchJob.cacheSubnetIds = j.VpcConfig.SubnetIds
+						mqlBatchJob.cacheSecurityGroupIds = j.VpcConfig.SecurityGroupIds
+					}
 					res = append(res, mqlJob)
 				}
 			}
@@ -2226,7 +2371,77 @@ type mqlAwsBedrockProvisionedModelThroughputInternal struct {
 }
 
 type mqlAwsBedrockBatchInferenceJobInternal struct {
-	cacheRoleArn string
+	cacheRoleArn          string
+	cacheLocations        batchInferenceJobLocations
+	cacheSubnetIds        []string
+	cacheSecurityGroupIds []string
+}
+
+// batchInferenceJobLocations holds the S3 locations and output encryption key
+// of a batch inference job. Each value is empty when the job's configuration
+// does not set it.
+type batchInferenceJobLocations struct {
+	inputS3Uri     string
+	outputS3Uri    string
+	outputKmsKeyId string
+}
+
+func batchInferenceJobLocationsFrom(in bedrocktypes.ModelInvocationJobInputDataConfig, out bedrocktypes.ModelInvocationJobOutputDataConfig) batchInferenceJobLocations {
+	loc := batchInferenceJobLocations{}
+	if s3In, ok := in.(*bedrocktypes.ModelInvocationJobInputDataConfigMemberS3InputDataConfig); ok {
+		loc.inputS3Uri = convert.ToValue(s3In.Value.S3Uri)
+	}
+	if s3Out, ok := out.(*bedrocktypes.ModelInvocationJobOutputDataConfigMemberS3OutputDataConfig); ok {
+		loc.outputS3Uri = convert.ToValue(s3Out.Value.S3Uri)
+		loc.outputKmsKeyId = convert.ToValue(s3Out.Value.S3EncryptionKeyId)
+	}
+	return loc
+}
+
+func (a *mqlAwsBedrockBatchInferenceJob) vpc() (*mqlAwsVpc, error) {
+	return awsResolveVpcFromSubnets(a.MqlRuntime, a.Region.Data, a.cacheSubnetIds, &a.Vpc)
+}
+
+func (a *mqlAwsBedrockBatchInferenceJob) subnets() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return resolveSubnetRefs(a.MqlRuntime, a.Region.Data, conn.AccountId(), a.cacheSubnetIds), nil
+}
+
+func (a *mqlAwsBedrockBatchInferenceJob) securityGroups() ([]any, error) {
+	sgs, err := awsSecurityGroupRefs(a.MqlRuntime, a.Region.Data, a.cacheSecurityGroupIds)
+	if err != nil {
+		return nil, err
+	}
+	if sgs == nil {
+		return []any{}, nil
+	}
+	return sgs, nil
+}
+
+func (a *mqlAwsBedrockBatchInferenceJob) kmsKey() (*mqlAwsKmsKey, error) {
+	keyId := a.cacheLocations.outputKmsKeyId
+	if keyId == "" {
+		a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	// The key may be given as a key ID, alias, or ARN; the region resolves the
+	// first two.
+	res, err := NewResource(a.MqlRuntime, "aws.kms.key", map[string]*llx.RawData{
+		"arn":    llx.StringData(keyId),
+		"region": llx.StringData(a.Region.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsKmsKey), nil
+}
+
+func (a *mqlAwsBedrockBatchInferenceJob) inputDataBucket() (*mqlAwsS3Bucket, error) {
+	return s3BucketRefFromUri(a.MqlRuntime, a.cacheLocations.inputS3Uri, &a.InputDataBucket)
+}
+
+func (a *mqlAwsBedrockBatchInferenceJob) outputDataBucket() (*mqlAwsS3Bucket, error) {
+	return s3BucketRefFromUri(a.MqlRuntime, a.cacheLocations.outputS3Uri, &a.OutputDataBucket)
 }
 
 func (a *mqlAwsBedrockGuardrail) tags() (map[string]any, error) {
