@@ -904,6 +904,12 @@ claude.organization.costEntry @defaults("startingAt costType") {
   //
   // Empty for costs that are not token costs.
   model string
+  // Line-item description
+  //
+  // The label the cost report gives this row, for example "Claude Opus 5.5
+  // Usage - Input Tokens". It tells apart rows that share a model and cost
+  // type, such as input and output tokens of the same model.
+  description string
   // Workspace the cost is attributed to
   //
   // Null for buckets that are not scoped to a single workspace.

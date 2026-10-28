@@ -1007,6 +1007,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.organization.costEntry.model": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationCostEntry).GetModel()).ToDataRes(types.String)
 	},
+	"claude.organization.costEntry.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationCostEntry).GetDescription()).ToDataRes(types.String)
+	},
 	"claude.organization.costEntry.workspace": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationCostEntry).GetWorkspace()).ToDataRes(types.Resource("claude.organization.workspace"))
 	},
@@ -2509,6 +2512,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"claude.organization.costEntry.model": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeOrganizationCostEntry).Model, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.costEntry.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationCostEntry).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"claude.organization.costEntry.workspace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5867,13 +5874,14 @@ type mqlClaudeOrganizationCostEntry struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlClaudeOrganizationCostEntryInternal
-	StartingAt plugin.TValue[*time.Time]
-	EndingAt   plugin.TValue[*time.Time]
-	Amount     plugin.TValue[string]
-	Currency   plugin.TValue[string]
-	CostType   plugin.TValue[string]
-	Model      plugin.TValue[string]
-	Workspace  plugin.TValue[*mqlClaudeOrganizationWorkspace]
+	StartingAt  plugin.TValue[*time.Time]
+	EndingAt    plugin.TValue[*time.Time]
+	Amount      plugin.TValue[string]
+	Currency    plugin.TValue[string]
+	CostType    plugin.TValue[string]
+	Model       plugin.TValue[string]
+	Description plugin.TValue[string]
+	Workspace   plugin.TValue[*mqlClaudeOrganizationWorkspace]
 }
 
 // createClaudeOrganizationCostEntry creates a new instance of this resource
@@ -5930,6 +5938,10 @@ func (c *mqlClaudeOrganizationCostEntry) GetCostType() *plugin.TValue[string] {
 
 func (c *mqlClaudeOrganizationCostEntry) GetModel() *plugin.TValue[string] {
 	return &c.Model
+}
+
+func (c *mqlClaudeOrganizationCostEntry) GetDescription() *plugin.TValue[string] {
+	return &c.Description
 }
 
 func (c *mqlClaudeOrganizationCostEntry) GetWorkspace() *plugin.TValue[*mqlClaudeOrganizationWorkspace] {

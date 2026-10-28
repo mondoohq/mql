@@ -520,13 +520,14 @@ func (r *mqlClaudeOrganization) costReport() ([]any, error) {
 
 		for _, result := range b.Results {
 			mqlEntry, err := CreateResource(r.MqlRuntime, "claude.organization.costEntry", map[string]*llx.RawData{
-				"__id":       llx.StringData(costEntryID(b.StartingAt, result)),
-				"startingAt": llx.TimeData(startingAt),
-				"endingAt":   llx.TimeData(endingAt),
-				"amount":     llx.StringData(result.Amount),
-				"currency":   llx.StringData(result.Currency),
-				"costType":   llx.StringData(result.CostType),
-				"model":      llx.StringData(result.Model),
+				"__id":        llx.StringData(costEntryID(b.StartingAt, result)),
+				"startingAt":  llx.TimeData(startingAt),
+				"endingAt":    llx.TimeData(endingAt),
+				"amount":      llx.StringData(result.Amount),
+				"currency":    llx.StringData(result.Currency),
+				"costType":    llx.StringData(result.CostType),
+				"model":       llx.StringData(result.Model),
+				"description": llx.StringData(result.Description),
 			})
 			if err != nil {
 				return nil, err
