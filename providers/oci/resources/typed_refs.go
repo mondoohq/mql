@@ -872,3 +872,24 @@ type mqlOciMonitoringAlarmInternal struct {
 	ociCompartmentRef
 	cacheDestinations []any
 }
+
+// resolveOciNetworkSecurityGroups resolves NSG OCIDs to typed network security
+// groups. An NSG that cannot be resolved is skipped rather than failing the
+// whole list and losing the ones that did resolve.
+func resolveOciNetworkSecurityGroups(runtime *plugin.Runtime, ids []string) []any {
+	res := make([]any, 0, len(ids))
+	for _, nsgID := range ids {
+		if nsgID == "" {
+			continue
+		}
+		nsg, err := NewResource(runtime, "oci.network.networkSecurityGroup", map[string]*llx.RawData{
+			"id": llx.StringData(nsgID),
+		})
+		if err != nil {
+			log.Debug().Err(err).Str("nsg", nsgID).Msg("skipping unresolvable oci network security group")
+			continue
+		}
+		res = append(res, nsg)
+	}
+	return res
+}

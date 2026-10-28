@@ -281,3 +281,36 @@ func convertLogConfiguration(cfg *logging.Configuration) (map[string]any, error)
 
 	return result, nil
 }
+
+// ociLogRef names a log by the log group that holds it and its own OCID, the
+// way services that write to OCI Logging record their log destination.
+type ociLogRef struct {
+	logGroupID string
+	logID      string
+}
+
+// resolveOciLoggingLog resolves a log reference to the typed log through the
+// cached log group listing and that group's cached logs. Returns (nil, nil)
+// and marks the field null when the reference is empty.
+func resolveOciLoggingLog(runtime *plugin.Runtime, ref ociLogRef, field *plugin.TValue[*mqlOciLoggingLog]) (*mqlOciLoggingLog, error) {
+	if ref.logID == "" || ref.logGroupID == "" {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	group, err := NewResource(runtime, "oci.logging.logGroup", map[string]*llx.RawData{
+		"id": llx.StringData(ref.logGroupID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	logs := group.(*mqlOciLoggingLogGroup).GetLogs()
+	if logs.Error != nil {
+		return nil, logs.Error
+	}
+	for _, raw := range logs.Data {
+		if l, ok := raw.(*mqlOciLoggingLog); ok && l.Id.Data == ref.logID {
+			return l, nil
+		}
+	}
+	return nil, errors.New("oci.logging.log not found: " + ref.logID)
+}

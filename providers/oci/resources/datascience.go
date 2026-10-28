@@ -150,14 +150,16 @@ func (o *mqlOciAiDataScience) fetchNotebookSessions(svc *datascience.DataScience
 		mqlSessionTyped := mqlSession.(*mqlOciAiDataScienceNotebookSession)
 		mqlSessionTyped.cacheProjectID = stringValue(ns.ProjectId)
 		mqlSessionTyped.cacheSubnetID = subnetID
+		mqlSessionTyped.cachePrivateEndpointID = privateEndpointID
 		res = append(res, mqlSessionTyped)
 	}
 	return res, nil
 }
 
 type mqlOciAiDataScienceNotebookSessionInternal struct {
-	cacheProjectID string
-	cacheSubnetID  string
+	cacheProjectID         string
+	cacheSubnetID          string
+	cachePrivateEndpointID string
 }
 
 func initOciAiDataScienceNotebookSession(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -188,6 +190,10 @@ func (o *mqlOciAiDataScienceNotebookSession) subnet() (*mqlOciNetworkSubnet, err
 		return nil, err
 	}
 	return r.(*mqlOciNetworkSubnet), nil
+}
+
+func (o *mqlOciAiDataScienceNotebookSession) privateEndpoint() (*mqlOciAiDataSciencePrivateEndpoint, error) {
+	return resolveRef(o.MqlRuntime, "oci.ai.dataScience.privateEndpoint", o.cachePrivateEndpointID, &o.PrivateEndpoint)
 }
 
 // ----- models -----
@@ -382,6 +388,8 @@ func (o *mqlOciAiDataScience) fetchModelDeployments(svc *datascience.DataScience
 			return nil, err
 		}
 
+		network := ociModelDeploymentNetwork(md.ModelDeploymentConfigurationDetails)
+
 		mqlDeployment, err := CreateResource(o.MqlRuntime, "oci.ai.dataScience.modelDeployment", map[string]*llx.RawData{
 			"id":                   llx.StringDataPtr(md.Id),
 			"name":                 llx.StringDataPtr(md.DisplayName),
@@ -392,6 +400,7 @@ func (o *mqlOciAiDataScience) fetchModelDeployments(svc *datascience.DataScience
 			"modelDeploymentUrl":   llx.StringDataPtr(md.ModelDeploymentUrl),
 			"configuration":        llx.DictData(configuration),
 			"loggingConfiguration": llx.DictData(logging),
+			"networkAccessType":    llx.StringData(network.networkAccessType),
 			"state":                llx.StringData(string(md.LifecycleState)),
 			"created":              sdkTimeData(md.TimeCreated),
 			"freeformTags":         llx.MapData(strMapToAny(md.FreeformTags), types.String),
@@ -402,13 +411,18 @@ func (o *mqlOciAiDataScience) fetchModelDeployments(svc *datascience.DataScience
 		}
 		mqlDeploymentTyped := mqlDeployment.(*mqlOciAiDataScienceModelDeployment)
 		mqlDeploymentTyped.cacheProjectID = stringValue(md.ProjectId)
+		mqlDeploymentTyped.cacheNetwork = network
+		mqlDeploymentTyped.cacheAccessLog, mqlDeploymentTyped.cachePredictLog = ociModelDeploymentLogs(md.CategoryLogDetails)
 		res = append(res, mqlDeploymentTyped)
 	}
 	return res, nil
 }
 
 type mqlOciAiDataScienceModelDeploymentInternal struct {
-	cacheProjectID string
+	cacheProjectID  string
+	cacheNetwork    ociModelDeploymentNetworkConfig
+	cacheAccessLog  ociLogRef
+	cachePredictLog ociLogRef
 }
 
 func initOciAiDataScienceModelDeployment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -425,6 +439,182 @@ func (o *mqlOciAiDataScienceModelDeployment) compartment() (*mqlOciCompartment, 
 
 func (o *mqlOciAiDataScienceModelDeployment) project() (*mqlOciAiDataScienceProject, error) {
 	return resolveOciDataScienceProject(o.MqlRuntime, o.cacheProjectID, &o.Project)
+}
+
+func (o *mqlOciAiDataScienceModelDeployment) subnet() (*mqlOciNetworkSubnet, error) {
+	return resolveOciSubnet(o.MqlRuntime, o.cacheNetwork.subnetID, &o.Subnet)
+}
+
+func (o *mqlOciAiDataScienceModelDeployment) privateEndpoint() (*mqlOciAiDataSciencePrivateEndpoint, error) {
+	return resolveRef(o.MqlRuntime, "oci.ai.dataScience.privateEndpoint", o.cacheNetwork.privateEndpointID, &o.PrivateEndpoint)
+}
+
+func (o *mqlOciAiDataScienceModelDeployment) model() (*mqlOciAiDataScienceModel, error) {
+	return resolveRef(o.MqlRuntime, "oci.ai.dataScience.model", o.cacheNetwork.modelID, &o.Model)
+}
+
+func (o *mqlOciAiDataScienceModelDeployment) accessLog() (*mqlOciLoggingLog, error) {
+	return resolveOciLoggingLog(o.MqlRuntime, o.cacheAccessLog, &o.AccessLog)
+}
+
+func (o *mqlOciAiDataScienceModelDeployment) predictLog() (*mqlOciLoggingLog, error) {
+	return resolveOciLoggingLog(o.MqlRuntime, o.cachePredictLog, &o.PredictLog)
+}
+
+// ociModelDeploymentNetworkConfig is what a model deployment's configuration
+// says about the model it serves and the network its instances sit in.
+type ociModelDeploymentNetworkConfig struct {
+	modelID           string
+	subnetID          string
+	privateEndpointID string
+	networkAccessType string
+}
+
+// ociModelDeploymentNetwork extracts the served model and the instance network
+// settings from the polymorphic deployment configuration. A single-model
+// deployment carries both under its model configuration; a model-group
+// deployment serves a model group (not a catalog model) and carries the
+// network settings on its instance-pool infrastructure; a flex deployment on
+// a managed compute cluster names its model but reports no instance network.
+func ociModelDeploymentNetwork(cfg datascience.ModelDeploymentConfigurationDetails) ociModelDeploymentNetworkConfig {
+	var res ociModelDeploymentNetworkConfig
+	var ic *datascience.InstanceConfiguration
+
+	switch c := cfg.(type) {
+	case datascience.SingleModelDeploymentConfigurationDetails:
+		if mc := c.ModelConfigurationDetails; mc != nil {
+			res.modelID = stringValue(mc.ModelId)
+			ic = mc.InstanceConfiguration
+		}
+	case *datascience.SingleModelDeploymentConfigurationDetails:
+		if c != nil && c.ModelConfigurationDetails != nil {
+			res.modelID = stringValue(c.ModelConfigurationDetails.ModelId)
+			ic = c.ModelConfigurationDetails.InstanceConfiguration
+		}
+	case datascience.ModelGroupDeploymentConfigurationDetails:
+		ic = ociInstancePoolInstanceConfiguration(c.InfrastructureConfigurationDetails)
+	case *datascience.ModelGroupDeploymentConfigurationDetails:
+		if c != nil {
+			ic = ociInstancePoolInstanceConfiguration(c.InfrastructureConfigurationDetails)
+		}
+	case datascience.SingleModelDeploymentFlexConfigurationDetails:
+		if c.ModelConfigurationDetails != nil {
+			res.modelID = stringValue(c.ModelConfigurationDetails.ModelId)
+		}
+	case *datascience.SingleModelDeploymentFlexConfigurationDetails:
+		if c != nil && c.ModelConfigurationDetails != nil {
+			res.modelID = stringValue(c.ModelConfigurationDetails.ModelId)
+		}
+	}
+
+	if ic != nil {
+		res.subnetID = stringValue(ic.SubnetId)
+		res.privateEndpointID = stringValue(ic.PrivateEndpointId)
+		res.networkAccessType = string(ic.NetworkAccessType)
+	}
+	return res
+}
+
+func ociInstancePoolInstanceConfiguration(infra datascience.InfrastructureConfigurationDetails) *datascience.InstanceConfiguration {
+	switch c := infra.(type) {
+	case datascience.InstancePoolInfrastructureConfigurationDetails:
+		return c.InstanceConfiguration
+	case *datascience.InstancePoolInfrastructureConfigurationDetails:
+		if c != nil {
+			return c.InstanceConfiguration
+		}
+	}
+	return nil
+}
+
+// ociModelDeploymentLogs returns the access and predict log references of a
+// model deployment. Either is empty when that category is not logged.
+func ociModelDeploymentLogs(details *datascience.CategoryLogDetails) (access ociLogRef, predict ociLogRef) {
+	if details == nil {
+		return access, predict
+	}
+	if l := details.Access; l != nil {
+		access = ociLogRef{logGroupID: stringValue(l.LogGroupId), logID: stringValue(l.LogId)}
+	}
+	if l := details.Predict; l != nil {
+		predict = ociLogRef{logGroupID: stringValue(l.LogGroupId), logID: stringValue(l.LogId)}
+	}
+	return access, predict
+}
+
+// ----- private endpoints -----
+
+func (o *mqlOciAiDataScience) privateEndpoints() ([]any, error) {
+	return o.listRegional(o.fetchPrivateEndpoints)
+}
+
+func (o *mqlOciAiDataScience) fetchPrivateEndpoints(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
+	ctx := context.Background()
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.DataSciencePrivateEndpointSummary, *string, error) {
+		resp, err := svc.ListDataSciencePrivateEndpoints(ctx, datascience.ListDataSciencePrivateEndpointsRequest{
+			CompartmentId: new(compartmentID),
+			Page:          page,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(items))
+	for i := range items {
+		pe := items[i]
+		mqlPe, err := CreateResource(o.MqlRuntime, "oci.ai.dataScience.privateEndpoint", map[string]*llx.RawData{
+			"id":                      llx.StringDataPtr(pe.Id),
+			"name":                    llx.StringDataPtr(pe.DisplayName),
+			"compartmentID":           llx.StringDataPtr(pe.CompartmentId),
+			"createdBy":               llx.StringDataPtr(pe.CreatedBy),
+			"fqdn":                    llx.StringDataPtr(pe.Fqdn),
+			"dataScienceResourceType": llx.StringData(string(pe.DataScienceResourceType)),
+			"state":                   llx.StringData(string(pe.LifecycleState)),
+			"lifecycleDetails":        llx.StringDataPtr(pe.LifecycleDetails),
+			"created":                 sdkTimeData(pe.TimeCreated),
+			"timeUpdated":             sdkTimeData(pe.TimeUpdated),
+			"freeformTags":            llx.MapData(strMapToAny(pe.FreeformTags), types.String),
+			"definedTags":             llx.MapData(definedTagsToAny(pe.DefinedTags), types.Any),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlPeTyped := mqlPe.(*mqlOciAiDataSciencePrivateEndpoint)
+		mqlPeTyped.cacheSubnetID = stringValue(pe.SubnetId)
+		mqlPeTyped.cacheNsgIDs = pe.NsgIds
+		res = append(res, mqlPeTyped)
+	}
+	return res, nil
+}
+
+type mqlOciAiDataSciencePrivateEndpointInternal struct {
+	cacheSubnetID string
+	cacheNsgIDs   []string
+}
+
+func initOciAiDataSciencePrivateEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return findOciDataScienceByID(runtime, args, "oci.ai.dataScience.privateEndpoint", (*mqlOciAiDataScience).GetPrivateEndpoints)
+}
+
+func (o *mqlOciAiDataSciencePrivateEndpoint) id() (string, error) {
+	return "oci.ai.dataScience.privateEndpoint/" + o.Id.Data, nil
+}
+
+func (o *mqlOciAiDataSciencePrivateEndpoint) compartment() (*mqlOciCompartment, error) {
+	return resolveOciCompartment(o.MqlRuntime, o.CompartmentID.Data, &o.Compartment)
+}
+
+func (o *mqlOciAiDataSciencePrivateEndpoint) subnet() (*mqlOciNetworkSubnet, error) {
+	return resolveOciSubnet(o.MqlRuntime, o.cacheSubnetID, &o.Subnet)
+}
+
+func (o *mqlOciAiDataSciencePrivateEndpoint) networkSecurityGroups() ([]any, error) {
+	return resolveOciNetworkSecurityGroups(o.MqlRuntime, o.cacheNsgIDs), nil
 }
 
 // ----- jobs -----

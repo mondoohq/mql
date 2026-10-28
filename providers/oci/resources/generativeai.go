@@ -256,6 +256,7 @@ func (o *mqlOciAiGenerativeAi) fetchEndpoints(svc *generativeai.GenerativeAiClie
 		mqlEndpointTyped := mqlEndpoint.(*mqlOciAiGenerativeAiEndpoint)
 		mqlEndpointTyped.cacheModelID = stringValue(e.ModelId)
 		mqlEndpointTyped.cacheDedicatedAiClusterID = stringValue(e.DedicatedAiClusterId)
+		mqlEndpointTyped.cachePrivateEndpointID = stringValue(e.GenerativeAiPrivateEndpointId)
 		mqlEndpointTyped.cacheRegion = region
 		res = append(res, mqlEndpointTyped)
 	}
@@ -265,6 +266,7 @@ func (o *mqlOciAiGenerativeAi) fetchEndpoints(svc *generativeai.GenerativeAiClie
 type mqlOciAiGenerativeAiEndpointInternal struct {
 	cacheModelID              string
 	cacheDedicatedAiClusterID string
+	cachePrivateEndpointID    string
 	cacheRegion               string
 }
 
@@ -313,6 +315,104 @@ func (o *mqlOciAiGenerativeAiEndpoint) dedicatedAiCluster() (*mqlOciAiGenerative
 		return nil, err
 	}
 	return r.(*mqlOciAiGenerativeAiDedicatedAiCluster), nil
+}
+
+func (o *mqlOciAiGenerativeAiEndpoint) privateEndpoint() (*mqlOciAiGenerativeAiPrivateEndpoint, error) {
+	return resolveRef(o.MqlRuntime, "oci.ai.generativeAi.privateEndpoint", o.cachePrivateEndpointID, &o.PrivateEndpoint)
+}
+
+// ----- private endpoints -----
+
+func (o *mqlOciAiGenerativeAi) privateEndpoints() ([]any, error) {
+	return o.listRegional(o.fetchPrivateEndpoints)
+}
+
+func (o *mqlOciAiGenerativeAi) fetchPrivateEndpoints(svc *generativeai.GenerativeAiClient, region string, compartmentID string) ([]any, error) {
+	ctx := context.Background()
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeai.GenerativeAiPrivateEndpointSummary, *string, error) {
+		resp, err := svc.ListGenerativeAiPrivateEndpoints(ctx, generativeai.ListGenerativeAiPrivateEndpointsRequest{
+			CompartmentId: new(compartmentID),
+			Page:          page,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(items))
+	for i := range items {
+		pe := items[i]
+		mqlPe, err := CreateResource(o.MqlRuntime, "oci.ai.generativeAi.privateEndpoint", map[string]*llx.RawData{
+			"id":               llx.StringDataPtr(pe.Id),
+			"name":             llx.StringDataPtr(pe.DisplayName),
+			"compartmentID":    llx.StringDataPtr(pe.CompartmentId),
+			"description":      llx.StringDataPtr(pe.Description),
+			"fqdn":             llx.StringDataPtr(pe.Fqdn),
+			"privateIp":        llx.StringDataPtr(pe.PrivateEndpointIp),
+			"isAllowOnDemand":  llx.BoolDataPtr(pe.IsAllowOnDemand),
+			"resourceType":     llx.StringData(string(pe.ResourceType)),
+			"state":            llx.StringData(string(pe.LifecycleState)),
+			"lifecycleDetails": llx.StringDataPtr(pe.LifecycleDetails),
+			"created":          sdkTimeData(pe.TimeCreated),
+			"timeUpdated":      sdkTimeData(pe.TimeUpdated),
+			"freeformTags":     llx.MapData(strMapToAny(pe.FreeformTags), types.String),
+			"definedTags":      llx.MapData(definedTagsToAny(pe.DefinedTags), types.Any),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlPeTyped := mqlPe.(*mqlOciAiGenerativeAiPrivateEndpoint)
+		mqlPeTyped.cacheSubnetID = stringValue(pe.SubnetId)
+		mqlPeTyped.cacheRegion = region
+		res = append(res, mqlPeTyped)
+	}
+	return res, nil
+}
+
+type mqlOciAiGenerativeAiPrivateEndpointInternal struct {
+	cacheSubnetID string
+	cacheRegion   string
+}
+
+func initOciAiGenerativeAiPrivateEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return findOciGenerativeAiByID(runtime, args, "oci.ai.generativeAi.privateEndpoint", (*mqlOciAiGenerativeAi).GetPrivateEndpoints)
+}
+
+func (o *mqlOciAiGenerativeAiPrivateEndpoint) id() (string, error) {
+	return "oci.ai.generativeAi.privateEndpoint/" + o.Id.Data, nil
+}
+
+func (o *mqlOciAiGenerativeAiPrivateEndpoint) compartment() (*mqlOciCompartment, error) {
+	return resolveOciCompartment(o.MqlRuntime, o.CompartmentID.Data, &o.Compartment)
+}
+
+func (o *mqlOciAiGenerativeAiPrivateEndpoint) subnet() (*mqlOciNetworkSubnet, error) {
+	return resolveOciSubnet(o.MqlRuntime, o.cacheSubnetID, &o.Subnet)
+}
+
+// networkSecurityGroups reads the NSGs from the private endpoint's detail
+// record: the list API's summary does not carry them.
+func (o *mqlOciAiGenerativeAiPrivateEndpoint) networkSecurityGroups() ([]any, error) {
+	region := o.cacheRegion
+	if region == "" {
+		region = ociRegionFromOCID(o.Id.Data)
+	}
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+	svc, err := conn.GenerativeAiClient(region)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.GetGenerativeAiPrivateEndpoint(context.Background(), generativeai.GetGenerativeAiPrivateEndpointRequest{
+		GenerativeAiPrivateEndpointId: new(o.Id.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resolveOciNetworkSecurityGroups(o.MqlRuntime, resp.NsgIds), nil
 }
 
 // ----- helpers -----

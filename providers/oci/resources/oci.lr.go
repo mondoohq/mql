@@ -293,10 +293,12 @@ const (
 	ResourceOciAiDataScienceModelDeployment                                    string = "oci.ai.dataScience.modelDeployment"
 	ResourceOciAiDataScienceJob                                                string = "oci.ai.dataScience.job"
 	ResourceOciAiDataSciencePipeline                                           string = "oci.ai.dataScience.pipeline"
+	ResourceOciAiDataSciencePrivateEndpoint                                    string = "oci.ai.dataScience.privateEndpoint"
 	ResourceOciAiGenerativeAi                                                  string = "oci.ai.generativeAi"
 	ResourceOciAiGenerativeAiDedicatedAiCluster                                string = "oci.ai.generativeAi.dedicatedAiCluster"
 	ResourceOciAiGenerativeAiModel                                             string = "oci.ai.generativeAi.model"
 	ResourceOciAiGenerativeAiEndpoint                                          string = "oci.ai.generativeAi.endpoint"
+	ResourceOciAiGenerativeAiPrivateEndpoint                                   string = "oci.ai.generativeAi.privateEndpoint"
 	ResourceOciAiLanguage                                                      string = "oci.ai.language"
 	ResourceOciAiLanguageProject                                               string = "oci.ai.language.project"
 	ResourceOciAiLanguageModel                                                 string = "oci.ai.language.model"
@@ -1478,6 +1480,10 @@ func init() {
 			Init:   initOciAiDataSciencePipeline,
 			Create: createOciAiDataSciencePipeline,
 		},
+		"oci.ai.dataScience.privateEndpoint": {
+			Init:   initOciAiDataSciencePrivateEndpoint,
+			Create: createOciAiDataSciencePrivateEndpoint,
+		},
 		"oci.ai.generativeAi": {
 			// to override args, implement: initOciAiGenerativeAi(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createOciAiGenerativeAi,
@@ -1493,6 +1499,10 @@ func init() {
 		"oci.ai.generativeAi.endpoint": {
 			Init:   initOciAiGenerativeAiEndpoint,
 			Create: createOciAiGenerativeAiEndpoint,
+		},
+		"oci.ai.generativeAi.privateEndpoint": {
+			Init:   initOciAiGenerativeAiPrivateEndpoint,
+			Create: createOciAiGenerativeAiPrivateEndpoint,
 		},
 		"oci.ai.language": {
 			// to override args, implement: initOciAiLanguage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -11139,6 +11149,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.ai.agents.agent.llmConfig": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiAgentsAgent).GetLlmConfig()).ToDataRes(types.Dict)
 	},
+	"oci.ai.agents.agent.knowledgeBases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiAgentsAgent).GetKnowledgeBases()).ToDataRes(types.Array(types.Resource("oci.ai.agents.knowledgeBase")))
+	},
 	"oci.ai.agents.agent.state": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiAgentsAgent).GetState()).ToDataRes(types.String)
 	},
@@ -11201,6 +11214,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.ai.agents.endpoint.multiLanguageEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiAgentsEndpoint).GetMultiLanguageEnabled()).ToDataRes(types.Bool)
+	},
+	"oci.ai.agents.endpoint.humanInputEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiAgentsEndpoint).GetHumanInputEnabled()).ToDataRes(types.Bool)
+	},
+	"oci.ai.agents.endpoint.outputBucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiAgentsEndpoint).GetOutputBucket()).ToDataRes(types.Resource("oci.objectStorage.bucket"))
+	},
+	"oci.ai.agents.endpoint.outputPrefix": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiAgentsEndpoint).GetOutputPrefix()).ToDataRes(types.String)
+	},
+	"oci.ai.agents.endpoint.outputRetentionInMinutes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiAgentsEndpoint).GetOutputRetentionInMinutes()).ToDataRes(types.Int)
 	},
 	"oci.ai.agents.endpoint.metadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiAgentsEndpoint).GetMetadata()).ToDataRes(types.Map(types.String, types.String))
@@ -11322,6 +11347,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.ai.agents.tool.toolConfig": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiAgentsTool).GetToolConfig()).ToDataRes(types.Dict)
 	},
+	"oci.ai.agents.tool.subnet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiAgentsTool).GetSubnet()).ToDataRes(types.Resource("oci.network.subnet"))
+	},
+	"oci.ai.agents.tool.knowledgeBases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiAgentsTool).GetKnowledgeBases()).ToDataRes(types.Array(types.Resource("oci.ai.agents.knowledgeBase")))
+	},
 	"oci.ai.agents.tool.metadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiAgentsTool).GetMetadata()).ToDataRes(types.Map(types.String, types.String))
 	},
@@ -11360,6 +11391,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.ai.dataScience.pipelines": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiDataScience).GetPipelines()).ToDataRes(types.Array(types.Resource("oci.ai.dataScience.pipeline")))
+	},
+	"oci.ai.dataScience.privateEndpoints": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataScience).GetPrivateEndpoints()).ToDataRes(types.Array(types.Resource("oci.ai.dataScience.privateEndpoint")))
 	},
 	"oci.ai.dataScience.project.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiDataScienceProject).GetId()).ToDataRes(types.String)
@@ -11426,6 +11460,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.ai.dataScience.notebookSession.privateEndpointID": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiDataScienceNotebookSession).GetPrivateEndpointID()).ToDataRes(types.String)
+	},
+	"oci.ai.dataScience.notebookSession.privateEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataScienceNotebookSession).GetPrivateEndpoint()).ToDataRes(types.Resource("oci.ai.dataScience.privateEndpoint"))
 	},
 	"oci.ai.dataScience.notebookSession.notebookSessionUrl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiDataScienceNotebookSession).GetNotebookSessionUrl()).ToDataRes(types.String)
@@ -11571,6 +11608,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.ai.dataScience.modelDeployment.loggingConfiguration": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiDataScienceModelDeployment).GetLoggingConfiguration()).ToDataRes(types.Dict)
 	},
+	"oci.ai.dataScience.modelDeployment.networkAccessType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataScienceModelDeployment).GetNetworkAccessType()).ToDataRes(types.String)
+	},
+	"oci.ai.dataScience.modelDeployment.subnet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataScienceModelDeployment).GetSubnet()).ToDataRes(types.Resource("oci.network.subnet"))
+	},
+	"oci.ai.dataScience.modelDeployment.privateEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataScienceModelDeployment).GetPrivateEndpoint()).ToDataRes(types.Resource("oci.ai.dataScience.privateEndpoint"))
+	},
+	"oci.ai.dataScience.modelDeployment.model": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataScienceModelDeployment).GetModel()).ToDataRes(types.Resource("oci.ai.dataScience.model"))
+	},
+	"oci.ai.dataScience.modelDeployment.accessLog": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataScienceModelDeployment).GetAccessLog()).ToDataRes(types.Resource("oci.logging.log"))
+	},
+	"oci.ai.dataScience.modelDeployment.predictLog": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataScienceModelDeployment).GetPredictLog()).ToDataRes(types.Resource("oci.logging.log"))
+	},
 	"oci.ai.dataScience.modelDeployment.state": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiDataScienceModelDeployment).GetState()).ToDataRes(types.String)
 	},
@@ -11652,6 +11707,51 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.ai.dataScience.pipeline.definedTags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiDataSciencePipeline).GetDefinedTags()).ToDataRes(types.Map(types.String, types.Map(types.String, types.String)))
 	},
+	"oci.ai.dataScience.privateEndpoint.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetId()).ToDataRes(types.String)
+	},
+	"oci.ai.dataScience.privateEndpoint.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetName()).ToDataRes(types.String)
+	},
+	"oci.ai.dataScience.privateEndpoint.compartmentID": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetCompartmentID()).ToDataRes(types.String)
+	},
+	"oci.ai.dataScience.privateEndpoint.compartment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetCompartment()).ToDataRes(types.Resource("oci.compartment"))
+	},
+	"oci.ai.dataScience.privateEndpoint.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetCreatedBy()).ToDataRes(types.String)
+	},
+	"oci.ai.dataScience.privateEndpoint.subnet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetSubnet()).ToDataRes(types.Resource("oci.network.subnet"))
+	},
+	"oci.ai.dataScience.privateEndpoint.networkSecurityGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetNetworkSecurityGroups()).ToDataRes(types.Array(types.Resource("oci.network.networkSecurityGroup")))
+	},
+	"oci.ai.dataScience.privateEndpoint.fqdn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetFqdn()).ToDataRes(types.String)
+	},
+	"oci.ai.dataScience.privateEndpoint.dataScienceResourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetDataScienceResourceType()).ToDataRes(types.String)
+	},
+	"oci.ai.dataScience.privateEndpoint.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetState()).ToDataRes(types.String)
+	},
+	"oci.ai.dataScience.privateEndpoint.lifecycleDetails": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetLifecycleDetails()).ToDataRes(types.String)
+	},
+	"oci.ai.dataScience.privateEndpoint.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetCreated()).ToDataRes(types.Time)
+	},
+	"oci.ai.dataScience.privateEndpoint.timeUpdated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetTimeUpdated()).ToDataRes(types.Time)
+	},
+	"oci.ai.dataScience.privateEndpoint.freeformTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetFreeformTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"oci.ai.dataScience.privateEndpoint.definedTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiDataSciencePrivateEndpoint).GetDefinedTags()).ToDataRes(types.Map(types.String, types.Map(types.String, types.String)))
+	},
 	"oci.ai.generativeAi.dedicatedAiClusters": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiGenerativeAi).GetDedicatedAiClusters()).ToDataRes(types.Array(types.Resource("oci.ai.generativeAi.dedicatedAiCluster")))
 	},
@@ -11660,6 +11760,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.ai.generativeAi.endpoints": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiGenerativeAi).GetEndpoints()).ToDataRes(types.Array(types.Resource("oci.ai.generativeAi.endpoint")))
+	},
+	"oci.ai.generativeAi.privateEndpoints": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAi).GetPrivateEndpoints()).ToDataRes(types.Array(types.Resource("oci.ai.generativeAi.privateEndpoint")))
 	},
 	"oci.ai.generativeAi.dedicatedAiCluster.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiGenerativeAiDedicatedAiCluster).GetId()).ToDataRes(types.String)
@@ -11790,6 +11893,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.ai.generativeAi.endpoint.generativeAiPrivateEndpointID": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiGenerativeAiEndpoint).GetGenerativeAiPrivateEndpointID()).ToDataRes(types.String)
 	},
+	"oci.ai.generativeAi.endpoint.privateEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiEndpoint).GetPrivateEndpoint()).ToDataRes(types.Resource("oci.ai.generativeAi.privateEndpoint"))
+	},
 	"oci.ai.generativeAi.endpoint.description": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiGenerativeAiEndpoint).GetDescription()).ToDataRes(types.String)
 	},
@@ -11828,6 +11934,57 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"oci.ai.generativeAi.endpoint.definedTags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiGenerativeAiEndpoint).GetDefinedTags()).ToDataRes(types.Map(types.String, types.Map(types.String, types.String)))
+	},
+	"oci.ai.generativeAi.privateEndpoint.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetId()).ToDataRes(types.String)
+	},
+	"oci.ai.generativeAi.privateEndpoint.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetName()).ToDataRes(types.String)
+	},
+	"oci.ai.generativeAi.privateEndpoint.compartmentID": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetCompartmentID()).ToDataRes(types.String)
+	},
+	"oci.ai.generativeAi.privateEndpoint.compartment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetCompartment()).ToDataRes(types.Resource("oci.compartment"))
+	},
+	"oci.ai.generativeAi.privateEndpoint.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetDescription()).ToDataRes(types.String)
+	},
+	"oci.ai.generativeAi.privateEndpoint.subnet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetSubnet()).ToDataRes(types.Resource("oci.network.subnet"))
+	},
+	"oci.ai.generativeAi.privateEndpoint.networkSecurityGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetNetworkSecurityGroups()).ToDataRes(types.Array(types.Resource("oci.network.networkSecurityGroup")))
+	},
+	"oci.ai.generativeAi.privateEndpoint.fqdn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetFqdn()).ToDataRes(types.String)
+	},
+	"oci.ai.generativeAi.privateEndpoint.privateIp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetPrivateIp()).ToDataRes(types.String)
+	},
+	"oci.ai.generativeAi.privateEndpoint.isAllowOnDemand": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetIsAllowOnDemand()).ToDataRes(types.Bool)
+	},
+	"oci.ai.generativeAi.privateEndpoint.resourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetResourceType()).ToDataRes(types.String)
+	},
+	"oci.ai.generativeAi.privateEndpoint.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetState()).ToDataRes(types.String)
+	},
+	"oci.ai.generativeAi.privateEndpoint.lifecycleDetails": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetLifecycleDetails()).ToDataRes(types.String)
+	},
+	"oci.ai.generativeAi.privateEndpoint.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetCreated()).ToDataRes(types.Time)
+	},
+	"oci.ai.generativeAi.privateEndpoint.timeUpdated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetTimeUpdated()).ToDataRes(types.Time)
+	},
+	"oci.ai.generativeAi.privateEndpoint.freeformTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetFreeformTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"oci.ai.generativeAi.privateEndpoint.definedTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciAiGenerativeAiPrivateEndpoint).GetDefinedTags()).ToDataRes(types.Map(types.String, types.Map(types.String, types.String)))
 	},
 	"oci.ai.language.projects": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciAiLanguage).GetProjects()).ToDataRes(types.Array(types.Resource("oci.ai.language.project")))
@@ -27490,6 +27647,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciAiAgentsAgent).LlmConfig, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"oci.ai.agents.agent.knowledgeBases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiAgentsAgent).KnowledgeBases, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"oci.ai.agents.agent.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciAiAgentsAgent).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -27576,6 +27737,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.ai.agents.endpoint.multiLanguageEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciAiAgentsEndpoint).MultiLanguageEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.ai.agents.endpoint.humanInputEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiAgentsEndpoint).HumanInputEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.ai.agents.endpoint.outputBucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiAgentsEndpoint).OutputBucket, ok = plugin.RawToTValue[*mqlOciObjectStorageBucket](v.Value, v.Error)
+		return
+	},
+	"oci.ai.agents.endpoint.outputPrefix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiAgentsEndpoint).OutputPrefix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.agents.endpoint.outputRetentionInMinutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiAgentsEndpoint).OutputRetentionInMinutes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"oci.ai.agents.endpoint.metadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -27750,6 +27927,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciAiAgentsTool).ToolConfig, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"oci.ai.agents.tool.subnet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiAgentsTool).Subnet, ok = plugin.RawToTValue[*mqlOciNetworkSubnet](v.Value, v.Error)
+		return
+	},
+	"oci.ai.agents.tool.knowledgeBases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiAgentsTool).KnowledgeBases, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"oci.ai.agents.tool.metadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciAiAgentsTool).Metadata, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
@@ -27804,6 +27989,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.ai.dataScience.pipelines": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciAiDataScience).Pipelines, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoints": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataScience).PrivateEndpoints, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"oci.ai.dataScience.project.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -27900,6 +28089,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.ai.dataScience.notebookSession.privateEndpointID": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciAiDataScienceNotebookSession).PrivateEndpointID, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.notebookSession.privateEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataScienceNotebookSession).PrivateEndpoint, ok = plugin.RawToTValue[*mqlOciAiDataSciencePrivateEndpoint](v.Value, v.Error)
 		return
 	},
 	"oci.ai.dataScience.notebookSession.notebookSessionUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -28106,6 +28299,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciAiDataScienceModelDeployment).LoggingConfiguration, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"oci.ai.dataScience.modelDeployment.networkAccessType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataScienceModelDeployment).NetworkAccessType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.modelDeployment.subnet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataScienceModelDeployment).Subnet, ok = plugin.RawToTValue[*mqlOciNetworkSubnet](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.modelDeployment.privateEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataScienceModelDeployment).PrivateEndpoint, ok = plugin.RawToTValue[*mqlOciAiDataSciencePrivateEndpoint](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.modelDeployment.model": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataScienceModelDeployment).Model, ok = plugin.RawToTValue[*mqlOciAiDataScienceModel](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.modelDeployment.accessLog": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataScienceModelDeployment).AccessLog, ok = plugin.RawToTValue[*mqlOciLoggingLog](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.modelDeployment.predictLog": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataScienceModelDeployment).PredictLog, ok = plugin.RawToTValue[*mqlOciLoggingLog](v.Value, v.Error)
+		return
+	},
 	"oci.ai.dataScience.modelDeployment.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciAiDataScienceModelDeployment).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -28222,6 +28439,70 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciAiDataSciencePipeline).DefinedTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"oci.ai.dataScience.privateEndpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).__id, ok = v.Value.(string)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.compartmentID": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).CompartmentID, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.compartment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).Compartment, ok = plugin.RawToTValue[*mqlOciCompartment](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).CreatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.subnet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).Subnet, ok = plugin.RawToTValue[*mqlOciNetworkSubnet](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.networkSecurityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).NetworkSecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.fqdn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).Fqdn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.dataScienceResourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).DataScienceResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.lifecycleDetails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).LifecycleDetails, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.timeUpdated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).TimeUpdated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.freeformTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).FreeformTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.ai.dataScience.privateEndpoint.definedTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiDataSciencePrivateEndpoint).DefinedTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"oci.ai.generativeAi.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciAiGenerativeAi).__id, ok = v.Value.(string)
 		return
@@ -28236,6 +28517,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.ai.generativeAi.endpoints": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciAiGenerativeAi).Endpoints, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoints": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAi).PrivateEndpoints, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"oci.ai.generativeAi.dedicatedAiCluster.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -28422,6 +28707,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOciAiGenerativeAiEndpoint).GenerativeAiPrivateEndpointID, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"oci.ai.generativeAi.endpoint.privateEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiEndpoint).PrivateEndpoint, ok = plugin.RawToTValue[*mqlOciAiGenerativeAiPrivateEndpoint](v.Value, v.Error)
+		return
+	},
 	"oci.ai.generativeAi.endpoint.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciAiGenerativeAiEndpoint).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -28472,6 +28761,78 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.ai.generativeAi.endpoint.definedTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciAiGenerativeAiEndpoint).DefinedTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).__id, ok = v.Value.(string)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.compartmentID": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).CompartmentID, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.compartment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).Compartment, ok = plugin.RawToTValue[*mqlOciCompartment](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.subnet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).Subnet, ok = plugin.RawToTValue[*mqlOciNetworkSubnet](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.networkSecurityGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).NetworkSecurityGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.fqdn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).Fqdn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.privateIp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).PrivateIp, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.isAllowOnDemand": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).IsAllowOnDemand, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.resourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).ResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.lifecycleDetails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).LifecycleDetails, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.timeUpdated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).TimeUpdated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.freeformTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).FreeformTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"oci.ai.generativeAi.privateEndpoint.definedTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciAiGenerativeAiPrivateEndpoint).DefinedTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 	"oci.ai.language.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -66342,7 +66703,7 @@ func (c *mqlOciAiAgents) GetTools() *plugin.TValue[[]any] {
 type mqlOciAiAgentsAgent struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlOciAiAgentsAgentInternal it will be used here
+	mqlOciAiAgentsAgentInternal
 	Id               plugin.TValue[string]
 	Name             plugin.TValue[string]
 	CompartmentID    plugin.TValue[string]
@@ -66350,6 +66711,7 @@ type mqlOciAiAgentsAgent struct {
 	Description      plugin.TValue[string]
 	WelcomeMessage   plugin.TValue[string]
 	LlmConfig        plugin.TValue[any]
+	KnowledgeBases   plugin.TValue[[]any]
 	State            plugin.TValue[string]
 	LifecycleDetails plugin.TValue[string]
 	Created          plugin.TValue[*time.Time]
@@ -66435,6 +66797,22 @@ func (c *mqlOciAiAgentsAgent) GetLlmConfig() *plugin.TValue[any] {
 	return &c.LlmConfig
 }
 
+func (c *mqlOciAiAgentsAgent) GetKnowledgeBases() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.KnowledgeBases, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.agents.agent", c.__id, "knowledgeBases")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.knowledgeBases()
+	})
+}
+
 func (c *mqlOciAiAgentsAgent) GetState() *plugin.TValue[string] {
 	return &c.State
 }
@@ -66479,6 +66857,10 @@ type mqlOciAiAgentsEndpoint struct {
 	TraceEnabled                plugin.TValue[bool]
 	CitationEnabled             plugin.TValue[bool]
 	MultiLanguageEnabled        plugin.TValue[bool]
+	HumanInputEnabled           plugin.TValue[bool]
+	OutputBucket                plugin.TValue[*mqlOciObjectStorageBucket]
+	OutputPrefix                plugin.TValue[string]
+	OutputRetentionInMinutes    plugin.TValue[int64]
 	Metadata                    plugin.TValue[map[string]any]
 	State                       plugin.TValue[string]
 	LifecycleDetails            plugin.TValue[string]
@@ -66607,6 +66989,34 @@ func (c *mqlOciAiAgentsEndpoint) GetCitationEnabled() *plugin.TValue[bool] {
 
 func (c *mqlOciAiAgentsEndpoint) GetMultiLanguageEnabled() *plugin.TValue[bool] {
 	return &c.MultiLanguageEnabled
+}
+
+func (c *mqlOciAiAgentsEndpoint) GetHumanInputEnabled() *plugin.TValue[bool] {
+	return &c.HumanInputEnabled
+}
+
+func (c *mqlOciAiAgentsEndpoint) GetOutputBucket() *plugin.TValue[*mqlOciObjectStorageBucket] {
+	return plugin.GetOrCompute[*mqlOciObjectStorageBucket](&c.OutputBucket, func() (*mqlOciObjectStorageBucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.agents.endpoint", c.__id, "outputBucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciObjectStorageBucket), nil
+			}
+		}
+
+		return c.outputBucket()
+	})
+}
+
+func (c *mqlOciAiAgentsEndpoint) GetOutputPrefix() *plugin.TValue[string] {
+	return &c.OutputPrefix
+}
+
+func (c *mqlOciAiAgentsEndpoint) GetOutputRetentionInMinutes() *plugin.TValue[int64] {
+	return &c.OutputRetentionInMinutes
 }
 
 func (c *mqlOciAiAgentsEndpoint) GetMetadata() *plugin.TValue[map[string]any] {
@@ -66886,21 +67296,23 @@ type mqlOciAiAgentsTool struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlOciAiAgentsToolInternal
-	Id            plugin.TValue[string]
-	Name          plugin.TValue[string]
-	CompartmentID plugin.TValue[string]
-	Compartment   plugin.TValue[*mqlOciCompartment]
-	AgentID       plugin.TValue[string]
-	Agent         plugin.TValue[*mqlOciAiAgentsAgent]
-	Description   plugin.TValue[string]
-	ToolType      plugin.TValue[string]
-	ToolConfig    plugin.TValue[any]
-	Metadata      plugin.TValue[map[string]any]
-	State         plugin.TValue[string]
-	Created       plugin.TValue[*time.Time]
-	TimeUpdated   plugin.TValue[*time.Time]
-	FreeformTags  plugin.TValue[map[string]any]
-	DefinedTags   plugin.TValue[map[string]any]
+	Id             plugin.TValue[string]
+	Name           plugin.TValue[string]
+	CompartmentID  plugin.TValue[string]
+	Compartment    plugin.TValue[*mqlOciCompartment]
+	AgentID        plugin.TValue[string]
+	Agent          plugin.TValue[*mqlOciAiAgentsAgent]
+	Description    plugin.TValue[string]
+	ToolType       plugin.TValue[string]
+	ToolConfig     plugin.TValue[any]
+	Subnet         plugin.TValue[*mqlOciNetworkSubnet]
+	KnowledgeBases plugin.TValue[[]any]
+	Metadata       plugin.TValue[map[string]any]
+	State          plugin.TValue[string]
+	Created        plugin.TValue[*time.Time]
+	TimeUpdated    plugin.TValue[*time.Time]
+	FreeformTags   plugin.TValue[map[string]any]
+	DefinedTags    plugin.TValue[map[string]any]
 }
 
 // createOciAiAgentsTool creates a new instance of this resource
@@ -67000,6 +67412,38 @@ func (c *mqlOciAiAgentsTool) GetToolConfig() *plugin.TValue[any] {
 	return &c.ToolConfig
 }
 
+func (c *mqlOciAiAgentsTool) GetSubnet() *plugin.TValue[*mqlOciNetworkSubnet] {
+	return plugin.GetOrCompute[*mqlOciNetworkSubnet](&c.Subnet, func() (*mqlOciNetworkSubnet, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.agents.tool", c.__id, "subnet")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciNetworkSubnet), nil
+			}
+		}
+
+		return c.subnet()
+	})
+}
+
+func (c *mqlOciAiAgentsTool) GetKnowledgeBases() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.KnowledgeBases, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.agents.tool", c.__id, "knowledgeBases")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.knowledgeBases()
+	})
+}
+
 func (c *mqlOciAiAgentsTool) GetMetadata() *plugin.TValue[map[string]any] {
 	return &c.Metadata
 }
@@ -67036,6 +67480,7 @@ type mqlOciAiDataScience struct {
 	ModelDeployments plugin.TValue[[]any]
 	Jobs             plugin.TValue[[]any]
 	Pipelines        plugin.TValue[[]any]
+	PrivateEndpoints plugin.TValue[[]any]
 }
 
 // createOciAiDataScience creates a new instance of this resource
@@ -67187,6 +67632,22 @@ func (c *mqlOciAiDataScience) GetPipelines() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlOciAiDataScience) GetPrivateEndpoints() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PrivateEndpoints, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.dataScience", c.__id, "privateEndpoints")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.privateEndpoints()
+	})
+}
+
 // mqlOciAiDataScienceProject for the oci.ai.dataScience.project resource
 type mqlOciAiDataScienceProject struct {
 	MqlRuntime *plugin.Runtime
@@ -67310,6 +67771,7 @@ type mqlOciAiDataScienceNotebookSession struct {
 	Subnet                plugin.TValue[*mqlOciNetworkSubnet]
 	BlockStorageSizeInGBs plugin.TValue[int64]
 	PrivateEndpointID     plugin.TValue[string]
+	PrivateEndpoint       plugin.TValue[*mqlOciAiDataSciencePrivateEndpoint]
 	NotebookSessionUrl    plugin.TValue[string]
 	State                 plugin.TValue[string]
 	Created               plugin.TValue[*time.Time]
@@ -67436,6 +67898,22 @@ func (c *mqlOciAiDataScienceNotebookSession) GetBlockStorageSizeInGBs() *plugin.
 
 func (c *mqlOciAiDataScienceNotebookSession) GetPrivateEndpointID() *plugin.TValue[string] {
 	return &c.PrivateEndpointID
+}
+
+func (c *mqlOciAiDataScienceNotebookSession) GetPrivateEndpoint() *plugin.TValue[*mqlOciAiDataSciencePrivateEndpoint] {
+	return plugin.GetOrCompute[*mqlOciAiDataSciencePrivateEndpoint](&c.PrivateEndpoint, func() (*mqlOciAiDataSciencePrivateEndpoint, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.dataScience.notebookSession", c.__id, "privateEndpoint")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciAiDataSciencePrivateEndpoint), nil
+			}
+		}
+
+		return c.privateEndpoint()
+	})
 }
 
 func (c *mqlOciAiDataScienceNotebookSession) GetNotebookSessionUrl() *plugin.TValue[string] {
@@ -67782,6 +68260,12 @@ type mqlOciAiDataScienceModelDeployment struct {
 	ModelDeploymentUrl   plugin.TValue[string]
 	Configuration        plugin.TValue[any]
 	LoggingConfiguration plugin.TValue[any]
+	NetworkAccessType    plugin.TValue[string]
+	Subnet               plugin.TValue[*mqlOciNetworkSubnet]
+	PrivateEndpoint      plugin.TValue[*mqlOciAiDataSciencePrivateEndpoint]
+	Model                plugin.TValue[*mqlOciAiDataScienceModel]
+	AccessLog            plugin.TValue[*mqlOciLoggingLog]
+	PredictLog           plugin.TValue[*mqlOciLoggingLog]
 	State                plugin.TValue[string]
 	Created              plugin.TValue[*time.Time]
 	FreeformTags         plugin.TValue[map[string]any]
@@ -67891,6 +68375,90 @@ func (c *mqlOciAiDataScienceModelDeployment) GetConfiguration() *plugin.TValue[a
 
 func (c *mqlOciAiDataScienceModelDeployment) GetLoggingConfiguration() *plugin.TValue[any] {
 	return &c.LoggingConfiguration
+}
+
+func (c *mqlOciAiDataScienceModelDeployment) GetNetworkAccessType() *plugin.TValue[string] {
+	return &c.NetworkAccessType
+}
+
+func (c *mqlOciAiDataScienceModelDeployment) GetSubnet() *plugin.TValue[*mqlOciNetworkSubnet] {
+	return plugin.GetOrCompute[*mqlOciNetworkSubnet](&c.Subnet, func() (*mqlOciNetworkSubnet, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.dataScience.modelDeployment", c.__id, "subnet")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciNetworkSubnet), nil
+			}
+		}
+
+		return c.subnet()
+	})
+}
+
+func (c *mqlOciAiDataScienceModelDeployment) GetPrivateEndpoint() *plugin.TValue[*mqlOciAiDataSciencePrivateEndpoint] {
+	return plugin.GetOrCompute[*mqlOciAiDataSciencePrivateEndpoint](&c.PrivateEndpoint, func() (*mqlOciAiDataSciencePrivateEndpoint, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.dataScience.modelDeployment", c.__id, "privateEndpoint")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciAiDataSciencePrivateEndpoint), nil
+			}
+		}
+
+		return c.privateEndpoint()
+	})
+}
+
+func (c *mqlOciAiDataScienceModelDeployment) GetModel() *plugin.TValue[*mqlOciAiDataScienceModel] {
+	return plugin.GetOrCompute[*mqlOciAiDataScienceModel](&c.Model, func() (*mqlOciAiDataScienceModel, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.dataScience.modelDeployment", c.__id, "model")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciAiDataScienceModel), nil
+			}
+		}
+
+		return c.model()
+	})
+}
+
+func (c *mqlOciAiDataScienceModelDeployment) GetAccessLog() *plugin.TValue[*mqlOciLoggingLog] {
+	return plugin.GetOrCompute[*mqlOciLoggingLog](&c.AccessLog, func() (*mqlOciLoggingLog, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.dataScience.modelDeployment", c.__id, "accessLog")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciLoggingLog), nil
+			}
+		}
+
+		return c.accessLog()
+	})
+}
+
+func (c *mqlOciAiDataScienceModelDeployment) GetPredictLog() *plugin.TValue[*mqlOciLoggingLog] {
+	return plugin.GetOrCompute[*mqlOciLoggingLog](&c.PredictLog, func() (*mqlOciLoggingLog, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.dataScience.modelDeployment", c.__id, "predictLog")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciLoggingLog), nil
+			}
+		}
+
+		return c.predictLog()
+	})
 }
 
 func (c *mqlOciAiDataScienceModelDeployment) GetState() *plugin.TValue[string] {
@@ -68160,6 +68728,161 @@ func (c *mqlOciAiDataSciencePipeline) GetDefinedTags() *plugin.TValue[map[string
 	return &c.DefinedTags
 }
 
+// mqlOciAiDataSciencePrivateEndpoint for the oci.ai.dataScience.privateEndpoint resource
+type mqlOciAiDataSciencePrivateEndpoint struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlOciAiDataSciencePrivateEndpointInternal
+	Id                      plugin.TValue[string]
+	Name                    plugin.TValue[string]
+	CompartmentID           plugin.TValue[string]
+	Compartment             plugin.TValue[*mqlOciCompartment]
+	CreatedBy               plugin.TValue[string]
+	Subnet                  plugin.TValue[*mqlOciNetworkSubnet]
+	NetworkSecurityGroups   plugin.TValue[[]any]
+	Fqdn                    plugin.TValue[string]
+	DataScienceResourceType plugin.TValue[string]
+	State                   plugin.TValue[string]
+	LifecycleDetails        plugin.TValue[string]
+	Created                 plugin.TValue[*time.Time]
+	TimeUpdated             plugin.TValue[*time.Time]
+	FreeformTags            plugin.TValue[map[string]any]
+	DefinedTags             plugin.TValue[map[string]any]
+}
+
+// createOciAiDataSciencePrivateEndpoint creates a new instance of this resource
+func createOciAiDataSciencePrivateEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOciAiDataSciencePrivateEndpoint{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("oci.ai.dataScience.privateEndpoint", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) MqlName() string {
+	return "oci.ai.dataScience.privateEndpoint"
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetCompartmentID() *plugin.TValue[string] {
+	return &c.CompartmentID
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetCompartment() *plugin.TValue[*mqlOciCompartment] {
+	return plugin.GetOrCompute[*mqlOciCompartment](&c.Compartment, func() (*mqlOciCompartment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.dataScience.privateEndpoint", c.__id, "compartment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciCompartment), nil
+			}
+		}
+
+		return c.compartment()
+	})
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetCreatedBy() *plugin.TValue[string] {
+	return &c.CreatedBy
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetSubnet() *plugin.TValue[*mqlOciNetworkSubnet] {
+	return plugin.GetOrCompute[*mqlOciNetworkSubnet](&c.Subnet, func() (*mqlOciNetworkSubnet, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.dataScience.privateEndpoint", c.__id, "subnet")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciNetworkSubnet), nil
+			}
+		}
+
+		return c.subnet()
+	})
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetNetworkSecurityGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NetworkSecurityGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.dataScience.privateEndpoint", c.__id, "networkSecurityGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networkSecurityGroups()
+	})
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetFqdn() *plugin.TValue[string] {
+	return &c.Fqdn
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetDataScienceResourceType() *plugin.TValue[string] {
+	return &c.DataScienceResourceType
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetLifecycleDetails() *plugin.TValue[string] {
+	return &c.LifecycleDetails
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetTimeUpdated() *plugin.TValue[*time.Time] {
+	return &c.TimeUpdated
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetFreeformTags() *plugin.TValue[map[string]any] {
+	return &c.FreeformTags
+}
+
+func (c *mqlOciAiDataSciencePrivateEndpoint) GetDefinedTags() *plugin.TValue[map[string]any] {
+	return &c.DefinedTags
+}
+
 // mqlOciAiGenerativeAi for the oci.ai.generativeAi resource
 type mqlOciAiGenerativeAi struct {
 	MqlRuntime *plugin.Runtime
@@ -68168,6 +68891,7 @@ type mqlOciAiGenerativeAi struct {
 	DedicatedAiClusters plugin.TValue[[]any]
 	Models              plugin.TValue[[]any]
 	Endpoints           plugin.TValue[[]any]
+	PrivateEndpoints    plugin.TValue[[]any]
 }
 
 // createOciAiGenerativeAi creates a new instance of this resource
@@ -68252,6 +68976,22 @@ func (c *mqlOciAiGenerativeAi) GetEndpoints() *plugin.TValue[[]any] {
 		}
 
 		return c.endpoints()
+	})
+}
+
+func (c *mqlOciAiGenerativeAi) GetPrivateEndpoints() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PrivateEndpoints, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.generativeAi", c.__id, "privateEndpoints")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.privateEndpoints()
 	})
 }
 
@@ -68563,6 +69303,7 @@ type mqlOciAiGenerativeAiEndpoint struct {
 	DedicatedAiClusterID          plugin.TValue[string]
 	DedicatedAiCluster            plugin.TValue[*mqlOciAiGenerativeAiDedicatedAiCluster]
 	GenerativeAiPrivateEndpointID plugin.TValue[string]
+	PrivateEndpoint               plugin.TValue[*mqlOciAiGenerativeAiPrivateEndpoint]
 	Description                   plugin.TValue[string]
 	ContentModerationEnabled      plugin.TValue[bool]
 	ContentModerationMode         plugin.TValue[string]
@@ -68687,6 +69428,22 @@ func (c *mqlOciAiGenerativeAiEndpoint) GetGenerativeAiPrivateEndpointID() *plugi
 	return &c.GenerativeAiPrivateEndpointID
 }
 
+func (c *mqlOciAiGenerativeAiEndpoint) GetPrivateEndpoint() *plugin.TValue[*mqlOciAiGenerativeAiPrivateEndpoint] {
+	return plugin.GetOrCompute[*mqlOciAiGenerativeAiPrivateEndpoint](&c.PrivateEndpoint, func() (*mqlOciAiGenerativeAiPrivateEndpoint, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.generativeAi.endpoint", c.__id, "privateEndpoint")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciAiGenerativeAiPrivateEndpoint), nil
+			}
+		}
+
+		return c.privateEndpoint()
+	})
+}
+
 func (c *mqlOciAiGenerativeAiEndpoint) GetDescription() *plugin.TValue[string] {
 	return &c.Description
 }
@@ -68736,6 +69493,171 @@ func (c *mqlOciAiGenerativeAiEndpoint) GetFreeformTags() *plugin.TValue[map[stri
 }
 
 func (c *mqlOciAiGenerativeAiEndpoint) GetDefinedTags() *plugin.TValue[map[string]any] {
+	return &c.DefinedTags
+}
+
+// mqlOciAiGenerativeAiPrivateEndpoint for the oci.ai.generativeAi.privateEndpoint resource
+type mqlOciAiGenerativeAiPrivateEndpoint struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlOciAiGenerativeAiPrivateEndpointInternal
+	Id                    plugin.TValue[string]
+	Name                  plugin.TValue[string]
+	CompartmentID         plugin.TValue[string]
+	Compartment           plugin.TValue[*mqlOciCompartment]
+	Description           plugin.TValue[string]
+	Subnet                plugin.TValue[*mqlOciNetworkSubnet]
+	NetworkSecurityGroups plugin.TValue[[]any]
+	Fqdn                  plugin.TValue[string]
+	PrivateIp             plugin.TValue[string]
+	IsAllowOnDemand       plugin.TValue[bool]
+	ResourceType          plugin.TValue[string]
+	State                 plugin.TValue[string]
+	LifecycleDetails      plugin.TValue[string]
+	Created               plugin.TValue[*time.Time]
+	TimeUpdated           plugin.TValue[*time.Time]
+	FreeformTags          plugin.TValue[map[string]any]
+	DefinedTags           plugin.TValue[map[string]any]
+}
+
+// createOciAiGenerativeAiPrivateEndpoint creates a new instance of this resource
+func createOciAiGenerativeAiPrivateEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOciAiGenerativeAiPrivateEndpoint{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("oci.ai.generativeAi.privateEndpoint", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) MqlName() string {
+	return "oci.ai.generativeAi.privateEndpoint"
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetCompartmentID() *plugin.TValue[string] {
+	return &c.CompartmentID
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetCompartment() *plugin.TValue[*mqlOciCompartment] {
+	return plugin.GetOrCompute[*mqlOciCompartment](&c.Compartment, func() (*mqlOciCompartment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.generativeAi.privateEndpoint", c.__id, "compartment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciCompartment), nil
+			}
+		}
+
+		return c.compartment()
+	})
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetSubnet() *plugin.TValue[*mqlOciNetworkSubnet] {
+	return plugin.GetOrCompute[*mqlOciNetworkSubnet](&c.Subnet, func() (*mqlOciNetworkSubnet, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.generativeAi.privateEndpoint", c.__id, "subnet")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciNetworkSubnet), nil
+			}
+		}
+
+		return c.subnet()
+	})
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetNetworkSecurityGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NetworkSecurityGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.ai.generativeAi.privateEndpoint", c.__id, "networkSecurityGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networkSecurityGroups()
+	})
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetFqdn() *plugin.TValue[string] {
+	return &c.Fqdn
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetPrivateIp() *plugin.TValue[string] {
+	return &c.PrivateIp
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetIsAllowOnDemand() *plugin.TValue[bool] {
+	return &c.IsAllowOnDemand
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetResourceType() *plugin.TValue[string] {
+	return &c.ResourceType
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetLifecycleDetails() *plugin.TValue[string] {
+	return &c.LifecycleDetails
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetTimeUpdated() *plugin.TValue[*time.Time] {
+	return &c.TimeUpdated
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetFreeformTags() *plugin.TValue[map[string]any] {
+	return &c.FreeformTags
+}
+
+func (c *mqlOciAiGenerativeAiPrivateEndpoint) GetDefinedTags() *plugin.TValue[map[string]any] {
 	return &c.DefinedTags
 }
 
