@@ -9087,6 +9087,13 @@ private aws.detective.organizationAdminAccount @defaults("accountId region deleg
 aws.securityhub {
   // List of Security Hubs in the account
   hubs() []aws.securityhub.hub
+  // Central configuration policies of the organization
+  //
+  // Only the Security Hub delegated administrator can read configuration
+  // policies, and only in its home region with central configuration turned
+  // on. In any other account, central configuration does not apply and the
+  // field reports no policies.
+  configurationPolicies() []aws.securityhub.configurationPolicy
 }
 
 // AWS Security Hub hub
@@ -9198,6 +9205,79 @@ private aws.securityhub.findingAggregator @defaults("findingAggregationRegion re
   regionLinkingMode string
   // Regions included or excluded by the linking mode (empty for ALL_REGIONS)
   regions []string
+}
+
+// Security Hub central configuration policy
+//
+// A policy the Security Hub delegated administrator applies to accounts,
+// organizational units, or the organization root under central configuration.
+// Reports whether the policy turns Security Hub on or off, the standards it
+// enables, the controls it enables or disables, and the custom control
+// parameters it sets. `associations` lists the targets the policy applies to.
+// Query it to confirm every account is covered by a policy that enables
+// Security Hub with the expected standards.
+private aws.securityhub.configurationPolicy @defaults("name serviceEnabled") {
+  // ARN of the configuration policy
+  arn string
+  // Universally unique identifier of the configuration policy
+  id string
+  // Name of the configuration policy
+  name string
+  // Description of the configuration policy
+  description string
+  // Region the configuration policy was read from, the delegated administrator's home region
+  region string
+  // Whether the policy enables Security Hub in the accounts it applies to
+  //
+  // False means the policy turns Security Hub off in every associated
+  // account, so none of its standards or controls run there.
+  serviceEnabled bool
+  // ARNs of the security standards the policy enables
+  enabledStandardIdentifiers() []string
+  // Security controls the policy enables, such as IAM.1
+  //
+  // When set, every control not in the list is disabled, including controls
+  // released later. Null when the policy lists disabled controls instead.
+  enabledControlIdentifiers() []string
+  // Security controls the policy disables, such as IAM.1
+  //
+  // When set, every control not in the list is enabled, including controls
+  // released later. Null when the policy lists enabled controls instead.
+  disabledControlIdentifiers() []string
+  // Custom control parameter values the policy sets
+  //
+  // Keyed by control identifier, such as ACM.1. Each value maps a parameter
+  // name to a dict with `valueType` (DEFAULT or CUSTOM) and `value`, the
+  // parameter's value as a bool, number, string, or list.
+  controlParameters() dict
+  // Time the configuration policy was created
+  createdAt() time
+  // Time the configuration policy was last updated
+  updatedAt time
+  // Targets the configuration policy applies to
+  associations() []aws.securityhub.configurationPolicyAssociation
+}
+
+// Security Hub configuration policy association
+//
+// One target of a central configuration policy: an account, an organizational
+// unit, or the organization root. Reports whether the policy is applied
+// directly or inherited from a parent, and whether applying it succeeded.
+private aws.securityhub.configurationPolicyAssociation @defaults("targetType targetId associationStatus") {
+  // Identifier of the target: an account ID, an organizational unit ID, or the root ID
+  targetId string
+  // Kind of target: ACCOUNT, ORGANIZATIONAL_UNIT, or ROOT
+  targetType string
+  // Account the policy applies to (null unless targetType is ACCOUNT)
+  account() aws.account
+  // Whether the policy is APPLIED to the target directly or INHERITED from a parent
+  associationType string
+  // Whether applying the policy to the target succeeded: SUCCESS, PENDING, or FAILED
+  associationStatus string
+  // Explanation of a FAILED association status (empty otherwise)
+  associationStatusMessage string
+  // Time the association was last updated
+  updatedAt time
 }
 
 // AWS Security Hub enabled standard subscription
@@ -22050,6 +22130,20 @@ aws.config {
   aggregators() []aws.config.aggregator
   // List of conformance packs (pre-built compliance frameworks)
   conformancePacks() []aws.config.conformancePack
+  // Organization Config rules deployed from this account to member accounts
+  //
+  // Only the management account and a Config delegated administrator can
+  // deploy organization rules, and each one only sees the rules it deployed
+  // itself, so a member account reports an empty list. Rules are regional,
+  // so the list holds one entry per rule and region.
+  organizationRules() []aws.config.organizationRule
+  // Organization conformance packs deployed from this account to member accounts
+  //
+  // Only the management account and a Config delegated administrator can
+  // deploy organization conformance packs, and each one only sees the packs it
+  // deployed itself, so a member account reports an empty list. Packs are
+  // regional, so the list holds one entry per pack and region.
+  organizationConformancePacks() []aws.config.organizationConformancePack
 }
 
 // AWS Config rule
@@ -22148,6 +22242,14 @@ private aws.config.recorder @defaults("name region") {
   exclusionByResourceTypes() []string
   // Tags assigned to the configuration recorder
   tags() map[string]string
+  // Number of days AWS Config keeps configuration items in this region
+  //
+  // Read from the region's retention configuration. A region without one
+  // keeps items for the Config default of 7 years, and this field reports
+  // that effective value, 2557, rather than null, so a minimum-retention
+  // check judges the retention that actually applies. Configured values
+  // range from 30 to 2557.
+  retentionPeriodInDays() int
 }
 
 // AWS Config delivery channel
@@ -22248,6 +22350,121 @@ private aws.config.aggregator.organizationAggregationSource {
   allAwsRegions bool
   // List of AWS regions included in the aggregation
   awsRegions []string
+}
+
+// AWS Config organization rule
+//
+// A Config rule the management account or a Config delegated administrator
+// deploys to every account in the organization, except the accounts listed in
+// `excludedAccounts`. Reports the rule's source (an AWS managed rule
+// identified by `sourceIdentifier`, a custom Lambda rule backed by
+// `lambdaFunction`, or a custom Guard policy rule), its input parameters, the
+// evaluation scope and frequency, and the organization-wide deployment status.
+// Query it to confirm a mandatory rule reaches every member account and that
+// its deployment did not fail.
+private aws.config.organizationRule @defaults("name ruleType region") {
+  // ARN of the organization Config rule
+  arn string
+  // Name of the organization Config rule
+  name string
+  // Region the organization Config rule is deployed from
+  region string
+  // Kind of rule
+  //
+  // AWS for an AWS managed rule, CUSTOM_LAMBDA for a custom rule evaluated by
+  // a Lambda function, and CUSTOM_POLICY for a custom rule written in Guard.
+  // The values match the `Owner` key of the `source` of the rule each member
+  // account receives as aws.config.rule.
+  ruleType string
+  // Identifier of the AWS managed rule, such as S3_BUCKET_VERSIONING_ENABLED
+  //
+  // Empty for custom rules, which are identified by lambdaFunction or
+  // policyRuntime instead.
+  sourceIdentifier string
+  // Lambda function that evaluates a custom Lambda rule (null for other rule kinds)
+  lambdaFunction() aws.lambda.function
+  // Guard runtime of a custom policy rule, such as guard-2.x.x (empty for other rule kinds)
+  policyRuntime string
+  // Description of the rule
+  description string
+  // Parameters passed to the rule
+  //
+  // The rule's input parameters, keyed by parameter name. Null when the rule
+  // takes none.
+  inputParameters() dict
+  // Maximum frequency of periodic evaluations
+  //
+  // One of One_Hour, Three_Hours, Six_Hours, Twelve_Hours, or
+  // TwentyFour_Hours. Empty for a rule that only runs on configuration
+  // changes.
+  maximumExecutionFrequency string
+  // Notification types that trigger a custom rule's evaluation
+  //
+  // ConfigurationItemChangeNotification,
+  // OversizedConfigurationItemChangeNotification, or ScheduledNotification.
+  // Empty for AWS managed rules.
+  triggerTypes []string
+  // Resource types the rule evaluates, such as AWS::S3::Bucket (empty means all types)
+  resourceTypesScope []string
+  // ID of the single AWS resource the rule evaluates (empty means every resource in scope)
+  resourceIdScope string
+  // Tag key a resource must carry to be evaluated (empty means no tag filter)
+  tagKeyScope string
+  // Tag value a resource must carry to be evaluated, together with tagKeyScope
+  tagValueScope string
+  // Member accounts the rule is not deployed to
+  excludedAccounts() []aws.account
+  // Time the rule was last updated
+  lastUpdateTime time
+  // Organization-wide deployment status of the rule
+  //
+  // One of CREATE_SUCCESSFUL, CREATE_IN_PROGRESS, CREATE_FAILED,
+  // UPDATE_SUCCESSFUL, UPDATE_IN_PROGRESS, UPDATE_FAILED, DELETE_SUCCESSFUL,
+  // DELETE_IN_PROGRESS, or DELETE_FAILED. A failed status means at least one
+  // member account did not receive the rule.
+  status() string
+  // Error code of a failed deployment (empty otherwise)
+  statusErrorCode() string
+  // Error message of a failed deployment (empty otherwise)
+  statusErrorMessage() string
+}
+
+// AWS Config organization conformance pack
+//
+// A conformance pack the management account or a Config delegated
+// administrator deploys to every account in the organization, except the
+// accounts listed in `excludedAccounts`. Reports the S3 bucket that receives
+// the pack's artifacts, its input parameters, and the organization-wide
+// deployment status. Query it to confirm a compliance framework reaches every
+// member account and that its deployment did not fail.
+private aws.config.organizationConformancePack @defaults("name region") {
+  // ARN of the organization conformance pack
+  arn string
+  // Name of the organization conformance pack
+  name string
+  // Region the organization conformance pack is deployed from
+  region string
+  // S3 bucket that receives the conformance pack's artifacts (null when none is set)
+  deliveryS3Bucket() aws.s3.bucket
+  // Prefix of the S3 keys the conformance pack's artifacts are written under
+  deliveryS3KeyPrefix string
+  // Values for the parameters referenced by the conformance pack template, keyed by parameter name
+  inputParameters map[string]string
+  // Member accounts the conformance pack is not deployed to
+  excludedAccounts() []aws.account
+  // Time the conformance pack was last updated
+  lastUpdateTime time
+  // Organization-wide deployment status of the conformance pack
+  //
+  // One of CREATE_SUCCESSFUL, CREATE_IN_PROGRESS, CREATE_FAILED,
+  // UPDATE_SUCCESSFUL, UPDATE_IN_PROGRESS, UPDATE_FAILED, DELETE_SUCCESSFUL,
+  // DELETE_IN_PROGRESS, or DELETE_FAILED. A failed status means at least one
+  // member account did not receive the pack.
+  status() string
+  // Error code of a failed deployment (empty otherwise)
+  statusErrorCode() string
+  // Error message of a failed deployment (empty otherwise)
+  statusErrorMessage() string
 }
 
 // Amazon Elastic Kubernetes Service (EKS)

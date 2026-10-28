@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "14.5.2",
-  "generated_at": "2026-10-23T23:21:58Z",
+  "version": "14.5.4",
+  "generated_at": "2026-10-27T23:04:21+01:00",
   "permissions": [
     "access-analyzer:GetFinding",
     "access-analyzer:ListAnalyzers",
@@ -259,7 +259,12 @@
     "config:DescribeConformancePacks",
     "config:DescribeDeliveryChannelStatus",
     "config:DescribeDeliveryChannels",
+    "config:DescribeOrganizationConfigRuleStatuses",
+    "config:DescribeOrganizationConfigRules",
+    "config:DescribeOrganizationConformancePackStatuses",
+    "config:DescribeOrganizationConformancePacks",
     "config:DescribeRemediationConfigurations",
+    "config:DescribeRetentionConfigurations",
     "config:GetComplianceDetailsByConfigRule",
     "config:GetConformancePackComplianceSummary",
     "config:ListTagsForResource",
@@ -971,6 +976,7 @@
     "securityhub:BatchGetStandardsControlAssociations",
     "securityhub:DescribeHub",
     "securityhub:DescribeOrganizationConfiguration",
+    "securityhub:GetConfigurationPolicy",
     "securityhub:GetEnabledStandards",
     "securityhub:GetFindingAggregator",
     "securityhub:GetFindingHistory",
@@ -978,6 +984,8 @@
     "securityhub:GetInsightResults",
     "securityhub:GetInsights",
     "securityhub:ListAutomationRules",
+    "securityhub:ListConfigurationPolicies",
+    "securityhub:ListConfigurationPolicyAssociations",
     "securityhub:ListEnabledProductsForImport",
     "securityhub:ListFindingAggregators",
     "securityhub:ListMembers",
@@ -2697,9 +2705,39 @@
       "source_file": "aws_config.go"
     },
     {
+      "permission": "config:DescribeOrganizationConfigRuleStatuses",
+      "service": "config",
+      "action": "DescribeOrganizationConfigRuleStatuses",
+      "source_file": "aws_config_organization.go"
+    },
+    {
+      "permission": "config:DescribeOrganizationConfigRules",
+      "service": "config",
+      "action": "DescribeOrganizationConfigRules",
+      "source_file": "aws_config_organization.go"
+    },
+    {
+      "permission": "config:DescribeOrganizationConformancePackStatuses",
+      "service": "config",
+      "action": "DescribeOrganizationConformancePackStatuses",
+      "source_file": "aws_config_organization.go"
+    },
+    {
+      "permission": "config:DescribeOrganizationConformancePacks",
+      "service": "config",
+      "action": "DescribeOrganizationConformancePacks",
+      "source_file": "aws_config_organization.go"
+    },
+    {
       "permission": "config:DescribeRemediationConfigurations",
       "service": "config",
       "action": "DescribeRemediationConfigurations",
+      "source_file": "aws_config.go"
+    },
+    {
+      "permission": "config:DescribeRetentionConfigurations",
+      "service": "config",
+      "action": "DescribeRetentionConfigurations",
       "source_file": "aws_config.go"
     },
     {
@@ -7185,6 +7223,12 @@
       "source_file": "aws_securityhub.go"
     },
     {
+      "permission": "securityhub:GetConfigurationPolicy",
+      "service": "securityhub",
+      "action": "GetConfigurationPolicy",
+      "source_file": "aws_securityhub_configuration_policy.go"
+    },
+    {
       "permission": "securityhub:GetEnabledStandards",
       "service": "securityhub",
       "action": "GetEnabledStandards",
@@ -7225,6 +7269,18 @@
       "service": "securityhub",
       "action": "ListAutomationRules",
       "source_file": "aws_securityhub.go"
+    },
+    {
+      "permission": "securityhub:ListConfigurationPolicies",
+      "service": "securityhub",
+      "action": "ListConfigurationPolicies",
+      "source_file": "aws_securityhub_configuration_policy.go"
+    },
+    {
+      "permission": "securityhub:ListConfigurationPolicyAssociations",
+      "service": "securityhub",
+      "action": "ListConfigurationPolicyAssociations",
+      "source_file": "aws_securityhub_configuration_policy.go"
     },
     {
       "permission": "securityhub:ListEnabledProductsForImport",

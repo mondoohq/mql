@@ -304,6 +304,8 @@ const (
 	ResourceAwsSecurityhubHub                                                   string = "aws.securityhub.hub"
 	ResourceAwsSecurityhubOrganizationConfiguration                             string = "aws.securityhub.organizationConfiguration"
 	ResourceAwsSecurityhubFindingAggregator                                     string = "aws.securityhub.findingAggregator"
+	ResourceAwsSecurityhubConfigurationPolicy                                   string = "aws.securityhub.configurationPolicy"
+	ResourceAwsSecurityhubConfigurationPolicyAssociation                        string = "aws.securityhub.configurationPolicyAssociation"
 	ResourceAwsSecurityhubStandardSubscription                                  string = "aws.securityhub.standardSubscription"
 	ResourceAwsSecurityhubStandardControl                                       string = "aws.securityhub.standardControl"
 	ResourceAwsSecurityhubFinding                                               string = "aws.securityhub.finding"
@@ -702,6 +704,8 @@ const (
 	ResourceAwsConfigAggregator                                                 string = "aws.config.aggregator"
 	ResourceAwsConfigAggregatorAccountAggregationSource                         string = "aws.config.aggregator.accountAggregationSource"
 	ResourceAwsConfigAggregatorOrganizationAggregationSource                    string = "aws.config.aggregator.organizationAggregationSource"
+	ResourceAwsConfigOrganizationRule                                           string = "aws.config.organizationRule"
+	ResourceAwsConfigOrganizationConformancePack                                string = "aws.config.organizationConformancePack"
 	ResourceAwsEks                                                              string = "aws.eks"
 	ResourceAwsEksScalingConfig                                                 string = "aws.eks.scalingConfig"
 	ResourceAwsEksRemoteAccess                                                  string = "aws.eks.remoteAccess"
@@ -2227,6 +2231,14 @@ func init() {
 		"aws.securityhub.findingAggregator": {
 			// to override args, implement: initAwsSecurityhubFindingAggregator(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsSecurityhubFindingAggregator,
+		},
+		"aws.securityhub.configurationPolicy": {
+			// to override args, implement: initAwsSecurityhubConfigurationPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsSecurityhubConfigurationPolicy,
+		},
+		"aws.securityhub.configurationPolicyAssociation": {
+			// to override args, implement: initAwsSecurityhubConfigurationPolicyAssociation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsSecurityhubConfigurationPolicyAssociation,
 		},
 		"aws.securityhub.standardSubscription": {
 			// to override args, implement: initAwsSecurityhubStandardSubscription(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -3819,6 +3831,14 @@ func init() {
 		"aws.config.aggregator.organizationAggregationSource": {
 			// to override args, implement: initAwsConfigAggregatorOrganizationAggregationSource(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAwsConfigAggregatorOrganizationAggregationSource,
+		},
+		"aws.config.organizationRule": {
+			// to override args, implement: initAwsConfigOrganizationRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsConfigOrganizationRule,
+		},
+		"aws.config.organizationConformancePack": {
+			// to override args, implement: initAwsConfigOrganizationConformancePack(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsConfigOrganizationConformancePack,
 		},
 		"aws.eks": {
 			// to override args, implement: initAwsEks(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -14192,6 +14212,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.securityhub.hubs": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSecurityhub).GetHubs()).ToDataRes(types.Array(types.Resource("aws.securityhub.hub")))
 	},
+	"aws.securityhub.configurationPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhub).GetConfigurationPolicies()).ToDataRes(types.Array(types.Resource("aws.securityhub.configurationPolicy")))
+	},
 	"aws.securityhub.hub.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSecurityhubHub).GetArn()).ToDataRes(types.String)
 	},
@@ -14266,6 +14289,66 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.securityhub.findingAggregator.regions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSecurityhubFindingAggregator).GetRegions()).ToDataRes(types.Array(types.String))
+	},
+	"aws.securityhub.configurationPolicy.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicy).GetArn()).ToDataRes(types.String)
+	},
+	"aws.securityhub.configurationPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicy).GetId()).ToDataRes(types.String)
+	},
+	"aws.securityhub.configurationPolicy.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicy).GetName()).ToDataRes(types.String)
+	},
+	"aws.securityhub.configurationPolicy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.securityhub.configurationPolicy.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicy).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.securityhub.configurationPolicy.serviceEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicy).GetServiceEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.securityhub.configurationPolicy.enabledStandardIdentifiers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicy).GetEnabledStandardIdentifiers()).ToDataRes(types.Array(types.String))
+	},
+	"aws.securityhub.configurationPolicy.enabledControlIdentifiers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicy).GetEnabledControlIdentifiers()).ToDataRes(types.Array(types.String))
+	},
+	"aws.securityhub.configurationPolicy.disabledControlIdentifiers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicy).GetDisabledControlIdentifiers()).ToDataRes(types.Array(types.String))
+	},
+	"aws.securityhub.configurationPolicy.controlParameters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicy).GetControlParameters()).ToDataRes(types.Dict)
+	},
+	"aws.securityhub.configurationPolicy.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicy).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"aws.securityhub.configurationPolicy.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicy).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.securityhub.configurationPolicy.associations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicy).GetAssociations()).ToDataRes(types.Array(types.Resource("aws.securityhub.configurationPolicyAssociation")))
+	},
+	"aws.securityhub.configurationPolicyAssociation.targetId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).GetTargetId()).ToDataRes(types.String)
+	},
+	"aws.securityhub.configurationPolicyAssociation.targetType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).GetTargetType()).ToDataRes(types.String)
+	},
+	"aws.securityhub.configurationPolicyAssociation.account": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).GetAccount()).ToDataRes(types.Resource("aws.account"))
+	},
+	"aws.securityhub.configurationPolicyAssociation.associationType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).GetAssociationType()).ToDataRes(types.String)
+	},
+	"aws.securityhub.configurationPolicyAssociation.associationStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).GetAssociationStatus()).ToDataRes(types.String)
+	},
+	"aws.securityhub.configurationPolicyAssociation.associationStatusMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).GetAssociationStatusMessage()).ToDataRes(types.String)
+	},
+	"aws.securityhub.configurationPolicyAssociation.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).GetUpdatedAt()).ToDataRes(types.Time)
 	},
 	"aws.securityhub.standardSubscription.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsSecurityhubStandardSubscription).GetArn()).ToDataRes(types.String)
@@ -26780,6 +26863,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.config.conformancePacks": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsConfig).GetConformancePacks()).ToDataRes(types.Array(types.Resource("aws.config.conformancePack")))
 	},
+	"aws.config.organizationRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfig).GetOrganizationRules()).ToDataRes(types.Array(types.Resource("aws.config.organizationRule")))
+	},
+	"aws.config.organizationConformancePacks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfig).GetOrganizationConformancePacks()).ToDataRes(types.Array(types.Resource("aws.config.organizationConformancePack")))
+	},
 	"aws.config.rule.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsConfigRule).GetArn()).ToDataRes(types.String)
 	},
@@ -26885,6 +26974,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.config.recorder.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsConfigRecorder).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"aws.config.recorder.retentionPeriodInDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigRecorder).GetRetentionPeriodInDays()).ToDataRes(types.Int)
+	},
 	"aws.config.deliverychannel.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsConfigDeliverychannel).GetName()).ToDataRes(types.String)
 	},
@@ -26989,6 +27081,99 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.config.aggregator.organizationAggregationSource.awsRegions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsConfigAggregatorOrganizationAggregationSource).GetAwsRegions()).ToDataRes(types.Array(types.String))
+	},
+	"aws.config.organizationRule.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetArn()).ToDataRes(types.String)
+	},
+	"aws.config.organizationRule.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetName()).ToDataRes(types.String)
+	},
+	"aws.config.organizationRule.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.config.organizationRule.ruleType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetRuleType()).ToDataRes(types.String)
+	},
+	"aws.config.organizationRule.sourceIdentifier": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetSourceIdentifier()).ToDataRes(types.String)
+	},
+	"aws.config.organizationRule.lambdaFunction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetLambdaFunction()).ToDataRes(types.Resource("aws.lambda.function"))
+	},
+	"aws.config.organizationRule.policyRuntime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetPolicyRuntime()).ToDataRes(types.String)
+	},
+	"aws.config.organizationRule.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetDescription()).ToDataRes(types.String)
+	},
+	"aws.config.organizationRule.inputParameters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetInputParameters()).ToDataRes(types.Dict)
+	},
+	"aws.config.organizationRule.maximumExecutionFrequency": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetMaximumExecutionFrequency()).ToDataRes(types.String)
+	},
+	"aws.config.organizationRule.triggerTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetTriggerTypes()).ToDataRes(types.Array(types.String))
+	},
+	"aws.config.organizationRule.resourceTypesScope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetResourceTypesScope()).ToDataRes(types.Array(types.String))
+	},
+	"aws.config.organizationRule.resourceIdScope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetResourceIdScope()).ToDataRes(types.String)
+	},
+	"aws.config.organizationRule.tagKeyScope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetTagKeyScope()).ToDataRes(types.String)
+	},
+	"aws.config.organizationRule.tagValueScope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetTagValueScope()).ToDataRes(types.String)
+	},
+	"aws.config.organizationRule.excludedAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetExcludedAccounts()).ToDataRes(types.Array(types.Resource("aws.account")))
+	},
+	"aws.config.organizationRule.lastUpdateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetLastUpdateTime()).ToDataRes(types.Time)
+	},
+	"aws.config.organizationRule.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.config.organizationRule.statusErrorCode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetStatusErrorCode()).ToDataRes(types.String)
+	},
+	"aws.config.organizationRule.statusErrorMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationRule).GetStatusErrorMessage()).ToDataRes(types.String)
+	},
+	"aws.config.organizationConformancePack.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationConformancePack).GetArn()).ToDataRes(types.String)
+	},
+	"aws.config.organizationConformancePack.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationConformancePack).GetName()).ToDataRes(types.String)
+	},
+	"aws.config.organizationConformancePack.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationConformancePack).GetRegion()).ToDataRes(types.String)
+	},
+	"aws.config.organizationConformancePack.deliveryS3Bucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationConformancePack).GetDeliveryS3Bucket()).ToDataRes(types.Resource("aws.s3.bucket"))
+	},
+	"aws.config.organizationConformancePack.deliveryS3KeyPrefix": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationConformancePack).GetDeliveryS3KeyPrefix()).ToDataRes(types.String)
+	},
+	"aws.config.organizationConformancePack.inputParameters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationConformancePack).GetInputParameters()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.config.organizationConformancePack.excludedAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationConformancePack).GetExcludedAccounts()).ToDataRes(types.Array(types.Resource("aws.account")))
+	},
+	"aws.config.organizationConformancePack.lastUpdateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationConformancePack).GetLastUpdateTime()).ToDataRes(types.Time)
+	},
+	"aws.config.organizationConformancePack.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationConformancePack).GetStatus()).ToDataRes(types.String)
+	},
+	"aws.config.organizationConformancePack.statusErrorCode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationConformancePack).GetStatusErrorCode()).ToDataRes(types.String)
+	},
+	"aws.config.organizationConformancePack.statusErrorMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsConfigOrganizationConformancePack).GetStatusErrorMessage()).ToDataRes(types.String)
 	},
 	"aws.eks.clusters": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEks).GetClusters()).ToDataRes(types.Array(types.Resource("aws.eks.cluster")))
@@ -52250,6 +52435,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsSecurityhub).Hubs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.securityhub.configurationPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhub).ConfigurationPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.securityhub.hub.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsSecurityhubHub).__id, ok = v.Value.(string)
 		return
@@ -52360,6 +52549,94 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.securityhub.findingAggregator.regions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsSecurityhubFindingAggregator).Regions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.securityhub.configurationPolicy.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicy.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicy.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicy.serviceEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).ServiceEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicy.enabledStandardIdentifiers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).EnabledStandardIdentifiers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicy.enabledControlIdentifiers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).EnabledControlIdentifiers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicy.disabledControlIdentifiers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).DisabledControlIdentifiers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicy.controlParameters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).ControlParameters, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicy.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicy.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicy.associations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicy).Associations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicyAssociation.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.securityhub.configurationPolicyAssociation.targetId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).TargetId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicyAssociation.targetType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).TargetType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicyAssociation.account": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).Account, ok = plugin.RawToTValue[*mqlAwsAccount](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicyAssociation.associationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).AssociationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicyAssociation.associationStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).AssociationStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicyAssociation.associationStatusMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).AssociationStatusMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.securityhub.configurationPolicyAssociation.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsSecurityhubConfigurationPolicyAssociation).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"aws.securityhub.standardSubscription.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -70598,6 +70875,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsConfig).ConformancePacks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"aws.config.organizationRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfig).OrganizationRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationConformancePacks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfig).OrganizationConformancePacks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.config.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsConfigRule).__id, ok = v.Value.(string)
 		return
@@ -70752,6 +71037,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.config.recorder.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsConfigRecorder).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.config.recorder.retentionPeriodInDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigRecorder).RetentionPeriodInDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"aws.config.deliverychannel.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -70916,6 +71205,138 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.config.aggregator.organizationAggregationSource.awsRegions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsConfigAggregatorOrganizationAggregationSource).AwsRegions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.config.organizationRule.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.ruleType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).RuleType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.sourceIdentifier": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).SourceIdentifier, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.lambdaFunction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).LambdaFunction, ok = plugin.RawToTValue[*mqlAwsLambdaFunction](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.policyRuntime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).PolicyRuntime, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.inputParameters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).InputParameters, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.maximumExecutionFrequency": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).MaximumExecutionFrequency, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.triggerTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).TriggerTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.resourceTypesScope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).ResourceTypesScope, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.resourceIdScope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).ResourceIdScope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.tagKeyScope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).TagKeyScope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.tagValueScope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).TagValueScope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.excludedAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).ExcludedAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.lastUpdateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).LastUpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.statusErrorCode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).StatusErrorCode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationRule.statusErrorMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationRule).StatusErrorMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationConformancePack.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationConformancePack).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.config.organizationConformancePack.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationConformancePack).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationConformancePack.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationConformancePack).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationConformancePack.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationConformancePack).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationConformancePack.deliveryS3Bucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationConformancePack).DeliveryS3Bucket, ok = plugin.RawToTValue[*mqlAwsS3Bucket](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationConformancePack.deliveryS3KeyPrefix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationConformancePack).DeliveryS3KeyPrefix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationConformancePack.inputParameters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationConformancePack).InputParameters, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationConformancePack.excludedAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationConformancePack).ExcludedAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationConformancePack.lastUpdateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationConformancePack).LastUpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationConformancePack.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationConformancePack).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationConformancePack.statusErrorCode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationConformancePack).StatusErrorCode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.config.organizationConformancePack.statusErrorMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsConfigOrganizationConformancePack).StatusErrorMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.eks.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -123320,7 +123741,8 @@ type mqlAwsSecurityhub struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAwsSecurityhubInternal it will be used here
-	Hubs plugin.TValue[[]any]
+	Hubs                  plugin.TValue[[]any]
+	ConfigurationPolicies plugin.TValue[[]any]
 }
 
 // createAwsSecurityhub creates a new instance of this resource
@@ -123373,6 +123795,22 @@ func (c *mqlAwsSecurityhub) GetHubs() *plugin.TValue[[]any] {
 		}
 
 		return c.hubs()
+	})
+}
+
+func (c *mqlAwsSecurityhub) GetConfigurationPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ConfigurationPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.securityhub", c.__id, "configurationPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.configurationPolicies()
 	})
 }
 
@@ -123729,6 +124167,228 @@ func (c *mqlAwsSecurityhubFindingAggregator) GetRegionLinkingMode() *plugin.TVal
 
 func (c *mqlAwsSecurityhubFindingAggregator) GetRegions() *plugin.TValue[[]any] {
 	return &c.Regions
+}
+
+// mqlAwsSecurityhubConfigurationPolicy for the aws.securityhub.configurationPolicy resource
+type mqlAwsSecurityhubConfigurationPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsSecurityhubConfigurationPolicyInternal
+	Arn                        plugin.TValue[string]
+	Id                         plugin.TValue[string]
+	Name                       plugin.TValue[string]
+	Description                plugin.TValue[string]
+	Region                     plugin.TValue[string]
+	ServiceEnabled             plugin.TValue[bool]
+	EnabledStandardIdentifiers plugin.TValue[[]any]
+	EnabledControlIdentifiers  plugin.TValue[[]any]
+	DisabledControlIdentifiers plugin.TValue[[]any]
+	ControlParameters          plugin.TValue[any]
+	CreatedAt                  plugin.TValue[*time.Time]
+	UpdatedAt                  plugin.TValue[*time.Time]
+	Associations               plugin.TValue[[]any]
+}
+
+// createAwsSecurityhubConfigurationPolicy creates a new instance of this resource
+func createAwsSecurityhubConfigurationPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsSecurityhubConfigurationPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.securityhub.configurationPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) MqlName() string {
+	return "aws.securityhub.configurationPolicy"
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) GetServiceEnabled() *plugin.TValue[bool] {
+	return &c.ServiceEnabled
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) GetEnabledStandardIdentifiers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EnabledStandardIdentifiers, func() ([]any, error) {
+		return c.enabledStandardIdentifiers()
+	})
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) GetEnabledControlIdentifiers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EnabledControlIdentifiers, func() ([]any, error) {
+		return c.enabledControlIdentifiers()
+	})
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) GetDisabledControlIdentifiers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DisabledControlIdentifiers, func() ([]any, error) {
+		return c.disabledControlIdentifiers()
+	})
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) GetControlParameters() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.ControlParameters, func() (any, error) {
+		return c.controlParameters()
+	})
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicy) GetAssociations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Associations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.securityhub.configurationPolicy", c.__id, "associations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.associations()
+	})
+}
+
+// mqlAwsSecurityhubConfigurationPolicyAssociation for the aws.securityhub.configurationPolicyAssociation resource
+type mqlAwsSecurityhubConfigurationPolicyAssociation struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsSecurityhubConfigurationPolicyAssociationInternal it will be used here
+	TargetId                 plugin.TValue[string]
+	TargetType               plugin.TValue[string]
+	Account                  plugin.TValue[*mqlAwsAccount]
+	AssociationType          plugin.TValue[string]
+	AssociationStatus        plugin.TValue[string]
+	AssociationStatusMessage plugin.TValue[string]
+	UpdatedAt                plugin.TValue[*time.Time]
+}
+
+// createAwsSecurityhubConfigurationPolicyAssociation creates a new instance of this resource
+func createAwsSecurityhubConfigurationPolicyAssociation(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsSecurityhubConfigurationPolicyAssociation{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.securityhub.configurationPolicyAssociation", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicyAssociation) MqlName() string {
+	return "aws.securityhub.configurationPolicyAssociation"
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicyAssociation) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicyAssociation) GetTargetId() *plugin.TValue[string] {
+	return &c.TargetId
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicyAssociation) GetTargetType() *plugin.TValue[string] {
+	return &c.TargetType
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicyAssociation) GetAccount() *plugin.TValue[*mqlAwsAccount] {
+	return plugin.GetOrCompute[*mqlAwsAccount](&c.Account, func() (*mqlAwsAccount, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.securityhub.configurationPolicyAssociation", c.__id, "account")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsAccount), nil
+			}
+		}
+
+		return c.account()
+	})
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicyAssociation) GetAssociationType() *plugin.TValue[string] {
+	return &c.AssociationType
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicyAssociation) GetAssociationStatus() *plugin.TValue[string] {
+	return &c.AssociationStatus
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicyAssociation) GetAssociationStatusMessage() *plugin.TValue[string] {
+	return &c.AssociationStatusMessage
+}
+
+func (c *mqlAwsSecurityhubConfigurationPolicyAssociation) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
 }
 
 // mqlAwsSecurityhubStandardSubscription for the aws.securityhub.standardSubscription resource
@@ -170350,11 +171010,13 @@ type mqlAwsConfig struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAwsConfigInternal it will be used here
-	Recorders        plugin.TValue[[]any]
-	Rules            plugin.TValue[[]any]
-	DeliveryChannels plugin.TValue[[]any]
-	Aggregators      plugin.TValue[[]any]
-	ConformancePacks plugin.TValue[[]any]
+	Recorders                    plugin.TValue[[]any]
+	Rules                        plugin.TValue[[]any]
+	DeliveryChannels             plugin.TValue[[]any]
+	Aggregators                  plugin.TValue[[]any]
+	ConformancePacks             plugin.TValue[[]any]
+	OrganizationRules            plugin.TValue[[]any]
+	OrganizationConformancePacks plugin.TValue[[]any]
 }
 
 // createAwsConfig creates a new instance of this resource
@@ -170471,6 +171133,38 @@ func (c *mqlAwsConfig) GetConformancePacks() *plugin.TValue[[]any] {
 		}
 
 		return c.conformancePacks()
+	})
+}
+
+func (c *mqlAwsConfig) GetOrganizationRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OrganizationRules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.config", c.__id, "organizationRules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.organizationRules()
+	})
+}
+
+func (c *mqlAwsConfig) GetOrganizationConformancePacks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OrganizationConformancePacks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.config", c.__id, "organizationConformancePacks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.organizationConformancePacks()
 	})
 }
 
@@ -170770,6 +171464,7 @@ type mqlAwsConfigRecorder struct {
 	RecordingStrategy          plugin.TValue[string]
 	ExclusionByResourceTypes   plugin.TValue[[]any]
 	Tags                       plugin.TValue[map[string]any]
+	RetentionPeriodInDays      plugin.TValue[int64]
 }
 
 // createAwsConfigRecorder creates a new instance of this resource
@@ -170868,6 +171563,12 @@ func (c *mqlAwsConfigRecorder) GetExclusionByResourceTypes() *plugin.TValue[[]an
 func (c *mqlAwsConfigRecorder) GetTags() *plugin.TValue[map[string]any] {
 	return plugin.GetOrCompute[map[string]any](&c.Tags, func() (map[string]any, error) {
 		return c.tags()
+	})
+}
+
+func (c *mqlAwsConfigRecorder) GetRetentionPeriodInDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.RetentionPeriodInDays, func() (int64, error) {
+		return c.retentionPeriodInDays()
 	})
 }
 
@@ -171370,6 +172071,311 @@ func (c *mqlAwsConfigAggregatorOrganizationAggregationSource) GetAllAwsRegions()
 
 func (c *mqlAwsConfigAggregatorOrganizationAggregationSource) GetAwsRegions() *plugin.TValue[[]any] {
 	return &c.AwsRegions
+}
+
+// mqlAwsConfigOrganizationRule for the aws.config.organizationRule resource
+type mqlAwsConfigOrganizationRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsConfigOrganizationRuleInternal
+	Arn                       plugin.TValue[string]
+	Name                      plugin.TValue[string]
+	Region                    plugin.TValue[string]
+	RuleType                  plugin.TValue[string]
+	SourceIdentifier          plugin.TValue[string]
+	LambdaFunction            plugin.TValue[*mqlAwsLambdaFunction]
+	PolicyRuntime             plugin.TValue[string]
+	Description               plugin.TValue[string]
+	InputParameters           plugin.TValue[any]
+	MaximumExecutionFrequency plugin.TValue[string]
+	TriggerTypes              plugin.TValue[[]any]
+	ResourceTypesScope        plugin.TValue[[]any]
+	ResourceIdScope           plugin.TValue[string]
+	TagKeyScope               plugin.TValue[string]
+	TagValueScope             plugin.TValue[string]
+	ExcludedAccounts          plugin.TValue[[]any]
+	LastUpdateTime            plugin.TValue[*time.Time]
+	Status                    plugin.TValue[string]
+	StatusErrorCode           plugin.TValue[string]
+	StatusErrorMessage        plugin.TValue[string]
+}
+
+// createAwsConfigOrganizationRule creates a new instance of this resource
+func createAwsConfigOrganizationRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsConfigOrganizationRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.config.organizationRule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsConfigOrganizationRule) MqlName() string {
+	return "aws.config.organizationRule"
+}
+
+func (c *mqlAwsConfigOrganizationRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetRuleType() *plugin.TValue[string] {
+	return &c.RuleType
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetSourceIdentifier() *plugin.TValue[string] {
+	return &c.SourceIdentifier
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetLambdaFunction() *plugin.TValue[*mqlAwsLambdaFunction] {
+	return plugin.GetOrCompute[*mqlAwsLambdaFunction](&c.LambdaFunction, func() (*mqlAwsLambdaFunction, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.config.organizationRule", c.__id, "lambdaFunction")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsLambdaFunction), nil
+			}
+		}
+
+		return c.lambdaFunction()
+	})
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetPolicyRuntime() *plugin.TValue[string] {
+	return &c.PolicyRuntime
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetInputParameters() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.InputParameters, func() (any, error) {
+		return c.inputParameters()
+	})
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetMaximumExecutionFrequency() *plugin.TValue[string] {
+	return &c.MaximumExecutionFrequency
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetTriggerTypes() *plugin.TValue[[]any] {
+	return &c.TriggerTypes
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetResourceTypesScope() *plugin.TValue[[]any] {
+	return &c.ResourceTypesScope
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetResourceIdScope() *plugin.TValue[string] {
+	return &c.ResourceIdScope
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetTagKeyScope() *plugin.TValue[string] {
+	return &c.TagKeyScope
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetTagValueScope() *plugin.TValue[string] {
+	return &c.TagValueScope
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetExcludedAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExcludedAccounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.config.organizationRule", c.__id, "excludedAccounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.excludedAccounts()
+	})
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetLastUpdateTime() *plugin.TValue[*time.Time] {
+	return &c.LastUpdateTime
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetStatus() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Status, func() (string, error) {
+		return c.status()
+	})
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetStatusErrorCode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.StatusErrorCode, func() (string, error) {
+		return c.statusErrorCode()
+	})
+}
+
+func (c *mqlAwsConfigOrganizationRule) GetStatusErrorMessage() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.StatusErrorMessage, func() (string, error) {
+		return c.statusErrorMessage()
+	})
+}
+
+// mqlAwsConfigOrganizationConformancePack for the aws.config.organizationConformancePack resource
+type mqlAwsConfigOrganizationConformancePack struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsConfigOrganizationConformancePackInternal
+	Arn                 plugin.TValue[string]
+	Name                plugin.TValue[string]
+	Region              plugin.TValue[string]
+	DeliveryS3Bucket    plugin.TValue[*mqlAwsS3Bucket]
+	DeliveryS3KeyPrefix plugin.TValue[string]
+	InputParameters     plugin.TValue[map[string]any]
+	ExcludedAccounts    plugin.TValue[[]any]
+	LastUpdateTime      plugin.TValue[*time.Time]
+	Status              plugin.TValue[string]
+	StatusErrorCode     plugin.TValue[string]
+	StatusErrorMessage  plugin.TValue[string]
+}
+
+// createAwsConfigOrganizationConformancePack creates a new instance of this resource
+func createAwsConfigOrganizationConformancePack(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsConfigOrganizationConformancePack{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.config.organizationConformancePack", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsConfigOrganizationConformancePack) MqlName() string {
+	return "aws.config.organizationConformancePack"
+}
+
+func (c *mqlAwsConfigOrganizationConformancePack) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsConfigOrganizationConformancePack) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsConfigOrganizationConformancePack) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAwsConfigOrganizationConformancePack) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlAwsConfigOrganizationConformancePack) GetDeliveryS3Bucket() *plugin.TValue[*mqlAwsS3Bucket] {
+	return plugin.GetOrCompute[*mqlAwsS3Bucket](&c.DeliveryS3Bucket, func() (*mqlAwsS3Bucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.config.organizationConformancePack", c.__id, "deliveryS3Bucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsS3Bucket), nil
+			}
+		}
+
+		return c.deliveryS3Bucket()
+	})
+}
+
+func (c *mqlAwsConfigOrganizationConformancePack) GetDeliveryS3KeyPrefix() *plugin.TValue[string] {
+	return &c.DeliveryS3KeyPrefix
+}
+
+func (c *mqlAwsConfigOrganizationConformancePack) GetInputParameters() *plugin.TValue[map[string]any] {
+	return &c.InputParameters
+}
+
+func (c *mqlAwsConfigOrganizationConformancePack) GetExcludedAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExcludedAccounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.config.organizationConformancePack", c.__id, "excludedAccounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.excludedAccounts()
+	})
+}
+
+func (c *mqlAwsConfigOrganizationConformancePack) GetLastUpdateTime() *plugin.TValue[*time.Time] {
+	return &c.LastUpdateTime
+}
+
+func (c *mqlAwsConfigOrganizationConformancePack) GetStatus() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Status, func() (string, error) {
+		return c.status()
+	})
+}
+
+func (c *mqlAwsConfigOrganizationConformancePack) GetStatusErrorCode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.StatusErrorCode, func() (string, error) {
+		return c.statusErrorCode()
+	})
+}
+
+func (c *mqlAwsConfigOrganizationConformancePack) GetStatusErrorMessage() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.StatusErrorMessage, func() (string, error) {
+		return c.statusErrorMessage()
+	})
 }
 
 // mqlAwsEks for the aws.eks resource
