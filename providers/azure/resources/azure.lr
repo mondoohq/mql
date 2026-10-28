@@ -11895,7 +11895,8 @@ private azure.subscription.monitorService.diagnosticSettingsCategory @defaults("
 //
 // Microsoft Defender for Cloud posture and threat protection for the
 // subscription. Reports which Defender plans (servers, containers, storage,
-// databases, key vaults, App Service, Resource Manager, APIs, and CSPM) are
+// databases, key vaults, App Service, Resource Manager, APIs, AI services,
+// and CSPM) are
 // enabled and at what pricing tier, alongside security assessments, active
 // alerts, secure scores, regulatory compliance results, just-in-time VM
 // access policies, alert suppression rules, workspace settings, and security
@@ -11924,6 +11925,12 @@ private azure.subscription.cloudDefenderService @defaults("forServers.enabled fo
   forKeyVaults() azure.subscription.cloudDefenderService.defenderForKeyVaults
   // Microsoft Defender for Resource Manager configuration
   forResourceManager() azure.subscription.cloudDefenderService.defenderForResourceManager
+  // Microsoft Defender for AI services configuration
+  //
+  // The subscription-wide plan that adds threat detection for prompt
+  // injection, sensitive data leakage, and credential misuse against Azure
+  // OpenAI and other AI services accounts.
+  forAIServices() azure.subscription.cloudDefenderService.defenderForAIServices
   // Microsoft Defender for APIs configuration
   defenderForApis() azure.subscription.cloudDefenderService.defenderForApis
   // Microsoft Defender Cloud Security Posture Management (CSPM) configuration
@@ -12801,6 +12808,34 @@ private azure.subscription.cloudDefenderService.defenderForKeyVaults @defaults("
   // Subscription identifier
   subscriptionId string
   // Whether Defender for Key Vault is enabled
+  enabled bool
+  // Pricing tier (Free or Standard)
+  pricingTier string
+  // Sub-plan selected for the pricing tier
+  subPlan string
+  // Whether the pricing configuration is enforced on child scopes
+  enforce bool
+  // Whether the pricing plan is deprecated
+  deprecated bool
+  // ISO 8601 duration of the free trial remaining
+  freeTrialRemainingTime string
+  // When the pricing tier was last set to Standard
+  enablementTime time
+  // Whether the pricing configuration is inherited from a parent scope
+  inherited bool
+  // ID of the parent scope from which the configuration is inherited
+  inheritedFrom string
+  // List of plan IDs that replace this plan if deprecated
+  replacedBy []string
+  // Coverage status of resources under this plan (FullyCovered, NotCovered, PartiallyCovered)
+  resourcesCoverageStatus string
+}
+
+// Microsoft Defender for AI services
+private azure.subscription.cloudDefenderService.defenderForAIServices @defaults("enabled pricingTier") {
+  // Subscription identifier
+  subscriptionId string
+  // Whether Defender for AI services is enabled
   enabled bool
   // Pricing tier (Free or Standard)
   pricingTier string
@@ -19079,6 +19114,28 @@ azure.subscription.searchService.service @defaults("id name location publicNetwo
   // IPv4 address or a CIDR range permitted to reach the service endpoint.
   // These rules apply only when `publicNetworkAccess` is "enabled".
   networkRuleSet dict
+  // Whether any address on the internet can reach the service endpoint
+  //
+  // True when publicNetworkAccess is enabled and the IP rules in
+  // networkRuleSet are either absent (no firewall) or together cover every
+  // address, for example 0.0.0.0/0. False when public access is disabled or
+  // the rules admit only part of the address space. Null when
+  // publicNetworkAccess is securedByPerimeter, where a network security
+  // perimeter decides who may connect.
+  internetReachable() bool
+  // Diagnostic settings that route the service's logs and metrics
+  //
+  // An empty list means no query, indexing, or operation logs leave the
+  // service, so requests against its indexes are not recorded anywhere.
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
+  // Microsoft Entra role assignments granting access to the service
+  //
+  // The effective role assignments at the service scope, including those
+  // inherited from the resource group, subscription, and management-group
+  // ancestors. When authMode is aadOrApiKey, these decide who can read and
+  // write index content through Entra ID (for example who holds Search Index
+  // Data Reader or Search Service Contributor).
+  roleAssignments() []azure.subscription.authorizationService.roleAssignment
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
 }
@@ -19364,6 +19421,18 @@ azure.subscription.machineLearningService.workspace @defaults("id name location 
   models() []azure.subscription.machineLearningService.workspace.model
   // Approved-outbound rules of the managed virtual network
   managedNetworkOutboundRules() []azure.subscription.machineLearningService.workspace.managedNetworkOutboundRule
+  // Diagnostic settings that route the workspace's logs and metrics
+  //
+  // An empty list means no audit, job, or model-deployment events leave
+  // the workspace, so activity in it is not recorded anywhere.
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
+  // Microsoft Entra role assignments granting access to the workspace
+  //
+  // The effective role assignments at the workspace scope, including those
+  // inherited from the resource group, subscription, and management-group
+  // ancestors. These decide who can submit jobs, read datastores, and
+  // deploy models (for example who holds AzureML Data Scientist or Owner).
+  roleAssignments() []azure.subscription.authorizationService.roleAssignment
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
 }
@@ -19584,6 +19653,36 @@ azure.subscription.machineLearningService.workspace.compute @defaults("name comp
   createdOn time
   // When the compute was last modified
   modifiedOn time
+  // Whether the compute nodes are given public IP addresses
+  //
+  // False means the nodes have only private addresses and are reached
+  // through a private endpoint. Null for compute types other than
+  // ComputeInstance and AmlCompute, and when the property is not set.
+  enableNodePublicIp bool
+  // State of the public SSH port on the compute nodes
+  //
+  // For a ComputeInstance, "Enabled" or "Disabled" from its SSH settings.
+  // For an AmlCompute cluster, "Enabled", "Disabled", or "NotSpecified"
+  // from its remote login setting; "NotSpecified" closes the port when the
+  // cluster is in a virtual network and opens it on every node otherwise.
+  // Null for other compute types and when the property is not set.
+  sshPublicAccess string
+  // Virtual network subnet the compute nodes are placed in
+  //
+  // Null when the compute is not attached to a customer subnet, and for
+  // compute types other than ComputeInstance and AmlCompute.
+  subnet() azure.subscription.networkService.subnet
+  // Microsoft Entra object ID of the user a personal compute instance is assigned to
+  //
+  // Only this user can use the instance's applications and terminal. Null
+  // when the instance has no assigned user, and for compute types other
+  // than ComputeInstance.
+  assignedUserObjectId string
+  // Microsoft Entra tenant ID of the user a personal compute instance is assigned to
+  //
+  // Null when the instance has no assigned user, and for compute types
+  // other than ComputeInstance.
+  assignedUserTenantId string
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
 }
@@ -19944,8 +20043,9 @@ private azure.subscription.cognitiveServicesService {
 // `networkAcls` holds the IP and virtual-network firewall rules,
 // `disableLocalAuth` reports whether API-key authentication is turned
 // off in favor of Microsoft Entra ID, `restrictOutboundNetworkAccess`
-// covers data-exfiltration controls, `cmkKeyName` and `cmkKeyVaultUri`
-// describe the customer-managed key encrypting the account, and
+// covers data-exfiltration controls, `cmkKey` resolves the
+// customer-managed key encrypting the account, `internetReachable`
+// combines public access with the firewall rules, and
 // `customSubDomainName` is the subdomain required by token-based
 // authentication and private endpoints.
 azure.subscription.cognitiveServicesService.account @defaults("id name location kind publicNetworkAccess") {
@@ -19993,6 +20093,27 @@ azure.subscription.cognitiveServicesService.account @defaults("id name location 
   cmkKeyName string
   // URI of the Key Vault holding the customer-managed key
   cmkKeyVaultUri string
+  // Customer-managed Key Vault key encrypting the account
+  //
+  // Resolved from cmkKeyVaultUri, cmkKeyName, and cmkKeyVersion, so the
+  // key's expiry, enablement, and rotation can be audited. Null when the
+  // account uses platform-managed keys.
+  cmkKey() azure.subscription.keyVaultService.key
+  // Whether any address on the internet can reach the account endpoint
+  //
+  // True when publicNetworkAccess is enabled and either networkAcls lets
+  // unmatched traffic through (defaultAction Allow, or no network rule set
+  // at all) or the ipRules together cover every address, for example
+  // 0.0.0.0/0. False when public access is disabled or the default action
+  // is Deny and the rules admit only part of the address space.
+  // Virtual-network rules are not counted: they admit a subnet, not the
+  // internet.
+  internetReachable() bool
+  // Diagnostic settings that route the account's logs and metrics
+  //
+  // An empty list means no audit or request-and-response logs leave the
+  // account, so calls to its models are not recorded anywhere.
+  diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting
   // The endpoint URL of the account
   endpoint string
   // Provisioning state of the account
@@ -20193,6 +20314,13 @@ azure.subscription.cognitiveServicesService.account.deployment @defaults("name m
   // this resolves to that version. Null when the served model is not in the
   // account's catalog, as with a fine-tuned or custom deployment.
   model() azure.subscription.cognitiveServicesService.account.model
+  // Deployment on the same account that receives overflow traffic
+  //
+  // Requests this deployment cannot serve within its provisioned capacity
+  // are routed here, so its model and content-filter policy also apply to
+  // the application's traffic. Null when no spillover is configured or the
+  // named deployment no longer exists on the account.
+  spilloverDeployment() azure.subscription.cognitiveServicesService.account.deployment
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
 }

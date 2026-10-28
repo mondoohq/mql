@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -386,6 +387,65 @@ func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) privateEndpointCon
 // (not just assignments made directly on it).
 func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) roleAssignments() ([]any, error) {
 	return roleAssignmentsForScope(a.MqlRuntime, a.Id.Data, "cognitive services account")
+}
+
+func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) diagnosticSettings() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+// cognitiveAccountCmkKeyURI builds the Key Vault key identifier of an account's
+// customer-managed key. It is empty unless the key source is Key Vault: an
+// account switched back to platform-managed keys can still carry the old
+// keyVaultProperties, and resolving those would report a key that no longer
+// encrypts anything.
+func cognitiveAccountCmkKeyURI(keySource, vaultURI, keyName, keyVersion string) string {
+	if !strings.EqualFold(strings.TrimSpace(keySource), string(armcognitiveservices.KeySourceMicrosoftKeyVault)) {
+		return ""
+	}
+	return keyVaultKeyURI(vaultURI, keyName, keyVersion)
+}
+
+func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) cmkKey() (*mqlAzureSubscriptionKeyVaultServiceKey, error) {
+	uri := cognitiveAccountCmkKeyURI(a.CmkKeySource.Data, a.CmkKeyVaultUri.Data, a.CmkKeyName.Data, a.CmkKeyVersion.Data)
+	if uri == "" {
+		a.CmkKey.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return newKeyVaultKeyResource(a.MqlRuntime, uri)
+}
+
+// cognitiveAccountInternetReachable reports whether any internet address can
+// reach an AI Services account endpoint.
+//
+// Public network access is the outer gate. Behind it, the network rule set
+// admits everything unless its default action is Deny; an account with no
+// rule set at all is open, which is what Azure does when networkAcls is
+// absent. With a Deny default, only the IP rules admit public traffic, and
+// they are judged as a set so that rules splitting the address space between
+// them (0.0.0.0/1 and 128.0.0.0/1) count as open. Virtual-network rules admit
+// a subnet, never the internet, so they do not enter into it.
+func cognitiveAccountInternetReachable(publicNetworkAccess, defaultAction string, ipRules []string) bool {
+	if !publicNetworkAccessEnabled(publicNetworkAccess) {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(defaultAction), string(armcognitiveservices.NetworkRuleActionDeny)) {
+		return true
+	}
+	return prefixesCoverInternet(ipRules)
+}
+
+func (a *mqlAzureSubscriptionCognitiveServicesServiceAccount) internetReachable() (bool, error) {
+	ipRules := make([]string, 0, len(a.IpRules.Data))
+	for _, r := range a.IpRules.Data {
+		if s, ok := r.(string); ok {
+			ipRules = append(ipRules, s)
+		}
+	}
+	return cognitiveAccountInternetReachable(a.PublicNetworkAccess.Data, a.NetworkAclsDefaultAction.Data, ipRules), nil
 }
 
 func (a *mqlAzureSubscriptionCognitiveServicesServiceAccountVirtualNetworkRule) id() (string, error) {
@@ -939,12 +999,60 @@ func cognitiveServicesDeploymentToMql(runtime *plugin.Runtime, dep *armcognitive
 		return nil, err
 	}
 	mqlDep.cacheSystemData = sysData
+	if dep.Properties != nil && dep.Properties.SpilloverDeploymentName != nil {
+		mqlDep.cacheSpilloverDeploymentName = strings.TrimSpace(*dep.Properties.SpilloverDeploymentName)
+	}
 	return mqlDep, nil
 }
 
 type mqlAzureSubscriptionCognitiveServicesServiceAccountDeploymentInternal struct {
-	cacheAccountId  string
-	cacheSystemData any
+	cacheAccountId               string
+	cacheSystemData              any
+	cacheSpilloverDeploymentName string
+}
+
+// spilloverDeployment resolves the deployment that receives this one's overflow
+// traffic. Spillover only targets a deployment on the same account, so the name
+// is matched against the account's own deployment list, which is fetched once
+// and shared by every deployment that asks.
+func (a *mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment) spilloverDeployment() (*mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment, error) {
+	name := a.cacheSpilloverDeploymentName
+	if name == "" || a.cacheAccountId == "" {
+		a.SpilloverDeployment.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	mqlAccount, err := NewResource(a.MqlRuntime, "azure.subscription.cognitiveServicesService.account",
+		map[string]*llx.RawData{"id": llx.StringData(a.cacheAccountId)})
+	if err != nil {
+		return nil, err
+	}
+	account := mqlAccount.(*mqlAzureSubscriptionCognitiveServicesServiceAccount)
+	deployments := account.GetDeployments()
+	if deployments.Error != nil {
+		return nil, deployments.Error
+	}
+	if dep := findDeploymentByName(deployments.Data, name); dep != nil {
+		return dep, nil
+	}
+
+	a.SpilloverDeployment.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
+}
+
+// findDeploymentByName returns the deployment with the given name. Deployment
+// names are unique within an account and Azure treats them case-insensitively.
+func findDeploymentByName(deployments []any, name string) *mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment {
+	for _, d := range deployments {
+		dep, ok := d.(*mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment)
+		if !ok {
+			continue
+		}
+		if strings.EqualFold(dep.Name.Data, name) {
+			return dep
+		}
+	}
+	return nil
 }
 
 func (a *mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {

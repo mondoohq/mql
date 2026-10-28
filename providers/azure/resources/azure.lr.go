@@ -349,6 +349,7 @@ const (
 	ResourceAzureSubscriptionCloudDefenderServiceDefenderForCosmosDb                                    string = "azure.subscription.cloudDefenderService.defenderForCosmosDb"
 	ResourceAzureSubscriptionCloudDefenderServiceDefenderForStorageAccounts                             string = "azure.subscription.cloudDefenderService.defenderForStorageAccounts"
 	ResourceAzureSubscriptionCloudDefenderServiceDefenderForKeyVaults                                   string = "azure.subscription.cloudDefenderService.defenderForKeyVaults"
+	ResourceAzureSubscriptionCloudDefenderServiceDefenderForAIServices                                  string = "azure.subscription.cloudDefenderService.defenderForAIServices"
 	ResourceAzureSubscriptionCloudDefenderServiceDefenderForResourceManager                             string = "azure.subscription.cloudDefenderService.defenderForResourceManager"
 	ResourceAzureSubscriptionCloudDefenderServiceDefenderForContainers                                  string = "azure.subscription.cloudDefenderService.defenderForContainers"
 	ResourceAzureSubscriptionCloudDefenderServiceDefenderForContainersExtension                         string = "azure.subscription.cloudDefenderService.defenderForContainers.extension"
@@ -1969,6 +1970,10 @@ func init() {
 		"azure.subscription.cloudDefenderService.defenderForKeyVaults": {
 			// to override args, implement: initAzureSubscriptionCloudDefenderServiceDefenderForKeyVaults(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzureSubscriptionCloudDefenderServiceDefenderForKeyVaults,
+		},
+		"azure.subscription.cloudDefenderService.defenderForAIServices": {
+			// to override args, implement: initAzureSubscriptionCloudDefenderServiceDefenderForAIServices(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionCloudDefenderServiceDefenderForAIServices,
 		},
 		"azure.subscription.cloudDefenderService.defenderForResourceManager": {
 			// to override args, implement: initAzureSubscriptionCloudDefenderServiceDefenderForResourceManager(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -14801,6 +14806,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.cloudDefenderService.forResourceManager": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCloudDefenderService).GetForResourceManager()).ToDataRes(types.Resource("azure.subscription.cloudDefenderService.defenderForResourceManager"))
 	},
+	"azure.subscription.cloudDefenderService.forAIServices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderService).GetForAIServices()).ToDataRes(types.Resource("azure.subscription.cloudDefenderService.defenderForAIServices"))
+	},
 	"azure.subscription.cloudDefenderService.defenderForApis": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCloudDefenderService).GetDefenderForApis()).ToDataRes(types.Resource("azure.subscription.cloudDefenderService.defenderForApis"))
 	},
@@ -15748,6 +15756,42 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.cloudDefenderService.defenderForKeyVaults.resourcesCoverageStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForKeyVaults).GetResourcesCoverageStatus()).ToDataRes(types.String)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.subscriptionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetSubscriptionId()).ToDataRes(types.String)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.pricingTier": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetPricingTier()).ToDataRes(types.String)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.subPlan": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetSubPlan()).ToDataRes(types.String)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.enforce": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetEnforce()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.deprecated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetDeprecated()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.freeTrialRemainingTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetFreeTrialRemainingTime()).ToDataRes(types.String)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.enablementTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetEnablementTime()).ToDataRes(types.Time)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.inherited": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetInherited()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.inheritedFrom": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetInheritedFrom()).ToDataRes(types.String)
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.replacedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetReplacedBy()).ToDataRes(types.Array(types.String))
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.resourcesCoverageStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).GetResourcesCoverageStatus()).ToDataRes(types.String)
 	},
 	"azure.subscription.cloudDefenderService.defenderForResourceManager.subscriptionId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForResourceManager).GetSubscriptionId()).ToDataRes(types.String)
@@ -21488,6 +21532,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.searchService.service.networkRuleSet": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionSearchServiceService).GetNetworkRuleSet()).ToDataRes(types.Dict)
 	},
+	"azure.subscription.searchService.service.internetReachable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceService).GetInternetReachable()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.searchService.service.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceService).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
+	},
+	"azure.subscription.searchService.service.roleAssignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSearchServiceService).GetRoleAssignments()).ToDataRes(types.Array(types.Resource("azure.subscription.authorizationService.roleAssignment")))
+	},
 	"azure.subscription.searchService.service.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionSearchServiceService).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
 	},
@@ -21722,6 +21775,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.machineLearningService.workspace.managedNetworkOutboundRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetManagedNetworkOutboundRules()).ToDataRes(types.Array(types.Resource("azure.subscription.machineLearningService.workspace.managedNetworkOutboundRule")))
 	},
+	"azure.subscription.machineLearningService.workspace.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
+	},
+	"azure.subscription.machineLearningService.workspace.roleAssignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetRoleAssignments()).ToDataRes(types.Array(types.Resource("azure.subscription.authorizationService.roleAssignment")))
+	},
 	"azure.subscription.machineLearningService.workspace.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
 	},
@@ -21943,6 +22002,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.machineLearningService.workspace.compute.modifiedOn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).GetModifiedOn()).ToDataRes(types.Time)
+	},
+	"azure.subscription.machineLearningService.workspace.compute.enableNodePublicIp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).GetEnableNodePublicIp()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.machineLearningService.workspace.compute.sshPublicAccess": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).GetSshPublicAccess()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.workspace.compute.subnet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).GetSubnet()).ToDataRes(types.Resource("azure.subscription.networkService.subnet"))
+	},
+	"azure.subscription.machineLearningService.workspace.compute.assignedUserObjectId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).GetAssignedUserObjectId()).ToDataRes(types.String)
+	},
+	"azure.subscription.machineLearningService.workspace.compute.assignedUserTenantId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).GetAssignedUserTenantId()).ToDataRes(types.String)
 	},
 	"azure.subscription.machineLearningService.workspace.compute.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
@@ -22316,6 +22390,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.cognitiveServicesService.account.cmkKeyVaultUri": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).GetCmkKeyVaultUri()).ToDataRes(types.String)
 	},
+	"azure.subscription.cognitiveServicesService.account.cmkKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).GetCmkKey()).ToDataRes(types.Resource("azure.subscription.keyVaultService.key"))
+	},
+	"azure.subscription.cognitiveServicesService.account.internetReachable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).GetInternetReachable()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.cognitiveServicesService.account.diagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).GetDiagnosticSettings()).ToDataRes(types.Array(types.Resource("azure.subscription.monitorService.diagnosticsetting")))
+	},
 	"azure.subscription.cognitiveServicesService.account.endpoint": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).GetEndpoint()).ToDataRes(types.String)
 	},
@@ -22504,6 +22587,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.cognitiveServicesService.account.deployment.model": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment).GetModel()).ToDataRes(types.Resource("azure.subscription.cognitiveServicesService.account.model"))
+	},
+	"azure.subscription.cognitiveServicesService.account.deployment.spilloverDeployment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment).GetSpilloverDeployment()).ToDataRes(types.Resource("azure.subscription.cognitiveServicesService.account.deployment"))
 	},
 	"azure.subscription.cognitiveServicesService.account.deployment.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
@@ -41905,6 +41991,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionCloudDefenderService).ForResourceManager, ok = plugin.RawToTValue[*mqlAzureSubscriptionCloudDefenderServiceDefenderForResourceManager](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.cloudDefenderService.forAIServices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderService).ForAIServices, ok = plugin.RawToTValue[*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.cloudDefenderService.defenderForApis": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionCloudDefenderService).DefenderForApis, ok = plugin.RawToTValue[*mqlAzureSubscriptionCloudDefenderServiceDefenderForApis](v.Value, v.Error)
 		return
@@ -43279,6 +43369,58 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.cloudDefenderService.defenderForKeyVaults.resourcesCoverageStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForKeyVaults).ResourcesCoverageStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.subscriptionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).SubscriptionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.pricingTier": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).PricingTier, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.subPlan": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).SubPlan, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.enforce": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).Enforce, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.deprecated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).Deprecated, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.freeTrialRemainingTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).FreeTrialRemainingTime, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.enablementTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).EnablementTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.inherited": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).Inherited, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.inheritedFrom": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).InheritedFrom, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.replacedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).ReplacedBy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cloudDefenderService.defenderForAIServices.resourcesCoverageStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices).ResourcesCoverageStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.cloudDefenderService.defenderForResourceManager.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -51665,6 +51807,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionSearchServiceService).NetworkRuleSet, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.searchService.service.internetReachable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceService).InternetReachable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.searchService.service.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceService).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.searchService.service.roleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSearchServiceService).RoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.searchService.service.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionSearchServiceService).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
 		return
@@ -52001,6 +52155,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).ManagedNetworkOutboundRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.machineLearningService.workspace.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.roleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).RoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.machineLearningService.workspace.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspace).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
 		return
@@ -52315,6 +52477,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.machineLearningService.workspace.compute.modifiedOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).ModifiedOn, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.compute.enableNodePublicIp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).EnableNodePublicIp, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.compute.sshPublicAccess": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).SshPublicAccess, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.compute.subnet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).Subnet, ok = plugin.RawToTValue[*mqlAzureSubscriptionNetworkServiceSubnet](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.compute.assignedUserObjectId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).AssignedUserObjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.machineLearningService.workspace.compute.assignedUserTenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).AssignedUserTenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.machineLearningService.workspace.compute.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -52849,6 +53031,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).CmkKeyVaultUri, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.cognitiveServicesService.account.cmkKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).CmkKey, ok = plugin.RawToTValue[*mqlAzureSubscriptionKeyVaultServiceKey](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cognitiveServicesService.account.internetReachable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).InternetReachable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cognitiveServicesService.account.diagnosticSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).DiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.cognitiveServicesService.account.endpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionCognitiveServicesServiceAccount).Endpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -53115,6 +53309,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.cognitiveServicesService.account.deployment.model": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment).Model, ok = plugin.RawToTValue[*mqlAzureSubscriptionCognitiveServicesServiceAccountModel](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.cognitiveServicesService.account.deployment.spilloverDeployment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment).SpilloverDeployment, ok = plugin.RawToTValue[*mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.cognitiveServicesService.account.deployment.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -96868,6 +97066,7 @@ type mqlAzureSubscriptionCloudDefenderService struct {
 	ForStorageAccounts            plugin.TValue[*mqlAzureSubscriptionCloudDefenderServiceDefenderForStorageAccounts]
 	ForKeyVaults                  plugin.TValue[*mqlAzureSubscriptionCloudDefenderServiceDefenderForKeyVaults]
 	ForResourceManager            plugin.TValue[*mqlAzureSubscriptionCloudDefenderServiceDefenderForResourceManager]
+	ForAIServices                 plugin.TValue[*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices]
 	DefenderForApis               plugin.TValue[*mqlAzureSubscriptionCloudDefenderServiceDefenderForApis]
 	DefenderCSPM                  plugin.TValue[*mqlAzureSubscriptionCloudDefenderServiceDefenderCSPM]
 	ForContainers                 plugin.TValue[*mqlAzureSubscriptionCloudDefenderServiceDefenderForContainers]
@@ -97076,6 +97275,22 @@ func (c *mqlAzureSubscriptionCloudDefenderService) GetForResourceManager() *plug
 		}
 
 		return c.forResourceManager()
+	})
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderService) GetForAIServices() *plugin.TValue[*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices](&c.ForAIServices, func() (*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.cloudDefenderService", c.__id, "forAIServices")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices), nil
+			}
+		}
+
+		return c.forAIServices()
 	})
 }
 
@@ -100232,6 +100447,110 @@ func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForKeyVaults) GetReplac
 }
 
 func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForKeyVaults) GetResourcesCoverageStatus() *plugin.TValue[string] {
+	return &c.ResourcesCoverageStatus
+}
+
+// mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices for the azure.subscription.cloudDefenderService.defenderForAIServices resource
+type mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServicesInternal it will be used here
+	SubscriptionId          plugin.TValue[string]
+	Enabled                 plugin.TValue[bool]
+	PricingTier             plugin.TValue[string]
+	SubPlan                 plugin.TValue[string]
+	Enforce                 plugin.TValue[bool]
+	Deprecated              plugin.TValue[bool]
+	FreeTrialRemainingTime  plugin.TValue[string]
+	EnablementTime          plugin.TValue[*time.Time]
+	Inherited               plugin.TValue[bool]
+	InheritedFrom           plugin.TValue[string]
+	ReplacedBy              plugin.TValue[[]any]
+	ResourcesCoverageStatus plugin.TValue[string]
+}
+
+// createAzureSubscriptionCloudDefenderServiceDefenderForAIServices creates a new instance of this resource
+func createAzureSubscriptionCloudDefenderServiceDefenderForAIServices(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.cloudDefenderService.defenderForAIServices", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) MqlName() string {
+	return "azure.subscription.cloudDefenderService.defenderForAIServices"
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetSubscriptionId() *plugin.TValue[string] {
+	return &c.SubscriptionId
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetPricingTier() *plugin.TValue[string] {
+	return &c.PricingTier
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetSubPlan() *plugin.TValue[string] {
+	return &c.SubPlan
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetEnforce() *plugin.TValue[bool] {
+	return &c.Enforce
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetDeprecated() *plugin.TValue[bool] {
+	return &c.Deprecated
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetFreeTrialRemainingTime() *plugin.TValue[string] {
+	return &c.FreeTrialRemainingTime
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetEnablementTime() *plugin.TValue[*time.Time] {
+	return &c.EnablementTime
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetInherited() *plugin.TValue[bool] {
+	return &c.Inherited
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetInheritedFrom() *plugin.TValue[string] {
+	return &c.InheritedFrom
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetReplacedBy() *plugin.TValue[[]any] {
+	return &c.ReplacedBy
+}
+
+func (c *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) GetResourcesCoverageStatus() *plugin.TValue[string] {
 	return &c.ResourcesCoverageStatus
 }
 
@@ -120845,6 +121164,9 @@ type mqlAzureSubscriptionSearchServiceService struct {
 	ProvisioningState             plugin.TValue[string]
 	Status                        plugin.TValue[string]
 	NetworkRuleSet                plugin.TValue[any]
+	InternetReachable             plugin.TValue[bool]
+	DiagnosticSettings            plugin.TValue[[]any]
+	RoleAssignments               plugin.TValue[[]any]
 	SystemMetadata                plugin.TValue[*mqlAzureSubscriptionSystemData]
 }
 
@@ -120987,6 +121309,44 @@ func (c *mqlAzureSubscriptionSearchServiceService) GetStatus() *plugin.TValue[st
 
 func (c *mqlAzureSubscriptionSearchServiceService) GetNetworkRuleSet() *plugin.TValue[any] {
 	return &c.NetworkRuleSet
+}
+
+func (c *mqlAzureSubscriptionSearchServiceService) GetInternetReachable() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.InternetReachable, func() (bool, error) {
+		return c.internetReachable()
+	})
+}
+
+func (c *mqlAzureSubscriptionSearchServiceService) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.searchService.service", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
+	})
+}
+
+func (c *mqlAzureSubscriptionSearchServiceService) GetRoleAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RoleAssignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.searchService.service", c.__id, "roleAssignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roleAssignments()
+	})
 }
 
 func (c *mqlAzureSubscriptionSearchServiceService) GetSystemMetadata() *plugin.TValue[*mqlAzureSubscriptionSystemData] {
@@ -121498,6 +121858,8 @@ type mqlAzureSubscriptionMachineLearningServiceWorkspace struct {
 	Computes                        plugin.TValue[[]any]
 	Models                          plugin.TValue[[]any]
 	ManagedNetworkOutboundRules     plugin.TValue[[]any]
+	DiagnosticSettings              plugin.TValue[[]any]
+	RoleAssignments                 plugin.TValue[[]any]
 	SystemMetadata                  plugin.TValue[*mqlAzureSubscriptionSystemData]
 }
 
@@ -121911,6 +122273,38 @@ func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetManagedNetworkO
 		}
 
 		return c.managedNetworkOutboundRules()
+	})
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.machineLearningService.workspace", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
+	})
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspace) GetRoleAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RoleAssignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.machineLearningService.workspace", c.__id, "roleAssignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roleAssignments()
 	})
 }
 
@@ -122456,22 +122850,27 @@ type mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAzureSubscriptionMachineLearningServiceWorkspaceComputeInternal
-	Id                plugin.TValue[string]
-	Name              plugin.TValue[string]
-	Location          plugin.TValue[string]
-	Tags              plugin.TValue[map[string]any]
-	Identity          plugin.TValue[any]
-	ResourceIdentity  plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
-	ComputeType       plugin.TValue[string]
-	Description       plugin.TValue[string]
-	DisableLocalAuth  plugin.TValue[bool]
-	IsAttachedCompute plugin.TValue[bool]
-	ResourceId        plugin.TValue[string]
-	ComputeLocation   plugin.TValue[string]
-	ProvisioningState plugin.TValue[string]
-	CreatedOn         plugin.TValue[*time.Time]
-	ModifiedOn        plugin.TValue[*time.Time]
-	SystemMetadata    plugin.TValue[*mqlAzureSubscriptionSystemData]
+	Id                   plugin.TValue[string]
+	Name                 plugin.TValue[string]
+	Location             plugin.TValue[string]
+	Tags                 plugin.TValue[map[string]any]
+	Identity             plugin.TValue[any]
+	ResourceIdentity     plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
+	ComputeType          plugin.TValue[string]
+	Description          plugin.TValue[string]
+	DisableLocalAuth     plugin.TValue[bool]
+	IsAttachedCompute    plugin.TValue[bool]
+	ResourceId           plugin.TValue[string]
+	ComputeLocation      plugin.TValue[string]
+	ProvisioningState    plugin.TValue[string]
+	CreatedOn            plugin.TValue[*time.Time]
+	ModifiedOn           plugin.TValue[*time.Time]
+	EnableNodePublicIp   plugin.TValue[bool]
+	SshPublicAccess      plugin.TValue[string]
+	Subnet               plugin.TValue[*mqlAzureSubscriptionNetworkServiceSubnet]
+	AssignedUserObjectId plugin.TValue[string]
+	AssignedUserTenantId plugin.TValue[string]
+	SystemMetadata       plugin.TValue[*mqlAzureSubscriptionSystemData]
 }
 
 // createAzureSubscriptionMachineLearningServiceWorkspaceCompute creates a new instance of this resource
@@ -122569,6 +122968,38 @@ func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetCreatedO
 
 func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetModifiedOn() *plugin.TValue[*time.Time] {
 	return &c.ModifiedOn
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetEnableNodePublicIp() *plugin.TValue[bool] {
+	return &c.EnableNodePublicIp
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetSshPublicAccess() *plugin.TValue[string] {
+	return &c.SshPublicAccess
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetSubnet() *plugin.TValue[*mqlAzureSubscriptionNetworkServiceSubnet] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionNetworkServiceSubnet](&c.Subnet, func() (*mqlAzureSubscriptionNetworkServiceSubnet, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.machineLearningService.workspace.compute", c.__id, "subnet")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionNetworkServiceSubnet), nil
+			}
+		}
+
+		return c.subnet()
+	})
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetAssignedUserObjectId() *plugin.TValue[string] {
+	return &c.AssignedUserObjectId
+}
+
+func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetAssignedUserTenantId() *plugin.TValue[string] {
+	return &c.AssignedUserTenantId
 }
 
 func (c *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) GetSystemMetadata() *plugin.TValue[*mqlAzureSubscriptionSystemData] {
@@ -123615,6 +124046,9 @@ type mqlAzureSubscriptionCognitiveServicesServiceAccount struct {
 	CmkKeySource                    plugin.TValue[string]
 	CmkKeyName                      plugin.TValue[string]
 	CmkKeyVaultUri                  plugin.TValue[string]
+	CmkKey                          plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey]
+	InternetReachable               plugin.TValue[bool]
+	DiagnosticSettings              plugin.TValue[[]any]
 	Endpoint                        plugin.TValue[string]
 	ProvisioningState               plugin.TValue[string]
 	StoredCompletionsDisabled       plugin.TValue[bool]
@@ -123762,6 +124196,44 @@ func (c *mqlAzureSubscriptionCognitiveServicesServiceAccount) GetCmkKeyName() *p
 
 func (c *mqlAzureSubscriptionCognitiveServicesServiceAccount) GetCmkKeyVaultUri() *plugin.TValue[string] {
 	return &c.CmkKeyVaultUri
+}
+
+func (c *mqlAzureSubscriptionCognitiveServicesServiceAccount) GetCmkKey() *plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionKeyVaultServiceKey](&c.CmkKey, func() (*mqlAzureSubscriptionKeyVaultServiceKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.cognitiveServicesService.account", c.__id, "cmkKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionKeyVaultServiceKey), nil
+			}
+		}
+
+		return c.cmkKey()
+	})
+}
+
+func (c *mqlAzureSubscriptionCognitiveServicesServiceAccount) GetInternetReachable() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.InternetReachable, func() (bool, error) {
+		return c.internetReachable()
+	})
+}
+
+func (c *mqlAzureSubscriptionCognitiveServicesServiceAccount) GetDiagnosticSettings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DiagnosticSettings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.cognitiveServicesService.account", c.__id, "diagnosticSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.diagnosticSettings()
+	})
 }
 
 func (c *mqlAzureSubscriptionCognitiveServicesServiceAccount) GetEndpoint() *plugin.TValue[string] {
@@ -124287,6 +124759,7 @@ type mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment struct {
 	RaiPolicyName            plugin.TValue[string]
 	RaiPolicy                plugin.TValue[*mqlAzureSubscriptionCognitiveServicesServiceAccountRaiPolicy]
 	Model                    plugin.TValue[*mqlAzureSubscriptionCognitiveServicesServiceAccountModel]
+	SpilloverDeployment      plugin.TValue[*mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment]
 	SystemMetadata           plugin.TValue[*mqlAzureSubscriptionSystemData]
 }
 
@@ -124420,6 +124893,22 @@ func (c *mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment) GetModel
 		}
 
 		return c.model()
+	})
+}
+
+func (c *mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment) GetSpilloverDeployment() *plugin.TValue[*mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment] {
+	return plugin.GetOrCompute[*mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment](&c.SpilloverDeployment, func() (*mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.cognitiveServicesService.account.deployment", c.__id, "spilloverDeployment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAzureSubscriptionCognitiveServicesServiceAccountDeployment), nil
+			}
+		}
+
+		return c.spilloverDeployment()
 	})
 }
 

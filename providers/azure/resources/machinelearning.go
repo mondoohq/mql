@@ -836,6 +836,11 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) computes() ([]any,
 				"createdOn":         llx.TimeDataPtr(createdOn),
 				"modifiedOn":        llx.TimeDataPtr(modifiedOn),
 			}
+			nodeAccess := mlComputeNodeAccessFrom(c.Properties)
+			computeArgs["enableNodePublicIp"] = llx.BoolDataPtr(nodeAccess.enableNodePublicIP)
+			computeArgs["sshPublicAccess"] = llx.StringDataPtr(nodeAccess.sshPublicAccess)
+			computeArgs["assignedUserObjectId"] = llx.StringDataPtr(nodeAccess.assignedUserObjectID)
+			computeArgs["assignedUserTenantId"] = llx.StringDataPtr(nodeAccess.assignedUserTenantID)
 			computeIdentity := orZero(c.Identity)
 			if err := setResourceIdentity(a.MqlRuntime, computeArgs, sortedUserAssignedIdentityIDs(computeIdentity.UserAssignedIdentities),
 				identityType(computeIdentity.Type), identityPrincipalId(computeIdentity.PrincipalID), identityTenantId(computeIdentity.TenantID)); err != nil {
@@ -851,6 +856,7 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) computes() ([]any,
 			}
 			mqlComputeRes := mqlCompute.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute)
 			mqlComputeRes.cacheSystemData = sysData
+			mqlComputeRes.cacheSubnetId = nodeAccess.subnetID
 			res = append(res, mqlCompute)
 		}
 	}
@@ -947,6 +953,72 @@ type mqlAzureSubscriptionMachineLearningServiceWorkspaceServerlessEndpointIntern
 
 type mqlAzureSubscriptionMachineLearningServiceWorkspaceComputeInternal struct {
 	cacheSystemData any
+	cacheSubnetId   *string
+}
+
+// mlComputeNodeAccess holds the node-level network and access settings of a
+// compute target. Only ComputeInstance and AmlCompute carry them; every field
+// stays nil for other compute types so the MQL fields read null rather than a
+// false or empty value that would claim the setting was measured.
+type mlComputeNodeAccess struct {
+	enableNodePublicIP   *bool
+	sshPublicAccess      *string
+	subnetID             *string
+	assignedUserObjectID *string
+	assignedUserTenantID *string
+}
+
+func mlComputeNodeAccessFrom(c ml.ComputeClassification) mlComputeNodeAccess {
+	var out mlComputeNodeAccess
+	switch v := c.(type) {
+	case *ml.ComputeInstance:
+		if v == nil || v.Properties == nil {
+			return out
+		}
+		p := v.Properties
+		out.enableNodePublicIP = p.EnableNodePublicIP
+		if p.SSHSettings != nil && p.SSHSettings.SSHPublicAccess != nil {
+			out.sshPublicAccess = new(string(*p.SSHSettings.SSHPublicAccess))
+		}
+		if p.Subnet != nil {
+			out.subnetID = p.Subnet.ID
+		}
+		if s := p.PersonalComputeInstanceSettings; s != nil && s.AssignedUser != nil {
+			out.assignedUserObjectID = s.AssignedUser.ObjectID
+			out.assignedUserTenantID = s.AssignedUser.TenantID
+		}
+	case *ml.AmlCompute:
+		if v == nil || v.Properties == nil {
+			return out
+		}
+		p := v.Properties
+		out.enableNodePublicIP = p.EnableNodePublicIP
+		if p.RemoteLoginPortPublicAccess != nil {
+			out.sshPublicAccess = new(string(*p.RemoteLoginPortPublicAccess))
+		}
+		if p.Subnet != nil {
+			out.subnetID = p.Subnet.ID
+		}
+	}
+	return out
+}
+
+// subnet resolves the subnet the compute nodes are placed in. Null when the
+// compute is not in a customer subnet or its type has no subnet setting.
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) subnet() (*mqlAzureSubscriptionNetworkServiceSubnet, error) {
+	return resolveDelegatedSubnet(a.MqlRuntime, a.cacheSubnetId, &a.Subnet)
+}
+
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) diagnosticSettings() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) roleAssignments() ([]any, error) {
+	return roleAssignmentsForScope(a.MqlRuntime, a.Id.Data, "machine learning workspace")
 }
 
 type mqlAzureSubscriptionMachineLearningServiceWorkspaceModelInternal struct {
