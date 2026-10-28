@@ -23891,6 +23891,82 @@ openai.codex @defaults("configPath") @maturity("preview") {
   // `model_provider` key in config.toml (for example "openai"). Empty when
   // unset.
   modelProvider() string
+  // Configured approval policy
+  //
+  // When Codex asks before it runs a command: "untrusted", "on-request",
+  // "never", or "granular" for a `{ granular = { ... } }` table ("on-failure"
+  // is a deprecated spelling of "on-request"). "never" runs commands without
+  // asking. Taken from `approval_policy` in the highest layer that sets it:
+  // macOS managed preferences, /etc/codex/managed_config.toml, the user's
+  // config.toml, then the system config.toml. Null when no layer sets it;
+  // Codex then uses "on-request", or the policy a project's trust level
+  // implies. Codex does not use a value allowedApprovalPolicies excludes and
+  // falls back to an allowed policy.
+  approvalPolicy() string
+  // Configured sandbox mode
+  //
+  // How far commands Codex runs may reach: "read-only", "workspace-write", or
+  // "danger-full-access", which runs commands with no sandbox, full disk
+  // access, and network access. Taken from `sandbox_mode` with the same
+  // layering as approvalPolicy. Null when no layer sets it; Codex then uses
+  // "read-only", or "workspace-write" in a project with a trust level.
+  sandboxMode() string
+  // Configured default permissions profile
+  //
+  // Name of the permissions profile from `default_permissions`, which
+  // replaces sandboxMode when set. Names starting with ":" are built-in
+  // profiles, others name a `[permissions]` table. Null when no layer sets it.
+  defaultPermissions() string
+  // Whether commands get network access in workspace-write mode
+  //
+  // The `network_access` key of `[sandbox_workspace_write]`. Null when no
+  // layer sets it; Codex then blocks outbound network access.
+  sandboxNetworkAccess() bool
+  // Extra writable directories in workspace-write mode
+  //
+  // The `writable_roots` of `[sandbox_workspace_write]`, directories commands
+  // may write besides the workspace. Null when no layer sets it.
+  writableRoots() []string
+  // Projects marked as trusted
+  //
+  // Paths of the `[projects."<path>"]` tables whose `trust_level` is
+  // "trusted". Codex loads the project's own .codex configuration, hooks, and
+  // rules only for trusted projects.
+  trustedProjects() []string
+  // Managed configuration in effect
+  //
+  // Admin-managed configuration layers present on the host, which override
+  // the user's config.toml: /etc/codex/managed_config.toml (not on Windows)
+  // and the `config_toml_base64` key of the macOS managed preferences domain
+  // com.openai.codex, reported as
+  // "/Library/Managed Preferences/com.openai.codex.plist#config_toml_base64".
+  // Empty when none is present.
+  managedConfigSources() []string
+  // Admin-enforced requirement sources
+  //
+  // Files and managed preferences that constrain Codex settings, in
+  // ascending precedence: /etc/codex/requirements.toml (or
+  // %ProgramData%\OpenAI\Codex\requirements.toml on Windows), the approval
+  // policy and sandbox mode of a managed configuration layer, and the
+  // `requirements_toml_base64` key of the macOS managed preferences domain
+  // com.openai.codex. Requirements delivered from the cloud are not
+  // included. Empty when none is present.
+  requirementsSources() []string
+  // Approval policies requirements allow
+  //
+  // The `allowed_approval_policies` list from the highest requirement source
+  // that sets it, for example ["untrusted", "on-request"]. Codex refuses any
+  // other approvalPolicy. Null when no source sets it, so every policy is
+  // allowed.
+  allowedApprovalPolicies() []string
+  // Sandbox modes requirements allow
+  //
+  // The `allowed_sandbox_modes` list from the highest requirement source that
+  // sets it, for example ["read-only", "workspace-write"]. Codex does not use
+  // any other sandboxMode. Null when no source sets it, so every mode is
+  // allowed.
+  // Host-specific `[[remote_sandbox_config]]` overrides are not applied.
+  allowedSandboxModes() []string
 }
 
 // OpenAI Codex hook

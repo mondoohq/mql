@@ -65,9 +65,10 @@ description: Debug and fix failing CI checks.
 # Fix CI
 `)
 
-	// Plugin: cloudflare (with .mcp.json, hooks.json)
+	// Plugin: cloudflare (with .mcp.json, hooks/hooks.json)
 	cfPluginDir := filepath.Join(".tmp", "plugins", "plugins", "cloudflare")
 	mkdirAllTest(t, dir, filepath.Join(cfPluginDir, ".codex-plugin"))
+	mkdirAllTest(t, dir, filepath.Join(cfPluginDir, "hooks"))
 
 	writeTestFile(t, dir, filepath.Join(cfPluginDir, ".codex-plugin", "plugin.json"), `{
 		"name": "cloudflare",
@@ -93,7 +94,7 @@ description: Debug and fix failing CI checks.
 			}
 		}
 	}`)
-	writeTestFile(t, dir, filepath.Join(cfPluginDir, "hooks.json"), `{
+	writeTestFile(t, dir, filepath.Join(cfPluginDir, "hooks", "hooks.json"), `{
 		"hooks": {"PostToolUse": []}
 	}`)
 
@@ -147,6 +148,25 @@ func TestCodexPluginParsing(t *testing.T) {
 	require.NotNil(t, pj.Interface)
 	assert.Equal(t, "Coding", pj.Interface.Category)
 	assert.Equal(t, []string{"Interactive", "Write"}, pj.Interface.Capabilities)
+}
+
+// Synthetic: plugin layouts built from codex-rs/core-plugins/src/loader.rs
+// (default hooks/hooks.json, manifest `hooks` entry); no installed plugin
+// showed these.
+func TestCodexPluginHasHooks(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	require.NoError(t, afs.WriteFile("/p/default/hooks/hooks.json", []byte(`{"hooks":{}}`), 0o644))
+	require.NoError(t, afs.WriteFile("/p/rootfile/hooks.json", []byte(`{"hooks":{}}`), 0o644))
+	require.NoError(t, afs.MkdirAll("/p/none", 0o755))
+
+	assert.True(t, codexPluginHasHooks(afs, "/p/default", nil), "default hooks/hooks.json")
+	assert.False(t, codexPluginHasHooks(afs, "/p/rootfile", nil), "a hooks.json at the plugin root is not read by Codex")
+	assert.False(t, codexPluginHasHooks(afs, "/p/none", nil))
+	assert.False(t, codexPluginHasHooks(afs, "/p/none", json.RawMessage(`null`)))
+	assert.True(t, codexPluginHasHooks(afs, "/p/none", json.RawMessage(`"./config/hooks.json"`)), "manifest path")
+	assert.True(t, codexPluginHasHooks(afs, "/p/none", json.RawMessage(`["./a.json", "./b.json"]`)), "manifest paths")
+	assert.True(t, codexPluginHasHooks(afs, "/p/none", json.RawMessage(`{"PreToolUse": []}`)), "inline hooks")
+	assert.False(t, codexPluginHasHooks(afs, "/p/default", json.RawMessage(`[]`)), "an empty manifest entry replaces the default file")
 }
 
 func TestCodexMcpServerParsing(t *testing.T) {

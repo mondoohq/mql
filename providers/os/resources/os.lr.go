@@ -21217,6 +21217,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"openai.codex.modelProvider": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiCodex).GetModelProvider()).ToDataRes(types.String)
 	},
+	"openai.codex.approvalPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodex).GetApprovalPolicy()).ToDataRes(types.String)
+	},
+	"openai.codex.sandboxMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodex).GetSandboxMode()).ToDataRes(types.String)
+	},
+	"openai.codex.defaultPermissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodex).GetDefaultPermissions()).ToDataRes(types.String)
+	},
+	"openai.codex.sandboxNetworkAccess": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodex).GetSandboxNetworkAccess()).ToDataRes(types.Bool)
+	},
+	"openai.codex.writableRoots": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodex).GetWritableRoots()).ToDataRes(types.Array(types.String))
+	},
+	"openai.codex.trustedProjects": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodex).GetTrustedProjects()).ToDataRes(types.Array(types.String))
+	},
+	"openai.codex.managedConfigSources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodex).GetManagedConfigSources()).ToDataRes(types.Array(types.String))
+	},
+	"openai.codex.requirementsSources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodex).GetRequirementsSources()).ToDataRes(types.Array(types.String))
+	},
+	"openai.codex.allowedApprovalPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodex).GetAllowedApprovalPolicies()).ToDataRes(types.Array(types.String))
+	},
+	"openai.codex.allowedSandboxModes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodex).GetAllowedSandboxModes()).ToDataRes(types.Array(types.String))
+	},
 	"openai.codex.hook.event": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiCodexHook).GetEvent()).ToDataRes(types.String)
 	},
@@ -49824,6 +49854,46 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"openai.codex.modelProvider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenaiCodex).ModelProvider, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.codex.approvalPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodex).ApprovalPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.codex.sandboxMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodex).SandboxMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.codex.defaultPermissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodex).DefaultPermissions, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.codex.sandboxNetworkAccess": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodex).SandboxNetworkAccess, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"openai.codex.writableRoots": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodex).WritableRoots, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.codex.trustedProjects": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodex).TrustedProjects, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.codex.managedConfigSources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodex).ManagedConfigSources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.codex.requirementsSources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodex).RequirementsSources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.codex.allowedApprovalPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodex).AllowedApprovalPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.codex.allowedSandboxModes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodex).AllowedSandboxModes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"openai.codex.hook.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -125799,20 +125869,30 @@ type mqlOpenaiCodex struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlOpenaiCodexInternal
-	ConfigPath    plugin.TValue[string]
-	Package       plugin.TValue[*mqlPackage]
-	Runtime       plugin.TValue[*mqlExtensionRuntime]
-	AuthMode      plugin.TValue[string]
-	AccountId     plugin.TValue[string]
-	LastRefresh   plugin.TValue[string]
-	Plugins       plugin.TValue[[]any]
-	Skills        plugin.TValue[[]any]
-	McpServers    plugin.TValue[[]any]
-	Connectors    plugin.TValue[[]any]
-	Hooks         plugin.TValue[[]any]
-	Repos         plugin.TValue[[]any]
-	Model         plugin.TValue[string]
-	ModelProvider plugin.TValue[string]
+	ConfigPath              plugin.TValue[string]
+	Package                 plugin.TValue[*mqlPackage]
+	Runtime                 plugin.TValue[*mqlExtensionRuntime]
+	AuthMode                plugin.TValue[string]
+	AccountId               plugin.TValue[string]
+	LastRefresh             plugin.TValue[string]
+	Plugins                 plugin.TValue[[]any]
+	Skills                  plugin.TValue[[]any]
+	McpServers              plugin.TValue[[]any]
+	Connectors              plugin.TValue[[]any]
+	Hooks                   plugin.TValue[[]any]
+	Repos                   plugin.TValue[[]any]
+	Model                   plugin.TValue[string]
+	ModelProvider           plugin.TValue[string]
+	ApprovalPolicy          plugin.TValue[string]
+	SandboxMode             plugin.TValue[string]
+	DefaultPermissions      plugin.TValue[string]
+	SandboxNetworkAccess    plugin.TValue[bool]
+	WritableRoots           plugin.TValue[[]any]
+	TrustedProjects         plugin.TValue[[]any]
+	ManagedConfigSources    plugin.TValue[[]any]
+	RequirementsSources     plugin.TValue[[]any]
+	AllowedApprovalPolicies plugin.TValue[[]any]
+	AllowedSandboxModes     plugin.TValue[[]any]
 }
 
 // createOpenaiCodex creates a new instance of this resource
@@ -126011,6 +126091,66 @@ func (c *mqlOpenaiCodex) GetModel() *plugin.TValue[string] {
 func (c *mqlOpenaiCodex) GetModelProvider() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.ModelProvider, func() (string, error) {
 		return c.modelProvider()
+	})
+}
+
+func (c *mqlOpenaiCodex) GetApprovalPolicy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ApprovalPolicy, func() (string, error) {
+		return c.approvalPolicy()
+	})
+}
+
+func (c *mqlOpenaiCodex) GetSandboxMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SandboxMode, func() (string, error) {
+		return c.sandboxMode()
+	})
+}
+
+func (c *mqlOpenaiCodex) GetDefaultPermissions() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DefaultPermissions, func() (string, error) {
+		return c.defaultPermissions()
+	})
+}
+
+func (c *mqlOpenaiCodex) GetSandboxNetworkAccess() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SandboxNetworkAccess, func() (bool, error) {
+		return c.sandboxNetworkAccess()
+	})
+}
+
+func (c *mqlOpenaiCodex) GetWritableRoots() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.WritableRoots, func() ([]any, error) {
+		return c.writableRoots()
+	})
+}
+
+func (c *mqlOpenaiCodex) GetTrustedProjects() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TrustedProjects, func() ([]any, error) {
+		return c.trustedProjects()
+	})
+}
+
+func (c *mqlOpenaiCodex) GetManagedConfigSources() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ManagedConfigSources, func() ([]any, error) {
+		return c.managedConfigSources()
+	})
+}
+
+func (c *mqlOpenaiCodex) GetRequirementsSources() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RequirementsSources, func() ([]any, error) {
+		return c.requirementsSources()
+	})
+}
+
+func (c *mqlOpenaiCodex) GetAllowedApprovalPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedApprovalPolicies, func() ([]any, error) {
+		return c.allowedApprovalPolicies()
+	})
+}
+
+func (c *mqlOpenaiCodex) GetAllowedSandboxModes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedSandboxModes, func() ([]any, error) {
+		return c.allowedSandboxModes()
 	})
 }
 

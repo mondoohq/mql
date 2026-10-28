@@ -4421,6 +4421,9 @@ openBSMAudit.superuserClearSflagsMask 11.4.84
 openBSMAudit.superuserSetSflagsMask 11.4.84
 openai.codex 13.8.2
 openai.codex.accountId 13.8.2
+openai.codex.allowedApprovalPolicies 14.32.3
+openai.codex.allowedSandboxModes 14.32.3
+openai.codex.approvalPolicy 14.32.3
 openai.codex.authMode 13.8.2
 openai.codex.configPath 13.8.2
 openai.codex.connector 13.8.2
@@ -4428,6 +4431,7 @@ openai.codex.connector.id 13.8.2
 openai.codex.connector.name 13.8.2
 openai.codex.connector.plugin 13.8.2
 openai.codex.connectors 13.8.2
+openai.codex.defaultPermissions 14.32.3
 openai.codex.hook 14.32.3
 openai.codex.hook.command 14.32.3
 openai.codex.hook.event 14.32.3
@@ -4437,6 +4441,7 @@ openai.codex.hook.timeout 14.32.3
 openai.codex.hook.type 14.32.3
 openai.codex.hooks 14.32.3
 openai.codex.lastRefresh 13.8.2
+openai.codex.managedConfigSources 14.32.3
 openai.codex.mcpServer 13.8.2
 openai.codex.mcpServer.args 13.39.1
 openai.codex.mcpServer.command 13.39.1
@@ -4479,7 +4484,10 @@ openai.codex.repo.path 13.40.1
 openai.codex.repo.remotes 13.40.1
 openai.codex.repo.url 13.40.1
 openai.codex.repos 13.40.1
+openai.codex.requirementsSources 14.32.3
 openai.codex.runtime 13.33.1
+openai.codex.sandboxMode 14.32.3
+openai.codex.sandboxNetworkAccess 14.32.3
 openai.codex.skill 13.8.2
 openai.codex.skill.content 13.8.2
 openai.codex.skill.description 13.8.2
@@ -4489,6 +4497,8 @@ openai.codex.skill.purl 13.40.10
 openai.codex.skill.sha256 13.10.1
 openai.codex.skill.source 13.8.2
 openai.codex.skills 13.8.2
+openai.codex.trustedProjects 14.32.3
+openai.codex.writableRoots 14.32.3
 openclaw 13.13.1
 openclaw.configPath 13.13.1
 openclaw.package 13.31.1
