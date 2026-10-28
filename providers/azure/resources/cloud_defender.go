@@ -428,6 +428,16 @@ func (a *mqlAzureSubscriptionCloudDefenderService) forKeyVaults() (*mqlAzureSubs
 	return resource.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForKeyVaults), nil
 }
 
+// forAIServices reads the subscription's Defender for AI services plan. "AI" is
+// the pricing name Defender for Cloud uses for this plan.
+func (a *mqlAzureSubscriptionCloudDefenderService) forAIServices() (*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices, error) {
+	resource, err := a.getSimpleDefenderPricing("AI", ResourceAzureSubscriptionCloudDefenderServiceDefenderForAIServices)
+	if err != nil {
+		return nil, err
+	}
+	return resource.(*mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices), nil
+}
+
 func (a *mqlAzureSubscriptionCloudDefenderService) forResourceManager() (*mqlAzureSubscriptionCloudDefenderServiceDefenderForResourceManager, error) {
 	resource, err := a.getSimpleDefenderPricing("Arm", ResourceAzureSubscriptionCloudDefenderServiceDefenderForResourceManager)
 	if err != nil {
@@ -1077,6 +1087,10 @@ func (a *mqlAzureSubscriptionCloudDefenderServiceDefenderForStorageAccounts) id(
 }
 
 func (a *mqlAzureSubscriptionCloudDefenderServiceDefenderForKeyVaults) id() (string, error) {
+	return a.__id, nil
+}
+
+func (a *mqlAzureSubscriptionCloudDefenderServiceDefenderForAIServices) id() (string, error) {
 	return a.__id, nil
 }
 

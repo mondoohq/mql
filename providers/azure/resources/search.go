@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -105,6 +106,7 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 	var serviceUpgradedAt *time.Time
 	dataExfiltrationProtections := []any{}
 	networkRuleSet := llx.NilData
+	ipRules := []string{}
 
 	if p := svc.Properties; p != nil {
 		if p.PublicNetworkAccess != nil {
@@ -164,6 +166,11 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 				return nil, err
 			}
 			networkRuleSet = llx.DictData(d)
+			for _, r := range p.NetworkRuleSet.IPRules {
+				if r != nil && r.Value != nil {
+					ipRules = append(ipRules, *r.Value)
+				}
+			}
 		}
 	}
 
@@ -212,11 +219,56 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 		return nil, err
 	}
 	mqlService.cacheSystemData = sysData
+	mqlService.cacheIpRules = ipRules
 	return mqlService, nil
 }
 
 type mqlAzureSubscriptionSearchServiceServiceInternal struct {
 	cacheSystemData any
+	cacheIpRules    []string
+}
+
+// searchServiceInternetReachable reports whether any internet address can reach
+// a search service endpoint. The second result is false when the answer cannot
+// be given from the service's own properties.
+//
+// The IP rules are an allowlist that applies only while public access is
+// enabled: with no rules every address is admitted, and with rules only the
+// listed ranges are, judged as a set so that rules splitting the address space
+// between them count as open. When access is securedByPerimeter a network
+// security perimeter decides instead, and its rules are not on the service.
+func searchServiceInternetReachable(publicNetworkAccess string, ipRules []string) (bool, bool) {
+	if strings.EqualFold(strings.TrimSpace(publicNetworkAccess), string(armsearch.PublicNetworkAccessSecuredByPerimeter)) {
+		return false, false
+	}
+	if !publicNetworkAccessEnabled(publicNetworkAccess) {
+		return false, true
+	}
+	if len(ipRules) == 0 {
+		return true, true
+	}
+	return prefixesCoverInternet(ipRules), true
+}
+
+func (a *mqlAzureSubscriptionSearchServiceService) internetReachable() (bool, error) {
+	reachable, known := searchServiceInternetReachable(a.PublicNetworkAccess.Data, a.cacheIpRules)
+	if !known {
+		a.InternetReachable.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return reachable, nil
+}
+
+func (a *mqlAzureSubscriptionSearchServiceService) diagnosticSettings() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionSearchServiceService) roleAssignments() ([]any, error) {
+	return roleAssignmentsForScope(a.MqlRuntime, a.Id.Data, "search service")
 }
 
 func (a *mqlAzureSubscriptionSearchServiceService) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
