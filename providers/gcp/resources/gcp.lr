@@ -124,6 +124,12 @@ gcp.organization @defaults("name") {
   tagKeys() []gcp.organization.tagKey
   // Assured Workloads environments defined in the organization
   assuredWorkloads() []gcp.organization.assuredWorkload
+  // Model Armor floor setting defined on the organization
+  //
+  // Minimum AI safety filters and enforcement inherited by every folder and
+  // project in the organization. Null when no floor setting has been
+  // configured on the organization.
+  modelArmorFloorSetting() gcp.project.modelArmorService.floorSetting
 }
 
 // Google Cloud (GCP) IAM custom role defined at the organization level
@@ -1022,6 +1028,12 @@ private gcp.folder @defaults("name") {
   sccSecurityHealthAnalyticsCustomModules() []gcp.scc.securityHealthAnalyticsCustomModule
   // Event Threat Detection custom modules in effect on the folder, including inherited ones
   sccEventThreatDetectionCustomModules() []gcp.scc.eventThreatDetectionCustomModule
+  // Model Armor floor setting defined on the folder
+  //
+  // Minimum AI safety filters and enforcement inherited by every folder and
+  // project beneath this folder. Null when no floor setting has been
+  // configured on the folder.
+  modelArmorFloorSetting() gcp.project.modelArmorService.floorSetting
 }
 
 // Google Cloud (GCP) projects
@@ -15429,6 +15441,14 @@ private gcp.project.vertexaiService.endpoint @defaults("name displayName") {
   satisfiesPzs bool
   // Whether the endpoint satisfies Physical Zone Isolation
   satisfiesPzi bool
+  // Whether the endpoint is reachable from the internet
+  //
+  // True for an endpoint served on the shared regional API or on its own
+  // public dedicated DNS (`dedicatedEndpointDns`). False when the endpoint is
+  // private: peered into a VPC network (`networkRef`) or exposed only through
+  // Private Service Connect (`enablePrivateServiceConnect`). Callers still
+  // need IAM permission to send predictions to a reachable endpoint.
+  internetReachable bool
   // Traffic split (model ID to traffic percentage)
   trafficSplit map[string]int
   // User-defined key/value labels for organizing the resource
@@ -15752,6 +15772,14 @@ private gcp.project.vertexaiService.indexEndpoint @defaults("displayName") {
   publicEndpointEnabled bool
   // Public endpoint domain name
   publicEndpointDomainName string
+  // Whether the index endpoint is exposed through Private Service Connect
+  enablePrivateServiceConnect bool
+  // Projects allowed to reach the index endpoint over Private Service Connect
+  pscProjectAllowlist []string
+  // Whether the index endpoint satisfies Physical Zone Separation
+  satisfiesPzs bool
+  // Whether the index endpoint satisfies Physical Zone Isolation
+  satisfiesPzi bool
   // User-defined key/value labels for organizing the resource
   labels map[string]string
   // Encryption spec dict
@@ -16023,6 +16051,23 @@ private gcp.project.vertexaiService.ragCorpus @defaults("displayName") {
   description string
   // Corpus status (indexing state and errors)
   corpusStatus dict
+  // Backend that stores the corpus embeddings
+  //
+  // One of ragManagedDb (the Vertex AI managed vector database), pinecone,
+  // vertexVectorSearch, or vertexAiSearch. Pinecone keeps the corpus
+  // embeddings outside Google Cloud. Empty when the API reports no backend.
+  backendType string
+  // Name of the Pinecone index holding the corpus, when backendType is pinecone
+  pineconeIndexName string
+  // Secret Manager secret holding the API key used to reach the vector database
+  //
+  // Only the secret is referenced, never its value. Null when the backend
+  // needs no API key.
+  apiKeySecret() gcp.project.secretmanagerService.secret
+  // Version of apiKeySecret the corpus reads, such as `3` or `latest`
+  apiKeySecretVersion string
+  // Vertex AI Search serving config the corpus retrieves from, when backendType is vertexAiSearch
+  vertexAiSearchServingConfig string
   // Encryption spec dict
   //
   // Deprecated in favor of kmsKey. aiplatformpb.EncryptionSpec has exactly one
@@ -16947,16 +16992,21 @@ private gcp.project.modelArmorService.template @defaults("name") {
   // customPromptSafetyErrorMessage, customLlmResponseSafetyErrorCode,
   // customLlmResponseSafetyErrorMessage, logTemplateOperations,
   // logSanitizeOperations, enforcementType (one of ENFORCEMENT_TYPE_UNSPECIFIED,
-  // INSPECT_ONLY, or INSPECT_AND_BLOCK), multiLanguageDetection, and modalities.
+  // INSPECT_ONLY, or INSPECT_AND_BLOCK), multiLanguageDetection, modalities,
+  // and dataResidencyCompliant (false when the template bypasses data
+  // residency compliance checks).
   templateMetadata dict
 }
 
 // Google Cloud (GCP) Model Armor floor setting
 //
-// Minimum AI safety configuration enforced across the project. The floor
-// setting establishes a filter baseline that individual templates cannot
-// weaken, records whether enforcement is active, lists the Google Cloud
-// services it applies to, and carries the AI Platform-specific configuration.
+// Minimum AI safety configuration enforced across a project, folder, or
+// organization. The floor setting establishes a filter baseline that
+// individual templates cannot weaken, records whether enforcement is active,
+// lists the Google Cloud services it applies to, and carries the AI
+// Platform and Google MCP server configurations. The `name` field is the
+// full resource path, for example
+// `organizations/123/locations/global/floorSetting`.
 private gcp.project.modelArmorService.floorSetting @defaults("name") {
   // Full resource name
   name string
@@ -16980,6 +17030,19 @@ private gcp.project.modelArmorService.floorSetting @defaults("name") {
   // (a oneof, either inspectOnly or inspectAndBlock) and enableCloudLogging
   // (whether Model Armor filter results are written to Cloud Logging).
   aiPlatformFloorSetting dict
+  // Google MCP server floor setting
+  //
+  // Screening of traffic to and from Google-hosted MCP servers. Keys:
+  // inspectOnly or inspectAndBlock (the enforcement type, only one is set)
+  // and enableCloudLogging (whether Model Armor filter results are written to
+  // Cloud Logging). Null when no MCP server floor setting is configured.
+  googleMcpServerFloorSetting dict
+  // Floor setting metadata
+  //
+  // Operational settings for the floor setting. Keys: multiLanguageDetection
+  // (with enableMultiLanguageDetection, whether prompts and responses in
+  // languages other than English are screened).
+  floorSettingMetadata dict
   // Creation time
   created time
   // Last update time
@@ -17151,9 +17214,12 @@ private gcp.project.discoveryEngineService {
 // `industryVertical` and `solutionTypes` report what the store is built
 // for, `contentConfig` reports the kind of content indexed, `aclEnabled`
 // indicates document-level access control, and encryption at rest is
-// reported through `kmsKeyName` and the resolved `kmsKey`. These fields
-// reveal which knowledge sources exist and their access-control and
-// encryption posture.
+// reported through `kmsKeyName` and the resolved `kmsKey`, with `cmekState`
+// reporting whether that key is usable. For a Google Workspace data store,
+// `workspaceType` names the Workspace source (Drive, Gmail, and so on) and
+// `workspaceSuperAdminServiceAccount` and `workspaceSuperAdminEmail` report
+// the identities used to read it. These fields reveal which knowledge
+// sources exist and their access-control and encryption posture.
 private gcp.project.discoveryEngineService.dataStore @defaults("displayName industryVertical") {
   // Full resource name
   name string
@@ -17173,6 +17239,24 @@ private gcp.project.discoveryEngineService.dataStore @defaults("displayName indu
   kmsKeyName string
   // Customer-managed Cloud KMS key used to encrypt this resource at rest
   kmsKey() gcp.project.kmsService.keyring.cryptokey
+  // State of the customer-managed encryption key configuration
+  //
+  // One of STATE_UNSPECIFIED, CREATING, ACTIVE, KEY_ISSUE, DELETING,
+  // DELETE_FAILED, UNUSABLE, ACTIVE_ROTATING, or DELETED. KEY_ISSUE and
+  // UNUSABLE mean the data store cannot use its key. Empty when the data store
+  // uses Google-managed encryption.
+  cmekState string
+  // Google Workspace source the data store indexes
+  //
+  // One of TYPE_UNSPECIFIED, GOOGLE_DRIVE, GOOGLE_MAIL, GOOGLE_SITES,
+  // GOOGLE_CALENDAR, GOOGLE_CHAT, GOOGLE_GROUPS, GOOGLE_KEEP, or
+  // GOOGLE_PEOPLE. Empty when the data store does not index Google Workspace
+  // content.
+  workspaceType string
+  // Super admin service account used to generate access tokens for the Google Workspace source
+  workspaceSuperAdminServiceAccount() gcp.project.iamService.serviceAccount
+  // Email address of the Google Workspace super admin used to generate access tokens for the Workspace source
+  workspaceSuperAdminEmail string
   // Creation time
   createdAt time
 }

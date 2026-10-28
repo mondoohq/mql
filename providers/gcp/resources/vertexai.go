@@ -475,6 +475,7 @@ func newMqlVertexaiEndpoint(runtime *plugin.Runtime, projectId string, ep *aipla
 			pscProjectAllowlist = append(pscProjectAllowlist, p)
 		}
 	}
+	pscEnabled := vertexaiPscEnabled(ep.EnablePrivateServiceConnect, ep.PrivateServiceConnectConfig) //nolint:staticcheck // still set on endpoints created before the config message
 
 	var predictionLoggingEnabled bool
 	var predictionLoggingSamplingRate float64
@@ -493,7 +494,7 @@ func newMqlVertexaiEndpoint(runtime *plugin.Runtime, projectId string, ep *aipla
 		"description":                          llx.StringData(ep.Description),
 		"deployments":                          llx.ArrayData(deployments, types.Resource("gcp.project.vertexaiService.endpoint.deployment")),
 		"encryptionSpec":                       llx.DictData(encryptionSpec),
-		"enablePrivateServiceConnect":          llx.BoolData(ep.EnablePrivateServiceConnect),
+		"enablePrivateServiceConnect":          llx.BoolData(pscEnabled),
 		"pscProjectAllowlist":                  llx.ArrayData(pscProjectAllowlist, types.String),
 		"pscServiceAttachment":                 llx.StringData(pscServiceAttachment),
 		"predictionLoggingEnabled":             llx.BoolData(predictionLoggingEnabled),
@@ -504,6 +505,7 @@ func newMqlVertexaiEndpoint(runtime *plugin.Runtime, projectId string, ep *aipla
 		"privateModelServerEnabled":            llx.BoolData(ep.PrivateModelServerEnabled),
 		"satisfiesPzs":                         llx.BoolData(ep.SatisfiesPzs),
 		"satisfiesPzi":                         llx.BoolData(ep.SatisfiesPzi),
+		"internetReachable":                    llx.BoolData(vertexaiEndpointInternetReachable(ep.Network, pscEnabled)),
 		"trafficSplit":                         llx.MapData(trafficSplit, types.Int),
 		"labels":                               llx.MapData(convert.MapToInterfaceMap(ep.Labels), types.String),
 		"etag":                                 llx.StringData(ep.Etag),
@@ -1719,6 +1721,12 @@ func (g *mqlGcpProjectVertexaiService) indexEndpoints() ([]any, error) {
 				return nil, false, err
 			}
 
+			pscProjectAllowlist := []any{}
+			for _, p := range ep.GetPrivateServiceConnectConfig().GetProjectAllowlist() {
+				pscProjectAllowlist = append(pscProjectAllowlist, p)
+			}
+			pscEnabled := vertexaiPscEnabled(ep.EnablePrivateServiceConnect, ep.PrivateServiceConnectConfig) //nolint:staticcheck // still set on index endpoints created before the config message
+
 			deployedIndexes := make([]any, 0, len(ep.DeployedIndexes))
 			for _, di := range ep.DeployedIndexes {
 				d, err := protoToDict(di)
@@ -1729,16 +1737,20 @@ func (g *mqlGcpProjectVertexaiService) indexEndpoints() ([]any, error) {
 			}
 
 			mqlEP, err := CreateResource(g.MqlRuntime, "gcp.project.vertexaiService.indexEndpoint", map[string]*llx.RawData{
-				"name":                     llx.StringData(ep.Name),
-				"displayName":              llx.StringData(ep.DisplayName),
-				"description":              llx.StringData(ep.Description),
-				"deployedIndexes":          llx.ArrayData(deployedIndexes, types.Dict),
-				"publicEndpointEnabled":    llx.BoolData(ep.PublicEndpointEnabled),
-				"publicEndpointDomainName": llx.StringData(ep.PublicEndpointDomainName),
-				"labels":                   llx.MapData(convert.MapToInterfaceMap(ep.Labels), types.String),
-				"encryptionSpec":           llx.DictData(encryptionSpec),
-				"created":                  llx.TimeDataPtr(timestampAsTimePtr(ep.CreateTime)),
-				"updated":                  llx.TimeDataPtr(timestampAsTimePtr(ep.UpdateTime)),
+				"name":                        llx.StringData(ep.Name),
+				"displayName":                 llx.StringData(ep.DisplayName),
+				"description":                 llx.StringData(ep.Description),
+				"deployedIndexes":             llx.ArrayData(deployedIndexes, types.Dict),
+				"publicEndpointEnabled":       llx.BoolData(ep.PublicEndpointEnabled),
+				"publicEndpointDomainName":    llx.StringData(ep.PublicEndpointDomainName),
+				"enablePrivateServiceConnect": llx.BoolData(pscEnabled),
+				"pscProjectAllowlist":         llx.ArrayData(pscProjectAllowlist, types.String),
+				"satisfiesPzs":                llx.BoolData(ep.SatisfiesPzs),
+				"satisfiesPzi":                llx.BoolData(ep.SatisfiesPzi),
+				"labels":                      llx.MapData(convert.MapToInterfaceMap(ep.Labels), types.String),
+				"encryptionSpec":              llx.DictData(encryptionSpec),
+				"created":                     llx.TimeDataPtr(timestampAsTimePtr(ep.CreateTime)),
+				"updated":                     llx.TimeDataPtr(timestampAsTimePtr(ep.UpdateTime)),
 			})
 			if err != nil {
 				return nil, false, err
@@ -2360,19 +2372,26 @@ func (g *mqlGcpProjectVertexaiService) ragCorpora() ([]any, error) {
 				return nil, false, err
 			}
 
+			backend := ragCorpusBackendOf(corpus)
+
 			mqlCorpus, err := CreateResource(g.MqlRuntime, "gcp.project.vertexaiService.ragCorpus", map[string]*llx.RawData{
-				"name":           llx.StringData(corpus.Name),
-				"displayName":    llx.StringData(corpus.DisplayName),
-				"description":    llx.StringData(corpus.Description),
-				"corpusStatus":   llx.DictData(corpusStatus),
-				"encryptionSpec": llx.DictData(encryptionSpec),
-				"createdAt":      llx.TimeDataPtr(timestampAsTimePtr(corpus.CreateTime)),
-				"updatedAt":      llx.TimeDataPtr(timestampAsTimePtr(corpus.UpdateTime)),
+				"name":                        llx.StringData(corpus.Name),
+				"displayName":                 llx.StringData(corpus.DisplayName),
+				"description":                 llx.StringData(corpus.Description),
+				"corpusStatus":                llx.DictData(corpusStatus),
+				"backendType":                 llx.StringData(backend.backendType),
+				"pineconeIndexName":           llx.StringData(backend.pineconeIndexName),
+				"apiKeySecretVersion":         llx.StringData(backend.apiKeySecret.version),
+				"vertexAiSearchServingConfig": llx.StringData(backend.servingConfig),
+				"encryptionSpec":              llx.DictData(encryptionSpec),
+				"createdAt":                   llx.TimeDataPtr(timestampAsTimePtr(corpus.CreateTime)),
+				"updatedAt":                   llx.TimeDataPtr(timestampAsTimePtr(corpus.UpdateTime)),
 			})
 			if err != nil {
 				return nil, false, err
 			}
 			mqlCorpus.(*mqlGcpProjectVertexaiServiceRagCorpus).cacheKmsKeyName = corpus.GetEncryptionSpec().GetKmsKeyName()
+			mqlCorpus.(*mqlGcpProjectVertexaiServiceRagCorpus).cacheApiKeySecret = backend.apiKeySecret
 			items = append(items, mqlCorpus)
 		}
 		return items, false, nil
@@ -3722,11 +3741,109 @@ func (a *mqlGcpProjectVertexaiServiceReasoningEngine) kmsKey() (*mqlGcpProjectKm
 }
 
 type mqlGcpProjectVertexaiServiceRagCorpusInternal struct {
-	cacheKmsKeyName string
+	cacheKmsKeyName   string
+	cacheApiKeySecret secretVersionRef
 }
 
 func (a *mqlGcpProjectVertexaiServiceRagCorpus) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
 	return newKmsCryptoKeyRef(a.MqlRuntime, &a.KmsKey, a.cacheKmsKeyName)
+}
+
+func (a *mqlGcpProjectVertexaiServiceRagCorpus) apiKeySecret() (*mqlGcpProjectSecretmanagerServiceSecret, error) {
+	ref := a.cacheApiKeySecret
+	if ref.project == "" || ref.secret == "" {
+		a.ApiKeySecret.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	args := map[string]*llx.RawData{
+		"name":      llx.StringData(ref.secret),
+		"projectId": llx.StringData(ref.project),
+	}
+	if ref.location != "" {
+		args["location"] = llx.StringData(ref.location)
+	}
+	res, err := NewResource(a.MqlRuntime, "gcp.project.secretmanagerService.secret", args)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectSecretmanagerServiceSecret), nil
+}
+
+// vertexaiPscEnabled reports whether a Vertex AI endpoint or index endpoint is
+// exposed through Private Service Connect. The top-level flag is deprecated in
+// favor of privateServiceConnectConfig, but endpoints created before the config
+// message existed still carry only the flag, so either one counts.
+func vertexaiPscEnabled(deprecatedFlag bool, cfg *aiplatformpb.PrivateServiceConnectConfig) bool {
+	return deprecatedFlag || cfg.GetEnablePrivateServiceConnect()
+}
+
+// vertexaiEndpointInternetReachable derives whether a Vertex AI online
+// prediction endpoint can be reached from the internet. An endpoint is private
+// when it is peered into a VPC network or exposed only through Private Service
+// Connect (the API accepts one or the other). Otherwise it is served publicly,
+// either on the shared regional API host or, for a dedicated endpoint, on its
+// own public DNS name; both answer requests from any address that holds IAM
+// permission.
+func vertexaiEndpointInternetReachable(network string, pscEnabled bool) bool {
+	return network == "" && !pscEnabled
+}
+
+// ragCorpusBackend is the vector database configuration of a RAG corpus.
+type ragCorpusBackend struct {
+	backendType       string
+	pineconeIndexName string
+	apiKeySecret      secretVersionRef
+	servingConfig     string
+}
+
+// ragCorpusBackendOf reads which backend stores a RAG corpus: one of the
+// vectorDbConfig variants (ragManagedDb, pinecone, vertexVectorSearch) or
+// vertexAiSearch. The names are the proto JSON names of the oneof members.
+func ragCorpusBackendOf(corpus *aiplatformpb.RagCorpus) ragCorpusBackend {
+	var b ragCorpusBackend
+	if search := corpus.GetVertexAiSearchConfig(); search != nil {
+		b.backendType = "vertexAiSearch"
+		b.servingConfig = search.GetServingConfig()
+		return b
+	}
+	db := corpus.GetVectorDbConfig()
+	if db == nil {
+		return b
+	}
+	switch {
+	case db.GetRagManagedDb() != nil:
+		b.backendType = "ragManagedDb"
+	case db.GetPinecone() != nil:
+		b.backendType = "pinecone"
+		b.pineconeIndexName = db.GetPinecone().GetIndexName()
+	case db.GetVertexVectorSearch() != nil:
+		b.backendType = "vertexVectorSearch"
+	}
+	b.apiKeySecret = parseSecretVersionName(db.GetApiAuth().GetApiKeyConfig().GetApiKeySecretVersion())
+	return b
+}
+
+// secretVersionRef is a parsed Secret Manager secret version resource name.
+type secretVersionRef struct {
+	project  string
+	location string
+	secret   string
+	version  string
+}
+
+// parseSecretVersionName parses a Secret Manager secret version name of the
+// form "projects/{p}/secrets/{s}/versions/{v}" or, for a regional secret,
+// "projects/{p}/locations/{l}/secrets/{s}/versions/{v}". A name that does not
+// match either form yields the zero value.
+func parseSecretVersionName(name string) secretVersionRef {
+	parts := strings.Split(name, "/")
+	switch {
+	case len(parts) == 6 && parts[0] == "projects" && parts[2] == "secrets" && parts[4] == "versions":
+		return secretVersionRef{project: parts[1], secret: parts[3], version: parts[5]}
+	case len(parts) == 8 && parts[0] == "projects" && parts[2] == "locations" && parts[4] == "secrets" && parts[6] == "versions":
+		return secretVersionRef{project: parts[1], location: parts[3], secret: parts[5], version: parts[7]}
+	}
+	return secretVersionRef{}
 }
 
 type mqlGcpProjectVertexaiServicePersistentResourceInternal struct {

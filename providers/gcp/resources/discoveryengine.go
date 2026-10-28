@@ -90,22 +90,39 @@ func newMqlDiscoveryEngineDataStore(runtime *plugin.Runtime, ds *discoveryengine
 		solutionTypes = append(solutionTypes, st.String())
 	}
 
+	// Enum fields are reported only when their message is present: a data
+	// store without a CMEK config or a Workspace config reads as empty, not
+	// as the enum's zero value.
+	var cmekState string
+	if cfg := ds.GetCmekConfig(); cfg != nil {
+		cmekState = cfg.GetState().String()
+	}
+	var workspaceType string
+	if ws := ds.GetWorkspaceConfig(); ws != nil {
+		workspaceType = ws.GetType().String()
+	}
+
 	res, err := CreateResource(runtime, "gcp.project.discoveryEngineService.dataStore", map[string]*llx.RawData{
-		"name":             llx.StringData(ds.Name),
-		"displayName":      llx.StringData(ds.DisplayName),
-		"industryVertical": llx.StringData(ds.IndustryVertical.String()),
-		"solutionTypes":    llx.ArrayData(solutionTypes, types.String),
-		"contentConfig":    llx.StringData(ds.ContentConfig.String()),
-		"defaultSchemaId":  llx.StringData(ds.DefaultSchemaId),
-		"aclEnabled":       llx.BoolData(ds.AclEnabled),
-		"kmsKeyName":       llx.StringData(ds.KmsKeyName),
-		"createdAt":        llx.TimeDataPtr(timestampAsTimePtr(ds.CreateTime)),
+		"name":                     llx.StringData(ds.Name),
+		"displayName":              llx.StringData(ds.DisplayName),
+		"industryVertical":         llx.StringData(ds.IndustryVertical.String()),
+		"solutionTypes":            llx.ArrayData(solutionTypes, types.String),
+		"contentConfig":            llx.StringData(ds.ContentConfig.String()),
+		"defaultSchemaId":          llx.StringData(ds.DefaultSchemaId),
+		"aclEnabled":               llx.BoolData(ds.AclEnabled),
+		"kmsKeyName":               llx.StringData(ds.KmsKeyName),
+		"cmekState":                llx.StringData(cmekState),
+		"workspaceType":            llx.StringData(workspaceType),
+		"workspaceSuperAdminEmail": llx.StringData(ds.GetWorkspaceConfig().GetSuperAdminEmailAddress()),
+		"createdAt":                llx.TimeDataPtr(timestampAsTimePtr(ds.CreateTime)),
 	})
 	if err != nil {
 		return nil, err
 	}
 	mqlDs := res.(*mqlGcpProjectDiscoveryEngineServiceDataStore)
 	mqlDs.cacheKmsKeyName = ds.KmsKeyName
+	mqlDs.cacheSuperAdminServiceAccount = ds.GetWorkspaceConfig().GetSuperAdminServiceAccount()
+	mqlDs.cacheProjectId = projectFromResourceName(ds.Name)
 	return mqlDs, nil
 }
 
@@ -172,11 +189,40 @@ func (g *mqlGcpProjectDiscoveryEngineServiceDataStore) id() (string, error) {
 }
 
 type mqlGcpProjectDiscoveryEngineServiceDataStoreInternal struct {
-	cacheKmsKeyName string
+	cacheKmsKeyName               string
+	cacheSuperAdminServiceAccount string
+	cacheProjectId                string
 }
 
 func (a *mqlGcpProjectDiscoveryEngineServiceDataStore) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
 	return newKmsCryptoKeyRef(a.MqlRuntime, &a.KmsKey, a.cacheKmsKeyName)
+}
+
+func (a *mqlGcpProjectDiscoveryEngineServiceDataStore) workspaceSuperAdminServiceAccount() (*mqlGcpProjectIamServiceServiceAccount, error) {
+	email := a.cacheSuperAdminServiceAccount
+	projectId := serviceAccountProjectFromEmail(email)
+	if projectId == "" {
+		projectId = a.cacheProjectId
+	}
+	return vertexaiServiceAccountRef(a.MqlRuntime, &a.WorkspaceSuperAdminServiceAccount, projectId, email)
+}
+
+// serviceAccountProjectFromEmail returns the project that owns a user-managed
+// service account, read from its "{name}@{project}.iam.gserviceaccount.com"
+// address. Any other address, including a Google-managed service agent's,
+// yields "", leaving the caller to fall back to a project it already knows.
+func serviceAccountProjectFromEmail(email string) string {
+	_, domain, ok := strings.Cut(email, "@")
+	if !ok {
+		return ""
+	}
+	project, ok := strings.CutSuffix(domain, ".iam.gserviceaccount.com")
+	// Google-managed service agents live in gcp-sa-* projects that the
+	// customer cannot list.
+	if !ok || project == "" || strings.Contains(project, ".") || strings.HasPrefix(project, "gcp-sa-") {
+		return ""
+	}
+	return project
 }
 
 func (g *mqlGcpProjectDiscoveryEngineService) listEnginesInLocation(ctx context.Context, creds *googleoauth.Credentials, projectId, location string) ([]any, error) {
