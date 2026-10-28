@@ -93,6 +93,10 @@ type StackitConnection struct {
 	securityGroups     map[string]iaas.SecurityGroup
 	securityGroupsErr  error
 
+	projectNICsOnce sync.Once
+	projectNICs     []iaas.NIC
+	projectNICsErr  error
+
 	cdnOnce                 sync.Once
 	cdnClient               *cdn.APIClient
 	cdnErr                  error
@@ -382,6 +386,32 @@ func (c *StackitConnection) loadSecurityGroups(ctx context.Context) (map[string]
 		}
 	}
 	return out, nil
+}
+
+// ProjectNICs returns every network interface in the project and region,
+// listed once per connection. Public IPs and security groups resolve their
+// interfaces against this one list instead of a lookup per reference, which
+// would also need the network ID a public IP does not carry.
+//
+// Failures are returned as is, so callers can tell an unreadable list from
+// an interface that does not exist.
+func (c *StackitConnection) ProjectNICs(ctx context.Context) ([]iaas.NIC, error) {
+	c.projectNICsOnce.Do(func() {
+		c.projectNICs, c.projectNICsErr = c.loadProjectNICs(ctx)
+	})
+	return c.projectNICs, c.projectNICsErr
+}
+
+func (c *StackitConnection) loadProjectNICs(ctx context.Context) ([]iaas.NIC, error) {
+	client, err := c.IaaS()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DefaultAPI.ListProjectNICs(ctx, c.projectID, c.region).Execute()
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetItems(), nil
 }
 
 // NetworkAreaRoutingTables returns the routing tables defined on the network

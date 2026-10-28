@@ -15,7 +15,11 @@ import (
 
 // Authorization API works against any STACKIT resource by type/id. For
 // the stackit provider we scope it to the configured project.
-const authResourceTypeProject = "project"
+const (
+	authResourceTypeProject      = "project"
+	authResourceTypeFolder       = "folder"
+	authResourceTypeOrganization = "organization"
+)
 
 // mqlStackitIamInternal memoizes the project role catalog indexed by name.
 // stackit.iam.role has no init and no by-name lookup: roles exist only as the
@@ -87,27 +91,37 @@ func indexIamRolesByName(items []any) map[string]*mqlStackitIamRole {
 }
 
 func (r *mqlStackitIam) members() ([]any, error) {
-	c := conn(r.MqlRuntime)
-	client, err := c.Authorization()
+	// The project member list shipped answering a refusal with an empty
+	// list; deniedList keeps that until structured errors are enabled.
+	return listIamMembers(r.MqlRuntime, authResourceTypeProject, conn(r.MqlRuntime).ProjectID(), deniedList)
+}
+
+// refusedList answers a refused list call with the classified error. New
+// lists use it instead of deniedList: they have no empty-list answer to keep,
+// and an empty list reads as a container nobody holds a role on.
+func refusedList(err error) ([]any, error) {
+	return nil, refusal(err)
+}
+
+// listIamMembers lists the direct member bindings on one container of the
+// resource hierarchy (project, folder, or organization). onDenied answers a
+// refused call.
+func listIamMembers(runtime *plugin.Runtime, resourceType, resourceID string, onDenied func(error) ([]any, error)) ([]any, error) {
+	client, err := conn(runtime).Authorization()
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.DefaultAPI.ListMembers(bgctx(), authResourceTypeProject, c.ProjectID()).Execute()
+	resp, err := client.DefaultAPI.ListMembers(bgctx(), resourceType, resourceID).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return deniedList(err)
+			return onDenied(err)
 		}
 		return nil, err
 	}
 	members, _ := resp.GetMembersOk()
 	out := make([]any, 0, len(members))
 	for i := range members {
-		m := members[i]
-		args := map[string]*llx.RawData{
-			"subject": llx.StringData(m.GetSubject()),
-			"role":    llx.StringData(m.GetRole()),
-		}
-		res, err := CreateResource(r.MqlRuntime, "stackit.iam.member", args)
+		res, err := CreateResource(runtime, "stackit.iam.member", iamMemberArgs(&members[i], resourceType, resourceID))
 		if err != nil {
 			return nil, err
 		}
@@ -116,14 +130,55 @@ func (r *mqlStackitIam) members() ([]any, error) {
 	return out, nil
 }
 
+// iamMemberArgs maps one member binding on the container resourceType/
+// resourceID onto stackit.iam.member. The container is part of the cache key
+// (see the member's id), so the same subject and role bound at the
+// organization and at the project stay two resources.
+func iamMemberArgs(m *authorization.Member, resourceType, resourceID string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"subject":      llx.StringData(m.GetSubject()),
+		"role":         llx.StringData(m.GetRole()),
+		"resourceType": llx.StringData(resourceType),
+		"resourceId":   llx.StringData(resourceID),
+	}
+}
+
+// iamMemberID builds the member cache key from the container the binding is
+// on, the subject, and the role.
+func iamMemberID(resourceType, resourceID, subject, role string) string {
+	return "stackit.iam.member/" + resourceType + "/" + resourceID + "/" + subject + "/" + role
+}
+
 // roleDetails resolves the binding's role name against the project role
 // catalog, turning a member binding into the permissions it actually grants.
+// A binding on a folder or organization reads null: the catalog is the
+// project's, and a role of the same name there need not grant the same
+// permissions.
 func (r *mqlStackitIamMember) roleDetails() (*mqlStackitIamRole, error) {
+	if r.ResourceType.Data != authResourceTypeProject {
+		return markNull(&r.RoleDetails)
+	}
 	return iamRoleRef(r.MqlRuntime, r.Role.Data, &r.RoleDetails)
 }
 
 func (r *mqlStackitIamMember) id() (string, error) {
-	return "stackit.iam.member/" + conn(r.MqlRuntime).ProjectID() + "/" + r.Subject.Data + "/" + r.Role.Data, nil
+	return iamMemberID(r.ResourceType.Data, r.ResourceId.Data, r.Subject.Data, r.Role.Data), nil
+}
+
+// members lists the role bindings granted directly on the organization.
+func (r *mqlStackitOrganization) members() ([]any, error) {
+	return listIamMembers(r.MqlRuntime, authResourceTypeOrganization, r.Id.Data, refusedList)
+}
+
+// members lists the role bindings granted directly on the folder. The
+// authorization API keys a folder by its UUID; the container ID is the
+// fallback for a folder built without one.
+func (r *mqlStackitFolder) members() ([]any, error) {
+	id := r.Id.Data
+	if id == "" {
+		id = r.ContainerId.Data
+	}
+	return listIamMembers(r.MqlRuntime, authResourceTypeFolder, id, refusedList)
 }
 
 func (r *mqlStackitIam) roles() ([]any, error) {

@@ -171,6 +171,19 @@ private stackit.project @defaults("id name lifecycleState") {
   //
   // Empty when the project sits directly under the organization.
   folders() []stackit.folder
+  // Whether the project's networks can reach the internet
+  //
+  // Null when the IaaS project record does not carry the setting.
+  internetAccess() bool
+  // IaaS project type
+  //
+  // One of Schwarz, Public, SNA, or VPC: the network environment the
+  // project's networks are placed in.
+  projectType() string
+  // ID of the VPC the project's networks belong to
+  //
+  // Empty when the project is not part of a VPC.
+  vpcId() string
 }
 
 // STACKIT organization
@@ -204,6 +217,12 @@ stackit.organization @defaults("id name") {
   //
   // Null when the credential cannot read the organization.
   updateTime() time
+  // Role bindings granted directly on the organization
+  //
+  // One entry per (subject, role) pair bound on the organization itself.
+  // Every folder and project below the organization inherits these
+  // grants, so this is where organization-wide owners and admins show up.
+  members() []stackit.iam.member
 }
 
 // STACKIT folder
@@ -233,6 +252,11 @@ stackit.folder @defaults("containerId name") {
   //
   // Null when the credential cannot read the folder.
   updateTime() time
+  // Role bindings granted directly on the folder
+  //
+  // One entry per (subject, role) pair bound on the folder itself. Every
+  // folder and project below it inherits these grants.
+  members() []stackit.iam.member
 }
 
 // STACKIT compute server
@@ -763,16 +787,27 @@ private stackit.nic @defaults("id ipv4 mac status") {
 // expose a resource to the internet, useful for auditing which
 // addresses are externally routable and whether they are currently
 // bound to anything. The IP is keyed by its UUID, for example
-// `stackit.publicIp(id: "...")`. The `networkInterfaceId` field is
-// empty when the address is allocated but unassigned.
+// `stackit.publicIp(id: "...")`. `networkInterface` and `server` are
+// null when the address is allocated but unassigned.
 private stackit.publicIp @defaults("id ip") {
   init(id? string)
   // Public IP UUID
   id string
   // IP address
   ip string
-  // Network interface UUID the IP is bound to (empty if unassigned)
-  networkInterfaceId string
+  // Network interface UUID the IP is bound to
+  //
+  // Deprecated in favor of networkInterface.
+  networkInterfaceId @maturity("deprecated") string
+  // Network interface the IP is bound to (nullable)
+  //
+  // Null when the address is allocated but not bound to an interface.
+  networkInterface() stackit.nic
+  // Server the IP reaches through its network interface (nullable)
+  //
+  // Null when the address is unassigned or bound to an interface that
+  // does not belong to a server, such as a router or metadata port.
+  server() stackit.server
   // User-defined labels
   labels map[string]string
 }
@@ -804,6 +839,11 @@ private stackit.securityGroup @defaults("id name stateful") {
   labels map[string]string
   // Security group rules
   rules() []stackit.securityGroup.rule
+  // Network interfaces the security group is applied to
+  //
+  // Empty for a group attached to no interface, which is a candidate for
+  // cleanup.
+  networkInterfaces() []stackit.nic
 }
 
 // STACKIT security group rule
@@ -812,7 +852,7 @@ private stackit.securityGroup @defaults("id name stateful") {
 // which traffic the group permits. Auditing rules surfaces overly
 // permissive access, for example an ingress rule whose `ipRange` is
 // `0.0.0.0/0` or `::/0`. The remote endpoint is either an IP CIDR
-// (`ipRange`) or another security group (`remoteSecurityGroupId`); one
+// (`ipRange`) or another security group (`remoteSecurityGroup`); one
 // is set and the other empty. Keyed by its UUID `id`, unique within
 // the owning security group.
 private stackit.securityGroup.rule @defaults("id direction protocol") {
@@ -838,8 +878,15 @@ private stackit.securityGroup.rule @defaults("id direction protocol") {
   portRangeMax int
   // Remote IP CIDR (empty if remote is a security group)
   ipRange string
-  // Remote security group UUID (empty if remote is a CIDR)
-  remoteSecurityGroupId string
+  // Remote security group UUID
+  //
+  // Deprecated in favor of remoteSecurityGroup.
+  remoteSecurityGroupId @maturity("deprecated") string
+  // Security group whose members the rule admits (nullable)
+  //
+  // Null when the rule's remote endpoint is an IP range, or when the named
+  // group no longer exists in the project.
+  remoteSecurityGroup() stackit.securityGroup
   // Creation timestamp
   createdAt time
 }
@@ -1471,6 +1518,18 @@ stackit.objectStorage {
   buckets() []stackit.objectStorage.bucket
   // S3 credentials groups holding access keys
   credentialsGroups() []stackit.objectStorage.credentialsGroup
+  // Longest retention in days the project's compliance lock permits
+  //
+  // A compliance lock makes Object Lock retention in COMPLIANCE mode
+  // available to the project's buckets, up to this many days. Null when
+  // the project has no compliance lock.
+  complianceLockMaxRetentionDays() int
+  // Scope of the project in Object Storage
+  //
+  // PUBLIC for the default offering, or SCHWARZ for projects with
+  // client-specific requirements. Null when Object Storage is not
+  // enabled for the project.
+  scope() string
 }
 
 // STACKIT Object Storage credentials group
@@ -1547,6 +1606,60 @@ stackit.sfs {
   exportPolicies() []stackit.sfs.exportPolicy
   // SnapLock project lock ID; empty when the project is not locked
   lockId() string
+  // Snapshot policies defined in the project
+  snapshotPolicies() []stackit.sfs.snapshotPolicy
+}
+
+// STACKIT File Storage snapshot policy
+//
+// Schedule-and-retention template that takes snapshots of the resource
+// pools it is attached to. The policy is keyed by its UUID `id` and
+// exposes `name`, whether it is `enabled`, its `comment`, the
+// `schedules` that set how often snapshots are taken and how long they
+// are kept, and the `resourcePools` it is attached to. A disabled policy,
+// or one attached to no pool, takes no snapshots.
+private stackit.sfs.snapshotPolicy @defaults("id name enabled") {
+  // Snapshot policy UUID
+  id string
+  // Snapshot policy name
+  name string
+  // Whether the policy takes snapshots
+  enabled bool
+  // Free-text comment
+  comment string
+  // Creation timestamp
+  createdAt time
+  // Schedules the policy takes snapshots on, with their retention
+  schedules() []stackit.sfs.snapshotPolicy.schedule
+  // Resource pools the policy is attached to
+  //
+  // Policies are defined once per project, while resource pools are
+  // regional: this lists the attached pools in the region the connection
+  // targets.
+  resourcePools() []stackit.sfs.resourcePool
+}
+
+// Snapshot schedule of an SFS snapshot policy
+//
+// One schedule of a snapshot policy: the cron `interval` snapshots are
+// taken on and the retention that applies to them, as a count of
+// snapshots kept (`retentionCount`) and an ISO 8601 period
+// (`retentionPeriod`, or `infinite`).
+private stackit.sfs.snapshotPolicy.schedule @defaults("name interval retentionCount retentionPeriod") {
+  // Schedule UUID
+  id string
+  // Schedule name
+  name string
+  // Cron expression the snapshots are taken on
+  interval string
+  // Prefix of the names of the snapshots the schedule creates
+  prefix string
+  // Number of snapshots kept (nullable)
+  retentionCount int
+  // How long snapshots are kept (ISO 8601 duration, or infinite)
+  retentionPeriod string
+  // Creation timestamp
+  createdAt time
 }
 
 // STACKIT File Storage resource pool
@@ -1604,10 +1717,18 @@ private stackit.sfs.resourcePool @defaults("id name state performanceClass") {
   ipAcl []string
   // Whether snapshots are visible to clients under the share mount
   snapshotsAreVisible bool
-  // Attached snapshot policy UUID; empty when none is attached
-  snapshotPolicyId string
-  // Attached snapshot policy name; empty when none is attached
-  snapshotPolicyName string
+  // Attached snapshot policy UUID
+  //
+  // Deprecated in favor of snapshotPolicy.
+  snapshotPolicyId @maturity("deprecated") string
+  // Attached snapshot policy name
+  //
+  // Deprecated in favor of snapshotPolicy.
+  snapshotPolicyName @maturity("deprecated") string
+  // Snapshot policy attached to the pool (nullable)
+  //
+  // Null when no policy is attached.
+  snapshotPolicy() stackit.sfs.snapshotPolicy
   // User-defined labels attached to the pool
   labels map[string]string
   // Creation timestamp
@@ -4567,25 +4688,31 @@ stackit.iam {
   resourceId() string
 }
 
-// STACKIT IAM project member
+// STACKIT IAM member binding
 //
-// Single project member binding that ties one principal (a user email,
-// service-account email, or group identifier) to one role on the
-// project. Each binding is keyed by `subject/role`, so the same
-// principal appears once per role it holds. Audit these bindings to
-// find over-privileged or stale access.
+// Single member binding that ties one principal (a user email,
+// service-account email, or group identifier) to one role on a project,
+// folder, or organization. `resourceType` and `resourceId` name the
+// container the binding is on, so the same principal appears once per
+// role it holds on each container. Audit these bindings to find
+// over-privileged or stale access.
 private stackit.iam.member @defaults("subject role") {
   // Principal identifier (user/service-account email, group id)
   subject string
   // Role assigned to the subject
   role string
+  // Kind of container the binding is on (project, folder, or organization)
+  resourceType string
+  // ID of the container the binding is on
+  resourceId string
   // Role definition the binding grants (nullable)
   //
   // Catalog entry for the role named by role, carrying the permissions the
   // binding actually confers on the subject. Follow it to turn a binding
   // into the concrete actions it allows, which is what a least-privilege
   // review compares against. Null when the project role catalog cannot be
-  // read or no longer defines that role.
+  // read or no longer defines that role, and for a binding on a folder or
+  // organization, since the catalog read is the project's.
   roleDetails() stackit.iam.role
   // Service account the binding grants the role to (nullable)
   //

@@ -5,11 +5,16 @@ package resources
 
 import (
 	"encoding/json"
+	"net/http"
 	"reflect"
 	"testing"
 
 	authorization "github.com/stackitcloud/stackit-sdk-go/services/authorization/v2api"
 	resourcemanager "github.com/stackitcloud/stackit-sdk-go/services/resourcemanager/v0api"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // TestIamRoleArgs pins the role mapping: the shipped permissions list keeps
@@ -176,5 +181,121 @@ func TestOrderedFolders(t *testing.T) {
 		if got := orderedFolders(cyclic, "a"); len(got) != 2 {
 			t.Fatalf("cyclic chain = %d folders, want 2 (each once)", len(got))
 		}
+	})
+}
+
+const (
+	fakeOrgID    = "7c6b5a49-3827-4165-9483-a2b1c0d9e8f7"
+	fakeFolderID = "1e2d3c4b-5a69-4788-97a6-b5c4d3e2f1a0"
+	fakeOwner    = "owner@example.com"
+)
+
+func membersBody(resourceType, resourceID string, members ...string) string {
+	body := `{"resourceType":"` + resourceType + `","resourceId":"` + resourceID + `","members":[`
+	for i := 0; i+1 < len(members); i += 2 {
+		if i > 0 {
+			body += ","
+		}
+		body += `{"subject":"` + members[i] + `","role":"` + members[i+1] + `"}`
+	}
+	return body + "]}"
+}
+
+func newOrganization(t *testing.T, runtime *plugin.Runtime) *mqlStackitOrganization {
+	t.Helper()
+	res, err := CreateResource(runtime, "stackit.organization", map[string]*llx.RawData{
+		"id":          llx.StringData(fakeOrgID),
+		"containerId": llx.StringData("organization-example"),
+		"name":        llx.StringData("Example"),
+	})
+	require.NoError(t, err)
+	return res.(*mqlStackitOrganization)
+}
+
+func TestIamMemberID(t *testing.T) {
+	// Synthetic: one subject and role bound at two levels of the hierarchy.
+	org := iamMemberID(authResourceTypeOrganization, fakeOrgID, fakeOwner, "owner")
+	project := iamMemberID(authResourceTypeProject, fakeProjectID, fakeOwner, "owner")
+	assert.NotEqual(t, org, project, "the container must be part of the member cache key")
+	assert.NotEqual(t,
+		iamMemberID(authResourceTypeOrganization, fakeOrgID, fakeOwner, "owner"),
+		iamMemberID(authResourceTypeFolder, fakeOrgID, fakeOwner, "owner"),
+		"the container type must be part of the key, not only its id")
+}
+
+func TestOrganizationAndFolderMembers(t *testing.T) {
+	orgPath := "GET /v2/organization/" + fakeOrgID + "/members"
+	folderPath := "GET /v2/folder/" + fakeFolderID + "/members"
+	projectPath := "GET /v2/project/" + fakeProjectID + "/members"
+
+	// Synthetic: the same owner bound on the organization and on the project,
+	// shaped after the SDK's ListMembersResponse; no target showed this.
+	t.Run("organization and project bindings of one subject stay distinct", func(t *testing.T) {
+		runtime, _ := fakeRuntime(t, map[string]fakeAnswer{
+			orgPath: json200(membersBody("organization", fakeOrgID,
+				fakeOwner, "owner", "auditor@example.com", "reader")),
+			projectPath: json200(membersBody("project", fakeProjectID, fakeOwner, "owner")),
+		})
+
+		orgMembers := newOrganization(t, runtime).GetMembers()
+		require.NoError(t, orgMembers.Error)
+		require.Len(t, orgMembers.Data, 2)
+		first := orgMembers.Data[0].(*mqlStackitIamMember)
+		assert.Equal(t, fakeOwner, first.Subject.Data)
+		assert.Equal(t, "owner", first.Role.Data)
+		assert.Equal(t, "organization", first.ResourceType.Data)
+		assert.Equal(t, fakeOrgID, first.ResourceId.Data)
+
+		i, err := iamResource(runtime)
+		require.NoError(t, err)
+		projectMembers := i.GetMembers()
+		require.NoError(t, projectMembers.Error)
+		require.Len(t, projectMembers.Data, 1)
+		pm := projectMembers.Data[0].(*mqlStackitIamMember)
+		assert.NotSame(t, first, pm, "a project binding must not come back as the cached organization binding")
+		assert.Equal(t, "project", pm.ResourceType.Data)
+		assert.Equal(t, fakeProjectID, pm.ResourceId.Data)
+	})
+
+	// Synthetic: roleDetails reads the project catalog, which says nothing
+	// about a role granted on the organization.
+	t.Run("organization binding has null roleDetails", func(t *testing.T) {
+		runtime, api := fakeRuntime(t, map[string]fakeAnswer{
+			orgPath: json200(membersBody("organization", fakeOrgID, fakeOwner, "owner")),
+		})
+		members := newOrganization(t, runtime).GetMembers()
+		require.NoError(t, members.Error)
+		require.Len(t, members.Data, 1)
+		rd := members.Data[0].(*mqlStackitIamMember).GetRoleDetails()
+		require.NoError(t, rd.Error)
+		assert.True(t, rd.IsNull())
+		assert.Equal(t, 0, api.count("GET /v2/project/"+fakeProjectID+"/roles"), "no project catalog read for an organization binding")
+	})
+
+	// Synthetic: a folder built from the project's ancestry chain.
+	t.Run("folder members are read by folder id", func(t *testing.T) {
+		runtime, _ := fakeRuntime(t, map[string]fakeAnswer{
+			folderPath: json200(membersBody("folder", fakeFolderID, "dev@example.com", "editor")),
+		})
+		res, err := CreateResource(runtime, "stackit.folder", map[string]*llx.RawData{
+			"id":          llx.StringData(fakeFolderID),
+			"containerId": llx.StringData("folder-example"),
+			"name":        llx.StringData("Dev"),
+		})
+		require.NoError(t, err)
+		members := res.(*mqlStackitFolder).GetMembers()
+		require.NoError(t, members.Error)
+		require.Len(t, members.Data, 1)
+		m := members.Data[0].(*mqlStackitIamMember)
+		assert.Equal(t, "editor", m.Role.Data)
+		assert.Equal(t, "folder", m.ResourceType.Data)
+	})
+
+	// Synthetic: a project-scoped credential without organization read access.
+	t.Run("a refusal is a Forbidden error, not an empty list", func(t *testing.T) {
+		runtime, _ := fakeRuntime(t, map[string]fakeAnswer{orgPath: jsonStatus(http.StatusForbidden)})
+		members := newOrganization(t, runtime).GetMembers()
+		require.Error(t, members.Error)
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(members.Error))
 	})
 }
