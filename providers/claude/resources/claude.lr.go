@@ -896,6 +896,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.organization.member.addedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationMember).GetAddedAt()).ToDataRes(types.Time)
 	},
+	"claude.organization.member.usageReport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationMember).GetUsageReport()).ToDataRes(types.Array(types.Resource("claude.organization.usageEntry")))
+	},
 	"claude.organization.invite.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationInvite).GetId()).ToDataRes(types.String)
 	},
@@ -950,6 +953,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.organization.apiKey.scopeType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationApiKey).GetScopeType()).ToDataRes(types.String)
 	},
+	"claude.organization.apiKey.usageReport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationApiKey).GetUsageReport()).ToDataRes(types.Array(types.Resource("claude.organization.usageEntry")))
+	},
 	"claude.organization.rateLimit.groupType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationRateLimit).GetGroupType()).ToDataRes(types.String)
 	},
@@ -979,6 +985,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"claude.organization.usageEntry.serviceTier": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationUsageEntry).GetServiceTier()).ToDataRes(types.String)
+	},
+	"claude.organization.usageEntry.apiKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationUsageEntry).GetApiKey()).ToDataRes(types.Resource("claude.organization.apiKey"))
+	},
+	"claude.organization.usageEntry.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationUsageEntry).GetUser()).ToDataRes(types.Resource("claude.organization.member"))
+	},
+	"claude.organization.usageEntry.serviceAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationUsageEntry).GetServiceAccount()).ToDataRes(types.Resource("claude.organization.serviceAccount"))
 	},
 	"claude.organization.usageEntry.uncachedInputTokens": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationUsageEntry).GetUncachedInputTokens()).ToDataRes(types.Int)
@@ -1042,6 +1057,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"claude.organization.serviceAccount.archivedByActorId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationServiceAccount).GetArchivedByActorId()).ToDataRes(types.String)
+	},
+	"claude.organization.serviceAccount.usageReport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationServiceAccount).GetUsageReport()).ToDataRes(types.Array(types.Resource("claude.organization.usageEntry")))
 	},
 	"claude.organization.federationIssuer.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationFederationIssuer).GetId()).ToDataRes(types.String)
@@ -2346,6 +2364,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClaudeOrganizationMember).AddedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"claude.organization.member.usageReport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationMember).UsageReport, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"claude.organization.invite.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeOrganizationInvite).__id, ok = v.Value.(string)
 		return
@@ -2426,6 +2448,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClaudeOrganizationApiKey).ScopeType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"claude.organization.apiKey.usageReport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationApiKey).UsageReport, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"claude.organization.rateLimit.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeOrganizationRateLimit).__id, ok = v.Value.(string)
 		return
@@ -2472,6 +2498,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"claude.organization.usageEntry.serviceTier": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeOrganizationUsageEntry).ServiceTier, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.usageEntry.apiKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationUsageEntry).ApiKey, ok = plugin.RawToTValue[*mqlClaudeOrganizationApiKey](v.Value, v.Error)
+		return
+	},
+	"claude.organization.usageEntry.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationUsageEntry).User, ok = plugin.RawToTValue[*mqlClaudeOrganizationMember](v.Value, v.Error)
+		return
+	},
+	"claude.organization.usageEntry.serviceAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationUsageEntry).ServiceAccount, ok = plugin.RawToTValue[*mqlClaudeOrganizationServiceAccount](v.Value, v.Error)
 		return
 	},
 	"claude.organization.usageEntry.uncachedInputTokens": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2564,6 +2602,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"claude.organization.serviceAccount.archivedByActorId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeOrganizationServiceAccount).ArchivedByActorId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.serviceAccount.usageReport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationServiceAccount).UsageReport, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"claude.organization.federationIssuer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5439,11 +5481,12 @@ type mqlClaudeOrganizationMember struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlClaudeOrganizationMemberInternal it will be used here
-	Id      plugin.TValue[string]
-	Name    plugin.TValue[string]
-	Email   plugin.TValue[string]
-	Role    plugin.TValue[string]
-	AddedAt plugin.TValue[*time.Time]
+	Id          plugin.TValue[string]
+	Name        plugin.TValue[string]
+	Email       plugin.TValue[string]
+	Role        plugin.TValue[string]
+	AddedAt     plugin.TValue[*time.Time]
+	UsageReport plugin.TValue[[]any]
 }
 
 // createClaudeOrganizationMember creates a new instance of this resource
@@ -5496,6 +5539,22 @@ func (c *mqlClaudeOrganizationMember) GetRole() *plugin.TValue[string] {
 
 func (c *mqlClaudeOrganizationMember) GetAddedAt() *plugin.TValue[*time.Time] {
 	return &c.AddedAt
+}
+
+func (c *mqlClaudeOrganizationMember) GetUsageReport() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.UsageReport, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.organization.member", c.__id, "usageReport")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.usageReport()
+	})
 }
 
 // mqlClaudeOrganizationInvite for the claude.organization.invite resource
@@ -5584,6 +5643,7 @@ type mqlClaudeOrganizationApiKey struct {
 	PrincipalUser           plugin.TValue[*mqlClaudeOrganizationMember]
 	PrincipalServiceAccount plugin.TValue[*mqlClaudeOrganizationServiceAccount]
 	ScopeType               plugin.TValue[string]
+	UsageReport             plugin.TValue[[]any]
 }
 
 // createClaudeOrganizationApiKey creates a new instance of this resource
@@ -5714,6 +5774,22 @@ func (c *mqlClaudeOrganizationApiKey) GetScopeType() *plugin.TValue[string] {
 	return &c.ScopeType
 }
 
+func (c *mqlClaudeOrganizationApiKey) GetUsageReport() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.UsageReport, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.organization.apiKey", c.__id, "usageReport")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.usageReport()
+	})
+}
+
 // mqlClaudeOrganizationRateLimit for the claude.organization.rateLimit resource
 type mqlClaudeOrganizationRateLimit struct {
 	MqlRuntime *plugin.Runtime
@@ -5788,6 +5864,9 @@ type mqlClaudeOrganizationUsageEntry struct {
 	Model                plugin.TValue[string]
 	Workspace            plugin.TValue[*mqlClaudeOrganizationWorkspace]
 	ServiceTier          plugin.TValue[string]
+	ApiKey               plugin.TValue[*mqlClaudeOrganizationApiKey]
+	User                 plugin.TValue[*mqlClaudeOrganizationMember]
+	ServiceAccount       plugin.TValue[*mqlClaudeOrganizationServiceAccount]
 	UncachedInputTokens  plugin.TValue[int64]
 	CacheReadInputTokens plugin.TValue[int64]
 	OutputTokens         plugin.TValue[int64]
@@ -5855,6 +5934,54 @@ func (c *mqlClaudeOrganizationUsageEntry) GetWorkspace() *plugin.TValue[*mqlClau
 
 func (c *mqlClaudeOrganizationUsageEntry) GetServiceTier() *plugin.TValue[string] {
 	return &c.ServiceTier
+}
+
+func (c *mqlClaudeOrganizationUsageEntry) GetApiKey() *plugin.TValue[*mqlClaudeOrganizationApiKey] {
+	return plugin.GetOrCompute[*mqlClaudeOrganizationApiKey](&c.ApiKey, func() (*mqlClaudeOrganizationApiKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.organization.usageEntry", c.__id, "apiKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlClaudeOrganizationApiKey), nil
+			}
+		}
+
+		return c.apiKey()
+	})
+}
+
+func (c *mqlClaudeOrganizationUsageEntry) GetUser() *plugin.TValue[*mqlClaudeOrganizationMember] {
+	return plugin.GetOrCompute[*mqlClaudeOrganizationMember](&c.User, func() (*mqlClaudeOrganizationMember, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.organization.usageEntry", c.__id, "user")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlClaudeOrganizationMember), nil
+			}
+		}
+
+		return c.user()
+	})
+}
+
+func (c *mqlClaudeOrganizationUsageEntry) GetServiceAccount() *plugin.TValue[*mqlClaudeOrganizationServiceAccount] {
+	return plugin.GetOrCompute[*mqlClaudeOrganizationServiceAccount](&c.ServiceAccount, func() (*mqlClaudeOrganizationServiceAccount, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.organization.usageEntry", c.__id, "serviceAccount")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlClaudeOrganizationServiceAccount), nil
+			}
+		}
+
+		return c.serviceAccount()
+	})
 }
 
 func (c *mqlClaudeOrganizationUsageEntry) GetUncachedInputTokens() *plugin.TValue[int64] {
@@ -5975,6 +6102,7 @@ type mqlClaudeOrganizationServiceAccount struct {
 	CreatedByActorId  plugin.TValue[string]
 	UpdatedByActorId  plugin.TValue[string]
 	ArchivedByActorId plugin.TValue[string]
+	UsageReport       plugin.TValue[[]any]
 }
 
 // createClaudeOrganizationServiceAccount creates a new instance of this resource
@@ -6047,6 +6175,22 @@ func (c *mqlClaudeOrganizationServiceAccount) GetUpdatedByActorId() *plugin.TVal
 
 func (c *mqlClaudeOrganizationServiceAccount) GetArchivedByActorId() *plugin.TValue[string] {
 	return &c.ArchivedByActorId
+}
+
+func (c *mqlClaudeOrganizationServiceAccount) GetUsageReport() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.UsageReport, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.organization.serviceAccount", c.__id, "usageReport")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.usageReport()
+	})
 }
 
 // mqlClaudeOrganizationFederationIssuer for the claude.organization.federationIssuer resource

@@ -176,13 +176,14 @@ func TestDoRequest_ErrorStatusPropagates(t *testing.T) {
 	assert.Contains(t, err.Error(), "403")
 }
 
-func TestListUsageReport_GroupsByServiceTier(t *testing.T) {
+func TestListUsageReport_GroupsByCaller(t *testing.T) {
 	var groupBy []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/v1/organizations/usage_report/messages", r.URL.Path)
 		groupBy = r.URL.Query()["group_by[]"]
-		// Synthetic: one result shaped like the response example in the
-		// Admin API reference for GET /v1/organizations/usage_report/messages.
+		// Synthetic: the first result is the response example in the Admin
+		// API reference for GET /v1/organizations/usage_report/messages; the
+		// second is Console usage in the default workspace.
 		_, _ = w.Write([]byte(`{
 			"data": [{
 				"starting_at": "2025-08-01T00:00:00Z",
@@ -193,7 +194,20 @@ func TestListUsageReport_GroupsByServiceTier(t *testing.T) {
 					"output_tokens": 500,
 					"model": "claude-opus-5-5",
 					"service_tier": "batch",
-					"workspace_id": "wrkspc_01JwQvzr7rXLA5AGx3HKfFUJ"
+					"workspace_id": "wrkspc_01JwQvzr7rXLA5AGx3HKfFUJ",
+					"api_key_id": "apikey_01Rj2N8SVvo6BePZj99NhmiT",
+					"account_id": "user_01WCz1FkmYMm4gnmykNKUu3Q",
+					"service_account_id": "svac_01Hk3R9TWxq7CfQak00OiVw4"
+				}, {
+					"uncached_input_tokens": 10,
+					"cache_read_input_tokens": 0,
+					"output_tokens": 5,
+					"model": "claude-opus-5-5",
+					"service_tier": "standard",
+					"workspace_id": null,
+					"api_key_id": null,
+					"account_id": null,
+					"service_account_id": null
 				}]
 			}],
 			"has_more": false,
@@ -206,13 +220,27 @@ func TestListUsageReport_GroupsByServiceTier(t *testing.T) {
 	got, err := c.ListUsageReport(context.Background())
 	require.NoError(t, err)
 
-	// The API returns service_tier as null unless the request groups by it.
-	assert.ElementsMatch(t, []string{"workspace_id", "model", "service_tier"}, groupBy)
+	// The API returns a dimension as null unless the request groups by it.
+	assert.ElementsMatch(t, []string{
+		"workspace_id", "model", "service_tier", "api_key_id", "account_id", "service_account_id",
+	}, groupBy)
 	require.Len(t, got, 1)
-	require.Len(t, got[0].Results, 1)
-	assert.Equal(t, "batch", got[0].Results[0].ServiceTier)
-	assert.Equal(t, "claude-opus-5-5", got[0].Results[0].Model)
-	assert.Equal(t, "wrkspc_01JwQvzr7rXLA5AGx3HKfFUJ", got[0].Results[0].WorkspaceID)
+	require.Len(t, got[0].Results, 2)
+	res := got[0].Results[0]
+	assert.Equal(t, "batch", res.ServiceTier)
+	assert.Equal(t, "claude-opus-5-5", res.Model)
+	assert.Equal(t, "wrkspc_01JwQvzr7rXLA5AGx3HKfFUJ", res.WorkspaceID)
+	assert.Equal(t, "apikey_01Rj2N8SVvo6BePZj99NhmiT", res.APIKeyID)
+	assert.Equal(t, "user_01WCz1FkmYMm4gnmykNKUu3Q", res.AccountID)
+	assert.Equal(t, "svac_01Hk3R9TWxq7CfQak00OiVw4", res.ServiceAccountID)
+
+	// Synthetic: Console usage in the default workspace carries null ids,
+	// which decode to the empty string the resources treat as absent.
+	console := got[0].Results[1]
+	assert.Empty(t, console.APIKeyID)
+	assert.Empty(t, console.AccountID)
+	assert.Empty(t, console.ServiceAccountID)
+	assert.Empty(t, console.WorkspaceID)
 }
 
 func TestListCostReport_GroupsByDescription(t *testing.T) {

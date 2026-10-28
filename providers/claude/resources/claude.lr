@@ -595,6 +595,10 @@ claude.organization @defaults("id name") {
   // Organization-level rate limits
   rateLimits() []claude.organization.rateLimit
   // Token usage report entries
+  //
+  // One entry per day, workspace, model, service tier, API key, member, and
+  // service account with Messages API usage. Covers the seven UTC days
+  // before today and today so far.
   usageReport() []claude.organization.usageEntry
   // Cost report entries
   costReport() []claude.organization.costEntry
@@ -759,6 +763,13 @@ claude.organization.member @defaults("id name email role") {
   role string
   // Timestamp when the user was added to the organization
   addedAt time
+  // Usage report entries for requests this member made with their own account
+  //
+  // Covers the same window as the organization's usageReport. Requests made
+  // with an API key are attributed to the key, not to this list, so read the
+  // usageReport of the keys whose principalUser or createdBy is this member
+  // as well.
+  usageReport() []claude.organization.usageEntry
 }
 
 // Claude organization invite
@@ -827,6 +838,12 @@ claude.organization.apiKey @defaults("id name status") {
   // so reaches the whole organization. An organization-scoped key is the
   // broader credential of the two.
   scopeType string
+  // Usage report entries for requests made with this key
+  //
+  // Covers the same window as the organization's usageReport: the seven UTC
+  // days before today and today so far. An empty list on an active key
+  // means the key made no Messages API requests in that window.
+  usageReport() []claude.organization.usageEntry
 }
 
 // Claude organization rate limit group
@@ -852,9 +869,11 @@ claude.organization.rateLimit @defaults("groupType") {
 
 // Claude organization usage report bucket
 //
-// Daily usage bucket from the Admin API usage report. Each bucket covers
-// a time window and contains per-model, per-workspace token consumption
-// breakdowns for the last seven days.
+// Daily usage row from the Admin API usage report. Each row covers one UTC
+// day of Messages API token consumption for one combination of workspace,
+// model, service tier, API key, member, and service account. The report
+// covers the seven UTC days before today and today so far; days without
+// usage have no rows.
 claude.organization.usageEntry @defaults("startingAt") {
   // Bucket start timestamp
   startingAt time
@@ -871,6 +890,23 @@ claude.organization.usageEntry @defaults("startingAt") {
   // One of standard, batch, priority, flex, priority_on_demand, or
   // flex_discount.
   serviceTier string
+  // API key the requests were made with
+  //
+  // Null for usage that did not go through an API key, such as requests
+  // made in the Claude Console, and for a key since deleted from the
+  // organization.
+  apiKey() claude.organization.apiKey
+  // Organization member whose own account made the requests
+  //
+  // Set for requests authenticated as the member through OAuth. Null for
+  // requests made with an API key; the key's principalUser or createdBy
+  // names the person behind those.
+  user() claude.organization.member
+  // Service account that made the requests
+  //
+  // Set for requests a service account made through workload identity
+  // federation. Null otherwise.
+  serviceAccount() claude.organization.serviceAccount
   // Uncached input tokens consumed
   uncachedInputTokens int
   // Input tokens read from cache
@@ -961,6 +997,11 @@ claude.organization.serviceAccount @defaults("id name organizationRole") {
   //
   // Prefixed user_ or svac_. Null while the account is active.
   archivedByActorId string
+  // Usage report entries for requests this service account made through workload identity federation
+  //
+  // Covers the same window as the organization's usageReport. Requests made
+  // with an API key bound to the account are attributed to that key.
+  usageReport() []claude.organization.usageEntry
 }
 
 // Claude workload identity federation issuer

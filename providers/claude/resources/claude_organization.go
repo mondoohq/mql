@@ -417,7 +417,95 @@ func (r *mqlClaudeOrganizationWorkspace) rateLimits() ([]any, error) {
 // claude.organization.usageEntry
 
 type mqlClaudeOrganizationUsageEntryInternal struct {
-	cacheWorkspaceID string
+	cacheWorkspaceID      string
+	cacheAPIKeyID         string
+	cacheAccountID        string
+	cacheServiceAccountID string
+}
+
+func (r *mqlClaudeOrganizationUsageEntry) apiKey() (*mqlClaudeOrganizationApiKey, error) {
+	key, ok, err := lookupOrganizationChild[*mqlClaudeOrganizationApiKey](
+		r.MqlRuntime, r.cacheAPIKeyID, (*mqlClaudeOrganization).GetApiKeys)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.ApiKey.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return key, nil
+}
+
+func (r *mqlClaudeOrganizationUsageEntry) user() (*mqlClaudeOrganizationMember, error) {
+	member, ok, err := lookupMember(r.MqlRuntime, r.cacheAccountID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.User.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return member, nil
+}
+
+func (r *mqlClaudeOrganizationUsageEntry) serviceAccount() (*mqlClaudeOrganizationServiceAccount, error) {
+	sa, ok, err := lookupOrganizationChild[*mqlClaudeOrganizationServiceAccount](
+		r.MqlRuntime, r.cacheServiceAccountID, (*mqlClaudeOrganization).GetServiceAccounts)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.ServiceAccount.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return sa, nil
+}
+
+// organizationUsageFor returns the organization's usage report entries whose
+// caller, as picked by callerID, is id. It reads the organization's cached
+// report, so every key, member and service account shares one report fetch.
+func organizationUsageFor(runtime *plugin.Runtime, id string, callerID func(*mqlClaudeOrganizationUsageEntry) string) ([]any, error) {
+	res, err := CreateResource(runtime, "claude.organization", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	report := res.(*mqlClaudeOrganization).GetUsageReport()
+	if report.Error != nil {
+		return nil, report.Error
+	}
+	return usageEntriesFor(report.Data, id, callerID), nil
+}
+
+// usageEntriesFor filters usage report entries down to those whose caller, as
+// picked by callerID, is id. An empty id matches nothing, so usage without a
+// key, member or service account is never attributed to one.
+func usageEntriesFor(entries []any, id string, callerID func(*mqlClaudeOrganizationUsageEntry) string) []any {
+	res := []any{}
+	if id == "" {
+		return res
+	}
+	for _, e := range entries {
+		entry, ok := e.(*mqlClaudeOrganizationUsageEntry)
+		if ok && callerID(entry) == id {
+			res = append(res, entry)
+		}
+	}
+	return res
+}
+
+func (r *mqlClaudeOrganizationApiKey) usageReport() ([]any, error) {
+	return organizationUsageFor(r.MqlRuntime, r.Id.Data,
+		func(e *mqlClaudeOrganizationUsageEntry) string { return e.cacheAPIKeyID })
+}
+
+func (r *mqlClaudeOrganizationMember) usageReport() ([]any, error) {
+	return organizationUsageFor(r.MqlRuntime, r.Id.Data,
+		func(e *mqlClaudeOrganizationUsageEntry) string { return e.cacheAccountID })
+}
+
+func (r *mqlClaudeOrganizationServiceAccount) usageReport() ([]any, error) {
+	return organizationUsageFor(r.MqlRuntime, r.Id.Data,
+		func(e *mqlClaudeOrganizationUsageEntry) string { return e.cacheServiceAccountID })
 }
 
 func (r *mqlClaudeOrganizationUsageEntry) workspace() (*mqlClaudeOrganizationWorkspace, error) {
@@ -456,7 +544,7 @@ func (r *mqlClaudeOrganization) usageReport() ([]any, error) {
 
 		for _, result := range b.Results {
 			mqlEntry, err := CreateResource(r.MqlRuntime, "claude.organization.usageEntry", map[string]*llx.RawData{
-				"__id":                 llx.StringData("usage/" + b.StartingAt + "/" + result.Model + "/" + result.WorkspaceID + "/" + result.ServiceTier),
+				"__id":                 llx.StringData(usageEntryID(b.StartingAt, result)),
 				"startingAt":           llx.TimeData(startingAt),
 				"endingAt":             llx.TimeData(endingAt),
 				"model":                llx.StringData(result.Model),
@@ -469,13 +557,25 @@ func (r *mqlClaudeOrganization) usageReport() ([]any, error) {
 				return nil, err
 			}
 
-			mqlEntry.(*mqlClaudeOrganizationUsageEntry).cacheWorkspaceID = result.WorkspaceID
+			entry := mqlEntry.(*mqlClaudeOrganizationUsageEntry)
+			entry.cacheWorkspaceID = result.WorkspaceID
+			entry.cacheAPIKeyID = result.APIKeyID
+			entry.cacheAccountID = result.AccountID
+			entry.cacheServiceAccountID = result.ServiceAccountID
 
 			res = append(res, mqlEntry)
 		}
 	}
 
 	return res, nil
+}
+
+// usageEntryID keys a usage report row. The report is grouped by every
+// dimension below, so together they identify a row within a bucket. A null
+// dimension reads as the empty string, which no real id equals.
+func usageEntryID(startingAt string, result connection.AdminUsageResult) string {
+	return "usage/" + startingAt + "/" + result.WorkspaceID + "/" + result.Model + "/" + result.ServiceTier +
+		"/" + result.APIKeyID + "/" + result.AccountID + "/" + result.ServiceAccountID
 }
 
 // claude.organization.costEntry
