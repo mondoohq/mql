@@ -275,3 +275,72 @@ func (r *mqlStackitObjectStorageAccessKey) credentialsGroup() (*mqlStackitObject
 	}
 	return res.(*mqlStackitObjectStorageCredentialsGroup), nil
 }
+
+// complianceLockMaxRetentionDays reads the project's compliance lock. The
+// service answers 404 when the project has none (or is not onboarded to
+// Object Storage), which is an absence and reads as null.
+func (r *mqlStackitObjectStorage) complianceLockMaxRetentionDays() (int64, error) {
+	c := conn(r.MqlRuntime)
+	client, err := c.ObjectStorage()
+	if err != nil {
+		return 0, err
+	}
+	resp, err := client.DefaultAPI.GetComplianceLock(bgctx(), c.ProjectID(), c.Region()).Execute()
+	if err != nil {
+		if isNotFound(err) {
+			r.ComplianceLockMaxRetentionDays.State = plugin.StateIsSet | plugin.StateIsNull
+			return 0, nil
+		}
+		if isAccessDenied(err) {
+			return 0, refusal(err)
+		}
+		return 0, err
+	}
+	if resp == nil {
+		r.ComplianceLockMaxRetentionDays.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(resp.GetMaxRetentionDays()), nil
+}
+
+// scope reads the project's Object Storage scope from the service status. A
+// 404 means the project is not onboarded to Object Storage and reads as null.
+func (r *mqlStackitObjectStorage) scope() (string, error) {
+	c := conn(r.MqlRuntime)
+	client, err := c.ObjectStorage()
+	if err != nil {
+		return "", err
+	}
+	resp, err := client.DefaultAPI.GetServiceStatus(bgctx(), c.ProjectID(), c.Region()).Execute()
+	if err != nil {
+		if isNotFound(err) {
+			r.Scope.State = plugin.StateIsSet | plugin.StateIsNull
+			return "", nil
+		}
+		if isAccessDenied(err) {
+			return "", refusal(err)
+		}
+		return "", err
+	}
+	scope := objectStorageScope(resp)
+	if scope == "" {
+		r.Scope.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return scope, nil
+}
+
+// objectStorageScope returns the scope the service status names, or "" when
+// there is none to report. The SDK folds a scope it does not know into a
+// placeholder value, which is not the scope the service sent, so that reads as
+// "" too.
+func objectStorageScope(status *objectstorage.ProjectStatus) string {
+	if status == nil {
+		return ""
+	}
+	scope := status.GetScope()
+	if scope == objectstorage.PROJECTSCOPE_UNKNOWN_DEFAULT_OPEN_API {
+		return ""
+	}
+	return string(scope)
+}

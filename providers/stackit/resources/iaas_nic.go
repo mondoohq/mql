@@ -4,6 +4,8 @@
 package resources
 
 import (
+	"slices"
+
 	iaas "github.com/stackitcloud/stackit-sdk-go/services/iaas/v2api"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -120,4 +122,157 @@ func (r *mqlStackitNic) securityGroups() ([]any, error) {
 		out = append(out, sg)
 	}
 	return out, nil
+}
+
+// projectNICs returns the project's network interfaces from the connection's
+// shared list, classifying a refused list call.
+func projectNICs(runtime *plugin.Runtime) ([]iaas.NIC, error) {
+	nics, err := conn(runtime).ProjectNICs(bgctx())
+	if err != nil {
+		if isAccessDenied(err) {
+			return nil, refusal(err)
+		}
+		return nil, err
+	}
+	return nics, nil
+}
+
+// findNIC returns the interface with the given ID, or nil when the list holds
+// none.
+func findNIC(nics []iaas.NIC, id string) *iaas.NIC {
+	if id == "" {
+		return nil
+	}
+	for i := range nics {
+		if nics[i].GetId() == id {
+			return &nics[i]
+		}
+	}
+	return nil
+}
+
+// nicsWithSecurityGroup returns the interfaces the security group is applied
+// to.
+func nicsWithSecurityGroup(nics []iaas.NIC, securityGroupID string) []*iaas.NIC {
+	out := []*iaas.NIC{}
+	if securityGroupID == "" {
+		return out
+	}
+	for i := range nics {
+		if slices.Contains(nics[i].GetSecurityGroups(), securityGroupID) {
+			out = append(out, &nics[i])
+		}
+	}
+	return out
+}
+
+// nicTypeServer is the interface type of a server's network interface. Only
+// on such an interface does the device field name a server; a gateway or
+// metadata port carries the ID of something else, or nothing.
+const nicTypeServer = "server"
+
+// nicServerID returns the ID of the server the interface belongs to, or ""
+// when it is not a server interface.
+func nicServerID(n *iaas.NIC) string {
+	if n == nil || n.GetType() != nicTypeServer {
+		return ""
+	}
+	return n.GetDevice()
+}
+
+// networkInterface resolves the interface the address is bound to against the
+// project's interface list. The public IP record carries no network ID, which
+// the single-interface lookup requires.
+func (r *mqlStackitPublicIp) networkInterface() (*mqlStackitNic, error) {
+	if r.NetworkInterfaceId.Data == "" {
+		return markNull(&r.NetworkInterface)
+	}
+	nics, err := projectNICs(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	n := findNIC(nics, r.NetworkInterfaceId.Data)
+	if n == nil {
+		return markNull(&r.NetworkInterface)
+	}
+	res, err := buildNic(r.MqlRuntime, n)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlStackitNic), nil
+}
+
+// server resolves the server behind the interface the address is bound to,
+// against the project's server list.
+func (r *mqlStackitPublicIp) server() (*mqlStackitServer, error) {
+	if r.NetworkInterfaceId.Data == "" {
+		return markNull(&r.Server)
+	}
+	nics, err := projectNICs(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	serverID := nicServerID(findNIC(nics, r.NetworkInterfaceId.Data))
+	if serverID == "" {
+		return markNull(&r.Server)
+	}
+	root, err := CreateResource(r.MqlRuntime, "stackit", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	servers := root.(*mqlStackit).GetServers()
+	if servers.Error != nil {
+		return nil, servers.Error
+	}
+	for _, s := range servers.Data {
+		if srv, ok := s.(*mqlStackitServer); ok && srv.Id.Data == serverID {
+			return srv, nil
+		}
+	}
+	return markNull(&r.Server)
+}
+
+// networkInterfaces lists the interfaces the group is applied to, read off the
+// project's interface list.
+func (r *mqlStackitSecurityGroup) networkInterfaces() ([]any, error) {
+	nics, err := projectNICs(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	matched := nicsWithSecurityGroup(nics, r.Id.Data)
+	out := make([]any, 0, len(matched))
+	for _, n := range matched {
+		res, err := buildNic(r.MqlRuntime, n)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+// remoteSecurityGroup resolves the group a rule admits traffic from against
+// the project's security group list. Null when the rule's remote is an IP
+// range, or when the group is gone.
+func (r *mqlStackitSecurityGroupRule) remoteSecurityGroup() (*mqlStackitSecurityGroup, error) {
+	id := r.RemoteSecurityGroupId.Data
+	if id == "" {
+		return markNull(&r.RemoteSecurityGroup)
+	}
+	groups, err := conn(r.MqlRuntime).SecurityGroups(bgctx())
+	if err != nil {
+		if isAccessDenied(err) {
+			return nil, refusal(err)
+		}
+		return nil, err
+	}
+	sg, ok := groups[id]
+	if !ok {
+		return markNull(&r.RemoteSecurityGroup)
+	}
+	res, err := buildSecurityGroup(r.MqlRuntime, &sg)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlStackitSecurityGroup), nil
 }

@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	iaas "github.com/stackitcloud/stackit-sdk-go/services/iaas/v2api"
 	resourcemanager "github.com/stackitcloud/stackit-sdk-go/services/resourcemanager/v0api"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -32,6 +33,82 @@ func conn(runtime *plugin.Runtime) *connection.StackitConnection {
 // their resources without another call.
 type mqlStackitProjectInternal struct {
 	cacheParents []resourcemanager.ParentListInner
+
+	// The IaaS view of the project (internet access, project type, VPC),
+	// read once through GetProjectDetails and shared by the three fields.
+	iaasFetched atomic.Bool
+	iaasDetail  *iaas.Project
+	iaasLock    sync.Mutex
+}
+
+// fetchIaasDetail reads the project's IaaS record once. A nil result with a
+// nil error means the IaaS API has no record of the project (it was never
+// onboarded to IaaS), and the fields it feeds report null.
+func (r *mqlStackitProject) fetchIaasDetail() (*iaas.Project, error) {
+	if r.iaasFetched.Load() {
+		return r.iaasDetail, nil
+	}
+	r.iaasLock.Lock()
+	defer r.iaasLock.Unlock()
+	if r.iaasFetched.Load() {
+		return r.iaasDetail, nil
+	}
+	c := conn(r.MqlRuntime)
+	client, err := c.IaaS()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DefaultAPI.GetProjectDetails(bgctx(), c.ProjectID()).Execute()
+	if err != nil {
+		if isNotFound(err) {
+			r.iaasFetched.Store(true)
+			return nil, nil
+		}
+		if isAccessDenied(err) {
+			return nil, refusal(err)
+		}
+		return nil, err
+	}
+	r.iaasDetail = resp
+	r.iaasFetched.Store(true)
+	return r.iaasDetail, nil
+}
+
+func (r *mqlStackitProject) internetAccess() (bool, error) {
+	d, err := r.fetchIaasDetail()
+	if err != nil {
+		return false, err
+	}
+	v, ok := d.GetInternetAccessOk()
+	if d == nil || !ok || v == nil {
+		r.InternetAccess.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *v, nil
+}
+
+func (r *mqlStackitProject) projectType() (string, error) {
+	d, err := r.fetchIaasDetail()
+	if err != nil {
+		return "", err
+	}
+	if d == nil {
+		r.ProjectType.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return d.GetProjectType(), nil
+}
+
+func (r *mqlStackitProject) vpcId() (string, error) {
+	d, err := r.fetchIaasDetail()
+	if err != nil {
+		return "", err
+	}
+	if d == nil {
+		r.VpcId.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return d.GetVpcId(), nil
 }
 
 // project fetches the project metadata from the resource-manager API. Parents

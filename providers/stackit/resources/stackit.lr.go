@@ -52,6 +52,8 @@ const (
 	ResourceStackitObjectStorageAccessKey                  string = "stackit.objectStorage.accessKey"
 	ResourceStackitObjectStorageBucket                     string = "stackit.objectStorage.bucket"
 	ResourceStackitSfs                                     string = "stackit.sfs"
+	ResourceStackitSfsSnapshotPolicy                       string = "stackit.sfs.snapshotPolicy"
+	ResourceStackitSfsSnapshotPolicySchedule               string = "stackit.sfs.snapshotPolicy.schedule"
 	ResourceStackitSfsResourcePool                         string = "stackit.sfs.resourcePool"
 	ResourceStackitSfsShare                                string = "stackit.sfs.share"
 	ResourceStackitSfsExportPolicy                         string = "stackit.sfs.exportPolicy"
@@ -302,6 +304,14 @@ func init() {
 		"stackit.sfs": {
 			// to override args, implement: initStackitSfs(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createStackitSfs,
+		},
+		"stackit.sfs.snapshotPolicy": {
+			// to override args, implement: initStackitSfsSnapshotPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitSfsSnapshotPolicy,
+		},
+		"stackit.sfs.snapshotPolicy.schedule": {
+			// to override args, implement: initStackitSfsSnapshotPolicySchedule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitSfsSnapshotPolicySchedule,
 		},
 		"stackit.sfs.resourcePool": {
 			Init:   initStackitSfsResourcePool,
@@ -940,6 +950,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"stackit.project.folders": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitProject).GetFolders()).ToDataRes(types.Array(types.Resource("stackit.folder")))
 	},
+	"stackit.project.internetAccess": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitProject).GetInternetAccess()).ToDataRes(types.Bool)
+	},
+	"stackit.project.projectType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitProject).GetProjectType()).ToDataRes(types.String)
+	},
+	"stackit.project.vpcId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitProject).GetVpcId()).ToDataRes(types.String)
+	},
 	"stackit.organization.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitOrganization).GetId()).ToDataRes(types.String)
 	},
@@ -961,6 +980,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"stackit.organization.updateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitOrganization).GetUpdateTime()).ToDataRes(types.Time)
 	},
+	"stackit.organization.members": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitOrganization).GetMembers()).ToDataRes(types.Array(types.Resource("stackit.iam.member")))
+	},
 	"stackit.folder.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitFolder).GetId()).ToDataRes(types.String)
 	},
@@ -978,6 +1000,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"stackit.folder.updateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitFolder).GetUpdateTime()).ToDataRes(types.Time)
+	},
+	"stackit.folder.members": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitFolder).GetMembers()).ToDataRes(types.Array(types.Resource("stackit.iam.member")))
 	},
 	"stackit.server.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitServer).GetId()).ToDataRes(types.String)
@@ -1429,6 +1454,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"stackit.publicIp.networkInterfaceId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitPublicIp).GetNetworkInterfaceId()).ToDataRes(types.String)
 	},
+	"stackit.publicIp.networkInterface": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitPublicIp).GetNetworkInterface()).ToDataRes(types.Resource("stackit.nic"))
+	},
+	"stackit.publicIp.server": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitPublicIp).GetServer()).ToDataRes(types.Resource("stackit.server"))
+	},
 	"stackit.publicIp.labels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitPublicIp).GetLabels()).ToDataRes(types.Map(types.String, types.String))
 	},
@@ -1455,6 +1486,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"stackit.securityGroup.rules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitSecurityGroup).GetRules()).ToDataRes(types.Array(types.Resource("stackit.securityGroup.rule")))
+	},
+	"stackit.securityGroup.networkInterfaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSecurityGroup).GetNetworkInterfaces()).ToDataRes(types.Array(types.Resource("stackit.nic")))
 	},
 	"stackit.securityGroup.rule.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitSecurityGroupRule).GetId()).ToDataRes(types.String)
@@ -1491,6 +1525,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"stackit.securityGroup.rule.remoteSecurityGroupId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitSecurityGroupRule).GetRemoteSecurityGroupId()).ToDataRes(types.String)
+	},
+	"stackit.securityGroup.rule.remoteSecurityGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSecurityGroupRule).GetRemoteSecurityGroup()).ToDataRes(types.Resource("stackit.securityGroup"))
 	},
 	"stackit.securityGroup.rule.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitSecurityGroupRule).GetCreatedAt()).ToDataRes(types.Time)
@@ -1984,6 +2021,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"stackit.objectStorage.credentialsGroups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitObjectStorage).GetCredentialsGroups()).ToDataRes(types.Array(types.Resource("stackit.objectStorage.credentialsGroup")))
 	},
+	"stackit.objectStorage.complianceLockMaxRetentionDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObjectStorage).GetComplianceLockMaxRetentionDays()).ToDataRes(types.Int)
+	},
+	"stackit.objectStorage.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObjectStorage).GetScope()).ToDataRes(types.String)
+	},
 	"stackit.objectStorage.credentialsGroup.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitObjectStorageCredentialsGroup).GetId()).ToDataRes(types.String)
 	},
@@ -2038,6 +2081,51 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"stackit.sfs.lockId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitSfs).GetLockId()).ToDataRes(types.String)
 	},
+	"stackit.sfs.snapshotPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfs).GetSnapshotPolicies()).ToDataRes(types.Array(types.Resource("stackit.sfs.snapshotPolicy")))
+	},
+	"stackit.sfs.snapshotPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicy).GetId()).ToDataRes(types.String)
+	},
+	"stackit.sfs.snapshotPolicy.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicy).GetName()).ToDataRes(types.String)
+	},
+	"stackit.sfs.snapshotPolicy.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicy).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"stackit.sfs.snapshotPolicy.comment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicy).GetComment()).ToDataRes(types.String)
+	},
+	"stackit.sfs.snapshotPolicy.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicy).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"stackit.sfs.snapshotPolicy.schedules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicy).GetSchedules()).ToDataRes(types.Array(types.Resource("stackit.sfs.snapshotPolicy.schedule")))
+	},
+	"stackit.sfs.snapshotPolicy.resourcePools": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicy).GetResourcePools()).ToDataRes(types.Array(types.Resource("stackit.sfs.resourcePool")))
+	},
+	"stackit.sfs.snapshotPolicy.schedule.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicySchedule).GetId()).ToDataRes(types.String)
+	},
+	"stackit.sfs.snapshotPolicy.schedule.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicySchedule).GetName()).ToDataRes(types.String)
+	},
+	"stackit.sfs.snapshotPolicy.schedule.interval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicySchedule).GetInterval()).ToDataRes(types.String)
+	},
+	"stackit.sfs.snapshotPolicy.schedule.prefix": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicySchedule).GetPrefix()).ToDataRes(types.String)
+	},
+	"stackit.sfs.snapshotPolicy.schedule.retentionCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicySchedule).GetRetentionCount()).ToDataRes(types.Int)
+	},
+	"stackit.sfs.snapshotPolicy.schedule.retentionPeriod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicySchedule).GetRetentionPeriod()).ToDataRes(types.String)
+	},
+	"stackit.sfs.snapshotPolicy.schedule.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsSnapshotPolicySchedule).GetCreatedAt()).ToDataRes(types.Time)
+	},
 	"stackit.sfs.resourcePool.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitSfsResourcePool).GetId()).ToDataRes(types.String)
 	},
@@ -2091,6 +2179,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"stackit.sfs.resourcePool.snapshotPolicyName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitSfsResourcePool).GetSnapshotPolicyName()).ToDataRes(types.String)
+	},
+	"stackit.sfs.resourcePool.snapshotPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSfsResourcePool).GetSnapshotPolicy()).ToDataRes(types.Resource("stackit.sfs.snapshotPolicy"))
 	},
 	"stackit.sfs.resourcePool.labels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitSfsResourcePool).GetLabels()).ToDataRes(types.Map(types.String, types.String))
@@ -4198,6 +4289,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"stackit.iam.member.role": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitIamMember).GetRole()).ToDataRes(types.String)
 	},
+	"stackit.iam.member.resourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitIamMember).GetResourceType()).ToDataRes(types.String)
+	},
+	"stackit.iam.member.resourceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitIamMember).GetResourceId()).ToDataRes(types.String)
+	},
 	"stackit.iam.member.roleDetails": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitIamMember).GetRoleDetails()).ToDataRes(types.Resource("stackit.iam.role"))
 	},
@@ -5082,6 +5179,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlStackitProject).Folders, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"stackit.project.internetAccess": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitProject).InternetAccess, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.project.projectType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitProject).ProjectType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.project.vpcId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitProject).VpcId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"stackit.organization.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitOrganization).__id, ok = v.Value.(string)
 		return
@@ -5114,6 +5223,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlStackitOrganization).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"stackit.organization.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitOrganization).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"stackit.folder.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitFolder).__id, ok = v.Value.(string)
 		return
@@ -5140,6 +5253,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"stackit.folder.updateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitFolder).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"stackit.folder.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitFolder).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"stackit.server.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5782,6 +5899,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlStackitPublicIp).NetworkInterfaceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"stackit.publicIp.networkInterface": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitPublicIp).NetworkInterface, ok = plugin.RawToTValue[*mqlStackitNic](v.Value, v.Error)
+		return
+	},
+	"stackit.publicIp.server": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitPublicIp).Server, ok = plugin.RawToTValue[*mqlStackitServer](v.Value, v.Error)
+		return
+	},
 	"stackit.publicIp.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitPublicIp).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
@@ -5820,6 +5945,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"stackit.securityGroup.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitSecurityGroup).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.securityGroup.networkInterfaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSecurityGroup).NetworkInterfaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"stackit.securityGroup.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5872,6 +6001,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"stackit.securityGroup.rule.remoteSecurityGroupId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitSecurityGroupRule).RemoteSecurityGroupId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.securityGroup.rule.remoteSecurityGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSecurityGroupRule).RemoteSecurityGroup, ok = plugin.RawToTValue[*mqlStackitSecurityGroup](v.Value, v.Error)
 		return
 	},
 	"stackit.securityGroup.rule.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -6594,6 +6727,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlStackitObjectStorage).CredentialsGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"stackit.objectStorage.complianceLockMaxRetentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObjectStorage).ComplianceLockMaxRetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"stackit.objectStorage.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObjectStorage).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"stackit.objectStorage.credentialsGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitObjectStorageCredentialsGroup).__id, ok = v.Value.(string)
 		return
@@ -6682,6 +6823,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlStackitSfs).LockId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"stackit.sfs.snapshotPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfs).SnapshotPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicy).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicy).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicy).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicy).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.schedules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicy).Schedules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.resourcePools": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicy).ResourcePools, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.schedule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicySchedule).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.schedule.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicySchedule).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.schedule.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicySchedule).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.schedule.interval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicySchedule).Interval, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.schedule.prefix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicySchedule).Prefix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.schedule.retentionCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicySchedule).RetentionCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.schedule.retentionPeriod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicySchedule).RetentionPeriod, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.snapshotPolicy.schedule.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsSnapshotPolicySchedule).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"stackit.sfs.resourcePool.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitSfsResourcePool).__id, ok = v.Value.(string)
 		return
@@ -6756,6 +6965,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"stackit.sfs.resourcePool.snapshotPolicyName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitSfsResourcePool).SnapshotPolicyName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.sfs.resourcePool.snapshotPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSfsResourcePool).SnapshotPolicy, ok = plugin.RawToTValue[*mqlStackitSfsSnapshotPolicy](v.Value, v.Error)
 		return
 	},
 	"stackit.sfs.resourcePool.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -9874,6 +10087,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlStackitIamMember).Role, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"stackit.iam.member.resourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitIamMember).ResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.iam.member.resourceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitIamMember).ResourceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"stackit.iam.member.roleDetails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitIamMember).RoleDetails, ok = plugin.RawToTValue[*mqlStackitIamRole](v.Value, v.Error)
 		return
@@ -11635,6 +11856,9 @@ type mqlStackitProject struct {
 	Labels         plugin.TValue[map[string]any]
 	Organization   plugin.TValue[*mqlStackitOrganization]
 	Folders        plugin.TValue[[]any]
+	InternetAccess plugin.TValue[bool]
+	ProjectType    plugin.TValue[string]
+	VpcId          plugin.TValue[string]
 }
 
 // createStackitProject creates a new instance of this resource
@@ -11742,6 +11966,24 @@ func (c *mqlStackitProject) GetFolders() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlStackitProject) GetInternetAccess() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.InternetAccess, func() (bool, error) {
+		return c.internetAccess()
+	})
+}
+
+func (c *mqlStackitProject) GetProjectType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ProjectType, func() (string, error) {
+		return c.projectType()
+	})
+}
+
+func (c *mqlStackitProject) GetVpcId() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.VpcId, func() (string, error) {
+		return c.vpcId()
+	})
+}
+
 // mqlStackitOrganization for the stackit.organization resource
 type mqlStackitOrganization struct {
 	MqlRuntime *plugin.Runtime
@@ -11754,6 +11996,7 @@ type mqlStackitOrganization struct {
 	Labels         plugin.TValue[map[string]any]
 	CreationTime   plugin.TValue[*time.Time]
 	UpdateTime     plugin.TValue[*time.Time]
+	Members        plugin.TValue[[]any]
 }
 
 // createStackitOrganization creates a new instance of this resource
@@ -11829,6 +12072,22 @@ func (c *mqlStackitOrganization) GetUpdateTime() *plugin.TValue[*time.Time] {
 	})
 }
 
+func (c *mqlStackitOrganization) GetMembers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Members, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.organization", c.__id, "members")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.members()
+	})
+}
+
 // mqlStackitFolder for the stackit.folder resource
 type mqlStackitFolder struct {
 	MqlRuntime *plugin.Runtime
@@ -11840,6 +12099,7 @@ type mqlStackitFolder struct {
 	Labels       plugin.TValue[map[string]any]
 	CreationTime plugin.TValue[*time.Time]
 	UpdateTime   plugin.TValue[*time.Time]
+	Members      plugin.TValue[[]any]
 }
 
 // createStackitFolder creates a new instance of this resource
@@ -11906,6 +12166,22 @@ func (c *mqlStackitFolder) GetCreationTime() *plugin.TValue[*time.Time] {
 func (c *mqlStackitFolder) GetUpdateTime() *plugin.TValue[*time.Time] {
 	return plugin.GetOrCompute[*time.Time](&c.UpdateTime, func() (*time.Time, error) {
 		return c.updateTime()
+	})
+}
+
+func (c *mqlStackitFolder) GetMembers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Members, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.folder", c.__id, "members")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.members()
 	})
 }
 
@@ -13404,6 +13680,8 @@ type mqlStackitPublicIp struct {
 	Id                 plugin.TValue[string]
 	Ip                 plugin.TValue[string]
 	NetworkInterfaceId plugin.TValue[string]
+	NetworkInterface   plugin.TValue[*mqlStackitNic]
+	Server             plugin.TValue[*mqlStackitServer]
 	Labels             plugin.TValue[map[string]any]
 }
 
@@ -13456,6 +13734,38 @@ func (c *mqlStackitPublicIp) GetNetworkInterfaceId() *plugin.TValue[string] {
 	return &c.NetworkInterfaceId
 }
 
+func (c *mqlStackitPublicIp) GetNetworkInterface() *plugin.TValue[*mqlStackitNic] {
+	return plugin.GetOrCompute[*mqlStackitNic](&c.NetworkInterface, func() (*mqlStackitNic, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.publicIp", c.__id, "networkInterface")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitNic), nil
+			}
+		}
+
+		return c.networkInterface()
+	})
+}
+
+func (c *mqlStackitPublicIp) GetServer() *plugin.TValue[*mqlStackitServer] {
+	return plugin.GetOrCompute[*mqlStackitServer](&c.Server, func() (*mqlStackitServer, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.publicIp", c.__id, "server")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitServer), nil
+			}
+		}
+
+		return c.server()
+	})
+}
+
 func (c *mqlStackitPublicIp) GetLabels() *plugin.TValue[map[string]any] {
 	return &c.Labels
 }
@@ -13465,14 +13775,15 @@ type mqlStackitSecurityGroup struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlStackitSecurityGroupInternal
-	Id          plugin.TValue[string]
-	Name        plugin.TValue[string]
-	Description plugin.TValue[string]
-	Stateful    plugin.TValue[bool]
-	CreatedAt   plugin.TValue[*time.Time]
-	UpdatedAt   plugin.TValue[*time.Time]
-	Labels      plugin.TValue[map[string]any]
-	Rules       plugin.TValue[[]any]
+	Id                plugin.TValue[string]
+	Name              plugin.TValue[string]
+	Description       plugin.TValue[string]
+	Stateful          plugin.TValue[bool]
+	CreatedAt         plugin.TValue[*time.Time]
+	UpdatedAt         plugin.TValue[*time.Time]
+	Labels            plugin.TValue[map[string]any]
+	Rules             plugin.TValue[[]any]
+	NetworkInterfaces plugin.TValue[[]any]
 }
 
 // createStackitSecurityGroup creates a new instance of this resource
@@ -13556,6 +13867,22 @@ func (c *mqlStackitSecurityGroup) GetRules() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlStackitSecurityGroup) GetNetworkInterfaces() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.NetworkInterfaces, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.securityGroup", c.__id, "networkInterfaces")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.networkInterfaces()
+	})
+}
+
 // mqlStackitSecurityGroupRule for the stackit.securityGroup.rule resource
 type mqlStackitSecurityGroupRule struct {
 	MqlRuntime *plugin.Runtime
@@ -13573,6 +13900,7 @@ type mqlStackitSecurityGroupRule struct {
 	PortRangeMax          plugin.TValue[int64]
 	IpRange               plugin.TValue[string]
 	RemoteSecurityGroupId plugin.TValue[string]
+	RemoteSecurityGroup   plugin.TValue[*mqlStackitSecurityGroup]
 	CreatedAt             plugin.TValue[*time.Time]
 }
 
@@ -13659,6 +13987,22 @@ func (c *mqlStackitSecurityGroupRule) GetIpRange() *plugin.TValue[string] {
 
 func (c *mqlStackitSecurityGroupRule) GetRemoteSecurityGroupId() *plugin.TValue[string] {
 	return &c.RemoteSecurityGroupId
+}
+
+func (c *mqlStackitSecurityGroupRule) GetRemoteSecurityGroup() *plugin.TValue[*mqlStackitSecurityGroup] {
+	return plugin.GetOrCompute[*mqlStackitSecurityGroup](&c.RemoteSecurityGroup, func() (*mqlStackitSecurityGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.securityGroup.rule", c.__id, "remoteSecurityGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitSecurityGroup), nil
+			}
+		}
+
+		return c.remoteSecurityGroup()
+	})
 }
 
 func (c *mqlStackitSecurityGroupRule) GetCreatedAt() *plugin.TValue[*time.Time] {
@@ -15349,8 +15693,10 @@ type mqlStackitObjectStorage struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlStackitObjectStorageInternal it will be used here
-	Buckets           plugin.TValue[[]any]
-	CredentialsGroups plugin.TValue[[]any]
+	Buckets                        plugin.TValue[[]any]
+	CredentialsGroups              plugin.TValue[[]any]
+	ComplianceLockMaxRetentionDays plugin.TValue[int64]
+	Scope                          plugin.TValue[string]
 }
 
 // createStackitObjectStorage creates a new instance of this resource
@@ -15419,6 +15765,18 @@ func (c *mqlStackitObjectStorage) GetCredentialsGroups() *plugin.TValue[[]any] {
 		}
 
 		return c.credentialsGroups()
+	})
+}
+
+func (c *mqlStackitObjectStorage) GetComplianceLockMaxRetentionDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ComplianceLockMaxRetentionDays, func() (int64, error) {
+		return c.complianceLockMaxRetentionDays()
+	})
+}
+
+func (c *mqlStackitObjectStorage) GetScope() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Scope, func() (string, error) {
+		return c.scope()
 	})
 }
 
@@ -15657,9 +16015,10 @@ type mqlStackitSfs struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlStackitSfsInternal it will be used here
-	ResourcePools  plugin.TValue[[]any]
-	ExportPolicies plugin.TValue[[]any]
-	LockId         plugin.TValue[string]
+	ResourcePools    plugin.TValue[[]any]
+	ExportPolicies   plugin.TValue[[]any]
+	LockId           plugin.TValue[string]
+	SnapshotPolicies plugin.TValue[[]any]
 }
 
 // createStackitSfs creates a new instance of this resource
@@ -15732,6 +16091,199 @@ func (c *mqlStackitSfs) GetLockId() *plugin.TValue[string] {
 	})
 }
 
+func (c *mqlStackitSfs) GetSnapshotPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SnapshotPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.sfs", c.__id, "snapshotPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.snapshotPolicies()
+	})
+}
+
+// mqlStackitSfsSnapshotPolicy for the stackit.sfs.snapshotPolicy resource
+type mqlStackitSfsSnapshotPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlStackitSfsSnapshotPolicyInternal
+	Id            plugin.TValue[string]
+	Name          plugin.TValue[string]
+	Enabled       plugin.TValue[bool]
+	Comment       plugin.TValue[string]
+	CreatedAt     plugin.TValue[*time.Time]
+	Schedules     plugin.TValue[[]any]
+	ResourcePools plugin.TValue[[]any]
+}
+
+// createStackitSfsSnapshotPolicy creates a new instance of this resource
+func createStackitSfsSnapshotPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitSfsSnapshotPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.sfs.snapshotPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitSfsSnapshotPolicy) MqlName() string {
+	return "stackit.sfs.snapshotPolicy"
+}
+
+func (c *mqlStackitSfsSnapshotPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitSfsSnapshotPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlStackitSfsSnapshotPolicy) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlStackitSfsSnapshotPolicy) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlStackitSfsSnapshotPolicy) GetComment() *plugin.TValue[string] {
+	return &c.Comment
+}
+
+func (c *mqlStackitSfsSnapshotPolicy) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlStackitSfsSnapshotPolicy) GetSchedules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Schedules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.sfs.snapshotPolicy", c.__id, "schedules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.schedules()
+	})
+}
+
+func (c *mqlStackitSfsSnapshotPolicy) GetResourcePools() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ResourcePools, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.sfs.snapshotPolicy", c.__id, "resourcePools")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.resourcePools()
+	})
+}
+
+// mqlStackitSfsSnapshotPolicySchedule for the stackit.sfs.snapshotPolicy.schedule resource
+type mqlStackitSfsSnapshotPolicySchedule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitSfsSnapshotPolicyScheduleInternal it will be used here
+	Id              plugin.TValue[string]
+	Name            plugin.TValue[string]
+	Interval        plugin.TValue[string]
+	Prefix          plugin.TValue[string]
+	RetentionCount  plugin.TValue[int64]
+	RetentionPeriod plugin.TValue[string]
+	CreatedAt       plugin.TValue[*time.Time]
+}
+
+// createStackitSfsSnapshotPolicySchedule creates a new instance of this resource
+func createStackitSfsSnapshotPolicySchedule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitSfsSnapshotPolicySchedule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.sfs.snapshotPolicy.schedule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitSfsSnapshotPolicySchedule) MqlName() string {
+	return "stackit.sfs.snapshotPolicy.schedule"
+}
+
+func (c *mqlStackitSfsSnapshotPolicySchedule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitSfsSnapshotPolicySchedule) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlStackitSfsSnapshotPolicySchedule) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlStackitSfsSnapshotPolicySchedule) GetInterval() *plugin.TValue[string] {
+	return &c.Interval
+}
+
+func (c *mqlStackitSfsSnapshotPolicySchedule) GetPrefix() *plugin.TValue[string] {
+	return &c.Prefix
+}
+
+func (c *mqlStackitSfsSnapshotPolicySchedule) GetRetentionCount() *plugin.TValue[int64] {
+	return &c.RetentionCount
+}
+
+func (c *mqlStackitSfsSnapshotPolicySchedule) GetRetentionPeriod() *plugin.TValue[string] {
+	return &c.RetentionPeriod
+}
+
+func (c *mqlStackitSfsSnapshotPolicySchedule) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
 // mqlStackitSfsResourcePool for the stackit.sfs.resourcePool resource
 type mqlStackitSfsResourcePool struct {
 	MqlRuntime *plugin.Runtime
@@ -15755,6 +16307,7 @@ type mqlStackitSfsResourcePool struct {
 	SnapshotsAreVisible        plugin.TValue[bool]
 	SnapshotPolicyId           plugin.TValue[string]
 	SnapshotPolicyName         plugin.TValue[string]
+	SnapshotPolicy             plugin.TValue[*mqlStackitSfsSnapshotPolicy]
 	Labels                     plugin.TValue[map[string]any]
 	CreatedAt                  plugin.TValue[*time.Time]
 	Shares                     plugin.TValue[[]any]
@@ -15874,6 +16427,22 @@ func (c *mqlStackitSfsResourcePool) GetSnapshotPolicyId() *plugin.TValue[string]
 
 func (c *mqlStackitSfsResourcePool) GetSnapshotPolicyName() *plugin.TValue[string] {
 	return &c.SnapshotPolicyName
+}
+
+func (c *mqlStackitSfsResourcePool) GetSnapshotPolicy() *plugin.TValue[*mqlStackitSfsSnapshotPolicy] {
+	return plugin.GetOrCompute[*mqlStackitSfsSnapshotPolicy](&c.SnapshotPolicy, func() (*mqlStackitSfsSnapshotPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.sfs.resourcePool", c.__id, "snapshotPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitSfsSnapshotPolicy), nil
+			}
+		}
+
+		return c.snapshotPolicy()
+	})
 }
 
 func (c *mqlStackitSfsResourcePool) GetLabels() *plugin.TValue[map[string]any] {
@@ -24021,6 +24590,8 @@ type mqlStackitIamMember struct {
 	// optional: if you define mqlStackitIamMemberInternal it will be used here
 	Subject        plugin.TValue[string]
 	Role           plugin.TValue[string]
+	ResourceType   plugin.TValue[string]
+	ResourceId     plugin.TValue[string]
 	RoleDetails    plugin.TValue[*mqlStackitIamRole]
 	ServiceAccount plugin.TValue[*mqlStackitServiceAccount]
 }
@@ -24068,6 +24639,14 @@ func (c *mqlStackitIamMember) GetSubject() *plugin.TValue[string] {
 
 func (c *mqlStackitIamMember) GetRole() *plugin.TValue[string] {
 	return &c.Role
+}
+
+func (c *mqlStackitIamMember) GetResourceType() *plugin.TValue[string] {
+	return &c.ResourceType
+}
+
+func (c *mqlStackitIamMember) GetResourceId() *plugin.TValue[string] {
+	return &c.ResourceId
 }
 
 func (c *mqlStackitIamMember) GetRoleDetails() *plugin.TValue[*mqlStackitIamRole] {

@@ -133,6 +133,166 @@ func (r *mqlStackitSfs) lockId() (string, error) {
 	return resp.GetLockId(), nil
 }
 
+// ------------------------- SFS snapshot policies -------------------------
+
+// snapshotPolicies lists the project's snapshot policies. Policies are
+// defined per project rather than per region.
+func (r *mqlStackitSfs) snapshotPolicies() ([]any, error) {
+	c := conn(r.MqlRuntime)
+	client, err := c.Sfs()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DefaultAPI.ListSnapshotPolicies(bgctx(), c.ProjectID()).Execute()
+	if err != nil {
+		if isAccessDenied(err) {
+			return refusedList(err)
+		}
+		return nil, err
+	}
+	policies, _ := resp.GetSnapshotPoliciesOk()
+	out := make([]any, 0, len(policies))
+	for i := range policies {
+		p := &policies[i]
+		res, err := CreateResource(r.MqlRuntime, "stackit.sfs.snapshotPolicy", sfsSnapshotPolicyArgs(p))
+		if err != nil {
+			return nil, err
+		}
+		policy := res.(*mqlStackitSfsSnapshotPolicy)
+		policy.cacheSchedules = p.GetSnapshotSchedules()
+		out = append(out, policy)
+	}
+	return out, nil
+}
+
+// sfsSnapshotPolicyArgs maps a snapshot policy onto stackit.sfs.snapshotPolicy.
+func sfsSnapshotPolicyArgs(p *sfs.SnapshotPolicy) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"id":        llx.StringData(p.GetId()),
+		"name":      llx.StringData(p.GetName()),
+		"enabled":   llx.BoolData(p.GetEnabled()),
+		"comment":   llx.StringData(p.GetComment()),
+		"createdAt": llx.TimeDataPtr(timeOrNil(p.GetCreatedAtOk())),
+	}
+}
+
+// sfsSnapshotScheduleArgs maps one schedule of a policy onto
+// stackit.sfs.snapshotPolicy.schedule. The schedule's own ID is shared by
+// every policy that uses the schedule, each with its own retention, so the
+// cache key is qualified by the policy.
+func sfsSnapshotScheduleArgs(policyID string, s *sfs.SnapshotPolicySnapshotPolicySchedule) map[string]*llx.RawData {
+	key := s.GetId()
+	if key == "" {
+		key = s.GetName()
+	}
+	return map[string]*llx.RawData{
+		"__id":            llx.StringData(qualifiedId("stackit.sfs.snapshotPolicy.schedule", policyID, key)),
+		"id":              llx.StringData(s.GetId()),
+		"name":            llx.StringData(s.GetName()),
+		"interval":        llx.StringData(s.GetInterval()),
+		"prefix":          llx.StringData(s.GetPrefix()),
+		"retentionCount":  llx.IntDataPtr(intOrNil(s.GetRetentionCountOk())),
+		"retentionPeriod": llx.StringData(s.GetRetentionPeriod()),
+		"createdAt":       llx.TimeDataPtr(timeOrNil(s.GetCreatedAtOk())),
+	}
+}
+
+// intOrNil passes an SDK GetXxxOk() int32 pair through as a pointer that is
+// nil when the API omitted the field, so the MQL field reads null rather than
+// a zero the API never sent.
+func intOrNil(v *int32, ok bool) *int32 {
+	if !ok {
+		return nil
+	}
+	return v
+}
+
+type mqlStackitSfsSnapshotPolicyInternal struct {
+	// cacheSchedules holds the schedules the policy listing carried inline.
+	cacheSchedules []sfs.SnapshotPolicySnapshotPolicySchedule
+}
+
+func (r *mqlStackitSfsSnapshotPolicy) id() (string, error) {
+	return "stackit.sfs.snapshotPolicy/" + r.Id.Data, nil
+}
+
+func (r *mqlStackitSfsSnapshotPolicy) schedules() ([]any, error) {
+	out := make([]any, 0, len(r.cacheSchedules))
+	for i := range r.cacheSchedules {
+		res, err := CreateResource(r.MqlRuntime, "stackit.sfs.snapshotPolicy.schedule", sfsSnapshotScheduleArgs(r.Id.Data, &r.cacheSchedules[i]))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+// resourcePools lists the pools, in the connection's region, that name this
+// policy, read off the namespace's pool list.
+func (r *mqlStackitSfsSnapshotPolicy) resourcePools() ([]any, error) {
+	ns, err := makeNamespace(r.MqlRuntime, "stackit.sfs")
+	if err != nil {
+		return nil, err
+	}
+	pools := ns.(*mqlStackitSfs).GetResourcePools()
+	if pools.Error != nil {
+		return nil, pools.Error
+	}
+	return poolsWithSnapshotPolicy(pools.Data, r.Id.Data), nil
+}
+
+// poolsWithSnapshotPolicy keeps the resource pools attached to the policy.
+func poolsWithSnapshotPolicy(pools []any, policyID string) []any {
+	out := []any{}
+	if policyID == "" {
+		return out
+	}
+	for _, p := range pools {
+		pool, ok := p.(*mqlStackitSfsResourcePool)
+		if ok && pool.SnapshotPolicyId.Data == policyID {
+			out = append(out, pool)
+		}
+	}
+	return out
+}
+
+// findSnapshotPolicy returns the policy with the given ID from a policy list,
+// or nil when the list holds none.
+func findSnapshotPolicy(policies []any, id string) *mqlStackitSfsSnapshotPolicy {
+	if id == "" {
+		return nil
+	}
+	for _, p := range policies {
+		policy, ok := p.(*mqlStackitSfsSnapshotPolicy)
+		if ok && policy.Id.Data == id {
+			return policy
+		}
+	}
+	return nil
+}
+
+// snapshotPolicy resolves the attached policy against the project's policy
+// list. Null when no policy is attached, or when the list no longer holds it.
+func (r *mqlStackitSfsResourcePool) snapshotPolicy() (*mqlStackitSfsSnapshotPolicy, error) {
+	if r.SnapshotPolicyId.Data == "" {
+		return markNull(&r.SnapshotPolicy)
+	}
+	ns, err := makeNamespace(r.MqlRuntime, "stackit.sfs")
+	if err != nil {
+		return nil, err
+	}
+	policies := ns.(*mqlStackitSfs).GetSnapshotPolicies()
+	if policies.Error != nil {
+		return nil, policies.Error
+	}
+	policy := findSnapshotPolicy(policies.Data, r.SnapshotPolicyId.Data)
+	if policy == nil {
+		return markNull(&r.SnapshotPolicy)
+	}
+	return policy, nil
+}
+
 // ------------------------- SFS resource pool -------------------------
 
 // sfsResourcePoolArgs maps a pool onto the stackit.sfs.resourcePool fields.
