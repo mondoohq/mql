@@ -68,6 +68,7 @@ const (
 	ResourceMicrosoftIdentityAndAccessIdentityAndSignInPoliciesIdentitySecurityDefaultsEnforcementPolicy string = "microsoft.identityAndAccess.identityAndSignIn.policies.identitySecurityDefaultsEnforcementPolicy"
 	ResourceMicrosoftUserAssignedLicense                                                                 string = "microsoft.user.assignedLicense"
 	ResourceMicrosoftUserLicenseDetail                                                                   string = "microsoft.user.licenseDetail"
+	ResourceMicrosoftTenantSubscribedSku                                                                 string = "microsoft.tenant.subscribedSku"
 	ResourceMicrosoftUserLicenseDetailServicePlanInfo                                                    string = "microsoft.user.licenseDetail.servicePlanInfo"
 	ResourceMicrosoftConditionalAccess                                                                   string = "microsoft.conditionalAccess"
 	ResourceMicrosoftConditionalAccessAuthenticationMethodsPolicy                                        string = "microsoft.conditionalAccess.authenticationMethodsPolicy"
@@ -474,6 +475,10 @@ func init() {
 		"microsoft.user.licenseDetail": {
 			// to override args, implement: initMicrosoftUserLicenseDetail(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftUserLicenseDetail,
+		},
+		"microsoft.tenant.subscribedSku": {
+			// to override args, implement: initMicrosoftTenantSubscribedSku(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftTenantSubscribedSku,
 		},
 		"microsoft.user.licenseDetail.servicePlanInfo": {
 			// to override args, implement: initMicrosoftUserLicenseDetailServicePlanInfo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1531,6 +1536,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.tenant.paidLicenses": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftTenant).GetPaidLicenses()).ToDataRes(types.Int)
 	},
+	"microsoft.tenant.subscribedSkus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenant).GetSubscribedSkus()).ToDataRes(types.Array(types.Resource("microsoft.tenant.subscribedSku")))
+	},
 	"microsoft.tenant.settings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftTenant).GetSettings()).ToDataRes(types.Resource("microsoft.tenantSettings"))
 	},
@@ -2511,6 +2519,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.user.licenseDetail.servicePlans": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUserLicenseDetail).GetServicePlans()).ToDataRes(types.Array(types.Resource("microsoft.user.licenseDetail.servicePlanInfo")))
+	},
+	"microsoft.tenant.subscribedSku.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantSubscribedSku).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.tenant.subscribedSku.skuId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantSubscribedSku).GetSkuId()).ToDataRes(types.String)
+	},
+	"microsoft.tenant.subscribedSku.skuPartNumber": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantSubscribedSku).GetSkuPartNumber()).ToDataRes(types.String)
+	},
+	"microsoft.tenant.subscribedSku.appliesTo": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantSubscribedSku).GetAppliesTo()).ToDataRes(types.String)
+	},
+	"microsoft.tenant.subscribedSku.capabilityStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantSubscribedSku).GetCapabilityStatus()).ToDataRes(types.String)
+	},
+	"microsoft.tenant.subscribedSku.consumedUnits": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantSubscribedSku).GetConsumedUnits()).ToDataRes(types.Int)
+	},
+	"microsoft.tenant.subscribedSku.prepaidUnits": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantSubscribedSku).GetPrepaidUnits()).ToDataRes(types.Dict)
+	},
+	"microsoft.tenant.subscribedSku.servicePlans": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftTenantSubscribedSku).GetServicePlans()).ToDataRes(types.Array(types.Dict))
 	},
 	"microsoft.user.licenseDetail.servicePlanInfo.appliesTo": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUserLicenseDetailServicePlanInfo).GetAppliesTo()).ToDataRes(types.String)
@@ -8126,6 +8158,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftTenant).PaidLicenses, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
+	"microsoft.tenant.subscribedSkus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenant).SubscribedSkus, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.tenant.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftTenant).Settings, ok = plugin.RawToTValue[*mqlMicrosoftTenantSettings](v.Value, v.Error)
 		return
@@ -9596,6 +9632,42 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.user.licenseDetail.servicePlans": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftUserLicenseDetail).ServicePlans, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenant.subscribedSku.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantSubscribedSku).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.tenant.subscribedSku.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantSubscribedSku).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenant.subscribedSku.skuId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantSubscribedSku).SkuId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenant.subscribedSku.skuPartNumber": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantSubscribedSku).SkuPartNumber, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenant.subscribedSku.appliesTo": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantSubscribedSku).AppliesTo, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenant.subscribedSku.capabilityStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantSubscribedSku).CapabilityStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenant.subscribedSku.consumedUnits": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantSubscribedSku).ConsumedUnits, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenant.subscribedSku.prepaidUnits": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantSubscribedSku).PrepaidUnits, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.tenant.subscribedSku.servicePlans": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftTenantSubscribedSku).ServicePlans, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.user.licenseDetail.servicePlanInfo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -18445,6 +18517,7 @@ type mqlMicrosoftTenant struct {
 	Type                                 plugin.TValue[string]
 	Subscriptions                        plugin.TValue[[]any]
 	PaidLicenses                         plugin.TValue[int64]
+	SubscribedSkus                       plugin.TValue[[]any]
 	Settings                             plugin.TValue[*mqlMicrosoftTenantSettings]
 	FormsSettings                        plugin.TValue[*mqlMicrosoftTenantFormsSettings]
 	OnPremisesSynchronization            plugin.TValue[*mqlMicrosoftOnPremisesSynchronization]
@@ -18546,6 +18619,22 @@ func (c *mqlMicrosoftTenant) GetSubscriptions() *plugin.TValue[[]any] {
 func (c *mqlMicrosoftTenant) GetPaidLicenses() *plugin.TValue[int64] {
 	return plugin.GetOrCompute[int64](&c.PaidLicenses, func() (int64, error) {
 		return c.paidLicenses()
+	})
+}
+
+func (c *mqlMicrosoftTenant) GetSubscribedSkus() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SubscribedSkus, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.tenant", c.__id, "subscribedSkus")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.subscribedSkus()
 	})
 }
 
@@ -22466,7 +22555,7 @@ func (c *mqlMicrosoftUserAssignedLicense) GetSkuId() *plugin.TValue[string] {
 type mqlMicrosoftUserLicenseDetail struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlMicrosoftUserLicenseDetailInternal it will be used here
+	mqlMicrosoftUserLicenseDetailInternal
 	Id            plugin.TValue[string]
 	SkuId         plugin.TValue[string]
 	SkuPartNumber plugin.TValue[string]
@@ -22518,6 +22607,97 @@ func (c *mqlMicrosoftUserLicenseDetail) GetSkuPartNumber() *plugin.TValue[string
 }
 
 func (c *mqlMicrosoftUserLicenseDetail) GetServicePlans() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ServicePlans, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.user.licenseDetail", c.__id, "servicePlans")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.servicePlans()
+	})
+}
+
+// mqlMicrosoftTenantSubscribedSku for the microsoft.tenant.subscribedSku resource
+type mqlMicrosoftTenantSubscribedSku struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftTenantSubscribedSkuInternal it will be used here
+	Id               plugin.TValue[string]
+	SkuId            plugin.TValue[string]
+	SkuPartNumber    plugin.TValue[string]
+	AppliesTo        plugin.TValue[string]
+	CapabilityStatus plugin.TValue[string]
+	ConsumedUnits    plugin.TValue[int64]
+	PrepaidUnits     plugin.TValue[any]
+	ServicePlans     plugin.TValue[[]any]
+}
+
+// createMicrosoftTenantSubscribedSku creates a new instance of this resource
+func createMicrosoftTenantSubscribedSku(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftTenantSubscribedSku{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.tenant.subscribedSku", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftTenantSubscribedSku) MqlName() string {
+	return "microsoft.tenant.subscribedSku"
+}
+
+func (c *mqlMicrosoftTenantSubscribedSku) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftTenantSubscribedSku) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftTenantSubscribedSku) GetSkuId() *plugin.TValue[string] {
+	return &c.SkuId
+}
+
+func (c *mqlMicrosoftTenantSubscribedSku) GetSkuPartNumber() *plugin.TValue[string] {
+	return &c.SkuPartNumber
+}
+
+func (c *mqlMicrosoftTenantSubscribedSku) GetAppliesTo() *plugin.TValue[string] {
+	return &c.AppliesTo
+}
+
+func (c *mqlMicrosoftTenantSubscribedSku) GetCapabilityStatus() *plugin.TValue[string] {
+	return &c.CapabilityStatus
+}
+
+func (c *mqlMicrosoftTenantSubscribedSku) GetConsumedUnits() *plugin.TValue[int64] {
+	return &c.ConsumedUnits
+}
+
+func (c *mqlMicrosoftTenantSubscribedSku) GetPrepaidUnits() *plugin.TValue[any] {
+	return &c.PrepaidUnits
+}
+
+func (c *mqlMicrosoftTenantSubscribedSku) GetServicePlans() *plugin.TValue[[]any] {
 	return &c.ServicePlans
 }
 

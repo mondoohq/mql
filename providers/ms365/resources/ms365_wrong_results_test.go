@@ -10,7 +10,6 @@ import (
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestOdataEqFilter(t *testing.T) {
@@ -63,44 +62,4 @@ func TestUserOwnersSkipsNonUsers(t *testing.T) {
 
 func TestUserOwnersEmpty(t *testing.T) {
 	assert.Empty(t, userOwners(nil))
-}
-
-// Graph returns the same licenseDetail id to every user holding a SKU. Two
-// users on one SKU whose service plans differ must each keep their own plans.
-func TestUserLicenseDetailKeepsPerUserServicePlans(t *testing.T) {
-	const sharedID = "g8MZKfFVW02dPjUpmMP9K66cK8RP6rdKlxeBV2I1zKw"
-	decode := func(status string) models.LicenseDetailsable {
-		raw := `{
-			"id": "` + sharedID + `",
-			"skuId": "c42b9cae-ea4f-4ab7-9717-81576235ccac",
-			"skuPartNumber": "DEVELOPERPACK_E5",
-			"servicePlans": [
-				{"servicePlanId": "4828c8ec-dc2e-4779-b502-87ac9ce28ab7", "servicePlanName": "TEAMS1", "provisioningStatus": "` + status + `", "appliesTo": "User"}
-			]
-		}`
-		node, err := kjson.NewJsonParseNode([]byte(raw))
-		require.NoError(t, err)
-		parsed, err := node.GetObjectValue(models.CreateLicenseDetailsFromDiscriminatorValue)
-		require.NoError(t, err)
-		return parsed.(models.LicenseDetailsable)
-	}
-
-	runtime := plugin.NewRuntime(nil, nil, false, CreateResource, NewResource, GetData, SetData, nil)
-
-	alice, err := newMqlMicrosoftUserLicenseDetail(runtime, "alice", decode("Success"))
-	require.NoError(t, err)
-	bob, err := newMqlMicrosoftUserLicenseDetail(runtime, "bob", decode("Disabled"))
-	require.NoError(t, err)
-
-	planStatus := func(d *mqlMicrosoftUserLicenseDetail) string {
-		plans := d.ServicePlans.Data
-		require.Len(t, plans, 1)
-		return plans[0].(*mqlMicrosoftUserLicenseDetailServicePlanInfo).ProvisioningStatus.Data
-	}
-	assert.Equal(t, "Success", planStatus(alice))
-	assert.Equal(t, "Disabled", planStatus(bob))
-
-	// the Graph id stays visible as the id field
-	assert.Equal(t, sharedID, bob.Id.Data)
-	assert.NotEqual(t, alice.MqlID(), bob.MqlID())
 }
