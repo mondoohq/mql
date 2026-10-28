@@ -891,8 +891,8 @@ claude.organization.costEntry @defaults("startingAt costType") {
   endingAt time
   // Cost amount
   //
-  // Decimal string of the cost in the lowest units of the `currency` field,
-  // for example cents for USD: "123.45" is $1.23.
+  // Decimal string of the cost in the lowest unit of the `currency` field,
+  // for example cents for USD: "150" is $1.50.
   amount string
   // Currency code
   currency string
