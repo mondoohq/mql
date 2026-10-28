@@ -29,32 +29,32 @@ func zipHeader(name string) []byte {
 }
 
 func TestHeaderSerialization(t *testing.T) {
-	tru, fal := boolPtr(true), boolPtr(false)
+	isPickle, isData := boolPtr(true), boolPtr(false)
 	cases := []struct {
 		name string
 		head []byte
 		want *bool
 	}{
 		// Synthetic: legacy torch.save header, built from the magic number in torch/serialization.py.
-		{"legacy torch pickle", legacyTorchHeader, tru},
+		{"legacy torch pickle", legacyTorchHeader, isPickle},
 		// Synthetic: pickle protocol 5 stream.
-		{"pickle protocol 5", []byte{0x80, 0x05, 0x95}, tru},
+		{"pickle protocol 5", []byte{0x80, 0x05, 0x95}, isPickle},
 		// Synthetic: 0x80 followed by a protocol pickle doesn't have.
 		{"not a pickle protocol", []byte{0x80, 0x09, 0x00}, nil},
 		// Synthetic: torch.save zip archive, first record <archive>/data.pkl.
-		{"torch zip", zipHeader("pytorch_model/data.pkl"), tru},
+		{"torch zip", zipHeader("pytorch_model/data.pkl"), isPickle},
 		// Synthetic: torch.save zip archive with a bare data.pkl record.
-		{"torch zip bare name", zipHeader("data.pkl"), tru},
+		{"torch zip bare name", zipHeader("data.pkl"), isPickle},
 		// Synthetic: a zip archive that isn't a torch.save archive.
 		{"other zip", zipHeader("metadata.json"), nil},
 		// Synthetic: zip header whose name runs past the bytes read.
 		{"truncated zip", zipHeader("archive/data.pkl")[:35], nil},
 		// Synthetic: GGUF magic.
-		{"gguf", []byte("GGUF\x03\x00\x00\x00"), fal},
+		{"gguf", []byte("GGUF\x03\x00\x00\x00"), isData},
 		// Synthetic: GGJT magic 0x67676a74 as little-endian uint32.
-		{"ggjt", []byte("tjgg\x03\x00\x00\x00"), fal},
+		{"ggjt", []byte("tjgg\x03\x00\x00\x00"), isData},
 		// Synthetic: GGML magic 0x67676d6c as little-endian uint32.
-		{"ggml", []byte("lmgg"), fal},
+		{"ggml", []byte("lmgg"), isData},
 		// Synthetic: an opaque vendor format.
 		{"opaque", []byte{0x18, 0x00, 0x00, 0x00, 'T', 'F', 'L', '3'}, nil},
 		// Synthetic: empty file.
