@@ -39,6 +39,17 @@ openai @defaults("organization") @maturity("preview") @root {
   invites() []openai.invite
   // Audit log entries from the last 30 days (requires admin API key)
   auditLogs() []openai.auditLog
+  // Daily API usage by project, member, API key, and model (requires admin API key)
+  //
+  // One entry per UTC day and combination of usage type, project, member,
+  // API key, and model that saw usage, from the completions, embeddings,
+  // moderations, images, audio_speeches, and audio_transcriptions usage
+  // reports. Covers the seven UTC days before today and today so far.
+  usageReport() []openai.usageEntry
+  // Daily costs by project and line item (requires admin API key)
+  //
+  // Covers the seven UTC days before today and today so far.
+  costReport() []openai.costEntry
   // Organization admin API keys (requires admin API key)
   adminApiKeys() []openai.adminApiKey
   // Roles available in the organization (requires admin API key)
@@ -698,6 +709,12 @@ openai.project.apiKey @defaults("id name") @maturity("preview") {
   //
   // Null when a member owns the key.
   serviceAccount() openai.project.serviceAccount
+  // Usage report entries for requests made with this key (requires admin API key)
+  //
+  // Covers the same window and usage types as the organization's
+  // usageReport: the seven UTC days before today and today so far. An empty
+  // list means the key made no requests of those types in that window.
+  usageReport() []openai.usageEntry
 }
 
 // OpenAI project service account
@@ -761,6 +778,11 @@ openai.organizationUser @defaults("id email role") @maturity("preview") {
   // One entry per role, recording whether the role was granted to the member
   // directly or arrives through a group.
   roleAssignments() []openai.organizationUser.roleAssignment
+  // Usage report entries attributed to this member (requires admin API key)
+  //
+  // Covers the same window and usage types as the organization's
+  // usageReport: the seven UTC days before today and today so far.
+  usageReport() []openai.usageEntry
 }
 
 // OpenAI role assignment
@@ -957,6 +979,93 @@ openai.auditLog @defaults("id type effectiveAt") @maturity("preview") {
   // the issuer and audience that were trusted. Null for event types that carry
   // no payload, such as login.succeeded.
   details dict
+}
+
+// OpenAI usage report entry
+//
+// One UTC day of API usage for one combination of usage type, project,
+// member, API key, and model. The `usageType` field names the usage report
+// the entry comes from, `requests` counts the model requests, and the token
+// fields carry consumption for the usage types billed in tokens. The
+// `apiKey`, `user`, and `project` fields say who used the API and from where.
+openai.usageEntry @defaults("startingAt usageType model requests") @maturity("preview") {
+  // Bucket start timestamp
+  startingAt time
+  // Bucket end timestamp
+  endingAt time
+  // Usage report the entry comes from
+  //
+  // One of completions, embeddings, moderations, images, audio_speeches, or
+  // audio_transcriptions.
+  usageType string
+  // Model identifier
+  model string
+  // Number of requests made to the model
+  requests int
+  // Input tokens consumed, cached input tokens included
+  //
+  // Null for usage types not measured in tokens: images, audio_speeches,
+  // and audio_transcriptions.
+  inputTokens int
+  // Input tokens read from cache
+  //
+  // Reported for completions only, null for other usage types.
+  cachedInputTokens int
+  // Output tokens produced
+  //
+  // Reported for completions only, null for other usage types.
+  outputTokens int
+  // Project the usage is attributed to
+  //
+  // Null when the project no longer exists.
+  project() openai.project
+  // API key the requests were made with
+  //
+  // Null when the report names no key, and for a key since deleted.
+  apiKey() openai.project.apiKey
+  // Organization member the usage is attributed to
+  //
+  // Null when the report names no member, and for a member who has since
+  // left the organization.
+  user() openai.organizationUser
+}
+
+// OpenAI cost report entry
+//
+// One UTC day of cost for one project and line item, such as a model's input
+// or output tokens. The `amount` field is in the unit named by `currency`,
+// and `quantity` with `quantityUnit` gives the amount billed for.
+openai.costEntry @defaults("startingAt lineItem amount currency") @maturity("preview") {
+  // Bucket start timestamp
+  startingAt time
+  // Bucket end timestamp
+  endingAt time
+  // Cost amount
+  //
+  // In whole units of `currency`, for example 1.5 is $1.50 when currency
+  // is usd.
+  amount float
+  // Lowercase ISO 4217 currency code, for example usd
+  currency string
+  // Line item the cost is billed under
+  //
+  // For example "gpt-4o, input_tokens".
+  lineItem string
+  // Quantity billed for the line item
+  //
+  // Null when the report gives no quantity.
+  quantity float
+  // Unit of quantity
+  //
+  // One of tokens, 1000_tokens, duration_seconds, duration_minutes,
+  // duration_hours, gibibyte_hours, images, or characters, and OpenAI may
+  // add values. Null when no single unit applies.
+  quantityUnit string
+  // Project the cost is attributed to
+  //
+  // Null for costs not attributed to a project, and when the project no
+  // longer exists.
+  project() openai.project
 }
 
 // OpenAI agent
