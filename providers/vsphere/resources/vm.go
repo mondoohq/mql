@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/vmware/govmomi/vim25/mo"
+	"github.com/vmware/govmomi/vim25/types"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/vsphere/connection"
 	"go.mondoo.com/mql/providers/vsphere/resources/resourceclient"
@@ -66,4 +67,34 @@ func (v *mqlVsphereVm) kmsCluster() (*mqlVsphereKmsCluster, error) {
 	}
 	v.KmsCluster.State = plugin.StateIsNull | plugin.StateIsSet
 	return nil, nil
+}
+
+// vmConfigSettings holds scalar VM configuration fields read from
+// VirtualMachineConfigInfo. A nil pointer means vCenter did not report the
+// value, which surfaces as null rather than an invented default.
+type vmConfigSettings struct {
+	hardwareVersion    *string
+	guestId            *string
+	migrateEncryption  *string
+	ftEncryptionMode   *string
+	loggingEnabled     *bool
+	toolsUpgradePolicy *string
+}
+
+func vmConfigSettingsFrom(cfg *types.VirtualMachineConfigInfo) vmConfigSettings {
+	if cfg == nil {
+		return vmConfigSettings{}
+	}
+	toolsUpgradePolicy := ""
+	if cfg.Tools != nil {
+		toolsUpgradePolicy = cfg.Tools.ToolsUpgradePolicy
+	}
+	return vmConfigSettings{
+		hardwareVersion:    &cfg.Version,
+		guestId:            &cfg.GuestId,
+		migrateEncryption:  &cfg.MigrateEncryption,
+		ftEncryptionMode:   &cfg.FtEncryptionMode,
+		loggingEnabled:     cfg.Flags.EnableLogging,
+		toolsUpgradePolicy: &toolsUpgradePolicy,
+	}
 }

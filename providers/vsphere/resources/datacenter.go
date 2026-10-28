@@ -429,6 +429,10 @@ func (v *mqlVsphereDatacenter) vms() ([]any, error) {
 				}
 			}
 		}
+		var cfgSettings vmConfigSettings
+		if s.vmInfo != nil {
+			cfgSettings = vmConfigSettingsFrom(s.vmInfo.Config)
+		}
 		mqlVm, err := CreateResource(v.MqlRuntime, "vsphere.vm", map[string]*llx.RawData{
 			"moid":                llx.StringData(vm.Reference().Encode()),
 			"name":                llx.StringData(name),
@@ -456,6 +460,12 @@ func (v *mqlVsphereDatacenter) vms() ([]any, error) {
 			"instanceUuid":        llx.StringData(instanceUuid),
 			"biosUuid":            llx.StringData(biosUuid),
 			"template":            llx.BoolData(template),
+			"hardwareVersion":     llx.StringDataPtr(cfgSettings.hardwareVersion),
+			"guestId":             llx.StringDataPtr(cfgSettings.guestId),
+			"migrateEncryption":   llx.StringDataPtr(cfgSettings.migrateEncryption),
+			"ftEncryptionMode":    llx.StringDataPtr(cfgSettings.ftEncryptionMode),
+			"loggingEnabled":      llx.BoolDataPtr(cfgSettings.loggingEnabled),
+			"toolsUpgradePolicy":  llx.StringDataPtr(cfgSettings.toolsUpgradePolicy),
 		})
 		if err != nil {
 			return nil, err
@@ -501,11 +511,20 @@ func (v *mqlVsphereDatacenter) distributedSwitches() ([]any, error) {
 			createDate = &t
 		}
 
+		settings := dvsSettingsFrom(config.Config, config.Summary.ProductInfo)
+
 		mqlVswitch, err := CreateResource(v.MqlRuntime, "vsphere.vswitch.dvs", map[string]*llx.RawData{
-			"moid":       llx.StringData(s.Reference().Encode()),
-			"name":       llx.StringData(s.Name()),
-			"properties": llx.DictData(configMap),
-			"createDate": llx.TimeDataPtr(createDate),
+			"moid":                   llx.StringData(s.Reference().Encode()),
+			"name":                   llx.StringData(s.Name()),
+			"properties":             llx.DictData(configMap),
+			"createDate":             llx.TimeDataPtr(createDate),
+			"version":                llx.StringDataPtr(settings.version),
+			"maxMtu":                 llx.IntDataPtr(settings.maxMtu),
+			"linkDiscoveryProtocol":  llx.StringDataPtr(settings.linkDiscoveryProtocol),
+			"linkDiscoveryOperation": llx.StringDataPtr(settings.linkDiscoveryOperation),
+			"netflowEnabled":         llx.BoolDataPtr(settings.netflowEnabled),
+			"netflowCollectorIp":     llx.StringDataPtr(settings.netflowCollectorIp),
+			"healthCheckEnabled":     llx.BoolDataPtr(settings.healthCheckEnabled),
 		})
 		if err != nil {
 			return nil, err
@@ -515,6 +534,7 @@ func (v *mqlVsphereDatacenter) distributedSwitches() ([]any, error) {
 		r := mqlVswitch.(*mqlVsphereVswitchDvs)
 		r.hostInventoryPath = s.InventoryPath
 		r.cacheVspanSessions = resourceclient.VspanSessions(config)
+		r.cacheDefaultSecurityPolicy = settings.defaultSecurityPolicy
 
 		mqlVswitches[i] = mqlVswitch
 	}
@@ -566,13 +586,22 @@ func (v *mqlVsphereDatacenter) distributedPortGroups() ([]any, error) {
 			portConfigResetAtDisconnect = config.Config.Policy.GetDVPortgroupPolicy().PortConfigResetAtDisconnect
 		}
 
+		pgSettings := dvPortgroupSettingsFrom(&config.Config)
+
 		name := distPG.Name()
 		mqlDistPG, err := NewResource(v.MqlRuntime, "vsphere.vswitch.portgroup", map[string]*llx.RawData{
-			"moid":                        llx.StringData(distPG.Reference().Encode()),
-			"name":                        llx.StringData(name),
-			"properties":                  llx.DictData(configMap),
-			"vlanId":                      llx.IntData(vlanId),
-			"portConfigResetAtDisconnect": llx.BoolData(portConfigResetAtDisconnect),
+			"moid":                          llx.StringData(distPG.Reference().Encode()),
+			"name":                          llx.StringData(name),
+			"properties":                    llx.DictData(configMap),
+			"vlanId":                        llx.IntData(vlanId),
+			"portConfigResetAtDisconnect":   llx.BoolData(portConfigResetAtDisconnect),
+			"portBinding":                   llx.StringData(pgSettings.portBinding),
+			"blocked":                       llx.BoolDataPtr(pgSettings.blocked),
+			"vlanTrunkRanges":               llx.ArrayData(stringsToAny(pgSettings.vlanTrunkRanges), types.String),
+			"securityPolicyOverrideAllowed": llx.BoolDataPtr(pgSettings.securityPolicyOverrideAllowed),
+			"vlanOverrideAllowed":           llx.BoolDataPtr(pgSettings.vlanOverrideAllowed),
+			"macManagementOverrideAllowed":  llx.BoolDataPtr(pgSettings.macManagementOverrideAllowed),
+			"uplinkTeamingOverrideAllowed":  llx.BoolDataPtr(pgSettings.uplinkTeamingOverrideAllowed),
 		})
 		if err != nil {
 			return nil, err

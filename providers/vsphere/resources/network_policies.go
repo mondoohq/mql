@@ -4,6 +4,8 @@
 package resources
 
 import (
+	"strconv"
+
 	"github.com/vmware/govmomi/vim25/types"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -161,9 +163,14 @@ func (p *mqlVsphereVswitchPortgroup) securityPolicySettings() (*mqlVsphereVswitc
 		p.SecurityPolicySettings.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	id := p.Moid.Data + "/policy/security"
-	sp := p.defaultPortConfig.SecurityPolicy
-	res, err := CreateResource(p.MqlRuntime, "vsphere.vswitch.securityPolicy", map[string]*llx.RawData{
+	return buildDvsSecurityPolicy(p.MqlRuntime, p.Moid.Data+"/policy/security", p.defaultPortConfig.SecurityPolicy)
+}
+
+// buildDvsSecurityPolicy creates a vsphere.vswitch.securityPolicy from a
+// distributed switch security policy (switch or port group default port
+// config).
+func buildDvsSecurityPolicy(runtime *plugin.Runtime, id string, sp *types.DVSSecurityPolicy) (*mqlVsphereVswitchSecurityPolicy, error) {
+	res, err := CreateResource(runtime, "vsphere.vswitch.securityPolicy", map[string]*llx.RawData{
 		"__id":                 llx.StringData(id),
 		"allowPromiscuous":     llx.BoolData(boolPolicyValue(sp.AllowPromiscuous)),
 		"allowForgedTransmits": llx.BoolData(boolPolicyValue(sp.ForgedTransmits)),
@@ -173,6 +180,50 @@ func (p *mqlVsphereVswitchPortgroup) securityPolicySettings() (*mqlVsphereVswitc
 		return nil, err
 	}
 	return res.(*mqlVsphereVswitchSecurityPolicy), nil
+}
+
+// dvPortgroupSettings holds the typed port group configuration read from a
+// DVPortgroupConfigInfo. A nil pointer means the port group did not report
+// the value, which surfaces as null.
+type dvPortgroupSettings struct {
+	portBinding                   string
+	blocked                       *bool
+	vlanTrunkRanges               []string
+	securityPolicyOverrideAllowed *bool
+	vlanOverrideAllowed           *bool
+	macManagementOverrideAllowed  *bool
+	uplinkTeamingOverrideAllowed  *bool
+}
+
+func dvPortgroupSettingsFrom(cfg *types.DVPortgroupConfigInfo) dvPortgroupSettings {
+	out := dvPortgroupSettings{vlanTrunkRanges: []string{}}
+	if cfg == nil {
+		return out
+	}
+	out.portBinding = cfg.Type
+
+	if portCfg, ok := cfg.DefaultPortConfig.(*types.VMwareDVSPortSetting); ok && portCfg != nil {
+		if portCfg.Blocked != nil && portCfg.Blocked.Value != nil {
+			blocked := *portCfg.Blocked.Value
+			out.blocked = &blocked
+		}
+		if trunk, ok := portCfg.Vlan.(*types.VmwareDistributedVirtualSwitchTrunkVlanSpec); ok && trunk != nil {
+			for _, r := range trunk.VlanId {
+				out.vlanTrunkRanges = append(out.vlanTrunkRanges, strconv.Itoa(int(r.Start))+"-"+strconv.Itoa(int(r.End)))
+			}
+		}
+	}
+
+	if policy, ok := cfg.Policy.(*types.VMwareDVSPortgroupPolicy); ok && policy != nil {
+		securityOverride := policy.SecurityPolicyOverrideAllowed
+		vlanOverride := policy.VlanOverrideAllowed
+		teamingOverride := policy.UplinkTeamingOverrideAllowed
+		out.securityPolicyOverrideAllowed = &securityOverride
+		out.vlanOverrideAllowed = &vlanOverride
+		out.uplinkTeamingOverrideAllowed = &teamingOverride
+		out.macManagementOverrideAllowed = policy.MacManagementOverrideAllowed
+	}
+	return out
 }
 
 func (p *mqlVsphereVswitchPortgroup) failoverPolicySettings() (*mqlVsphereVswitchFailoverPolicy, error) {
