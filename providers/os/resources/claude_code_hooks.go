@@ -158,7 +158,7 @@ func claudeHookResources(runtime *plugin.Runtime, sets []agentHookSet) ([]any, e
 				"matcher": llx.StringData(h.matcher),
 				"type":    llx.StringData(h.handler.Type),
 				"command": llx.StringData(h.handler.Command),
-				"args":    strSliceToArrayData(h.handler.Args),
+				"args":    mcpArgsData(h.handler.Args),
 				"url":     llx.StringData(h.handler.URL),
 				"timeout": llx.IntDataPtr(h.timeout()),
 				"source":  llx.StringData(set.source),
