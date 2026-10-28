@@ -1,7 +1,7 @@
 {
   "provider": "azure",
-  "version": "14.3.9",
-  "generated_at": "2026-10-19T20:57:27-07:00",
+  "version": "14.5.2",
+  "generated_at": "2026-10-27T23:04:21+01:00",
   "permissions": [
     "Microsoft.Advisor/recommendations/read",
     "Microsoft.ApiManagement/service/apis/policies/read",
@@ -151,6 +151,8 @@
     "Microsoft.Insights/eventtypes/values/Read",
     "Microsoft.Insights/logprofiles/read",
     "Microsoft.Insights/metricAlerts/read",
+    "Microsoft.Insights/privateLinkScopes/read",
+    "Microsoft.Insights/privateLinkScopes/scopedResources/read",
     "Microsoft.Insights/scheduledQueryRules/read",
     "Microsoft.KeyVault/managedHSMs/read",
     "Microsoft.KeyVault/vaults/read",
@@ -259,7 +261,9 @@
     "Microsoft.OperationalInsights/workspaces/networkSecurityPerimeterConfigurations/read",
     "Microsoft.OperationalInsights/workspaces/read",
     "Microsoft.OperationalInsights/workspaces/tables/read",
+    "Microsoft.PolicyInsights/attestations/read",
     "Microsoft.PolicyInsights/policyStates/queryResults/action",
+    "Microsoft.PolicyInsights/remediations/read",
     "Microsoft.Purview/accounts/read",
     "Microsoft.RecoveryServices/Vaults/backupconfig/read",
     "Microsoft.RecoveryServices/locations/deletedVaults/read",
@@ -275,10 +279,12 @@
     "Microsoft.Security/alerts/read",
     "Microsoft.Security/alertsSuppressionRules/read",
     "Microsoft.Security/apiCollections/read",
+    "Microsoft.Security/assessments/governanceAssignments/read",
     "Microsoft.Security/assessments/read",
     "Microsoft.Security/assessments/subAssessments/read",
     "Microsoft.Security/automations/read",
     "Microsoft.Security/defenderForStorageSettings/read",
+    "Microsoft.Security/governanceRules/read",
     "Microsoft.Security/jitNetworkAccessPolicies/read",
     "Microsoft.Security/pricings/read",
     "Microsoft.Security/secureScoreControls/read",
@@ -1260,6 +1266,18 @@
       "source_file": "monitor.go"
     },
     {
+      "permission": "Microsoft.Insights/privateLinkScopes/read",
+      "service": "Microsoft.Insights",
+      "action": "Get",
+      "source_file": "monitor_privatelinkscopes.go"
+    },
+    {
+      "permission": "Microsoft.Insights/privateLinkScopes/scopedResources/read",
+      "service": "Microsoft.Insights",
+      "action": "NewListByPrivateLinkScopePager",
+      "source_file": "monitor_privatelinkscopes.go"
+    },
+    {
       "permission": "Microsoft.Insights/scheduledQueryRules/read",
       "service": "Microsoft.Insights",
       "action": "NewListBySubscriptionPager",
@@ -1944,10 +1962,22 @@
       "source_file": "loganalytics.go"
     },
     {
+      "permission": "Microsoft.PolicyInsights/attestations/read",
+      "service": "Microsoft.PolicyInsights",
+      "action": "NewListForSubscriptionPager",
+      "source_file": "policy_remediations.go"
+    },
+    {
       "permission": "Microsoft.PolicyInsights/policyStates/queryResults/action",
       "service": "Microsoft.PolicyInsights",
       "action": "NewListQueryResultsForSubscriptionPager",
       "source_file": "policy.go"
+    },
+    {
+      "permission": "Microsoft.PolicyInsights/remediations/read",
+      "service": "Microsoft.PolicyInsights",
+      "action": "NewListForSubscriptionPager",
+      "source_file": "policy_remediations.go"
     },
     {
       "permission": "Microsoft.Purview/accounts/read",
@@ -2046,6 +2076,12 @@
       "source_file": "cloud_defender.go"
     },
     {
+      "permission": "Microsoft.Security/assessments/governanceAssignments/read",
+      "service": "Microsoft.Security",
+      "action": "NewListPager",
+      "source_file": "cloud_defender_governance.go"
+    },
+    {
       "permission": "Microsoft.Security/assessments/read",
       "service": "Microsoft.Security",
       "action": "NewListPager",
@@ -2068,6 +2104,12 @@
       "service": "Microsoft.Security",
       "action": "Get",
       "source_file": "storage_extras.go"
+    },
+    {
+      "permission": "Microsoft.Security/governanceRules/read",
+      "service": "Microsoft.Security",
+      "action": "NewListPager",
+      "source_file": "cloud_defender_governance.go"
     },
     {
       "permission": "Microsoft.Security/jitNetworkAccessPolicies/read",
@@ -2128,6 +2170,12 @@
       "service": "Microsoft.SecurityInsights",
       "action": "NewListPager",
       "source_file": "sentinel.go"
+    },
+    {
+      "permission": "Microsoft.SecurityInsights/dataConnectors/read",
+      "service": "Microsoft.SecurityInsights",
+      "action": "NewListPager",
+      "source_file": "sentinel_dataconnectors.go"
     },
     {
       "permission": "Microsoft.SecurityInsights/incidents/read",

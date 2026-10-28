@@ -4,9 +4,12 @@
 package resources
 
 import (
+	"encoding/json"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
@@ -62,5 +65,38 @@ func TestTenantIDFromIdentityDict(t *testing.T) {
 	})
 	t.Run("empty when nil", func(t *testing.T) {
 		assert.Equal(t, "", tenantIDFromIdentityDict(plugin.TValue[any]{}))
+	})
+}
+
+func TestFederatedCredentialArgs(t *testing.T) {
+	t.Run("GitHub Actions credential", func(t *testing.T) {
+		// Synthetic: the documented shape of a federated identity credential
+		// (api-version 2023-01-31); no identity we could read had one.
+		payload := `{
+		  "id": "/subscriptions/0000/resourcegroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id1/federatedIdentityCredentials/gh",
+		  "name": "gh",
+		  "properties": {
+		    "issuer": "https://token.actions.githubusercontent.com",
+		    "subject": "repo:octo-org/octo-repo:ref:refs/heads/main",
+		    "audiences": ["api://AzureADTokenExchange", null]
+		  }
+		}`
+		var fic armmsi.FederatedIdentityCredential
+		require.NoError(t, json.Unmarshal([]byte(payload), &fic))
+
+		args := federatedCredentialArgs(&fic)
+		assert.Equal(t, "gh", args["name"].Value)
+		assert.Equal(t, "https://token.actions.githubusercontent.com", args["issuer"].Value)
+		assert.Equal(t, "repo:octo-org/octo-repo:ref:refs/heads/main", args["subject"].Value)
+		// The null audience is skipped rather than reported as "".
+		assert.Equal(t, []any{"api://AzureADTokenExchange"}, args["audiences"].Value)
+	})
+
+	t.Run("absent properties read as null", func(t *testing.T) {
+		// Synthetic: a credential without properties; no target showed this.
+		args := federatedCredentialArgs(&armmsi.FederatedIdentityCredential{ID: new("/f"), Name: new("f")})
+		assert.Nil(t, args["issuer"].Value)
+		assert.Nil(t, args["subject"].Value)
+		assert.Empty(t, args["audiences"].Value)
 	})
 }
