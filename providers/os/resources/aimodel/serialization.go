@@ -99,7 +99,10 @@ func fileExt(name string) string {
 //   - GGUF and the older GGML, GGMF, GGJT and GGLA files start with their
 //     magic, the GGML family's as a little-endian uint32
 //
-// Anything else, including a file that can't be read, is unknown.
+// Anything else, including a file that can't be read, is unknown. That
+// includes a pickle of protocol 0 or 1, which has no PROTO opcode and starts
+// with an arbitrary opcode; torch.save never writes those, and the .pkl and
+// .pickle extensions are classified as pickle without reading the header.
 func sniffSerialization(afs *afero.Afero, p string) *bool {
 	f, err := afs.Open(p)
 	if err != nil {
@@ -146,8 +149,11 @@ func headerSerialization(head []byte) *bool {
 }
 
 // weightFiles lists the weight files under dir, descending at most maxDepth
-// directory levels. Entries are listed without following symbolic links, so a
-// Hugging Face snapshot's links to its blobs are listed as files.
+// directory levels. On filesystems whose listings come from lstat, as the
+// local one's do, a Hugging Face snapshot's links to its blobs are listed as
+// files and a link to a directory is not followed. Where a listing follows
+// links, a linked directory is descended like any other, still bounded by
+// maxDepth, and the weight files found are the same.
 func weightFiles(afs *afero.Afero, dir string, maxDepth int) []string {
 	entries, err := afs.ReadDir(dir)
 	if err != nil {
@@ -194,9 +200,11 @@ func unsafeSerialization(afs *afero.Afero, files []string) *bool {
 	return boolPtr(false)
 }
 
-// sha256Digest normalizes a bare 64 character hex SHA-256 to sha256:<hex>.
-func sha256Digest(hexDigest string) (string, bool) {
-	if len(hexDigest) != 64 || !isHex(hexDigest) {
+// validSHA256Digest checks that digest is sha256:<64 hex characters> and
+// returns it with the hex lowercased.
+func validSHA256Digest(digest string) (string, bool) {
+	hexDigest, ok := strings.CutPrefix(digest, "sha256:")
+	if !ok || len(hexDigest) != 64 || !isHex(hexDigest) {
 		return "", false
 	}
 	return "sha256:" + strings.ToLower(hexDigest), true
@@ -219,11 +227,7 @@ func ollamaWeightDigests(layers []ollamaLayer) []string {
 		if _, ok := ollamaWeightMediaTypes[l.MediaType]; !ok {
 			continue
 		}
-		hexDigest, ok := strings.CutPrefix(l.Digest, "sha256:")
-		if !ok {
-			return nil
-		}
-		d, ok := sha256Digest(hexDigest)
+		d, ok := validSHA256Digest(l.Digest)
 		if !ok {
 			return nil
 		}

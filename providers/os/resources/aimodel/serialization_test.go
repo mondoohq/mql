@@ -232,6 +232,12 @@ func TestOllamaWeightDigests(t *testing.T) {
 		{MediaType: "application/vnd.ollama.image.adapter", Digest: "sha256:short"},
 	}))
 	assert.True(t, hasOllamaWeightLayer([]ollamaLayer{{MediaType: "application/vnd.ollama.image.adapter"}}))
+	// Synthetic: a bare hex digest without the algorithm prefix drops the list.
+	assert.Nil(t, ollamaWeightDigests([]ollamaLayer{{MediaType: "application/vnd.ollama.image.model", Digest: digestA}}))
+	// Synthetic: upper-case hex is reported lower-case.
+	assert.Equal(t, []string{"sha256:" + digestA}, ollamaWeightDigests([]ollamaLayer{
+		{MediaType: "application/vnd.ollama.image.model", Digest: "sha256:" + strings.ToUpper(digestA)},
+	}))
 }
 
 func TestFileBasedDetectors_UnsafeSerialization(t *testing.T) {
