@@ -86,10 +86,37 @@ func TestAttestationArgs(t *testing.T) {
 	assert.Equal(t, "This subscription has passed a security audit.", args["comments"].Value)
 	assert.Equal(t, "55a32e28-3aa5-4eea-9b5a-4cd85153b966", args["owner"].Value)
 	assert.Equal(t, time.Date(2021, 6, 15, 0, 0, 0, 0, time.UTC), args["expiresOn"].Value.(*time.Time).UTC())
+	// A plain URL comes back unchanged.
 	assert.Equal(t, []any{map[string]any{
-		"description": "The results of the security audit.",
-		"sourceUri":   "https://gist.github.com/contoso/9573e238762c60166c090ae16b814011",
+		"description":          "The results of the security audit.",
+		"sourceUri":            "https://gist.github.com/contoso/9573e238762c60166c090ae16b814011",
+		"sourceUriHasSasToken": false,
 	}}, args["evidence"].Value)
+
+	t.Run("SAS token in evidence and free text is removed", func(t *testing.T) {
+		// Synthetic: evidence stored in a blob behind a SAS URL, also quoted in
+		// the comments; no target showed this.
+		sasURL := "https://acct.blob.core.windows.net/evidence/audit.pdf?sv=2022-11-02&se=2026-12-31&sr=b&sp=r&sig=c2VjcmV0c2lnbmF0dXJl"
+		at := armpolicyinsights.Attestation{
+			ID: new("/a"),
+			Properties: &armpolicyinsights.AttestationProperties{
+				Comments: new("Audit report at " + sasURL + " reviewed."),
+				Evidence: []*armpolicyinsights.AttestationEvidence{{Description: new("audit"), SourceURI: new(sasURL)}},
+			},
+		}
+		args := attestationArgs(&at)
+		ev := args["evidence"].Value.([]any)[0].(map[string]any)
+		assert.Equal(t, "https://acct.blob.core.windows.net/evidence/audit.pdf", ev["sourceUri"])
+		assert.NotContains(t, ev["sourceUri"], "sig=")
+		assert.Equal(t, true, ev["sourceUriHasSasToken"])
+		assert.Equal(t, "Audit report at https://acct.blob.core.windows.net/evidence/audit.pdf reviewed.", args["comments"].Value)
+
+		rem := remediationArgs(&armpolicyinsights.Remediation{
+			ID:         new("/r"),
+			Properties: &armpolicyinsights.RemediationProperties{StatusMessage: new("Deployment failed reading " + sasURL)},
+		})
+		assert.NotContains(t, rem["statusMessage"].Value, "sig=")
+	})
 
 	// Synthetic: an attestation with no expiry; no target showed this.
 	empty := attestationArgs(&armpolicyinsights.Attestation{ID: new("/a"), Properties: &armpolicyinsights.AttestationProperties{}})

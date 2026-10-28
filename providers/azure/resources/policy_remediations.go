@@ -75,7 +75,7 @@ func remediationArgs(r *armpolicyinsights.Remediation) map[string]*llx.RawData {
 	if p := r.Properties; p != nil {
 		policyDefinitionReferenceID = p.PolicyDefinitionReferenceID
 		provisioningState = p.ProvisioningState
-		statusMessage = p.StatusMessage
+		statusMessage = redactedTextPtr(p.StatusMessage)
 		resourceDiscoveryMode = stringEnumPtr(p.ResourceDiscoveryMode)
 		args["createdOn"] = llx.TimeDataPtr(p.CreatedOn)
 		args["lastUpdatedOn"] = llx.TimeDataPtr(p.LastUpdatedOn)
@@ -145,19 +145,34 @@ func (a *mqlAzureSubscriptionPolicyRemediation) policyAssignment() (*mqlAzureSub
 }
 
 // attestationEvidence converts attestation evidence into dicts, skipping nil
-// entries.
+// entries. Evidence often points at a blob URL carrying a SAS token, so the
+// URI is stored with its query string and user information removed, and
+// sourceUriHasSasToken records whether a token was there.
 func attestationEvidence(evidence []*armpolicyinsights.AttestationEvidence) []any {
 	res := []any{}
 	for _, e := range evidence {
 		if e == nil {
 			continue
 		}
+		raw := convert.ToValue(e.SourceURI)
+		clean, _ := stripURLCredentials(raw)
 		res = append(res, map[string]any{
-			"description": convert.ToValue(e.Description),
-			"sourceUri":   convert.ToValue(e.SourceURI),
+			"description":          stripURLCredentialsInText(convert.ToValue(e.Description)),
+			"sourceUri":            clean,
+			"sourceUriHasSasToken": urlHasSASToken(raw),
 		})
 	}
 	return res
+}
+
+// redactedTextPtr strips URL credentials from optional free text, keeping an
+// absent value absent.
+func redactedTextPtr(s *string) *string {
+	if s == nil {
+		return nil
+	}
+	clean := stripURLCredentialsInText(*s)
+	return &clean
 }
 
 // attestationArgs maps a policy attestation onto the fields of
@@ -175,7 +190,7 @@ func attestationArgs(at *armpolicyinsights.Attestation) map[string]*llx.RawData 
 		policyDefinitionReferenceID = p.PolicyDefinitionReferenceID
 		complianceState = stringEnumPtr(p.ComplianceState)
 		owner = p.Owner
-		comments = p.Comments
+		comments = redactedTextPtr(p.Comments)
 		provisioningState = p.ProvisioningState
 		evidence = attestationEvidence(p.Evidence)
 		args["expiresOn"] = llx.TimeDataPtr(p.ExpiresOn)

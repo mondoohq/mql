@@ -14541,7 +14541,10 @@ private azure.subscription.policy.attestation @defaults("name complianceState ex
   comments string
   // Evidence supporting the compliance state
   //
-  // Each entry has `description` and `sourceUri`.
+  // Each entry has `description`, `sourceUri`, and `sourceUriHasSasToken`.
+  // The query string of `sourceUri` is removed, so a shared access signature
+  // on a blob URL is not exposed; `sourceUriHasSasToken` reports whether the
+  // URI carried one.
   evidence []dict
   // When the compliance state was assessed
   assessmentDate time
