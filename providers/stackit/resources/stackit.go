@@ -79,8 +79,12 @@ func (r *mqlStackitProject) internetAccess() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if d == nil {
+		r.InternetAccess.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
 	v, ok := d.GetInternetAccessOk()
-	if d == nil || !ok || v == nil {
+	if !ok || v == nil {
 		r.InternetAccess.State = plugin.StateIsSet | plugin.StateIsNull
 		return false, nil
 	}

@@ -143,6 +143,12 @@ func TestProjectIaasDetails(t *testing.T) {
 		pt := p.GetProjectType()
 		require.NoError(t, pt.Error)
 		assert.True(t, pt.IsNull())
+		ia := p.GetInternetAccess()
+		require.NoError(t, ia.Error)
+		assert.True(t, ia.IsNull())
+		vpc := p.GetVpcId()
+		require.NoError(t, vpc.Error)
+		assert.True(t, vpc.IsNull())
 	})
 
 	// Synthetic: a credential without IaaS read access.
