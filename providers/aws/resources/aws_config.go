@@ -958,3 +958,43 @@ func (a *mqlAwsConfigConformancePack) ruleCompliance() ([]any, error) {
 func (a *mqlAwsConfigConformancePackRuleCompliance) id() (string, error) {
 	return a.__id, nil
 }
+
+// configDefaultRetentionDays is how long AWS Config keeps configuration items
+// in a region that has no retention configuration: 7 years.
+const configDefaultRetentionDays = 2557
+
+// configRetentionDays picks the retention period from a region's retention
+// configurations. Config allows at most one per region; none means the
+// default applies.
+func configRetentionDays(cfgs []cstypes.RetentionConfiguration) int64 {
+	for _, c := range cfgs {
+		if c.RetentionPeriodInDays != nil {
+			return int64(*c.RetentionPeriodInDays)
+		}
+	}
+	return configDefaultRetentionDays
+}
+
+func (a *mqlAwsConfigRecorder) retentionPeriodInDays() (int64, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.ConfigService(a.Region.Data)
+	ctx := context.Background()
+
+	cfgs := []cstypes.RetentionConfiguration{}
+	paginator := configservice.NewDescribeRetentionConfigurationsPaginator(svc, &configservice.DescribeRetentionConfigurationsInput{})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if !plugin.StructuredErrors() {
+					a.RetentionPeriodInDays.State = plugin.StateIsSet | plugin.StateIsNull
+					return 0, nil
+				}
+				return 0, llx.Forbidden(err, llx.WithPermissions("config:DescribeRetentionConfigurations"))
+			}
+			return 0, err
+		}
+		cfgs = append(cfgs, page.RetentionConfigurations...)
+	}
+	return configRetentionDays(cfgs), nil
+}

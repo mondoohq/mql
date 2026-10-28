@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	cstypes "github.com/aws/aws-sdk-go-v2/service/configservice/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -67,4 +69,20 @@ func TestConfigComplianceDetailIDIsDistinctPerResource(t *testing.T) {
 	first := configComplianceDetailID(arn, "AWS::EC2::Instance", "i-aaaaaaaaaaaaaaaaa", nil)
 	second := configComplianceDetailID(arn, "AWS::EC2::Instance", "i-bbbbbbbbbbbbbbbbb", nil)
 	assert.NotEqual(t, first, second)
+}
+
+func TestConfigRetentionDays(t *testing.T) {
+	// Measured: DescribeRetentionConfigurations in us-east-1 of the test
+	// account returned an empty list, 2026-10-27.
+	assert.Equal(t, int64(2557), configRetentionDays(nil))
+	assert.Equal(t, int64(2557), configRetentionDays([]cstypes.RetentionConfiguration{}))
+
+	// Synthetic: a region with a retention configuration; no target showed this.
+	assert.Equal(t, int64(365), configRetentionDays([]cstypes.RetentionConfiguration{
+		{Name: aws.String("default"), RetentionPeriodInDays: aws.Int32(365)},
+	}))
+	// Synthetic: a configuration without a period falls back to the default.
+	assert.Equal(t, int64(2557), configRetentionDays([]cstypes.RetentionConfiguration{
+		{Name: aws.String("default")},
+	}))
 }
