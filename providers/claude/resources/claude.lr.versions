@@ -141,6 +141,7 @@ claude.organization.apiKey.principalType 13.1.3
 claude.organization.apiKey.principalUser 13.1.3
 claude.organization.apiKey.scopeType 13.1.3
 claude.organization.apiKey.status 13.0.0
+claude.organization.apiKey.usageReport 14.1.7
 claude.organization.apiKey.workspace 13.0.0
 claude.organization.apiKeys 13.0.0
 claude.organization.complianceApiState 14.0.2
@@ -237,6 +238,7 @@ claude.organization.member.email 13.0.0
 claude.organization.member.id 13.0.0
 claude.organization.member.name 13.0.0
 claude.organization.member.role 13.0.0
+claude.organization.member.usageReport 14.1.7
 claude.organization.members 13.0.0
 claude.organization.name 13.0.0
 claude.organization.plugin 14.0.2
@@ -326,15 +328,19 @@ claude.organization.serviceAccount.name 13.1.3
 claude.organization.serviceAccount.organizationRole 13.1.3
 claude.organization.serviceAccount.updatedAt 13.1.3
 claude.organization.serviceAccount.updatedByActorId 13.1.3
+claude.organization.serviceAccount.usageReport 14.1.7
 claude.organization.serviceAccounts 13.1.3
 claude.organization.usageEntry 13.0.0
+claude.organization.usageEntry.apiKey 14.1.7
 claude.organization.usageEntry.cacheReadInputTokens 13.0.0
 claude.organization.usageEntry.endingAt 13.0.0
 claude.organization.usageEntry.model 13.0.0
 claude.organization.usageEntry.outputTokens 13.0.0
+claude.organization.usageEntry.serviceAccount 14.1.7
 claude.organization.usageEntry.serviceTier 13.0.0
 claude.organization.usageEntry.startingAt 13.0.0
 claude.organization.usageEntry.uncachedInputTokens 13.0.0
+claude.organization.usageEntry.user 14.1.7
 claude.organization.usageEntry.workspace 13.0.13
 claude.organization.usageReport 13.0.0
 claude.organization.webhook 14.1.5

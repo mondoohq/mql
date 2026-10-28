@@ -442,3 +442,73 @@ func TestCostEntryID(t *testing.T) {
 	defaultWs.WorkspaceID = ""
 	assert.NotEqual(t, costEntryID("2025-08-01T00:00:00Z", input), costEntryID("2025-08-01T00:00:00Z", defaultWs))
 }
+
+func TestUsageEntryID(t *testing.T) {
+	// Synthetic: the response example row from the Admin API reference for
+	// GET /v1/organizations/usage_report/messages.
+	byKey := connection.AdminUsageResult{
+		Model:            "claude-opus-5-5",
+		WorkspaceID:      "wrkspc_01JwQvzr7rXLA5AGx3HKfFUJ",
+		ServiceTier:      "standard",
+		APIKeyID:         "apikey_01Rj2N8SVvo6BePZj99NhmiT",
+		AccountID:        "user_01WCz1FkmYMm4gnmykNKUu3Q",
+		ServiceAccountID: "svac_01Hk3R9TWxq7CfQak00OiVw4",
+	}
+	const day = "2025-08-01T00:00:00Z"
+
+	// Synthetic: two keys used with the same model, tier and workspace on
+	// the same day are two rows.
+	otherKey := byKey
+	otherKey.APIKeyID = "apikey_02"
+	assert.NotEqual(t, usageEntryID(day, byKey), usageEntryID(day, otherKey))
+
+	// Synthetic: rows that differ only in member or service account.
+	otherAccount := byKey
+	otherAccount.AccountID = "user_02"
+	assert.NotEqual(t, usageEntryID(day, byKey), usageEntryID(day, otherAccount))
+	otherSvc := byKey
+	otherSvc.ServiceAccountID = "svac_02"
+	assert.NotEqual(t, usageEntryID(day, byKey), usageEntryID(day, otherSvc))
+
+	// Synthetic: Console usage carries no key and must not collide with the
+	// keyed row.
+	console := byKey
+	console.APIKeyID = ""
+	assert.NotEqual(t, usageEntryID(day, byKey), usageEntryID(day, console))
+
+	assert.NotEqual(t, usageEntryID(day, byKey), usageEntryID("2025-08-02T00:00:00Z", byKey))
+}
+
+func TestUsageEntriesFor(t *testing.T) {
+	entry := func(key, account, svc string) *mqlClaudeOrganizationUsageEntry {
+		return &mqlClaudeOrganizationUsageEntry{
+			mqlClaudeOrganizationUsageEntryInternal: mqlClaudeOrganizationUsageEntryInternal{
+				cacheAPIKeyID:         key,
+				cacheAccountID:        account,
+				cacheServiceAccountID: svc,
+			},
+		}
+	}
+	// Synthetic: two days of one key, one OAuth row for a member, and one
+	// Console row with no caller at all.
+	keyDay1 := entry("apikey_1", "", "")
+	keyDay2 := entry("apikey_1", "", "")
+	otherKey := entry("apikey_2", "", "")
+	oauth := entry("", "user_1", "")
+	console := entry("", "", "")
+	all := []any{keyDay1, otherKey, oauth, console, keyDay2}
+
+	byKey := func(e *mqlClaudeOrganizationUsageEntry) string { return e.cacheAPIKeyID }
+	byAccount := func(e *mqlClaudeOrganizationUsageEntry) string { return e.cacheAccountID }
+
+	assert.Equal(t, []any{keyDay1, keyDay2}, usageEntriesFor(all, "apikey_1", byKey))
+	assert.Equal(t, []any{oauth}, usageEntriesFor(all, "user_1", byAccount))
+
+	// A dormant key reads as an empty list, not null.
+	got := usageEntriesFor(all, "apikey_3", byKey)
+	assert.NotNil(t, got)
+	assert.Empty(t, got)
+
+	// Synthetic: a caller with no id never claims the rows that have none.
+	assert.Empty(t, usageEntriesFor(all, "", byKey))
+}

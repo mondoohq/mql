@@ -304,11 +304,32 @@ type AdminUsageResult struct {
 	Model                string `json:"model"`
 	WorkspaceID          string `json:"workspace_id"`
 	ServiceTier          string `json:"service_tier"`
+	// APIKeyID is null for usage that did not go through an API key, such
+	// as requests made in the Claude Console.
+	APIKeyID string `json:"api_key_id"`
+	// AccountID names the user account behind an OAuth request and is null
+	// for every other request.
+	AccountID string `json:"account_id"`
+	// ServiceAccountID names the service account behind a workload identity
+	// federation request and is null for every other request.
+	ServiceAccountID string `json:"service_account_id"`
 }
 
+// usageReportGroupBy lists the dimensions the usage report is split by. The
+// API leaves a dimension null in every row unless the request groups by it.
+var usageReportGroupBy = []string{
+	"workspace_id", "model", "service_tier", "api_key_id", "account_id", "service_account_id",
+}
+
+// ListUsageReport returns the daily Messages API usage from midnight UTC
+// seven days ago up to now.
 func (c *AdminClient) ListUsageReport(ctx context.Context) ([]AdminUsageBucket, error) {
 	startingAt := time.Now().UTC().AddDate(0, 0, -7).Format("2006-01-02T00:00:00Z")
-	return paginatePageToken[AdminUsageBucket](ctx, c, "/v1/organizations/usage_report/messages?bucket_width=1d&starting_at="+startingAt+"&group_by[]=workspace_id&group_by[]=model&group_by[]=service_tier")
+	path := "/v1/organizations/usage_report/messages?bucket_width=1d&starting_at=" + startingAt
+	for _, g := range usageReportGroupBy {
+		path += "&group_by[]=" + g
+	}
+	return paginatePageToken[AdminUsageBucket](ctx, c, path)
 }
 
 // Cost Report
