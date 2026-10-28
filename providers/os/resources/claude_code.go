@@ -6,7 +6,6 @@ package resources
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -259,7 +258,11 @@ func (r *mqlClaudeCode) mcpServers() ([]any, error) {
 			}
 		}
 
-		res, err := NewResource(r.MqlRuntime, "claude.code.mcpServer", map[string]*llx.RawData{
+		source := scoped.source
+		if source == "" {
+			source = filepath.Join(r.configDir(), "mcp-needs-auth-cache.json")
+		}
+		fields := map[string]*llx.RawData{
 			"__id":        llx.StringData(claudeMcpServerID(scoped.project, name)),
 			"name":        llx.StringData(name),
 			"project":     llx.StringData(scoped.project),
@@ -272,7 +275,12 @@ func (r *mqlClaudeCode) mcpServers() ([]any, error) {
 			"needsAuth":   llx.BoolData(needsAuth),
 			"lastChecked": llx.StringData(lastChecked),
 			"plugin":      llx.StringData(""),
-		})
+
+			"headerNames": mcpHeaderNamesData(mapKeys(srv.Headers)),
+			"source":      llx.StringData(source),
+		}
+		setMcpServerShape(fields, srv.Command, srv.Args, srv.URL, mapKeys(srv.Env))
+		res, err := NewResource(r.MqlRuntime, "claude.code.mcpServer", fields)
 		if err != nil {
 			return nil, err
 		}
@@ -372,6 +380,9 @@ type claudeBackupState struct {
 	OAuthAccount *oauthAccount                   `json:"oauthAccount"`
 	Projects     map[string]claudeProjectEntry   `json:"projects"`
 	McpServers   map[string]claudeMcpServerEntry `json:"mcpServers"`
+
+	// path is the file the state was read from.
+	path string
 }
 
 // claudeProjectEntry is the per-project record inside .claude.json. We only
@@ -453,6 +464,8 @@ type claudeScopedMcpServer struct {
 	project string
 	name    string
 	entry   claudeMcpServerEntry
+	// source is the file the server's definition was read from.
+	source string
 }
 
 // claudeMcpServers returns every MCP server Claude Code is configured with,
@@ -469,22 +482,27 @@ type claudeScopedMcpServer struct {
 func claudeMcpServers(afs *afero.Afero, state *claudeBackupState) []claudeScopedMcpServer {
 	var out []claudeScopedMcpServer
 	for name, srv := range state.McpServers {
-		out = append(out, claudeScopedMcpServer{name: name, entry: srv})
+		out = append(out, claudeScopedMcpServer{name: name, entry: srv, source: state.path})
 	}
 	for projectPath, project := range state.Projects {
-		scoped := map[string]claudeMcpServerEntry{}
+		scoped := map[string]claudeScopedMcpServer{}
 		var repo struct {
 			McpServers map[string]claudeMcpServerEntry `json:"mcpServers"`
 		}
-		if data, err := afs.ReadFile(filepath.Join(projectPath, ".mcp.json")); err == nil {
+		repoFile := filepath.Join(projectPath, ".mcp.json")
+		if data, err := afs.ReadFile(repoFile); err == nil {
 			if err := unmarshalJSONConfig(data, &repo); err != nil {
 				log.Debug().Err(err).Str("project", projectPath).Msg("could not parse claude project .mcp.json")
 			}
 		}
-		maps.Copy(scoped, repo.McpServers)
-		maps.Copy(scoped, project.McpServers)
-		for name, srv := range scoped {
-			out = append(out, claudeScopedMcpServer{project: projectPath, name: name, entry: srv})
+		for name, srv := range repo.McpServers {
+			scoped[name] = claudeScopedMcpServer{project: projectPath, name: name, entry: srv, source: repoFile}
+		}
+		for name, srv := range project.McpServers {
+			scoped[name] = claudeScopedMcpServer{project: projectPath, name: name, entry: srv, source: state.path}
+		}
+		for _, srv := range scoped {
+			out = append(out, srv)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -581,6 +599,7 @@ func readClaudeState(afs *afero.Afero, configDir string) (*claudeBackupState, er
 		var state claudeBackupState
 		err := readJSONFileAfero(afs, "", path, &state)
 		if err == nil {
+			state.path = path
 			return &state, nil
 		}
 		if !errors.Is(err, os.ErrNotExist) {
@@ -596,6 +615,7 @@ func readClaudeState(afs *afero.Afero, configDir string) (*claudeBackupState, er
 	if err := readJSONFileAfero(afs, configDir, filepath.Join("backups", backupFile), &state); err != nil {
 		return nil, err
 	}
+	state.path = filepath.Join(configDir, "backups", backupFile)
 	return &state, nil
 }
 

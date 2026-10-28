@@ -333,3 +333,43 @@ url = "https://mcp.example.com/mcp"
 	assert.Equal(t, "https://mcp.example.com/mcp", cfg.McpServers["docs"].URL)
 	assert.Equal(t, mcpTransportHTTP, deriveMcpTransport("", cfg.McpServers["docs"].Command, cfg.McpServers["docs"].URL))
 }
+
+// Synthetic: a config.toml written from the Codex config reference; no target
+// showed this. Header and environment variable names are read from every key
+// that carries them, and values never reach the result.
+func TestCodexTomlMcpServerNamesAndState(t *testing.T) {
+	var cfg codexConfig
+	_, err := toml.Decode(`
+[mcp_servers.remote]
+url = "https://mcp.example.com/mcp"
+http_headers = { "X-Team" = "platform" }
+env_http_headers = { "Authorization" = "MCP_TOKEN" }
+enabled = false
+
+[mcp_servers.local]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github@1.2.3"]
+env = { "ZED" = "secret-z", "GITHUB_TOKEN" = "secret-g" }
+env_vars = ["HOME_DIR", { name = "AWS_PROFILE", source = "local" }]
+
+[mcp_servers.bearer]
+url = "https://mcp.example.com/mcp"
+bearer_token_env_var = "MCP_BEARER"
+`, &cfg)
+	require.NoError(t, err)
+
+	remote := cfg.McpServers["remote"]
+	assert.Equal(t, []string{"Authorization", "X-Team"}, remote.headerNames())
+	assert.True(t, remote.hasHeaders())
+	assert.False(t, remote.enabled())
+
+	local := cfg.McpServers["local"]
+	assert.Equal(t, []string{"AWS_PROFILE", "GITHUB_TOKEN", "HOME_DIR", "ZED"}, local.envNames())
+	assert.Empty(t, local.headerNames())
+	assert.False(t, local.hasHeaders())
+	assert.True(t, local.enabled(), "a server without enabled is on")
+
+	bearer := cfg.McpServers["bearer"]
+	assert.True(t, bearer.hasHeaders(), "a bearer token is sent as a header")
+	assert.Empty(t, bearer.headerNames())
+}

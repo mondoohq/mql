@@ -252,7 +252,7 @@ func (r *mqlClaudeCode) marketplaces() ([]any, error) {
 // "plugin:<plugin>:<server>", which the id follows; the server keeps its own
 // name. Plugin servers are scoped to the project of a project or local install.
 func claudePluginMcpServerResource(runtime *plugin.Runtime, pluginName, project string, s mcpServerSpec) (plugin.Resource, error) {
-	return NewResource(runtime, "claude.code.mcpServer", map[string]*llx.RawData{
+	fields := map[string]*llx.RawData{
 		"__id":        llx.StringData(claudeMcpServerID(project, "plugin:"+pluginName+":"+s.name)),
 		"name":        llx.StringData(s.name),
 		"project":     llx.StringData(project),
@@ -265,7 +265,12 @@ func claudePluginMcpServerResource(runtime *plugin.Runtime, pluginName, project 
 		"needsAuth":   llx.BoolData(false),
 		"lastChecked": llx.StringData(""),
 		"plugin":      llx.StringData(pluginName),
-	})
+
+		"headerNames": mcpHeaderNamesData(s.headerNames),
+		"source":      llx.StringData(s.source),
+	}
+	setMcpServerShape(fields, s.command, s.args, s.url, s.envNames)
+	return NewResource(runtime, "claude.code.mcpServer", fields)
 }
 
 // --- claude.code.plugin

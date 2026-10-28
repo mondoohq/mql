@@ -20890,6 +20890,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.code.mcpServer.plugin": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCodeMcpServer).GetPlugin()).ToDataRes(types.String)
 	},
+	"claude.code.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeMcpServer).GetSource()).ToDataRes(types.String)
+	},
+	"claude.code.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"claude.code.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"claude.code.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"claude.code.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"claude.code.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"claude.code.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
+	},
 	"claude.code.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCodeMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
 	},
@@ -20931,6 +20952,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"claude.desktop.mcpServer.extension": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeDesktopMcpServer).GetExtension()).ToDataRes(types.Resource("claude.desktop.extension"))
+	},
+	"claude.desktop.mcpServer.hasHeaders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetHasHeaders()).ToDataRes(types.Bool)
+	},
+	"claude.desktop.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetSource()).ToDataRes(types.String)
+	},
+	"claude.desktop.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"claude.desktop.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"claude.desktop.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"claude.desktop.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"claude.desktop.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"claude.desktop.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
 	},
 	"claude.desktop.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeDesktopMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
@@ -21088,6 +21133,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"openai.codex.mcpServer.plugin": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiCodexMcpServer).GetPlugin()).ToDataRes(types.String)
 	},
+	"openai.codex.mcpServer.hasHeaders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexMcpServer).GetHasHeaders()).ToDataRes(types.Bool)
+	},
+	"openai.codex.mcpServer.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexMcpServer).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"openai.codex.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexMcpServer).GetSource()).ToDataRes(types.String)
+	},
+	"openai.codex.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"openai.codex.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"openai.codex.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"openai.codex.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"openai.codex.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"openai.codex.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiCodexMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
+	},
 	"openai.codex.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiCodexMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
 	},
@@ -21174,6 +21246,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"cursor.mcpServer.hasEnv": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCursorMcpServer).GetHasEnv()).ToDataRes(types.Bool)
+	},
+	"cursor.mcpServer.hasHeaders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorMcpServer).GetHasHeaders()).ToDataRes(types.Bool)
+	},
+	"cursor.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorMcpServer).GetSource()).ToDataRes(types.String)
+	},
+	"cursor.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"cursor.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"cursor.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"cursor.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"cursor.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"cursor.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCursorMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
 	},
 	"cursor.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCursorMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
@@ -21267,6 +21363,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"github.copilot.mcpServer.plugin": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubCopilotMcpServer).GetPlugin()).ToDataRes(types.Resource("github.copilot.plugin"))
+	},
+	"github.copilot.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCopilotMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"github.copilot.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCopilotMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"github.copilot.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCopilotMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"github.copilot.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCopilotMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"github.copilot.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCopilotMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"github.copilot.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubCopilotMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
 	},
 	"github.copilot.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubCopilotMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
@@ -21409,6 +21523,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"goose.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGooseMcpServer).GetSource()).ToDataRes(types.String)
 	},
+	"goose.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGooseMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"goose.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGooseMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"goose.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGooseMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"goose.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGooseMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"goose.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGooseMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"goose.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGooseMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
+	},
 	"goose.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGooseMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
 	},
@@ -21489,6 +21621,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gemini.mcpServer.extension": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGeminiMcpServer).GetExtension()).ToDataRes(types.Resource("gemini.extension"))
+	},
+	"gemini.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"gemini.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"gemini.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"gemini.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"gemini.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"gemini.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGeminiMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
 	},
 	"gemini.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGeminiMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
@@ -21616,6 +21766,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"windsurf.mcpServer.hasEnv": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindsurfMcpServer).GetHasEnv()).ToDataRes(types.Bool)
 	},
+	"windsurf.mcpServer.hasHeaders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindsurfMcpServer).GetHasHeaders()).ToDataRes(types.Bool)
+	},
+	"windsurf.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindsurfMcpServer).GetSource()).ToDataRes(types.String)
+	},
+	"windsurf.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindsurfMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"windsurf.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindsurfMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"windsurf.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindsurfMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"windsurf.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindsurfMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"windsurf.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindsurfMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"windsurf.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindsurfMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
+	},
 	"windsurf.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindsurfMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
 	},
@@ -21708,6 +21882,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"breezell.mcpServer.hasEnv": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBreezellMcpServer).GetHasEnv()).ToDataRes(types.Bool)
+	},
+	"breezell.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBreezellMcpServer).GetSource()).ToDataRes(types.String)
+	},
+	"breezell.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBreezellMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"breezell.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBreezellMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"breezell.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBreezellMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"breezell.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBreezellMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"breezell.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBreezellMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
 	},
 	"breezell.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBreezellMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
@@ -21855,6 +22047,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"cline.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClineMcpServer).GetSource()).ToDataRes(types.String)
+	},
+	"cline.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClineMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"cline.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClineMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"cline.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClineMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"cline.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClineMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"cline.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClineMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"cline.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClineMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
 	},
 	"cline.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClineMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
@@ -22036,6 +22246,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"opencode.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpencodeMcpServer).GetSource()).ToDataRes(types.String)
 	},
+	"opencode.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpencodeMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"opencode.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpencodeMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"opencode.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpencodeMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"opencode.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpencodeMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"opencode.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpencodeMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"opencode.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpencodeMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
+	},
 	"opencode.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpencodeMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
 	},
@@ -22141,6 +22369,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mistral.vibe.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralVibeMcpServer).GetSource()).ToDataRes(types.String)
 	},
+	"mistral.vibe.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralVibeMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"mistral.vibe.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralVibeMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"mistral.vibe.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralVibeMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"mistral.vibe.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralVibeMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"mistral.vibe.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralVibeMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"mistral.vibe.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMistralVibeMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
+	},
 	"mistral.vibe.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMistralVibeMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
 	},
@@ -22209,6 +22455,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"antigravity.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAntigravityMcpServer).GetSource()).ToDataRes(types.String)
+	},
+	"antigravity.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"antigravity.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"antigravity.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"antigravity.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"antigravity.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"antigravity.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAntigravityMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
 	},
 	"antigravity.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAntigravityMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
@@ -22438,6 +22702,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"augment.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAugmentMcpServer).GetSource()).ToDataRes(types.String)
 	},
+	"augment.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAugmentMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"augment.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAugmentMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"augment.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAugmentMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"augment.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAugmentMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"augment.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAugmentMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"augment.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAugmentMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
+	},
 	"augment.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAugmentMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
 	},
@@ -22546,6 +22828,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"kilocode.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKilocodeMcpServer).GetSource()).ToDataRes(types.String)
 	},
+	"kilocode.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKilocodeMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"kilocode.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKilocodeMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"kilocode.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKilocodeMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"kilocode.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKilocodeMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"kilocode.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKilocodeMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"kilocode.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKilocodeMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
+	},
 	"kilocode.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKilocodeMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
 	},
@@ -22614,6 +22914,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"openhands.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenhandsMcpServer).GetSource()).ToDataRes(types.String)
+	},
+	"openhands.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenhandsMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"openhands.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenhandsMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"openhands.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenhandsMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"openhands.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenhandsMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"openhands.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenhandsMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"openhands.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenhandsMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
 	},
 	"openhands.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenhandsMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
@@ -22689,6 +23007,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"qwen.code.mcpServer.extension": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlQwenCodeMcpServer).GetExtension()).ToDataRes(types.Resource("qwen.code.extension"))
+	},
+	"qwen.code.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlQwenCodeMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"qwen.code.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlQwenCodeMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"qwen.code.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlQwenCodeMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"qwen.code.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlQwenCodeMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"qwen.code.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlQwenCodeMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"qwen.code.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlQwenCodeMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
 	},
 	"qwen.code.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlQwenCodeMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
@@ -22918,6 +23254,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"devin.cli.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDevinCliMcpServer).GetSource()).ToDataRes(types.String)
 	},
+	"devin.cli.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"devin.cli.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"devin.cli.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"devin.cli.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"devin.cli.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"devin.cli.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDevinCliMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
+	},
 	"devin.cli.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDevinCliMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
 	},
@@ -23019,6 +23373,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"deepseek.harness.mcpServer.source": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDeepseekHarnessMcpServer).GetSource()).ToDataRes(types.String)
+	},
+	"deepseek.harness.mcpServer.envNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetEnvNames()).ToDataRes(types.Array(types.String))
+	},
+	"deepseek.harness.mcpServer.headerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"deepseek.harness.mcpServer.launcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetLauncher()).ToDataRes(types.String)
+	},
+	"deepseek.harness.mcpServer.packageName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetPackageName()).ToDataRes(types.String)
+	},
+	"deepseek.harness.mcpServer.packagePinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetPackagePinned()).ToDataRes(types.Bool)
+	},
+	"deepseek.harness.mcpServer.insecureTransport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDeepseekHarnessMcpServer).GetInsecureTransport()).ToDataRes(types.Bool)
 	},
 	"deepseek.harness.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDeepseekHarnessMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
@@ -48819,6 +49191,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClaudeCodeMcpServer).Plugin, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"claude.code.mcpServer.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.code.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.code.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.code.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.code.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.code.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.code.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"claude.code.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeCodeMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
 		return
@@ -48881,6 +49281,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"claude.desktop.mcpServer.extension": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeDesktopMcpServer).Extension, ok = plugin.RawToTValue[*mqlClaudeDesktopExtension](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.hasHeaders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).HasHeaders, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"claude.desktop.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -49111,6 +49543,42 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOpenaiCodexMcpServer).Plugin, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"openai.codex.mcpServer.hasHeaders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexMcpServer).HasHeaders, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"openai.codex.mcpServer.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexMcpServer).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"openai.codex.mcpServer.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.codex.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.codex.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openai.codex.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.codex.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openai.codex.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"openai.codex.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiCodexMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"openai.codex.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenaiCodexMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
 		return
@@ -49245,6 +49713,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"cursor.mcpServer.hasEnv": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCursorMcpServer).HasEnv, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cursor.mcpServer.hasHeaders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorMcpServer).HasHeaders, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cursor.mcpServer.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cursor.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cursor.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cursor.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cursor.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cursor.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cursor.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCursorMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"cursor.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -49389,6 +49889,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"github.copilot.mcpServer.plugin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubCopilotMcpServer).Plugin, ok = plugin.RawToTValue[*mqlGithubCopilotPlugin](v.Value, v.Error)
+		return
+	},
+	"github.copilot.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCopilotMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.copilot.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCopilotMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"github.copilot.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCopilotMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.copilot.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCopilotMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.copilot.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCopilotMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"github.copilot.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubCopilotMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"github.copilot.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -49599,6 +50123,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGooseMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"goose.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGooseMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"goose.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGooseMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"goose.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGooseMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"goose.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGooseMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"goose.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGooseMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"goose.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGooseMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"goose.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGooseMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
 		return
@@ -49717,6 +50265,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gemini.mcpServer.extension": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGeminiMcpServer).Extension, ok = plugin.RawToTValue[*mqlGeminiExtension](v.Value, v.Error)
+		return
+	},
+	"gemini.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gemini.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gemini.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gemini.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gemini.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gemini.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGeminiMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"gemini.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -49911,6 +50483,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlWindsurfMcpServer).HasEnv, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"windsurf.mcpServer.hasHeaders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindsurfMcpServer).HasHeaders, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windsurf.mcpServer.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindsurfMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windsurf.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindsurfMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"windsurf.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindsurfMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"windsurf.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindsurfMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windsurf.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindsurfMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windsurf.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindsurfMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windsurf.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindsurfMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"windsurf.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindsurfMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
 		return
@@ -50053,6 +50657,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"breezell.mcpServer.hasEnv": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlBreezellMcpServer).HasEnv, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"breezell.mcpServer.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBreezellMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"breezell.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBreezellMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"breezell.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBreezellMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"breezell.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBreezellMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"breezell.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBreezellMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"breezell.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBreezellMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"breezell.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -50277,6 +50905,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"cline.mcpServer.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClineMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cline.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClineMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cline.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClineMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cline.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClineMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cline.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClineMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cline.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClineMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cline.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClineMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"cline.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -50555,6 +51207,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOpencodeMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"opencode.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpencodeMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"opencode.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpencodeMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"opencode.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpencodeMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"opencode.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpencodeMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"opencode.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpencodeMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"opencode.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpencodeMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"opencode.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpencodeMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
 		return
@@ -50715,6 +51391,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMistralVibeMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"mistral.vibe.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralVibeMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.vibe.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralVibeMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mistral.vibe.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralVibeMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.vibe.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralVibeMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mistral.vibe.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralVibeMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mistral.vibe.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMistralVibeMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"mistral.vibe.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMistralVibeMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
 		return
@@ -50817,6 +51517,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"antigravity.mcpServer.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAntigravityMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"antigravity.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAntigravityMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"antigravity.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -51171,6 +51895,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAugmentMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"augment.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAugmentMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"augment.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAugmentMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"augment.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAugmentMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"augment.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAugmentMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"augment.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAugmentMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"augment.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAugmentMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"augment.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAugmentMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
 		return
@@ -51335,6 +52083,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlKilocodeMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"kilocode.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKilocodeMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kilocode.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKilocodeMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kilocode.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKilocodeMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kilocode.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKilocodeMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kilocode.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKilocodeMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kilocode.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKilocodeMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"kilocode.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlKilocodeMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
 		return
@@ -51437,6 +52209,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"openhands.mcpServer.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenhandsMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openhands.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenhandsMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openhands.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenhandsMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"openhands.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenhandsMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openhands.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenhandsMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openhands.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenhandsMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"openhands.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenhandsMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"openhands.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -51549,6 +52345,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"qwen.code.mcpServer.extension": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlQwenCodeMcpServer).Extension, ok = plugin.RawToTValue[*mqlQwenCodeExtension](v.Value, v.Error)
+		return
+	},
+	"qwen.code.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlQwenCodeMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"qwen.code.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlQwenCodeMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"qwen.code.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlQwenCodeMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"qwen.code.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlQwenCodeMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"qwen.code.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlQwenCodeMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"qwen.code.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlQwenCodeMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"qwen.code.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -51903,6 +52723,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDevinCliMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"devin.cli.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"devin.cli.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDevinCliMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"devin.cli.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDevinCliMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
 		return
@@ -52057,6 +52901,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"deepseek.harness.mcpServer.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDeepseekHarnessMcpServer).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.envNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).EnvNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.headerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).HeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.launcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).Launcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.packageName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).PackageName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.packagePinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).PackagePinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"deepseek.harness.mcpServer.insecureTransport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDeepseekHarnessMcpServer).InsecureTransport, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"deepseek.harness.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -123461,18 +124329,25 @@ type mqlClaudeCodeMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlClaudeCodeMcpServerInternal it will be used here
-	Name        plugin.TValue[string]
-	Project     plugin.TValue[string]
-	Type        plugin.TValue[string]
-	Command     plugin.TValue[string]
-	Args        plugin.TValue[[]any]
-	Url         plugin.TValue[string]
-	HasEnv      plugin.TValue[bool]
-	NeedsAuth   plugin.TValue[bool]
-	LastChecked plugin.TValue[string]
-	HasHeaders  plugin.TValue[bool]
-	Plugin      plugin.TValue[string]
-	Running     plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Project           plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	NeedsAuth         plugin.TValue[bool]
+	LastChecked       plugin.TValue[string]
+	HasHeaders        plugin.TValue[bool]
+	Plugin            plugin.TValue[string]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createClaudeCodeMcpServer creates a new instance of this resource
@@ -123554,6 +124429,34 @@ func (c *mqlClaudeCodeMcpServer) GetHasHeaders() *plugin.TValue[bool] {
 
 func (c *mqlClaudeCodeMcpServer) GetPlugin() *plugin.TValue[string] {
 	return &c.Plugin
+}
+
+func (c *mqlClaudeCodeMcpServer) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlClaudeCodeMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlClaudeCodeMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlClaudeCodeMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlClaudeCodeMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlClaudeCodeMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlClaudeCodeMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlClaudeCodeMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -123684,15 +124587,23 @@ type mqlClaudeDesktopMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlClaudeDesktopMcpServerInternal it will be used here
-	Name      plugin.TValue[string]
-	Type      plugin.TValue[string]
-	Command   plugin.TValue[string]
-	Args      plugin.TValue[[]any]
-	Url       plugin.TValue[string]
-	HasEnv    plugin.TValue[bool]
-	Enabled   plugin.TValue[bool]
-	Extension plugin.TValue[*mqlClaudeDesktopExtension]
-	Running   plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Extension         plugin.TValue[*mqlClaudeDesktopExtension]
+	HasHeaders        plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createClaudeDesktopMcpServer creates a new instance of this resource
@@ -123774,6 +124685,38 @@ func (c *mqlClaudeDesktopMcpServer) GetExtension() *plugin.TValue[*mqlClaudeDesk
 
 		return c.extension()
 	})
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetHasHeaders() *plugin.TValue[bool] {
+	return &c.HasHeaders
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlClaudeDesktopMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -124288,15 +125231,24 @@ type mqlOpenaiCodexMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlOpenaiCodexMcpServerInternal it will be used here
-	Name    plugin.TValue[string]
-	Type    plugin.TValue[string]
-	Command plugin.TValue[string]
-	Args    plugin.TValue[[]any]
-	Url     plugin.TValue[string]
-	HasEnv  plugin.TValue[bool]
-	Note    plugin.TValue[string]
-	Plugin  plugin.TValue[string]
-	Running plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	Note              plugin.TValue[string]
+	Plugin            plugin.TValue[string]
+	HasHeaders        plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createOpenaiCodexMcpServer creates a new instance of this resource
@@ -124366,6 +125318,42 @@ func (c *mqlOpenaiCodexMcpServer) GetNote() *plugin.TValue[string] {
 
 func (c *mqlOpenaiCodexMcpServer) GetPlugin() *plugin.TValue[string] {
 	return &c.Plugin
+}
+
+func (c *mqlOpenaiCodexMcpServer) GetHasHeaders() *plugin.TValue[bool] {
+	return &c.HasHeaders
+}
+
+func (c *mqlOpenaiCodexMcpServer) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlOpenaiCodexMcpServer) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlOpenaiCodexMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlOpenaiCodexMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlOpenaiCodexMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlOpenaiCodexMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlOpenaiCodexMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlOpenaiCodexMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlOpenaiCodexMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -124737,13 +125725,21 @@ type mqlCursorMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlCursorMcpServerInternal it will be used here
-	Name    plugin.TValue[string]
-	Type    plugin.TValue[string]
-	Command plugin.TValue[string]
-	Args    plugin.TValue[[]any]
-	Url     plugin.TValue[string]
-	HasEnv  plugin.TValue[bool]
-	Running plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createCursorMcpServer creates a new instance of this resource
@@ -124805,6 +125801,38 @@ func (c *mqlCursorMcpServer) GetUrl() *plugin.TValue[string] {
 
 func (c *mqlCursorMcpServer) GetHasEnv() *plugin.TValue[bool] {
 	return &c.HasEnv
+}
+
+func (c *mqlCursorMcpServer) GetHasHeaders() *plugin.TValue[bool] {
+	return &c.HasHeaders
+}
+
+func (c *mqlCursorMcpServer) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlCursorMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlCursorMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlCursorMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlCursorMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlCursorMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlCursorMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlCursorMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -125170,17 +126198,23 @@ type mqlGithubCopilotMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlGithubCopilotMcpServerInternal it will be used here
-	Name       plugin.TValue[string]
-	Type       plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Args       plugin.TValue[[]any]
-	Url        plugin.TValue[string]
-	HasEnv     plugin.TValue[bool]
-	HasHeaders plugin.TValue[bool]
-	Enabled    plugin.TValue[bool]
-	Source     plugin.TValue[string]
-	Plugin     plugin.TValue[*mqlGithubCopilotPlugin]
-	Running    plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	Plugin            plugin.TValue[*mqlGithubCopilotPlugin]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createGithubCopilotMcpServer creates a new instance of this resource
@@ -125270,6 +126304,30 @@ func (c *mqlGithubCopilotMcpServer) GetPlugin() *plugin.TValue[*mqlGithubCopilot
 
 		return c.plugin()
 	})
+}
+
+func (c *mqlGithubCopilotMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlGithubCopilotMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlGithubCopilotMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlGithubCopilotMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlGithubCopilotMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlGithubCopilotMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlGithubCopilotMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -125748,16 +126806,22 @@ type mqlGooseMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlGooseMcpServerInternal it will be used here
-	Name       plugin.TValue[string]
-	Type       plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Args       plugin.TValue[[]any]
-	Url        plugin.TValue[string]
-	HasEnv     plugin.TValue[bool]
-	HasHeaders plugin.TValue[bool]
-	Enabled    plugin.TValue[bool]
-	Source     plugin.TValue[string]
-	Running    plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createGooseMcpServer creates a new instance of this resource
@@ -125831,6 +126895,30 @@ func (c *mqlGooseMcpServer) GetEnabled() *plugin.TValue[bool] {
 
 func (c *mqlGooseMcpServer) GetSource() *plugin.TValue[string] {
 	return &c.Source
+}
+
+func (c *mqlGooseMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlGooseMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlGooseMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlGooseMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlGooseMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlGooseMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlGooseMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -126087,16 +127175,22 @@ type mqlGeminiMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlGeminiMcpServerInternal it will be used here
-	Name       plugin.TValue[string]
-	Type       plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Args       plugin.TValue[[]any]
-	Url        plugin.TValue[string]
-	HasEnv     plugin.TValue[bool]
-	HasHeaders plugin.TValue[bool]
-	Source     plugin.TValue[string]
-	Extension  plugin.TValue[*mqlGeminiExtension]
-	Running    plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	Extension         plugin.TValue[*mqlGeminiExtension]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createGeminiMcpServer creates a new instance of this resource
@@ -126182,6 +127276,30 @@ func (c *mqlGeminiMcpServer) GetExtension() *plugin.TValue[*mqlGeminiExtension] 
 
 		return c.extension()
 	})
+}
+
+func (c *mqlGeminiMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlGeminiMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlGeminiMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlGeminiMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlGeminiMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlGeminiMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlGeminiMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -126690,13 +127808,21 @@ type mqlWindsurfMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlWindsurfMcpServerInternal it will be used here
-	Name    plugin.TValue[string]
-	Type    plugin.TValue[string]
-	Command plugin.TValue[string]
-	Args    plugin.TValue[[]any]
-	Url     plugin.TValue[string]
-	HasEnv  plugin.TValue[bool]
-	Running plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createWindsurfMcpServer creates a new instance of this resource
@@ -126758,6 +127884,38 @@ func (c *mqlWindsurfMcpServer) GetUrl() *plugin.TValue[string] {
 
 func (c *mqlWindsurfMcpServer) GetHasEnv() *plugin.TValue[bool] {
 	return &c.HasEnv
+}
+
+func (c *mqlWindsurfMcpServer) GetHasHeaders() *plugin.TValue[bool] {
+	return &c.HasHeaders
+}
+
+func (c *mqlWindsurfMcpServer) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlWindsurfMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlWindsurfMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlWindsurfMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlWindsurfMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlWindsurfMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlWindsurfMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlWindsurfMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -127143,13 +128301,19 @@ type mqlBreezellMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlBreezellMcpServerInternal it will be used here
-	Name    plugin.TValue[string]
-	Type    plugin.TValue[string]
-	Command plugin.TValue[string]
-	Args    plugin.TValue[[]any]
-	Url     plugin.TValue[string]
-	HasEnv  plugin.TValue[bool]
-	Running plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createBreezellMcpServer creates a new instance of this resource
@@ -127211,6 +128375,30 @@ func (c *mqlBreezellMcpServer) GetUrl() *plugin.TValue[string] {
 
 func (c *mqlBreezellMcpServer) GetHasEnv() *plugin.TValue[bool] {
 	return &c.HasEnv
+}
+
+func (c *mqlBreezellMcpServer) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlBreezellMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlBreezellMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlBreezellMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlBreezellMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlBreezellMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlBreezellMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -127819,16 +129007,22 @@ type mqlClineMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlClineMcpServerInternal it will be used here
-	Name       plugin.TValue[string]
-	Type       plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Args       plugin.TValue[[]any]
-	Url        plugin.TValue[string]
-	HasEnv     plugin.TValue[bool]
-	HasHeaders plugin.TValue[bool]
-	Enabled    plugin.TValue[bool]
-	Source     plugin.TValue[string]
-	Running    plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createClineMcpServer creates a new instance of this resource
@@ -127902,6 +129096,30 @@ func (c *mqlClineMcpServer) GetEnabled() *plugin.TValue[bool] {
 
 func (c *mqlClineMcpServer) GetSource() *plugin.TValue[string] {
 	return &c.Source
+}
+
+func (c *mqlClineMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlClineMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlClineMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlClineMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlClineMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlClineMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlClineMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -128691,16 +129909,22 @@ type mqlOpencodeMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlOpencodeMcpServerInternal it will be used here
-	Name       plugin.TValue[string]
-	Type       plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Args       plugin.TValue[[]any]
-	Url        plugin.TValue[string]
-	HasEnv     plugin.TValue[bool]
-	HasHeaders plugin.TValue[bool]
-	Enabled    plugin.TValue[bool]
-	Source     plugin.TValue[string]
-	Running    plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createOpencodeMcpServer creates a new instance of this resource
@@ -128774,6 +129998,30 @@ func (c *mqlOpencodeMcpServer) GetEnabled() *plugin.TValue[bool] {
 
 func (c *mqlOpencodeMcpServer) GetSource() *plugin.TValue[string] {
 	return &c.Source
+}
+
+func (c *mqlOpencodeMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlOpencodeMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlOpencodeMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlOpencodeMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlOpencodeMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlOpencodeMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlOpencodeMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -129180,16 +130428,22 @@ type mqlMistralVibeMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMistralVibeMcpServerInternal it will be used here
-	Name       plugin.TValue[string]
-	Type       plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Args       plugin.TValue[[]any]
-	Url        plugin.TValue[string]
-	HasEnv     plugin.TValue[bool]
-	HasHeaders plugin.TValue[bool]
-	Enabled    plugin.TValue[bool]
-	Source     plugin.TValue[string]
-	Running    plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createMistralVibeMcpServer creates a new instance of this resource
@@ -129263,6 +130517,30 @@ func (c *mqlMistralVibeMcpServer) GetEnabled() *plugin.TValue[bool] {
 
 func (c *mqlMistralVibeMcpServer) GetSource() *plugin.TValue[string] {
 	return &c.Source
+}
+
+func (c *mqlMistralVibeMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlMistralVibeMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlMistralVibeMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlMistralVibeMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlMistralVibeMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlMistralVibeMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlMistralVibeMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -129481,16 +130759,22 @@ type mqlAntigravityMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAntigravityMcpServerInternal it will be used here
-	Name       plugin.TValue[string]
-	Type       plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Args       plugin.TValue[[]any]
-	Url        plugin.TValue[string]
-	HasEnv     plugin.TValue[bool]
-	HasHeaders plugin.TValue[bool]
-	Enabled    plugin.TValue[bool]
-	Source     plugin.TValue[string]
-	Running    plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createAntigravityMcpServer creates a new instance of this resource
@@ -129564,6 +130848,30 @@ func (c *mqlAntigravityMcpServer) GetEnabled() *plugin.TValue[bool] {
 
 func (c *mqlAntigravityMcpServer) GetSource() *plugin.TValue[string] {
 	return &c.Source
+}
+
+func (c *mqlAntigravityMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlAntigravityMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlAntigravityMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlAntigravityMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlAntigravityMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlAntigravityMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlAntigravityMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -130631,16 +131939,22 @@ type mqlAugmentMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAugmentMcpServerInternal it will be used here
-	Name       plugin.TValue[string]
-	Type       plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Args       plugin.TValue[[]any]
-	Url        plugin.TValue[string]
-	HasEnv     plugin.TValue[bool]
-	HasHeaders plugin.TValue[bool]
-	Enabled    plugin.TValue[bool]
-	Source     plugin.TValue[string]
-	Running    plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createAugmentMcpServer creates a new instance of this resource
@@ -130714,6 +132028,30 @@ func (c *mqlAugmentMcpServer) GetEnabled() *plugin.TValue[bool] {
 
 func (c *mqlAugmentMcpServer) GetSource() *plugin.TValue[string] {
 	return &c.Source
+}
+
+func (c *mqlAugmentMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlAugmentMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlAugmentMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlAugmentMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlAugmentMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlAugmentMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlAugmentMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -131127,16 +132465,22 @@ type mqlKilocodeMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlKilocodeMcpServerInternal it will be used here
-	Name       plugin.TValue[string]
-	Type       plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Args       plugin.TValue[[]any]
-	Url        plugin.TValue[string]
-	HasEnv     plugin.TValue[bool]
-	HasHeaders plugin.TValue[bool]
-	Enabled    plugin.TValue[bool]
-	Source     plugin.TValue[string]
-	Running    plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createKilocodeMcpServer creates a new instance of this resource
@@ -131210,6 +132554,30 @@ func (c *mqlKilocodeMcpServer) GetEnabled() *plugin.TValue[bool] {
 
 func (c *mqlKilocodeMcpServer) GetSource() *plugin.TValue[string] {
 	return &c.Source
+}
+
+func (c *mqlKilocodeMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlKilocodeMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlKilocodeMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlKilocodeMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlKilocodeMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlKilocodeMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlKilocodeMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -131428,16 +132796,22 @@ type mqlOpenhandsMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlOpenhandsMcpServerInternal it will be used here
-	Name       plugin.TValue[string]
-	Type       plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Args       plugin.TValue[[]any]
-	Url        plugin.TValue[string]
-	HasEnv     plugin.TValue[bool]
-	HasHeaders plugin.TValue[bool]
-	Enabled    plugin.TValue[bool]
-	Source     plugin.TValue[string]
-	Running    plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createOpenhandsMcpServer creates a new instance of this resource
@@ -131511,6 +132885,30 @@ func (c *mqlOpenhandsMcpServer) GetEnabled() *plugin.TValue[bool] {
 
 func (c *mqlOpenhandsMcpServer) GetSource() *plugin.TValue[string] {
 	return &c.Source
+}
+
+func (c *mqlOpenhandsMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlOpenhandsMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlOpenhandsMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlOpenhandsMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlOpenhandsMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlOpenhandsMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlOpenhandsMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -131746,17 +133144,23 @@ type mqlQwenCodeMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlQwenCodeMcpServerInternal it will be used here
-	Name       plugin.TValue[string]
-	Type       plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Args       plugin.TValue[[]any]
-	Url        plugin.TValue[string]
-	HasEnv     plugin.TValue[bool]
-	HasHeaders plugin.TValue[bool]
-	Enabled    plugin.TValue[bool]
-	Source     plugin.TValue[string]
-	Extension  plugin.TValue[*mqlQwenCodeExtension]
-	Running    plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	Extension         plugin.TValue[*mqlQwenCodeExtension]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createQwenCodeMcpServer creates a new instance of this resource
@@ -131846,6 +133250,30 @@ func (c *mqlQwenCodeMcpServer) GetExtension() *plugin.TValue[*mqlQwenCodeExtensi
 
 		return c.extension()
 	})
+}
+
+func (c *mqlQwenCodeMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlQwenCodeMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlQwenCodeMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlQwenCodeMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlQwenCodeMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlQwenCodeMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlQwenCodeMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -132917,16 +134345,22 @@ type mqlDevinCliMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlDevinCliMcpServerInternal it will be used here
-	Name       plugin.TValue[string]
-	Type       plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Args       plugin.TValue[[]any]
-	Url        plugin.TValue[string]
-	HasEnv     plugin.TValue[bool]
-	HasHeaders plugin.TValue[bool]
-	Enabled    plugin.TValue[bool]
-	Source     plugin.TValue[string]
-	Running    plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createDevinCliMcpServer creates a new instance of this resource
@@ -133000,6 +134434,30 @@ func (c *mqlDevinCliMcpServer) GetEnabled() *plugin.TValue[bool] {
 
 func (c *mqlDevinCliMcpServer) GetSource() *plugin.TValue[string] {
 	return &c.Source
+}
+
+func (c *mqlDevinCliMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlDevinCliMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlDevinCliMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlDevinCliMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlDevinCliMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlDevinCliMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlDevinCliMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
@@ -133419,16 +134877,22 @@ type mqlDeepseekHarnessMcpServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlDeepseekHarnessMcpServerInternal it will be used here
-	Name       plugin.TValue[string]
-	Type       plugin.TValue[string]
-	Command    plugin.TValue[string]
-	Args       plugin.TValue[[]any]
-	Url        plugin.TValue[string]
-	HasEnv     plugin.TValue[bool]
-	HasHeaders plugin.TValue[bool]
-	Enabled    plugin.TValue[bool]
-	Source     plugin.TValue[string]
-	Running    plugin.TValue[*llx.AssetValue]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Command           plugin.TValue[string]
+	Args              plugin.TValue[[]any]
+	Url               plugin.TValue[string]
+	HasEnv            plugin.TValue[bool]
+	HasHeaders        plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	Source            plugin.TValue[string]
+	EnvNames          plugin.TValue[[]any]
+	HeaderNames       plugin.TValue[[]any]
+	Launcher          plugin.TValue[string]
+	PackageName       plugin.TValue[string]
+	PackagePinned     plugin.TValue[bool]
+	InsecureTransport plugin.TValue[bool]
+	Running           plugin.TValue[*llx.AssetValue]
 }
 
 // createDeepseekHarnessMcpServer creates a new instance of this resource
@@ -133502,6 +134966,30 @@ func (c *mqlDeepseekHarnessMcpServer) GetEnabled() *plugin.TValue[bool] {
 
 func (c *mqlDeepseekHarnessMcpServer) GetSource() *plugin.TValue[string] {
 	return &c.Source
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetEnvNames() *plugin.TValue[[]any] {
+	return &c.EnvNames
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetHeaderNames() *plugin.TValue[[]any] {
+	return &c.HeaderNames
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetLauncher() *plugin.TValue[string] {
+	return &c.Launcher
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetPackageName() *plugin.TValue[string] {
+	return &c.PackageName
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetPackagePinned() *plugin.TValue[bool] {
+	return &c.PackagePinned
+}
+
+func (c *mqlDeepseekHarnessMcpServer) GetInsecureTransport() *plugin.TValue[bool] {
+	return &c.InsecureTransport
 }
 
 func (c *mqlDeepseekHarnessMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {

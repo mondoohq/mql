@@ -29,7 +29,8 @@ func (r *mqlCursor) mcpServers() ([]any, error) {
 	configDir := r.ConfigPath.Data
 
 	// Cursor stores MCP config in mcp.json
-	data, err := afs.ReadFile(filepath.Join(configDir, "mcp.json"))
+	configFile := filepath.Join(configDir, "mcp.json")
+	data, err := afs.ReadFile(configFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -44,7 +45,7 @@ func (r *mqlCursor) mcpServers() ([]any, error) {
 
 	var result []any
 	for name, server := range mcpConfig.McpServers {
-		res, err := NewResource(r.MqlRuntime, "cursor.mcpServer", map[string]*llx.RawData{
+		fields := map[string]*llx.RawData{
 			"__id":    llx.StringData("cursor.mcpServer/" + name),
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport(server.Type, server.Command, server.URL)),
@@ -52,7 +53,13 @@ func (r *mqlCursor) mcpServers() ([]any, error) {
 			"args":    strSliceToArrayData(server.Args),
 			"url":     llx.StringData(server.URL),
 			"hasEnv":  llx.BoolData(len(server.Env) > 0),
-		})
+
+			"hasHeaders":  llx.BoolData(len(server.Headers) > 0),
+			"headerNames": mcpHeaderNamesData(mapKeys(server.Headers)),
+			"source":      llx.StringData(configFile),
+		}
+		setMcpServerShape(fields, server.Command, server.Args, server.URL, mapKeys(server.Env))
+		res, err := NewResource(r.MqlRuntime, "cursor.mcpServer", fields)
 		if err != nil {
 			return nil, err
 		}
@@ -167,4 +174,5 @@ type cursorMCPServer struct {
 	Args    []string          `json:"args"`
 	URL     string            `json:"url"`
 	Env     map[string]string `json:"env"`
+	Headers map[string]string `json:"headers"`
 }

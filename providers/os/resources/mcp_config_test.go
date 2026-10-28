@@ -193,3 +193,19 @@ func TestMcpServerResourceIDKeysBySource(t *testing.T) {
 		mcpServerResourceID("opencode.mcpServer", "/home/a/.config/opencode/opencode.json", "fs"),
 		mcpServerResourceID("opencode.mcpServer", "/home/a/.config/opencode/opencode.jsonc", "fs"))
 }
+
+// Synthetic: env, environment (OpenCode) and headers keys; no target showed
+// this. Only names are kept, sorted, never values.
+func TestParseMcpServersJSONEnvAndHeaderNames(t *testing.T) {
+	specs, err := parseMcpServersJSON([]byte(`{"mcpServers":{
+		"a": {"command":"npx","env":{"ZED":"z","API_KEY":"secret"},"environment":{"MID":"m"}},
+		"b": {"url":"https://x","headers":{"X-Trace":"1","Authorization":"Bearer secret"}},
+		"c": {"command":"srv"}
+	}}`), "mcpServers", "/cfg.json")
+	require.NoError(t, err)
+	require.Len(t, specs, 3)
+	assert.Equal(t, []string{"API_KEY", "MID", "ZED"}, specs[0].envNames)
+	assert.Empty(t, specs[0].headerNames)
+	assert.Equal(t, []string{"Authorization", "X-Trace"}, specs[1].headerNames)
+	assert.Empty(t, specs[2].envNames)
+}

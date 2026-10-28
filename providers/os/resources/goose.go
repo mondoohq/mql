@@ -148,6 +148,9 @@ func gooseMcpServers(config *gooseConfig, source string) []mcpServerSpec {
 			hasHeaders: len(ext.Headers) > 0,
 			enabled:    ext.Enabled,
 			source:     source,
+
+			envNames:    mcpNames(mapKeys(ext.Envs), ext.EnvKeys),
+			headerNames: mcpNames(mapKeys(ext.Headers)),
 		})
 	}
 	return specs

@@ -144,6 +144,9 @@ func parseVibeMcpServers(data []byte, source string) ([]mcpServerSpec, error) {
 			hasHeaders: len(s.Headers) > 0 || len(s.Auth.Headers) > 0 || s.APIKeyEnv != "",
 			enabled:    !s.Disabled,
 			source:     source,
+
+			envNames:    mcpNames(mapKeys(s.Env)),
+			headerNames: mcpNames(mapKeys(s.Headers), mapKeys(s.Auth.Headers)),
 		})
 	}
 	return specs, nil

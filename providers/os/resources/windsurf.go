@@ -73,7 +73,8 @@ func (r *mqlWindsurf) mcpServers() ([]any, error) {
 	configDir := r.ConfigPath.Data
 
 	// Windsurf stores MCP config in mcp_config.json
-	data, err := afs.ReadFile(filepath.Join(configDir, "mcp_config.json"))
+	configFile := filepath.Join(configDir, "mcp_config.json")
+	data, err := afs.ReadFile(configFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -93,7 +94,7 @@ func (r *mqlWindsurf) mcpServers() ([]any, error) {
 			url = server.ServerURL
 		}
 
-		res, err := NewResource(r.MqlRuntime, "windsurf.mcpServer", map[string]*llx.RawData{
+		fields := map[string]*llx.RawData{
 			"__id":    llx.StringData("windsurf.mcpServer/" + name),
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport(server.Type, server.Command, url)),
@@ -101,7 +102,13 @@ func (r *mqlWindsurf) mcpServers() ([]any, error) {
 			"args":    strSliceToArrayData(server.Args),
 			"url":     llx.StringData(url),
 			"hasEnv":  llx.BoolData(len(server.Env) > 0),
-		})
+
+			"hasHeaders":  llx.BoolData(len(server.Headers) > 0),
+			"headerNames": mcpHeaderNamesData(mapKeys(server.Headers)),
+			"source":      llx.StringData(configFile),
+		}
+		setMcpServerShape(fields, server.Command, server.Args, url, mapKeys(server.Env))
+		res, err := NewResource(r.MqlRuntime, "windsurf.mcpServer", fields)
 		if err != nil {
 			return nil, err
 		}
@@ -172,4 +179,5 @@ type windsurfMCPServer struct {
 	URL       string            `json:"url"`
 	ServerURL string            `json:"serverUrl"`
 	Env       map[string]string `json:"env"`
+	Headers   map[string]string `json:"headers"`
 }
