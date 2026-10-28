@@ -49,8 +49,10 @@ ai.model.quantization 13.16.10
 ai.model.size 13.16.9
 ai.model.source 13.16.9
 ai.model.tags 13.16.10
+ai.model.unsafeSerialization 14.32.3
 ai.model.vendor 13.16.9
 ai.model.version 13.16.10
+ai.model.weightDigests 14.32.3
 ai.models 13.16.9
 aide 13.40.5
 aide.configFile 13.40.5

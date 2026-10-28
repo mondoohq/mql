@@ -45,6 +45,8 @@ func (d *PyTorchHubDetector) Detect(ctx DetectContext) []ModelInfo {
 			Size:       e.Size(),
 			ModifiedAt: e.ModTime(),
 			Format:     "pytorch",
+
+			UnsafeSerialization: unsafeSerialization(ctx.Fs, []string{joinPath(checkpointsDir, e.Name())}),
 		})
 	}
 	return results

@@ -20503,6 +20503,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ai.model.description": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAiModel).GetDescription()).ToDataRes(types.String)
 	},
+	"ai.model.unsafeSerialization": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAiModel).GetUnsafeSerialization()).ToDataRes(types.Bool)
+	},
+	"ai.model.weightDigests": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAiModel).GetWeightDigests()).ToDataRes(types.Array(types.String))
+	},
 	"ollama.config.installed": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOllamaConfig).GetInstalled()).ToDataRes(types.Bool)
 	},
@@ -48261,6 +48267,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ai.model.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAiModel).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ai.model.unsafeSerialization": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAiModel).UnsafeSerialization, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ai.model.weightDigests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAiModel).WeightDigests, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"ollama.config.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -122021,21 +122035,23 @@ type mqlAiModel struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAiModelInternal it will be used here
-	Name          plugin.TValue[string]
-	Source        plugin.TValue[string]
-	Vendor        plugin.TValue[string]
-	Family        plugin.TValue[string]
-	Path          plugin.TValue[string]
-	Size          plugin.TValue[int64]
-	ModifiedAt    plugin.TValue[*time.Time]
-	Format        plugin.TValue[string]
-	Version       plugin.TValue[string]
-	Quantization  plugin.TValue[string]
-	ParameterSize plugin.TValue[string]
-	Architecture  plugin.TValue[string]
-	License       plugin.TValue[string]
-	Tags          plugin.TValue[[]any]
-	Description   plugin.TValue[string]
+	Name                plugin.TValue[string]
+	Source              plugin.TValue[string]
+	Vendor              plugin.TValue[string]
+	Family              plugin.TValue[string]
+	Path                plugin.TValue[string]
+	Size                plugin.TValue[int64]
+	ModifiedAt          plugin.TValue[*time.Time]
+	Format              plugin.TValue[string]
+	Version             plugin.TValue[string]
+	Quantization        plugin.TValue[string]
+	ParameterSize       plugin.TValue[string]
+	Architecture        plugin.TValue[string]
+	License             plugin.TValue[string]
+	Tags                plugin.TValue[[]any]
+	Description         plugin.TValue[string]
+	UnsafeSerialization plugin.TValue[bool]
+	WeightDigests       plugin.TValue[[]any]
 }
 
 // createAiModel creates a new instance of this resource
@@ -122133,6 +122149,14 @@ func (c *mqlAiModel) GetTags() *plugin.TValue[[]any] {
 
 func (c *mqlAiModel) GetDescription() *plugin.TValue[string] {
 	return &c.Description
+}
+
+func (c *mqlAiModel) GetUnsafeSerialization() *plugin.TValue[bool] {
+	return &c.UnsafeSerialization
+}
+
+func (c *mqlAiModel) GetWeightDigests() *plugin.TValue[[]any] {
+	return &c.WeightDigests
 }
 
 // mqlOllamaConfig for the ollama.config resource

@@ -42,6 +42,8 @@ func (d *KerasDetector) Detect(ctx DetectContext) []ModelInfo {
 			Size:       e.Size(),
 			ModifiedAt: e.ModTime(),
 			Format:     format,
+
+			UnsafeSerialization: unsafeSerialization(ctx.Fs, []string{joinPath(modelsDir, e.Name())}),
 		})
 	}
 	return results

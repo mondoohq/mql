@@ -23,6 +23,11 @@ import (
 // (e.g. "meta-llama/Llama-2-7B" -> "7B").
 type HuggingFaceDetector struct{}
 
+// hfSnapshotDepth is how many directory levels below a snapshot are searched
+// for weight files, enough for the onnx/ or 1_Pooling/ subdirectories
+// repositories keep weights in.
+const hfSnapshotDepth = 3
+
 type hfConfig struct {
 	ModelType          string         `json:"model_type"`
 	Architectures      []string       `json:"architectures"`
@@ -79,6 +84,8 @@ func (d *HuggingFaceDetector) Detect(ctx DetectContext) []ModelInfo {
 			License:       meta.License,
 			Tags:          meta.Tags,
 			Description:   meta.Description,
+
+			UnsafeSerialization: meta.UnsafeSerialization,
 		})
 	}
 	return results
@@ -93,6 +100,8 @@ type hfExtracted struct {
 	License      string
 	Tags         []string
 	Description  string
+
+	UnsafeSerialization *bool
 }
 
 func extractHuggingFaceMetadata(afs *afero.Afero, modelDir string) hfExtracted {
@@ -164,6 +173,11 @@ func extractHuggingFaceMetadata(afs *afero.Afero, modelDir string) hfExtracted {
 			result.Format = "unknown"
 		}
 	}
+
+	// Every weight file of the snapshot, not only the format reported above:
+	// a repository can ship model.safetensors next to pytorch_model.bin.
+	weights := weightFiles(afs, latestSnapshot, hfSnapshotDepth)
+	result.UnsafeSerialization = unsafeSerialization(afs, weights)
 
 	// Quantization fallback from filenames
 	if result.Quantization == "" {

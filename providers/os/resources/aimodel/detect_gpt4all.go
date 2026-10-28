@@ -61,6 +61,8 @@ func (d *GPT4AllDetector) Detect(ctx DetectContext) []ModelInfo {
 				Format:        format,
 				Quantization:  quant,
 				ParameterSize: paramSize,
+
+				UnsafeSerialization: unsafeSerialization(ctx.Fs, []string{joinPath(dir, e.Name())}),
 			})
 		}
 	}

@@ -69,6 +69,8 @@ func (d *LMStudioDetector) Detect(ctx DetectContext) []ModelInfo {
 						Format:        "gguf",
 						Quantization:  quant,
 						ParameterSize: paramSize,
+
+						UnsafeSerialization: unsafeSerialization(ctx.Fs, []string{m.path}),
 					})
 				}
 			}

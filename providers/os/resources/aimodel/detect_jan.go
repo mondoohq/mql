@@ -126,6 +126,8 @@ func (d *JanDetector) Detect(ctx DetectContext) []ModelInfo {
 			License:       license,
 			Tags:          tags,
 			Description:   description,
+
+			UnsafeSerialization: unsafeSerialization(ctx.Fs, weightFiles(ctx.Fs, modelDir, 1)),
 		})
 	}
 	return results

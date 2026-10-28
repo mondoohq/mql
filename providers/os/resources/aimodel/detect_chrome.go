@@ -73,6 +73,8 @@ func (d *ChromeDetector) Detect(ctx DetectContext) []ModelInfo {
 				Size:       size,
 				ModifiedAt: modTime,
 				Version:    version,
+
+				UnsafeSerialization: unsafeSerialization(ctx.Fs, weightFiles(ctx.Fs, componentDir, 1)),
 			})
 		}
 	}
