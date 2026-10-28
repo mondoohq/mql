@@ -386,6 +386,9 @@ func parseDshPatchMcpServers(data []byte, source string) ([]mcpServerSpec, error
 				hasHeaders: yamlNonEmpty(&row.Config.Headers),
 				enabled:    true,
 				source:     source,
+
+				envNames:    yamlNames(&row.Config.Env),
+				headerNames: yamlNames(&row.Config.Headers),
 			})
 		}
 	}
@@ -435,6 +438,31 @@ func yamlNonEmpty(n *yaml.Node) bool {
 		return n.Tag != "!!null" && n.Value != ""
 	}
 	return false
+}
+
+// yamlNames returns the names a yaml env or headers node sets: the keys of a
+// mapping, or the part before "=" of each NAME=value entry of a list. Values
+// are not returned. A scalar, such as an expression the harness evaluates,
+// names nothing.
+func yamlNames(n *yaml.Node) []string {
+	if n == nil {
+		return mcpNames()
+	}
+	var names []string
+	switch n.Kind {
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			names = append(names, n.Content[i].Value)
+		}
+	case yaml.SequenceNode:
+		for _, item := range n.Content {
+			if item.Kind == yaml.ScalarNode {
+				name, _, _ := strings.Cut(item.Value, "=")
+				names = append(names, name)
+			}
+		}
+	}
+	return mcpNames(names)
 }
 
 func (r *mqlDeepseekHarnessMcpServer) id() (string, error) {

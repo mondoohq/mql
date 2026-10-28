@@ -29,6 +29,10 @@ type mcpServerSpec struct {
 	hasEnv     bool
 	hasHeaders bool
 	enabled    bool
+	// envNames and headerNames are the names of the environment variables
+	// and HTTP headers the server is configured with. Values are never kept.
+	envNames    []string
+	headerNames []string
 	// source is the configuration file the server was read from.
 	source string
 }
@@ -114,6 +118,9 @@ func (s mcpJSONServer) spec(name, source string) mcpServerSpec {
 		hasHeaders: len(s.Headers) > 0,
 		enabled:    s.isEnabled(),
 		source:     source,
+
+		envNames:    mcpNames(mapKeys(s.Env), mapKeys(s.Environment)),
+		headerNames: mcpNames(mapKeys(s.Headers)),
 	}
 }
 
@@ -230,7 +237,7 @@ func mcpServerResourceID(resourceType, source, name string) string {
 // mcpServerResourceArgs are the resource arguments shared by the MCP server
 // resources keyed by their source file.
 func mcpServerResourceArgs(resourceType string, s mcpServerSpec) map[string]*llx.RawData {
-	return map[string]*llx.RawData{
+	fields := map[string]*llx.RawData{
 		"__id":       llx.StringData(mcpServerResourceID(resourceType, s.source, s.name)),
 		"name":       llx.StringData(s.name),
 		"type":       llx.StringData(s.transport),
@@ -241,7 +248,11 @@ func mcpServerResourceArgs(resourceType string, s mcpServerSpec) map[string]*llx
 		"hasHeaders": llx.BoolData(s.hasHeaders),
 		"enabled":    llx.BoolData(s.enabled),
 		"source":     llx.StringData(s.source),
+
+		"headerNames": mcpHeaderNamesData(s.headerNames),
 	}
+	setMcpServerShape(fields, s.command, s.args, s.url, s.envNames)
+	return fields
 }
 
 // newMcpServerResources creates one resource of resourceType per server, for

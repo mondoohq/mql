@@ -81,10 +81,11 @@ func (r *mqlClaudeDesktop) mcpServers() ([]any, error) {
 	}
 	sort.Strings(names)
 
+	source := filepath.Join(r.ConfigPath.Data, claudeDesktopConfigFile)
 	result := make([]any, 0, len(names))
 	for _, name := range names {
 		srv := servers[name]
-		res, err := NewResource(r.MqlRuntime, "claude.desktop.mcpServer", map[string]*llx.RawData{
+		fields := map[string]*llx.RawData{
 			"__id":    llx.StringData("claude.desktop.mcpServer/" + name),
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport(srv.Type, srv.Command, srv.URL)),
@@ -93,7 +94,13 @@ func (r *mqlClaudeDesktop) mcpServers() ([]any, error) {
 			"url":     llx.StringData(srv.URL),
 			"hasEnv":  llx.BoolData(len(srv.Env) > 0),
 			"enabled": llx.BoolData(true),
-		})
+
+			"hasHeaders":  llx.BoolData(len(srv.Headers) > 0),
+			"headerNames": mcpHeaderNamesData(mapKeys(srv.Headers)),
+			"source":      llx.StringData(source),
+		}
+		setMcpServerShape(fields, srv.Command, srv.Args, srv.URL, mapKeys(srv.Env))
+		res, err := NewResource(r.MqlRuntime, "claude.desktop.mcpServer", fields)
 		if err != nil {
 			return nil, err
 		}
@@ -196,6 +203,10 @@ func (e claudeDesktopExtension) mcpServer(dir string) mcpServerSpec {
 		args:      cfg.Args,
 		url:       cfg.URL,
 		hasEnv:    len(cfg.Env) > 0,
+
+		hasHeaders:  len(cfg.Headers) > 0,
+		envNames:    mcpNames(mapKeys(cfg.Env)),
+		headerNames: mcpNames(mapKeys(cfg.Headers)),
 	}
 	return spec.expandPlaceholder("__dirname", dir)
 }
@@ -236,7 +247,9 @@ func (r *mqlClaudeDesktop) extensions() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		res.(*mqlClaudeDesktopExtension).server = ext.mcpServer(dir)
+		server := ext.mcpServer(dir)
+		server.source = filepath.Join(r.ConfigPath.Data, claudeDesktopExtensionsFile)
+		res.(*mqlClaudeDesktopExtension).server = server
 		result = append(result, res)
 	}
 	return result, nil
@@ -256,7 +269,7 @@ func (r *mqlClaudeDesktopExtension) mcpServer() (*mqlClaudeDesktopMcpServer, err
 		r.McpServer.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	res, err := NewResource(r.MqlRuntime, "claude.desktop.mcpServer", map[string]*llx.RawData{
+	fields := map[string]*llx.RawData{
 		"__id":    llx.StringData("claude.desktop.mcpServer/" + s.name),
 		"name":    llx.StringData(s.name),
 		"type":    llx.StringData(s.transport),
@@ -265,7 +278,13 @@ func (r *mqlClaudeDesktopExtension) mcpServer() (*mqlClaudeDesktopMcpServer, err
 		"url":     llx.StringData(s.url),
 		"hasEnv":  llx.BoolData(s.hasEnv),
 		"enabled": llx.BoolData(r.Enabled.Data),
-	})
+
+		"hasHeaders":  llx.BoolData(s.hasHeaders),
+		"headerNames": mcpHeaderNamesData(s.headerNames),
+		"source":      llx.StringData(s.source),
+	}
+	setMcpServerShape(fields, s.command, s.args, s.url, s.envNames)
+	res, err := NewResource(r.MqlRuntime, "claude.desktop.mcpServer", fields)
 	if err != nil {
 		return nil, err
 	}

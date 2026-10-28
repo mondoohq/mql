@@ -99,7 +99,7 @@ func (r *mqlBreezell) mcpServers() ([]any, error) {
 
 	var result []any
 	for name, server := range config.McpServers {
-		res, err := NewResource(r.MqlRuntime, "breezell.mcpServer", map[string]*llx.RawData{
+		fields := map[string]*llx.RawData{
 			"__id":    llx.StringData("breezell.mcpServer/" + name),
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport(server.Type, server.Command, server.URL)),
@@ -107,7 +107,11 @@ func (r *mqlBreezell) mcpServers() ([]any, error) {
 			"args":    strSliceToArrayData(server.Args),
 			"url":     llx.StringData(server.URL),
 			"hasEnv":  llx.BoolData(len(server.Env) > 0),
-		})
+
+			"source": llx.StringData(configFile),
+		}
+		setMcpServerShape(fields, server.Command, server.Args, server.URL, mapKeys(server.Env))
+		res, err := NewResource(r.MqlRuntime, "breezell.mcpServer", fields)
 		if err != nil {
 			return nil, err
 		}

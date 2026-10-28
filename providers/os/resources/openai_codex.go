@@ -79,11 +79,59 @@ type codexConfig struct {
 }
 
 // codexTomlMcpServer is one `[mcp_servers.<name>]` table in config.toml.
+// A streamable HTTP server sends static http_headers, headers whose values
+// come from environment variables (env_http_headers), a bearer token read
+// from bearer_token_env_var, or headers printed by http_headers_helper.
+// env_vars lists more environment variables passed to a stdio server, as
+// names or {name, source} tables. enabled = false turns the server off.
 type codexTomlMcpServer struct {
 	Command string            `toml:"command"`
 	Args    []string          `toml:"args"`
 	Env     map[string]string `toml:"env"`
 	URL     string            `toml:"url"`
+
+	EnvVars           []any             `toml:"env_vars"`
+	HTTPHeaders       map[string]string `toml:"http_headers"`
+	EnvHTTPHeaders    map[string]string `toml:"env_http_headers"`
+	BearerTokenEnvVar string            `toml:"bearer_token_env_var"`
+	HTTPHeadersHelper string            `toml:"http_headers_helper"`
+	Enabled           *bool             `toml:"enabled"`
+}
+
+// envNames returns the names of the environment variables the server gets:
+// the keys of env and every entry of env_vars.
+func (s codexTomlMcpServer) envNames() []string {
+	names := mapKeys(s.Env)
+	for _, v := range s.EnvVars {
+		switch e := v.(type) {
+		case string:
+			names = append(names, e)
+		case map[string]any:
+			if n, ok := e["name"].(string); ok {
+				names = append(names, n)
+			}
+		}
+	}
+	return mcpNames(names)
+}
+
+// headerNames returns the names of the HTTP headers configured for the
+// server, from http_headers and env_http_headers.
+func (s codexTomlMcpServer) headerNames() []string {
+	return mcpNames(mapKeys(s.HTTPHeaders), mapKeys(s.EnvHTTPHeaders))
+}
+
+// hasHeaders reports whether the server sends configured HTTP headers,
+// including a bearer token or headers from a helper command.
+func (s codexTomlMcpServer) hasHeaders() bool {
+	return len(s.HTTPHeaders) > 0 || len(s.EnvHTTPHeaders) > 0 ||
+		s.BearerTokenEnvVar != "" || s.HTTPHeadersHelper != ""
+}
+
+// enabled reports whether the server is on. Codex runs a server unless its
+// table sets enabled = false.
+func (s codexTomlMcpServer) enabled() bool {
+	return s.Enabled == nil || *s.Enabled
 }
 
 // mqlOpenaiCodexInternal caches the parsed config.toml so that model() and
@@ -318,9 +366,10 @@ func (r *mqlOpenaiCodex) mcpServers() ([]any, error) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	configFile := filepath.Join(r.codexDir(), "config.toml")
 	for _, name := range names {
 		srv := cfg.McpServers[name]
-		res, err := NewResource(r.MqlRuntime, "openai.codex.mcpServer", map[string]*llx.RawData{
+		fields := map[string]*llx.RawData{
 			"__id":    llx.StringData("openai.codex.mcpServer//" + name),
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport("", srv.Command, srv.URL)),
@@ -330,7 +379,14 @@ func (r *mqlOpenaiCodex) mcpServers() ([]any, error) {
 			"hasEnv":  llx.BoolData(len(srv.Env) > 0),
 			"note":    llx.StringData(""),
 			"plugin":  llx.StringData(""),
-		})
+
+			"hasHeaders":  llx.BoolData(srv.hasHeaders()),
+			"headerNames": mcpHeaderNamesData(srv.headerNames()),
+			"enabled":     llx.BoolData(srv.enabled()),
+			"source":      llx.StringData(configFile),
+		}
+		setMcpServerShape(fields, srv.Command, srv.Args, srv.URL, srv.envNames())
+		res, err := NewResource(r.MqlRuntime, "openai.codex.mcpServer", fields)
 		if err != nil {
 			return nil, err
 		}
@@ -363,7 +419,7 @@ func (r *mqlOpenaiCodex) mcpServers() ([]any, error) {
 		}
 
 		for name, srv := range mcpConfig.McpServers {
-			res, err := NewResource(r.MqlRuntime, "openai.codex.mcpServer", map[string]*llx.RawData{
+			fields := map[string]*llx.RawData{
 				"__id":    llx.StringData("openai.codex.mcpServer/" + dir.name + "/" + name),
 				"name":    llx.StringData(name),
 				"type":    llx.StringData(deriveMcpTransport(srv.Type, srv.Command, srv.URL)),
@@ -373,7 +429,14 @@ func (r *mqlOpenaiCodex) mcpServers() ([]any, error) {
 				"hasEnv":  llx.BoolData(len(srv.Env) > 0),
 				"note":    llx.StringData(srv.Note),
 				"plugin":  llx.StringData(dir.name),
-			})
+
+				"hasHeaders":  llx.BoolData(len(srv.Headers) > 0),
+				"headerNames": mcpHeaderNamesData(mapKeys(srv.Headers)),
+				"enabled":     llx.BoolData(srv.Enabled == nil || *srv.Enabled),
+				"source":      llx.StringData(mcpPath),
+			}
+			setMcpServerShape(fields, srv.Command, srv.Args, srv.URL, mapKeys(srv.Env))
+			res, err := NewResource(r.MqlRuntime, "openai.codex.mcpServer", fields)
 			if err != nil {
 				return nil, err
 			}
@@ -457,6 +520,8 @@ type codexMcpServerEntry struct {
 	URL     string            `json:"url"`
 	Env     map[string]string `json:"env"`
 	Note    string            `json:"note"`
+	Headers map[string]string `json:"headers"`
+	Enabled *bool             `json:"enabled"`
 }
 
 type codexPluginInfo struct {

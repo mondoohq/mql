@@ -23547,6 +23547,42 @@ private claude.code.mcpServer @defaults("name") @maturity("preview") {
   // "github@claude-plugins-official". Empty for a server configured in
   // .claude.json or a project's .mcp.json.
   plugin string
+  // Configuration file the server was read from
+  source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -23672,6 +23708,44 @@ private claude.desktop.mcpServer @defaults("name") @maturity("preview") {
   //
   // Null for a server declared in claude_desktop_config.json.
   extension() claude.desktop.extension
+  // Whether HTTP headers (for example an Authorization token) are configured
+  hasHeaders bool
+  // Configuration file the server was read from
+  source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -23906,6 +23980,48 @@ private openai.codex.mcpServer @defaults("name") @maturity("preview") {
   //
   // Empty for a server configured directly in config.toml.
   plugin string
+  // Whether HTTP headers (for example an Authorization token) are configured
+  hasHeaders bool
+  // Whether the server is enabled
+  //
+  // False when the configuration turns the server off without removing it.
+  enabled bool
+  // Configuration file the server was read from
+  source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -24063,6 +24179,44 @@ private cursor.mcpServer @defaults("name") @maturity("preview") {
   url string
   // Whether environment variables (for example API keys) are configured
   hasEnv bool
+  // Whether HTTP headers (for example an Authorization token) are configured
+  hasHeaders bool
+  // Configuration file the server was read from
+  source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -24210,6 +24364,40 @@ private github.copilot.mcpServer @defaults("name") @maturity("preview") {
   //
   // Null for a server the user configured directly.
   plugin() github.copilot.plugin
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -24398,6 +24586,40 @@ private goose.mcpServer @defaults("name") @maturity("preview") {
   enabled bool
   // Path of the configuration file that declares the server
   source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -24531,6 +24753,40 @@ private gemini.mcpServer @defaults("name") @maturity("preview") {
   // Null for a server configured in settings.json or
   // antigravity/mcp_config.json.
   extension() gemini.extension
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -24752,6 +25008,44 @@ private windsurf.mcpServer @defaults("name") @maturity("preview") {
   url string
   // Whether environment variables (for example API keys) are configured
   hasEnv bool
+  // Whether HTTP headers (for example an Authorization token) are configured
+  hasHeaders bool
+  // Configuration file the server was read from
+  source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -24900,6 +25194,37 @@ private breezell.mcpServer @defaults("name") @maturity("preview") {
   url string
   // Whether environment variables (for example API keys) are configured
   hasEnv bool
+  // Configuration file the server was read from
+  source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -25147,6 +25472,40 @@ private cline.mcpServer @defaults("name") @maturity("preview") {
   enabled bool
   // Path of the configuration file that declares the server
   source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -25480,6 +25839,40 @@ private opencode.mcpServer @defaults("name") @maturity("preview") {
   enabled bool
   // Path of the configuration file that declares the server
   source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -25685,6 +26078,40 @@ private mistral.vibe.mcpServer @defaults("name") @maturity("preview") {
   enabled bool
   // Path of the configuration file that declares the server
   source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -25817,6 +26244,40 @@ private antigravity.mcpServer @defaults("name") @maturity("preview") {
   enabled bool
   // Path of the configuration file that declares the server
   source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -26318,6 +26779,40 @@ private augment.mcpServer @defaults("name") @maturity("preview") {
   enabled bool
   // Path of the configuration file that declares the server
   source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -26529,6 +27024,40 @@ private kilocode.mcpServer @defaults("name") @maturity("preview") {
   enabled bool
   // Path of the configuration file that declares the server
   source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -26651,6 +27180,40 @@ private openhands.mcpServer @defaults("name") @maturity("preview") {
   enabled bool
   // Path of the configuration file that declares the server
   source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -26783,6 +27346,40 @@ private qwen.code.mcpServer @defaults("name") @maturity("preview") {
   //
   // Null for a server configured in settings.json.
   extension() qwen.code.extension
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -27279,6 +27876,40 @@ private devin.cli.mcpServer @defaults("name") @maturity("preview") {
   enabled bool
   // Path of the configuration file that declares the server
   source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -27500,6 +28131,40 @@ private deepseek.harness.mcpServer @defaults("name") @maturity("preview") {
   enabled bool
   // Path of the configuration file that declares the server
   source string
+  // Names of the environment variables set for the server
+  //
+  // Variable names only, sorted. Their values often hold API keys or tokens
+  // and are never read.
+  envNames []string
+  // Names of the HTTP headers sent to the server
+  //
+  // Header names only, sorted, for example "Authorization". Their values are
+  // never read.
+  headerNames []string
+  // Package runner that launches the server
+  //
+  // One of "npx", "bunx", "pnpm dlx", "yarn dlx", "uvx", "pipx run",
+  // "docker run", or "podman run" when command starts one of these runners.
+  // Empty for any other command and for remote servers.
+  launcher string
+  // Package or container image the launcher fetches
+  //
+  // Name without version, tag, or digest, for example
+  // "@modelcontextprotocol/server-github" or "ghcr.io/github/github-mcp-server".
+  // Empty when there is no launcher.
+  packageName string
+  // Whether the fetched package is pinned to one exact release
+  //
+  // True for an exact npm version (`@1.2.3`), an exact PyPI version
+  // (`==1.2.3`, or `@1.2.3` with uvx), or a container image pinned by
+  // `@sha256:` digest. A version range, a tag such as latest, an image tag,
+  // or no version at all is not pinned. Null when there is no launcher.
+  packagePinned bool
+  // Whether the server is reached over plain HTTP
+  //
+  // True when url uses http:// to a host other than localhost or a loopback
+  // address, so requests and any header credentials travel unencrypted.
+  insecureTransport bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this

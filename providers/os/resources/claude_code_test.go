@@ -502,18 +502,21 @@ func TestClaudeMcpServersScopes(t *testing.T) {
 		}
 	}`), &state))
 
+	state.path = "/home/alice/.claude.json"
+
 	servers := claudeMcpServers(afs, &state)
 
-	type row struct{ project, name, lastArg string }
+	type row struct{ project, name, lastArg, source string }
 	var got []row
 	for _, s := range servers {
-		got = append(got, row{s.project, s.name, s.entry.Args[len(s.entry.Args)-1]})
+		got = append(got, row{s.project, s.name, s.entry.Args[len(s.entry.Args)-1], s.source})
 	}
 	assert.Equal(t, []row{
-		{"", "filesystem", "/home/alice"},
-		{project, "filesystem", "."},
-		// local (.claude.json) takes precedence over the project's .mcp.json
-		{project, "memory", "@modelcontextprotocol/server-memory"},
+		{"", "filesystem", "/home/alice", "/home/alice/.claude.json"},
+		{project, "filesystem", ".", filepath.Join(project, ".mcp.json")},
+		// local (.claude.json) takes precedence over the project's .mcp.json,
+		// and so does its source
+		{project, "memory", "@modelcontextprotocol/server-memory", "/home/alice/.claude.json"},
 	}, got)
 }
 

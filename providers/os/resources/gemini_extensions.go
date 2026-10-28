@@ -334,7 +334,7 @@ func geminiMcpServerID(source, name string) string {
 }
 
 func geminiMcpServerArgs(s mcpServerSpec) map[string]*llx.RawData {
-	return map[string]*llx.RawData{
+	fields := map[string]*llx.RawData{
 		"__id":       llx.StringData(geminiMcpServerID(s.source, s.name)),
 		"name":       llx.StringData(s.name),
 		"type":       llx.StringData(s.transport),
@@ -344,7 +344,11 @@ func geminiMcpServerArgs(s mcpServerSpec) map[string]*llx.RawData {
 		"hasEnv":     llx.BoolData(s.hasEnv),
 		"hasHeaders": llx.BoolData(s.hasHeaders),
 		"source":     llx.StringData(s.source),
+
+		"headerNames": mcpHeaderNamesData(s.headerNames),
 	}
+	setMcpServerShape(fields, s.command, s.args, s.url, s.envNames)
+	return fields
 }
 
 // enabledExtensionServers returns the MCP servers of the enabled extensions
