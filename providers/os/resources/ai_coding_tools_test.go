@@ -422,3 +422,18 @@ func TestReadJSONFileAferoRefusesUnsafeConfig(t *testing.T) {
 		assert.Zero(t, fs.opens)
 	}
 }
+
+func TestParseGitRemotesRedactsCredentials(t *testing.T) {
+	// Synthetic: a clone made with a token in the URL, which git stores in
+	// .git/config verbatim.
+	mockFS := afero.NewMemMapFs()
+	writeMemFSFile(t, mockFS, "/repo/.git/config", []byte(`[remote "origin"]
+	url = `+credURL("https", "x-access-token", "abc123", "github.com/org/repo.git")+`
+	fetch = +refs/heads/*:refs/remotes/origin/*
+[remote "upstream"]
+	url = git@github.com:org/repo.git
+`))
+	remotes := parseGitRemotes(&afero.Afero{Fs: mockFS}, "/repo/.git/config")
+	assert.Equal(t, credURL("https", "x-access-token", redactedValue, "github.com/org/repo.git"), remotes["origin"])
+	assert.Equal(t, "git@github.com:org/repo.git", remotes["upstream"])
+}

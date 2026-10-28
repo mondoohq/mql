@@ -99,8 +99,8 @@ func (r *mqlWindsurf) mcpServers() ([]any, error) {
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport(server.Type, server.Command, url)),
 			"command": llx.StringData(server.Command),
-			"args":    strSliceToArrayData(server.Args),
-			"url":     llx.StringData(url),
+			"args":    mcpArgsData(server.Args),
+			"url":     llx.StringData(redactURL(url)),
 			"hasEnv":  llx.BoolData(len(server.Env) > 0),
 
 			"hasHeaders":  llx.BoolData(len(server.Headers) > 0),

@@ -9,9 +9,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tailscale/hujson"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func createTestZedConfig(t *testing.T) string {
@@ -140,4 +142,29 @@ func TestReadZedWorkspacePaths(t *testing.T) {
 
 	// missing db yields nil, not a panic
 	assert.Nil(t, readZedWorkspacePaths(testAfero(), filepath.Join(dir, "missing.sqlite")))
+}
+
+func TestZedSettingsRedactsSecrets(t *testing.T) {
+	// Synthetic: a context server whose env carries a database password, in
+	// the shape Zed's settings documentation shows for context_servers.
+	mockFS := afero.NewMemMapFs()
+	writeMemFSFile(t, mockFS, "/home/alice/.config/zed/settings.json", []byte(`{
+		// comment
+		"ui_font_size": 16,
+		"context_servers": {
+			"postgres": {"command": {"path": "pg-mcp", "env": {"PGPASSWORD": "hunter2"}}}
+		}
+	}`))
+	r := &mqlZed{
+		MqlRuntime: memFSRuntime(t, mockFS),
+		ConfigPath: plugin.TValue[string]{Data: "/home/alice/.config/zed", State: plugin.StateIsSet},
+	}
+
+	got, err := r.settings()
+	require.NoError(t, err)
+	settings := got.(map[string]any)
+	assert.Equal(t, float64(16), settings["ui_font_size"])
+	cmd := settings["context_servers"].(map[string]any)["postgres"].(map[string]any)["command"].(map[string]any)
+	assert.Equal(t, "pg-mcp", cmd["path"])
+	assert.Equal(t, redactedValue, cmd["env"].(map[string]any)["PGPASSWORD"])
 }

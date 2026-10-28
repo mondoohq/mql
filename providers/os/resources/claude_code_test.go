@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // testAfero returns an afero.Afero backed by the real OS filesystem,
@@ -630,4 +631,26 @@ func TestReadClaudeStateMalformedLiveFileIsAnError(t *testing.T) {
 
 	_, err := readClaudeState(afs, "/home/ubuntu/.claude")
 	assert.Error(t, err)
+}
+
+func TestClaudeCodeSettingsRedactsSecrets(t *testing.T) {
+	// Synthetic: a settings.json env block holding an API key, the way the
+	// Claude Code docs show configuring ANTHROPIC_API_KEY through settings.
+	mockFS := afero.NewMemMapFs()
+	writeMemFSFile(t, mockFS, "/home/alice/.claude/settings.json", []byte(`{
+		"model": "opus",
+		"env": {"ANTHROPIC_API_KEY": "`+fakeAnthropicKey+`", "DISABLE_TELEMETRY": "1"}
+	}`))
+	r := &mqlClaudeCode{
+		MqlRuntime: memFSRuntime(t, mockFS),
+		ConfigPath: plugin.TValue[string]{Data: "/home/alice/.claude", State: plugin.StateIsSet},
+	}
+
+	got, err := r.settings()
+	require.NoError(t, err)
+	settings := got.(map[string]any)
+	assert.Equal(t, "opus", settings["model"])
+	env := settings["env"].(map[string]any)
+	assert.Equal(t, redactedValue, env["ANTHROPIC_API_KEY"])
+	assert.Equal(t, "1", env["DISABLE_TELEMETRY"])
 }

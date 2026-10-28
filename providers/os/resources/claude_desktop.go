@@ -90,8 +90,8 @@ func (r *mqlClaudeDesktop) mcpServers() ([]any, error) {
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport(srv.Type, srv.Command, srv.URL)),
 			"command": llx.StringData(srv.Command),
-			"args":    strSliceToArrayData(srv.Args),
-			"url":     llx.StringData(srv.URL),
+			"args":    mcpArgsData(srv.Args),
+			"url":     llx.StringData(redactURL(srv.URL)),
 			"hasEnv":  llx.BoolData(len(srv.Env) > 0),
 			"enabled": llx.BoolData(true),
 
@@ -274,8 +274,8 @@ func (r *mqlClaudeDesktopExtension) mcpServer() (*mqlClaudeDesktopMcpServer, err
 		"name":    llx.StringData(s.name),
 		"type":    llx.StringData(s.transport),
 		"command": llx.StringData(s.command),
-		"args":    strSliceToArrayData(s.args),
-		"url":     llx.StringData(s.url),
+		"args":    mcpArgsData(s.args),
+		"url":     llx.StringData(redactURL(s.url)),
 		"hasEnv":  llx.BoolData(s.hasEnv),
 		"enabled": llx.BoolData(r.Enabled.Data),
 

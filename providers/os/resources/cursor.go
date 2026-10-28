@@ -50,8 +50,8 @@ func (r *mqlCursor) mcpServers() ([]any, error) {
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport(server.Type, server.Command, server.URL)),
 			"command": llx.StringData(server.Command),
-			"args":    strSliceToArrayData(server.Args),
-			"url":     llx.StringData(server.URL),
+			"args":    mcpArgsData(server.Args),
+			"url":     llx.StringData(redactURL(server.URL)),
 			"hasEnv":  llx.BoolData(len(server.Env) > 0),
 
 			"hasHeaders":  llx.BoolData(len(server.Headers) > 0),

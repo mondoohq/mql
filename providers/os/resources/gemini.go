@@ -65,7 +65,7 @@ func (r *mqlGemini) settings() (any, error) {
 		}
 		return nil, err
 	}
-	return settings, nil
+	return redactSettings(settings), nil
 }
 
 func (r *mqlGemini) mcpServers() ([]any, error) {
