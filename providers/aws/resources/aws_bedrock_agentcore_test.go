@@ -109,3 +109,31 @@ func TestAgentRuntimePlatformVersion(t *testing.T) {
 		})
 	}
 }
+
+func TestMemoryDeliveryStreamArns(t *testing.T) {
+	// Synthetic: no stream delivery configured.
+	t.Run("nil", func(t *testing.T) {
+		assert.Empty(t, memoryDeliveryStreamArns(nil))
+	})
+
+	// Synthetic: two Kinesis destinations, one entry without an ARN, and an
+	// unknown union member the SDK may return for a newer destination kind.
+	t.Run("kinesis destinations", func(t *testing.T) {
+		got := memoryDeliveryStreamArns(&bacctypes.StreamDeliveryResources{
+			Resources: []bacctypes.StreamDeliveryResource{
+				&bacctypes.StreamDeliveryResourceMemberKinesis{Value: bacctypes.KinesisResource{
+					DataStreamArn: convert.ToPtr("arn:aws:kinesis:us-east-1:123456789012:stream/memory-a"),
+				}},
+				&bacctypes.StreamDeliveryResourceMemberKinesis{Value: bacctypes.KinesisResource{}},
+				&bacctypes.UnknownUnionMember{Tag: "eventBridge"},
+				&bacctypes.StreamDeliveryResourceMemberKinesis{Value: bacctypes.KinesisResource{
+					DataStreamArn: convert.ToPtr("arn:aws:kinesis:us-east-1:123456789012:stream/memory-b"),
+				}},
+			},
+		})
+		assert.Equal(t, []string{
+			"arn:aws:kinesis:us-east-1:123456789012:stream/memory-a",
+			"arn:aws:kinesis:us-east-1:123456789012:stream/memory-b",
+		}, got)
+	})
+}
