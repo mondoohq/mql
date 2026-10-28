@@ -1,7 +1,7 @@
 {
   "provider": "gcp",
-  "version": "14.6.0",
-  "generated_at": "2026-10-23T23:21:58Z",
+  "version": "14.6.2",
+  "generated_at": "2026-10-27T23:04:21+01:00",
   "permissions": [
     "accessapproval.settings.get",
     "aiplatform.batchPredictionJobs.list",
@@ -276,6 +276,12 @@
     "resourcemanager.hierarchyNodes.listTagBindings",
     "resourcemanager.projects.get",
     "resourcemanager.projects.getIamPolicy",
+    "resourcemanager.tagKeys.get",
+    "resourcemanager.tagKeys.getIamPolicy",
+    "resourcemanager.tagKeys.list",
+    "resourcemanager.tagValues.get",
+    "resourcemanager.tagValues.getIamPolicy",
+    "resourcemanager.tagValues.list",
     "run.jobs.getIamPolicy",
     "run.jobs.list",
     "run.operations.list",
@@ -559,6 +565,20 @@
       "service": "artifactregistry",
       "action": "ListVersions",
       "source_file": "artifactregistry.go"
+    },
+    {
+      "permission": "assuredworkloads.violations.list",
+      "service": "assuredworkloads",
+      "action": "Violations.List",
+      "source_file": "assured_workloads.go",
+      "scope": "org"
+    },
+    {
+      "permission": "assuredworkloads.workload.list",
+      "service": "assuredworkloads",
+      "action": "Workloads.List",
+      "source_file": "assured_workloads.go",
+      "scope": "org"
     },
     {
       "permission": "backupdr.backupPlans.list",
@@ -2108,6 +2128,42 @@
       "scope": "org"
     },
     {
+      "permission": "resourcemanager.tagKeys.get",
+      "service": "resourcemanager",
+      "action": "TagKeys.Get",
+      "source_file": "resourcemanager_tags.go"
+    },
+    {
+      "permission": "resourcemanager.tagKeys.getIamPolicy",
+      "service": "resourcemanager",
+      "action": "TagKeys.GetIamPolicy",
+      "source_file": "resourcemanager_tags.go"
+    },
+    {
+      "permission": "resourcemanager.tagKeys.list",
+      "service": "resourcemanager",
+      "action": "TagKeys.List",
+      "source_file": "resourcemanager_tags.go"
+    },
+    {
+      "permission": "resourcemanager.tagValues.get",
+      "service": "resourcemanager",
+      "action": "TagValues.Get",
+      "source_file": "resourcemanager_tags.go"
+    },
+    {
+      "permission": "resourcemanager.tagValues.getIamPolicy",
+      "service": "resourcemanager",
+      "action": "TagValues.GetIamPolicy",
+      "source_file": "resourcemanager_tags.go"
+    },
+    {
+      "permission": "resourcemanager.tagValues.list",
+      "service": "resourcemanager",
+      "action": "TagValues.List",
+      "source_file": "resourcemanager_tags.go"
+    },
+    {
       "permission": "run.jobs.getIamPolicy",
       "service": "run",
       "action": "Jobs.GetIamPolicy",
@@ -2289,6 +2345,8 @@
     }
   ],
   "org_level_permissions": [
+    "assuredworkloads.violations.list",
+    "assuredworkloads.workload.list",
     "iam.googleapis.com/workforcePoolProviders.list",
     "iam.googleapis.com/workforcePools.list",
     "orgpolicy.customConstraints.list",
