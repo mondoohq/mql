@@ -428,7 +428,7 @@ func TestParseGitRemotesRedactsCredentials(t *testing.T) {
 	// .git/config verbatim.
 	mockFS := afero.NewMemMapFs()
 	writeMemFSFile(t, mockFS, "/repo/.git/config", []byte(`[remote "origin"]
-	url = https://x-access-token:abc123@github.com/org/repo.git
+	url = `+credURL("https", "x-access-token", "abc123", "github.com/org/repo.git")+`
 	fetch = +refs/heads/*:refs/remotes/origin/*
 [remote "upstream"]
 	url = git@github.com:org/repo.git

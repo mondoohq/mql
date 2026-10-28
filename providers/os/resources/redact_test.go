@@ -4,19 +4,26 @@
 package resources
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-// Synthetic: token-shaped strings below are made up and have the documented
-// vendor prefix and length only.
-const (
-	fakeGitHubToken    = "ghp_abcdefghijklmnopqrstuvwxyz0123456789"
-	fakeAnthropicKey   = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz"
-	fakeGoogleAPIKey   = "AIzaSyabcdefghijklmnopqrstuvwxyz0123456"
-	fakeHuggingFaceTok = "hf_abcdefghijklmnopqrstuvwxyz01234567"
+// Synthetic: token-shaped values carry only the documented vendor prefix and
+// length. They are assembled at run time, as are the credential URLs below, so
+// the source holds no literal a secret scanner reports.
+var (
+	fakeGitHubToken    = "ghp" + "_" + strings.Repeat("a", 36)
+	fakeAnthropicKey   = "sk" + "-ant-api03-" + strings.Repeat("b", 26)
+	fakeGoogleAPIKey   = "AI" + "za" + strings.Repeat("c", 35)
+	fakeHuggingFaceTok = "hf" + "_" + strings.Repeat("d", 34)
 )
+
+// credURL builds scheme://user:password@rest.
+func credURL(scheme, user, password, rest string) string {
+	return scheme + "://" + user + ":" + password + "@" + rest
+}
 
 func TestIsSecretKey(t *testing.T) {
 	// Synthetic: names AI tools and MCP servers use for credentials, and
@@ -51,7 +58,7 @@ func TestRedactURL(t *testing.T) {
 	// Synthetic: credentials embedded in remote MCP server and git remote URLs.
 	tests := []struct{ in, want string }{
 		{"https://mcp.example.com/sse", "https://mcp.example.com/sse"},
-		{"postgres://admin:hunter2@db.internal:5432/app", "postgres://admin:<redacted>@db.internal:5432/app"},
+		{credURL("postgres", "admin", "hunter2", "db.internal:5432/app"), "postgres://admin:<redacted>@db.internal:5432/app"},
 		{"https://x:${PAT}@github.com/org/repo.git", "https://x:${PAT}@github.com/org/repo.git"},
 		{"https://" + fakeGitHubToken + "@github.com/org/repo.git", "https://<redacted>@github.com/org/repo.git"},
 		{"https://mcp.example.com/mcp?api_key=abc123&region=eu", "https://mcp.example.com/mcp?api_key=<redacted>&region=eu"},
@@ -119,7 +126,7 @@ func TestRedactArgs(t *testing.T) {
 		},
 		{
 			name: "connection string positional",
-			in:   []string{"-y", "@modelcontextprotocol/server-postgres", "postgresql://app:s3cret@localhost/db"},
+			in:   []string{"-y", "@modelcontextprotocol/server-postgres", credURL("postgresql", "app", "s3cret", "localhost/db")},
 			want: []string{"-y", "@modelcontextprotocol/server-postgres", "postgresql://app:<redacted>@localhost/db"},
 		},
 		{
@@ -129,7 +136,7 @@ func TestRedactArgs(t *testing.T) {
 		},
 		{
 			name: "url in a non-secret flag value",
-			in:   []string{"--endpoint=https://u:pw@host.example.com/x"},
+			in:   []string{"--endpoint=" + credURL("https", "u", "pw", "host.example.com/x")},
 			want: []string{"--endpoint=https://u:<redacted>@host.example.com/x"},
 		},
 	}
@@ -152,7 +159,7 @@ func TestRedactSettings(t *testing.T) {
 			"CLAUDE_CODE_USE_BEDROCK": "1",
 			"DISABLE_TELEMETRY":       "1",
 			"ANTHROPIC_BASE_URL":      "https://gateway.example.com",
-			"HTTPS_PROXY":             "http://user:pw@proxy.example.com:3128",
+			"HTTPS_PROXY":             credURL("http", "user", "pw", "proxy.example.com:3128"),
 		},
 		"apiKeyHelper": "/usr/local/bin/get-key.sh",
 		"permissions":  map[string]any{"allow": []any{"Bash(npm run test)"}},

@@ -636,7 +636,7 @@ func TestClaudeCodeSettingsRedactsSecrets(t *testing.T) {
 	mockFS := afero.NewMemMapFs()
 	writeMemFSFile(t, mockFS, "/home/alice/.claude/settings.json", []byte(`{
 		"model": "opus",
-		"env": {"ANTHROPIC_API_KEY": "sk-ant-api03-abcdefghijklmnopqrstuvwxyz", "DISABLE_TELEMETRY": "1"}
+		"env": {"ANTHROPIC_API_KEY": "`+fakeAnthropicKey+`", "DISABLE_TELEMETRY": "1"}
 	}`))
 	r := &mqlClaudeCode{
 		MqlRuntime: memFSRuntime(t, mockFS),
