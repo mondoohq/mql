@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -173,13 +174,18 @@ func governanceAssignmentArgs(asg *armsecurity.GovernanceAssignment) map[string]
 // assignment, ARM does not return an empty list: it returns 404 with
 // ResourceNotFound and "No Governance Assignments found". The assessment
 // itself was just listed, so the 404 is about the assignments and is an
-// absence, not a failure.
+// absence, not a failure. Any other 404 stays an error.
+//
+// ARM sends this one as {"Error":{"Code":"ResourceNotFound",...}}, which azcore
+// does not read into ErrorCode, so the code comes from azureErrorCode's body
+// fallback.
 func noGovernanceAssignments(err error) bool {
 	var respErr *azcore.ResponseError
 	if !errors.As(err, &respErr) {
 		return false
 	}
-	return respErr.StatusCode == http.StatusNotFound
+	return respErr.StatusCode == http.StatusNotFound &&
+		strings.EqualFold(azureErrorCode(respErr), "ResourceNotFound")
 }
 
 // governanceAssignments lists the owners and due dates assigned to one

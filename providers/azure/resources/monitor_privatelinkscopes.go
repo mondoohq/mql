@@ -266,6 +266,13 @@ func (a *mqlAzureSubscriptionMonitorServicePrivateLinkScopeScopedResource) works
 		a.Workspace.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
+	if ws := lookupInServiceList(a.MqlRuntime, ResourceAzureSubscriptionMonitorService,
+		func(s *mqlAzureSubscriptionMonitorService) *plugin.TValue[[]any] { return s.GetWorkspaces() },
+		id); ws != nil {
+		if mqlWs, ok := ws.(*mqlAzureSubscriptionMonitorServiceWorkspace); ok {
+			return mqlWs, nil
+		}
+	}
 	res, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionMonitorServiceWorkspace, map[string]*llx.RawData{
 		"id": llx.StringData(id),
 	})

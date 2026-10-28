@@ -6,7 +6,9 @@ package resources
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,8 +86,17 @@ func TestNoGovernanceAssignments(t *testing.T) {
 	// Measured: Azure Resource Manager, 2026-10-27, listing the governance
 	// assignments of a Defender assessment with none answered 404 with
 	// {"Error":{"Code":"ResourceNotFound","Message":"No Governance Assignments found ..."}}.
-	assert.True(t, noGovernanceAssignments(&azcore.ResponseError{StatusCode: http.StatusNotFound, ErrorCode: "ResourceNotFound"}))
-	// Synthetic: a refusal and a transport failure are not absences; no target showed these.
+	// azcore left ErrorCode empty ("ERROR CODE UNAVAILABLE") because of the
+	// capitalized envelope, so the code has to come from the body.
+	measured := `{"Error":{"Code":"ResourceNotFound","Message":"No Governance Assignments found /subscriptions/0000/providers/Microsoft.Security/assessments/6f90a6d6-d4d6-0794-0ec1-98fa77878c2e"}}`
+	assert.True(t, noGovernanceAssignments(&azcore.ResponseError{
+		StatusCode:  http.StatusNotFound,
+		RawResponse: &http.Response{StatusCode: http.StatusNotFound, Body: io.NopCloser(strings.NewReader(measured))},
+	}))
+	// Synthetic: a 404 with any other code, a refusal and a transport failure
+	// are not absences; no target showed these.
+	assert.False(t, noGovernanceAssignments(&azcore.ResponseError{StatusCode: http.StatusNotFound, ErrorCode: "SubscriptionNotFound"}))
+	assert.False(t, noGovernanceAssignments(&azcore.ResponseError{StatusCode: http.StatusNotFound}))
 	assert.False(t, noGovernanceAssignments(&azcore.ResponseError{StatusCode: http.StatusForbidden}))
 	assert.False(t, noGovernanceAssignments(errors.New("dial tcp: connection refused")))
 }
