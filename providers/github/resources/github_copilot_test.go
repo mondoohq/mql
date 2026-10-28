@@ -52,7 +52,7 @@ func TestCopilotOrgBilling_DocumentedExample(t *testing.T) {
 	// github/rest-api-description (descriptions/api.github.com), with distinct
 	// values per policy so a swapped key is caught.
 	details := fetchCopilotBilling(t, `{
-		"seat_breakdown": {"total": 12, "added_this_cycle": 9, "pending_invitation": 1, "pending_cancellation": 2, "active_this_cycle": 12, "inactive_this_cycle": 11},
+		"seat_breakdown": {"total": 12, "added_this_cycle": 9, "pending_invitation": 1, "pending_cancellation": 2, "active_this_cycle": 10, "inactive_this_cycle": 11},
 		"seat_management_setting": "assign_selected",
 		"ide_chat": "disabled",
 		"platform_chat": "enabled",
@@ -73,6 +73,7 @@ func TestCopilotOrgBilling_DocumentedExample(t *testing.T) {
 	assert.Equal(t, int64(9), args["seatsAddedThisCycle"].Value)
 	assert.Equal(t, int64(1), args["seatsPendingInvitation"].Value)
 	assert.Equal(t, int64(2), args["seatsPendingCancellation"].Value)
+	assert.Equal(t, int64(10), args["seatsActiveThisCycle"].Value)
 	assert.Equal(t, int64(11), args["seatsInactiveThisCycle"].Value)
 }
 

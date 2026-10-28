@@ -695,7 +695,8 @@ private github.organization.copilot @defaults("seatManagementSetting seatsTotal"
   publicCodeSuggestions string
   // Copilot Chat setting
   //
-  // Deprecated in favor of ideChat. Reports the same value as ideChat.
+  // Deprecated in favor of ideChat. Reports the policy for Copilot Chat in the
+  // IDE, which is the value of ideChat on current API versions.
   copilotChat @maturity("deprecated") @replaced_by("github.organization.copilot.ideChat") string
   // Policy for Copilot Chat in the IDE
   //
