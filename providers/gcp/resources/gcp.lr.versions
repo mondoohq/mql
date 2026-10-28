@@ -102,6 +102,7 @@ gcp.folder.loggingService.sink.writerIdentity 13.16.3
 gcp.folder.loggingService.sinks 13.16.3
 gcp.folder.managementProject 13.25.2
 gcp.folder.managementProjectRef 13.27.2
+gcp.folder.modelArmorFloorSetting 14.6.4
 gcp.folder.name 9.0.0
 gcp.folder.orgPolicies 13.16.3
 gcp.folder.parentFolder 13.25.2
@@ -275,6 +276,7 @@ gcp.organization.loggingService.sink.organizationName 13.16.3
 gcp.organization.loggingService.sink.updated 13.16.3
 gcp.organization.loggingService.sink.writerIdentity 13.16.3
 gcp.organization.loggingService.sinks 13.16.3
+gcp.organization.modelArmorFloorSetting 14.6.4
 gcp.organization.name 9.0.0
 gcp.organization.networkSecurityProfile 13.15.1
 gcp.organization.networkSecurityProfile.created 13.15.1
@@ -3194,6 +3196,7 @@ gcp.project.discoveryEngine 13.20.2
 gcp.project.discoveryEngineService 13.20.2
 gcp.project.discoveryEngineService.dataStore 13.20.2
 gcp.project.discoveryEngineService.dataStore.aclEnabled 13.20.2
+gcp.project.discoveryEngineService.dataStore.cmekState 14.6.4
 gcp.project.discoveryEngineService.dataStore.contentConfig 13.20.2
 gcp.project.discoveryEngineService.dataStore.createdAt 13.20.2
 gcp.project.discoveryEngineService.dataStore.defaultSchemaId 13.20.2
@@ -3203,6 +3206,9 @@ gcp.project.discoveryEngineService.dataStore.kmsKey 13.20.2
 gcp.project.discoveryEngineService.dataStore.kmsKeyName 13.20.2
 gcp.project.discoveryEngineService.dataStore.name 13.20.2
 gcp.project.discoveryEngineService.dataStore.solutionTypes 13.20.2
+gcp.project.discoveryEngineService.dataStore.workspaceSuperAdminEmail 14.6.4
+gcp.project.discoveryEngineService.dataStore.workspaceSuperAdminServiceAccount 14.6.4
+gcp.project.discoveryEngineService.dataStore.workspaceType 14.6.4
 gcp.project.discoveryEngineService.dataStores 13.20.2
 gcp.project.discoveryEngineService.engine 13.20.2
 gcp.project.discoveryEngineService.engine.createdAt 13.20.2
@@ -4562,6 +4568,8 @@ gcp.project.modelArmorService.floorSetting.aiPlatformFloorSetting 13.6.1
 gcp.project.modelArmorService.floorSetting.created 13.6.1
 gcp.project.modelArmorService.floorSetting.enableFloorSettingEnforcement 13.6.1
 gcp.project.modelArmorService.floorSetting.filterConfig 13.6.1
+gcp.project.modelArmorService.floorSetting.floorSettingMetadata 14.6.4
+gcp.project.modelArmorService.floorSetting.googleMcpServerFloorSetting 14.6.4
 gcp.project.modelArmorService.floorSetting.integratedServices 13.6.1
 gcp.project.modelArmorService.floorSetting.name 13.6.1
 gcp.project.modelArmorService.floorSetting.updated 13.6.1
@@ -5750,6 +5758,7 @@ gcp.project.vertexaiService.endpoint.displayName 13.1.2
 gcp.project.vertexaiService.endpoint.enablePrivateServiceConnect 13.1.2
 gcp.project.vertexaiService.endpoint.encryptionSpec 13.1.2
 gcp.project.vertexaiService.endpoint.etag 13.1.2
+gcp.project.vertexaiService.endpoint.internetReachable 14.6.4
 gcp.project.vertexaiService.endpoint.kmsKey 13.19.2
 gcp.project.vertexaiService.endpoint.labels 13.1.2
 gcp.project.vertexaiService.endpoint.name 13.1.2
@@ -5828,13 +5837,17 @@ gcp.project.vertexaiService.indexEndpoint.created 13.6.1
 gcp.project.vertexaiService.indexEndpoint.deployedIndexes 13.6.1
 gcp.project.vertexaiService.indexEndpoint.description 13.6.1
 gcp.project.vertexaiService.indexEndpoint.displayName 13.6.1
+gcp.project.vertexaiService.indexEndpoint.enablePrivateServiceConnect 14.6.4
 gcp.project.vertexaiService.indexEndpoint.encryptionSpec 13.6.1
 gcp.project.vertexaiService.indexEndpoint.kmsKey 13.19.2
 gcp.project.vertexaiService.indexEndpoint.labels 13.6.1
 gcp.project.vertexaiService.indexEndpoint.name 13.6.1
 gcp.project.vertexaiService.indexEndpoint.networkRef 13.21.2
+gcp.project.vertexaiService.indexEndpoint.pscProjectAllowlist 14.6.4
 gcp.project.vertexaiService.indexEndpoint.publicEndpointDomainName 13.6.1
 gcp.project.vertexaiService.indexEndpoint.publicEndpointEnabled 13.6.1
+gcp.project.vertexaiService.indexEndpoint.satisfiesPzi 14.6.4
+gcp.project.vertexaiService.indexEndpoint.satisfiesPzs 14.6.4
 gcp.project.vertexaiService.indexEndpoint.updated 13.6.1
 gcp.project.vertexaiService.indexEndpoints 13.6.1
 gcp.project.vertexaiService.indexes 13.6.1
@@ -6009,6 +6022,9 @@ gcp.project.vertexaiService.pipelineJobs 13.1.2
 gcp.project.vertexaiService.projectId 13.1.2
 gcp.project.vertexaiService.ragCorpora 13.20.2
 gcp.project.vertexaiService.ragCorpus 13.20.2
+gcp.project.vertexaiService.ragCorpus.apiKeySecret 14.6.4
+gcp.project.vertexaiService.ragCorpus.apiKeySecretVersion 14.6.4
+gcp.project.vertexaiService.ragCorpus.backendType 14.6.4
 gcp.project.vertexaiService.ragCorpus.corpusStatus 13.20.2
 gcp.project.vertexaiService.ragCorpus.createdAt 13.20.2
 gcp.project.vertexaiService.ragCorpus.description 13.20.2
@@ -6016,7 +6032,9 @@ gcp.project.vertexaiService.ragCorpus.displayName 13.20.2
 gcp.project.vertexaiService.ragCorpus.encryptionSpec 13.20.2
 gcp.project.vertexaiService.ragCorpus.kmsKey 13.20.2
 gcp.project.vertexaiService.ragCorpus.name 13.20.2
+gcp.project.vertexaiService.ragCorpus.pineconeIndexName 14.6.4
 gcp.project.vertexaiService.ragCorpus.updatedAt 13.20.2
+gcp.project.vertexaiService.ragCorpus.vertexAiSearchServingConfig 14.6.4
 gcp.project.vertexaiService.reasoningEngine 13.20.2
 gcp.project.vertexaiService.reasoningEngine.agentFramework 13.20.2
 gcp.project.vertexaiService.reasoningEngine.createdAt 13.20.2

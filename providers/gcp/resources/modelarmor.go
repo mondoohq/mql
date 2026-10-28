@@ -238,9 +238,68 @@ func (g *mqlGcpProjectModelArmorService) floorSetting() (*mqlGcpProjectModelArmo
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
-	projectId := g.ProjectId.Data
 
-	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	fs, err := getModelArmorFloorSetting(g.MqlRuntime, modelArmorFloorSettingName("projects/"+g.ProjectId.Data))
+	if err != nil {
+		// Through v14 a refused project floor setting keeps reading as null,
+		// as it did in v13.
+		if !plugin.StructuredErrors() && (errors.Is(err, llx.ErrForbidden) || errors.Is(err, llx.ErrNotApplicable)) {
+			g.FloorSetting.State = plugin.StateIsNull | plugin.StateIsSet
+			return nil, nil
+		}
+		return nil, err
+	}
+	if fs == nil {
+		g.FloorSetting.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return fs, nil
+}
+
+func (g *mqlGcpOrganization) modelArmorFloorSetting() (*mqlGcpProjectModelArmorServiceFloorSetting, error) {
+	if g.Id.Error != nil {
+		return nil, g.Id.Error
+	}
+	// g.Id.Data is "organizations/{id}" per initGcpOrganization
+	fs, err := getModelArmorFloorSetting(g.MqlRuntime, modelArmorFloorSettingName(g.Id.Data))
+	if err != nil {
+		return nil, err
+	}
+	if fs == nil {
+		g.ModelArmorFloorSetting.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return fs, nil
+}
+
+func (g *mqlGcpFolder) modelArmorFloorSetting() (*mqlGcpProjectModelArmorServiceFloorSetting, error) {
+	if g.Id.Error != nil {
+		return nil, g.Id.Error
+	}
+	fs, err := getModelArmorFloorSetting(g.MqlRuntime, modelArmorFloorSettingName(folderResourceName(g.Id.Data)))
+	if err != nil {
+		return nil, err
+	}
+	if fs == nil {
+		g.ModelArmorFloorSetting.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return fs, nil
+}
+
+// modelArmorFloorSettingName returns the floor setting resource name for a
+// project, folder, or organization parent ("projects/p", "folders/f",
+// "organizations/o"). Floor settings only exist in the global location.
+func modelArmorFloorSettingName(parent string) string {
+	return parent + "/locations/global/floorSetting"
+}
+
+// getModelArmorFloorSetting fetches the floor setting with the given resource
+// name. It returns nil, nil when none is configured on that parent. A refused
+// call is returned classified: an API that is not enabled is NotApplicable, a
+// denied one Forbidden.
+func getModelArmorFloorSetting(runtime *plugin.Runtime, name string) (*mqlGcpProjectModelArmorServiceFloorSetting, error) {
+	conn := runtime.Connection.(*connection.GcpConnection)
 	creds, err := conn.Credentials(modelarmor.DefaultAuthScopes()...)
 	if err != nil {
 		return nil, err
@@ -253,22 +312,36 @@ func (g *mqlGcpProjectModelArmorService) floorSetting() (*mqlGcpProjectModelArmo
 	}
 	defer client.Close()
 
-	fs, err := client.GetFloorSetting(ctx, &modelarmorpb.GetFloorSettingRequest{
-		Name: fmt.Sprintf("projects/%s/locations/global/floorSetting", projectId),
-	})
+	fs, err := client.GetFloorSetting(ctx, &modelarmorpb.GetFloorSettingRequest{Name: name})
 	if err != nil {
-		if s, ok := status.FromError(err); ok && (s.Code() == codes.NotFound || s.Code() == codes.PermissionDenied) {
-			g.FloorSetting.State = plugin.StateIsNull | plugin.StateIsSet
+		if rerr := classifyRefusal(err, "modelarmor.floorSettings.get"); rerr != nil {
+			return nil, rerr
+		}
+		if s, ok := status.FromError(err); ok && s.Code() == codes.NotFound {
 			return nil, nil
 		}
 		return nil, err
 	}
+	return newMqlModelArmorFloorSetting(runtime, fs)
+}
 
+// newMqlModelArmorFloorSetting maps a Model Armor FloorSetting proto into the
+// MQL resource. The resource name carries the parent, so the floor settings of
+// a project, a folder, and an organization never share a cache entry.
+func newMqlModelArmorFloorSetting(runtime *plugin.Runtime, fs *modelarmorpb.FloorSetting) (*mqlGcpProjectModelArmorServiceFloorSetting, error) {
 	filterConfig, err := protoToDict(fs.FilterConfig)
 	if err != nil {
 		return nil, err
 	}
 	aiPlatformFloorSetting, err := protoToDict(fs.AiPlatformFloorSetting)
+	if err != nil {
+		return nil, err
+	}
+	googleMcpServerFloorSetting, err := protoToDict(fs.GoogleMcpServerFloorSetting)
+	if err != nil {
+		return nil, err
+	}
+	floorSettingMetadata, err := protoToDict(fs.FloorSettingMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -278,12 +351,14 @@ func (g *mqlGcpProjectModelArmorService) floorSetting() (*mqlGcpProjectModelArmo
 		integratedServices = append(integratedServices, is.String())
 	}
 
-	res, err := CreateResource(g.MqlRuntime, "gcp.project.modelArmorService.floorSetting", map[string]*llx.RawData{
+	res, err := CreateResource(runtime, "gcp.project.modelArmorService.floorSetting", map[string]*llx.RawData{
 		"name":                          llx.StringData(fs.Name),
 		"filterConfig":                  llx.DictData(filterConfig),
 		"enableFloorSettingEnforcement": llx.BoolData(fs.GetEnableFloorSettingEnforcement()),
 		"integratedServices":            llx.ArrayData(integratedServices, types.String),
 		"aiPlatformFloorSetting":        llx.DictData(aiPlatformFloorSetting),
+		"googleMcpServerFloorSetting":   llx.DictData(googleMcpServerFloorSetting),
+		"floorSettingMetadata":          llx.DictData(floorSettingMetadata),
 		"created":                       llx.TimeDataPtr(timestampAsTimePtr(fs.CreateTime)),
 		"updated":                       llx.TimeDataPtr(timestampAsTimePtr(fs.UpdateTime)),
 	})

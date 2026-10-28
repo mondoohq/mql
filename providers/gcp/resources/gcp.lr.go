@@ -2937,6 +2937,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.organization.assuredWorkloads": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganization).GetAssuredWorkloads()).ToDataRes(types.Array(types.Resource("gcp.organization.assuredWorkload")))
 	},
+	"gcp.organization.modelArmorFloorSetting": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganization).GetModelArmorFloorSetting()).ToDataRes(types.Resource("gcp.project.modelArmorService.floorSetting"))
+	},
 	"gcp.organization.role.organizationId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationRole).GetOrganizationId()).ToDataRes(types.String)
 	},
@@ -3725,6 +3728,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.folder.sccEventThreatDetectionCustomModules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpFolder).GetSccEventThreatDetectionCustomModules()).ToDataRes(types.Array(types.Resource("gcp.scc.eventThreatDetectionCustomModule")))
+	},
+	"gcp.folder.modelArmorFloorSetting": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpFolder).GetModelArmorFloorSetting()).ToDataRes(types.Resource("gcp.project.modelArmorService.floorSetting"))
 	},
 	"gcp.projects.parentId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjects).GetParentId()).ToDataRes(types.String)
@@ -16161,6 +16167,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.vertexaiService.endpoint.satisfiesPzi": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetSatisfiesPzi()).ToDataRes(types.Bool)
 	},
+	"gcp.project.vertexaiService.endpoint.internetReachable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetInternetReachable()).ToDataRes(types.Bool)
+	},
 	"gcp.project.vertexaiService.endpoint.trafficSplit": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetTrafficSplit()).ToDataRes(types.Map(types.String, types.Int))
 	},
@@ -16482,6 +16491,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.vertexaiService.indexEndpoint.publicEndpointDomainName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceIndexEndpoint).GetPublicEndpointDomainName()).ToDataRes(types.String)
 	},
+	"gcp.project.vertexaiService.indexEndpoint.enablePrivateServiceConnect": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceIndexEndpoint).GetEnablePrivateServiceConnect()).ToDataRes(types.Bool)
+	},
+	"gcp.project.vertexaiService.indexEndpoint.pscProjectAllowlist": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceIndexEndpoint).GetPscProjectAllowlist()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.vertexaiService.indexEndpoint.satisfiesPzs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceIndexEndpoint).GetSatisfiesPzs()).ToDataRes(types.Bool)
+	},
+	"gcp.project.vertexaiService.indexEndpoint.satisfiesPzi": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceIndexEndpoint).GetSatisfiesPzi()).ToDataRes(types.Bool)
+	},
 	"gcp.project.vertexaiService.indexEndpoint.labels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceIndexEndpoint).GetLabels()).ToDataRes(types.Map(types.String, types.String))
 	},
@@ -16763,6 +16784,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.vertexaiService.ragCorpus.corpusStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceRagCorpus).GetCorpusStatus()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.ragCorpus.backendType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceRagCorpus).GetBackendType()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.ragCorpus.pineconeIndexName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceRagCorpus).GetPineconeIndexName()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.ragCorpus.apiKeySecret": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceRagCorpus).GetApiKeySecret()).ToDataRes(types.Resource("gcp.project.secretmanagerService.secret"))
+	},
+	"gcp.project.vertexaiService.ragCorpus.apiKeySecretVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceRagCorpus).GetApiKeySecretVersion()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.ragCorpus.vertexAiSearchServingConfig": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceRagCorpus).GetVertexAiSearchServingConfig()).ToDataRes(types.String)
 	},
 	"gcp.project.vertexaiService.ragCorpus.encryptionSpec": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectVertexaiServiceRagCorpus).GetEncryptionSpec()).ToDataRes(types.Dict)
@@ -17535,6 +17571,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.modelArmorService.floorSetting.aiPlatformFloorSetting": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectModelArmorServiceFloorSetting).GetAiPlatformFloorSetting()).ToDataRes(types.Dict)
 	},
+	"gcp.project.modelArmorService.floorSetting.googleMcpServerFloorSetting": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceFloorSetting).GetGoogleMcpServerFloorSetting()).ToDataRes(types.Dict)
+	},
+	"gcp.project.modelArmorService.floorSetting.floorSettingMetadata": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectModelArmorServiceFloorSetting).GetFloorSettingMetadata()).ToDataRes(types.Dict)
+	},
 	"gcp.project.modelArmorService.floorSetting.created": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectModelArmorServiceFloorSetting).GetCreated()).ToDataRes(types.Time)
 	},
@@ -17708,6 +17750,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.discoveryEngineService.dataStore.kmsKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).GetKmsKey()).ToDataRes(types.Resource("gcp.project.kmsService.keyring.cryptokey"))
+	},
+	"gcp.project.discoveryEngineService.dataStore.cmekState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).GetCmekState()).ToDataRes(types.String)
+	},
+	"gcp.project.discoveryEngineService.dataStore.workspaceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).GetWorkspaceType()).ToDataRes(types.String)
+	},
+	"gcp.project.discoveryEngineService.dataStore.workspaceSuperAdminServiceAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).GetWorkspaceSuperAdminServiceAccount()).ToDataRes(types.Resource("gcp.project.iamService.serviceAccount"))
+	},
+	"gcp.project.discoveryEngineService.dataStore.workspaceSuperAdminEmail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).GetWorkspaceSuperAdminEmail()).ToDataRes(types.String)
 	},
 	"gcp.project.discoveryEngineService.dataStore.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).GetCreatedAt()).ToDataRes(types.Time)
@@ -20493,6 +20547,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpOrganization).AssuredWorkloads, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"gcp.organization.modelArmorFloorSetting": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganization).ModelArmorFloorSetting, ok = plugin.RawToTValue[*mqlGcpProjectModelArmorServiceFloorSetting](v.Value, v.Error)
+		return
+	},
 	"gcp.organization.role.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpOrganizationRole).__id, ok = v.Value.(string)
 		return
@@ -21639,6 +21697,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.folder.sccEventThreatDetectionCustomModules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpFolder).SccEventThreatDetectionCustomModules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.folder.modelArmorFloorSetting": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpFolder).ModelArmorFloorSetting, ok = plugin.RawToTValue[*mqlGcpProjectModelArmorServiceFloorSetting](v.Value, v.Error)
 		return
 	},
 	"gcp.projects.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -39713,6 +39775,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectVertexaiServiceEndpoint).SatisfiesPzi, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"gcp.project.vertexaiService.endpoint.internetReachable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).InternetReachable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"gcp.project.vertexaiService.endpoint.trafficSplit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectVertexaiServiceEndpoint).TrafficSplit, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
@@ -40173,6 +40239,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectVertexaiServiceIndexEndpoint).PublicEndpointDomainName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"gcp.project.vertexaiService.indexEndpoint.enablePrivateServiceConnect": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceIndexEndpoint).EnablePrivateServiceConnect, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.indexEndpoint.pscProjectAllowlist": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceIndexEndpoint).PscProjectAllowlist, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.indexEndpoint.satisfiesPzs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceIndexEndpoint).SatisfiesPzs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.indexEndpoint.satisfiesPzi": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceIndexEndpoint).SatisfiesPzi, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"gcp.project.vertexaiService.indexEndpoint.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectVertexaiServiceIndexEndpoint).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
@@ -40567,6 +40649,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.vertexaiService.ragCorpus.corpusStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectVertexaiServiceRagCorpus).CorpusStatus, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.ragCorpus.backendType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceRagCorpus).BackendType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.ragCorpus.pineconeIndexName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceRagCorpus).PineconeIndexName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.ragCorpus.apiKeySecret": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceRagCorpus).ApiKeySecret, ok = plugin.RawToTValue[*mqlGcpProjectSecretmanagerServiceSecret](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.ragCorpus.apiKeySecretVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceRagCorpus).ApiKeySecretVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.ragCorpus.vertexAiSearchServingConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceRagCorpus).VertexAiSearchServingConfig, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.vertexaiService.ragCorpus.encryptionSpec": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -41705,6 +41807,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectModelArmorServiceFloorSetting).AiPlatformFloorSetting, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"gcp.project.modelArmorService.floorSetting.googleMcpServerFloorSetting": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceFloorSetting).GoogleMcpServerFloorSetting, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.modelArmorService.floorSetting.floorSettingMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectModelArmorServiceFloorSetting).FloorSettingMetadata, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
 	"gcp.project.modelArmorService.floorSetting.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectModelArmorServiceFloorSetting).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
@@ -41955,6 +42065,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.discoveryEngineService.dataStore.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).KmsKey, ok = plugin.RawToTValue[*mqlGcpProjectKmsServiceKeyringCryptokey](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.dataStore.cmekState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).CmekState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.dataStore.workspaceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).WorkspaceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.dataStore.workspaceSuperAdminServiceAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).WorkspaceSuperAdminServiceAccount, ok = plugin.RawToTValue[*mqlGcpProjectIamServiceServiceAccount](v.Value, v.Error)
+		return
+	},
+	"gcp.project.discoveryEngineService.dataStore.workspaceSuperAdminEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDiscoveryEngineServiceDataStore).WorkspaceSuperAdminEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.discoveryEngineService.dataStore.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -45924,6 +46050,7 @@ type mqlGcpOrganization struct {
 	SccEventThreatDetectionCustomModules    plugin.TValue[[]any]
 	TagKeys                                 plugin.TValue[[]any]
 	AssuredWorkloads                        plugin.TValue[[]any]
+	ModelArmorFloorSetting                  plugin.TValue[*mqlGcpProjectModelArmorServiceFloorSetting]
 }
 
 // createGcpOrganization creates a new instance of this resource
@@ -46488,6 +46615,22 @@ func (c *mqlGcpOrganization) GetAssuredWorkloads() *plugin.TValue[[]any] {
 		}
 
 		return c.assuredWorkloads()
+	})
+}
+
+func (c *mqlGcpOrganization) GetModelArmorFloorSetting() *plugin.TValue[*mqlGcpProjectModelArmorServiceFloorSetting] {
+	return plugin.GetOrCompute[*mqlGcpProjectModelArmorServiceFloorSetting](&c.ModelArmorFloorSetting, func() (*mqlGcpProjectModelArmorServiceFloorSetting, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization", c.__id, "modelArmorFloorSetting")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectModelArmorServiceFloorSetting), nil
+			}
+		}
+
+		return c.modelArmorFloorSetting()
 	})
 }
 
@@ -48981,6 +49124,7 @@ type mqlGcpFolder struct {
 	DenyPolicies                            plugin.TValue[[]any]
 	SccSecurityHealthAnalyticsCustomModules plugin.TValue[[]any]
 	SccEventThreatDetectionCustomModules    plugin.TValue[[]any]
+	ModelArmorFloorSetting                  plugin.TValue[*mqlGcpProjectModelArmorServiceFloorSetting]
 }
 
 // createGcpFolder creates a new instance of this resource
@@ -49273,6 +49417,22 @@ func (c *mqlGcpFolder) GetSccEventThreatDetectionCustomModules() *plugin.TValue[
 		}
 
 		return c.sccEventThreatDetectionCustomModules()
+	})
+}
+
+func (c *mqlGcpFolder) GetModelArmorFloorSetting() *plugin.TValue[*mqlGcpProjectModelArmorServiceFloorSetting] {
+	return plugin.GetOrCompute[*mqlGcpProjectModelArmorServiceFloorSetting](&c.ModelArmorFloorSetting, func() (*mqlGcpProjectModelArmorServiceFloorSetting, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.folder", c.__id, "modelArmorFloorSetting")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectModelArmorServiceFloorSetting), nil
+			}
+		}
+
+		return c.modelArmorFloorSetting()
 	})
 }
 
@@ -92910,6 +93070,7 @@ type mqlGcpProjectVertexaiServiceEndpoint struct {
 	PrivateModelServerEnabled            plugin.TValue[bool]
 	SatisfiesPzs                         plugin.TValue[bool]
 	SatisfiesPzi                         plugin.TValue[bool]
+	InternetReachable                    plugin.TValue[bool]
 	TrafficSplit                         plugin.TValue[map[string]any]
 	Labels                               plugin.TValue[map[string]any]
 	Etag                                 plugin.TValue[string]
@@ -93048,6 +93209,10 @@ func (c *mqlGcpProjectVertexaiServiceEndpoint) GetSatisfiesPzs() *plugin.TValue[
 
 func (c *mqlGcpProjectVertexaiServiceEndpoint) GetSatisfiesPzi() *plugin.TValue[bool] {
 	return &c.SatisfiesPzi
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetInternetReachable() *plugin.TValue[bool] {
+	return &c.InternetReachable
 }
 
 func (c *mqlGcpProjectVertexaiServiceEndpoint) GetTrafficSplit() *plugin.TValue[map[string]any] {
@@ -94013,18 +94178,22 @@ type mqlGcpProjectVertexaiServiceIndexEndpoint struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGcpProjectVertexaiServiceIndexEndpointInternal
-	Name                     plugin.TValue[string]
-	DisplayName              plugin.TValue[string]
-	Description              plugin.TValue[string]
-	DeployedIndexes          plugin.TValue[[]any]
-	NetworkRef               plugin.TValue[*mqlGcpProjectComputeServiceNetwork]
-	PublicEndpointEnabled    plugin.TValue[bool]
-	PublicEndpointDomainName plugin.TValue[string]
-	Labels                   plugin.TValue[map[string]any]
-	EncryptionSpec           plugin.TValue[any]
-	KmsKey                   plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey]
-	Created                  plugin.TValue[*time.Time]
-	Updated                  plugin.TValue[*time.Time]
+	Name                        plugin.TValue[string]
+	DisplayName                 plugin.TValue[string]
+	Description                 plugin.TValue[string]
+	DeployedIndexes             plugin.TValue[[]any]
+	NetworkRef                  plugin.TValue[*mqlGcpProjectComputeServiceNetwork]
+	PublicEndpointEnabled       plugin.TValue[bool]
+	PublicEndpointDomainName    plugin.TValue[string]
+	EnablePrivateServiceConnect plugin.TValue[bool]
+	PscProjectAllowlist         plugin.TValue[[]any]
+	SatisfiesPzs                plugin.TValue[bool]
+	SatisfiesPzi                plugin.TValue[bool]
+	Labels                      plugin.TValue[map[string]any]
+	EncryptionSpec              plugin.TValue[any]
+	KmsKey                      plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey]
+	Created                     plugin.TValue[*time.Time]
+	Updated                     plugin.TValue[*time.Time]
 }
 
 // createGcpProjectVertexaiServiceIndexEndpoint creates a new instance of this resource
@@ -94102,6 +94271,22 @@ func (c *mqlGcpProjectVertexaiServiceIndexEndpoint) GetPublicEndpointEnabled() *
 
 func (c *mqlGcpProjectVertexaiServiceIndexEndpoint) GetPublicEndpointDomainName() *plugin.TValue[string] {
 	return &c.PublicEndpointDomainName
+}
+
+func (c *mqlGcpProjectVertexaiServiceIndexEndpoint) GetEnablePrivateServiceConnect() *plugin.TValue[bool] {
+	return &c.EnablePrivateServiceConnect
+}
+
+func (c *mqlGcpProjectVertexaiServiceIndexEndpoint) GetPscProjectAllowlist() *plugin.TValue[[]any] {
+	return &c.PscProjectAllowlist
+}
+
+func (c *mqlGcpProjectVertexaiServiceIndexEndpoint) GetSatisfiesPzs() *plugin.TValue[bool] {
+	return &c.SatisfiesPzs
+}
+
+func (c *mqlGcpProjectVertexaiServiceIndexEndpoint) GetSatisfiesPzi() *plugin.TValue[bool] {
+	return &c.SatisfiesPzi
 }
 
 func (c *mqlGcpProjectVertexaiServiceIndexEndpoint) GetLabels() *plugin.TValue[map[string]any] {
@@ -94926,14 +95111,19 @@ type mqlGcpProjectVertexaiServiceRagCorpus struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGcpProjectVertexaiServiceRagCorpusInternal
-	Name           plugin.TValue[string]
-	DisplayName    plugin.TValue[string]
-	Description    plugin.TValue[string]
-	CorpusStatus   plugin.TValue[any]
-	EncryptionSpec plugin.TValue[any]
-	KmsKey         plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey]
-	CreatedAt      plugin.TValue[*time.Time]
-	UpdatedAt      plugin.TValue[*time.Time]
+	Name                        plugin.TValue[string]
+	DisplayName                 plugin.TValue[string]
+	Description                 plugin.TValue[string]
+	CorpusStatus                plugin.TValue[any]
+	BackendType                 plugin.TValue[string]
+	PineconeIndexName           plugin.TValue[string]
+	ApiKeySecret                plugin.TValue[*mqlGcpProjectSecretmanagerServiceSecret]
+	ApiKeySecretVersion         plugin.TValue[string]
+	VertexAiSearchServingConfig plugin.TValue[string]
+	EncryptionSpec              plugin.TValue[any]
+	KmsKey                      plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey]
+	CreatedAt                   plugin.TValue[*time.Time]
+	UpdatedAt                   plugin.TValue[*time.Time]
 }
 
 // createGcpProjectVertexaiServiceRagCorpus creates a new instance of this resource
@@ -94987,6 +95177,38 @@ func (c *mqlGcpProjectVertexaiServiceRagCorpus) GetDescription() *plugin.TValue[
 
 func (c *mqlGcpProjectVertexaiServiceRagCorpus) GetCorpusStatus() *plugin.TValue[any] {
 	return &c.CorpusStatus
+}
+
+func (c *mqlGcpProjectVertexaiServiceRagCorpus) GetBackendType() *plugin.TValue[string] {
+	return &c.BackendType
+}
+
+func (c *mqlGcpProjectVertexaiServiceRagCorpus) GetPineconeIndexName() *plugin.TValue[string] {
+	return &c.PineconeIndexName
+}
+
+func (c *mqlGcpProjectVertexaiServiceRagCorpus) GetApiKeySecret() *plugin.TValue[*mqlGcpProjectSecretmanagerServiceSecret] {
+	return plugin.GetOrCompute[*mqlGcpProjectSecretmanagerServiceSecret](&c.ApiKeySecret, func() (*mqlGcpProjectSecretmanagerServiceSecret, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.vertexaiService.ragCorpus", c.__id, "apiKeySecret")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectSecretmanagerServiceSecret), nil
+			}
+		}
+
+		return c.apiKeySecret()
+	})
+}
+
+func (c *mqlGcpProjectVertexaiServiceRagCorpus) GetApiKeySecretVersion() *plugin.TValue[string] {
+	return &c.ApiKeySecretVersion
+}
+
+func (c *mqlGcpProjectVertexaiServiceRagCorpus) GetVertexAiSearchServingConfig() *plugin.TValue[string] {
+	return &c.VertexAiSearchServingConfig
 }
 
 func (c *mqlGcpProjectVertexaiServiceRagCorpus) GetEncryptionSpec() *plugin.TValue[any] {
@@ -97714,6 +97936,8 @@ type mqlGcpProjectModelArmorServiceFloorSetting struct {
 	EnableFloorSettingEnforcement plugin.TValue[bool]
 	IntegratedServices            plugin.TValue[[]any]
 	AiPlatformFloorSetting        plugin.TValue[any]
+	GoogleMcpServerFloorSetting   plugin.TValue[any]
+	FloorSettingMetadata          plugin.TValue[any]
 	Created                       plugin.TValue[*time.Time]
 	Updated                       plugin.TValue[*time.Time]
 }
@@ -97773,6 +97997,14 @@ func (c *mqlGcpProjectModelArmorServiceFloorSetting) GetIntegratedServices() *pl
 
 func (c *mqlGcpProjectModelArmorServiceFloorSetting) GetAiPlatformFloorSetting() *plugin.TValue[any] {
 	return &c.AiPlatformFloorSetting
+}
+
+func (c *mqlGcpProjectModelArmorServiceFloorSetting) GetGoogleMcpServerFloorSetting() *plugin.TValue[any] {
+	return &c.GoogleMcpServerFloorSetting
+}
+
+func (c *mqlGcpProjectModelArmorServiceFloorSetting) GetFloorSettingMetadata() *plugin.TValue[any] {
+	return &c.FloorSettingMetadata
 }
 
 func (c *mqlGcpProjectModelArmorServiceFloorSetting) GetCreated() *plugin.TValue[*time.Time] {
@@ -98242,16 +98474,20 @@ type mqlGcpProjectDiscoveryEngineServiceDataStore struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGcpProjectDiscoveryEngineServiceDataStoreInternal
-	Name             plugin.TValue[string]
-	DisplayName      plugin.TValue[string]
-	IndustryVertical plugin.TValue[string]
-	SolutionTypes    plugin.TValue[[]any]
-	ContentConfig    plugin.TValue[string]
-	DefaultSchemaId  plugin.TValue[string]
-	AclEnabled       plugin.TValue[bool]
-	KmsKeyName       plugin.TValue[string]
-	KmsKey           plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey]
-	CreatedAt        plugin.TValue[*time.Time]
+	Name                              plugin.TValue[string]
+	DisplayName                       plugin.TValue[string]
+	IndustryVertical                  plugin.TValue[string]
+	SolutionTypes                     plugin.TValue[[]any]
+	ContentConfig                     plugin.TValue[string]
+	DefaultSchemaId                   plugin.TValue[string]
+	AclEnabled                        plugin.TValue[bool]
+	KmsKeyName                        plugin.TValue[string]
+	KmsKey                            plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey]
+	CmekState                         plugin.TValue[string]
+	WorkspaceType                     plugin.TValue[string]
+	WorkspaceSuperAdminServiceAccount plugin.TValue[*mqlGcpProjectIamServiceServiceAccount]
+	WorkspaceSuperAdminEmail          plugin.TValue[string]
+	CreatedAt                         plugin.TValue[*time.Time]
 }
 
 // createGcpProjectDiscoveryEngineServiceDataStore creates a new instance of this resource
@@ -98337,6 +98573,34 @@ func (c *mqlGcpProjectDiscoveryEngineServiceDataStore) GetKmsKey() *plugin.TValu
 
 		return c.kmsKey()
 	})
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceDataStore) GetCmekState() *plugin.TValue[string] {
+	return &c.CmekState
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceDataStore) GetWorkspaceType() *plugin.TValue[string] {
+	return &c.WorkspaceType
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceDataStore) GetWorkspaceSuperAdminServiceAccount() *plugin.TValue[*mqlGcpProjectIamServiceServiceAccount] {
+	return plugin.GetOrCompute[*mqlGcpProjectIamServiceServiceAccount](&c.WorkspaceSuperAdminServiceAccount, func() (*mqlGcpProjectIamServiceServiceAccount, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.discoveryEngineService.dataStore", c.__id, "workspaceSuperAdminServiceAccount")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectIamServiceServiceAccount), nil
+			}
+		}
+
+		return c.workspaceSuperAdminServiceAccount()
+	})
+}
+
+func (c *mqlGcpProjectDiscoveryEngineServiceDataStore) GetWorkspaceSuperAdminEmail() *plugin.TValue[string] {
+	return &c.WorkspaceSuperAdminEmail
 }
 
 func (c *mqlGcpProjectDiscoveryEngineServiceDataStore) GetCreatedAt() *plugin.TValue[*time.Time] {
