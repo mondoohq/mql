@@ -127,6 +127,7 @@ func (a *mqlAwsBedrockAgentCore) gateways() ([]any, error) {
 
 type mqlAwsBedrockAgentCoreGatewayInternal struct {
 	lazyTags
+	agentCorePolicyCache
 	cacheRegion    string
 	cacheGatewayId string
 	fetchLock      sync.Mutex
@@ -153,6 +154,9 @@ func (a *mqlAwsBedrockAgentCoreGateway) fetchDetail() (*bedrockagentcorecontrol.
 	gatewayId := a.cacheGatewayId
 	detail, err := svc.GetGateway(ctx, &bedrockagentcorecontrol.GetGatewayInput{GatewayIdentifier: &gatewayId})
 	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetGateway"))
+		}
 		return nil, err
 	}
 	a.detail = detail
@@ -914,6 +918,7 @@ func (a *mqlAwsBedrockAgentCore) runtimes() ([]any, error) {
 
 type mqlAwsBedrockAgentCoreRuntimeInternal struct {
 	lazyTags
+	agentCorePolicyCache
 	cacheRegion string
 	fetchLock   sync.Mutex
 	fetched     bool
@@ -939,6 +944,9 @@ func (a *mqlAwsBedrockAgentCoreRuntime) fetchDetail() (*bedrockagentcorecontrol.
 	runtimeId := a.Id.Data
 	detail, err := svc.GetAgentRuntime(ctx, &bedrockagentcorecontrol.GetAgentRuntimeInput{AgentRuntimeId: &runtimeId})
 	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetAgentRuntime"))
+		}
 		return nil, err
 	}
 	a.detail = detail
@@ -1264,6 +1272,9 @@ func (a *mqlAwsBedrockAgentCoreBrowser) fetchDetail() (*bedrockagentcorecontrol.
 	browserId := a.Id.Data
 	detail, err := svc.GetBrowser(context.Background(), &bedrockagentcorecontrol.GetBrowserInput{BrowserId: &browserId})
 	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetBrowser"))
+		}
 		return nil, err
 	}
 	a.detail = detail
@@ -1408,6 +1419,9 @@ func (a *mqlAwsBedrockAgentCoreCodeInterpreter) fetchDetail() (*bedrockagentcore
 		CodeInterpreterId: &codeInterpreterId,
 	})
 	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetCodeInterpreter"))
+		}
 		return nil, err
 	}
 	a.detail = detail
@@ -1567,6 +1581,7 @@ func (a *mqlAwsBedrockAgentCoreWorkloadIdentity) id() (string, error) {
 
 type mqlAwsBedrockAgentCoreRuntimeEndpointInternal struct {
 	lazyTags
+	agentCorePolicyCache
 }
 
 type mqlAwsBedrockAgentCoreOauth2CredentialProviderInternal struct {

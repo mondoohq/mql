@@ -32123,6 +32123,56 @@ private aws.bedrock.agentCore.gateway @defaults("name status protocolType") {
   targets() []aws.bedrock.agentCore.gatewayTarget
   // Rate limits that cap how fast callers may drive the gateway
   rateLimits() []aws.bedrock.agentCore.gatewayRateLimit
+  // Discovery URL of the OpenID Connect provider whose JWTs the gateway accepts
+  //
+  // Null when the gateway does not use a custom JWT authorizer.
+  authorizerDiscoveryUrl() string
+  // Client IDs a caller's JWT must carry to invoke the gateway
+  //
+  // Null when the gateway does not use a custom JWT authorizer. Empty when the authorizer does not restrict clients.
+  allowedClients() []string
+  // Audiences a caller's JWT must carry to invoke the gateway
+  //
+  // Null when the gateway does not use a custom JWT authorizer. Empty when the authorizer does not restrict audiences.
+  allowedAudiences() []string
+  // Scopes a caller's JWT must carry to invoke the gateway
+  //
+  // Null when the gateway does not use a custom JWT authorizer. Empty when the authorizer does not restrict scopes.
+  allowedScopes() []string
+  // Level of error detail the gateway returns to callers
+  //
+  // DEBUG returns granular exception messages that can disclose details of the gateway's targets and configuration. Empty when the gateway returns generic error messages.
+  exceptionLevel() string
+  // AWS WAF web ACL that filters requests to the gateway
+  //
+  // Null when no web ACL is associated with the gateway.
+  webAcl() aws.waf.acl
+  // What the gateway does with a request AWS WAF cannot evaluate
+  //
+  // FAIL_OPEN lets the request through and FAIL_CLOSE blocks it. Null when the gateway has no WAF configuration.
+  wafFailureMode() string
+  // ARN of the policy engine that authorizes tool calls made through the gateway
+  //
+  // Null when no policy engine is attached.
+  policyEngineArn() string
+  // Whether the policy engine enforces its decisions or only logs them
+  //
+  // One of ENFORCE or LOG_ONLY. Null when no policy engine is attached.
+  policyEngineMode() string
+  // Lambda interceptors that see requests and responses passing through the gateway
+  interceptors() []aws.bedrock.agentCore.gatewayInterceptor
+  // Resource-based policy document controlling who may invoke the gateway
+  //
+  // Null when no policy is attached or the policy could not be read.
+  resourcePolicy() string
+  // Parsed statements of the resource-based policy
+  //
+  // Empty when no policy is attached. Null when the policy could not be read.
+  policyStatements() []aws.iam.policyStatement
+  // Whether the resource-based policy grants access to any principal
+  //
+  // True when a statement allows a wildcard principal without a condition that scopes the caller. Null when the policy could not be read.
+  isPublic() bool
   // Tags assigned to the gateway
   tags() map[string]string
 }
@@ -32165,6 +32215,26 @@ private aws.bedrock.agentCore.gatewayRateLimit @defaults("id status dimensionKey
   createdAt time
   // Time the rate limit was last updated
   updatedAt time
+}
+
+// Amazon Bedrock AgentCore gateway interceptor
+//
+// A Lambda function a gateway invokes on requests, responses, or both as
+// they pass through it. An interceptor sees the tool call payload and,
+// when `passRequestHeaders` is set, the caller's request headers including
+// any bearer token, so the function and its execution role are part of the
+// gateway's trust boundary.
+private aws.bedrock.agentCore.gatewayInterceptor @defaults("interceptionPoints passRequestHeaders") {
+  // Points in the request flow the interceptor runs at
+  //
+  // Each entry is REQUEST or RESPONSE.
+  interceptionPoints []string
+  // Whether the caller's request headers are passed to the interceptor
+  passRequestHeaders bool
+  // Lambda function that implements the interceptor
+  //
+  // Null when the interceptor is not backed by a Lambda function.
+  lambdaFunction() aws.lambda.function
 }
 
 // Amazon Bedrock AgentCore capacity provider
@@ -32338,10 +32408,38 @@ private aws.bedrock.agentCore.runtime @defaults("name version status") {
   //
   // One of PUBLIC or VPC.
   networkMode() string
+  // Subnets the agent runtime is placed in when the network mode is VPC
+  //
+  // Empty in PUBLIC network mode.
+  subnets() []aws.vpc.subnet
+  // Security groups attached to the agent runtime when the network mode is VPC
+  //
+  // Empty in PUBLIC network mode.
+  securityGroups() []aws.ec2.securitygroup
   // Inbound authorizer type controlling access to the runtime
   //
   // One of CUSTOM_JWT, AWS_IAM, NONE, or AUTHENTICATE_ONLY.
   authorizerType() string
+  // Discovery URL of the OpenID Connect provider whose JWTs the agent runtime accepts
+  //
+  // Null when the agent runtime does not use a custom JWT authorizer, which is the case when callers authenticate with IAM SigV4.
+  authorizerDiscoveryUrl() string
+  // Client IDs a caller's JWT must carry to invoke the agent runtime
+  //
+  // Null when the agent runtime does not use a custom JWT authorizer. Empty when the authorizer does not restrict clients.
+  allowedClients() []string
+  // Audiences a caller's JWT must carry to invoke the agent runtime
+  //
+  // Null when the agent runtime does not use a custom JWT authorizer. Empty when the authorizer does not restrict audiences.
+  allowedAudiences() []string
+  // Scopes a caller's JWT must carry to invoke the agent runtime
+  //
+  // Null when the agent runtime does not use a custom JWT authorizer. Empty when the authorizer does not restrict scopes.
+  allowedScopes() []string
+  // HTTP request headers passed through to the agent code
+  //
+  // Empty when the runtime passes no custom request headers.
+  requestHeaderAllowlist() []string
   // Environment variables set in the runtime environment
   environmentVariables() map[string]string
   // Endpoints exposed by the agent runtime
@@ -32354,6 +32452,18 @@ private aws.bedrock.agentCore.runtime @defaults("name version status") {
   //
   // The version of the AgentCore runtime platform that hosts the agent code, distinct from the agent runtime `version`. Null when the API does not report one.
   platformVersion() string
+  // Resource-based policy document controlling who may invoke the agent runtime
+  //
+  // Null when no policy is attached or the policy could not be read.
+  resourcePolicy() string
+  // Parsed statements of the resource-based policy
+  //
+  // Empty when no policy is attached. Null when the policy could not be read.
+  policyStatements() []aws.iam.policyStatement
+  // Whether the resource-based policy grants access to any principal
+  //
+  // True when a statement allows a wildcard principal without a condition that scopes the caller. Null when the policy could not be read.
+  isPublic() bool
   // Tags assigned to the agent runtime
   tags() map[string]string
 }
@@ -32387,6 +32497,18 @@ private aws.bedrock.agentCore.runtimeEndpoint @defaults("name status liveVersion
   createdAt time
   // Time the endpoint was last updated
   updatedAt time
+  // Resource-based policy document controlling who may invoke the runtime endpoint
+  //
+  // Null when no policy is attached or the policy could not be read.
+  resourcePolicy() string
+  // Parsed statements of the resource-based policy
+  //
+  // Empty when no policy is attached. Null when the policy could not be read.
+  policyStatements() []aws.iam.policyStatement
+  // Whether the resource-based policy grants access to any principal
+  //
+  // True when a statement allows a wildcard principal without a condition that scopes the caller. Null when the policy could not be read.
+  isPublic() bool
   // Tags assigned to the runtime endpoint
   tags() map[string]string
 }
@@ -32457,6 +32579,34 @@ private aws.bedrock.agentCore.browser @defaults("name status") {
   status string
   // Description of the browser
   description string
+  // Network mode of browser sessions
+  //
+  // One of PUBLIC or VPC. PUBLIC sessions reach the internet directly. VPC sessions reach only what the subnets and security groups allow.
+  networkMode() string
+  // Subnets browser sessions are placed in when the network mode is VPC
+  //
+  // Empty in any other network mode.
+  subnets() []aws.vpc.subnet
+  // Security groups attached to browser sessions when the network mode is VPC
+  //
+  // Empty in any other network mode.
+  securityGroups() []aws.ec2.securitygroup
+  // IAM role browser sessions assume to call AWS services
+  //
+  // Null when no execution role is configured.
+  iamRole() aws.iam.role
+  // Whether browser sessions are recorded
+  recordingEnabled() bool
+  // S3 bucket browser session recordings are written to
+  //
+  // Null when no recording location is configured.
+  recordingBucket() aws.s3.bucket
+  // Key prefix under which session recordings are written in the recording bucket
+  //
+  // Null when no recording location is configured.
+  recordingPrefix() string
+  // Whether the browser signs its HTTP requests so websites can identify the agent
+  browserSigningEnabled() bool
   // File systems mounted into browser sessions
   //
   // Empty when the browser mounts no external storage.
@@ -32487,6 +32637,22 @@ private aws.bedrock.agentCore.codeInterpreter @defaults("name status") {
   status string
   // Description of the code interpreter
   description string
+  // Network mode of code interpreter sessions
+  //
+  // One of PUBLIC, SANDBOX, or VPC. PUBLIC sessions reach the internet directly. SANDBOX sessions run with restricted network access. VPC sessions reach only what the subnets and security groups allow.
+  networkMode() string
+  // Subnets code interpreter sessions are placed in when the network mode is VPC
+  //
+  // Empty in any other network mode.
+  subnets() []aws.vpc.subnet
+  // Security groups attached to code interpreter sessions when the network mode is VPC
+  //
+  // Empty in any other network mode.
+  securityGroups() []aws.ec2.securitygroup
+  // IAM role code interpreter sessions assume to call AWS services
+  //
+  // Null when no execution role is configured.
+  iamRole() aws.iam.role
   // File systems mounted into code interpreter sessions
   //
   // Empty when the code interpreter mounts no external storage.
