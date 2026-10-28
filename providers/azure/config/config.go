@@ -14,7 +14,7 @@ import (
 var Config = plugin.Provider{
 	Name:      "azure",
 	ID:        "go.mondoo.com/mql/providers/azure",
-	Version:   "14.5.3",
+	Version:   "14.6.0",
 	Platforms: resources.Platforms,
 	ConnectionTypes: []string{
 		provider.ConnectionType,
