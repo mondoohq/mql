@@ -419,3 +419,26 @@ func TestWebhookArgsEmptyStringsReadNull(t *testing.T) {
 	assert.Nil(t, args["disabledReason"].Value)
 	assert.Equal(t, "enabled", args["state"].Value)
 }
+
+func TestCostEntryID(t *testing.T) {
+	// Synthetic: two rows of one bucket for the same model, cost type and
+	// workspace that differ only in their line item, as the cost report
+	// returns when grouped by description.
+	input := connection.AdminCostResult{
+		CostType:    "tokens",
+		Model:       "claude-opus-5-5",
+		WorkspaceID: "wrkspc_1",
+		Description: "Claude Opus 5.5 Usage - Input Tokens",
+	}
+	output := input
+	output.Description = "Claude Opus 5.5 Usage - Output Tokens"
+
+	assert.NotEqual(t, costEntryID("2025-08-01T00:00:00Z", input), costEntryID("2025-08-01T00:00:00Z", output))
+	assert.NotEqual(t, costEntryID("2025-08-01T00:00:00Z", input), costEntryID("2025-08-02T00:00:00Z", input))
+
+	// Synthetic: the default workspace has no workspace_id; it must not
+	// collide with a named workspace's row.
+	defaultWs := input
+	defaultWs.WorkspaceID = ""
+	assert.NotEqual(t, costEntryID("2025-08-01T00:00:00Z", input), costEntryID("2025-08-01T00:00:00Z", defaultWs))
+}

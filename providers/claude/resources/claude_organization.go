@@ -520,7 +520,7 @@ func (r *mqlClaudeOrganization) costReport() ([]any, error) {
 
 		for _, result := range b.Results {
 			mqlEntry, err := CreateResource(r.MqlRuntime, "claude.organization.costEntry", map[string]*llx.RawData{
-				"__id":       llx.StringData("cost/" + b.StartingAt + "/" + result.CostType + "/" + result.Model + "/" + result.WorkspaceID),
+				"__id":       llx.StringData(costEntryID(b.StartingAt, result)),
 				"startingAt": llx.TimeData(startingAt),
 				"endingAt":   llx.TimeData(endingAt),
 				"amount":     llx.StringData(result.Amount),
@@ -539,6 +539,13 @@ func (r *mqlClaudeOrganization) costReport() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// costEntryID keys a cost report row. The report is grouped by workspace and
+// description, so those two identify a row within a bucket: one model and cost
+// type yields several rows (one per token type, service tier, context window).
+func costEntryID(startingAt string, result connection.AdminCostResult) string {
+	return "cost/" + startingAt + "/" + result.WorkspaceID + "/" + result.Description
 }
 
 // claude.organization.activity
