@@ -45,6 +45,10 @@ const (
 	ResourceGcpProject                                                                 string = "gcp.project"
 	ResourceGcpProjectLien                                                             string = "gcp.project.lien"
 	ResourceGcpProjectTagBinding                                                       string = "gcp.project.tagBinding"
+	ResourceGcpOrganizationTagKey                                                      string = "gcp.organization.tagKey"
+	ResourceGcpOrganizationTagValue                                                    string = "gcp.organization.tagValue"
+	ResourceGcpOrganizationAssuredWorkload                                             string = "gcp.organization.assuredWorkload"
+	ResourceGcpOrganizationAssuredWorkloadViolation                                    string = "gcp.organization.assuredWorkload.violation"
 	ResourceGcpService                                                                 string = "gcp.service"
 	ResourceGcpRecommendation                                                          string = "gcp.recommendation"
 	ResourceGcpInsight                                                                 string = "gcp.insight"
@@ -679,6 +683,22 @@ func init() {
 		"gcp.project.tagBinding": {
 			// to override args, implement: initGcpProjectTagBinding(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpProjectTagBinding,
+		},
+		"gcp.organization.tagKey": {
+			Init:   initGcpOrganizationTagKey,
+			Create: createGcpOrganizationTagKey,
+		},
+		"gcp.organization.tagValue": {
+			Init:   initGcpOrganizationTagValue,
+			Create: createGcpOrganizationTagValue,
+		},
+		"gcp.organization.assuredWorkload": {
+			// to override args, implement: initGcpOrganizationAssuredWorkload(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpOrganizationAssuredWorkload,
+		},
+		"gcp.organization.assuredWorkload.violation": {
+			// to override args, implement: initGcpOrganizationAssuredWorkloadViolation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpOrganizationAssuredWorkloadViolation,
 		},
 		"gcp.service": {
 			Init:   initGcpService,
@@ -2911,6 +2931,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.organization.sccEventThreatDetectionCustomModules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganization).GetSccEventThreatDetectionCustomModules()).ToDataRes(types.Array(types.Resource("gcp.scc.eventThreatDetectionCustomModule")))
 	},
+	"gcp.organization.tagKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganization).GetTagKeys()).ToDataRes(types.Array(types.Resource("gcp.organization.tagKey")))
+	},
+	"gcp.organization.assuredWorkloads": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganization).GetAssuredWorkloads()).ToDataRes(types.Array(types.Resource("gcp.organization.assuredWorkload")))
+	},
 	"gcp.organization.role.organizationId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationRole).GetOrganizationId()).ToDataRes(types.String)
 	},
@@ -3994,6 +4020,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.tagBindings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProject).GetTagBindings()).ToDataRes(types.Array(types.Resource("gcp.project.tagBinding")))
 	},
+	"gcp.project.tagKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProject).GetTagKeys()).ToDataRes(types.Array(types.Resource("gcp.organization.tagKey")))
+	},
 	"gcp.project.managedBy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProject).GetManagedBy()).ToDataRes(types.String)
 	},
@@ -4018,11 +4047,164 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.tagBinding.tagValue": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectTagBinding).GetTagValue()).ToDataRes(types.String)
 	},
+	"gcp.project.tagBinding.value": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectTagBinding).GetValue()).ToDataRes(types.Resource("gcp.organization.tagValue"))
+	},
 	"gcp.project.tagBinding.tagValueNamespacedName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectTagBinding).GetTagValueNamespacedName()).ToDataRes(types.String)
 	},
 	"gcp.project.tagBinding.resource": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectTagBinding).GetResource()).ToDataRes(types.String)
+	},
+	"gcp.organization.tagKey.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagKey).GetName()).ToDataRes(types.String)
+	},
+	"gcp.organization.tagKey.shortName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagKey).GetShortName()).ToDataRes(types.String)
+	},
+	"gcp.organization.tagKey.namespacedName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagKey).GetNamespacedName()).ToDataRes(types.String)
+	},
+	"gcp.organization.tagKey.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagKey).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.organization.tagKey.purpose": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagKey).GetPurpose()).ToDataRes(types.String)
+	},
+	"gcp.organization.tagKey.purposeData": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagKey).GetPurposeData()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.organization.tagKey.allowedValuesRegex": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagKey).GetAllowedValuesRegex()).ToDataRes(types.String)
+	},
+	"gcp.organization.tagKey.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagKey).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"gcp.organization.tagKey.updateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagKey).GetUpdateTime()).ToDataRes(types.Time)
+	},
+	"gcp.organization.tagKey.values": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagKey).GetValues()).ToDataRes(types.Array(types.Resource("gcp.organization.tagValue")))
+	},
+	"gcp.organization.tagKey.iamPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagKey).GetIamPolicy()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.binding")))
+	},
+	"gcp.organization.tagValue.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagValue).GetName()).ToDataRes(types.String)
+	},
+	"gcp.organization.tagValue.shortName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagValue).GetShortName()).ToDataRes(types.String)
+	},
+	"gcp.organization.tagValue.namespacedName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagValue).GetNamespacedName()).ToDataRes(types.String)
+	},
+	"gcp.organization.tagValue.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagValue).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.organization.tagValue.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagValue).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"gcp.organization.tagValue.updateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagValue).GetUpdateTime()).ToDataRes(types.Time)
+	},
+	"gcp.organization.tagValue.tagKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagValue).GetTagKey()).ToDataRes(types.Resource("gcp.organization.tagKey"))
+	},
+	"gcp.organization.tagValue.iamPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationTagValue).GetIamPolicy()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.binding")))
+	},
+	"gcp.organization.assuredWorkload.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetName()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetDisplayName()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetLocation()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.complianceRegime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetComplianceRegime()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"gcp.organization.assuredWorkload.billingAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetBillingAccount()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.partner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetPartner()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.partnerPermissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetPartnerPermissions()).ToDataRes(types.Dict)
+	},
+	"gcp.organization.assuredWorkload.resources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetResources()).ToDataRes(types.Array(types.Dict))
+	},
+	"gcp.organization.assuredWorkload.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.organization.assuredWorkload.enableSovereignControls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetEnableSovereignControls()).ToDataRes(types.Bool)
+	},
+	"gcp.organization.assuredWorkload.kajEnrollmentState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetKajEnrollmentState()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.resourceMonitoringEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetResourceMonitoringEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.organization.assuredWorkload.violationNotificationsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetViolationNotificationsEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.organization.assuredWorkload.compliantButDisallowedServices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetCompliantButDisallowedServices()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.organization.assuredWorkload.complianceStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetComplianceStatus()).ToDataRes(types.Dict)
+	},
+	"gcp.organization.assuredWorkload.violations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkload).GetViolations()).ToDataRes(types.Array(types.Resource("gcp.organization.assuredWorkload.violation")))
+	},
+	"gcp.organization.assuredWorkload.violation.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetName()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.violation.category": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetCategory()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.violation.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetState()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.violation.violationType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetViolationType()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.violation.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.violation.orgPolicyConstraint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetOrgPolicyConstraint()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.violation.nonCompliantOrgPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetNonCompliantOrgPolicy()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.violation.resourceName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetResourceName()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.violation.resourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetResourceType()).ToDataRes(types.String)
+	},
+	"gcp.organization.assuredWorkload.violation.acknowledged": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetAcknowledged()).ToDataRes(types.Bool)
+	},
+	"gcp.organization.assuredWorkload.violation.acknowledgementTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetAcknowledgementTime()).ToDataRes(types.Time)
+	},
+	"gcp.organization.assuredWorkload.violation.beginTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetBeginTime()).ToDataRes(types.Time)
+	},
+	"gcp.organization.assuredWorkload.violation.resolveTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetResolveTime()).ToDataRes(types.Time)
+	},
+	"gcp.organization.assuredWorkload.violation.updateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetUpdateTime()).ToDataRes(types.Time)
 	},
 	"gcp.service.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpService).GetProjectId()).ToDataRes(types.String)
@@ -20303,6 +20485,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpOrganization).SccEventThreatDetectionCustomModules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"gcp.organization.tagKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganization).TagKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkloads": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganization).AssuredWorkloads, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.organization.role.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpOrganizationRole).__id, ok = v.Value.(string)
 		return
@@ -21851,6 +22041,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProject).TagBindings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"gcp.project.tagKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProject).TagKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.project.managedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProject).ManagedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -21891,12 +22085,232 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectTagBinding).TagValue, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"gcp.project.tagBinding.value": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectTagBinding).Value, ok = plugin.RawToTValue[*mqlGcpOrganizationTagValue](v.Value, v.Error)
+		return
+	},
 	"gcp.project.tagBinding.tagValueNamespacedName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectTagBinding).TagValueNamespacedName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.tagBinding.resource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectTagBinding).Resource, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagKey).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.organization.tagKey.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagKey).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagKey.shortName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagKey).ShortName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagKey.namespacedName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagKey).NamespacedName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagKey.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagKey).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagKey.purpose": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagKey).Purpose, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagKey.purposeData": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagKey).PurposeData, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagKey.allowedValuesRegex": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagKey).AllowedValuesRegex, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagKey.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagKey).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagKey.updateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagKey).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagKey.values": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagKey).Values, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagKey.iamPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagKey).IamPolicy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagValue.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagValue).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.organization.tagValue.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagValue).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagValue.shortName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagValue).ShortName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagValue.namespacedName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagValue).NamespacedName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagValue.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagValue).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagValue.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagValue).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagValue.updateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagValue).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagValue.tagKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagValue).TagKey, ok = plugin.RawToTValue[*mqlGcpOrganizationTagKey](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.tagValue.iamPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationTagValue).IamPolicy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.organization.assuredWorkload.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.complianceRegime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).ComplianceRegime, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.billingAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).BillingAccount, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.partner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).Partner, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.partnerPermissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).PartnerPermissions, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.resources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).Resources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.enableSovereignControls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).EnableSovereignControls, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.kajEnrollmentState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).KajEnrollmentState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.resourceMonitoringEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).ResourceMonitoringEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violationNotificationsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).ViolationNotificationsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.compliantButDisallowedServices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).CompliantButDisallowedServices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.complianceStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).ComplianceStatus, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkload).Violations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.category": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).Category, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.violationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).ViolationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.orgPolicyConstraint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).OrgPolicyConstraint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.nonCompliantOrgPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).NonCompliantOrgPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.resourceName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).ResourceName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.resourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).ResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.acknowledged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).Acknowledged, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.acknowledgementTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).AcknowledgementTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.beginTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).BeginTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.resolveTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).ResolveTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.assuredWorkload.violation.updateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationAssuredWorkloadViolation).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"gcp.service.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -45508,6 +45922,8 @@ type mqlGcpOrganization struct {
 	FirewallEndpoints                       plugin.TValue[[]any]
 	SccSecurityHealthAnalyticsCustomModules plugin.TValue[[]any]
 	SccEventThreatDetectionCustomModules    plugin.TValue[[]any]
+	TagKeys                                 plugin.TValue[[]any]
+	AssuredWorkloads                        plugin.TValue[[]any]
 }
 
 // createGcpOrganization creates a new instance of this resource
@@ -46040,6 +46456,38 @@ func (c *mqlGcpOrganization) GetSccEventThreatDetectionCustomModules() *plugin.T
 		}
 
 		return c.sccEventThreatDetectionCustomModules()
+	})
+}
+
+func (c *mqlGcpOrganization) GetTagKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TagKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization", c.__id, "tagKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tagKeys()
+	})
+}
+
+func (c *mqlGcpOrganization) GetAssuredWorkloads() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AssuredWorkloads, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization", c.__id, "assuredWorkloads")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.assuredWorkloads()
 	})
 }
 
@@ -49011,6 +49459,7 @@ type mqlGcpProject struct {
 	CloudDomains                            plugin.TValue[*mqlGcpProjectCloudDomainsService]
 	Liens                                   plugin.TValue[[]any]
 	TagBindings                             plugin.TValue[[]any]
+	TagKeys                                 plugin.TValue[[]any]
 	ManagedBy                               plugin.TValue[string]
 }
 
@@ -50459,6 +50908,22 @@ func (c *mqlGcpProject) GetTagBindings() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlGcpProject) GetTagKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TagKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project", c.__id, "tagKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tagKeys()
+	})
+}
+
 func (c *mqlGcpProject) GetManagedBy() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.ManagedBy, func() (string, error) {
 		return c.managedBy()
@@ -50541,6 +51006,7 @@ type mqlGcpProjectTagBinding struct {
 	// optional: if you define mqlGcpProjectTagBindingInternal it will be used here
 	Name                   plugin.TValue[string]
 	TagValue               plugin.TValue[string]
+	Value                  plugin.TValue[*mqlGcpOrganizationTagValue]
 	TagValueNamespacedName plugin.TValue[string]
 	Resource               plugin.TValue[string]
 }
@@ -50590,12 +51056,514 @@ func (c *mqlGcpProjectTagBinding) GetTagValue() *plugin.TValue[string] {
 	return &c.TagValue
 }
 
+func (c *mqlGcpProjectTagBinding) GetValue() *plugin.TValue[*mqlGcpOrganizationTagValue] {
+	return plugin.GetOrCompute[*mqlGcpOrganizationTagValue](&c.Value, func() (*mqlGcpOrganizationTagValue, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.tagBinding", c.__id, "value")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpOrganizationTagValue), nil
+			}
+		}
+
+		return c.value()
+	})
+}
+
 func (c *mqlGcpProjectTagBinding) GetTagValueNamespacedName() *plugin.TValue[string] {
 	return &c.TagValueNamespacedName
 }
 
 func (c *mqlGcpProjectTagBinding) GetResource() *plugin.TValue[string] {
 	return &c.Resource
+}
+
+// mqlGcpOrganizationTagKey for the gcp.organization.tagKey resource
+type mqlGcpOrganizationTagKey struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpOrganizationTagKeyInternal it will be used here
+	Name               plugin.TValue[string]
+	ShortName          plugin.TValue[string]
+	NamespacedName     plugin.TValue[string]
+	Description        plugin.TValue[string]
+	Purpose            plugin.TValue[string]
+	PurposeData        plugin.TValue[map[string]any]
+	AllowedValuesRegex plugin.TValue[string]
+	CreateTime         plugin.TValue[*time.Time]
+	UpdateTime         plugin.TValue[*time.Time]
+	Values             plugin.TValue[[]any]
+	IamPolicy          plugin.TValue[[]any]
+}
+
+// createGcpOrganizationTagKey creates a new instance of this resource
+func createGcpOrganizationTagKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpOrganizationTagKey{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.organization.tagKey", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpOrganizationTagKey) MqlName() string {
+	return "gcp.organization.tagKey"
+}
+
+func (c *mqlGcpOrganizationTagKey) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpOrganizationTagKey) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpOrganizationTagKey) GetShortName() *plugin.TValue[string] {
+	return &c.ShortName
+}
+
+func (c *mqlGcpOrganizationTagKey) GetNamespacedName() *plugin.TValue[string] {
+	return &c.NamespacedName
+}
+
+func (c *mqlGcpOrganizationTagKey) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpOrganizationTagKey) GetPurpose() *plugin.TValue[string] {
+	return &c.Purpose
+}
+
+func (c *mqlGcpOrganizationTagKey) GetPurposeData() *plugin.TValue[map[string]any] {
+	return &c.PurposeData
+}
+
+func (c *mqlGcpOrganizationTagKey) GetAllowedValuesRegex() *plugin.TValue[string] {
+	return &c.AllowedValuesRegex
+}
+
+func (c *mqlGcpOrganizationTagKey) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlGcpOrganizationTagKey) GetUpdateTime() *plugin.TValue[*time.Time] {
+	return &c.UpdateTime
+}
+
+func (c *mqlGcpOrganizationTagKey) GetValues() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Values, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization.tagKey", c.__id, "values")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.values()
+	})
+}
+
+func (c *mqlGcpOrganizationTagKey) GetIamPolicy() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IamPolicy, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization.tagKey", c.__id, "iamPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.iamPolicy()
+	})
+}
+
+// mqlGcpOrganizationTagValue for the gcp.organization.tagValue resource
+type mqlGcpOrganizationTagValue struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpOrganizationTagValueInternal
+	Name           plugin.TValue[string]
+	ShortName      plugin.TValue[string]
+	NamespacedName plugin.TValue[string]
+	Description    plugin.TValue[string]
+	CreateTime     plugin.TValue[*time.Time]
+	UpdateTime     plugin.TValue[*time.Time]
+	TagKey         plugin.TValue[*mqlGcpOrganizationTagKey]
+	IamPolicy      plugin.TValue[[]any]
+}
+
+// createGcpOrganizationTagValue creates a new instance of this resource
+func createGcpOrganizationTagValue(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpOrganizationTagValue{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.organization.tagValue", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpOrganizationTagValue) MqlName() string {
+	return "gcp.organization.tagValue"
+}
+
+func (c *mqlGcpOrganizationTagValue) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpOrganizationTagValue) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpOrganizationTagValue) GetShortName() *plugin.TValue[string] {
+	return &c.ShortName
+}
+
+func (c *mqlGcpOrganizationTagValue) GetNamespacedName() *plugin.TValue[string] {
+	return &c.NamespacedName
+}
+
+func (c *mqlGcpOrganizationTagValue) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpOrganizationTagValue) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlGcpOrganizationTagValue) GetUpdateTime() *plugin.TValue[*time.Time] {
+	return &c.UpdateTime
+}
+
+func (c *mqlGcpOrganizationTagValue) GetTagKey() *plugin.TValue[*mqlGcpOrganizationTagKey] {
+	return plugin.GetOrCompute[*mqlGcpOrganizationTagKey](&c.TagKey, func() (*mqlGcpOrganizationTagKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization.tagValue", c.__id, "tagKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpOrganizationTagKey), nil
+			}
+		}
+
+		return c.tagKey()
+	})
+}
+
+func (c *mqlGcpOrganizationTagValue) GetIamPolicy() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IamPolicy, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization.tagValue", c.__id, "iamPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.iamPolicy()
+	})
+}
+
+// mqlGcpOrganizationAssuredWorkload for the gcp.organization.assuredWorkload resource
+type mqlGcpOrganizationAssuredWorkload struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpOrganizationAssuredWorkloadInternal it will be used here
+	Name                           plugin.TValue[string]
+	DisplayName                    plugin.TValue[string]
+	Location                       plugin.TValue[string]
+	ComplianceRegime               plugin.TValue[string]
+	CreateTime                     plugin.TValue[*time.Time]
+	BillingAccount                 plugin.TValue[string]
+	Partner                        plugin.TValue[string]
+	PartnerPermissions             plugin.TValue[any]
+	Resources                      plugin.TValue[[]any]
+	Labels                         plugin.TValue[map[string]any]
+	EnableSovereignControls        plugin.TValue[bool]
+	KajEnrollmentState             plugin.TValue[string]
+	ResourceMonitoringEnabled      plugin.TValue[bool]
+	ViolationNotificationsEnabled  plugin.TValue[bool]
+	CompliantButDisallowedServices plugin.TValue[[]any]
+	ComplianceStatus               plugin.TValue[any]
+	Violations                     plugin.TValue[[]any]
+}
+
+// createGcpOrganizationAssuredWorkload creates a new instance of this resource
+func createGcpOrganizationAssuredWorkload(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpOrganizationAssuredWorkload{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.organization.assuredWorkload", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) MqlName() string {
+	return "gcp.organization.assuredWorkload"
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetComplianceRegime() *plugin.TValue[string] {
+	return &c.ComplianceRegime
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetBillingAccount() *plugin.TValue[string] {
+	return &c.BillingAccount
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetPartner() *plugin.TValue[string] {
+	return &c.Partner
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetPartnerPermissions() *plugin.TValue[any] {
+	return &c.PartnerPermissions
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetResources() *plugin.TValue[[]any] {
+	return &c.Resources
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetEnableSovereignControls() *plugin.TValue[bool] {
+	return &c.EnableSovereignControls
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetKajEnrollmentState() *plugin.TValue[string] {
+	return &c.KajEnrollmentState
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetResourceMonitoringEnabled() *plugin.TValue[bool] {
+	return &c.ResourceMonitoringEnabled
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetViolationNotificationsEnabled() *plugin.TValue[bool] {
+	return &c.ViolationNotificationsEnabled
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetCompliantButDisallowedServices() *plugin.TValue[[]any] {
+	return &c.CompliantButDisallowedServices
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetComplianceStatus() *plugin.TValue[any] {
+	return &c.ComplianceStatus
+}
+
+func (c *mqlGcpOrganizationAssuredWorkload) GetViolations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Violations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization.assuredWorkload", c.__id, "violations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.violations()
+	})
+}
+
+// mqlGcpOrganizationAssuredWorkloadViolation for the gcp.organization.assuredWorkload.violation resource
+type mqlGcpOrganizationAssuredWorkloadViolation struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpOrganizationAssuredWorkloadViolationInternal it will be used here
+	Name                  plugin.TValue[string]
+	Category              plugin.TValue[string]
+	State                 plugin.TValue[string]
+	ViolationType         plugin.TValue[string]
+	Description           plugin.TValue[string]
+	OrgPolicyConstraint   plugin.TValue[string]
+	NonCompliantOrgPolicy plugin.TValue[string]
+	ResourceName          plugin.TValue[string]
+	ResourceType          plugin.TValue[string]
+	Acknowledged          plugin.TValue[bool]
+	AcknowledgementTime   plugin.TValue[*time.Time]
+	BeginTime             plugin.TValue[*time.Time]
+	ResolveTime           plugin.TValue[*time.Time]
+	UpdateTime            plugin.TValue[*time.Time]
+}
+
+// createGcpOrganizationAssuredWorkloadViolation creates a new instance of this resource
+func createGcpOrganizationAssuredWorkloadViolation(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpOrganizationAssuredWorkloadViolation{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.organization.assuredWorkload.violation", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) MqlName() string {
+	return "gcp.organization.assuredWorkload.violation"
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetCategory() *plugin.TValue[string] {
+	return &c.Category
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetViolationType() *plugin.TValue[string] {
+	return &c.ViolationType
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetOrgPolicyConstraint() *plugin.TValue[string] {
+	return &c.OrgPolicyConstraint
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetNonCompliantOrgPolicy() *plugin.TValue[string] {
+	return &c.NonCompliantOrgPolicy
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetResourceName() *plugin.TValue[string] {
+	return &c.ResourceName
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetResourceType() *plugin.TValue[string] {
+	return &c.ResourceType
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetAcknowledged() *plugin.TValue[bool] {
+	return &c.Acknowledged
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetAcknowledgementTime() *plugin.TValue[*time.Time] {
+	return &c.AcknowledgementTime
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetBeginTime() *plugin.TValue[*time.Time] {
+	return &c.BeginTime
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetResolveTime() *plugin.TValue[*time.Time] {
+	return &c.ResolveTime
+}
+
+func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetUpdateTime() *plugin.TValue[*time.Time] {
+	return &c.UpdateTime
 }
 
 // mqlGcpService for the gcp.service resource

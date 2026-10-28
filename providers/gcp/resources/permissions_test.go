@@ -329,6 +329,12 @@ var validatedGCPPermissions = []string{
 	"resourcemanager.projects.get",
 	"resourcemanager.projects.getIamPolicy",
 	"resourcemanager.hierarchyNodes.listTagBindings",
+	"resourcemanager.tagKeys.get",
+	"resourcemanager.tagKeys.getIamPolicy",
+	"resourcemanager.tagKeys.list",
+	"resourcemanager.tagValues.get",
+	"resourcemanager.tagValues.getIamPolicy",
+	"resourcemanager.tagValues.list",
 	"run.jobs.getIamPolicy",
 	"run.jobs.list",
 	"run.operations.list",
@@ -365,9 +371,12 @@ var validatedGCPPermissions = []string{
 // org_level_permissions: permissions that are granted on an organization, not
 // a project, because the resource they read lives there (folders, the
 // organization itself, custom org-policy constraints, workforce identity
-// pools). Every entry was confirmed present at organization scope and absent or
-// not applicable at project scope with queryTestablePermissions (2026-10-07).
+// pools, Assured Workloads). Every entry was confirmed present at organization
+// scope and absent or not applicable at project scope with
+// queryTestablePermissions (2026-10-07; assuredworkloads on 2026-10-27).
 var validatedGCPOrgLevelPermissions = []string{
+	"assuredworkloads.violations.list",
+	"assuredworkloads.workload.list",
 	"iam.googleapis.com/workforcePoolProviders.list",
 	"iam.googleapis.com/workforcePools.list",
 	"orgpolicy.customConstraints.list",

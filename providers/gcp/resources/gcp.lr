@@ -120,6 +120,10 @@ gcp.organization @defaults("name") {
   sccSecurityHealthAnalyticsCustomModules() []gcp.scc.securityHealthAnalyticsCustomModule
   // Event Threat Detection custom modules in effect on the organization, including inherited ones
   sccEventThreatDetectionCustomModules() []gcp.scc.eventThreatDetectionCustomModule
+  // Resource Manager tag keys defined on the organization
+  tagKeys() []gcp.organization.tagKey
+  // Assured Workloads environments defined in the organization
+  assuredWorkloads() []gcp.organization.assuredWorkload
 }
 
 // Google Cloud (GCP) IAM custom role defined at the organization level
@@ -1252,6 +1256,8 @@ gcp.project @defaults("name number") {
   liens() []gcp.project.lien
   // Resource Manager tag bindings attached to the project
   tagBindings() []gcp.project.tagBinding
+  // Resource Manager tag keys defined on the project
+  tagKeys() []gcp.organization.tagKey
   // Infrastructure-management system that provisioned the resource
   //
   // Value derived from the provenance labels and annotations Google and IaC
@@ -1294,12 +1300,183 @@ private gcp.project.lien @defaults("name reason") {
 private gcp.project.tagBinding @defaults("tagValueNamespacedName resource") {
   // Name of the tag binding
   name string
-  // Permanent ID of the bound tag value (e.g. tagValues/456)
-  tagValue string
+  // Permanent ID of the bound tag value
+  //
+  // Deprecated in favor of `value`, whose `name` holds this ID (e.g. tagValues/456).
+  tagValue @maturity("deprecated") string
+  // Tag value bound to the resource
+  value() gcp.organization.tagValue
   // Namespaced name of the bound tag value (e.g. 123/environment/production)
   tagValueNamespacedName string
   // Full resource name the tag value is bound to (e.g. //cloudresourcemanager.googleapis.com/projects/123)
   resource string
+}
+
+// Google Cloud (GCP) Resource Manager tag key
+//
+// Tag key defined on an organization or a project. A tag key names a
+// category such as `environment`, and its `values` are the tag values that
+// bindings attach to resources. Tags drive conditional IAM grants and
+// organization-policy enforcement, so the key's `iamPolicy` decides who may
+// manage the key and its values. The `purpose` marks keys reserved for a
+// product feature (`GCE_FIREWALL` keys select targets in network firewall
+// policy rules, with the network named in `purposeData`). The `name` (e.g.
+// `tagKeys/123`) selects the key, and `namespacedName` gives the
+// human-readable path `<parent id>/<short name>`.
+private gcp.organization.tagKey @defaults("namespacedName") {
+  // Resource name of the tag key (e.g. tagKeys/123)
+  name string
+  // Short name of the tag key, unique within its parent (e.g. environment)
+  shortName string
+  // Namespaced name of the tag key (e.g. 123/environment or my-project/environment)
+  namespacedName string
+  // User-assigned description of the tag key
+  description string
+  // Purpose of the tag key
+  //
+  // Empty for a general-purpose key. GCE_FIREWALL marks a key whose values
+  // select targets in network firewall policy rules.
+  purpose string
+  // Purpose-specific data of the tag key
+  //
+  // For GCE_FIREWALL keys, the `network` entry names the VPC network the key
+  // applies to.
+  purposeData map[string]string
+  // Regular expression that values of the tag key must match, when the key accepts dynamic values
+  allowedValuesRegex string
+  // Time the tag key was created
+  createTime time
+  // Time the tag key was last updated
+  updateTime time
+  // Tag values defined under the tag key
+  values() []gcp.organization.tagValue
+  // IAM policy bindings on the tag key
+  iamPolicy() []gcp.resourcemanager.binding
+}
+
+// Google Cloud (GCP) Resource Manager tag value
+//
+// Value of a tag key, such as `production` under `environment`. Binding a
+// tag value to a resource is what conditional IAM grants and organization
+// policies match on, so the value's `iamPolicy` controls who may attach it
+// (`roles/resourcemanager.tagUser`) and thereby gain the access a condition
+// grants. The `name` (e.g. `tagValues/456`) selects the value, `tagKey`
+// returns the key it belongs to, and `namespacedName` gives the path
+// `<parent id>/<key short name>/<value short name>`.
+private gcp.organization.tagValue @defaults("namespacedName") {
+  // Resource name of the tag value (e.g. tagValues/456)
+  name string
+  // Short name of the tag value, unique within its tag key (e.g. production)
+  shortName string
+  // Namespaced name of the tag value (e.g. 123/environment/production)
+  namespacedName string
+  // User-assigned description of the tag value
+  description string
+  // Time the tag value was created
+  createTime time
+  // Time the tag value was last updated
+  updateTime time
+  // Tag key the value belongs to
+  tagKey() gcp.organization.tagKey
+  // IAM policy bindings on the tag value
+  iamPolicy() []gcp.resourcemanager.binding
+}
+
+// Google Cloud (GCP) Assured Workloads environment
+//
+// Assured Workloads environment that applies a compliance control package,
+// such as FedRAMP High, IL4, or an EU data boundary, to resources of the
+// organization. The `complianceRegime` names the control package and
+// `partner` the sovereign-controls partner, if any. `complianceStatus`
+// counts the active and acknowledged violations, and `violations` lists
+// each change that broke the package's organization policies or resource
+// rules. `enableSovereignControls`, `kajEnrollmentState`, and
+// `resourceMonitoringEnabled` show whether the sovereignty, Key Access
+// Justifications, and resource monitoring features are in effect. The
+// `name` (e.g. `organizations/123/locations/us-central1/workloads/abc`)
+// selects the workload.
+private gcp.organization.assuredWorkload @defaults("displayName complianceRegime") {
+  // Resource name of the workload (e.g. organizations/123/locations/us-central1/workloads/abc)
+  name string
+  // User-assigned display name of the workload
+  displayName string
+  // Location of the workload (e.g. us-central1)
+  location string
+  // Compliance control package applied to the workload
+  //
+  // For example DATA_BOUNDARY_FOR_FEDRAMP_HIGH, DATA_BOUNDARY_FOR_IL4,
+  // EU_DATA_BOUNDARY_AND_SUPPORT, or ASSURED_WORKLOADS_FOR_PARTNERS. Older
+  // workloads may report a legacy name such as FEDRAMP_HIGH or IL4.
+  complianceRegime string
+  // Time the workload was created
+  createTime time
+  // Billing account of the resources the workload created (e.g. billingAccounts/012345-567890-ABCDEF)
+  billingAccount string
+  // Sovereign Controls by Partners partner of the workload (e.g. SOVEREIGN_CONTROLS_BY_T_SYSTEMS)
+  partner string
+  // Permissions granted to the partner's service account
+  //
+  // Booleans `dataLogsViewer`, `serviceAccessApprover`,
+  // `assuredWorkloadsMonitoring`, and `accessTransparencyLogsSupportCaseViewer`.
+  partnerPermissions dict
+  // Resources the workload manages
+  //
+  // Each entry has a `resourceType` (CONSUMER_FOLDER, CONSUMER_PROJECT,
+  // ENCRYPTION_KEYS_PROJECT, or KEYRING) and a `resourceId` (the folder ID or
+  // project number).
+  resources []dict
+  // Labels applied to the workload
+  labels map[string]string
+  // Whether sovereign controls are enabled for the workload
+  enableSovereignControls bool
+  // Key Access Justifications enrollment state (KAJ_ENROLLMENT_STATE_PENDING or KAJ_ENROLLMENT_STATE_COMPLETE)
+  kajEnrollmentState string
+  // Whether resource monitoring is enabled, which reports resource violations in addition to organization policy violations
+  resourceMonitoringEnabled bool
+  // Whether email notifications for violations are enabled
+  violationNotificationsEnabled bool
+  // Services compliant with the control package that the resource usage restriction policy still disallows
+  compliantButDisallowedServices []string
+  // Violation counts of the workload
+  //
+  // Integers `activeViolationCount` and `acknowledgedViolationCount` count
+  // organization policy violations, `activeResourceViolationCount` and
+  // `acknowledgedResourceViolationCount` count resource violations.
+  complianceStatus dict
+  // Compliance violations recorded for the workload
+  violations() []gcp.organization.assuredWorkload.violation
+}
+
+// Google Cloud (GCP) Assured Workloads compliance violation
+private gcp.organization.assuredWorkload.violation @defaults("category state description") {
+  // Resource name of the violation
+  name string
+  // Category of the violation (e.g. Location, Service Usage, Access, Encryption)
+  category string
+  // State of the violation (UNRESOLVED, RESOLVED, or EXCEPTION)
+  state string
+  // Type of the violation (ORG_POLICY or RESOURCE)
+  violationType string
+  // Description of the violation
+  description string
+  // Organization policy constraint whose change caused the violation (e.g. constraints/gcp.resourceLocations)
+  orgPolicyConstraint string
+  // Organization policy that was changed to a non-compliant value (e.g. projects/123/policies/gcp.resourceLocations)
+  nonCompliantOrgPolicy string
+  // Full name of the non-compliant resource, for resource violations (e.g. //storage.googleapis.com/my-bucket)
+  resourceName string
+  // Type of the non-compliant resource, for resource violations (e.g. storage.googleapis.com/Bucket)
+  resourceType string
+  // Whether the violation has been acknowledged
+  acknowledged bool
+  // Time the violation was first acknowledged
+  acknowledgementTime time
+  // Time of the event that caused the violation
+  beginTime time
+  // Time of the event that resolved the violation, empty while the violation is unresolved
+  resolveTime time
+  // Time the violation record was last updated
+  updateTime time
 }
 
 // Google Cloud service API

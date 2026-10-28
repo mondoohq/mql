@@ -1243,6 +1243,13 @@ var gcpPermissionOverrides = map[string]map[string]string{
 	"accessapproval": {
 		"GetAccessApprovalSettings": "accessapproval.settings.get",
 	},
+	"assuredworkloads": {
+		// The workload permissions are singular (roles/assuredworkloads.reader
+		// grants assuredworkloads.workload.list), so the derived
+		// "assuredworkloads.workloads.list" does not exist.
+		"Workloads.List": "assuredworkloads.workload.list",
+		"Workloads.Get":  "assuredworkloads.workload.get",
+	},
 	"binaryauthorization": {
 		"GetSystemPolicy": "binaryauthorization.policy.get",
 	},
@@ -1599,6 +1606,10 @@ var gcpOrgLevelPermissions = map[string]bool{
 	// ListCustomConstraints is only callable with an "organizations/{id}"
 	// parent, so the permission is rejected in a project-level custom role.
 	"orgpolicy.customConstraints.list": true,
+	// Assured Workloads environments exist only under an organization; the
+	// permissions are absent from queryTestablePermissions at project scope.
+	"assuredworkloads.workload.list":   true,
+	"assuredworkloads.violations.list": true,
 	// Workforce pools are an organization resource: the permissions are
 	// absent from queryTestablePermissions at project scope and present at
 	// organization scope (GA, custom-role supported).
