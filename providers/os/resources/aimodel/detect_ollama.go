@@ -245,6 +245,12 @@ func DetectOllamaModels(afs *afero.Afero, modelsDir string) []ModelInfo {
 						}
 					}
 
+					// Ollama stores weights only as GGUF.
+					var unsafe *bool
+					if hasOllamaWeightLayer(manifest.Layers) {
+						unsafe = boolPtr(false)
+					}
+
 					results = append(results, ModelInfo{
 						Name:          name,
 						Source:        "ollama",
@@ -260,6 +266,9 @@ func DetectOllamaModels(afs *afero.Afero, modelsDir string) []ModelInfo {
 						Architecture:  extracted.Architecture,
 						License:       extracted.License,
 						Tags:          modelTags,
+
+						UnsafeSerialization: unsafe,
+						WeightDigests:       ollamaWeightDigests(manifest.Layers),
 					})
 				}
 			}

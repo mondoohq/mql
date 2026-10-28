@@ -22965,6 +22965,31 @@ private ai.model @defaults("name source") @maturity("preview") {
   tags []string
   // Short description of the model
   description string
+  // Whether loading the model's weights executes code stored in them
+  //
+  // True when any weight file of the model is a Python pickle, which runs the
+  // callables it names when it is loaded: PyTorch checkpoints (.pt, .pth,
+  // .ckpt, and .bin files written by torch.save), .pkl, .pickle, and .joblib.
+  // Every weight file is checked, not only the one `format` reports, since a
+  // Hugging Face snapshot can carry model.safetensors next to a pickled
+  // pytorch_model.bin; for Hugging Face these are the files of the snapshot
+  // `version` names. False when every weight file is a pure data format
+  // (safetensors, GGUF, ONNX, numpy .npz, Flax msgpack, TFLite), which
+  // includes every Ollama and LM Studio model. Null when the model has no
+  // recognized weight file or one whose format can't be told: Keras .h5 and
+  // .keras files run code only when they hold a Lambda layer, and a .bin file
+  // that is neither a pickle nor GGML/GGUF is unknown.
+  unsafeSerialization bool
+  // SHA-256 digests of the model's weight files
+  //
+  // One sha256:<hex> entry per weight file, as the source records it, so a
+  // model can be matched against a known digest without hashing gigabytes of
+  // weights. Ollama models list the model layer and any projector or adapter
+  // layer from the manifest, in manifest order. Null when the source records
+  // no digest. The Hugging Face cache records none: it names a blob by its
+  // SHA-256 or by its Xet hash depending on how the file was stored, and the
+  // two can't be told apart.
+  weightDigests []string
 }
 
 // Ollama server configuration on the host

@@ -77,6 +77,12 @@ type ModelInfo struct {
 	License       string
 	Tags          []string
 	Description   string
+	// UnsafeSerialization is whether loading the weights executes code stored
+	// in them; nil when it can't be told.
+	UnsafeSerialization *bool
+	// WeightDigests are the recorded SHA-256 digests of the weight files, as
+	// sha256:<hex>; nil when the source records none.
+	WeightDigests []string
 }
 
 // DetectContext carries the shared state needed by every detector.

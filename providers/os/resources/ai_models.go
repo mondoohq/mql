@@ -74,6 +74,16 @@ func newAiModelResource(rt *plugin.Runtime, m aimodel.ModelInfo) (*mqlAiModel, e
 		}
 	}
 
+	// No recorded digest is null, not an empty list.
+	digests := llx.NilData
+	if len(m.WeightDigests) > 0 {
+		digestsAny := make([]any, 0, len(m.WeightDigests))
+		for _, d := range m.WeightDigests {
+			digestsAny = append(digestsAny, d)
+		}
+		digests = llx.ArrayData(digestsAny, types.String)
+	}
+
 	res, err := NewResource(rt, "ai.model", map[string]*llx.RawData{
 		"__id":          llx.StringData(aiModelID(m)),
 		"name":          llx.StringData(m.Name),
@@ -91,6 +101,9 @@ func newAiModelResource(rt *plugin.Runtime, m aimodel.ModelInfo) (*mqlAiModel, e
 		"license":       llx.StringData(m.License),
 		"tags":          llx.ArrayData(tagsAny, types.String),
 		"description":   llx.StringData(m.Description),
+
+		"unsafeSerialization": llx.BoolDataPtr(m.UnsafeSerialization),
+		"weightDigests":       digests,
 	})
 	if err != nil {
 		return nil, err
