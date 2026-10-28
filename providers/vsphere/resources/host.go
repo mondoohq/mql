@@ -275,6 +275,15 @@ func (v *mqlVsphereHost) distributedSwitch() ([]any, error) {
 			"properties": llx.DictData(s),
 			// esxcli vswitch output carries no creation time; null marks it unknown.
 			"createDate": llx.TimeDataPtr(nil),
+			// esxcli carries no switch configuration; the typed settings are
+			// only known for switches discovered through vCenter.
+			"version":                llx.StringDataPtr(nil),
+			"maxMtu":                 llx.IntDataPtr[int64](nil),
+			"linkDiscoveryProtocol":  llx.StringDataPtr(nil),
+			"linkDiscoveryOperation": llx.StringDataPtr(nil),
+			"netflowEnabled":         llx.BoolDataPtr(nil),
+			"netflowCollectorIp":     llx.StringDataPtr(nil),
+			"healthCheckEnabled":     llx.BoolDataPtr(nil),
 		})
 		if err != nil {
 			return nil, err

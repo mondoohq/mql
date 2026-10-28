@@ -1134,6 +1134,134 @@ private vsphere.vm @defaults("moid name") {
   biosUuid string
   // Whether this entry is a VM template rather than a runnable VM
   template bool
+  // Virtual hardware version
+  //
+  // The VM compatibility level as vCenter reports it, for example `vmx-21`. Null when vCenter returns no configuration for the VM.
+  hardwareVersion string
+  // Guest operating system identifier
+  //
+  // The configured guest OS type, for example `ubuntu64Guest` or `windows2019srvNext_64Guest`. This is the type set on the VM, not the OS detected by VMware Tools.
+  guestId string
+  // Encrypted vMotion mode
+  //
+  // One of disabled, opportunistic (encrypt when both hosts support it), or required. Null when vCenter returns no configuration for the VM.
+  migrateEncryption string
+  // Encrypted Fault Tolerance mode
+  //
+  // One of ftEncryptionDisabled, ftEncryptionOpportunistic, or ftEncryptionRequired. Empty when vCenter predates vSphere 7.0 U2 and does not report it.
+  ftEncryptionMode string
+  // Whether VM diagnostic logging (vmware.log) is enabled
+  //
+  // Null when vCenter does not report the setting.
+  loggingEnabled bool
+  // VMware Tools upgrade policy
+  //
+  // One of manual or upgradeAtPowerCycle. Empty when the VM has no Tools configuration.
+  toolsUpgradePolicy string
+  // Virtual serial ports attached to the VM, in device order
+  serialPorts() []vsphere.vm.serialPort
+  // Virtual parallel ports attached to the VM, in device order
+  parallelPorts() []vsphere.vm.parallelPort
+  // Virtual USB controllers (USB 2.0 and USB 3.x) attached to the VM, in device order
+  usbControllers() []vsphere.vm.usbController
+  // Virtual floppy drives attached to the VM, in device order
+  floppies() []vsphere.vm.floppy
+}
+
+// vSphere VM virtual serial port
+//
+// Virtual serial port attached to a VM. The `backingType` field identifies
+// where the port leads: `file` (output file on a datastore), `pipe` (named
+// pipe), `device` (host serial device), `uri` (network serial port), or
+// `thinPrint`. Hardening guides recommend removing serial ports a VM does not
+// need; `connected` and `connectedAtPowerOn` show whether a present port is
+// live.
+private vsphere.vm.serialPort @defaults("label backingType connected") {
+  // Device key (unique within the parent VM)
+  key int
+  // Device label (for example "Serial port 1")
+  label string
+  // Whether the port is currently connected; null when the device reports no connection state
+  connected bool
+  // Whether the port connects when the VM powers on; null when the device reports no connection state
+  connectedAtPowerOn bool
+  // Whether the guest OS can connect and disconnect this port; null when the device reports no connection state
+  allowGuestControl bool
+  // Backing variant
+  //
+  // One of file, pipe, device, uri, thinPrint, or empty for an unknown backing.
+  backingType string
+}
+
+// vSphere VM virtual parallel port
+//
+// Virtual parallel port attached to a VM. The `backingType` field identifies
+// where the port leads: `file` (output file on a datastore) or `device` (host
+// parallel device). Hardening guides recommend removing parallel ports a VM
+// does not need.
+private vsphere.vm.parallelPort @defaults("label backingType connected") {
+  // Device key (unique within the parent VM)
+  key int
+  // Device label (for example "Parallel port 1")
+  label string
+  // Whether the port is currently connected; null when the device reports no connection state
+  connected bool
+  // Whether the port connects when the VM powers on; null when the device reports no connection state
+  connectedAtPowerOn bool
+  // Whether the guest OS can connect and disconnect this port; null when the device reports no connection state
+  allowGuestControl bool
+  // Backing variant
+  //
+  // One of file, device, or empty for an unknown backing.
+  backingType string
+}
+
+// vSphere VM virtual USB controller
+//
+// Virtual USB controller attached to a VM. The `controllerType` field is
+// `usb2` (EHCI+UHCI) or `usb3` (xHCI). `autoConnectDevices` reports whether
+// host USB devices are connected to the VM automatically. Hardening guides
+// recommend removing USB controllers a VM does not need.
+private vsphere.vm.usbController @defaults("label controllerType") {
+  // Device key (unique within the parent VM)
+  key int
+  // Device label (for example "USB controller")
+  label string
+  // Controller variant: usb2 or usb3
+  controllerType string
+  // Whether host USB devices auto-connect to this VM; null when not reported
+  autoConnectDevices bool
+  // Whether the controller is currently connected; null when the device reports no connection state, which is usual for controllers
+  connected bool
+  // Whether the controller connects when the VM powers on; null when the device reports no connection state
+  connectedAtPowerOn bool
+  // Whether the guest OS can connect and disconnect this controller; null when the device reports no connection state
+  allowGuestControl bool
+  // Backing variant; empty for controllers, which normally have no backing
+  backingType string
+}
+
+// vSphere VM virtual floppy drive
+//
+// Virtual floppy drive attached to a VM. The `backingType` field identifies
+// the source: `image` (floppy image file on a datastore), `device` (host
+// floppy device), or `remoteDevice` (client device through the console).
+// Hardening guides recommend removing floppy drives.
+private vsphere.vm.floppy @defaults("label backingType connected") {
+  // Device key (unique within the parent VM)
+  key int
+  // Device label (for example "Floppy drive 1")
+  label string
+  // Whether the drive is currently connected; null when the device reports no connection state
+  connected bool
+  // Whether the drive connects when the VM powers on; null when the device reports no connection state
+  connectedAtPowerOn bool
+  // Whether the guest OS can connect and disconnect this drive; null when the device reports no connection state
+  allowGuestControl bool
+  // Backing variant
+  //
+  // One of image, device, remoteDevice, or empty for an unknown backing.
+  backingType string
 }
 
 // vSphere VM Virtual CD/DVD Device
@@ -1440,6 +1568,38 @@ private vsphere.vswitch.dvs @defaults("name") {
   // directly from a host. Mirroring sessions can copy traffic off the switch,
   // so auditing them matters.
   vspanSessions() []vsphere.vswitch.dvs.vspanSession
+  // Distributed switch product version
+  //
+  // The switch version, for example `8.0.3`. Null for switches observed directly from a host.
+  version string
+  // Maximum MTU in bytes allowed on the switch
+  //
+  // Null for switches observed directly from a host.
+  maxMtu int
+  // Link discovery protocol: cdp or lldp
+  //
+  // Null when the switch has no link discovery configuration or is observed directly from a host.
+  linkDiscoveryProtocol string
+  // Link discovery operation: none, listen, advertise, or both
+  //
+  // `advertise` and `both` announce switch details to neighboring devices. Null when the switch has no link discovery configuration or is observed directly from a host.
+  linkDiscoveryOperation string
+  // Whether NetFlow (IPFIX) monitoring is enabled in the switch's default port configuration
+  //
+  // Null when the switch does not report the setting or is observed directly from a host.
+  netflowEnabled bool
+  // IP address of the NetFlow (IPFIX) collector
+  //
+  // Empty when no collector is configured. Null when the switch has no NetFlow configuration or is observed directly from a host.
+  netflowCollectorIp string
+  // Whether any switch health check (VLAN and MTU, or teaming and failover) is enabled
+  //
+  // Null for switches observed directly from a host.
+  healthCheckEnabled bool
+  // Layer-2 security policy from the switch's default port configuration
+  //
+  // Port groups inherit this policy unless they override it. Null for switches observed directly from a host.
+  defaultPortSecurityPolicy() vsphere.vswitch.securityPolicy
 }
 
 // Distributed Switch Port-Mirroring Session
@@ -1511,6 +1671,34 @@ private vsphere.vswitch.portgroup @defaults("name vlanId") {
   // When true, any per-port overrides are removed once a virtual machine disconnects, so reconnecting ports
   // inherit the port group's DefaultPortConfig. CIS hardening benchmarks recommend this be true.
   portConfigResetAtDisconnect bool
+  // Port binding type: earlyBinding (static), lateBinding, or ephemeral
+  //
+  // Ephemeral binding creates ports on demand and is not recommended outside recovery scenarios.
+  portBinding string
+  // Whether all ports in the port group are blocked by default
+  //
+  // Null when the port group's default port configuration does not report it.
+  blocked bool
+  // VLAN ID ranges trunked through this port group
+  //
+  // Each entry is `start-end`, for example `100-200`, or `0-4094` for every VLAN. Empty when the port group carries a single VLAN tag or a private VLAN.
+  vlanTrunkRanges []string
+  // Whether individual ports may override the port group's security policy
+  //
+  // Null when the port group's policy is not a VMware distributed switch policy.
+  securityPolicyOverrideAllowed bool
+  // Whether individual ports may override the port group's VLAN setting
+  //
+  // Null when the port group's policy is not a VMware distributed switch policy.
+  vlanOverrideAllowed bool
+  // Whether individual ports may override the port group's MAC management policy
+  //
+  // Null when vCenter does not report the setting.
+  macManagementOverrideAllowed bool
+  // Whether individual ports may override the port group's uplink teaming policy
+  //
+  // Null when the port group's policy is not a VMware distributed switch policy.
+  uplinkTeamingOverrideAllowed bool
 }
 
 // vSphere Distributed Virtual Switch MAC Management Policy
