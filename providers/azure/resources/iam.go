@@ -668,9 +668,12 @@ func filterRoleAssignmentsByPrincipal(assignments []any, principalId string) []a
 	return res
 }
 
-func (a *mqlAzureSubscriptionManagedIdentity) federatedIdentityCredentials() ([]any, error) {
+// listFederatedIdentityCredentials reads the federated identity credentials of
+// a user-assigned identity. A system-assigned identity has no resource of its
+// own to hang credentials on, so it reports none without a request.
+func (a *mqlAzureSubscriptionManagedIdentity) listFederatedIdentityCredentials() ([]*armmsi.FederatedIdentityCredential, error) {
 	if a.cacheResourceID == "" {
-		return []any{}, nil
+		return nil, nil
 	}
 	resourceID, err := ParseResourceID(a.cacheResourceID)
 	if err != nil {
@@ -691,34 +694,90 @@ func (a *mqlAzureSubscriptionManagedIdentity) federatedIdentityCredentials() ([]
 
 	ctx := context.Background()
 	pager := client.NewListPager(resourceID.ResourceGroup, name, nil)
-	res := []any{}
+	res := []*armmsi.FederatedIdentityCredential{}
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
 			return nil, err
 		}
 		for _, fic := range page.Value {
-			if fic == nil {
-				continue
+			if fic != nil {
+				res = append(res, fic)
 			}
-			entry := map[string]any{
-				"name": convert.ToValue(fic.Name),
-			}
-			if p := fic.Properties; p != nil {
-				entry["issuer"] = convert.ToValue(p.Issuer)
-				entry["subject"] = convert.ToValue(p.Subject)
-				audiences := []any{}
-				for _, aud := range p.Audiences {
-					if aud != nil {
-						audiences = append(audiences, *aud)
-					}
-				}
-				entry["audiences"] = audiences
-			}
-			res = append(res, entry)
 		}
 	}
 	return res, nil
+}
+
+func (a *mqlAzureSubscriptionManagedIdentity) federatedIdentityCredentials() ([]any, error) {
+	fics, err := a.listFederatedIdentityCredentials()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, fic := range fics {
+		entry := map[string]any{
+			"name": convert.ToValue(fic.Name),
+		}
+		if p := fic.Properties; p != nil {
+			entry["issuer"] = convert.ToValue(p.Issuer)
+			entry["subject"] = convert.ToValue(p.Subject)
+			entry["audiences"] = federatedCredentialAudiences(p.Audiences)
+		}
+		res = append(res, entry)
+	}
+	return res, nil
+}
+
+// federatedCredentialAudiences copies the audience list, skipping nil entries.
+func federatedCredentialAudiences(audiences []*string) []any {
+	res := []any{}
+	for _, aud := range audiences {
+		if aud != nil {
+			res = append(res, *aud)
+		}
+	}
+	return res
+}
+
+// federatedCredentialArgs maps a federated identity credential onto the fields
+// of azure.subscription.managedIdentity.federatedCredential. An absent issuer
+// or subject reads as null.
+func federatedCredentialArgs(fic *armmsi.FederatedIdentityCredential) map[string]*llx.RawData {
+	var issuer, subject *string
+	audiences := []any{}
+	if p := fic.Properties; p != nil {
+		issuer = p.Issuer
+		subject = p.Subject
+		audiences = federatedCredentialAudiences(p.Audiences)
+	}
+	return map[string]*llx.RawData{
+		"id":        llx.StringDataPtr(fic.ID),
+		"name":      llx.StringDataPtr(fic.Name),
+		"issuer":    llx.StringDataPtr(issuer),
+		"subject":   llx.StringDataPtr(subject),
+		"audiences": llx.ArrayData(audiences, types.String),
+	}
+}
+
+func (a *mqlAzureSubscriptionManagedIdentity) federatedCredentials() ([]any, error) {
+	fics, err := a.listFederatedIdentityCredentials()
+	if err != nil {
+		return nil, classifyAzureRefusal(err, "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/read")
+	}
+	res := []any{}
+	for _, fic := range fics {
+		mqlFic, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionManagedIdentityFederatedCredential, federatedCredentialArgs(fic))
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlFic)
+	}
+	return res, nil
+}
+
+func (a *mqlAzureSubscriptionManagedIdentityFederatedCredential) id() (string, error) {
+	return a.Id.Data, nil
 }
 
 func (a *mqlAzureSubscriptionAuthorizationServiceDenyAssignment) id() (string, error) {

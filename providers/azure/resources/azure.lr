@@ -11377,6 +11377,8 @@ private azure.subscription.monitorService {
   workspaces() []azure.subscription.monitorService.workspace
   // Log Analytics QueryPacks (saved KQL query collections)
   queryPacks() []azure.subscription.monitorService.queryPack
+  // Azure Monitor private link scopes
+  privateLinkScopes() []azure.subscription.monitorService.privateLinkScope
   // Action groups (notification and automation targets referenced by alert rules)
   actionGroups() []azure.subscription.monitorService.actionGroup
   // Metric alert rules in the subscription
@@ -11549,6 +11551,80 @@ private azure.subscription.monitorService.activityLog @defaults("alerts") {
   // it succeeded. The list covers the most recent seven days, the
   // practical window for change attribution.
   entries() []azure.subscription.monitorService.activityLog.entry
+}
+
+// Azure Monitor private link scope
+//
+// Azure Monitor Private Link Scope (AMPLS), which connects private endpoints
+// to Log Analytics workspaces and Application Insights components. The
+// `ingestionAccessMode` and `queryAccessMode` say whether networks connected
+// through the scope may reach only the resources in the scope (PrivateOnly)
+// or any Azure Monitor resource (Open), and `accessModeExclusions` overrides
+// them per private endpoint connection. `scopedResources` lists the linked
+// workspaces and components, and `privateEndpointConnections` the private
+// endpoints using the scope.
+private azure.subscription.monitorService.privateLinkScope @defaults("name location ingestionAccessMode queryAccessMode") {
+  // Private link scope resource ID
+  id string
+  // Name of the private link scope
+  name string
+  // Location of the private link scope
+  location string
+  // Tags on the private link scope
+  tags map[string]string
+  // Provisioning state of the private link scope
+  provisioningState string
+  // Default ingestion access mode for networks connected through the scope
+  //
+  // One of Open or PrivateOnly. PrivateOnly limits ingestion to the
+  // resources in the scope.
+  ingestionAccessMode string
+  // Default query access mode for networks connected through the scope
+  //
+  // One of Open or PrivateOnly. PrivateOnly limits queries to the
+  // resources in the scope.
+  queryAccessMode string
+  // Access mode overrides for specific private endpoint connections
+  //
+  // Each entry has `privateEndpointConnectionName`, `ingestionAccessMode`,
+  // and `queryAccessMode`.
+  accessModeExclusions []dict
+  // Workspaces, components, and endpoints linked to the scope
+  scopedResources() []azure.subscription.monitorService.privateLinkScope.scopedResource
+  // Private endpoint connections to the scope
+  privateEndpointConnections() []azure.subscription.privateEndpointConnection
+  // Creation and last-modification provenance recorded by Azure Resource Manager
+  systemMetadata() azure.subscription.systemData
+}
+
+// Azure Monitor private link scoped resource
+//
+// Link between a private link scope and one Azure Monitor resource. The
+// linked Log Analytics workspace or Application Insights component is
+// reachable as `workspace` or `applicationInsight`; `linkedResourceId`
+// carries the ID of every linked resource, including data collection
+// endpoints.
+private azure.subscription.monitorService.privateLinkScope.scopedResource @defaults("name kind provisioningState") {
+  // Scoped resource ID
+  id string
+  // Name of the scoped resource
+  name string
+  // Kind of the scoped resource, Resource or Metrics
+  kind string
+  // Provisioning state of the link
+  provisioningState string
+  // Location of the scoped subscription, set only for metrics links
+  subscriptionLocation string
+  // Resource ID of the linked Azure Monitor resource
+  linkedResourceId string
+  // Linked Log Analytics workspace
+  //
+  // Null when the linked resource is not a Log Analytics workspace.
+  workspace() azure.subscription.monitorService.workspace
+  // Linked Application Insights component
+  //
+  // Null when the linked resource is not an Application Insights component.
+  applicationInsight() azure.subscription.monitorService.applicationInsight
 }
 
 // Azure Monitor application insights
@@ -11886,6 +11962,78 @@ private azure.subscription.cloudDefenderService @defaults("forServers.enabled fo
   workspaceSettings() []azure.subscription.cloudDefenderService.workspaceSetting
   // API collections onboarded to Microsoft Defender for APIs
   apiCollections() []azure.subscription.cloudDefenderService.apiCollection
+  // Governance rules that assign owners and remediation deadlines to recommendations
+  //
+  // An empty list means no recommendation is routed to an owner with a due
+  // date, so unhealthy assessments have no one accountable for fixing them.
+  governanceRules() []azure.subscription.cloudDefenderService.governanceRule
+}
+
+// Microsoft Defender for Cloud governance rule
+//
+// Rule that matches security recommendations by its `conditionSets` and
+// assigns each match an owner (`ownerSource`, read from a resource tag or set
+// manually) and a remediation deadline (`remediationTimeframe`). Rules run in
+// `rulePriority` order, and a disabled rule (`isDisabled`) assigns nothing.
+// Audit these to confirm high-severity recommendations get an owner and a
+// deadline, and whether a grace period keeps them out of the secure score
+// until it ends.
+private azure.subscription.cloudDefenderService.governanceRule @defaults("displayName rulePriority isDisabled") {
+  // Governance rule resource ID
+  id string
+  // Governance rule name (a GUID)
+  name string
+  // Display name of the rule
+  displayName string
+  // Description of the rule
+  description string
+  // Whether the rule is disabled
+  isDisabled bool
+  // Evaluation order of the rule
+  //
+  // Lower numbers run first, from 0 to 1000, and a recommendation is governed
+  // by the first rule that matches it.
+  rulePriority int
+  // Type of the rule
+  //
+  // One of Integrated (assignments managed in Defender for Cloud) or
+  // ServiceNow (assignments raised as ServiceNow tickets).
+  ruleType string
+  // Time allowed to remediate a matched recommendation
+  //
+  // A duration in days, hours and minutes such as `7.00:00:00`.
+  remediationTimeframe string
+  // Whether a matched recommendation gets a grace period
+  //
+  // During the grace period the unhealthy recommendation does not lower the
+  // secure score.
+  isGracePeriod bool
+  // Where the owner of a matched recommendation comes from
+  //
+  // One of ByTag (the owner is read from the resource tag named in
+  // ownerSource) or Manually (ownerSource is the owner's email address).
+  ownerSourceType string
+  // Owner of a matched recommendation, or the tag that names it
+  //
+  // An email address when ownerSourceType is Manually, or a tag name when it
+  // is ByTag.
+  ownerSource string
+  // Kind of item the rule governs, Assessments
+  sourceResourceType string
+  // Conditions a recommendation must meet for the rule to apply
+  //
+  // Each entry is one condition set with a `conditions` list of
+  // `{property, value, operator}` entries, for example
+  // `{"property": "$.AssessmentKey", "operator": "In", "value": "[...]"}`.
+  conditionSets []dict
+  // Scopes the rule does not apply to
+  excludedScopes []string
+  // Whether the rule also applies to the member scopes of a management group or security connector
+  includeMemberScopes bool
+  // Whether email notifications to the owner are turned off
+  disableOwnerEmailNotification bool
+  // Whether email notifications to the owner's manager are turned off
+  disableManagerEmailNotification bool
 }
 
 // Microsoft Defender for APIs collection
@@ -12218,8 +12366,43 @@ private azure.subscription.cloudDefenderService.assessment @defaults("displayNam
   description string
   // Detailed sub-findings underlying the assessment (per-CVE, per-misconfiguration)
   subAssessments() []azure.subscription.cloudDefenderService.assessment.subAssessment
+  // Owners and remediation due dates assigned to this assessment
+  //
+  // Set by a governance rule or by hand. Read with one request per
+  // assessment, so narrow the set first, for example
+  // `assessments.where(status == "Unhealthy" && severity == "High")`.
+  governanceAssignments() []azure.subscription.cloudDefenderService.assessment.governanceAssignment
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+}
+
+// Microsoft Defender for Cloud governance assignment
+//
+// Owner and remediation due date assigned to one unhealthy assessment, either
+// by a governance rule or by hand. An assignment past its `remediationDueDate`
+// is an overdue fix; `remediationEta` is the date the owner committed to.
+private azure.subscription.cloudDefenderService.assessment.governanceAssignment @defaults("owner remediationDueDate isGracePeriod") {
+  // Governance assignment resource ID
+  id string
+  // Governance assignment name
+  name string
+  // Email address of the owner responsible for the remediation
+  owner string
+  // Date by which the assessment must be remediated
+  remediationDueDate time
+  // Whether the assessment is in a grace period
+  //
+  // During the grace period the unhealthy assessment does not lower the
+  // secure score.
+  isGracePeriod bool
+  // Date the owner expects to complete the remediation
+  remediationEta time
+  // Justification the owner gave for the expected completion date
+  remediationEtaJustification string
+  // Whether email notifications to the owner are turned off
+  disableOwnerEmailNotification bool
+  // Whether email notifications to the owner's manager are turned off
+  disableManagerEmailNotification bool
 }
 
 // Microsoft Defender for Cloud sub-assessment
@@ -13389,13 +13572,40 @@ private azure.subscription.managedIdentity @defaults("name") {
   roleAssignments() []azure.subscription.authorizationService.roleAssignment
   // Federated identity credentials (workload identity federation)
   //
-  // Each entry trusts an external OIDC issuer to mint tokens for this
-  // identity, with `name`, `issuer`, `subject`, and the allowed token
-  // `audiences`. A broad or unexpected issuer/subject is a privilege-
-  // escalation path worth auditing.
-  federatedIdentityCredentials() []dict
+  // Deprecated in favor of federatedCredentials, which carries the same
+  // `name`, `issuer`, `subject`, and `audiences` as typed fields.
+  federatedIdentityCredentials() @maturity("deprecated") @replaced_by("azure.subscription.managedIdentity.federatedCredentials") []dict
+  // Federated identity credentials (workload identity federation)
+  //
+  // Each credential trusts an external OIDC issuer to mint tokens for this
+  // identity. A broad or unexpected issuer or subject is a privilege-
+  // escalation path worth auditing. Empty for a system-assigned identity,
+  // which cannot carry federated credentials.
+  federatedCredentials() []azure.subscription.managedIdentity.federatedCredential
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+}
+
+// Federated identity credential on a user-assigned managed identity
+//
+// Trust relationship that lets tokens issued by an external OIDC provider
+// (`issuer`) for a given workload (`subject`) be exchanged for tokens of the
+// managed identity, as long as the token carries one of the `audiences`. For
+// example, a GitHub Actions credential has issuer
+// `https://token.actions.githubusercontent.com` and a subject such as
+// `repo:octo-org/octo-repo:ref:refs/heads/main`. A wildcard-like or
+// unexpected subject lets more workloads act as the identity than intended.
+private azure.subscription.managedIdentity.federatedCredential @defaults("name issuer subject") {
+  // Federated identity credential resource ID
+  id string
+  // Name of the credential
+  name string
+  // URL of the trusted token issuer
+  issuer string
+  // Identifier of the external workload trusted to sign in
+  subject string
+  // Audiences that may appear in the external token
+  audiences []string
 }
 
 // Azure Kubernetes Service
@@ -13966,6 +14176,10 @@ private azure.subscription.policy @defaults("subscriptionId") {
   setDefinitions() []azure.subscription.policy.setDefinition
   // List of policy exemptions in the subscription
   exemptions() []azure.subscription.policy.exemption
+  // Policy remediation tasks at subscription scope
+  remediations() []azure.subscription.policy.remediation
+  // Policy attestations at subscription scope
+  attestations() []azure.subscription.policy.attestation
   // Aggregate policy compliance summary for the subscription
   complianceSummary() azure.subscription.policy.complianceSummary
   // Per-resource policy compliance states in the subscription
@@ -14259,6 +14473,85 @@ private azure.subscription.policy.exemption @defaults("name exemptionCategory ex
   createdAt time
   // Time the exemption was last modified
   updatedAt time
+}
+
+// Azure Policy remediation task
+//
+// Task that brings non-compliant resources into compliance with a
+// deployIfNotExists or modify policy by deploying the fix to each of them.
+// The deployment counts show how far the remediation got, and a task with
+// `failedDeployments` above zero left resources non-compliant.
+private azure.subscription.policy.remediation @defaults("name provisioningState failedDeployments") {
+  // Remediation resource ID
+  id string
+  // Remediation name
+  name string
+  // Policy assignment the remediation enforces
+  policyAssignment() azure.subscription.policy.assignment
+  // Reference ID of the definition being remediated within an initiative assignment
+  policyDefinitionReferenceId string
+  // Status of the remediation
+  //
+  // One of Accepted, Evaluating, Running, Succeeded, Failed, Canceling, or
+  // Canceled.
+  provisioningState string
+  // Status message of the remediation
+  statusMessage string
+  // How resources to remediate are discovered
+  //
+  // One of ExistingNonCompliant (resources already known to be
+  // non-compliant) or ReEvaluateCompliance (re-evaluate compliance first).
+  resourceDiscoveryMode string
+  // When the remediation was created
+  createdOn time
+  // When the remediation was last updated
+  lastUpdatedOn time
+  // Number of deployments the remediation requires
+  totalDeployments int
+  // Number of deployments that succeeded
+  successfulDeployments int
+  // Number of deployments that failed
+  failedDeployments int
+}
+
+// Azure Policy attestation
+//
+// Manual compliance statement for a resource under a policy whose effect is
+// manual: someone attests that the resource is compliant or not, with
+// evidence and an expiry. An attestation past its `expiresOn` no longer
+// backs the compliance state it reports.
+private azure.subscription.policy.attestation @defaults("name complianceState expiresOn") {
+  // Attestation resource ID
+  id string
+  // Attestation name
+  name string
+  // Policy assignment the attestation is for
+  policyAssignment() azure.subscription.policy.assignment
+  // Reference ID of the definition attested within an initiative assignment
+  policyDefinitionReferenceId string
+  // Compliance state the attestation sets
+  //
+  // One of Compliant, NonCompliant, or Unknown.
+  complianceState string
+  // When the attestation expires
+  expiresOn time
+  // Person responsible for the attestation
+  owner string
+  // Comments describing why the attestation was made
+  comments string
+  // Evidence supporting the compliance state
+  //
+  // Each entry has `description`, `sourceUri`, and `sourceUriHasSasToken`.
+  // The query string of `sourceUri` is removed, so a shared access signature
+  // on a blob URL is not exposed; `sourceUriHasSasToken` reports whether the
+  // URI carried one.
+  evidence []dict
+  // When the compliance state was assessed
+  assessmentDate time
+  // When the compliance state last changed
+  lastComplianceStateChangeAt time
+  // Provisioning state of the attestation
+  provisioningState string
 }
 
 // Azure Policy compliance summary
@@ -15358,7 +15651,12 @@ azure.subscription.monitorService.workspace @defaults("id name location skuName"
   // Linked services
   linkedServices() []azure.subscription.monitorService.workspace.linkedService
   // Private link scoped resources
-  privateLinkScopedResources() []dict
+  //
+  // Deprecated in favor of privateLinkScopes, which resolves each entry to
+  // the Azure Monitor private link scope the workspace is attached to.
+  privateLinkScopedResources() @maturity("deprecated") @replaced_by("azure.subscription.monitorService.workspace.privateLinkScopes") []dict
+  // Azure Monitor private link scopes the workspace is attached to
+  privateLinkScopes() []azure.subscription.monitorService.privateLinkScope
   // Workspace tables (per-table plan/retention)
   tables() []azure.subscription.monitorService.workspace.table
   // Network Security Perimeter configurations
@@ -20366,10 +20664,47 @@ private azure.subscription.sentinelService.workspace @defaults("name resourceGro
   automationRules() []azure.subscription.sentinelService.automationRule
   // Data connectors ingesting telemetry into the workspace
   //
-  // Each entry is a kind-specific dict with `name`, `kind`, and `properties` describing the connector configuration. Kinds include `OfficeATP`, `AzureActiveDirectory`, `AzureSecurityCenter`, `MicrosoftDefenderAdvancedThreatProtection`, and many others.
-  dataConnectors() []dict
+  // Deprecated in favor of connectors, which carries the connector's `name`,
+  // `kind`, tenant, and per-data-type state as typed fields.
+  dataConnectors() @maturity("deprecated") @replaced_by("azure.subscription.sentinelService.workspace.connectors") []dict
+  // Data connectors ingesting telemetry into the workspace
+  connectors() []azure.subscription.sentinelService.dataConnector
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+}
+
+// Microsoft Sentinel data connector
+//
+// Connector that brings one source of security telemetry into a Sentinel
+// workspace, such as Microsoft Entra ID, Microsoft Defender for Cloud,
+// Office 365, or AWS CloudTrail. The `kind` names the source and
+// `dataTypes` maps each data type the connector carries to its state, for
+// example `{"exchange": "Enabled", "sharePoint": "Disabled", "teams":
+// "Enabled"}` for Office 365. Audit these to confirm the expected sources are
+// connected and every data type is enabled.
+private azure.subscription.sentinelService.dataConnector @defaults("name kind") {
+  // Data connector resource ID
+  id string
+  // Name of the data connector
+  name string
+  // Kind of the data connector
+  //
+  // Includes AzureActiveDirectory, AzureAdvancedThreatProtection,
+  // AzureSecurityCenter, MicrosoftCloudAppSecurity,
+  // MicrosoftDefenderAdvancedThreatProtection, Office365, ThreatIntelligence,
+  // and AmazonWebServicesCloudTrail. Azure adds kinds over time.
+  kind string
+  // Entra ID tenant the connector reads from
+  //
+  // Null for kinds that are not scoped to a tenant, such as
+  // AzureSecurityCenter and AmazonWebServicesCloudTrail.
+  tenantId string
+  // State of each data type the connector carries
+  //
+  // Maps the data type (alerts, discoveryLogs, exchange, sharePoint, teams,
+  // indicators, logs) to Enabled or Disabled. Empty for a kind this
+  // version does not recognize.
+  dataTypes map[string]string
 }
 
 // Microsoft Sentinel analytics rule
