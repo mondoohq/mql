@@ -48,6 +48,10 @@ type mqlMicrosoftInternal struct {
 	dirRoleTemplates directoryRoleTemplateCache
 	// tenant-wide LAPS and BitLocker escrow listings, fetched once
 	keyEscrow keyEscrowCache
+	// the tenant's subscribed SKUs, fetched once
+	subscribedSkus subscribedSkuCache
+	// per-user licenseDetails, fetched for users whose servicePlans are queried
+	userLicenseDetails userLicenseDetailsCache
 }
 
 // userBatchCaches holds one cache per per-user field that is resolved through
@@ -58,7 +62,6 @@ type userBatchCaches struct {
 	signInActivity batchFieldCache
 	authMethods    batchFieldCache
 	authRequires   batchFieldCache
-	licenseDetails batchFieldCache
 }
 
 // spBatchCaches holds one cache per per-service-principal field resolved

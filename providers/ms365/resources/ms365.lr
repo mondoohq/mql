@@ -341,6 +341,12 @@ microsoft.tenant @defaults("name") {
   // as are free and self-service plans (such as `RIGHTSMANAGEMENT_ADHOC` and
   // `FLOW_FREE`) that report sentinel seat counts.
   paidLicenses() int
+  // Licenses (SKUs) the organization has acquired
+  //
+  // One entry per SKU, unlike `subscriptions`, which lists every commercial
+  // subscription and can repeat a SKU (for example a trial and its paid
+  // successor).
+  subscribedSkus() []microsoft.tenant.subscribedSku
   // Company-wide settings for apps and services.
   settings() microsoft.tenantSettings
   // Company-wide settings for Microsoft Forms
@@ -1652,7 +1658,37 @@ private microsoft.user.licenseDetail @defaults("skuId skuPartNumber") {
   // The unique, friendly name for the product.
   skuPartNumber string
   // A collection of the service plans that are provided with the SKU.
-  servicePlans []microsoft.user.licenseDetail.servicePlanInfo
+  //
+  // Read from the user's license details in Microsoft Graph when first
+  // queried, so `provisioningStatus` is the user's own status.
+  servicePlans() []microsoft.user.licenseDetail.servicePlanInfo
+}
+
+// A license (SKU) the organization has acquired
+microsoft.tenant.subscribedSku @defaults("skuPartNumber capabilityStatus") {
+  // The unique identifier for the subscribed SKU
+  id string
+  // The unique identifier for the SKU
+  skuId string
+  // The unique, friendly name for the SKU, such as `ENTERPRISEPACK`
+  skuPartNumber string
+  // Who the SKU applies to: `User` or `Company`
+  appliesTo string
+  // Status of the SKU: `Enabled`, `Warning`, `Suspended`, `Deleted`, or `LockedOut`
+  capabilityStatus string
+  // Number of licenses that have been assigned
+  consumedUnits int
+  // Purchased licenses by state
+  //
+  // Keys `enabled`, `suspended`, `warning`, and `lockedOut`.
+  prepaidUnits dict
+  // Service plans included in the SKU
+  //
+  // Each entry has keys `servicePlanId`, `servicePlanName`,
+  // `provisioningStatus`, and `appliesTo`. `provisioningStatus` is the
+  // tenant-wide status; a user's own status is in
+  // `microsoft.user.licenseDetail.servicePlans`.
+  servicePlans []dict
 }
 
 // Contains information about a service plan associated with a subscribed SKU

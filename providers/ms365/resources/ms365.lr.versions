@@ -1726,6 +1726,16 @@ microsoft.tenant.securityComplianceNotificationPhones 11.2.1
 microsoft.tenant.serviceHealth 14.0.2
 microsoft.tenant.serviceHealthIssues 14.0.2
 microsoft.tenant.settings 11.0.29
+microsoft.tenant.subscribedSku 14.1.7
+microsoft.tenant.subscribedSku.appliesTo 14.1.7
+microsoft.tenant.subscribedSku.capabilityStatus 14.1.7
+microsoft.tenant.subscribedSku.consumedUnits 14.1.7
+microsoft.tenant.subscribedSku.id 14.1.7
+microsoft.tenant.subscribedSku.prepaidUnits 14.1.7
+microsoft.tenant.subscribedSku.servicePlans 14.1.7
+microsoft.tenant.subscribedSku.skuId 14.1.7
+microsoft.tenant.subscribedSku.skuPartNumber 14.1.7
+microsoft.tenant.subscribedSkus 14.1.7
 microsoft.tenant.subscriptions 11.0.29
 microsoft.tenant.technicalNotificationMails 11.0.29
 microsoft.tenant.type 11.0.29
