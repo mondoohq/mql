@@ -194,7 +194,7 @@ func TestRedactSettings(t *testing.T) {
 		"context_servers": map[string]any{
 			"pg": map[string]any{"command": map[string]any{"path": "pg-mcp", "env": map[string]any{"PGHOST": "db"}}},
 		},
-		"numericSecret": map[string]any{"pin_password": 1234, "enabled": true, "port": 8080},
+		"pinSettings": map[string]any{"pin_password": 1234, "enabled": true, "port": 8080},
 		"apiKey":        map[string]any{"value": "abc123", "source": "inline"},
 		"nothing":       nil,
 	}
@@ -231,7 +231,7 @@ func TestRedactSettings(t *testing.T) {
 	assert.Equal(t, redactedValue, pg["env"].(map[string]any)["PGHOST"])
 	assert.Equal(t, "pg-mcp", pg["path"])
 
-	ns := got["numericSecret"].(map[string]any)
+	ns := got["pinSettings"].(map[string]any)
 	assert.Equal(t, redactedValue, ns["pin_password"])
 	assert.Equal(t, true, ns["enabled"])
 	assert.Equal(t, 8080, ns["port"])
