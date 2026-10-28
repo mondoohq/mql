@@ -40,16 +40,14 @@ func joinTargetPath(osFamily, dir, name string) string {
 	return strings.TrimSuffix(dir, "/") + "/" + name
 }
 
-// claudeSettingsHookFiles returns the settings files Claude Code reads hooks
-// from at user and managed level, in merge order: the user's settings.json,
-// then managed-settings.json, then every *.json file of managed-settings.d in
-// alphabetical order, skipping hidden files. A missing drop-in directory has
+// claudeManagedSettingsFiles returns the system's managed settings files in
+// merge order: managed-settings.json, then every *.json file of
+// managed-settings.d in alphabetical order, skipping hidden files
+// (code.claude.com/docs/en/managed-settings). A missing drop-in directory has
 // no files; one that cannot be listed is an error.
-func claudeSettingsHookFiles(afs *afero.Afero, configDir, osFamily string) ([]agentHookSet, error) {
-	files := []agentHookSet{{source: filepath.Join(configDir, "settings.json")}}
-
+func claudeManagedSettingsFiles(afs *afero.Afero, osFamily string) ([]string, error) {
 	managedDir := claudeManagedSettingsDir(osFamily)
-	files = append(files, agentHookSet{source: joinTargetPath(osFamily, managedDir, "managed-settings.json"), managed: true})
+	files := []string{joinTargetPath(osFamily, managedDir, "managed-settings.json")}
 
 	dropInDir := joinTargetPath(osFamily, managedDir, "managed-settings.d")
 	entries, err := afs.ReadDir(dropInDir)
@@ -66,7 +64,22 @@ func claudeSettingsHookFiles(afs *afero.Afero, configDir, osFamily string) ([]ag
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		files = append(files, agentHookSet{source: joinTargetPath(osFamily, dropInDir, name), managed: true})
+		files = append(files, joinTargetPath(osFamily, dropInDir, name))
+	}
+	return files, nil
+}
+
+// claudeSettingsHookFiles returns the settings files Claude Code reads hooks
+// from at user and managed level, in merge order: the user's settings.json,
+// then the managed settings files.
+func claudeSettingsHookFiles(afs *afero.Afero, configDir, osFamily string) ([]agentHookSet, error) {
+	files := []agentHookSet{{source: filepath.Join(configDir, "settings.json")}}
+	managed, err := claudeManagedSettingsFiles(afs, osFamily)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range managed {
+		files = append(files, agentHookSet{source: f, managed: true})
 	}
 	return files, nil
 }

@@ -23335,6 +23335,161 @@ claude.code @defaults("configPath") @maturity("preview") {
   // per-project usage history, so you can audit which models run on a host
   // and their relative spend.
   models() []claude.code.modelUsage
+  // Whether an organization policy manages Claude Code on this host
+  //
+  // True when any managed source sets at least one setting: the cached
+  // server-managed settings (remote-settings.json in the configuration
+  // directory), a macOS configuration profile for the `com.anthropic.claudecode`
+  // domain, the Windows `Settings` value under
+  // HKLM\SOFTWARE\Policies\ClaudeCode or HKCU\SOFTWARE\Policies\ClaudeCode, or
+  // the system's managed-settings.json and managed-settings.d directory.
+  managedSettingsPresent() bool
+  // Managed sources that set at least one setting
+  //
+  // File paths and registry keys, highest priority first: the server-managed
+  // cache, the macOS configuration profile or HKLM registry value, the
+  // managed settings files, then the HKCU registry value. Unless the policy
+  // sets `managedSourcesBehavior` to "merge", Claude Code applies only the
+  // first of them.
+  managedSources() []string
+  // Managed settings Claude Code applies
+  //
+  // The organization policy resolved across `managedSources`. Secret values
+  // are replaced with `<redacted>`. Null when no managed source is present.
+  managedSettings() dict
+  // Permission mode new sessions start in
+  //
+  // The `permissions.defaultMode` setting, for example "default",
+  // "acceptEdits", "plan", "auto", "dontAsk", or "bypassPermissions". A
+  // managed value overrides the user's settings.json. Null when neither sets
+  // it and the built-in default applies.
+  defaultPermissionMode() string
+  // Whether bypass permissions mode is turned off
+  //
+  // True when the managed policy or the user's settings.json sets
+  // `permissions.disableBypassPermissionsMode` to "disable", which makes
+  // Claude Code reject `--dangerously-skip-permissions`. Null when neither
+  // sets it, so the mode is available.
+  bypassPermissionsDisabled() bool
+  // Whether auto mode is turned off
+  //
+  // True when the managed policy or the user's settings.json sets
+  // `disableAutoMode` (or `permissions.disableAutoMode`) to "disable". Null
+  // when neither sets it.
+  autoModeDisabled() bool
+  // Whether only managed permission rules apply
+  //
+  // The managed `allowManagedPermissionRulesOnly` setting. When true, Claude
+  // Code ignores allow, ask, and deny rules from user, project, and local
+  // settings. Null when the managed policy does not set it.
+  allowManagedPermissionRulesOnly() bool
+  // Tool uses approved without asking
+  //
+  // Rules of `permissions.allow`, for example "Bash(git diff *)", from the
+  // managed policy and the user's settings.json combined. Only the managed
+  // rules when `allowManagedPermissionRulesOnly` is true. A project's
+  // .claude/settings.json and .claude/settings.local.json can add rules in
+  // that project.
+  allowedPermissions() []string
+  // Tool uses that always prompt
+  //
+  // Rules of `permissions.ask`, combined like `allowedPermissions`.
+  askPermissions() []string
+  // Tool uses that are always refused
+  //
+  // Rules of `permissions.deny`, combined like `allowedPermissions`.
+  deniedPermissions() []string
+  // Whether Bash commands run in the sandbox
+  //
+  // The `sandbox.enabled` setting. A managed value overrides the user's
+  // settings.json. Null when neither sets it; Claude Code then runs commands
+  // unsandboxed unless a project turns the sandbox on.
+  sandboxEnabled() bool
+  // Whether a blocked command may be retried outside the sandbox
+  //
+  // The `sandbox.allowUnsandboxedCommands` setting. False is strict sandbox
+  // mode: Claude Code ignores the `dangerouslyDisableSandbox` parameter. Null
+  // when neither the managed policy nor the user's settings.json sets it;
+  // Claude Code's default is true.
+  sandboxAllowUnsandboxedCommands() bool
+  // Domains sandboxed commands may reach without asking
+  //
+  // Entries of `sandbox.network.allowedDomains`, for example "github.com" or
+  // "*.npmjs.org", from the managed policy and the user's settings.json
+  // combined. Only the managed entries when
+  // `sandboxAllowManagedDomainsOnly` is true.
+  sandboxAllowedDomains() []string
+  // Whether only managed domains are allowed from the sandbox
+  //
+  // True when any managed source sets
+  // `sandbox.network.allowManagedDomainsOnly`. Claude Code then ignores
+  // domains users add and blocks other domains instead of prompting. Null
+  // when no managed source sets it.
+  sandboxAllowManagedDomainsOnly() bool
+  // Whether only managed hooks run
+  //
+  // The managed `allowManagedHooksOnly` setting. When true, hooks from user,
+  // project, and local settings and from plugins that the policy does not
+  // force-enable are blocked. Null when the managed policy does not set it.
+  allowManagedHooksOnly() bool
+  // Whether hooks are turned off
+  //
+  // The `disableAllHooks` setting. A managed value overrides the user's
+  // settings.json. Null when neither sets it.
+  disableAllHooks() bool
+  // Whether a command produces the API credential
+  //
+  // True when the managed policy or the user's settings.json sets
+  // `apiKeyHelper`, a shell command whose output Claude Code sends as its
+  // API key. The command itself is not reported.
+  hasApiKeyHelper() bool
+  // Whether every project MCP server is approved without a prompt
+  //
+  // The `enableAllProjectMcpServers` setting. A managed value overrides the
+  // user's settings.json. Null when neither sets it, so each project server
+  // needs approval.
+  enableAllProjectMcpServers() bool
+  // Whether only the managed MCP allowlist applies
+  //
+  // True when any managed source sets `allowManagedMcpServersOnly`; Claude
+  // Code then ignores `allowedMcpServers` entries from user, project, and
+  // local settings. Null when no managed source sets it.
+  allowManagedMcpServersOnly() bool
+  // MCP servers allowed to load
+  //
+  // Entries of `allowedMcpServers`. With `allowManagedMcpServersOnly` true,
+  // only the managed entries; otherwise the managed and the user's entries
+  // combined. Null when neither sets an allowlist, so every server not
+  // denied may load. An empty list allows none.
+  allowedMcpServers() []claude.code.mcpServerRule
+  // MCP servers blocked from loading
+  //
+  // Entries of `deniedMcpServers` from every managed source and the user's
+  // settings.json combined.
+  deniedMcpServers() []claude.code.mcpServerRule
+  // Whether managed-mcp.json takes exclusive control of MCP servers
+  //
+  // True when the system's managed-mcp.json is deployed and parses. Claude
+  // Code then loads only the servers it lists and those the managed policy
+  // provides, and users cannot add their own.
+  managedMcpExclusive() bool
+  // MCP servers the organization deploys
+  //
+  // Servers in the system's managed-mcp.json and in the `managedMcpServers`
+  // key of the managed policy. Users cannot edit or remove them.
+  managedMcpServers() []claude.code.mcpServer
+  // Account type logins are restricted to
+  //
+  // The `forceLoginMethod` setting: "claudeai", "console", or "gateway". A
+  // managed value overrides the user's settings.json. Null when neither
+  // sets it.
+  forceLoginMethod() string
+  // Organizations claude.ai logins must belong to
+  //
+  // UUIDs from the `forceLoginOrgUUID` setting, which takes one UUID or a
+  // list. Only a managed value enforces the restriction. Null when neither
+  // the managed policy nor the user's settings.json sets it.
+  forceLoginOrgUuids() []string
 }
 
 // Claude Code installed plugin
@@ -23660,6 +23815,22 @@ private claude.code.hook @defaults("event matcher command") @maturity("preview")
   // Path of the file that declares the hook
   source string
   // Whether the hook comes from the system's managed settings
+  managed bool
+}
+
+// Claude Code MCP server allowlist or denylist entry
+//
+// One entry of `allowedMcpServers` or `deniedMcpServers`. Each entry matches
+// servers by exactly one of `serverName`, `serverCommand`, or `serverUrl`.
+// `managed` is true for an entry from the organization policy.
+private claude.code.mcpServerRule @defaults("serverName serverUrl") @maturity("preview") {
+  // Server name the entry matches
+  serverName string
+  // Command and arguments the entry matches exactly
+  serverCommand []string
+  // URL pattern the entry matches, with `*` wildcards
+  serverUrl string
+  // Whether the entry comes from a managed source
   managed bool
 }
 

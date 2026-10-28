@@ -37,6 +37,10 @@ type mqlClaudeCodeInternal struct {
 	pluginsOnce   sync.Once
 	pluginRecords []claudePluginRecord
 	pluginsErr    error
+
+	policyOnce sync.Once
+	policy     *claudePolicy
+	policyErr  error
 }
 
 // mqlClaudeCodeProjectInternal caches the per-project model usage read from
