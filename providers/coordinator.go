@@ -144,6 +144,7 @@ func (c *coordinator) newRuntime() *Runtime {
 		coordinator:     c,
 		providers:       map[string]*ConnectedProvider{},
 		recording:       recording.Null{},
+		fields:          newFieldCache(),
 		shutdownTimeout: defaultShutdownTimeout,
 		AutoUpdate: UpdateProvidersConfig{
 			Enabled: true,

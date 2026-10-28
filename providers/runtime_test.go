@@ -1668,3 +1668,87 @@ func TestRuntime_ShortCircuitsAfterAssetScopedFailure(t *testing.T) {
 		assert.Equal(t, "first", p.failedAsset().Error())
 	})
 }
+
+// A field read by many queries must cross the plugin boundary once: without
+// the field cache every query that walks a large list asks the provider again
+// for each element (mql#12176).
+func TestRuntime_WatchAndUpdate_CachesFieldAnswers(t *testing.T) {
+	resName := "testResource"
+	fieldName := "testField"
+
+	newRuntime := func(t *testing.T) (*Runtime, *MockProviderPlugin) {
+		ctrl := gomock.NewController(t)
+		mockC := NewMockProvidersCoordinator(ctrl)
+		mockSchema := NewMockResourcesSchema(ctrl)
+		mockPlugin := NewMockProviderPlugin(ctrl)
+
+		p := &ConnectedProvider{
+			Instance:   &RunningProvider{ID: BuiltinCoreID, Name: "test", Plugin: mockPlugin},
+			Connection: &plugin.ConnectRes{Id: 1},
+		}
+
+		mockC.EXPECT().Schema().AnyTimes().Return(mockSchema)
+		mockSchema.EXPECT().Lookup(resName).AnyTimes().Return(&resources.ResourceInfo{
+			Name:     resName,
+			Provider: BuiltinCoreID,
+			Fields: map[string]*resources.Field{
+				fieldName: {Name: fieldName, Provider: BuiltinCoreID},
+			},
+		})
+
+		return &Runtime{
+			coordinator: mockC,
+			recording:   recording.Null{},
+			fields:      newFieldCache(),
+			providers:   map[string]*ConnectedProvider{BuiltinCoreID: p},
+			Provider:    p,
+		}, mockPlugin
+	}
+
+	t.Run("a value is fetched once per resource id", func(t *testing.T) {
+		r, mockPlugin := newRuntime(t)
+		mockPlugin.EXPECT().GetData(gomock.Any()).Times(2).DoAndReturn(func(req *plugin.DataReq) (*plugin.DataRes, error) {
+			return &plugin.DataRes{Data: llx.StringPrimitive("value of " + req.ResourceId)}, nil
+		})
+
+		for range 3 {
+			raw, err := r.watchAndUpdate(resName, "id-1", fieldName, "")
+			require.NoError(t, err)
+			assert.Equal(t, "value of id-1", raw.Value)
+		}
+		raw, err := r.watchAndUpdate(resName, "id-2", fieldName, "")
+		require.NoError(t, err)
+		assert.Equal(t, "value of id-2", raw.Value, "another id is another cache entry")
+	})
+
+	t.Run("an error the provider answered is kept", func(t *testing.T) {
+		r, mockPlugin := newRuntime(t)
+		mockPlugin.EXPECT().GetData(gomock.Any()).Times(1).Return(&plugin.DataRes{
+			Error:       "AccessDenied",
+			ErrorDetail: &llx.ErrorDetail{Kind: llx.ErrorKind_ERROR_KIND_FORBIDDEN},
+		}, nil)
+
+		for range 2 {
+			raw, err := r.watchAndUpdate(resName, "id-1", fieldName, "")
+			require.NoError(t, err)
+			assert.True(t, errors.Is(raw.Error, llx.ErrForbidden))
+		}
+	})
+
+	t.Run("a failed call is asked again", func(t *testing.T) {
+		r, mockPlugin := newRuntime(t)
+		gomock.InOrder(
+			mockPlugin.EXPECT().GetData(gomock.Any()).Return(nil, status.Error(codes.Internal, "panic in provider test: boom")),
+			mockPlugin.EXPECT().GetData(gomock.Any()).Return(&plugin.DataRes{Data: llx.StringPrimitive("recovered")}, nil),
+		)
+
+		first, err := r.watchAndUpdate(resName, "id-1", fieldName, "")
+		require.NoError(t, err)
+		require.Error(t, first.Error)
+
+		second, err := r.watchAndUpdate(resName, "id-1", fieldName, "")
+		require.NoError(t, err)
+		assert.NoError(t, second.Error)
+		assert.Equal(t, "recovered", second.Value)
+	})
+}
