@@ -683,9 +683,9 @@ private github.organization.customProperty @defaults("name required") {
 //
 // GitHub Copilot Business configuration for an organization. Reports how seats are
 // assigned (`seatManagementSetting`: assign_all, assign_selected, disabled, or unconfigured),
-// the `publicCodeSuggestions` and `copilotChat` policies, the seat-usage
-// breakdown, the `contentExclusion` glob patterns that keep files out of
-// suggestions, and the per-user `seats`.
+// the Copilot `planType`, the `publicCodeSuggestions`, `ideChat`, `platformChat` and
+// `cli` policies, the seat-usage breakdown, the `contentExclusion` glob patterns
+// that keep files out of suggestions, and the per-user `seats`.
 private github.organization.copilot @defaults("seatManagementSetting seatsTotal") {
   // Seat management setting (assign_all, assign_selected, disabled, unconfigured)
   seatManagementSetting string
@@ -695,8 +695,25 @@ private github.organization.copilot @defaults("seatManagementSetting seatsTotal"
   publicCodeSuggestions string
   // Copilot Chat setting
   //
+  // Deprecated in favor of ideChat. Reports the policy for Copilot Chat in the
+  // IDE, which is the value of ideChat on current API versions.
+  copilotChat @maturity("deprecated") @replaced_by("github.organization.copilot.ideChat") string
+  // Policy for Copilot Chat in the IDE
+  //
   // One of `enabled`, `disabled`, or `unconfigured`.
-  copilotChat string
+  ideChat string
+  // Policy for Copilot features on GitHub.com
+  //
+  // One of `enabled`, `disabled`, or `unconfigured`.
+  platformChat string
+  // Policy for Copilot CLI
+  //
+  // One of `enabled`, `disabled`, or `unconfigured`.
+  cli string
+  // Copilot plan of the organization, or of its parent enterprise
+  //
+  // One of `business`, `enterprise`, or `access`.
+  planType string
   // Total seats currently assigned for the organization
   seatsTotal int
   // Number of seats added during the current billing cycle

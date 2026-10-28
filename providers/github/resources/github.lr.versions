@@ -368,8 +368,12 @@ github.organization.blog 9.0.0
 github.organization.collaborators 9.0.0
 github.organization.company 9.0.0
 github.organization.copilot 13.3.3
+github.organization.copilot.cli 14.0.10
 github.organization.copilot.contentExclusion 13.3.3
 github.organization.copilot.copilotChat 13.3.3
+github.organization.copilot.ideChat 14.0.10
+github.organization.copilot.planType 14.0.10
+github.organization.copilot.platformChat 14.0.10
 github.organization.copilot.publicCodeSuggestions 13.3.3
 github.organization.copilot.seat 13.3.3
 github.organization.copilot.seat.assigneeLogin 13.3.3

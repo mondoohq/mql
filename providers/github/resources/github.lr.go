@@ -1094,6 +1094,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"github.organization.copilot.copilotChat": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubOrganizationCopilot).GetCopilotChat()).ToDataRes(types.String)
 	},
+	"github.organization.copilot.ideChat": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationCopilot).GetIdeChat()).ToDataRes(types.String)
+	},
+	"github.organization.copilot.platformChat": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationCopilot).GetPlatformChat()).ToDataRes(types.String)
+	},
+	"github.organization.copilot.cli": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationCopilot).GetCli()).ToDataRes(types.String)
+	},
+	"github.organization.copilot.planType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGithubOrganizationCopilot).GetPlanType()).ToDataRes(types.String)
+	},
 	"github.organization.copilot.seatsTotal": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGithubOrganizationCopilot).GetSeatsTotal()).ToDataRes(types.Int)
 	},
@@ -3932,6 +3944,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"github.organization.copilot.copilotChat": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGithubOrganizationCopilot).CopilotChat, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.organization.copilot.ideChat": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationCopilot).IdeChat, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.organization.copilot.platformChat": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationCopilot).PlatformChat, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.organization.copilot.cli": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationCopilot).Cli, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"github.organization.copilot.planType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGithubOrganizationCopilot).PlanType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"github.organization.copilot.seatsTotal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -9083,6 +9111,10 @@ type mqlGithubOrganizationCopilot struct {
 	SeatManagementSetting    plugin.TValue[string]
 	PublicCodeSuggestions    plugin.TValue[string]
 	CopilotChat              plugin.TValue[string]
+	IdeChat                  plugin.TValue[string]
+	PlatformChat             plugin.TValue[string]
+	Cli                      plugin.TValue[string]
+	PlanType                 plugin.TValue[string]
 	SeatsTotal               plugin.TValue[int64]
 	SeatsAddedThisCycle      plugin.TValue[int64]
 	SeatsPendingCancellation plugin.TValue[int64]
@@ -9140,6 +9172,22 @@ func (c *mqlGithubOrganizationCopilot) GetPublicCodeSuggestions() *plugin.TValue
 
 func (c *mqlGithubOrganizationCopilot) GetCopilotChat() *plugin.TValue[string] {
 	return &c.CopilotChat
+}
+
+func (c *mqlGithubOrganizationCopilot) GetIdeChat() *plugin.TValue[string] {
+	return &c.IdeChat
+}
+
+func (c *mqlGithubOrganizationCopilot) GetPlatformChat() *plugin.TValue[string] {
+	return &c.PlatformChat
+}
+
+func (c *mqlGithubOrganizationCopilot) GetCli() *plugin.TValue[string] {
+	return &c.Cli
+}
+
+func (c *mqlGithubOrganizationCopilot) GetPlanType() *plugin.TValue[string] {
+	return &c.PlanType
 }
 
 func (c *mqlGithubOrganizationCopilot) GetSeatsTotal() *plugin.TValue[int64] {
