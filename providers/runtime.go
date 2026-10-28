@@ -46,7 +46,10 @@ type Runtime struct {
 	AutoUpdate     UpdateProvidersConfig
 
 	recording llx.Recording
-	features  []byte
+	// fields keeps every field answer, so a field many queries read crosses
+	// the plugin boundary once. See fieldCache.
+	fields   *fieldCache
+	features []byte
 	// coordinator is used to grab providers
 	coordinator ProvidersCoordinator
 	// providers for with open connections
@@ -145,6 +148,7 @@ func (r *Runtime) Close() {
 	r.close.Do(func() {
 		// Runtimes opened for other assets are owned by this one (ADR 031).
 		r.closeSubRuntimes()
+		r.fields.clear()
 
 		if err := r.Recording().Save(); err != nil {
 			log.Error().Err(err).Msg("failed to save recording")
@@ -759,6 +763,12 @@ func (r *Runtime) watchAndUpdateContext(ctx context.Context, resource string, re
 		return nil, crashErr
 	}
 
+	// Answered before the reference resource below is stored with the field's
+	// provider: a cached field needs no provider call at all.
+	if cached, ok := r.fields.get(provider.Connection.Id, resource, resourceID, field); ok {
+		return cached, nil
+	}
+
 	if info.Provider != fieldInfo.Provider {
 		// technically we don't need to look up the resource provider, since
 		// it had to have been called beforehand to get here
@@ -803,6 +813,10 @@ func (r *Runtime) watchAndUpdateContext(ctx context.Context, resource string, re
 	}
 
 	data, err := plugin.GetDataContext(ctx, provider.Instance.Plugin, req)
+	// Only an answer from the provider is kept. A failed call (a crash, a
+	// timeout, a cancelled query) says nothing about the field, so the next
+	// query asks again.
+	answered := err == nil
 	if err != nil {
 		// Recoverable errors can continue with the execution,
 		// they only store errors in the place of actual data.
@@ -882,6 +896,9 @@ func (r *Runtime) watchAndUpdateContext(ctx context.Context, resource string, re
 		Field:             field,
 	}
 	r.Recording().AddData(addDataReq)
+	if answered {
+		r.fields.set(provider.Connection.Id, resource, resourceID, field, raw)
+	}
 	return raw, nil
 }
 
