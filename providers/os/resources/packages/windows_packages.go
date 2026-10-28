@@ -1768,9 +1768,11 @@ func (w *WinPkgManager) List() ([]Package, error) {
 	// The .NET runtime installers write no InstallLocation, so their registry
 	// entries arrive here with no files and reach the SBOM with no evidence
 	// path at all. Recover the directory from the dotnet layout, confirmed on
-	// the target before it is attached (windows_dotnet_paths.go).
+	// the target before it is attached (windows_dotnet_paths.go). A runtime
+	// entry whose directory is gone from every root the host has is a leftover
+	// of a failed uninstall and is dropped there.
 	if w.conn.Capabilities().Has(shared.Capability_File) {
-		fillDotNetInstallPaths(w.conn.FileSystem(), appPkgs)
+		appPkgs = fillDotNetInstallPaths(w.conn.FileSystem(), appPkgs, w.dotNetRootLookup())
 		// PHP, Apache, MariaDB/MySQL and OpenSSL inside XAMPP and friends,
 		// or unzipped, have no entry of their own (windows_bundled_components.go).
 		appPkgs = append(appPkgs, w.bundledComponents(appPkgs)...)

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -294,4 +295,24 @@ func TestDotNetSideBySideReleases(t *testing.T) {
 	require.Len(t, stale, 1)
 	require.Len(t, current, 1)
 	assert.NotEqual(t, stale[0].Version, current[0].Version)
+}
+
+// TestDotNetBundleHostLeftoverRuntime: the bundle's uninstall failed half way.
+// The registry still lists all four entries, but the runtime folder is gone.
+// Both runtime entries go; the host muxer and resolver, which are not runtimes,
+// stay.
+func TestDotNetBundleHostLeftoverRuntime(t *testing.T) {
+	pkgs, err := ParseWindowsAppPackages(winArm64Platform(), strings.NewReader(bundleHost))
+	require.NoError(t, err)
+
+	fs := afero.NewMemMapFs()
+	for _, dir := range []string{"Windows", "Program Files/dotnet", "Program Files/dotnet/host/fxr/8.0.30"} {
+		require.NoError(t, fs.MkdirAll(dir, 0o755))
+	}
+
+	pkgs = fillDotNetInstallPaths(fs, pkgs, func() ([]string, bool) { return nil, true })
+
+	assert.Empty(t, pkgsNamed(pkgs, "Microsoft .NET Runtime - 8.0.30 (arm64)"))
+	assert.Len(t, pkgsNamed(pkgs, "Microsoft .NET Host - 8.0.30 (arm64)"), 1)
+	assert.Len(t, pkgsNamed(pkgs, "Microsoft .NET Host FX Resolver - 8.0.30 (arm64)"), 1)
 }
