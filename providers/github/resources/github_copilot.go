@@ -4,6 +4,8 @@
 package resources
 
 import (
+	"context"
+	"net/url"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -49,7 +51,7 @@ func (g *mqlGithubOrganization) copilot() (*mqlGithubOrganizationCopilot, error)
 	}
 	orgLogin := g.Login.Data
 
-	details, _, err := conn.Client().Copilot.GetCopilotBilling(conn.Context(), orgLogin)
+	details, err := getCopilotOrgBilling(conn.Context(), conn.Client(), orgLogin)
 	if err != nil {
 		switch githubResponseStatus(err) {
 		case 404, 403, 401:
@@ -64,11 +66,53 @@ func (g *mqlGithubOrganization) copilot() (*mqlGithubOrganizationCopilot, error)
 		return nil, nil
 	}
 
+	args := copilotArgs(orgLogin, details)
+	res, err := CreateResource(g.MqlRuntime, "github.organization.copilot", args)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGithubOrganizationCopilot), nil
+}
+
+// copilotOrgBilling is the response of GET /orgs/{org}/copilot/billing.
+// go-github's CopilotOrganizationDetails still decodes copilot_chat, which the
+// API no longer returns, and lacks ide_chat, platform_chat, cli and plan_type.
+type copilotOrgBilling struct {
+	SeatBreakdown         *github.CopilotSeatBreakdown `json:"seat_breakdown"`
+	PublicCodeSuggestions string                       `json:"public_code_suggestions"`
+	SeatManagementSetting string                       `json:"seat_management_setting"`
+	IdeChat               *string                      `json:"ide_chat"`
+	PlatformChat          *string                      `json:"platform_chat"`
+	Cli                   *string                      `json:"cli"`
+	PlanType              *string                      `json:"plan_type"`
+	CopilotChat           *string                      `json:"copilot_chat"`
+}
+
+func getCopilotOrgBilling(ctx context.Context, client *github.Client, orgLogin string) (*copilotOrgBilling, error) {
+	var details *copilotOrgBilling
+	if _, err := doRawJSON(ctx, client, "orgs/"+url.PathEscape(orgLogin)+"/copilot/billing", &details); err != nil {
+		return nil, err
+	}
+	return details, nil
+}
+
+func copilotArgs(orgLogin string, details *copilotOrgBilling) map[string]*llx.RawData {
+	// copilotChat is deprecated in favor of ideChat. Older API versions sent
+	// copilot_chat for the same IDE chat policy, so prefer it when present.
+	copilotChat := details.CopilotChat
+	if copilotChat == nil {
+		copilotChat = details.IdeChat
+	}
+
 	args := map[string]*llx.RawData{
 		"__id":                  llx.StringData("github.organization.copilot/" + orgLogin),
 		"seatManagementSetting": llx.StringData(details.SeatManagementSetting),
 		"publicCodeSuggestions": llx.StringData(details.PublicCodeSuggestions),
-		"copilotChat":           llx.StringData(details.CopilotChat),
+		"copilotChat":           llx.StringDataPtr(copilotChat),
+		"ideChat":               llx.StringDataPtr(details.IdeChat),
+		"platformChat":          llx.StringDataPtr(details.PlatformChat),
+		"cli":                   llx.StringDataPtr(details.Cli),
+		"planType":              llx.StringDataPtr(details.PlanType),
 	}
 	if b := details.SeatBreakdown; b != nil {
 		args["seatsTotal"] = llx.IntData(int64(b.Total))
@@ -85,12 +129,7 @@ func (g *mqlGithubOrganization) copilot() (*mqlGithubOrganizationCopilot, error)
 		args["seatsActiveThisCycle"] = llx.IntData(0)
 		args["seatsInactiveThisCycle"] = llx.IntData(0)
 	}
-
-	res, err := CreateResource(g.MqlRuntime, "github.organization.copilot", args)
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlGithubOrganizationCopilot), nil
+	return args
 }
 
 func (g *mqlGithubOrganizationCopilot) contentExclusion() (any, error) {
