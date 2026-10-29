@@ -4,10 +4,16 @@
 package resources
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
+	abstractions "github.com/microsoft/kiota-abstractions-go"
+	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // batchStatusHasNoBody gates whether a sub-response reaches the deserializer.
@@ -59,4 +65,54 @@ func TestBatchStatusGuardsPartitionAllCodes(t *testing.T) {
 	assert.True(t, batchStatusHasNoBody(http.StatusNoContent),
 		"204 must be caught before the parse: it is a success, so the non-2xx guard lets it through, "+
 			"and GetBatchResponseById panics on the absent body")
+}
+
+// batchEach must hand each chunk's results over before it sends the next
+// chunk, so a fetch over every user of a large tenant never holds more than
+// one chunk of raw responses. A failed sub-request or a failing callback is
+// recorded for its key alone.
+func TestBatchEachStreamsChunks(t *testing.T) {
+	const n = 2*batchChunkSize + 7
+	routes := map[string]fakeRoute{}
+	keys := make([]string, n)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("u%02d", i)
+		routes["/users/"+keys[i]] = fakeRoute{status: http.StatusOK, body: `{"id":"` + keys[i] + `"}`}
+	}
+	routes["/users/u03"] = fakeRoute{status: http.StatusForbidden, body: `{"error":{"code":"Authorization_RequestDenied","message":"denied"}}`}
+	f := newFakeGraph(t, routes)
+	client := f.client()
+	ctx := context.Background()
+
+	sentWhenSeen := map[string]int{}
+	errs, statuses, err := batchEach(ctx, client.GetAdapter(), keys,
+		func(key string) (*abstractions.RequestInformation, error) {
+			return client.Users().ByUserId(key).ToGetRequestInformation(ctx, nil)
+		},
+		models.CreateUserFromDiscriminatorValue,
+		func(key string, u *models.User) error {
+			assert.Equal(t, key, *u.GetId())
+			f.mu.Lock()
+			sentWhenSeen[key] = len(f.steps)
+			f.mu.Unlock()
+			if key == "u40" {
+				return errors.New("convert failed")
+			}
+			return nil
+		})
+	require.NoError(t, err)
+
+	assert.Len(t, sentWhenSeen, n-1, "every key but the failed one reaches the callback")
+	for i, key := range keys {
+		if key == "u03" {
+			continue
+		}
+		chunkEnd := min((i/batchChunkSize+1)*batchChunkSize, n)
+		assert.Equalf(t, chunkEnd, sentWhenSeen[key], "%s was handed over after a later chunk was sent", key)
+	}
+	assert.Equal(t, int32(http.StatusForbidden), statuses["u03"])
+	assert.EqualError(t, errs["u03"], "batch request failed with status 403")
+	assert.EqualError(t, errs["u40"], "convert failed")
+	assert.Len(t, errs, 2)
+	assert.Len(t, statuses, n)
 }

@@ -32,86 +32,130 @@ type batchResult[T serialization.Parsable] struct {
 	statuses map[string]int32
 }
 
+// batchChunkSize is the number of sub-requests sent in one $batch call. Graph
+// caps a payload at 20; 19 matches the SDK's own BatchRequestCollection.
+const batchChunkSize = 19
+
 // batchGet issues every request in reqs against the Microsoft Graph $batch
 // endpoint and returns, per caller key, the deserialized response of type T.
 //
-// Graph caps a single $batch payload at 20 sub-requests; the SDK chunks at 19
-// and sends the chunks sequentially. This collapses an N-call N+1 pattern into
-// ceil(N/19) HTTP round-trips. Concurrency across chunks is intentionally left
-// out here (tracked separately).
+// This collapses an N-call N+1 pattern into ceil(N/19) HTTP round-trips, sent
+// sequentially. Concurrency across chunks is intentionally left out here
+// (tracked separately).
 //
 // The adapter selects the service root, so v1.0 and beta requests must not be
 // mixed in one call -- pass the matching client's adapter for each.
+//
+// Every result is held until the call returns. A fetch over every user of a
+// large tenant should use batchEach instead, which hands each result over as
+// its chunk arrives.
 func batchGet[T serialization.Parsable](
 	ctx context.Context,
 	adapter abstractions.RequestAdapter,
 	reqs []batchItemRequest,
 	constructor serialization.ParsableFactory,
 ) (batchResult[T], error) {
-	out := batchResult[T]{
-		results:  make(map[string]T, len(reqs)),
-		errs:     make(map[string]error, len(reqs)),
-		statuses: make(map[string]int32, len(reqs)),
+	out := batchResult[T]{results: make(map[string]T, len(reqs))}
+	keys := make([]string, len(reqs))
+	byKey := make(map[string]*abstractions.RequestInformation, len(reqs))
+	for i, r := range reqs {
+		keys[i] = r.key
+		byKey[r.key] = r.reqInfo
 	}
-	if len(reqs) == 0 {
-		return out, nil
-	}
+	var err error
+	out.errs, out.statuses, err = batchEach(ctx, adapter, keys,
+		func(key string) (*abstractions.RequestInformation, error) { return byKey[key], nil },
+		constructor,
+		func(key string, val T) error {
+			out.results[key] = val
+			return nil
+		})
+	return out, err
+}
 
-	// NewBatchRequestCollection defaults to a 4-chunk limit; size it to the
-	// actual request count so large collections (e.g. 1,000 users) are not
-	// rejected.
-	chunkLimit := len(reqs)/19 + 1
-	collection := msgraphgocore.NewBatchRequestCollectionWithLimit(adapter, chunkLimit)
+// batchEach issues one Graph request per key through the $batch endpoint,
+// batchChunkSize keys per call, and passes each successful sub-response to
+// each before the next chunk is sent.
+//
+// It replaces the SDK's BatchRequestCollection for large fetches. That
+// collection builds every request up front and keeps every chunk's response
+// until the last one returns, so a per-user field on a large tenant held
+// gigabytes and the scan was OOM-killed. Here build runs per chunk,
+// and a chunk's raw responses are dropped once each has seen them, so memory
+// grows only by what each keeps.
+//
+// A failed sub-request, or an error returned by each, is recorded under its
+// key in errs and does not stop the fetch; statuses holds every sub-response's
+// status code. An error from build or from sending a chunk ends the fetch.
+func batchEach[T serialization.Parsable](
+	ctx context.Context,
+	adapter abstractions.RequestAdapter,
+	keys []string,
+	build func(key string) (*abstractions.RequestInformation, error),
+	constructor serialization.ParsableFactory,
+	each func(key string, val T) error,
+) (errs map[string]error, statuses map[string]int32, err error) {
+	errs = map[string]error{}
+	statuses = make(map[string]int32, len(keys))
+	for start := 0; start < len(keys); start += batchChunkSize {
+		chunk := keys[start:min(start+batchChunkSize, len(keys))]
+		batch := msgraphgocore.NewBatchRequest(adapter)
+		// the SDK assigns each step a generated id; map it back to the caller key
+		idToKey := make(map[string]string, len(chunk))
+		for _, key := range chunk {
+			reqInfo, err := build(key)
+			if err != nil {
+				return errs, statuses, transformError(err)
+			}
+			item, err := batch.AddBatchRequestStep(*reqInfo)
+			if err != nil {
+				return errs, statuses, err
+			}
+			idToKey[*item.GetId()] = key
+		}
 
-	// the SDK assigns each step a generated id; map it back to the caller key
-	idToKey := make(map[string]string, len(reqs))
-	for _, r := range reqs {
-		item, err := collection.AddBatchRequestStep(*r.reqInfo)
+		resp, err := batch.Send(ctx, adapter)
 		if err != nil {
-			return out, err
+			return errs, statuses, transformError(err)
 		}
-		idToKey[*item.GetId()] = r.key
-	}
 
-	resp, err := collection.Send(ctx, adapter)
-	if err != nil {
-		return out, transformError(err)
+		statusCodes := resp.GetStatusCodes()
+		for id, key := range idToKey {
+			code, hasCode := statusCodes[id]
+			if hasCode {
+				statuses[key] = code
+			}
+			// A non-2xx sub-response carries an error body, not a T. The kiota core
+			// helper GetBatchResponseById panics trying to deserialize that body as
+			// T (e.g. a 403 when the app lacks AuditLog.Read.All for signInActivity).
+			// Skip the parse when we already know the sub-request failed...
+			if hasCode && (code < 200 || code >= 300) {
+				errs[key] = fmt.Errorf("batch request failed with status %d", code)
+				continue
+			}
+			// A no-content success has no body to deserialize. GetBatchResponseById
+			// dereferences it anyway and panics, which the recover below would turn
+			// into a per-item error -- but this is not a failure. Graph answers 204
+			// for a sub-request whose target has no value for the selected property
+			// (for example signInActivity on a user who has never signed in), so
+			// leave the key out of both results and errs and let the field read
+			// null.
+			if hasCode && batchStatusHasNoBody(code) {
+				continue
+			}
+			// ...and recover defensively around the parse itself, since the helper
+			// can still panic on malformed/error bodies the status map does not flag.
+			val, err := safeGetBatchResponseByID[T](resp, id, constructor)
+			if err != nil {
+				errs[key] = transformError(err)
+				continue
+			}
+			if err := each(key, val); err != nil {
+				errs[key] = err
+			}
+		}
 	}
-
-	statusCodes := resp.GetStatusCodes()
-	for id, key := range idToKey {
-		code, hasCode := statusCodes[id]
-		if hasCode {
-			out.statuses[key] = code
-		}
-		// A non-2xx sub-response carries an error body, not a T. The kiota core
-		// helper GetBatchResponseById panics trying to deserialize that body as
-		// T (e.g. a 403 when the app lacks AuditLog.Read.All for signInActivity).
-		// Skip the parse when we already know the sub-request failed...
-		if hasCode && (code < 200 || code >= 300) {
-			out.errs[key] = fmt.Errorf("batch request failed with status %d", code)
-			continue
-		}
-		// A no-content success has no body to deserialize. GetBatchResponseById
-		// dereferences it anyway and panics, which the recover below would turn
-		// into a per-item error -- but this is not a failure. Graph answers 204
-		// for a sub-request whose target has no value for the selected property
-		// (for example signInActivity on a user who has never signed in), so
-		// leave the key out of both results and errs and let the field read
-		// null.
-		if hasCode && batchStatusHasNoBody(code) {
-			continue
-		}
-		// ...and recover defensively around the parse itself, since the helper
-		// can still panic on malformed/error bodies the status map does not flag.
-		val, err := safeGetBatchResponseByID[T](resp, id, constructor)
-		if err != nil {
-			out.errs[key] = transformError(err)
-			continue
-		}
-		out.results[key] = val
-	}
-	return out, nil
+	return errs, statuses, nil
 }
 
 // batchStatusHasNoBody reports whether a successful batch sub-response status
