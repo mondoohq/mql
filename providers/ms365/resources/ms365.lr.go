@@ -25306,39 +25306,57 @@ func (c *mqlMicrosoftUserAuthenticationMethods) MqlID() string {
 }
 
 func (c *mqlMicrosoftUserAuthenticationMethods) GetCount() *plugin.TValue[int64] {
-	return &c.Count
+	return plugin.GetOrCompute[int64](&c.Count, func() (int64, error) {
+		return c.count()
+	})
 }
 
 func (c *mqlMicrosoftUserAuthenticationMethods) GetPhoneMethods() *plugin.TValue[[]any] {
-	return &c.PhoneMethods
+	return plugin.GetOrCompute[[]any](&c.PhoneMethods, func() ([]any, error) {
+		return c.phoneMethods()
+	})
 }
 
 func (c *mqlMicrosoftUserAuthenticationMethods) GetEmailMethods() *plugin.TValue[[]any] {
-	return &c.EmailMethods
+	return plugin.GetOrCompute[[]any](&c.EmailMethods, func() ([]any, error) {
+		return c.emailMethods()
+	})
 }
 
 func (c *mqlMicrosoftUserAuthenticationMethods) GetFido2Methods() *plugin.TValue[[]any] {
-	return &c.Fido2Methods
+	return plugin.GetOrCompute[[]any](&c.Fido2Methods, func() ([]any, error) {
+		return c.fido2Methods()
+	})
 }
 
 func (c *mqlMicrosoftUserAuthenticationMethods) GetSoftwareMethods() *plugin.TValue[[]any] {
-	return &c.SoftwareMethods
+	return plugin.GetOrCompute[[]any](&c.SoftwareMethods, func() ([]any, error) {
+		return c.softwareMethods()
+	})
 }
 
 func (c *mqlMicrosoftUserAuthenticationMethods) GetMicrosoftAuthenticator() *plugin.TValue[[]any] {
-	return &c.MicrosoftAuthenticator
+	return plugin.GetOrCompute[[]any](&c.MicrosoftAuthenticator, func() ([]any, error) {
+		return c.microsoftAuthenticator()
+	})
 }
 
 func (c *mqlMicrosoftUserAuthenticationMethods) GetPasswordMethods() *plugin.TValue[[]any] {
-	return &c.PasswordMethods
+	return plugin.GetOrCompute[[]any](&c.PasswordMethods, func() ([]any, error) {
+		return c.passwordMethods()
+	})
 }
 
 func (c *mqlMicrosoftUserAuthenticationMethods) GetTemporaryAccessPassMethods() *plugin.TValue[[]any] {
-	return &c.TemporaryAccessPassMethods
+	return plugin.GetOrCompute[[]any](&c.TemporaryAccessPassMethods, func() ([]any, error) {
+		return c.temporaryAccessPassMethods()
+	})
 }
 
 func (c *mqlMicrosoftUserAuthenticationMethods) GetWindowsHelloMethods() *plugin.TValue[[]any] {
-	return &c.WindowsHelloMethods
+	return plugin.GetOrCompute[[]any](&c.WindowsHelloMethods, func() ([]any, error) {
+		return c.windowsHelloMethods()
+	})
 }
 
 func (c *mqlMicrosoftUserAuthenticationMethods) GetRegistrationDetails() *plugin.TValue[*mqlMicrosoftUserAuthenticationMethodsUserRegistrationDetails] {

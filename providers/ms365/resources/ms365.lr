@@ -2357,45 +2357,45 @@ private microsoft.auditLogs.provisioningEvent @defaults("activityDateTime provis
 // Microsoft Entra authentication methods
 private microsoft.user.authenticationMethods @defaults("count") {
     // Count of authentication methods
-    count int
+    count() int
     // Phone numbers registered to the user
     //
     // Each entry is a dict with keys `id`, `type` (mobile, alternateMobile, or
     // office), `phoneNumber`, and `ssmSignInState` (whether SMS sign-in is
     // enabled for the number).
-    phoneMethods []dict
+    phoneMethods() []dict
     // Email addresses registered for self-service password reset (SSPR)
     //
     // Each entry is a dict with keys `id` and `emailAddress`.
-    emailMethods []dict
+    emailMethods() []dict
     // FIDO2 security keys registered to the user
     //
     // Each entry is a dict with keys `id`, `name`, `attestationLevel`, `model`,
     // and `attestationCertificates`.
-    fido2Methods []dict
+    fido2Methods() []dict
     // Software OATH tokens registered to the user
     //
     // Each entry is a dict with key `id`.
-    softwareMethods []dict
+    softwareMethods() []dict
     // Microsoft Authenticator app registrations for the user
     //
     // Each entry is a dict with keys `id`, `name`, `phoneAppVersion`, and
     // `deviceTag`.
-    microsoftAuthenticator []dict
+    microsoftAuthenticator() []dict
     // Password authentication methods for the user
     //
     // Each entry is a dict with key `id`.
-    passwordMethods []dict
+    passwordMethods() []dict
     // Temporary Access Pass methods registered to the user
     //
     // Each entry is a dict with keys `id`, `isUsable`, `isUsableOnce`, and
     // `lifetimeInMinutes`.
-    temporaryAccessPassMethods []dict
+    temporaryAccessPassMethods() []dict
     // Windows Hello for Business methods registered to the user
     //
     // Each entry is a dict with keys `id`, `name`, `deviceId`, and
     // `keyStrength`.
-    windowsHelloMethods []dict
+    windowsHelloMethods() []dict
     // Retrieves the registration and capability status for a user's authentication methods
     registrationDetails() microsoft.user.authenticationMethods.userRegistrationDetails
 }
