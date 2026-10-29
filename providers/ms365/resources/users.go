@@ -1177,37 +1177,78 @@ func (a *mqlMicrosoftUserAuthenticationMethods) registrationDetails() (*mqlMicro
 	return newMqlUserRegistrationDetails(a.MqlRuntime, details)
 }
 
-func newMqlUserRegistrationDetails(runtime *plugin.Runtime, details models.UserRegistrationDetailsable) (*mqlMicrosoftUserAuthenticationMethodsUserRegistrationDetails, error) {
-	if details.GetId() == nil {
+// userRegistrationDetail is the part of a registration report row that
+// microsoft.user.authenticationMethods.userRegistrationDetails exposes. The
+// report is held for the whole scan, so it keeps these values rather than the
+// kiota model, whose backing store costs several times as much per row.
+type userRegistrationDetail struct {
+	id                                            *string
+	isAdmin                                       *bool
+	isMfaCapable                                  *bool
+	isMfaRegistered                               *bool
+	isPasswordlessCapable                         *bool
+	isSsprCapable                                 *bool
+	isSsprEnabled                                 *bool
+	isSsprRegistered                              *bool
+	isSystemPreferredAuthenticationMethodEnabled  *bool
+	lastUpdatedDateTime                           *time.Time
+	methodsRegistered                             []string
+	systemPreferredAuthenticationMethods          []string
+	userDisplayName                               *string
+	userPreferredMethodForSecondaryAuthentication string
+	userPrincipalName                             *string
+	userType                                      string
+}
+
+func newUserRegistrationDetail(details models.UserRegistrationDetailsable) userRegistrationDetail {
+	d := userRegistrationDetail{
+		id:                    details.GetId(),
+		isAdmin:               details.GetIsAdmin(),
+		isMfaCapable:          details.GetIsMfaCapable(),
+		isMfaRegistered:       details.GetIsMfaRegistered(),
+		isPasswordlessCapable: details.GetIsPasswordlessCapable(),
+		isSsprCapable:         details.GetIsSsprCapable(),
+		isSsprEnabled:         details.GetIsSsprEnabled(),
+		isSsprRegistered:      details.GetIsSsprRegistered(),
+		isSystemPreferredAuthenticationMethodEnabled: details.GetIsSystemPreferredAuthenticationMethodEnabled(),
+		lastUpdatedDateTime:                          details.GetLastUpdatedDateTime(),
+		methodsRegistered:                            details.GetMethodsRegistered(),
+		systemPreferredAuthenticationMethods:         details.GetSystemPreferredAuthenticationMethods(),
+		userDisplayName:                              details.GetUserDisplayName(),
+		userPrincipalName:                            details.GetUserPrincipalName(),
+	}
+	if details.GetUserPreferredMethodForSecondaryAuthentication() != nil {
+		d.userPreferredMethodForSecondaryAuthentication = details.GetUserPreferredMethodForSecondaryAuthentication().String()
+	}
+	if details.GetUserType() != nil {
+		d.userType = details.GetUserType().String()
+	}
+	return d
+}
+
+func newMqlUserRegistrationDetails(runtime *plugin.Runtime, details userRegistrationDetail) (*mqlMicrosoftUserAuthenticationMethodsUserRegistrationDetails, error) {
+	if details.id == nil {
 		return nil, errors.New("user registration details response is missing an ID")
 	}
 
-	var userPrefMethodStr, userTypeStr string
-	if details.GetUserPreferredMethodForSecondaryAuthentication() != nil {
-		userPrefMethodStr = details.GetUserPreferredMethodForSecondaryAuthentication().String()
-	}
-	if details.GetUserType() != nil {
-		userTypeStr = details.GetUserType().String()
-	}
-
 	data := map[string]*llx.RawData{
-		"__id":                  llx.StringDataPtr(details.GetId()),
-		"id":                    llx.StringDataPtr(details.GetId()),
-		"isAdmin":               llx.BoolDataPtr(details.GetIsAdmin()),
-		"isMfaCapable":          llx.BoolDataPtr(details.GetIsMfaCapable()),
-		"isMfaRegistered":       llx.BoolDataPtr(details.GetIsMfaRegistered()),
-		"isPasswordlessCapable": llx.BoolDataPtr(details.GetIsPasswordlessCapable()),
-		"isSsprCapable":         llx.BoolDataPtr(details.GetIsSsprCapable()),
-		"isSsprEnabled":         llx.BoolDataPtr(details.GetIsSsprEnabled()),
-		"isSsprRegistered":      llx.BoolDataPtr(details.GetIsSsprRegistered()),
-		"isSystemPreferredAuthenticationMethodEnabled":  llx.BoolDataPtr(details.GetIsSystemPreferredAuthenticationMethodEnabled()),
-		"lastUpdatedDateTime":                           graphTimeData(details.GetLastUpdatedDateTime()),
-		"methodsRegistered":                             llx.ArrayData(convert.SliceAnyToInterface(details.GetMethodsRegistered()), types.String),
-		"systemPreferredAuthenticationMethods":          llx.ArrayData(convert.SliceAnyToInterface(details.GetSystemPreferredAuthenticationMethods()), types.String),
-		"userDisplayName":                               llx.StringDataPtr(details.GetUserDisplayName()),
-		"userPreferredMethodForSecondaryAuthentication": llx.StringData(userPrefMethodStr),
-		"userPrincipalName":                             llx.StringDataPtr(details.GetUserPrincipalName()),
-		"userType":                                      llx.StringData(userTypeStr),
+		"__id":                  llx.StringDataPtr(details.id),
+		"id":                    llx.StringDataPtr(details.id),
+		"isAdmin":               llx.BoolDataPtr(details.isAdmin),
+		"isMfaCapable":          llx.BoolDataPtr(details.isMfaCapable),
+		"isMfaRegistered":       llx.BoolDataPtr(details.isMfaRegistered),
+		"isPasswordlessCapable": llx.BoolDataPtr(details.isPasswordlessCapable),
+		"isSsprCapable":         llx.BoolDataPtr(details.isSsprCapable),
+		"isSsprEnabled":         llx.BoolDataPtr(details.isSsprEnabled),
+		"isSsprRegistered":      llx.BoolDataPtr(details.isSsprRegistered),
+		"isSystemPreferredAuthenticationMethodEnabled":  llx.BoolDataPtr(details.isSystemPreferredAuthenticationMethodEnabled),
+		"lastUpdatedDateTime":                           graphTimeData(details.lastUpdatedDateTime),
+		"methodsRegistered":                             llx.ArrayData(convert.SliceAnyToInterface(details.methodsRegistered), types.String),
+		"systemPreferredAuthenticationMethods":          llx.ArrayData(convert.SliceAnyToInterface(details.systemPreferredAuthenticationMethods), types.String),
+		"userDisplayName":                               llx.StringDataPtr(details.userDisplayName),
+		"userPreferredMethodForSecondaryAuthentication": llx.StringData(details.userPreferredMethodForSecondaryAuthentication),
+		"userPrincipalName":                             llx.StringDataPtr(details.userPrincipalName),
+		"userType":                                      llx.StringData(details.userType),
 	}
 
 	resource, err := CreateResource(runtime, "microsoft.user.authenticationMethods.userRegistrationDetails", data)

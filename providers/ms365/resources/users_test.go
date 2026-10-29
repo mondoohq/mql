@@ -39,7 +39,7 @@ func TestUserAuthMethodsRegistrationDetailsSkipsMethodListing(t *testing.T) {
 	details.SetId(&id)
 	details.SetIsMfaCapable(&capable)
 	ms.regOnce.Do(func() {
-		ms.regDetails = map[string]models.UserRegistrationDetailsable{id: details}
+		ms.regDetails = map[string]userRegistrationDetail{id: newUserRegistrationDetail(details)}
 	})
 
 	authMethods, err := testUser(t, runtime, id).authMethods()

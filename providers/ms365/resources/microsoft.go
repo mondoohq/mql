@@ -36,7 +36,7 @@ type mqlMicrosoftInternal struct {
 	mfaResp mfaResp
 	// guards regDetails; the whole tenant's registration details, fetched once
 	regOnce    sync.Once
-	regDetails map[string]models.UserRegistrationDetailsable
+	regDetails map[string]userRegistrationDetail
 	regErr     error
 	// per-user fields resolved in one batched Graph call on first access
 	userBatches userBatchCaches
@@ -188,18 +188,18 @@ func (a *mqlMicrosoft) loadMfaResp() *mfaResp {
 			return
 		}
 
-		details, err := iterate[*betamodels.UserRegistrationDetails](ctx, resp, betaClient.GetAdapter(), betamodels.CreateUserRegistrationDetailsCollectionResponseFromDiscriminatorValue)
+		// a row per user: keep only the flag as each page arrives
+		mfaMap := map[string]bool{}
+		err = iterateEach(ctx, resp, betaClient.GetAdapter(), betamodels.CreateUserRegistrationDetailsCollectionResponseFromDiscriminatorValue,
+			func(u *betamodels.UserRegistrationDetails) {
+				if u == nil || u.GetId() == nil || u.GetIsMfaRegistered() == nil {
+					return
+				}
+				mfaMap[*u.GetId()] = *u.GetIsMfaRegistered()
+			})
 		if err != nil {
 			a.mfaResp = mfaResp{err: err}
 			return
-		}
-
-		mfaMap := map[string]bool{}
-		for _, u := range details {
-			if u.GetId() == nil || u.GetIsMfaRegistered() == nil {
-				continue
-			}
-			mfaMap[*u.GetId()] = *u.GetIsMfaRegistered()
 		}
 		a.mfaResp = mfaResp{mfaMap: mfaMap}
 	})
@@ -286,10 +286,14 @@ func (a *mqlMicrosoft) deviceById(id string) (*mqlMicrosoftDevice, bool) {
 // collection Get alongside the per-item one, and Graph returns the same record
 // either way.
 //
+// The report has a row per user, so on a large tenant the kiota models are
+// too heavy to keep: each row is reduced to a userRegistrationDetail as its
+// page arrives.
+//
 // Deliberately separate from loadMfaResp, which reads the same report through
 // the beta client for mfaEnabled only. Unifying them means moving mfaEnabled to
 // v1, which changes a field's data source and belongs in its own change.
-func (a *mqlMicrosoft) loadRegistrationDetails() (map[string]models.UserRegistrationDetailsable, error) {
+func (a *mqlMicrosoft) loadRegistrationDetails() (map[string]userRegistrationDetail, error) {
 	a.regOnce.Do(func() {
 		conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
 		graphClient, err := conn.GraphClient()
@@ -311,19 +315,18 @@ func (a *mqlMicrosoft) loadRegistrationDetails() (map[string]models.UserRegistra
 			return
 		}
 
-		details, err := iterate[models.UserRegistrationDetailsable](ctx, resp, graphClient.GetAdapter(),
-			models.CreateUserRegistrationDetailsCollectionResponseFromDiscriminatorValue)
+		idx := map[string]userRegistrationDetail{}
+		err = iterateEach(ctx, resp, graphClient.GetAdapter(),
+			models.CreateUserRegistrationDetailsCollectionResponseFromDiscriminatorValue,
+			func(d models.UserRegistrationDetailsable) {
+				if d == nil || d.GetId() == nil {
+					return
+				}
+				idx[*d.GetId()] = newUserRegistrationDetail(d)
+			})
 		if err != nil {
 			a.regErr = transformError(err)
 			return
-		}
-
-		idx := make(map[string]models.UserRegistrationDetailsable, len(details))
-		for _, d := range details {
-			if d == nil || d.GetId() == nil {
-				continue
-			}
-			idx[*d.GetId()] = d
 		}
 		a.regDetails = idx
 	})
