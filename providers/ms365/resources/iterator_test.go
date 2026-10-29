@@ -35,8 +35,9 @@ func TestIterateEachPages(t *testing.T) {
 	ids := []string{}
 	err = iterateEach(ctx, resp, client.GetAdapter(),
 		models.CreateUserRegistrationDetailsCollectionResponseFromDiscriminatorValue,
-		func(d models.UserRegistrationDetailsable) {
+		func(d models.UserRegistrationDetailsable) error {
 			ids = append(ids, *d.GetId())
+			return nil
 		})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"u1", "u2", "u3"}, ids)

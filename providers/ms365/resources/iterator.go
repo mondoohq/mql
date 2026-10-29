@@ -17,8 +17,9 @@ import (
 // the flattened list of items. See iterateEach for the error handling.
 func iterate[T any](ctx context.Context, res any, adapter abstractions.RequestAdapter, constructorFunc serialization.ParsableFactory) ([]T, error) {
 	resp := []T{}
-	err := iterateEach(ctx, res, adapter, constructorFunc, func(item T) {
+	err := iterateEach(ctx, res, adapter, constructorFunc, func(item T) error {
 		resp = append(resp, item)
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -27,7 +28,8 @@ func iterate[T any](ctx context.Context, res any, adapter abstractions.RequestAd
 }
 
 // iterateEach walks every page of a Microsoft Graph collection response and
-// passes each item to each as its page arrives. Nothing is kept between pages,
+// passes each item to each as its page arrives. An error from each stops the
+// walk and is returned. Nothing is kept between pages,
 // so a caller that reduces each item to what it needs holds only that. Use it
 // over iterate for collections that grow with the tenant, such as reports with
 // a row per user.
@@ -44,7 +46,7 @@ func iterate[T any](ctx context.Context, res any, adapter abstractions.RequestAd
 // whatever was handed over before it, following the provider's "continue with
 // accessible resources" error-handling convention. Any other panic is
 // re-raised unchanged so genuine bugs are not silently swallowed.
-func iterateEach[T any](ctx context.Context, res any, adapter abstractions.RequestAdapter, constructorFunc serialization.ParsableFactory, each func(T)) (err error) {
+func iterateEach[T any](ctx context.Context, res any, adapter abstractions.RequestAdapter, constructorFunc serialization.ParsableFactory, each func(T) error) (err error) {
 	collected := 0
 	defer func() {
 		if r := recover(); r != nil {
@@ -63,11 +65,17 @@ func iterateEach[T any](ctx context.Context, res any, adapter abstractions.Reque
 	if err != nil {
 		return transformError(err)
 	}
+	var eachErr error
 	err = iterator.Iterate(ctx, func(item T) bool {
-		each(item)
+		if eachErr = each(item); eachErr != nil {
+			return false
+		}
 		collected++
 		return true
 	})
+	if eachErr != nil {
+		return eachErr
+	}
 	if err != nil {
 		return transformError(err)
 	}

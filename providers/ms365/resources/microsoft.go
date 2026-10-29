@@ -191,11 +191,11 @@ func (a *mqlMicrosoft) loadMfaResp() *mfaResp {
 		// a row per user: keep only the flag as each page arrives
 		mfaMap := map[string]bool{}
 		err = iterateEach(ctx, resp, betaClient.GetAdapter(), betamodels.CreateUserRegistrationDetailsCollectionResponseFromDiscriminatorValue,
-			func(u *betamodels.UserRegistrationDetails) {
-				if u == nil || u.GetId() == nil || u.GetIsMfaRegistered() == nil {
-					return
+			func(u *betamodels.UserRegistrationDetails) error {
+				if u != nil && u.GetId() != nil && u.GetIsMfaRegistered() != nil {
+					mfaMap[*u.GetId()] = *u.GetIsMfaRegistered()
 				}
-				mfaMap[*u.GetId()] = *u.GetIsMfaRegistered()
+				return nil
 			})
 		if err != nil {
 			a.mfaResp = mfaResp{err: err}
@@ -318,11 +318,11 @@ func (a *mqlMicrosoft) loadRegistrationDetails() (map[string]userRegistrationDet
 		idx := map[string]userRegistrationDetail{}
 		err = iterateEach(ctx, resp, graphClient.GetAdapter(),
 			models.CreateUserRegistrationDetailsCollectionResponseFromDiscriminatorValue,
-			func(d models.UserRegistrationDetailsable) {
-				if d == nil || d.GetId() == nil {
-					return
+			func(d models.UserRegistrationDetailsable) error {
+				if d != nil && d.GetId() != nil {
+					idx[*d.GetId()] = newUserRegistrationDetail(d)
 				}
-				idx[*d.GetId()] = newUserRegistrationDetail(d)
+				return nil
 			})
 		if err != nil {
 			a.regErr = transformError(err)

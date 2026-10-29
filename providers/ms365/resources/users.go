@@ -116,25 +116,29 @@ func (a *mqlMicrosoftUsers) list() ([]any, error) {
 	if err != nil {
 		return nil, transformError(err)
 	}
-	users, err := iterate[*models.User](ctx,
+	// Build each user's resource as its page arrives. Collecting the whole
+	// list first held every kiota model (about 7 KB a user) alongside the
+	// resources built from them (about 5 KB), more than doubling the list's
+	// peak on a large tenant. The resource copies what it needs, so a page's
+	// models can go once it is converted.
+	res := []any{}
+	err = iterateEach(ctx,
 		resp,
 		graphClient.GetAdapter(),
 		users.CreateDeltaGetResponseFromDiscriminatorValue,
+		func(u *models.User) error {
+			graphUser, err := newMqlMicrosoftUser(a.MqlRuntime, u)
+			if err != nil {
+				return err
+			}
+			// index users by id and principal name
+			microsoft.indexUser(graphUser)
+			res = append(res, graphUser)
+			return nil
+		},
 	)
 	if err != nil {
 		return nil, transformError(err)
-	}
-
-	// construct the result
-	res := []any{}
-	for _, u := range users {
-		graphUser, err := newMqlMicrosoftUser(a.MqlRuntime, u)
-		if err != nil {
-			return nil, err
-		}
-		// index users by id and principal name
-		microsoft.indexUser(graphUser)
-		res = append(res, graphUser)
 	}
 
 	return res, nil
