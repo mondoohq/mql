@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/microsoft/kiota-abstractions-go/authentication"
 	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
@@ -33,6 +34,14 @@ type fakeGraph struct {
 
 	mu    sync.Mutex
 	steps []string
+	// delay holds every $batch call, so concurrent calls overlap; inflight
+	// and maxInflight count them
+	delay       time.Duration
+	inflight    int
+	maxInflight int
+	// throttle answers a $batch step for a path with 429 this many times
+	// before serving its route
+	throttle map[string]int
 }
 
 type fakeRoute struct {
@@ -75,6 +84,16 @@ func (f *fakeGraph) lookup(rawURL string) fakeRoute {
 func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if strings.HasSuffix(r.URL.Path, "/$batch") {
+		f.mu.Lock()
+		f.inflight++
+		f.maxInflight = max(f.maxInflight, f.inflight)
+		f.mu.Unlock()
+		defer func() {
+			f.mu.Lock()
+			f.inflight--
+			f.mu.Unlock()
+		}()
+		time.Sleep(f.delay)
 		var req struct {
 			Requests []struct {
 				ID  string `json:"id"`
@@ -100,7 +119,23 @@ func (f *fakeGraph) serve(w http.ResponseWriter, r *http.Request) {
 		for _, step := range req.Requests {
 			f.mu.Lock()
 			f.steps = append(f.steps, step.URL)
+			u, err := url.Parse(step.URL)
+			require.NoError(f.t, err)
+			path := strings.TrimPrefix(u.Path, "/v1.0")
+			throttled := f.throttle[path] > 0
+			if throttled {
+				f.throttle[path]--
+			}
 			f.mu.Unlock()
+			if throttled {
+				out.Responses = append(out.Responses, sub{
+					ID:      step.ID,
+					Status:  http.StatusTooManyRequests,
+					Headers: map[string]string{"Content-Type": "application/json"},
+					Body:    json.RawMessage(`{"error":{"code":"TooManyRequests","message":"throttled"}}`),
+				})
+				continue
+			}
 			status, body := f.render(f.lookup(step.URL))
 			out.Responses = append(out.Responses, sub{
 				ID:      step.ID,
