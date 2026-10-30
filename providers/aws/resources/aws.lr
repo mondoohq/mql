@@ -2482,9 +2482,9 @@ private aws.kms.key @defaults("id region aliases metadata.Description") {
   externalAccessFindings() []aws.iam.accessAnalyzer.finding
   // Describes the type of key material in the key
   //
-  // One of: SYMMETRIC_DEFAULT, RSA_2048, RSA_3072, RSA_4096, ECC_NIST_P256, ECC_NIST_P384, ECC_NIST_P521, ECC_SECG_P256K1, HMAC_224, HMAC_256, HMAC_384, HMAC_512, SM2, ML_DSA_44, ML_DSA_65, ML_DSA_87, ECC_NIST_EDWARDS25519.
+  // One of: SYMMETRIC_DEFAULT, RSA_2048, RSA_3072, RSA_4096, ECC_NIST_P256, ECC_NIST_P384, ECC_NIST_P521, ECC_SECG_P256K1, HMAC_224, HMAC_256, HMAC_384, HMAC_512, SM2, ML_DSA_44, ML_DSA_65, ML_DSA_87, ECC_NIST_EDWARDS25519, ML_KEM_512, ML_KEM_768, ML_KEM_1024.
   keySpec() string
-  // Cryptographic operations the key supports: SIGN_VERIFY, ENCRYPT_DECRYPT, GENERATE_VERIFY_MAC, KEY_AGREEMENT
+  // Cryptographic operations the key supports: SIGN_VERIFY, ENCRYPT_DECRYPT, GENERATE_VERIFY_MAC, KEY_AGREEMENT, ENCAPSULATE_DECAPSULATE
   keyUsage() string
   // Whether this is a multi-region key
   multiRegion() bool
@@ -2524,6 +2524,8 @@ private aws.kms.key @defaults("id region aliases metadata.Description") {
   signingAlgorithms() []string
   // Key agreement algorithms the key supports (e.g., ECDH)
   keyAgreementAlgorithms() []string
+  // Key encapsulation algorithms the key supports (e.g., ML_KEM), for post-quantum ML-KEM keys
+  encapsulationAlgorithms() []string
   // MAC algorithms the key supports (e.g., HMAC_SHA_256), for HMAC keys
   macAlgorithms() []string
   // Whether imported key material expires: KEY_MATERIAL_EXPIRES or KEY_MATERIAL_DOES_NOT_EXPIRE
@@ -10043,6 +10045,13 @@ private aws.ecs.instance {
   managedBy() string
   // Version counter, incremented on every change to the container instance state
   version int
+  // GPUs on the container instance and how each is shared
+  //
+  // Each entry has `gpuId`, `sharingMode` (IDLE, NVIDIA_MPS, or DEDICATED),
+  // `containerCount`, `totalMemoryInMiB`, and `remainingMemoryInMiB`. Only
+  // reported for container instances that support GPU sharing; empty
+  // otherwise.
+  gpuDevices []dict
 }
 
 // Amazon ECS task
@@ -10176,6 +10185,21 @@ private aws.ecs.container @defaults("containerName runtimeId clusterName region"
   user string
   // Whether an init process is enabled inside the container (from task definition)
   initProcessEnabled bool
+  // How the container shares a GPU with other containers
+  //
+  // NVIDIA_MPS when the container shares a GPU through NVIDIA Multi-Process
+  // Service. Null when the container has exclusive use of its GPUs or
+  // requests none.
+  gpuSharingStrategy string
+  // GPU memory in MiB allocated to the container under GPU sharing
+  //
+  // Null unless gpuSharingStrategy is set.
+  gpuSharingMemoryInMiB int
+  // Maximum percentage of the GPU's compute capacity the container can use under GPU sharing
+  //
+  // Null when no limit is set, in which case the MPS server's own limit
+  // (100 percent by default) applies.
+  gpuSharingMaxComputePercent int
 }
 
 // Amazon ECS Task Definition
@@ -10524,8 +10548,24 @@ private aws.ecs.taskDefinition.containerDefinition @defaults("name image") {
   // every GPU on the instance), `InferenceAccelerator` (the matching device
   // name), or `NeuronDevice` (`ALL`; AWS Neuron accelerators, supported on
   // Managed Instances only, at most one container per task). Empty when the
-  // container reserves no accelerators.
+  // container reserves no accelerators. A GPU shared through
+  // gpuSharingStrategy maps `GPU` to an empty string.
   resourceRequirements map[string]string
+  // How the container shares a GPU with other containers
+  //
+  // NVIDIA_MPS when the container shares a GPU through NVIDIA Multi-Process
+  // Service. Null when the container has exclusive use of its GPUs or
+  // requests none.
+  gpuSharingStrategy string
+  // GPU memory in MiB allocated to the container under GPU sharing
+  //
+  // Null unless gpuSharingStrategy is set.
+  gpuSharingMemoryInMiB int
+  // Maximum percentage of the GPU's compute capacity the container can use under GPU sharing
+  //
+  // Null when no limit is set, in which case the MPS server's own limit
+  // (100 percent by default) applies.
+  gpuSharingMaxComputePercent int
   // Whether the container is essential (the task stops if this container fails)
   essential bool
   // Linux kernel capabilities added to the container's default Docker configuration
@@ -21163,8 +21203,8 @@ aws.inspector {
 //
 // Inspector enablement status for one account in one region, broken down by
 // scan type. Each entry reports the overall activation status alongside the
-// per-scan-type status for EC2, ECR, Lambda standard, Lambda code, and code
-// repository scanning, so audits can confirm that every scan type is enabled
+// per-scan-type status for EC2, ECR, Lambda standard, Lambda code, code
+// repository, and AMI scanning, so audits can confirm that every scan type is enabled
 // across the whole account footprint.
 private aws.inspector.accountStatus @defaults("accountId status region") {
   // Account ID the status applies to
@@ -21185,6 +21225,11 @@ private aws.inspector.accountStatus @defaults("accountId status region") {
   lambdaCodeStatus string
   // Scanning status for code repositories
   codeRepositoryStatus string
+  // Scanning status for Amazon Machine Images (AMIs)
+  //
+  // One of ENABLING, ENABLED, DISABLING, DISABLED, SUSPENDING, or SUSPENDED.
+  // Null when Inspector reports no AMI scanning state for the account.
+  amiStatus string
   // Region the status applies to
   region string
 }
@@ -21195,7 +21240,8 @@ private aws.inspector.accountStatus @defaults("accountId status region") {
 // re-scan behavior and the EC2 scan mode. The re-scan settings control how
 // long Inspector keeps rescanning container images after they are pushed or
 // last pulled, and the EC2 scan mode records whether agent-based or hybrid
-// scanning is in effect.
+// scanning is in effect. The AMI settings record which machine images are
+// scanned (all, or those matching tag filters) and which are left out.
 private aws.inspector.configuration @defaults("region ecrRescanDuration") {
   // Duration Inspector keeps rescanning an ECR image after its push date
   //
@@ -21222,6 +21268,37 @@ private aws.inspector.configuration @defaults("region ecrRescanDuration") {
   ec2ScanMode string
   // Status of the EC2 scan mode setting
   ec2ScanModeStatus string
+  // Which AMIs Inspector scans
+  //
+  // One of SCAN_ALL (every AMI) or TARGET_SCANNING (only AMIs matching
+  // amiScanTags). Null when the region reports no AMI scan configuration.
+  amiScanMode string
+  // Tag filters selecting the AMIs to scan under TARGET_SCANNING
+  //
+  // Maps each tag key to the value it must carry. An empty value matches any
+  // AMI that has the key. Null when the region reports no AMI scan
+  // configuration.
+  amiScanTags map[string]string
+  // Whether AMIs created by Amazon Data Lifecycle Manager backups are excluded from scanning
+  amiExcludeBackupDlmAmis bool
+  // Whether AMIs copied from other AMIs are excluded from scanning
+  amiExcludeCopiedAmis bool
+  // Restricts AMI scanning to AMIs created within this duration
+  //
+  // One of DAYS_7, DAYS_14, DAYS_30, DAYS_60, DAYS_90, or DAYS_180. Null when
+  // no creation-age limit is set.
+  amiCreatedWithin string
+  // Restricts AMI scanning to AMIs last launched within this duration
+  //
+  // One of DAYS_7, DAYS_14, DAYS_30, DAYS_60, DAYS_90, or DAYS_180. Null when
+  // no launch-age limit is set.
+  amiLastLaunchedWithin string
+  // Status of the most recent AMI scan configuration change
+  //
+  // One of SUCCESS, PENDING, or FAILED.
+  amiConfigurationStatus string
+  // Time the AMI scan configuration was last changed
+  amiConfigurationUpdatedAt time
   // Region the configuration applies to
   region string
 }
@@ -29196,6 +29273,16 @@ private aws.lightsail.distribution @defaults("name arn") {
   createdAt time
   // Tags for the distribution
   tags map[string]string
+  // Whether the web application firewall (WAF) is enabled for the distribution
+  //
+  // Null when Lightsail reports no WAF configuration for the distribution.
+  wafEnabled bool
+  // Names of the AWS managed WAF rule groups enabled for the distribution
+  //
+  // For example AWSManagedRulesCommonRuleSet, AWSManagedRulesBotControlRuleSet,
+  // or AWSManagedRulesATPRuleSet. Null when Lightsail reports no WAF
+  // configuration for the distribution.
+  wafRuleGroups []string
 }
 
 // Amazon Lightsail instance
@@ -29264,6 +29351,26 @@ private aws.lightsail.instance @defaults("name arn state") {
   ports() []dict
   // Add-ons enabled on the instance (name, status, snapshotTimeOfDay, nextSnapshotTimeOfDay, threshold, duration)
   addOns() []dict
+  // Result of the instance status check, which tests reachability of the operating system
+  //
+  // One of ok, impaired, initializing, insufficient-data, or not-applicable
+  // (the instance is not running). Null when Lightsail reports no health
+  // status for the instance.
+  instanceStatus string
+  // When the instance status check started failing
+  //
+  // Null while the check passes.
+  instanceStatusImpairedSince time
+  // Result of the system status check, which tests the AWS infrastructure hosting the instance
+  //
+  // One of ok, impaired, initializing, insufficient-data, or not-applicable
+  // (the instance is not running). Null when Lightsail reports no health
+  // status for the instance.
+  systemStatus string
+  // When the system status check started failing
+  //
+  // Null while the check passes.
+  systemStatusImpairedSince time
 }
 
 // Inbound firewall rule for a Lightsail instance
@@ -31114,6 +31221,9 @@ private aws.appmesh.virtualGateway @defaults("arn name meshName") {
 // review who can assume which permissions in which member accounts.
 aws.identitycenter @defaults("instances") {
   // List of Identity Center instances
+  //
+  // Instances the account owns or that are shared with it, whatever their
+  // home region (primaryRegion).
   instances() []aws.identitycenter.instance
 }
 

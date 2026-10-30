@@ -926,6 +926,18 @@ func (a *mqlAwsKmsKey) keyAgreementAlgorithms() ([]any, error) {
 	return res, nil
 }
 
+func (a *mqlAwsKmsKey) encapsulationAlgorithms() ([]any, error) {
+	md, err := a.getKeyMetadata()
+	if err != nil {
+		return nil, err
+	}
+	res := make([]any, len(md.EncapsulationAlgorithms))
+	for i, alg := range md.EncapsulationAlgorithms {
+		res[i] = string(alg)
+	}
+	return res, nil
+}
+
 func (a *mqlAwsKmsKey) expirationModel() (string, error) {
 	md, err := a.getKeyMetadata()
 	if err != nil {

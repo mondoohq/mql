@@ -7583,6 +7583,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.kms.key.keyAgreementAlgorithms": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsKmsKey).GetKeyAgreementAlgorithms()).ToDataRes(types.Array(types.String))
 	},
+	"aws.kms.key.encapsulationAlgorithms": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsKmsKey).GetEncapsulationAlgorithms()).ToDataRes(types.Array(types.String))
+	},
 	"aws.kms.key.macAlgorithms": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsKmsKey).GetMacAlgorithms()).ToDataRes(types.Array(types.String))
 	},
@@ -15098,6 +15101,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.ecs.instance.version": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsInstance).GetVersion()).ToDataRes(types.Int)
 	},
+	"aws.ecs.instance.gpuDevices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsInstance).GetGpuDevices()).ToDataRes(types.Array(types.Dict))
+	},
 	"aws.ecs.task.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsTask).GetArn()).ToDataRes(types.String)
 	},
@@ -15247,6 +15253,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.ecs.container.initProcessEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsContainer).GetInitProcessEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.ecs.container.gpuSharingStrategy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsContainer).GetGpuSharingStrategy()).ToDataRes(types.String)
+	},
+	"aws.ecs.container.gpuSharingMemoryInMiB": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsContainer).GetGpuSharingMemoryInMiB()).ToDataRes(types.Int)
+	},
+	"aws.ecs.container.gpuSharingMaxComputePercent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsContainer).GetGpuSharingMaxComputePercent()).ToDataRes(types.Int)
 	},
 	"aws.ecs.taskDefinition.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsTaskDefinition).GetArn()).ToDataRes(types.String)
@@ -15598,6 +15613,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.ecs.taskDefinition.containerDefinition.resourceRequirements": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsTaskDefinitionContainerDefinition).GetResourceRequirements()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.ecs.taskDefinition.containerDefinition.gpuSharingStrategy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsTaskDefinitionContainerDefinition).GetGpuSharingStrategy()).ToDataRes(types.String)
+	},
+	"aws.ecs.taskDefinition.containerDefinition.gpuSharingMemoryInMiB": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsTaskDefinitionContainerDefinition).GetGpuSharingMemoryInMiB()).ToDataRes(types.Int)
+	},
+	"aws.ecs.taskDefinition.containerDefinition.gpuSharingMaxComputePercent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsTaskDefinitionContainerDefinition).GetGpuSharingMaxComputePercent()).ToDataRes(types.Int)
 	},
 	"aws.ecs.taskDefinition.containerDefinition.essential": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsTaskDefinitionContainerDefinition).GetEssential()).ToDataRes(types.Bool)
@@ -25904,6 +25928,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.inspector.accountStatus.codeRepositoryStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsInspectorAccountStatus).GetCodeRepositoryStatus()).ToDataRes(types.String)
 	},
+	"aws.inspector.accountStatus.amiStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsInspectorAccountStatus).GetAmiStatus()).ToDataRes(types.String)
+	},
 	"aws.inspector.accountStatus.region": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsInspectorAccountStatus).GetRegion()).ToDataRes(types.String)
 	},
@@ -25927,6 +25954,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.inspector.configuration.ec2ScanModeStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsInspectorConfiguration).GetEc2ScanModeStatus()).ToDataRes(types.String)
+	},
+	"aws.inspector.configuration.amiScanMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsInspectorConfiguration).GetAmiScanMode()).ToDataRes(types.String)
+	},
+	"aws.inspector.configuration.amiScanTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsInspectorConfiguration).GetAmiScanTags()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"aws.inspector.configuration.amiExcludeBackupDlmAmis": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsInspectorConfiguration).GetAmiExcludeBackupDlmAmis()).ToDataRes(types.Bool)
+	},
+	"aws.inspector.configuration.amiExcludeCopiedAmis": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsInspectorConfiguration).GetAmiExcludeCopiedAmis()).ToDataRes(types.Bool)
+	},
+	"aws.inspector.configuration.amiCreatedWithin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsInspectorConfiguration).GetAmiCreatedWithin()).ToDataRes(types.String)
+	},
+	"aws.inspector.configuration.amiLastLaunchedWithin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsInspectorConfiguration).GetAmiLastLaunchedWithin()).ToDataRes(types.String)
+	},
+	"aws.inspector.configuration.amiConfigurationStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsInspectorConfiguration).GetAmiConfigurationStatus()).ToDataRes(types.String)
+	},
+	"aws.inspector.configuration.amiConfigurationUpdatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsInspectorConfiguration).GetAmiConfigurationUpdatedAt()).ToDataRes(types.Time)
 	},
 	"aws.inspector.configuration.region": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsInspectorConfiguration).GetRegion()).ToDataRes(types.String)
@@ -33947,6 +33998,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.lightsail.distribution.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLightsailDistribution).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"aws.lightsail.distribution.wafEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLightsailDistribution).GetWafEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.lightsail.distribution.wafRuleGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLightsailDistribution).GetWafRuleGroups()).ToDataRes(types.Array(types.String))
+	},
 	"aws.lightsail.instance.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLightsailInstance).GetName()).ToDataRes(types.String)
 	},
@@ -34021,6 +34078,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.lightsail.instance.addOns": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLightsailInstance).GetAddOns()).ToDataRes(types.Array(types.Dict))
+	},
+	"aws.lightsail.instance.instanceStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLightsailInstance).GetInstanceStatus()).ToDataRes(types.String)
+	},
+	"aws.lightsail.instance.instanceStatusImpairedSince": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLightsailInstance).GetInstanceStatusImpairedSince()).ToDataRes(types.Time)
+	},
+	"aws.lightsail.instance.systemStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLightsailInstance).GetSystemStatus()).ToDataRes(types.String)
+	},
+	"aws.lightsail.instance.systemStatusImpairedSince": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsLightsailInstance).GetSystemStatusImpairedSince()).ToDataRes(types.Time)
 	},
 	"aws.lightsail.instance.inboundRule.fromPort": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsLightsailInstanceInboundRule).GetFromPort()).ToDataRes(types.Int)
@@ -43014,6 +43083,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.kms.key.keyAgreementAlgorithms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsKmsKey).KeyAgreementAlgorithms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.kms.key.encapsulationAlgorithms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsKmsKey).EncapsulationAlgorithms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.kms.key.macAlgorithms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -53976,6 +54049,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsEcsInstance).Version, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
+	"aws.ecs.instance.gpuDevices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsInstance).GpuDevices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.ecs.task.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEcsTask).__id, ok = v.Value.(string)
 		return
@@ -54182,6 +54259,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.ecs.container.initProcessEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEcsContainer).InitProcessEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.container.gpuSharingStrategy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsContainer).GpuSharingStrategy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.container.gpuSharingMemoryInMiB": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsContainer).GpuSharingMemoryInMiB, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.container.gpuSharingMaxComputePercent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsContainer).GpuSharingMaxComputePercent, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"aws.ecs.taskDefinition.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -54690,6 +54779,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.ecs.taskDefinition.containerDefinition.resourceRequirements": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEcsTaskDefinitionContainerDefinition).ResourceRequirements, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.taskDefinition.containerDefinition.gpuSharingStrategy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsTaskDefinitionContainerDefinition).GpuSharingStrategy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.taskDefinition.containerDefinition.gpuSharingMemoryInMiB": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsTaskDefinitionContainerDefinition).GpuSharingMemoryInMiB, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.taskDefinition.containerDefinition.gpuSharingMaxComputePercent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsTaskDefinitionContainerDefinition).GpuSharingMaxComputePercent, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"aws.ecs.taskDefinition.containerDefinition.essential": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -69716,6 +69817,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsInspectorAccountStatus).CodeRepositoryStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.inspector.accountStatus.amiStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsInspectorAccountStatus).AmiStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.inspector.accountStatus.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsInspectorAccountStatus).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -69750,6 +69855,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.inspector.configuration.ec2ScanModeStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsInspectorConfiguration).Ec2ScanModeStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.inspector.configuration.amiScanMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsInspectorConfiguration).AmiScanMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.inspector.configuration.amiScanTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsInspectorConfiguration).AmiScanTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"aws.inspector.configuration.amiExcludeBackupDlmAmis": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsInspectorConfiguration).AmiExcludeBackupDlmAmis, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.inspector.configuration.amiExcludeCopiedAmis": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsInspectorConfiguration).AmiExcludeCopiedAmis, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.inspector.configuration.amiCreatedWithin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsInspectorConfiguration).AmiCreatedWithin, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.inspector.configuration.amiLastLaunchedWithin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsInspectorConfiguration).AmiLastLaunchedWithin, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.inspector.configuration.amiConfigurationStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsInspectorConfiguration).AmiConfigurationStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.inspector.configuration.amiConfigurationUpdatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsInspectorConfiguration).AmiConfigurationUpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"aws.inspector.configuration.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -81388,6 +81525,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsLightsailDistribution).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"aws.lightsail.distribution.wafEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLightsailDistribution).WafEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.lightsail.distribution.wafRuleGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLightsailDistribution).WafRuleGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"aws.lightsail.instance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsLightsailInstance).__id, ok = v.Value.(string)
 		return
@@ -81490,6 +81635,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.lightsail.instance.addOns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsLightsailInstance).AddOns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.lightsail.instance.instanceStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLightsailInstance).InstanceStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.lightsail.instance.instanceStatusImpairedSince": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLightsailInstance).InstanceStatusImpairedSince, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.lightsail.instance.systemStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLightsailInstance).SystemStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.lightsail.instance.systemStatusImpairedSince": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsLightsailInstance).SystemStatusImpairedSince, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"aws.lightsail.instance.inboundRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -98525,6 +98686,7 @@ type mqlAwsKmsKey struct {
 	EncryptionAlgorithms      plugin.TValue[[]any]
 	SigningAlgorithms         plugin.TValue[[]any]
 	KeyAgreementAlgorithms    plugin.TValue[[]any]
+	EncapsulationAlgorithms   plugin.TValue[[]any]
 	MacAlgorithms             plugin.TValue[[]any]
 	ExpirationModel           plugin.TValue[string]
 	ValidTo                   plugin.TValue[*time.Time]
@@ -98841,6 +99003,12 @@ func (c *mqlAwsKmsKey) GetSigningAlgorithms() *plugin.TValue[[]any] {
 func (c *mqlAwsKmsKey) GetKeyAgreementAlgorithms() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.KeyAgreementAlgorithms, func() ([]any, error) {
 		return c.keyAgreementAlgorithms()
+	})
+}
+
+func (c *mqlAwsKmsKey) GetEncapsulationAlgorithms() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EncapsulationAlgorithms, func() ([]any, error) {
+		return c.encapsulationAlgorithms()
 	})
 }
 
@@ -127788,6 +127956,7 @@ type mqlAwsEcsInstance struct {
 	CloudformationStack plugin.TValue[*mqlAwsCloudformationStack]
 	ManagedBy           plugin.TValue[string]
 	Version             plugin.TValue[int64]
+	GpuDevices          plugin.TValue[[]any]
 }
 
 // createAwsEcsInstance creates a new instance of this resource
@@ -127923,6 +128092,10 @@ func (c *mqlAwsEcsInstance) GetManagedBy() *plugin.TValue[string] {
 
 func (c *mqlAwsEcsInstance) GetVersion() *plugin.TValue[int64] {
 	return &c.Version
+}
+
+func (c *mqlAwsEcsInstance) GetGpuDevices() *plugin.TValue[[]any] {
+	return &c.GpuDevices
 }
 
 // mqlAwsEcsTask for the aws.ecs.task resource
@@ -128164,6 +128337,9 @@ type mqlAwsEcsContainer struct {
 	Reason                      plugin.TValue[string]
 	User                        plugin.TValue[string]
 	InitProcessEnabled          plugin.TValue[bool]
+	GpuSharingStrategy          plugin.TValue[string]
+	GpuSharingMemoryInMiB       plugin.TValue[int64]
+	GpuSharingMaxComputePercent plugin.TValue[int64]
 }
 
 // createAwsEcsContainer creates a new instance of this resource
@@ -128345,6 +128521,18 @@ func (c *mqlAwsEcsContainer) GetUser() *plugin.TValue[string] {
 
 func (c *mqlAwsEcsContainer) GetInitProcessEnabled() *plugin.TValue[bool] {
 	return &c.InitProcessEnabled
+}
+
+func (c *mqlAwsEcsContainer) GetGpuSharingStrategy() *plugin.TValue[string] {
+	return &c.GpuSharingStrategy
+}
+
+func (c *mqlAwsEcsContainer) GetGpuSharingMemoryInMiB() *plugin.TValue[int64] {
+	return &c.GpuSharingMemoryInMiB
+}
+
+func (c *mqlAwsEcsContainer) GetGpuSharingMaxComputePercent() *plugin.TValue[int64] {
+	return &c.GpuSharingMaxComputePercent
 }
 
 // mqlAwsEcsTaskDefinition for the aws.ecs.taskDefinition resource
@@ -129546,6 +129734,9 @@ type mqlAwsEcsTaskDefinitionContainerDefinition struct {
 	PortMappings                   plugin.TValue[[]any]
 	InitProcessEnabled             plugin.TValue[bool]
 	ResourceRequirements           plugin.TValue[map[string]any]
+	GpuSharingStrategy             plugin.TValue[string]
+	GpuSharingMemoryInMiB          plugin.TValue[int64]
+	GpuSharingMaxComputePercent    plugin.TValue[int64]
 	Essential                      plugin.TValue[bool]
 	LinuxCapabilitiesAdd           plugin.TValue[[]any]
 	LinuxCapabilitiesDrop          plugin.TValue[[]any]
@@ -129701,6 +129892,18 @@ func (c *mqlAwsEcsTaskDefinitionContainerDefinition) GetInitProcessEnabled() *pl
 
 func (c *mqlAwsEcsTaskDefinitionContainerDefinition) GetResourceRequirements() *plugin.TValue[map[string]any] {
 	return &c.ResourceRequirements
+}
+
+func (c *mqlAwsEcsTaskDefinitionContainerDefinition) GetGpuSharingStrategy() *plugin.TValue[string] {
+	return &c.GpuSharingStrategy
+}
+
+func (c *mqlAwsEcsTaskDefinitionContainerDefinition) GetGpuSharingMemoryInMiB() *plugin.TValue[int64] {
+	return &c.GpuSharingMemoryInMiB
+}
+
+func (c *mqlAwsEcsTaskDefinitionContainerDefinition) GetGpuSharingMaxComputePercent() *plugin.TValue[int64] {
+	return &c.GpuSharingMaxComputePercent
 }
 
 func (c *mqlAwsEcsTaskDefinitionContainerDefinition) GetEssential() *plugin.TValue[bool] {
@@ -168272,6 +168475,7 @@ type mqlAwsInspectorAccountStatus struct {
 	LambdaStatus         plugin.TValue[string]
 	LambdaCodeStatus     plugin.TValue[string]
 	CodeRepositoryStatus plugin.TValue[string]
+	AmiStatus            plugin.TValue[string]
 	Region               plugin.TValue[string]
 }
 
@@ -168340,6 +168544,10 @@ func (c *mqlAwsInspectorAccountStatus) GetCodeRepositoryStatus() *plugin.TValue[
 	return &c.CodeRepositoryStatus
 }
 
+func (c *mqlAwsInspectorAccountStatus) GetAmiStatus() *plugin.TValue[string] {
+	return &c.AmiStatus
+}
+
 func (c *mqlAwsInspectorAccountStatus) GetRegion() *plugin.TValue[string] {
 	return &c.Region
 }
@@ -168356,6 +168564,14 @@ type mqlAwsInspectorConfiguration struct {
 	EcrRescanUpdatedAt        plugin.TValue[*time.Time]
 	Ec2ScanMode               plugin.TValue[string]
 	Ec2ScanModeStatus         plugin.TValue[string]
+	AmiScanMode               plugin.TValue[string]
+	AmiScanTags               plugin.TValue[map[string]any]
+	AmiExcludeBackupDlmAmis   plugin.TValue[bool]
+	AmiExcludeCopiedAmis      plugin.TValue[bool]
+	AmiCreatedWithin          plugin.TValue[string]
+	AmiLastLaunchedWithin     plugin.TValue[string]
+	AmiConfigurationStatus    plugin.TValue[string]
+	AmiConfigurationUpdatedAt plugin.TValue[*time.Time]
 	Region                    plugin.TValue[string]
 }
 
@@ -168422,6 +168638,38 @@ func (c *mqlAwsInspectorConfiguration) GetEc2ScanMode() *plugin.TValue[string] {
 
 func (c *mqlAwsInspectorConfiguration) GetEc2ScanModeStatus() *plugin.TValue[string] {
 	return &c.Ec2ScanModeStatus
+}
+
+func (c *mqlAwsInspectorConfiguration) GetAmiScanMode() *plugin.TValue[string] {
+	return &c.AmiScanMode
+}
+
+func (c *mqlAwsInspectorConfiguration) GetAmiScanTags() *plugin.TValue[map[string]any] {
+	return &c.AmiScanTags
+}
+
+func (c *mqlAwsInspectorConfiguration) GetAmiExcludeBackupDlmAmis() *plugin.TValue[bool] {
+	return &c.AmiExcludeBackupDlmAmis
+}
+
+func (c *mqlAwsInspectorConfiguration) GetAmiExcludeCopiedAmis() *plugin.TValue[bool] {
+	return &c.AmiExcludeCopiedAmis
+}
+
+func (c *mqlAwsInspectorConfiguration) GetAmiCreatedWithin() *plugin.TValue[string] {
+	return &c.AmiCreatedWithin
+}
+
+func (c *mqlAwsInspectorConfiguration) GetAmiLastLaunchedWithin() *plugin.TValue[string] {
+	return &c.AmiLastLaunchedWithin
+}
+
+func (c *mqlAwsInspectorConfiguration) GetAmiConfigurationStatus() *plugin.TValue[string] {
+	return &c.AmiConfigurationStatus
+}
+
+func (c *mqlAwsInspectorConfiguration) GetAmiConfigurationUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.AmiConfigurationUpdatedAt
 }
 
 func (c *mqlAwsInspectorConfiguration) GetRegion() *plugin.TValue[string] {
@@ -197950,6 +198198,8 @@ type mqlAwsLightsailDistribution struct {
 	CacheBehaviorSettings           plugin.TValue[any]
 	CreatedAt                       plugin.TValue[*time.Time]
 	Tags                            plugin.TValue[map[string]any]
+	WafEnabled                      plugin.TValue[bool]
+	WafRuleGroups                   plugin.TValue[[]any]
 }
 
 // createAwsLightsailDistribution creates a new instance of this resource
@@ -198061,6 +198311,14 @@ func (c *mqlAwsLightsailDistribution) GetTags() *plugin.TValue[map[string]any] {
 	return &c.Tags
 }
 
+func (c *mqlAwsLightsailDistribution) GetWafEnabled() *plugin.TValue[bool] {
+	return &c.WafEnabled
+}
+
+func (c *mqlAwsLightsailDistribution) GetWafRuleGroups() *plugin.TValue[[]any] {
+	return &c.WafRuleGroups
+}
+
 // mqlAwsLightsailInstance for the aws.lightsail.instance resource
 type mqlAwsLightsailInstance struct {
 	MqlRuntime *plugin.Runtime
@@ -198091,6 +198349,10 @@ type mqlAwsLightsailInstance struct {
 	InboundRules                       plugin.TValue[[]any]
 	Ports                              plugin.TValue[[]any]
 	AddOns                             plugin.TValue[[]any]
+	InstanceStatus                     plugin.TValue[string]
+	InstanceStatusImpairedSince        plugin.TValue[*time.Time]
+	SystemStatus                       plugin.TValue[string]
+	SystemStatusImpairedSince          plugin.TValue[*time.Time]
 }
 
 // createAwsLightsailInstance creates a new instance of this resource
@@ -198243,6 +198505,22 @@ func (c *mqlAwsLightsailInstance) GetAddOns() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.AddOns, func() ([]any, error) {
 		return c.addOns()
 	})
+}
+
+func (c *mqlAwsLightsailInstance) GetInstanceStatus() *plugin.TValue[string] {
+	return &c.InstanceStatus
+}
+
+func (c *mqlAwsLightsailInstance) GetInstanceStatusImpairedSince() *plugin.TValue[*time.Time] {
+	return &c.InstanceStatusImpairedSince
+}
+
+func (c *mqlAwsLightsailInstance) GetSystemStatus() *plugin.TValue[string] {
+	return &c.SystemStatus
+}
+
+func (c *mqlAwsLightsailInstance) GetSystemStatusImpairedSince() *plugin.TValue[*time.Time] {
+	return &c.SystemStatusImpairedSince
 }
 
 // mqlAwsLightsailInstanceInboundRule for the aws.lightsail.instance.inboundRule resource

@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -506,6 +507,7 @@ func (a *mqlAwsEcsCluster) containerInstances() ([]any, error) {
 					"attributes":        llx.ArrayData(attributes, types.Dict),
 					"tags":              llx.MapData(ecsTagsToMap(ci.Tags), types.String),
 					"version":           llx.IntData(ci.Version),
+					"gpuDevices":        llx.ArrayData(ecsGpuDevices(ci.GpuDevices), types.Dict),
 				}
 				if strings.HasPrefix(convert.ToValue(ci.Ec2InstanceId), "i-") {
 					mqlInstanceResource, err := CreateResource(a.MqlRuntime, "aws.ec2.instance",
@@ -764,29 +766,30 @@ func (t *mqlAwsEcsTask) containers() ([]any, error) {
 			continue
 		}
 
-		mqlContainer, err := CreateResource(t.MqlRuntime, "aws.ecs.container",
-			map[string]*llx.RawData{
-				"arn":                llx.StringDataPtr(c.ContainerArn),
-				"clusterName":        llx.StringData(t.clusterName),
-				"command":            llx.ArrayData(cmds, types.Any),
-				"containerName":      llx.StringDataPtr(c.Name),
-				"cpuUnits":           llx.StringDataPtr(c.Cpu),
-				"image":              llx.StringData(convert.ToValue(c.Image)),
-				"imageDigest":        llx.StringDataPtr(c.ImageDigest),
-				"logDriver":          llx.StringData(containerLogDriverMap[convert.ToValue(c.Name)]),
-				"name":               llx.StringData(name),
-				"platformFamily":     llx.StringData(t.PlatformFamily.Data),
-				"platformVersion":    llx.StringData(t.PlatformVersion.Data),
-				"publicIp":           llx.StringData(publicIp),
-				"region":             llx.StringData(t.region),
-				"runtimeId":          llx.StringDataPtr(c.RuntimeId),
-				"status":             llx.StringDataPtr(c.LastStatus),
-				"memorySoftLimit":    llx.StringDataPtr(c.MemoryReservation),
-				"memoryHardLimit":    llx.StringDataPtr(c.Memory),
-				"reason":             llx.StringDataPtr(c.Reason),
-				"user":               llx.StringData(containerUserMap[convert.ToValue(c.Name)]),
-				"initProcessEnabled": llx.BoolData(containerInitProcessMap[convert.ToValue(c.Name)]),
-			})
+		containerArgs := map[string]*llx.RawData{
+			"arn":                llx.StringDataPtr(c.ContainerArn),
+			"clusterName":        llx.StringData(t.clusterName),
+			"command":            llx.ArrayData(cmds, types.Any),
+			"containerName":      llx.StringDataPtr(c.Name),
+			"cpuUnits":           llx.StringDataPtr(c.Cpu),
+			"image":              llx.StringData(convert.ToValue(c.Image)),
+			"imageDigest":        llx.StringDataPtr(c.ImageDigest),
+			"logDriver":          llx.StringData(containerLogDriverMap[convert.ToValue(c.Name)]),
+			"name":               llx.StringData(name),
+			"platformFamily":     llx.StringData(t.PlatformFamily.Data),
+			"platformVersion":    llx.StringData(t.PlatformVersion.Data),
+			"publicIp":           llx.StringData(publicIp),
+			"region":             llx.StringData(t.region),
+			"runtimeId":          llx.StringDataPtr(c.RuntimeId),
+			"status":             llx.StringDataPtr(c.LastStatus),
+			"memorySoftLimit":    llx.StringDataPtr(c.MemoryReservation),
+			"memoryHardLimit":    llx.StringDataPtr(c.Memory),
+			"reason":             llx.StringDataPtr(c.Reason),
+			"user":               llx.StringData(containerUserMap[convert.ToValue(c.Name)]),
+			"initProcessEnabled": llx.BoolData(containerInitProcessMap[convert.ToValue(c.Name)]),
+		}
+		maps.Copy(containerArgs, ecsGpuSharingArgs(c.GpuSharingStrategy))
+		mqlContainer, err := CreateResource(t.MqlRuntime, "aws.ecs.container", containerArgs)
 		if err != nil {
 			return nil, err
 		}
@@ -922,6 +925,56 @@ func (s *mqlAwsEcsContainer) id() (string, error) {
 
 func ecsTagsToMap(tags []ecstypes.Tag) map[string]any {
 	return tagsToMap(tags, func(t ecstypes.Tag) *string { return t.Key }, func(t ecstypes.Tag) *string { return t.Value })
+}
+
+// ecsGpuSharingArgs flattens a GPU sharing strategy into the gpuSharing* fields
+// shared by containers and container definitions. All three are null when the
+// container does not share a GPU; the compute limit is also null when unset.
+func ecsGpuSharingArgs(s ecstypes.SharingStrategy) map[string]*llx.RawData {
+	args := map[string]*llx.RawData{
+		"gpuSharingStrategy":          llx.NilData,
+		"gpuSharingMemoryInMiB":       llx.NilData,
+		"gpuSharingMaxComputePercent": llx.NilData,
+	}
+	if mps, ok := s.(*ecstypes.SharingStrategyMemberNvidiaMps); ok && mps != nil {
+		args["gpuSharingStrategy"] = llx.StringData(string(ecstypes.GpuSharingModeNvidiaMps))
+		args["gpuSharingMemoryInMiB"] = llx.IntDataPtr(mps.Value.Memory)
+		args["gpuSharingMaxComputePercent"] = llx.IntDataPtr(mps.Value.MaxComputePercent)
+	}
+	return args
+}
+
+// ecsGpuRequirementSharing returns the sharing strategy of the container
+// definition's GPU resource requirement, nil when it has none.
+func ecsGpuRequirementSharing(reqs []ecstypes.ResourceRequirement) ecstypes.SharingStrategy {
+	for _, rr := range reqs {
+		if rr.Type == ecstypes.ResourceTypeGpu && rr.SharingStrategy != nil {
+			return rr.SharingStrategy
+		}
+	}
+	return nil
+}
+
+// ecsGpuDevices converts the GPUs a container instance reports into dicts.
+func ecsGpuDevices(devices []ecstypes.GpuDevice) []any {
+	res := make([]any, 0, len(devices))
+	for _, d := range devices {
+		res = append(res, map[string]any{
+			"gpuId":                convert.ToValue(d.GpuId),
+			"sharingMode":          string(d.SharingMode),
+			"containerCount":       int32PtrAny(d.ContainerCount),
+			"totalMemoryInMiB":     int32PtrAny(d.TotalMemoryInMiB),
+			"remainingMemoryInMiB": int32PtrAny(d.RemainingMemoryInMiB),
+		})
+	}
+	return res
+}
+
+func int32PtrAny(v *int32) any {
+	if v == nil {
+		return nil
+	}
+	return int64(*v)
 }
 
 // validateAndParseARN validates that the given string is a valid ECS ARN
@@ -1321,41 +1374,42 @@ func createContainerDefinitionResource(runtime *plugin.Runtime, taskDefArn strin
 		logConfigData = llx.ResourceData(logConfigResource, "aws.ecs.taskDefinition.containerDefinition.logConfiguration")
 	}
 
-	return CreateResource(runtime, ResourceAwsEcsTaskDefinitionContainerDefinition,
-		map[string]*llx.RawData{
-			"__id":                           llx.StringData(taskDefArn + "/container/" + name),
-			"name":                           llx.StringData(name),
-			"image":                          llx.StringData(image),
-			"privileged":                     llx.BoolData(privileged),
-			"readonlyRootFilesystem":         llx.BoolData(readonlyRootFilesystem),
-			"user":                           llx.StringData(user),
-			"environment":                    llx.ArrayData(envVars, types.Resource("aws.ecs.taskDefinition.containerDefinition.environmentVariable")),
-			"secrets":                        llx.ArrayData(secrets, types.Resource("aws.ecs.taskDefinition.containerDefinition.secret")),
-			"logConfiguration":               logConfigData,
-			"memory":                         llx.IntData(memory),
-			"cpu":                            llx.IntData(cpu),
-			"portMappings":                   llx.ArrayData(portMappings, types.Resource("aws.ecs.taskDefinition.containerDefinition.portMapping")),
-			"initProcessEnabled":             llx.BoolData(initProcessEnabled),
-			"resourceRequirements":           llx.MapData(resourceRequirements, types.String),
-			"essential":                      llx.BoolData(convert.ToValue(cd.Essential)),
-			"linuxCapabilitiesAdd":           llx.ArrayData(capAdd, types.String),
-			"linuxCapabilitiesDrop":          llx.ArrayData(capDrop, types.String),
-			"entryPoint":                     llx.ArrayData(toAnySlice(cd.EntryPoint), types.String),
-			"command":                        llx.ArrayData(toAnySlice(cd.Command), types.String),
-			"workingDirectory":               llx.StringData(convert.ToValue(cd.WorkingDirectory)),
-			"dockerLabels":                   llx.MapData(dockerLabels, types.String),
-			"healthCheck":                    llx.DictData(healthCheck),
-			"mountPoints":                    llx.ArrayData(mountPoints, types.Dict),
-			"volumesFrom":                    llx.ArrayData(volumesFrom, types.Dict),
-			"dependsOn":                      llx.ArrayData(dependsOn, types.Dict),
-			"ulimits":                        llx.ArrayData(ulimits, types.Dict),
-			"dnsServers":                     llx.ArrayData(toAnySlice(cd.DnsServers), types.String),
-			"repositoryCredentialsParameter": llx.StringData(repositoryCredentialsParameter),
-			"startTimeout":                   llx.IntData(int64(convert.ToValue(cd.StartTimeout))),
-			"stopTimeout":                    llx.IntData(int64(convert.ToValue(cd.StopTimeout))),
-			"pseudoTerminal":                 llx.BoolData(convert.ToValue(cd.PseudoTerminal)),
-			"interactive":                    llx.BoolData(convert.ToValue(cd.Interactive)),
-		})
+	args := map[string]*llx.RawData{
+		"__id":                           llx.StringData(taskDefArn + "/container/" + name),
+		"name":                           llx.StringData(name),
+		"image":                          llx.StringData(image),
+		"privileged":                     llx.BoolData(privileged),
+		"readonlyRootFilesystem":         llx.BoolData(readonlyRootFilesystem),
+		"user":                           llx.StringData(user),
+		"environment":                    llx.ArrayData(envVars, types.Resource("aws.ecs.taskDefinition.containerDefinition.environmentVariable")),
+		"secrets":                        llx.ArrayData(secrets, types.Resource("aws.ecs.taskDefinition.containerDefinition.secret")),
+		"logConfiguration":               logConfigData,
+		"memory":                         llx.IntData(memory),
+		"cpu":                            llx.IntData(cpu),
+		"portMappings":                   llx.ArrayData(portMappings, types.Resource("aws.ecs.taskDefinition.containerDefinition.portMapping")),
+		"initProcessEnabled":             llx.BoolData(initProcessEnabled),
+		"resourceRequirements":           llx.MapData(resourceRequirements, types.String),
+		"essential":                      llx.BoolData(convert.ToValue(cd.Essential)),
+		"linuxCapabilitiesAdd":           llx.ArrayData(capAdd, types.String),
+		"linuxCapabilitiesDrop":          llx.ArrayData(capDrop, types.String),
+		"entryPoint":                     llx.ArrayData(toAnySlice(cd.EntryPoint), types.String),
+		"command":                        llx.ArrayData(toAnySlice(cd.Command), types.String),
+		"workingDirectory":               llx.StringData(convert.ToValue(cd.WorkingDirectory)),
+		"dockerLabels":                   llx.MapData(dockerLabels, types.String),
+		"healthCheck":                    llx.DictData(healthCheck),
+		"mountPoints":                    llx.ArrayData(mountPoints, types.Dict),
+		"volumesFrom":                    llx.ArrayData(volumesFrom, types.Dict),
+		"dependsOn":                      llx.ArrayData(dependsOn, types.Dict),
+		"ulimits":                        llx.ArrayData(ulimits, types.Dict),
+		"dnsServers":                     llx.ArrayData(toAnySlice(cd.DnsServers), types.String),
+		"repositoryCredentialsParameter": llx.StringData(repositoryCredentialsParameter),
+		"startTimeout":                   llx.IntData(int64(convert.ToValue(cd.StartTimeout))),
+		"stopTimeout":                    llx.IntData(int64(convert.ToValue(cd.StopTimeout))),
+		"pseudoTerminal":                 llx.BoolData(convert.ToValue(cd.PseudoTerminal)),
+		"interactive":                    llx.BoolData(convert.ToValue(cd.Interactive)),
+	}
+	maps.Copy(args, ecsGpuSharingArgs(ecsGpuRequirementSharing(cd.ResourceRequirements)))
+	return CreateResource(runtime, ResourceAwsEcsTaskDefinitionContainerDefinition, args)
 }
 
 // createVolumeResource builds one task-definition volume. taskDefArn qualifies

@@ -4610,6 +4610,9 @@ aws.ecs.container.command 11.15.2
 aws.ecs.container.containerName 11.15.2
 aws.ecs.container.cpuUnits 11.15.2
 aws.ecs.container.ecrImage 13.39.2
+aws.ecs.container.gpuSharingMaxComputePercent 14.6.2
+aws.ecs.container.gpuSharingMemoryInMiB 14.6.2
+aws.ecs.container.gpuSharingStrategy 14.6.2
 aws.ecs.container.image 11.15.2
 aws.ecs.container.imageDigest 13.35.2
 aws.ecs.container.initProcessEnabled 13.2.7
@@ -4665,6 +4668,7 @@ aws.ecs.instance.attributes 13.29.1
 aws.ecs.instance.capacityProvider 11.15.2
 aws.ecs.instance.cloudformationStack 13.39.2
 aws.ecs.instance.ec2Instance 11.15.2
+aws.ecs.instance.gpuDevices 14.6.2
 aws.ecs.instance.healthStatus 13.29.1
 aws.ecs.instance.id 11.15.2
 aws.ecs.instance.managedBy 13.39.2
@@ -4776,6 +4780,9 @@ aws.ecs.taskDefinition.containerDefinition.environmentVariable 11.15.2
 aws.ecs.taskDefinition.containerDefinition.environmentVariable.name 11.15.2
 aws.ecs.taskDefinition.containerDefinition.environmentVariable.value 11.15.2
 aws.ecs.taskDefinition.containerDefinition.essential 13.29.1
+aws.ecs.taskDefinition.containerDefinition.gpuSharingMaxComputePercent 14.6.2
+aws.ecs.taskDefinition.containerDefinition.gpuSharingMemoryInMiB 14.6.2
+aws.ecs.taskDefinition.containerDefinition.gpuSharingStrategy 14.6.2
 aws.ecs.taskDefinition.containerDefinition.healthCheck 13.29.1
 aws.ecs.taskDefinition.containerDefinition.image 11.15.2
 aws.ecs.taskDefinition.containerDefinition.initProcessEnabled 13.5.1
@@ -6877,6 +6884,7 @@ aws.identitycenter.user.userName 13.12.1
 aws.inspector 11.15.2
 aws.inspector.accountStatus 13.45.1
 aws.inspector.accountStatus.accountId 13.45.1
+aws.inspector.accountStatus.amiStatus 14.6.2
 aws.inspector.accountStatus.codeRepositoryStatus 13.45.1
 aws.inspector.accountStatus.ec2Status 13.45.1
 aws.inspector.accountStatus.ecrStatus 13.45.1
@@ -6886,6 +6894,14 @@ aws.inspector.accountStatus.region 13.45.1
 aws.inspector.accountStatus.status 13.45.1
 aws.inspector.accountStatuses 13.45.1
 aws.inspector.configuration 13.45.1
+aws.inspector.configuration.amiConfigurationStatus 14.6.2
+aws.inspector.configuration.amiConfigurationUpdatedAt 14.6.2
+aws.inspector.configuration.amiCreatedWithin 14.6.2
+aws.inspector.configuration.amiExcludeBackupDlmAmis 14.6.2
+aws.inspector.configuration.amiExcludeCopiedAmis 14.6.2
+aws.inspector.configuration.amiLastLaunchedWithin 14.6.2
+aws.inspector.configuration.amiScanMode 14.6.2
+aws.inspector.configuration.amiScanTags 14.6.2
 aws.inspector.configuration.ec2ScanMode 13.45.1
 aws.inspector.configuration.ec2ScanModeStatus 13.45.1
 aws.inspector.configuration.ecrPullDateRescanDuration 13.45.1
@@ -7248,6 +7264,7 @@ aws.kms.key.customKeyStore 13.26.3
 aws.kms.key.deletedAt 11.15.2
 aws.kms.key.description 11.15.2
 aws.kms.key.enabled 11.15.2
+aws.kms.key.encapsulationAlgorithms 14.6.2
 aws.kms.key.encryptedVolumes 13.37.1
 aws.kms.key.encryptionAlgorithms 13.12.1
 aws.kms.key.expirationModel 13.12.1
@@ -7574,6 +7591,8 @@ aws.lightsail.distribution.region 13.25.1
 aws.lightsail.distribution.status 13.25.1
 aws.lightsail.distribution.tags 13.25.1
 aws.lightsail.distribution.viewerMinimumTlsProtocolVersion 13.25.1
+aws.lightsail.distribution.wafEnabled 14.6.2
+aws.lightsail.distribution.wafRuleGroups 14.6.2
 aws.lightsail.distributions 13.25.1
 aws.lightsail.instance 13.1.1
 aws.lightsail.instance.addOns 13.21.4
@@ -7592,6 +7611,8 @@ aws.lightsail.instance.inboundRule.protocol 13.33.2
 aws.lightsail.instance.inboundRule.publicAccess 13.33.2
 aws.lightsail.instance.inboundRule.toPort 13.33.2
 aws.lightsail.instance.inboundRules 13.33.2
+aws.lightsail.instance.instanceStatus 14.6.2
+aws.lightsail.instance.instanceStatusImpairedSince 14.6.2
 aws.lightsail.instance.ipAddressType 13.21.4
 aws.lightsail.instance.ipv6Addresses 13.1.1
 aws.lightsail.instance.isStaticIp 13.1.1
@@ -7606,6 +7627,8 @@ aws.lightsail.instance.sshKeyName 13.1.1
 aws.lightsail.instance.state 13.1.1
 aws.lightsail.instance.stateCode 13.21.4
 aws.lightsail.instance.supportCode 13.21.4
+aws.lightsail.instance.systemStatus 14.6.2
+aws.lightsail.instance.systemStatusImpairedSince 14.6.2
 aws.lightsail.instance.tags 13.1.1
 aws.lightsail.instance.username 13.1.1
 aws.lightsail.instances 13.1.1

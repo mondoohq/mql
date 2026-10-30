@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/aws/aws-sdk-go-v2/service/inspector2"
 	"github.com/aws/aws-sdk-go-v2/service/inspector2/types"
@@ -248,6 +249,61 @@ func inspectorStateStatus(s *types.State) string {
 	return string(s.Status)
 }
 
+// inspectorStateStatusData is inspectorStateStatus for fields that report an
+// absent state as null rather than an empty string.
+func inspectorStateStatusData(s *types.State) *llx.RawData {
+	if s == nil || s.Status == "" {
+		return llx.NilData
+	}
+	return llx.StringData(string(s.Status))
+}
+
+// inspectorAmiConfigArgs flattens the region's AMI scan configuration into the
+// ami* fields of aws.inspector.configuration. Every field is null when the
+// region reports no AMI configuration, and each optional setting is null when
+// it is not set.
+func inspectorAmiConfigArgs(cfg *types.AmiConfigurationState) map[string]*llx.RawData {
+	args := map[string]*llx.RawData{
+		"amiScanMode":               llx.NilData,
+		"amiScanTags":               llx.NilData,
+		"amiExcludeBackupDlmAmis":   llx.NilData,
+		"amiExcludeCopiedAmis":      llx.NilData,
+		"amiCreatedWithin":          llx.NilData,
+		"amiLastLaunchedWithin":     llx.NilData,
+		"amiConfigurationStatus":    llx.NilData,
+		"amiConfigurationUpdatedAt": llx.NilData,
+	}
+	if cfg == nil {
+		return args
+	}
+	if cfg.CreatedWithin != "" {
+		args["amiCreatedWithin"] = llx.StringData(string(cfg.CreatedWithin))
+	}
+	if cfg.LastLaunchedWithin != "" {
+		args["amiLastLaunchedWithin"] = llx.StringData(string(cfg.LastLaunchedWithin))
+	}
+	if cfg.Status != "" {
+		args["amiConfigurationStatus"] = llx.StringData(string(cfg.Status))
+	}
+	args["amiConfigurationUpdatedAt"] = llx.TimeDataPtr(cfg.UpdatedAt)
+	if smc := cfg.ScanModeConfiguration; smc != nil {
+		if smc.ScanMode != "" {
+			args["amiScanMode"] = llx.StringData(string(smc.ScanMode))
+		}
+		args["amiExcludeBackupDlmAmis"] = llx.BoolDataPtr(smc.ExcludeBackupDlmAmis)
+		args["amiExcludeCopiedAmis"] = llx.BoolDataPtr(smc.ExcludeCopiedAmis)
+		tags := make(map[string]any, len(smc.Tags))
+		for _, t := range smc.Tags {
+			if t.Key == nil {
+				continue
+			}
+			tags[*t.Key] = convert.ToValue(t.Value)
+		}
+		args["amiScanTags"] = llx.MapData(tags, llxtypes.String)
+	}
+	return args
+}
+
 func (a *mqlAwsInspector) accountStatuses() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	res := []any{}
@@ -308,6 +364,7 @@ func (a *mqlAwsInspector) getAccountStatuses(conn *connection.AwsConnection) []*
 						"lambdaStatus":         llx.StringData(inspectorStateStatus(rs.Lambda)),
 						"lambdaCodeStatus":     llx.StringData(inspectorStateStatus(rs.LambdaCode)),
 						"codeRepositoryStatus": llx.StringData(inspectorStateStatus(rs.CodeRepository)),
+						"amiStatus":            inspectorStateStatusData(rs.Ami),
 						"region":               llx.StringData(region),
 					})
 				if err != nil {
@@ -388,6 +445,7 @@ func (a *mqlAwsInspector) getConfigurations(conn *connection.AwsConnection) []*j
 				args["ec2ScanMode"] = llx.StringData(string(sms.ScanMode))
 				args["ec2ScanModeStatus"] = llx.StringData(string(sms.ScanModeStatus))
 			}
+			maps.Copy(args, inspectorAmiConfigArgs(resp.AmiConfiguration))
 			mqlConfig, err := CreateResource(a.MqlRuntime, "aws.inspector.configuration", args)
 			if err != nil {
 				return nil, err

@@ -5,7 +5,10 @@ package resources
 
 import (
 	"testing"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	inspectortypes "github.com/aws/aws-sdk-go-v2/service/inspector2/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -100,6 +103,79 @@ func TestInspectorCoverageChildIDsAreNotTagDerived(t *testing.T) {
 			again, err := img.id()
 			require.NoError(t, err)
 			assert.Equal(t, first, again)
+		}
+	})
+}
+
+func TestInspectorStateStatusData(t *testing.T) {
+	// Measured: BatchGetAccountStatus in us-east-1 on 2026-10-30, Inspector
+	// disabled in the account: resourceState.ami.status = DISABLED.
+	got := inspectorStateStatusData(&inspectortypes.State{Status: inspectortypes.StatusDisabled})
+	assert.Equal(t, "DISABLED", got.Value)
+
+	// Synthetic: an account status without an ami entry reads null, not "".
+	assert.Nil(t, inspectorStateStatusData(nil).Value)
+	assert.Nil(t, inspectorStateStatusData(&inspectortypes.State{}).Value)
+}
+
+func TestInspectorAmiConfigArgs(t *testing.T) {
+	t.Run("measured scan-all configuration", func(t *testing.T) {
+		// Measured: GetConfiguration in us-east-1 on 2026-10-30 returned
+		// amiConfiguration {lastLaunchedWithin: DAYS_14, createdWithin: DAYS_14,
+		// scanModeConfiguration {scanMode: SCAN_ALL, excludeCopiedAmis: true,
+		// excludeBackupDlmAmis: true}} with no status, updatedAt or tags.
+		args := inspectorAmiConfigArgs(&inspectortypes.AmiConfigurationState{
+			LastLaunchedWithin: inspectortypes.AmiScanDurationDays14,
+			CreatedWithin:      inspectortypes.AmiScanDurationDays14,
+			ScanModeConfiguration: &inspectortypes.AmiScanModeConfiguration{
+				ScanMode:             inspectortypes.AmiScanModeScanAll,
+				ExcludeCopiedAmis:    aws.Bool(true),
+				ExcludeBackupDlmAmis: aws.Bool(true),
+			},
+		})
+		assert.Equal(t, "SCAN_ALL", args["amiScanMode"].Value)
+		assert.Equal(t, "DAYS_14", args["amiCreatedWithin"].Value)
+		assert.Equal(t, "DAYS_14", args["amiLastLaunchedWithin"].Value)
+		assert.Equal(t, true, args["amiExcludeCopiedAmis"].Value)
+		assert.Equal(t, true, args["amiExcludeBackupDlmAmis"].Value)
+		assert.Equal(t, map[string]any{}, args["amiScanTags"].Value)
+		assert.Nil(t, args["amiConfigurationStatus"].Value)
+		assert.Nil(t, args["amiConfigurationUpdatedAt"].Value)
+	})
+
+	t.Run("targeted scanning with tag filters", func(t *testing.T) {
+		// Synthetic: TARGET_SCANNING with a key/value filter and a key-only
+		// filter; no target had targeted scanning configured.
+		updated := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+		args := inspectorAmiConfigArgs(&inspectortypes.AmiConfigurationState{
+			Status:    inspectortypes.AmiConfigurationStatusPending,
+			UpdatedAt: &updated,
+			ScanModeConfiguration: &inspectortypes.AmiScanModeConfiguration{
+				ScanMode:          inspectortypes.AmiScanModeTargetScanning,
+				ExcludeCopiedAmis: aws.Bool(false),
+				Tags: []inspectortypes.AmiTagFilter{
+					{Key: aws.String("env"), Value: aws.String("prod")},
+					{Key: aws.String("scan-me")},
+					{Value: aws.String("no key")},
+				},
+			},
+		})
+		assert.Equal(t, "TARGET_SCANNING", args["amiScanMode"].Value)
+		assert.Equal(t, map[string]any{"env": "prod", "scan-me": ""}, args["amiScanTags"].Value)
+		assert.Equal(t, false, args["amiExcludeCopiedAmis"].Value)
+		assert.Nil(t, args["amiExcludeBackupDlmAmis"].Value)
+		assert.Nil(t, args["amiCreatedWithin"].Value)
+		assert.Nil(t, args["amiLastLaunchedWithin"].Value)
+		assert.Equal(t, "PENDING", args["amiConfigurationStatus"].Value)
+		assert.Equal(t, &updated, args["amiConfigurationUpdatedAt"].Value)
+	})
+
+	t.Run("no ami configuration", func(t *testing.T) {
+		// Synthetic: a region whose GetConfiguration omits amiConfiguration.
+		args := inspectorAmiConfigArgs(nil)
+		require.Len(t, args, 8)
+		for name, v := range args {
+			assert.Nil(t, v.Value, name)
 		}
 	})
 }
