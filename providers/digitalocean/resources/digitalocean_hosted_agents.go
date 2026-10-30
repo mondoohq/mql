@@ -54,7 +54,19 @@ func hostedAgentConfigArgs(c *godo.HostedAgentConfigSummary) (map[string]*llx.Ra
 		"createdBy":              llx.StringData(c.CreatedBy),
 		"createdAt":              llx.TimeDataPtr(hostedAgentTime(c.CreatedAt)),
 		"updatedAt":              llx.TimeDataPtr(hostedAgentTime(c.UpdatedAt)),
+		"region":                 hostedAgentRegion(c.Region),
 	}, nil
+}
+
+// hostedAgentRegion returns null when the API reports no region. It omits
+// the field for teams without regional placement and for configs created
+// before it, and an empty string would read as a region that matched
+// nothing.
+func hostedAgentRegion(region string) *llx.RawData {
+	if region == "" {
+		return llx.NilData
+	}
+	return llx.StringData(region)
 }
 
 func (r *mqlDigitalocean) hostedAgentConfigs() ([]any, error) {

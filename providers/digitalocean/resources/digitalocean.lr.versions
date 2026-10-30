@@ -719,6 +719,7 @@ digitalocean.hostedAgentConfig.createdBy 14.0.1
 digitalocean.hostedAgentConfig.credentials 14.0.1
 digitalocean.hostedAgentConfig.id 14.0.1
 digitalocean.hostedAgentConfig.name 14.0.1
+digitalocean.hostedAgentConfig.region 14.2.9
 digitalocean.hostedAgentConfig.updatedAt 14.0.1
 digitalocean.hostedAgentConfigs 14.0.1
 digitalocean.hostedAgentTrigger 14.0.1
@@ -894,6 +895,8 @@ digitalocean.microDroplet.checkpoint.vcpus 14.0.1
 digitalocean.microDroplet.checkpoints 14.0.1
 digitalocean.microDroplet.createdAt 13.15.2
 digitalocean.microDroplet.diskGb 14.0.1
+digitalocean.microDroplet.egressDefaultAction 14.2.9
+digitalocean.microDroplet.egressRules 14.2.9
 digitalocean.microDroplet.endpoint 13.15.2
 digitalocean.microDroplet.failureReason 14.0.1
 digitalocean.microDroplet.httpProtocol 14.0.1

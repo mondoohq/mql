@@ -91,6 +91,9 @@ func TestMicroDropletArgs_AbsentOptionals(t *testing.T) {
 	assert.Equal(t, false, args["autoPauseEnabled"].Value)
 	assert.Equal(t, "", args["autoPauseIdleTimeout"].Value)
 	assert.Equal(t, false, args["autoResumeEnabled"].Value)
+	// No egress policy means egress is unrestricted.
+	assert.Equal(t, "allow", args["egressDefaultAction"].Value)
+	assert.Equal(t, []any{}, args["egressRules"].Value)
 	// An absent timestamp must stay null. Decoding "" to the zero time would
 	// report 1 January year 1 as a real creation date.
 	assert.Nil(t, args["createdAt"].Value)
@@ -161,4 +164,63 @@ func TestMicroVMEndpoint(t *testing.T) {
 		{Hostname: "app.example.com"},
 	}))
 	assert.Equal(t, "", microVMEndpoint(nil))
+}
+
+func TestMicroDropletArgs_EgressPolicyDecode(t *testing.T) {
+	// Synthetic: API-shaped egress_policy block decoded through the SDK's
+	// struct tags; no live MicroDroplet with a policy was available.
+	raw := `{
+		"id": "md-4",
+		"networking": "public",
+		"egress_policy": {
+			"default_action": "deny",
+			"rules": [
+				{"domain": "*.github.com"},
+				{"ip": "203.0.113.7"}
+			]
+		}
+	}`
+	var md godo.MicroVM
+	require.NoError(t, json.Unmarshal([]byte(raw), &md))
+
+	args, err := microDropletArgs(&md)
+	require.NoError(t, err)
+
+	assert.Equal(t, "deny", args["egressDefaultAction"].Value)
+	assert.Equal(t, []any{
+		map[string]any{"domain": "*.github.com", "ip": ""},
+		map[string]any{"domain": "", "ip": "203.0.113.7"},
+	}, args["egressRules"].Value)
+}
+
+func TestMicroVMEgressDefaultAction(t *testing.T) {
+	cases := []struct {
+		name   string
+		policy *godo.MicroVMEgressPolicy
+		want   string
+	}{
+		// Synthetic: no policy means unrestricted egress, which must read as
+		// allow so a check requiring deny fails on it.
+		{"no policy is unrestricted", nil, "allow"},
+		// Synthetic: a policy without a default action gets the API default.
+		{"policy without action defaults to deny", &godo.MicroVMEgressPolicy{
+			Rules: []godo.MicroVMEgressRule{{Domain: "example.com"}},
+		}, "deny"},
+		{"explicit allow", &godo.MicroVMEgressPolicy{DefaultAction: godo.MicroVMEgressActionAllow}, "allow"},
+		{"explicit deny", &godo.MicroVMEgressPolicy{DefaultAction: godo.MicroVMEgressActionDeny}, "deny"},
+		// Synthetic: casing must not defeat `egressDefaultAction == "deny"`.
+		{"uppercase deny", &godo.MicroVMEgressPolicy{DefaultAction: "DENY"}, "deny"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, microVMEgressDefaultAction(c.policy))
+		})
+	}
+}
+
+func TestMicroVMEgressRules_AbsentPolicy(t *testing.T) {
+	// Synthetic: no policy and a policy with no rules both list nothing,
+	// never null, so `egressRules.length` stays queryable.
+	assert.Equal(t, []any{}, microVMEgressRules(nil))
+	assert.Equal(t, []any{}, microVMEgressRules(&godo.MicroVMEgressPolicy{DefaultAction: godo.MicroVMEgressActionDeny}))
 }

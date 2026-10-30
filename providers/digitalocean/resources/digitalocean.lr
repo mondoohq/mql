@@ -262,7 +262,9 @@ digitalocean.droplet @defaults("id name status") {
 // `memoryMib`, and `diskGb`, the lifecycle `state` and any
 // `failureReason`, the `tags` applied to it, and the
 // auto-pause and auto-resume settings that decide whether it keeps
-// running while unused. MicroDroplets are not covered by cloud
+// running while unused, and the egress policy (`egressDefaultAction`
+// and `egressRules`) that decides which outbound destinations the
+// workload can reach. MicroDroplets are not covered by cloud
 // firewalls, so `networking` is the only ingress control there is.
 // Select one by id with `digitalocean.microDroplet(id: "...")`.
 digitalocean.microDroplet @defaults("id name region state networking") {
@@ -327,6 +329,21 @@ digitalocean.microDroplet @defaults("id name region state networking") {
   autoPauseIdleTimeout string
   // Whether an incoming request resumes a paused instance
   autoResumeEnabled bool
+  // What happens to outbound traffic no egress rule matches
+  //
+  // Either allow, meaning the instance can connect to any destination
+  // not listed in `egressRules`, or deny, meaning it can connect only to
+  // the listed destinations. An instance with no egress policy can reach
+  // any destination and reports allow. The policy is fixed when the
+  // instance is created.
+  egressDefaultAction string
+  // Outbound destinations the egress policy allows
+  //
+  // Each entry is a dict with keys: domain (an exact host or a
+  // `*.example.com` wildcard) and ip (an exact address). A rule sets one
+  // of the two and leaves the other empty. Empty when the instance has no
+  // egress policy.
+  egressRules []dict
   // Time the resource was created
   createdAt time
   // Checkpoints captured from this instance
@@ -380,7 +397,8 @@ private digitalocean.microDroplet.checkpoint @defaults("id name status microDrop
 // Hosted agent config
 //
 // Saved, immutable definition of a hosted coding agent that sessions are
-// started from. Identifies the config by `id` and `name`, records who
+// started from. Identifies the config by `id` and `name`, names the
+// `region` it is stored in, records who
 // created it in `createdBy`, the agent spec version it was written
 // against in `agentSpecSchemaVersion`, and a `contentHash` of its
 // manifest that changes whenever the definition does. `credentials` lists
@@ -394,6 +412,13 @@ private digitalocean.hostedAgentConfig @defaults("id name createdBy") {
   name string
   // Agent spec schema version the manifest was written against
   agentSpecSchemaVersion string
+  // Region slug the config is stored in, for example ric1
+  //
+  // A config lives in one region and starts sessions only there. Null
+  // when the API does not report a region, which it omits for teams
+  // without regional placement and for configs created before it; those
+  // configs are stored in ric1.
+  region string
   // Hash of the config manifest
   contentHash string
   // Principal that created the config

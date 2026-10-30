@@ -74,7 +74,7 @@ func TestPaginateToken_ErrorPropagates(t *testing.T) {
 
 func TestListHostedAgentTriggers_FollowsPageToken(t *testing.T) {
 	client := newTestGodoClient(t, func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/v2/agents/triggers", r.URL.Path)
+		assert.Equal(t, "/v2/harness-runtime/triggers", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Query().Get("page_token") {
 		case "":
@@ -96,7 +96,7 @@ func TestListHostedAgentTriggers_FollowsPageToken(t *testing.T) {
 
 func TestListHostedAgentConfigs_FollowsPageToken(t *testing.T) {
 	client := newTestGodoClient(t, func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/v2/agents/configs", r.URL.Path)
+		assert.Equal(t, "/v2/harness-runtime/configs", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Query().Get("page_token") {
 		case "":
@@ -121,13 +121,15 @@ func TestHostedAgentConfigArgs_Decode(t *testing.T) {
 		"content_hash": "sha256:abc",
 		"created_by": "user@example.com",
 		"created_at": "2026-05-01T10:00:00Z",
-		"updated_at": "2026-05-02T10:00:00Z"
+		"updated_at": "2026-05-02T10:00:00Z",
+		"region": "ric1"
 	}`
 	var c godo.HostedAgentConfigSummary
 	require.NoError(t, json.Unmarshal([]byte(raw), &c))
 	args, err := hostedAgentConfigArgs(&c)
 	require.NoError(t, err)
 	assert.Equal(t, "digitalocean.hostedAgentConfig/cfg-1", args["__id"].Value)
+	assert.Equal(t, "ric1", args["region"].Value)
 	assert.Equal(t, "reviewer", args["name"].Value)
 	assert.Equal(t, "v1alpha1", args["agentSpecSchemaVersion"].Value)
 	assert.Equal(t, "sha256:abc", args["contentHash"].Value)
@@ -140,6 +142,9 @@ func TestHostedAgentConfigArgs_Decode(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, args["createdAt"].Value)
 	assert.Nil(t, args["updatedAt"].Value)
+	// Synthetic: a team without regional placement gets no region field;
+	// it stays null rather than an empty slug.
+	assert.Nil(t, args["region"].Value)
 
 	_, err = hostedAgentConfigArgs(&godo.HostedAgentConfigSummary{})
 	require.Error(t, err)

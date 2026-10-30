@@ -13,6 +13,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (r *mqlDigitalocean) microDroplets() ([]any, error) {
@@ -87,8 +88,40 @@ func microDropletArgs(md *godo.MicroVM) (map[string]*llx.RawData, error) {
 		"autoPauseEnabled":     llx.BoolData(autoPauseEnabled),
 		"autoPauseIdleTimeout": llx.StringData(autoPauseIdleTimeout),
 		"autoResumeEnabled":    llx.BoolData(md.AutoResume != nil && *md.AutoResume),
+		"egressDefaultAction":  llx.StringData(microVMEgressDefaultAction(md.EgressPolicy)),
+		"egressRules":          llx.ArrayData(microVMEgressRules(md.EgressPolicy), types.Dict),
 		"createdAt":            llx.TimeDataPtr(parseDoTime(md.Created)),
 	}, nil
+}
+
+// microVMEgressDefaultAction returns what happens to outbound traffic no
+// egress rule matches. An instance without a policy has unrestricted
+// egress, which is reported as allow so it fails a check that requires
+// deny. A policy that names no default action gets the API's default,
+// deny.
+func microVMEgressDefaultAction(p *godo.MicroVMEgressPolicy) string {
+	if p == nil {
+		return string(godo.MicroVMEgressActionAllow)
+	}
+	if p.DefaultAction == "" {
+		return string(godo.MicroVMEgressActionDeny)
+	}
+	return strings.ToLower(string(p.DefaultAction))
+}
+
+// microVMEgressRules converts the allowed outbound destinations to dicts.
+func microVMEgressRules(p *godo.MicroVMEgressPolicy) []any {
+	if p == nil {
+		return []any{}
+	}
+	out := make([]any, 0, len(p.Rules))
+	for _, r := range p.Rules {
+		out = append(out, map[string]any{
+			"domain": r.Domain,
+			"ip":     r.IP,
+		})
+	}
+	return out
 }
 
 func initDigitaloceanMicroDroplet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {

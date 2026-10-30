@@ -900,6 +900,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"digitalocean.microDroplet.autoResumeEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanMicroDroplet).GetAutoResumeEnabled()).ToDataRes(types.Bool)
 	},
+	"digitalocean.microDroplet.egressDefaultAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanMicroDroplet).GetEgressDefaultAction()).ToDataRes(types.String)
+	},
+	"digitalocean.microDroplet.egressRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanMicroDroplet).GetEgressRules()).ToDataRes(types.Array(types.Dict))
+	},
 	"digitalocean.microDroplet.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanMicroDroplet).GetCreatedAt()).ToDataRes(types.Time)
 	},
@@ -950,6 +956,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"digitalocean.hostedAgentConfig.agentSpecSchemaVersion": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanHostedAgentConfig).GetAgentSpecSchemaVersion()).ToDataRes(types.String)
+	},
+	"digitalocean.hostedAgentConfig.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanHostedAgentConfig).GetRegion()).ToDataRes(types.String)
 	},
 	"digitalocean.hostedAgentConfig.contentHash": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanHostedAgentConfig).GetContentHash()).ToDataRes(types.String)
@@ -4523,6 +4532,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDigitaloceanMicroDroplet).AutoResumeEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"digitalocean.microDroplet.egressDefaultAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanMicroDroplet).EgressDefaultAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.microDroplet.egressRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanMicroDroplet).EgressRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"digitalocean.microDroplet.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitaloceanMicroDroplet).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
@@ -4597,6 +4614,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"digitalocean.hostedAgentConfig.agentSpecSchemaVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitaloceanHostedAgentConfig).AgentSpecSchemaVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.hostedAgentConfig.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanHostedAgentConfig).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"digitalocean.hostedAgentConfig.contentHash": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -10365,6 +10386,8 @@ type mqlDigitaloceanMicroDroplet struct {
 	AutoPauseEnabled     plugin.TValue[bool]
 	AutoPauseIdleTimeout plugin.TValue[string]
 	AutoResumeEnabled    plugin.TValue[bool]
+	EgressDefaultAction  plugin.TValue[string]
+	EgressRules          plugin.TValue[[]any]
 	CreatedAt            plugin.TValue[*time.Time]
 	Checkpoints          plugin.TValue[[]any]
 }
@@ -10481,6 +10504,14 @@ func (c *mqlDigitaloceanMicroDroplet) GetAutoPauseIdleTimeout() *plugin.TValue[s
 
 func (c *mqlDigitaloceanMicroDroplet) GetAutoResumeEnabled() *plugin.TValue[bool] {
 	return &c.AutoResumeEnabled
+}
+
+func (c *mqlDigitaloceanMicroDroplet) GetEgressDefaultAction() *plugin.TValue[string] {
+	return &c.EgressDefaultAction
+}
+
+func (c *mqlDigitaloceanMicroDroplet) GetEgressRules() *plugin.TValue[[]any] {
+	return &c.EgressRules
 }
 
 func (c *mqlDigitaloceanMicroDroplet) GetCreatedAt() *plugin.TValue[*time.Time] {
@@ -10627,6 +10658,7 @@ type mqlDigitaloceanHostedAgentConfig struct {
 	Id                     plugin.TValue[string]
 	Name                   plugin.TValue[string]
 	AgentSpecSchemaVersion plugin.TValue[string]
+	Region                 plugin.TValue[string]
 	ContentHash            plugin.TValue[string]
 	CreatedBy              plugin.TValue[string]
 	CreatedAt              plugin.TValue[*time.Time]
@@ -10681,6 +10713,10 @@ func (c *mqlDigitaloceanHostedAgentConfig) GetName() *plugin.TValue[string] {
 
 func (c *mqlDigitaloceanHostedAgentConfig) GetAgentSpecSchemaVersion() *plugin.TValue[string] {
 	return &c.AgentSpecSchemaVersion
+}
+
+func (c *mqlDigitaloceanHostedAgentConfig) GetRegion() *plugin.TValue[string] {
+	return &c.Region
 }
 
 func (c *mqlDigitaloceanHostedAgentConfig) GetContentHash() *plugin.TValue[string] {
