@@ -8,31 +8,31 @@ require (
 	github.com/alibabacloud-go/actiontrail-20200706/v3 v3.5.0
 	github.com/alibabacloud-go/alb-20200616/v2 v2.3.2
 	github.com/alibabacloud-go/cas-20200407/v4 v4.7.4
-	github.com/alibabacloud-go/cbn-20170912/v2 v2.4.4
+	github.com/alibabacloud-go/cbn-20170912/v2 v2.5.0
 	github.com/alibabacloud-go/cloudapi-20160714/v5 v5.8.0
 	github.com/alibabacloud-go/cloudfw-20171207/v11 v11.1.0
 	github.com/alibabacloud-go/cloudsso-20210515 v1.7.0
 	github.com/alibabacloud-go/config-20200907/v4 v4.2.3
 	github.com/alibabacloud-go/cr-20181201/v3 v3.2.3
-	github.com/alibabacloud-go/cs-20151215/v8 v8.2.2
+	github.com/alibabacloud-go/cs-20151215/v8 v8.2.4
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.4
 	github.com/alibabacloud-go/ddoscoo-20200101/v5 v5.0.3
 	github.com/alibabacloud-go/dds-20151201/v10 v10.5.0
-	github.com/alibabacloud-go/ecs-20140526/v7 v7.11.6
+	github.com/alibabacloud-go/ecs-20140526/v7 v7.11.7
 	github.com/alibabacloud-go/elasticsearch-20170613/v6 v6.4.1
 	github.com/alibabacloud-go/ess-20220222/v2 v2.13.3
-	github.com/alibabacloud-go/fc-20230330/v4 v4.8.3
+	github.com/alibabacloud-go/fc-20230330/v4 v4.8.4
 	github.com/alibabacloud-go/ims-20190815/v4 v4.5.0
 	github.com/alibabacloud-go/kms-20160120/v4 v4.3.1
 	github.com/alibabacloud-go/nas-20170626/v4 v4.7.5
 	github.com/alibabacloud-go/nlb-20220430/v4 v4.1.3
-	github.com/alibabacloud-go/polardb-20170801/v10 v10.1.0
+	github.com/alibabacloud-go/polardb-20170801/v10 v10.1.1
 	github.com/alibabacloud-go/privatelink-20200415/v5 v5.0.11
 	github.com/alibabacloud-go/r-kvstore-20150101/v8 v8.0.0
 	github.com/alibabacloud-go/ram-20150501/v2 v2.2.1
-	github.com/alibabacloud-go/rds-20140815/v17 v17.0.1
+	github.com/alibabacloud-go/rds-20140815/v17 v17.1.0
 	github.com/alibabacloud-go/resourcemanager-20200331/v3 v3.5.2
-	github.com/alibabacloud-go/sas-20181203/v10 v10.3.2
+	github.com/alibabacloud-go/sas-20181203/v10 v10.3.3
 	github.com/alibabacloud-go/slb-20140515/v4 v4.0.14
 	github.com/alibabacloud-go/sls-20201230/v6 v6.15.1
 	github.com/alibabacloud-go/sts-20150401/v2 v2.1.0
@@ -43,7 +43,7 @@ require (
 	github.com/aliyun/credentials-go v1.4.14
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
-	go.mondoo.com/mql v0.0.0-20261026054543-00c16ca67199
+	go.mondoo.com/mql v0.0.0-20261030170440-500af826ff88
 )
 
 require (
@@ -64,20 +64,20 @@ require (
 	github.com/alibabacloud-go/endpoint-util v1.1.0 // indirect
 	github.com/alibabacloud-go/openapi-util v0.1.2 // indirect
 	github.com/alibabacloud-go/tea-utils/v2 v2.0.9 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.47.4 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.33.10 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.20.10 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.4 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.7 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.7 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.22 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.10.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.38.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.51.5 // indirect
-	github.com/aws/smithy-go v1.28.6 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.47.5 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.33.12 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.20.12 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.5 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.8 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.8 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.8 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.23 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.8 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.12.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.39.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.44.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.51.6 // indirect
+	github.com/aws/smithy-go v1.28.7 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clbanning/mxj/v2 v2.7.0 // indirect
@@ -152,8 +152,8 @@ require (
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
-	google.golang.org/grpc v1.84.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261026165753-2ffab32bce7e // indirect
+	google.golang.org/grpc v1.85.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
